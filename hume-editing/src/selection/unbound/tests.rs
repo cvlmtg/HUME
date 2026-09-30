@@ -1,14 +1,9 @@
-use hume_rope::offset::{CharOffset, ExclusiveRange};
 use pretty_assertions::assert_eq;
 
 use super::*;
 use crate::changeset::Assoc;
 use crate::edit::{EditBuilder, Landing, Landings, edit};
-use crate::marked::{parse, render};
-
-fn co(n: usize) -> CharOffset {
-    CharOffset::new(n)
-}
+use crate::marked::{bound_at, clusters, parse, render};
 
 /// `input` edited by `f`, which returns its result selection.
 fn edited(
@@ -24,11 +19,11 @@ fn edited(
 #[test]
 fn kept_ends_follow_their_assoc_across_an_insertion() {
     let before = edited("-[a]>b\n", |b, sel| {
-        b.insert(co(0), "X");
+        b.insert(bound_at(b.text(), 0), "X");
         Landing::kept_with(sel, Assoc::Before)
     });
     let after = edited("-[a]>b\n", |b, sel| {
-        b.insert(co(0), "X");
+        b.insert(bound_at(b.text(), 0), "X");
         Landing::kept(sel)
     });
     assert_eq!(before, "-[X]>ab\n");
@@ -38,7 +33,7 @@ fn kept_ends_follow_their_assoc_across_an_insertion() {
 #[test]
 fn a_kept_end_left_inside_a_cluster_lands_on_its_start() {
     let out = edited("a\n-[\u{301}]>b\n", |b, sel| {
-        b.delete(ExclusiveRange::new(co(1), co(2)));
+        b.delete(clusters(b.text(), 1, 2));
         Landing::kept(sel)
     });
     assert_eq!(out, "-[a\u{301}]>b\n");

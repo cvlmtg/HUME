@@ -567,7 +567,13 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
     // Engine mirror for pane B must now reflect the translated position.
-    let mirror_head = ed.view.panes[pid_b].selections[0].cursor.offset();
+    let mirror_head = ed.view.panes[pid_b]
+        .selections
+        .as_ref()
+        .expect("a written mirror")
+        .primary()
+        .cursor
+        .offset();
     assert_eq!(
         mirror_head,
         co(4),

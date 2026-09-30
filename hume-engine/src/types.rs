@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use hume_rope::cluster::{ClusterRange, ClusterStart};
+use hume_rope::cluster::ClusterStart;
 use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::offset::ExclusiveRange;
 
@@ -199,16 +199,82 @@ impl DisplayLineKind {
 /// selection model each frame; the engine only reads them.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct PaintedSelection {
-    /// Every cluster the selection covers.
-    pub covered: ClusterRange,
-    /// The cluster the cursor sits on: the selection's head.
+    /// The first covered cluster.
+    pub first: ClusterStart,
+    /// The last covered cluster, at or after `first`.
+    pub last: ClusterStart,
+    /// The cluster the cursor sits on: the selection's head, which is
+    /// `first` or `last`.
     pub cursor: ClusterStart,
+}
+
+impl PaintedSelection {
     /// The selection covers one cluster and has no extent to paint.
-    pub is_cursor: bool,
+    pub fn is_cursor(&self) -> bool {
+        self.first == self.last
+    }
+
     /// The head comes before the anchor.
-    pub is_reverse: bool,
-    /// The selection the viewport follows.
-    pub is_primary: bool,
+    pub fn is_reverse(&self) -> bool {
+        !self.is_cursor() && self.cursor == self.first
+    }
+}
+
+/// A pane's selections as the renderer paints them: at least one, in cursor
+/// order, and one of them primary, the one the viewport follows.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaintedSelections {
+    items: Vec<PaintedSelection>,
+    primary: usize,
+}
+
+impl PaintedSelections {
+    /// # Panics
+    /// Panics if `items` is empty, not in cursor order, or has no selection
+    /// at `primary`.
+    pub fn new(items: Vec<PaintedSelection>, primary: usize) -> Self {
+        Self::check(&items, primary);
+        Self { items, primary }
+    }
+
+    /// Replace the selections, reusing this mirror's storage.
+    ///
+    /// # Panics
+    /// Same as [`new`](Self::new).
+    pub fn rewrite(&mut self, items: impl IntoIterator<Item = PaintedSelection>, primary: usize) {
+        self.items.clear();
+        self.items.extend(items);
+        self.primary = primary;
+        Self::check(&self.items, primary);
+    }
+
+    fn check(items: &[PaintedSelection], primary: usize) {
+        assert!(
+            !items.is_empty(),
+            "a selection mirror holds at least one selection"
+        );
+        assert!(
+            primary < items.len(),
+            "the primary index names a selection of the mirror"
+        );
+        assert!(
+            items.windows(2).all(|w| w[0].cursor <= w[1].cursor),
+            "a selection mirror is in cursor order"
+        );
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &PaintedSelection> {
+        self.items.iter()
+    }
+
+    pub fn primary(&self) -> &PaintedSelection {
+        &self.items[self.primary]
+    }
+
+    /// The primary selection's position in [`iter`](Self::iter)'s order.
+    pub fn primary_index(&self) -> usize {
+        self.primary
+    }
 }
 
 /// Ceiling on a command's numeric count prefix (e.g. the `3` in `3w`).

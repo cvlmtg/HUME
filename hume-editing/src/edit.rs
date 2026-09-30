@@ -3,7 +3,9 @@
 
 mod builder;
 
-pub use builder::{EditBuilder, Landing, Landings, Mark, NewPos, Removed, edit};
+pub use builder::{EditBuilder, Landing, Landings, Mark, NewPos, edit};
+
+use std::cell::OnceCell;
 
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
@@ -12,6 +14,36 @@ use crate::error::ApplyError;
 use crate::selection::{Resolver, SelectionSet};
 use crate::state::EditState;
 use crate::text::{BufferText, TextVersion};
+
+/// `text` changed by the changeset `drive` builds for it, with the changeset
+/// and whatever else `drive` returned.
+///
+/// The result ends with a `\n`. `drive` is called with no ceiling first. When
+/// that result would not end with a `\n`, `drive` is called again with the
+/// structural `\n`'s position as the ceiling, and must then follow one rule:
+/// text inserted at the text end gets a `\n` of its own, and when none is
+/// inserted there, every deletion stops at the ceiling.
+///
+/// # Panics
+/// Panics if a changeset `drive` builds is for another text, or if the one
+/// built under the ceiling still drops the final `\n`.
+pub fn apply_keeping_final_break<T>(
+    text: &BufferText,
+    mut drive: impl FnMut(Option<CharOffset>) -> (ChangeSet, T),
+) -> (BufferText, ChangeSet, T) {
+    let (changes, out) = drive(None);
+    match changes.apply(text) {
+        Ok(new) => (new, changes, out),
+        Err(ApplyError::TrailingNewlineMissing) => {
+            let (changes, out) = drive(Some(text.last_char()));
+            let new = changes
+                .apply(text)
+                .expect("a changeset built under the ceiling keeps the final newline");
+            (new, changes, out)
+        }
+        Err(e) => panic!("apply_keeping_final_break: {e}"),
+    }
+}
 
 /// A finished edit: the new text with its selections, and the changeset that
 /// produced it from the text it started from.
@@ -37,18 +69,10 @@ impl Edited {
     /// `changes` applied to `state`'s text, its selections carried through.
     pub fn from_changes(state: EditState, changes: ChangeSet) -> Result<Self, ApplyError> {
         let text = changes.apply(state.text())?;
-        let base = state.text().version();
-        let primary = state.view().primary().index();
-        let selections = {
-            let change = TextChange::new(state.text(), &text, &changes);
-            let mut resolver = Resolver::new(Some(&change), &text);
-            let carried = state
-                .view()
-                .iter()
-                .map(|v| resolver.carry(v.selection().without_sticky(), Assoc::After))
-                .collect();
-            SelectionSet::from_parts(carried, primary, text.version())
-        };
+        let before = state.text().clone();
+        let base = before.version();
+        let mut selections = state.into_selections();
+        selections.translate(&TextChange::new(&before, &text, &changes));
         Ok(Self {
             state: EditState::from_set(text, selections),
             changes,
@@ -98,6 +122,7 @@ pub struct TextChange<'a> {
     before: &'a BufferText,
     after: &'a BufferText,
     changes: &'a ChangeSet,
+    edited_old_ranges: OnceCell<Vec<ExclusiveRange<CharOffset>>>,
 }
 
 impl<'a> TextChange<'a> {
@@ -110,6 +135,7 @@ impl<'a> TextChange<'a> {
             before,
             after,
             changes,
+            edited_old_ranges: OnceCell::new(),
         }
     }
 
@@ -124,6 +150,13 @@ impl<'a> TextChange<'a> {
     pub fn changes(&self) -> &'a ChangeSet {
         self.changes
     }
+
+    /// The changeset's edited old ranges, computed on first use and shared by
+    /// every set translated through this change.
+    fn edited_old_ranges(&self) -> &[ExclusiveRange<CharOffset>] {
+        self.edited_old_ranges
+            .get_or_init(|| self.changes.edited_old_ranges())
+    }
 }
 
 impl SelectionSet {
@@ -131,28 +164,14 @@ impl SelectionSet {
     /// at it and lands on the cluster of the new text holding it; selections
     /// the change folds together merge. A sticky column survives only when
     /// the change left the head's line alone.
-    pub fn translate(&mut self, change: &TextChange<'_>) {
-        self.translate_with(&change.changes().edited_old_ranges(), change);
-    }
-
-    /// [`Self::translate`] with `change`'s edited old ranges computed by the
-    /// caller, once for many sets.
     ///
     /// # Panics
     /// Panics if this set was not computed for `change`'s old text: carrying
     /// it would land its positions wherever the change happens to map them.
-    pub(crate) fn translate_with(
-        &mut self,
-        edits: &[ExclusiveRange<CharOffset>],
-        change: &TextChange<'_>,
-    ) {
-        assert_eq!(
-            self.version(),
-            change.before().version(),
-            "translate: a selection set carried through a change to another text"
-        );
-        let untouched = self.heads_untouched(edits, change.before());
-        let mut resolver = Resolver::new(Some(change), change.after());
+    pub fn translate(&mut self, change: &TextChange<'_>) {
+        crate::selection::assert_fits(change.before(), self);
+        let untouched = self.heads_untouched(change.edited_old_ranges(), change.before());
+        let mut resolver = Resolver::new(change, change.after());
         let carried = self
             .selections()
             .iter()

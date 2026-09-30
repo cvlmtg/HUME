@@ -1,17 +1,8 @@
-use hume_rope::offset::{CharOffset, ExclusiveRange};
 use pretty_assertions::assert_eq;
 
 use super::*;
-use crate::marked::{parse, render};
+use crate::marked::{bound_at, clusters, parse, render};
 use crate::selection::{Facing, UnboundSelection};
-
-fn co(n: usize) -> CharOffset {
-    CharOffset::new(n)
-}
-
-fn range(a: usize, b: usize) -> ExclusiveRange<CharOffset> {
-    ExclusiveRange::new(co(a), co(b))
-}
 
 /// `f`'s plan over `input`, its one result selection covering `f`'s mark.
 fn marked(
@@ -42,7 +33,7 @@ fn cursor_at(
 #[test]
 fn insert_returns_what_the_insertion_became() {
     assert_eq!(
-        marked("-[a]>bc\n", |b| b.insert(co(1), "XY")),
+        marked("-[a]>bc\n", |b| b.insert(bound_at(b.text(), 1), "XY")),
         "a-[XY]>bc\n"
     );
 }
@@ -50,8 +41,8 @@ fn insert_returns_what_the_insertion_became() {
 #[test]
 fn an_insert_inside_a_deletion_lands_at_the_deletion_point() {
     let out = marked("-[a]>bcd\n", |b| {
-        b.delete(range(0, 2));
-        b.insert(co(1), "X")
+        b.delete(clusters(b.text(), 0, 2));
+        b.insert(bound_at(b.text(), 1), "X")
     });
     assert_eq!(out, "-[X]>cd\n");
 }
@@ -59,8 +50,8 @@ fn an_insert_inside_a_deletion_lands_at_the_deletion_point() {
 #[test]
 fn ops_recorded_out_of_order_apply_in_position_order() {
     let out = marked("-[a]>bcd\n", |b| {
-        let later = b.insert(co(3), "Y");
-        b.insert(co(1), "X");
+        let later = b.insert(bound_at(b.text(), 3), "Y");
+        b.insert(bound_at(b.text(), 1), "X");
         later
     });
     assert_eq!(out, "aXbc-[Y]>d\n");
@@ -69,8 +60,8 @@ fn ops_recorded_out_of_order_apply_in_position_order() {
 #[test]
 fn inserts_at_one_position_keep_their_call_order() {
     let out = marked("-[a]>bc\n", |b| {
-        b.insert(co(1), "X");
-        b.insert(co(1), "Y")
+        b.insert(bound_at(b.text(), 1), "X");
+        b.insert(bound_at(b.text(), 1), "Y")
     });
     assert_eq!(out, "aX-[Y]>bc\n");
 }
@@ -78,27 +69,27 @@ fn inserts_at_one_position_keep_their_call_order() {
 #[test]
 fn overlapping_deletions_remove_their_union() {
     let out = cursor_at("-[a]>bcdef\n", |b| {
-        b.delete(range(1, 4));
-        b.delete(range(3, 5))
+        b.delete(clusters(b.text(), 1, 4));
+        b.delete(clusters(b.text(), 3, 5))
     });
     assert_eq!(out, "a-[f]>\n");
 }
 
 #[test]
 fn a_deletion_never_reaches_the_structural_break() {
-    let out = cursor_at("-[a]>bc\n", |b| b.delete(range(1, 99)));
+    let out = cursor_at("-[a]>bc\n", |b| b.delete(clusters(b.text(), 1, 99)));
     assert_eq!(out, "a-[\n]>");
 }
 
 #[test]
 fn text_without_a_final_break_lands_before_the_structural_one() {
-    assert_eq!(marked("-[a]>b\n", |b| b.insert(co(3), "X")), "ab-[X]>\n");
+    assert_eq!(marked("-[a]>b\n", |b| b.insert(bound_at(b.text(), 3), "X")), "ab-[X]>\n");
 }
 
 #[test]
 fn lines_inserted_at_the_end_go_after_the_last_line() {
     assert_eq!(
-        marked("-[a]>b\n", |b| b.insert(co(3), "X\n")),
+        marked("-[a]>b\n", |b| b.insert(bound_at(b.text(), 3), "X\n")),
         "ab\n-[X\n]>"
     );
 }
@@ -106,17 +97,28 @@ fn lines_inserted_at_the_end_go_after_the_last_line() {
 #[test]
 #[should_panic(expected = "past the text end")]
 fn an_insert_past_the_text_end_is_refused() {
-    marked("-[a]>b\n", |b| b.insert(co(4), "X"));
+    let longer = BufferText::from("abcdef\n");
+    marked("-[a]>b\n", |b| {
+        b.insert(hume_rope::grapheme::text_end(longer.full_slice()), "X")
+    });
+}
+
+#[test]
+#[should_panic(expected = "past the text end")]
+fn a_deletion_past_the_text_end_is_refused() {
+    let longer = BufferText::from("abcdef\n");
+    let range = clusters(&longer, 2, 6);
+    cursor_at("-[a]>b\n", |b| b.delete(range));
 }
 
 #[test]
 fn replacing_through_the_structural_break_keeps_it() {
     assert_eq!(
-        marked("-[a]>bc\n", |b| b.replace(range(1, 4), "XY\n")),
+        marked("-[a]>bc\n", |b| b.replace(clusters(b.text(), 1, 4), "XY\n")),
         "a-[XY\n]>"
     );
     assert_eq!(
-        marked("-[a]>bc\n", |b| b.replace(range(1, 4), "XY")),
+        marked("-[a]>bc\n", |b| b.replace(clusters(b.text(), 1, 4), "XY")),
         "a-[XY]>\n"
     );
 }
@@ -124,8 +126,8 @@ fn replacing_through_the_structural_break_keeps_it() {
 #[test]
 fn replacing_after_lines_were_inserted_at_the_end_keeps_the_structural_break_before_them() {
     let out = marked("-[a]>b\n", |b| {
-        b.insert(co(3), "X\n");
-        b.replace(range(1, 3), "Y\n")
+        b.insert(bound_at(b.text(), 3), "X\n");
+        b.replace(clusters(b.text(), 1, 3), "Y\n")
     });
     assert_eq!(out, "a-[Y\n]>X\n");
 }
@@ -135,7 +137,7 @@ fn keep_returns_what_a_range_became() {
     let state = parse("-[ab]>cd\n");
     let covered = state.view().primary().covered();
     let edited = edit(&state, |b| {
-        b.insert(co(0), "X");
+        b.insert(bound_at(b.text(), 0), "X");
         let mark = b.keep(covered);
         Landings::new(vec![Landing::covering(mark, Facing::Backward)], 0)
     });
@@ -147,46 +149,64 @@ fn kept_and_old_landings_map_through_the_plan() {
     let state = parse("a-[b]>c\n");
     let sel = state.view().primary().selection();
     let edited = edit(&state, |b| {
-        b.insert(co(0), "XY");
+        b.insert(bound_at(b.text(), 0), "XY");
         Landings::new(vec![UnboundSelection::kept(sel).into()], 0)
     });
     assert_eq!(render(edited.state().view()), "XYa-[b]>c\n");
 }
 
 #[test]
-fn touching_linewise_removals_at_the_end_leave_no_blank_line() {
-    let state = parse("a\n-[b\n]>-[c\n]>");
-    assert_eq!(state.view().iter().count(), 2, "two touching selections");
+fn an_anchor_inside_a_replaced_range_resolves_to_the_deletion_point() {
+    let out = cursor_at("-[a]>bcd\n", |b| {
+        b.replace(clusters(b.text(), 1, 3), "XY");
+        b.at(bound_at(b.text(), 2))
+    });
+    assert_eq!(out, "a-[X]>Yd\n");
+}
+
+#[test]
+fn a_kept_cursor_inside_a_replaced_range_lands_where_an_anchor_does() {
+    let state = parse("ab-[c]>d\n");
+    let sel = state.view().primary().selection();
     let edited = edit(&state, |b| {
-        let items = state
-            .view()
+        b.replace(clusters(b.text(), 1, 3), "XY");
+        Landings::new(vec![Landing::kept(sel)], 0)
+    });
+    assert_eq!(render(edited.state().view()), "a-[X]>Yd\n");
+}
+
+/// The text `input` becomes when the clusters covering chars `a..b` of it
+/// are deleted, for each `(a, b)`.
+fn text_after_deleting(input: &str, ranges: &[(usize, usize)]) -> String {
+    let state = parse(input);
+    let edited = edit(&state, |b| {
+        let items = ranges
             .iter()
-            .map(|sel| b.remove(sel).expect("removable").cursor)
+            .map(|&(a, e)| Landing::cursor(b.delete(clusters(b.text(), a, e))))
             .collect();
         Landings::new(items, 0)
     });
-    assert_eq!(edited.state().text().to_string(), "a\n");
-    assert_eq!(render(edited.state().view()), "-[a]>\n");
+    edited.state().text().to_string()
 }
 
 #[test]
-fn a_linewise_removal_of_the_last_line_takes_the_break_before_it() {
-    let state = parse("a\n-[b\n]>");
-    let edited = edit(&state, |b| {
-        let removed = b.remove(state.view().primary()).expect("removable");
-        Landings::new(vec![removed.cursor], 0)
-    });
-    assert_eq!(render(edited.state().view()), "-[a]>\n");
+fn a_deletion_of_the_structural_break_alone_changes_nothing() {
+    assert_eq!(text_after_deleting("-[a]>b\n", &[(2, 3)]), "ab\n");
 }
 
 #[test]
-fn a_linewise_removal_before_the_last_line_lands_on_the_next_line() {
-    let state = parse("a\n-[b\n]>c\n");
-    let edited = edit(&state, |b| {
-        let removed = b.remove(state.view().primary()).expect("removable");
-        Landings::new(vec![removed.cursor], 0)
-    });
-    assert_eq!(render(edited.state().view()), "a\n-[c]>\n");
+fn a_deletion_reaching_the_end_keeps_a_final_break() {
+    assert_eq!(text_after_deleting("-[a]>bc\n", &[(1, 4)]), "a\n");
+}
+
+#[test]
+fn a_deletion_of_an_empty_last_line_removes_it() {
+    assert_eq!(text_after_deleting("-[a]>\n\n", &[(2, 3)]), "a\n");
+}
+
+#[test]
+fn touching_deletions_through_the_last_break_remove_the_whole_line() {
+    assert_eq!(text_after_deleting("-[a]>\nb\n", &[(2, 3), (3, 4)]), "a\n");
 }
 
 #[test]
@@ -194,16 +214,16 @@ fn ops_at_distinct_positions_give_one_changeset_in_any_recording_order() {
     let state = parse("-[a]>bcdefgh\n");
     let record: [fn(&mut EditBuilder<'_, '_>); 4] = [
         |b| {
-            b.insert(co(1), "X");
+            b.insert(bound_at(b.text(), 1), "X");
         },
         |b| {
-            b.insert(co(3), "Y\n");
+            b.insert(bound_at(b.text(), 3), "Y\n");
         },
         |b| {
-            b.delete(range(4, 5));
+            b.delete(clusters(b.text(), 4, 5));
         },
         |b| {
-            b.replace(range(6, 7), "Z");
+            b.replace(clusters(b.text(), 6, 7), "Z");
         },
     ];
     let mut seen: Option<String> = None;
@@ -241,19 +261,29 @@ fn permutations(n: usize) -> Vec<Vec<usize>> {
 }
 
 #[test]
-#[should_panic(expected = "no cluster ends at the text start")]
-fn a_cursor_ending_at_the_text_start_is_refused() {
+fn cursor_ending_at_the_text_start_sits_at_it() {
     let state = parse("-[a]>b\n");
-    edit(&state, |b| {
-        let empty = b.insert(co(0), "");
+    let edited = edit(&state, |b| {
+        let empty = b.insert(bound_at(b.text(), 0), "");
         Landings::new(vec![Landing::cursor_ending_at(empty.end())], 0)
     });
+    assert_eq!(render(edited.state().view()), "-[a]>b\n");
+}
+
+#[test]
+fn cursor_ending_at_a_line_start_stays_on_that_line() {
+    let state = parse("a\n-[b]>\n");
+    let edited = edit(&state, |b| {
+        let mark = b.insert(bound_at(b.text(), 2), "");
+        Landings::new(vec![Landing::cursor_ending_at(mark.end())], 0)
+    });
+    assert_eq!(render(edited.state().view()), "a\n-[b]>\n");
 }
 
 #[test]
 fn a_cursor_lands_on_the_cluster_holding_its_position() {
     // The inserted mark joins the `a` before it.
-    let out = cursor_at("-[a]>b\n", |b| b.insert(co(1), "\u{301}").start());
+    let out = cursor_at("-[a]>b\n", |b| b.insert(bound_at(b.text(), 1), "\u{301}").start());
     assert_eq!(out, "-[a\u{301}]>b\n");
 }
 
@@ -261,7 +291,7 @@ fn a_cursor_lands_on_the_cluster_holding_its_position() {
 fn cursor_ending_at_takes_the_cluster_before_the_position() {
     let state = parse("-[a]>b\n");
     let edited = edit(&state, |b| {
-        let mark = b.insert(co(1), "e\u{301}");
+        let mark = b.insert(bound_at(b.text(), 1), "e\u{301}");
         Landings::new(vec![Landing::cursor_ending_at(mark.end())], 0)
     });
     assert_eq!(render(edited.state().view()), "a-[e\u{301}]>b\n");
@@ -269,6 +299,6 @@ fn cursor_ending_at_takes_the_cluster_before_the_position() {
 
 #[test]
 fn covering_an_empty_mark_is_a_cursor_at_it() {
-    let out = marked("-[a]>b\n", |b| b.insert(co(1), ""));
+    let out = marked("-[a]>b\n", |b| b.insert(bound_at(b.text(), 1), ""));
     assert_eq!(out, "a-[b]>\n");
 }

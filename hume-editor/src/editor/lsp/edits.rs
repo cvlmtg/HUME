@@ -10,6 +10,8 @@
 //! with `apply-workspace-edit!` and belongs next to it.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
+use hume_editing::edit::apply_keeping_final_break;
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool};
 use hume_lsp::codec::ResponseError;
 use hume_rope::cluster::ClusterStart;
@@ -93,7 +95,7 @@ fn build_edit_changeset(
             (range, e.new_text.as_str())
         })
         .collect();
-    build_changeset_from_char_edits(CharOffset::new(rope.len_chars()), char_edits)
+    build_changeset_from_char_edits(buf.text(), char_edits)
 }
 
 /// Shared tail for [`build_edit_changeset`] (wire positions, converted to
@@ -103,8 +105,12 @@ fn build_edit_changeset(
 /// `new_text` borrows from the caller's own edit list. A server's `new_text`
 /// is under no obligation to use LF, but needs no handling here: the
 /// changeset builder normalizes every insertion.
+///
+/// A server works on a file that may not end with a newline, while the
+/// buffer always does: an edit that drops the final `\n` gets it back under
+/// [`apply_keeping_final_break`]'s rule.
 fn build_changeset_from_char_edits(
-    len_before: CharOffset,
+    text: &BufferText,
     mut char_edits: Vec<(ExclusiveRange<CharOffset>, &str)>,
 ) -> Result<ChangeSet, String> {
     if let Some((range, _)) = char_edits.iter().find(|(r, _)| r.end < r.start) {
@@ -120,13 +126,29 @@ fn build_changeset_from_char_edits(
         }
     }
 
-    let mut b = ChangeSetBuilder::new(len_before);
-    for (range, text) in &char_edits {
-        b.retain_to(range.start);
-        b.delete_to(range.end);
-        b.insert(text);
-    }
-    Ok(b.finish())
+    let end = text.end();
+    let inserts_at_end = char_edits
+        .iter()
+        .any(|(range, new_text)| range.start == end && !new_text.is_empty());
+    let (_, changes, ()) = apply_keeping_final_break(text, |ceiling| {
+        let mut b = ChangeSetBuilder::new(end);
+        for (range, new_text) in &char_edits {
+            let stop = match ceiling {
+                Some(ceiling) if !inserts_at_end => range.end.min(ceiling),
+                _ => range.end,
+            };
+            b.retain_to(range.start);
+            if stop > range.start {
+                b.delete_to(stop);
+            }
+            b.insert(new_text);
+        }
+        if ceiling.is_some() && inserts_at_end {
+            b.insert("\n");
+        }
+        (b.finish(), ())
+    });
+    Ok(changes)
 }
 
 /// Applies a pre-built `ChangeSet` to `bid` as one undo step, through the
@@ -162,7 +184,7 @@ fn commit_changeset(
         bid,
         move |s| {
             hume_editing::edit::Edited::from_changes(s, cs)
-                .expect("cs built from this buffer's own rope, just above")
+                .expect("cs built for this buffer's text, keeping its final newline")
         },
     )
     .map_err(|e| e.to_string())?;
@@ -258,8 +280,7 @@ pub(in crate::editor) fn commit_char_edits(
         return Ok(None);
     }
     let buf = checked_buffer(state, bid, None)?;
-    let len_before = buf.text().end();
-    let cs = build_changeset_from_char_edits(len_before, char_edits)?;
+    let cs = build_changeset_from_char_edits(buf.text(), char_edits)?;
     Ok(Some(commit_changeset(state, panes, pid, bid, cs)?))
 }
 

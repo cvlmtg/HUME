@@ -86,8 +86,7 @@ impl LineEnd {
         let place = if end == crate::lines::line_break(text, old) {
             LinePlace::Break
         } else {
-            let start = text.line_to_char(old.into());
-            LinePlace::Col(CharCol::new(end.offset().chars_since(start)))
+            LinePlace::Col(crate::lines::char_col_in_line(text, old, end.offset()))
         };
         Self { line, place }
     }
@@ -102,18 +101,10 @@ impl LineEnd {
             "an end moved to line {}, past the last line of the text",
             self.line.index()
         );
-        let line_break = crate::lines::line_break(text, self.line);
-        let LinePlace::Col(col) = self.place else {
-            return line_break;
-        };
-        let start = text.line_to_char(self.line.into());
-        let content_len = line_break.offset().chars_since(start);
-        if content_len == 0 {
-            return line_break;
+        match self.place {
+            LinePlace::Break => crate::lines::line_break(text, self.line),
+            LinePlace::Col(col) => crate::lines::place_char_column(text, self.line.into(), col),
         }
-        text.snap(CharOffset::new(
-            start.index() + col.index().min(content_len - 1),
-        ))
     }
 }
 
@@ -121,44 +112,41 @@ impl LineEnd {
 /// the change is monotone, so it restarts only when a position sits behind
 /// the last one asked about.
 pub(crate) struct Resolver<'a> {
-    change: Option<&'a TextChange<'a>>,
+    change: &'a TextChange<'a>,
     text: &'a BufferText,
-    walk: Option<(PosMapCursor<'a>, CharOffset)>,
+    cursor: PosMapCursor<'a>,
+    last: CharOffset,
 }
 
 impl<'a> Resolver<'a> {
-    pub(crate) fn new(change: Option<&'a TextChange<'a>>, text: &'a BufferText) -> Self {
-        let walk = change.map(|change| {
-            (
-                PosMapCursor::new(change.changes().ops()),
-                CharOffset::default(),
-            )
-        });
-        Self { change, text, walk }
+    pub(crate) fn new(change: &'a TextChange<'a>, text: &'a BufferText) -> Self {
+        Self {
+            change,
+            text,
+            cursor: PosMapCursor::new(change.changes().ops()),
+            last: CharOffset::default(),
+        }
     }
 
     pub(crate) fn text(&self) -> &'a BufferText {
         self.text
     }
 
-    /// `pos` of the old text in the new one; `pos` itself with no change.
+    /// `pos` of the old text in the new one.
     pub(crate) fn map_old(&mut self, pos: CharOffset, assoc: Assoc) -> CharOffset {
-        let (Some(change), Some((cursor, last))) = (self.change, self.walk.as_mut()) else {
-            return pos;
-        };
-        if pos < *last {
-            *cursor = PosMapCursor::new(change.changes().ops());
+        if pos < self.last {
+            self.cursor = PosMapCursor::new(self.change.changes().ops());
         }
-        *last = pos;
-        cursor.map(pos, assoc)
+        self.last = pos;
+        self.cursor.map(pos, assoc)
     }
 
     /// `sel` carried through the change, each end on `assoc`'s side of text
     /// inserted at it and landed on the cluster of the new text holding it.
     pub(crate) fn carry(&mut self, sel: Selection, assoc: Assoc) -> Selection {
-        let first = self.map_old(sel.first().offset(), assoc);
+        let start = self.map_old(sel.start().offset(), assoc);
         let last = self.map_old(sel.last().offset(), assoc);
-        sel.with_ends(self.text.snap(first), self.text.snap(last))
+        sel.with_ends(self.text.snap(start), self.text.snap(last))
     }
 
     pub(crate) fn selection(&mut self, UnboundSelection(kind): UnboundSelection) -> Selection {

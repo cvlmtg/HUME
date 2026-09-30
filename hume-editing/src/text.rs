@@ -1,4 +1,4 @@
-use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::cursor::CharCursor;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use ropey::{Rope, RopeSlice};
@@ -31,6 +31,26 @@ pub enum LineEnding {
 /// A borrow (no allocation) on the common case of text with no `\r` at all.
 pub fn normalize_line_endings(text: &str) -> Cow<'_, str> {
     normalize_line_endings_detecting(text).0
+}
+
+/// Text with every line ending already collapsed to `\n`, owned so an edit
+/// can move it into its changeset. Minted only by normalizing, so an edit
+/// operation cannot carry a `\r` into a rope.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct LfText(String);
+
+impl LfText {
+    pub(crate) fn new(text: &str) -> Self {
+        Self(normalize_line_endings(text).into_owned())
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
 }
 
 /// [`normalize_line_endings`], also reporting whether the *original* input
@@ -439,12 +459,6 @@ impl BufferText {
     /// See [`ClusterRange::within`].
     pub fn within(&self, chars: ExclusiveRange<CharOffset>) -> Option<ClusterRange> {
         ClusterRange::within(self.full_slice(), chars)
-    }
-
-    /// The cluster starting at `bound`, or the last cluster when `bound` is
-    /// the text end.
-    pub fn cluster_at_or_last(&self, bound: ClusterBound) -> ClusterStart {
-        self.snap(bound.offset())
     }
 
     /// Returns the Unicode scalar value at `char_idx`, or `None` if out of bounds.

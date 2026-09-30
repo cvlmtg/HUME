@@ -79,10 +79,6 @@ impl std::error::Error for TransactionError {
 /// selection in document order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InvariantViolation {
-    /// The set holds no selection.
-    Empty,
-    /// The primary index is past the last selection.
-    PrimaryOutOfRange { primary: usize, len: usize },
     /// The set is tagged with a different text than the one it is read with.
     VersionMismatch,
     /// An anchor or head is at or past the text's end.
@@ -98,13 +94,6 @@ impl std::error::Error for InvariantViolation {}
 impl fmt::Display for InvariantViolation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Empty => write!(f, "the selection set is empty"),
-            Self::PrimaryOutOfRange { primary, len } => {
-                write!(
-                    f,
-                    "primary index {primary} is out of range for {len} selections"
-                )
-            }
             Self::VersionMismatch => {
                 write!(f, "the selection set belongs to a different text")
             }

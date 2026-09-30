@@ -24,16 +24,26 @@ pub(crate) struct FlattenScratch {
     events: Vec<(ByteCol, bool, u32, u8, ScopeId)>,
 }
 
-/// Diagnostic info for a broken pending-edit chain: a text mutation bumped
-/// `generation` without recording an `InputEdit` between two recorded edits.
-/// The editor logs this at `Severity::Trace`; the state machine itself has
-/// no message-log access.
+/// Diagnostic info for a broken pending-edit chain: the recorded edits do not
+/// lead from the tree's text to the current one, so a text mutation went
+/// unrecorded. `first` is the first pending edit's starting generation and
+/// `last` the last one's ending generation. The editor logs this at
+/// `Severity::Trace`; the state machine itself has no message-log access.
 #[derive(Debug)]
 pub struct ChainBreak {
     pub tree_gen: u64,
     pub generation: u64,
     pub first: Option<u64>,
     pub last: Option<u64>,
+}
+
+/// The `InputEdit`s of one text mutation and the two text generations it
+/// leads between.
+#[derive(Debug, Clone)]
+pub struct PendingEdit {
+    from: u64,
+    to: u64,
+    edits: Vec<tree_sitter::InputEdit>,
 }
 
 /// Result of one `Syntax::frame_tick` call.
@@ -72,10 +82,12 @@ pub struct Syntax {
     /// `tree_gen` advances every frame (via bake) while `parsed_gen` only
     /// advances when the worker delivers a result.
     tree_gen: u64,
-    /// Edits recorded since the last bake or install, `(generation, edit)`
-    /// pairs in order. A contiguous chain from `tree_gen + 1` to the current
-    /// `generation` enables in-place baking; a gap forces a full reparse.
-    pending_edits: Vec<(u64, tree_sitter::InputEdit)>,
+    /// Mutations recorded since the last bake or install, in order. A chain
+    /// that starts at `tree_gen`, ends at the current `generation`, and has
+    /// each mutation start where the previous one ended enables in-place baking; a
+    /// broken link forces a full reparse. Generations identify texts rather
+    /// than count edits, so a link may skip numbers.
+    pending_edits: Vec<PendingEdit>,
     /// `generation` of the posted-but-unanswered parse request, if any. No
     /// `config_gen` slot is needed: `bundle` never changes within one
     /// attachment, so the posted config is always `bundle.config_gen`.
@@ -158,12 +170,15 @@ impl Syntax {
         syn
     }
 
-    /// Record one batch of `InputEdit`s translated from a `ChangeSet` against
-    /// the pre-edit rope. Must be recorded after every text mutation.
-    pub fn record_edit(&mut self, generation: u64, cs: &ChangeSet, rope_pre: &ropey::Rope) {
-        for edit in input_edits_from_changeset(cs, rope_pre) {
-            self.pending_edits.push((generation, edit));
-        }
+    /// Record the `InputEdit`s translated from a `ChangeSet` against the
+    /// pre-edit rope, for a mutation from text generation `from` to `to`.
+    /// Must be recorded after every text mutation.
+    pub fn record_edit(&mut self, from: u64, to: u64, cs: &ChangeSet, rope_pre: &ropey::Rope) {
+        self.pending_edits.push(PendingEdit {
+            from,
+            to,
+            edits: input_edits_from_changeset(cs, rope_pre),
+        });
     }
 
     /// Per-frame driver. In order: gen-gate (already up to date → no
@@ -287,7 +302,8 @@ impl Syntax {
     /// checked *before* the chain-contiguity test so edits recorded before
     /// the first parse lands never trace-log or clear pending here.
     ///
-    /// On a complete chain (`tree_gen + 1 ..= generation`, no gaps): applies
+    /// On a complete chain (from `tree_gen` to `generation`, every mutation
+    /// starting where the previous one ended): applies
     /// every recorded `InputEdit` to every layer's tree, refreshes injected
     /// layers' cached `ranges`, advances `tree_gen`, clears `pending_edits`.
     ///
@@ -300,18 +316,18 @@ impl Syntax {
         }
 
         let tree_gen = self.tree_gen;
-        let chain_ok = self.pending_edits[0].0 == tree_gen + 1
+        let chain_ok = self.pending_edits[0].from == tree_gen
             && self
                 .pending_edits
                 .last()
                 .expect("checked non-empty above")
-                .0
+                .to
                 == generation
-            && self.pending_edits.windows(2).all(|w| w[1].0 <= w[0].0 + 1);
+            && self.pending_edits.windows(2).all(|w| w[1].from == w[0].to);
 
         if chain_ok {
-            let edits: Vec<tree_sitter::InputEdit> =
-                self.pending_edits.iter().map(|(_, e)| *e).collect();
+            let edits: Vec<&tree_sitter::InputEdit> =
+                self.pending_edits.iter().flat_map(|e| &e.edits).collect();
             let installed = self.layers.as_mut().expect("checked above");
             // Every span the text-object memo holds was collected from these
             // trees at their pre-edit positions. This is the one path that
@@ -337,8 +353,8 @@ impl Syntax {
             let break_info = ChainBreak {
                 tree_gen,
                 generation,
-                first: self.pending_edits.first().map(|(g, _)| *g),
-                last: self.pending_edits.last().map(|(g, _)| *g),
+                first: self.pending_edits.first().map(|e| e.from),
+                last: self.pending_edits.last().map(|e| e.to),
             };
             self.pending_edits.clear();
             Some(break_info)
@@ -429,7 +445,7 @@ impl Syntax {
                     });
                 }
                 self.layers = Some(SyntaxLayers::new(layers));
-                self.pending_edits.retain(|(g, _)| *g > generation);
+                self.pending_edits.retain(|e| e.to > generation);
                 self.tree_gen = generation;
             }
             ParseOutcome::ParseFailed => {
@@ -485,7 +501,7 @@ impl Syntax {
     }
 
     #[cfg(any(test, feature = "test-util"))]
-    pub fn pending_edits(&self) -> &[(u64, tree_sitter::InputEdit)] {
+    pub fn pending_edits(&self) -> &[PendingEdit] {
         &self.pending_edits
     }
 

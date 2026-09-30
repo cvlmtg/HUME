@@ -1,11 +1,11 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use hume_rope::cluster::{ClusterBound, ClusterRange};
+use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
 use hume_rope::column::BufferLineCol;
 use hume_rope::grapheme::{
-    char_pos_at_display_col, clusters_before, display_col_in_line, graphemes_at,
-    next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster,
+    char_pos_at_display_col, cluster_end, clusters_before, display_col_in_line, graphemes_at,
+    prev_cluster, snap_to_cluster,
 };
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
@@ -24,6 +24,14 @@ fn rope(s: &str) -> Rope {
         r.insert_char(r.len_chars(), '\n');
     }
     r
+}
+
+/// The start of the cluster holding each of `offsets`.
+fn cluster_starts(slice: ropey::RopeSlice<'_>, offsets: &[CharOffset]) -> Vec<ClusterStart> {
+    offsets
+        .iter()
+        .filter_map(|&at| snap_to_cluster(slice, at).map(|cluster| cluster.start()))
+        .collect()
 }
 
 /// About 1 MiB of code-like ASCII lines, each ending in a corpus sample.
@@ -116,17 +124,19 @@ fn point_queries(c: &mut Criterion) {
     });
     c.bench_function("boundary/next", |b| {
         let slice = mixed.slice(..);
+        let starts = cluster_starts(slice, &mixed_offsets);
         b.iter(|| {
-            for &at in &mixed_offsets {
-                black_box(next_grapheme_boundary(slice, black_box(at)));
+            for &at in &starts {
+                black_box(cluster_end(slice, black_box(at)));
             }
         })
     });
     c.bench_function("boundary/prev", |b| {
         let slice = mixed.slice(..);
+        let starts = cluster_starts(slice, &mixed_offsets);
         b.iter(|| {
-            for &at in &mixed_offsets {
-                black_box(prev_grapheme_boundary(slice, black_box(at)));
+            for &at in &starts {
+                black_box(prev_cluster(slice, black_box(at.into())));
             }
         })
     });

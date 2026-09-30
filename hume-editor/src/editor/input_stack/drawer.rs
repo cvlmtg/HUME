@@ -63,6 +63,10 @@ impl DrawerLayer {
 }
 
 impl Layer for DrawerLayer {
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
+        None
+    }
+
     fn handler(&self) -> LayerHandler {
         drawer_input
     }

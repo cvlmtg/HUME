@@ -88,6 +88,10 @@ impl ConfirmLayer {
 }
 
 impl Layer for ConfirmLayer {
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
+        None
+    }
+
     fn handler(&self) -> LayerHandler {
         confirm_input
     }

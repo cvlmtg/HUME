@@ -300,7 +300,7 @@ fn extend_around_paren_from_matched_pair_grows_outward() {
     // Selection: anchor=3, head=5 (covers "(b)").
     //
     // First try: around_bracket(head=5) finds ')' at 5 → same pair (3,5).
-    // Union is a no-op. Retry from next_grapheme_boundary(end()=5)=6 (' ').
+    // Union is a no-op. Retry from the cluster after end()=5, at 6 (' ').
     // around_bracket(6): scan_left finds '(' at 0 (skipping the inner pair),
     // scan_right finds ')' at 8 → (0,8). Union: (0,8). Grows.
     assert_state!(

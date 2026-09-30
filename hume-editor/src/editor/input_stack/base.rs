@@ -26,6 +26,10 @@ pub(in crate::editor) struct BaseLayer {
 }
 
 impl Layer for BaseLayer {
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
+        None
+    }
+
     fn handler(&self) -> LayerHandler {
         base_input
     }

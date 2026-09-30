@@ -534,9 +534,9 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
     assert_eq!(pane.buffer_id, bid);
     assert_eq!(
         pane.selections
-            .iter()
-            .find(|s| s.is_primary)
-            .expect("a primary selection")
+            .as_ref()
+            .expect("a written mirror")
+            .primary()
             .cursor
             .offset(),
         co(0),

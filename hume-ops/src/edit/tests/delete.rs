@@ -299,7 +299,7 @@ fn delete_backward_two_cursors() {
 #[test]
 fn delete_backward_grapheme_cluster() {
     // "e\u{0301}x": é is 2 chars (offsets 0-1). Cursor at 2 (on 'x').
-    // prev_grapheme_boundary(2) = 0. Deletes entire é cluster.
+    // The cluster before 2 starts at 0. Deletes entire é cluster.
     assert_state!(
         "e\u{0301}-[x]>\n",
         |(text, sels)| delete_char_backward(test_fixtures::testing::state(text, sels)),
@@ -590,9 +590,8 @@ fn delete_selection_multi_char_ends_at_grapheme_base() {
 
 #[test]
 fn delete_selection_last_line_removes_line_not_content() {
-    // "foo\nbar\n": x on last line selects [4,7] (anchor 4, head on structural
-    // '\n' at 7). Deleting must remove the preceding '\n' so "bar" vanishes
-    // entirely: result "foo\n", cursor at start of "foo" (pos 0 = 'f').
+    // "foo\nbar\n": x on the last line selects [4,7]. The line goes and no
+    // empty line is left: "foo\n", cursor on the start of "foo".
     assert_state!(
         "foo\n-[bar\n]>",
         |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
@@ -612,11 +611,29 @@ fn delete_selection_last_line_with_empty_preceding_line() {
 }
 
 #[test]
+fn delete_selection_of_a_line_before_the_last_lands_on_the_next_line() {
+    assert_state!(
+        "a\n-[b\n]>c\n",
+        |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
+        "a\n-[c]>\n"
+    );
+}
+
+#[test]
 fn delete_selection_of_touching_last_lines_leaves_no_blank_line() {
     assert_state!(
         "a\n-[b\n]>-[c\n]>",
         |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
         "-[a]>\n"
+    );
+}
+
+#[test]
+fn delete_selection_of_a_last_line_split_across_two_selections_removes_the_line() {
+    assert_state!(
+        "a\n-[b]>-[\n]>",
+        |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
+        "a-[\n]>"
     );
 }
 
@@ -631,8 +648,8 @@ fn delete_selection_of_cursors_on_the_last_empty_lines_leaves_no_blank_line() {
 
 #[test]
 fn delete_selection_last_line_single_line_still_empties() {
-    // Single-line buffer "foo\n": selection [0,3], no preceding line, so the
-    // normal cap applies: only content deleted, structural '\n' kept.
+    // Single-line buffer "foo\n": the content goes and the structural '\n'
+    // stays.
     assert_state!(
         "-[foo\n]>",
         |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
@@ -642,8 +659,7 @@ fn delete_selection_last_line_single_line_still_empties() {
 
 #[test]
 fn delete_selection_whole_buffer_caps_at_last_content_char() {
-    // "foo\nbar\n", selection [0,7]: start==0, no preceding line, normal cap.
-    // "foo\n" is not at line boundary for preceding detection (start==0).
+    // "foo\nbar\n", selection [0,7]: everything but the structural '\n' goes.
     assert_state!(
         "-[foo\nbar\n]>",
         |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
@@ -653,9 +669,9 @@ fn delete_selection_whole_buffer_caps_at_last_content_char() {
 
 #[test]
 fn delete_selection_partial_last_line_still_caps() {
-    // "foo\nbar\n", select [5,7] (head on structural '\n', but NOT at line
-    // start; anchor is mid-line 'a'). Must use normal capped path: deletes
-    // "ar", leaves "foo\nb\n", cursor at pos 5 = '\n' (deletion point).
+    // "foo\nbar\n", select [5,7] (from mid-line 'a' through the structural
+    // '\n'). "ar" goes and the '\n' stays, since "foo\nb" would not end with
+    // one: "foo\nb\n", cursor on the '\n' (the deletion point).
     assert_state!(
         "foo\nb-[ar\n]>",
         |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
@@ -676,9 +692,7 @@ fn delete_selection_three_lines_delete_last() {
 
 // ── delete_selection — blank last line (collapsed cursor) ────────────────
 //
-// A collapsed cursor on the structural trailing '\n' means the cursor sits
-// on a blank last line. Pressing `d` must remove it (by consuming the
-// preceding '\n'), not silently no-op.
+// A cursor on the structural '\n' of a blank last line removes that line.
 
 #[test]
 fn delete_selection_blank_last_line_one_above() {
@@ -705,8 +719,8 @@ fn delete_selection_two_blank_lines_removes_one() {
 
 #[test]
 fn delete_selection_lone_blank_line_is_noop() {
-    // Single-char buffer "\n": the structural '\n' IS the entire buffer.
-    // No line above exists, so deletion is a no-op (invariant preserved).
+    // Single-char buffer "\n": removing it would leave no '\n', so nothing
+    // goes.
     assert_state!(
         "-[\n]>",
         |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
@@ -715,11 +729,10 @@ fn delete_selection_lone_blank_line_is_noop() {
 }
 
 #[test]
-fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
+fn delete_selection_last_line_multi_cursor_cursor_lands_on_the_line_left_last() {
     // Multi-cursor dd-on-last-line. The first cursor deletes 'b' (char 1).
-    // The second covers the whole last line "c\n" [anchor=3, head=4]. The
-    // cursor produced for that deletion must land at char 0 (start of the
-    // merged "a" line), not at char 1.
+    // The second covers the whole last line "c\n" [anchor=3, head=4]. Its
+    // cursor lands at char 0, the start of the line left last, not at char 1.
     let text = BufferText::from("ab\nc\n");
     // primary=1 so the last-line selection is the primary; we assert its cursor.
     let sels = test_fixtures::testing::set(
@@ -733,16 +746,16 @@ fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
     let (new_text, new_sels, _cs) = test_fixtures::testing::parts(
         delete_selection(test_fixtures::testing::state(text, sels)).edited,
     );
-    // 'b' deleted and "c\n" merged into preceding line → "a\n"
+    // 'b' and the last line both go → "a\n"
     assert_eq!(new_text.to_string(), "a\n");
-    // Primary cursor must land at char 0 (start of merged "a" line).
+    // The primary lands at char 0, the start of the line left last.
     assert_eq!(
         hume_editing::selection::EditView::bind(&new_text, &new_sels)
             .primary()
             .head()
             .offset(),
         CharOffset::new(0),
-        "cursor must land at merged-line start"
+        "cursor on the start of the line left last"
     );
 }
 

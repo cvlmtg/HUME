@@ -55,6 +55,10 @@ impl MenuLayer {
 }
 
 impl Layer for MenuLayer {
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
+        None
+    }
+
     fn handler(&self) -> LayerHandler {
         menu_input
     }

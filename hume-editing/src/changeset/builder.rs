@@ -1,6 +1,7 @@
 use hume_rope::offset::CharOffset;
 
 use super::{ChangeSet, Operation, push_merge};
+use crate::text::LfText;
 
 /// Incremental builder for constructing a `ChangeSet` from positions in the
 /// old document, for edits that arrive as raw char ranges (a language
@@ -89,9 +90,14 @@ impl ChangeSetBuilder {
     /// `new_pos` advances by the *normalized* length, so a caller reading
     /// `new_pos()` to place a cursor lands on text that actually exists.
     pub fn insert(&mut self, text: &str) -> &mut Self {
-        let text = crate::text::normalize_line_endings(text);
-        let len = text.chars().count();
-        push_merge(&mut self.ops, Operation::Insert(text.into_owned()));
+        self.insert_normalized(LfText::new(text))
+    }
+
+    /// [`insert`](Self::insert) for text already normalized, moved in without
+    /// a copy.
+    pub(crate) fn insert_normalized(&mut self, text: LfText) -> &mut Self {
+        let len = text.as_str().chars().count();
+        push_merge(&mut self.ops, Operation::Insert(text.into_string()));
         self.new_pos = self.new_pos.shift(len as isize);
         // old_pos doesn't advance: insertion doesn't consume old chars.
         self

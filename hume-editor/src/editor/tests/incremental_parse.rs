@@ -12,6 +12,7 @@ use hume_treesitter::grammar::LoadedGrammar;
 use test_fixtures::{grammar_parser_path, require_grammars};
 
 use crate::editor::buffer::Buffer;
+use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
 
 /// Create an editor with `source` as buffer text and a JSON grammar attached.
@@ -368,5 +369,36 @@ fn grammar_swap_clears_pending_and_full_reparses() {
             .layers()
             .is_some(),
         "tree must be present after re-attach"
+    );
+}
+
+/// One soft Tab with several cursors chains one step per cursor, so a single
+/// installed text consumes several text versions. The recorded edit still
+/// leads from the tree's text to the current one, so no full reparse is forced.
+#[test]
+fn multi_cursor_tab_keeps_the_pending_edit_chain_linked() {
+    require_grammars(&["json"]);
+    let (mut ed, bid) = json_editor("[1,\n2,\n3]\n");
+    ed.state.settings.tab_style = TabStyle::Soft;
+    select(&mut ed, &[(1, 1), (4, 4), (7, 7)], 0);
+    let gen_before = ed.state.buffers.get(bid).text().version().generation();
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_tab());
+    ed.feed_key(key_esc());
+
+    let gen_after = ed.state.buffers.get(bid).text().version().generation();
+    assert!(
+        gen_after > gen_before + 1,
+        "setup: the edit skips text versions"
+    );
+    ed.reparse_stale_buffers();
+
+    assert!(
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| e.text.contains("pending-edit chain broken")),
+        "the chain must not break"
     );
 }

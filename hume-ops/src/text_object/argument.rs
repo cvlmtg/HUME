@@ -6,7 +6,7 @@ use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, blank_class};
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 
-use super::trim_blank;
+use super::{inner_of_pair, trim_blank};
 use crate::pair::{bracket_role, find_tightest_bracket_pair};
 
 /// One comma segment, leading and trailing whitespace included: the clusters
@@ -38,7 +38,7 @@ impl Segment {
 /// (`()`).
 fn find_comma_segments(text: &BufferText, pair: ClusterRange) -> Vec<Segment> {
     let close = pair.last();
-    let Some(content_start) = next_cluster(text, pair.start()).filter(|&c| c < close) else {
+    let Some(content_start) = inner_of_pair(text, pair).map(|inner| inner.start()) else {
         return Vec::new();
     };
 

@@ -1,18 +1,13 @@
-use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 
 use super::*;
 use crate::changeset::ChangeSetBuilder;
-use crate::marked::{parse, render};
-
-fn co(n: usize) -> CharOffset {
-    CharOffset::new(n)
-}
+use crate::marked::{bound_at, parse, render};
 
 /// `state` with an `X` inserted at `at`, its one cursor after it.
 fn insert_x(state: EditState, at: usize) -> Edited {
     edit(&state, |b| {
-        let mark = b.insert(co(at), "X");
+        let mark = b.insert(bound_at(b.text(), at), "X");
         Landings::new(vec![Landing::cursor(mark.end())], 0)
     })
 }
@@ -41,6 +36,27 @@ fn from_changes_carries_selections_past_inserted_text() {
     b.retain_rest();
     let edited = Edited::from_changes(state, b.finish()).expect("fits the text");
     assert_eq!(render(edited.state().view()), "XXa-[b]>c\n");
+}
+
+#[test]
+fn from_changes_keeps_a_sticky_column_on_an_untouched_line() {
+    let sticky = crate::selection::StickyDisplayCol::BufferLine {
+        display_col: hume_rope::column::BufferLineCol::new(5),
+    };
+    let state = parse("ab\nc-[d]>\n").map(|v| v.selection().with_sticky(sticky));
+    let mut b = ChangeSetBuilder::new(state.text().end());
+    b.insert("X");
+    b.retain_rest();
+    let edited = Edited::from_changes(state, b.finish()).expect("fits the text");
+    assert_eq!(
+        edited
+            .state()
+            .view()
+            .primary()
+            .selection()
+            .sticky_display_col(),
+        Some(sticky)
+    );
 }
 
 #[test]

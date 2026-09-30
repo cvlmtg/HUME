@@ -51,7 +51,10 @@ fn content_drops_the_line_break_the_selection_ends_on() {
         let primary = state.view().primary();
         (
             primary.content().map(|r| r.chars()),
-            primary.content_slice().to_string(),
+            primary
+                .content()
+                .map(|r| state.text().slice(r.chars()))
+                .map_or_else(String::new, |slice| slice.to_string()),
         )
     };
     assert_eq!(

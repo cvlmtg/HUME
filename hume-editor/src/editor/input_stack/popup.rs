@@ -106,6 +106,10 @@ impl PopupLayer {
 }
 
 impl Layer for PopupLayer {
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
+        None
+    }
+
     fn handler(&self) -> LayerHandler {
         popup_input
     }

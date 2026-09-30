@@ -143,12 +143,10 @@ pub(in crate::editor) trait Layer: Any {
     /// callback yet, regardless of which reason applies.
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView, _why: Removal) {}
 
-    /// The pane snapshot this layer restores on exit, for the layers that
-    /// keep one (`Search`, `Sift`), so a text change can carry it. `None` by
-    /// default.
-    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
-        None
-    }
+    /// The pane snapshot this layer restores on exit, so a text change can
+    /// carry it. Every layer answers, so one that keeps a snapshot cannot
+    /// leave it out of the carry and restore it against another text.
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot>;
 
     /// The minibuffer this layer owns, if it's one of the four
     /// minibuf-backed mode layers (`Command`/`Search`/`Sift`/`Prompt`).

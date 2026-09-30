@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::{cursor_mirror, painted};
+use crate::test_support::{cursor_mirror, mirror, painted};
 
 #[test]
 fn viewport_defaults() {
@@ -302,7 +302,7 @@ fn whitespace_config_defaults() {
 
 fn make_pane_at_char(rope: &ropey::Rope, head_char: usize) -> Pane {
     Pane {
-        selections: cursor_mirror(rope, head_char),
+        selections: Some(cursor_mirror(rope, head_char)),
         ..Pane::new(crate::pipeline::BufferId::default())
     }
 }
@@ -312,21 +312,57 @@ fn primary_head_line_returns_head_line() {
     // "aaa\nbbb\nccc": line 0 is chars 0..3, line 1 is chars 4..7, line 2 is chars 8..11.
     // Char 8 (start of line 2) should resolve to line 2.
     let rope = ropey::Rope::from_str("aaa\nbbb\nccc");
-    let pane = make_pane_at_char(&rope, 8); // first char of line 2
-    assert_eq!(pane.primary_head_line(&rope).index(), 2);
+    let pane = make_pane_at(&rope, 8); // first char of line 2
+    let sels = pane.selections.as_ref().expect("a written mirror");
+    assert_eq!(primary_head_line(sels, &rope).index(), 2);
 }
 
 #[test]
-fn primary_head_line_follows_the_primary_flag() {
-    // Two selections; the second one (on line 2) is primary.
+fn primary_head_line_follows_the_primary_index() {
     // "aaa\nbbb\nccc": char 0 = line 0, char 8 = line 2.
     let rope = ropey::Rope::from_str("aaa\nbbb\nccc");
-    let mut pane = Pane {
-        selections: vec![painted(&rope, 0, 0, false), painted(&rope, 8, 8, true)],
-        ..Pane::new(crate::pipeline::BufferId::default())
-    };
-    assert_eq!(pane.primary_head_line(&rope).index(), 2);
-    pane.selections[1].is_primary = false;
-    pane.selections[0].is_primary = true;
-    assert_eq!(pane.primary_head_line(&rope).index(), 0);
+    let sels = [(0, 0), (8, 8)];
+    assert_eq!(
+        primary_head_line(&mirror(&rope, &sels, 1), &rope).index(),
+        2
+    );
+    assert_eq!(
+        primary_head_line(&mirror(&rope, &sels, 0), &rope).index(),
+        0
+    );
+}
+
+#[test]
+#[should_panic(expected = "a selection mirror holds at least one selection")]
+fn a_selection_mirror_refuses_an_empty_list() {
+    crate::types::PaintedSelections::new(Vec::new(), 0);
+}
+
+#[test]
+#[should_panic(expected = "the primary index names a selection of the mirror")]
+fn a_selection_mirror_refuses_a_primary_past_its_selections() {
+    let rope = ropey::Rope::from_str("aaa\nbbb\n");
+    crate::types::PaintedSelections::new(vec![painted(&rope, 0, 0), painted(&rope, 4, 4)], 2);
+}
+
+#[test]
+#[should_panic(expected = "a selection mirror is in cursor order")]
+fn a_selection_mirror_refuses_cursors_out_of_order() {
+    let rope = ropey::Rope::from_str("aaa\nbbb\n");
+    crate::types::PaintedSelections::new(vec![painted(&rope, 4, 4), painted(&rope, 0, 0)], 0);
+}
+
+#[test]
+fn a_rewritten_selection_mirror_holds_the_new_selections_and_primary() {
+    let rope = ropey::Rope::from_str("aaa\nbbb\n");
+    let mut sels = cursor_mirror(&rope, 0);
+    sels.rewrite([painted(&rope, 0, 2), painted(&rope, 4, 5)], 1);
+    assert_eq!(sels, mirror(&rope, &[(0, 2), (4, 5)], 1));
+}
+
+#[test]
+#[should_panic(expected = "a selection mirror holds at least one selection")]
+fn a_selection_mirror_refuses_a_rewrite_to_an_empty_list() {
+    let rope = ropey::Rope::from_str("aaa\nbbb\n");
+    cursor_mirror(&rope, 0).rewrite([], 0);
 }

@@ -12,7 +12,7 @@ use test_fixtures::assert_state;
 fn owns_every_line(text: &BufferText, sels: &SelectionSet) -> Vec<ExclusiveRange<CharOffset>> {
     hume_editing::selection::EditView::bind(text, sels)
         .iter()
-        .map(|sel| line_indent_range(text, sel.head().offset()))
+        .map(|sel| line_indent_range(text, sel.head().offset()).chars())
         .collect()
 }
 

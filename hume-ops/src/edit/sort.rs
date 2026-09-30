@@ -13,8 +13,9 @@ use hume_editing::lines::{line_break, line_start};
 use hume_editing::selection::{EditView, UnboundSelection};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
+use hume_rope::cluster::ClusterRange;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_rope::offset::ExclusiveRange;
 use unicode_normalization::UnicodeNormalization;
 
 /// Flags accepted by `:sort`.
@@ -55,7 +56,7 @@ pub fn sort_lines(state: EditState, opts: SortOpts) -> Result<Edited, SortRefusa
 
     let mut any_group = false;
     // Each moved slot's old content range, and the content that lands there.
-    let mut moves: Vec<(ExclusiveRange<CharOffset>, CharOffset, String)> = Vec::new();
+    let mut moves: Vec<(ContentLine, String)> = Vec::new();
     // Old line -> new line, only for entries that move.
     let mut line_map = rustc_hash::FxHashMap::<ContentLine, ContentLine>::default();
 
@@ -82,11 +83,7 @@ pub fn sort_lines(state: EditState, opts: SortOpts) -> Result<Edited, SortRefusa
             let target = entries[group[slot]].line;
             let source = entries[group[local]].line;
             let content = text.slice(line_content(text, source)).to_string();
-            moves.push((
-                line_content(text, target),
-                text.line_to_char(target.into()),
-                content,
-            ));
+            moves.push((target, content));
         }
     }
 
@@ -99,9 +96,17 @@ pub fn sort_lines(state: EditState, opts: SortOpts) -> Result<Edited, SortRefusa
 
     let primary = view.primary().index();
     Ok(edit(&state, |b| {
-        for (old_content, line_start, content) in &moves {
-            b.delete(*old_content);
-            b.insert(*line_start, content);
+        for (target, content) in &moves {
+            let start = line_start(text, *target);
+            let old_content = ClusterRange::between(
+                text.full_slice(),
+                start,
+                line_break(text, *target).into(),
+            );
+            match old_content {
+                Some(range) => b.replace(range, content),
+                None => b.insert(start, content),
+            };
         }
         // A selection on one moved line follows the line to its new place. A
         // selection over several lines keeps each end's line and column, over

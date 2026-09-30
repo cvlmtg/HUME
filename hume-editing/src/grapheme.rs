@@ -9,11 +9,6 @@ use hume_rope::offset::CharOffset;
 
 use crate::text::BufferText;
 
-/// See [`hume_rope::grapheme::next_grapheme_boundary`].
-pub fn next_grapheme_boundary(text: &BufferText, char_offset: CharOffset) -> CharOffset {
-    hume_rope::grapheme::next_grapheme_boundary(text.full_slice(), char_offset)
-}
-
 /// See [`hume_rope::grapheme::graphemes_at`].
 pub fn graphemes_at(text: &BufferText, from: ClusterBound) -> hume_rope::grapheme::Graphemes<'_> {
     hume_rope::grapheme::graphemes_at(text.full_slice(), from)
@@ -50,11 +45,6 @@ pub fn last_cluster(text: &BufferText) -> ClusterStart {
 /// See [`hume_rope::grapheme::prev_cluster`].
 pub fn prev_cluster(text: &BufferText, bound: ClusterBound) -> Option<ClusterStart> {
     hume_rope::grapheme::prev_cluster(text.full_slice(), bound)
-}
-
-/// See [`hume_rope::grapheme::prev_grapheme_boundary`].
-pub fn prev_grapheme_boundary(text: &BufferText, char_offset: CharOffset) -> CharOffset {
-    hume_rope::grapheme::prev_grapheme_boundary(text.full_slice(), char_offset)
 }
 
 /// See [`hume_rope::grapheme::grapheme_col_in_line`].

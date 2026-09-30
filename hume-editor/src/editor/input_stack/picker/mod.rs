@@ -26,6 +26,10 @@ pub(in crate::editor) use session::{PickerItem, PickerSession, picker_items};
 pub(in crate::editor) struct PickerLayer(pub(in crate::editor) PickerSession);
 
 impl Layer for PickerLayer {
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
+        None
+    }
+
     fn handler(&self) -> LayerHandler {
         picker_input
     }

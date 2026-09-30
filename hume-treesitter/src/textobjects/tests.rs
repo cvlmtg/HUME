@@ -648,8 +648,8 @@ fn for_selector_cache_does_not_survive_a_bake() {
     let rope_pre = ropey::Rope::from_str(source);
     let mut b = ChangeSetBuilder::new(co(rope_pre.len_chars()));
     b.insert("// lead\n");
-    // `attach_sync` installs at generation 1, so the edit is generation 2.
-    syn.record_edit(2, &b.finish(), &rope_pre);
+    // `attach_sync` installs at generation 1, so the edit leads from 1 to 2.
+    syn.record_edit(1, 2, &b.finish(), &rope_pre);
     let text = BufferText::from(edited.as_str());
     let _req = syn.frame_tick(fresh_bid(), 2, &text, &empty_langs());
 

@@ -59,9 +59,6 @@ pub(crate) fn render_pane(
         style, lane_widths, ..
     } = scratch;
 
-    // Selections arrive pre-sorted from the editor; copy once, reuse every display line.
-    style.populate_sorted_sels(pane_ctx.selections);
-
     // Gutter lane widths: constant for the entire frame.
     lane_widths.clear();
     lane_widths.extend(layout::lane_widths(
@@ -177,6 +174,7 @@ pub(crate) fn render_pane(
                     rendered.display_line,
                     rendered.graphemes,
                     line.chars,
+                    pane_ctx.selections,
                     line.is_head_line,
                     line.tint,
                     pane_ctx.settings.mode,

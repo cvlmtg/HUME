@@ -20,7 +20,7 @@ fn cluster_is(text: &BufferText, cluster: Cluster, ch: char) -> bool {
         return cluster.first() == ch;
     }
     text.slice(chars)
-        .to_string()
+        .chars()
         .nfc()
         .eq(std::iter::once(ch).nfc())
 }

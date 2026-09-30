@@ -454,45 +454,6 @@ fn last_char_of_line_last_content_line() {
     assert_eq!(last_char_of_line(&buf, last_content_line(&buf)), co(4));
 }
 
-// ── snap_to_grapheme_boundary ─────────────────────────────────────────────
-
-#[test]
-fn snap_to_grapheme_boundary_ascii_lands_exactly() {
-    let buf = rope("hello\n");
-    // Target 3 in ASCII: all single-char graphemes, so snap returns 3
-    assert_eq!(snap_to_grapheme_boundary(&buf, co(0), co(3)), co(3));
-}
-
-#[test]
-fn snap_to_grapheme_boundary_target_at_line_start() {
-    let buf = rope("hello\n");
-    assert_eq!(snap_to_grapheme_boundary(&buf, co(0), co(0)), co(0));
-}
-
-#[test]
-fn snap_to_grapheme_boundary_target_beyond_line_returns_len_chars() {
-    // snap walks forward until `next > target || next == pos`. When target
-    // is past all graphemes, the loop walks all the way to len_chars (where
-    // next_grapheme_boundary clamps and returns the same position, triggering
-    // the `next == pos` stop). The result is len_chars, not the last char.
-    // Callers (vertical motion) apply their own clamping to len_chars - 1.
-    let buf = rope("hi\n");
-    // "hi\n": h=0, i=1, \n=2; len_chars=3
-    assert_eq!(
-        snap_to_grapheme_boundary(&buf, co(0), co(100)),
-        co(buf.len_chars())
-    );
-}
-
-#[test]
-fn snap_to_grapheme_boundary_mid_cluster_snaps_back() {
-    // "e\u{0301}\n": 'e' + combining acute = one grapheme cluster (2 chars).
-    // snap with target=1 (inside the cluster) should return 0 (start of cluster).
-    let buf = rope("e\u{0301}\n");
-    // The combining char is at char index 1. target=1 is inside the cluster.
-    assert_eq!(snap_to_grapheme_boundary(&buf, co(0), co(1)), co(0));
-}
-
 // ── line_token_content ──────────────────────────────────────────────────────
 
 #[test]

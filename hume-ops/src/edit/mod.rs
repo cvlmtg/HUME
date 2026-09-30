@@ -20,6 +20,7 @@ pub use delete::{
     Removal, dedent_tab_backward, delete_char_backward, delete_char_forward, delete_selection,
     delete_selection_content, delete_word_backward,
 };
+pub(crate) use delete::removal;
 pub use indent::{indent_lines, unindent_lines};
 pub use insert::{
     clear_blank_line_indent, insert_char, insert_newline_indent, insert_str, insert_tab,

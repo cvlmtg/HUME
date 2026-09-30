@@ -21,7 +21,7 @@ use hume_editing::selection::{EditView, Selection, SelectionSet};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 
-use super::commands::CommandPane;
+use super::commands::{CommandPane, pane_view};
 use super::{EditorState, Mode};
 
 /// Default capacity, used in tests to construct jump lists without importing `EditorSettings`.
@@ -68,7 +68,6 @@ impl JumpEntry {
         text: &BufferText,
         buffer_id: BufferId,
     ) -> Self {
-        let selections = EditState::bind(text, selections).into_selections();
         let primary_line = Self::primary_line_of(&selections, text);
         Self {
             buffer_id,
@@ -405,8 +404,7 @@ pub(in crate::editor) fn with_jump<R>(
     let moved = match (rule, entry) {
         (JumpRule::IfMoved, Some(entry)) => record_if_moved(state, view, t, entry),
         (JumpRule::Threshold { is_jump }, Some(entry)) => {
-            let text = state.buffers.get(post_bid).text();
-            let post = t.state(&state.panes.state, view).view(text).primary();
+            let post = pane_view(state, view, t).primary();
             let moved = post_bid != pre_bid
                 || entry.primary_selection(state.buffers.get(pre_bid).text()) != post.selection();
             if moved

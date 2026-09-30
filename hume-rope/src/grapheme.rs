@@ -45,9 +45,9 @@ impl Cluster {
 }
 
 /// The grapheme clusters of `slice` from `pos` to its end, in order. The one
-/// forward grapheme stepper: [`next_grapheme_boundary`] is its first step, and
-/// a loop that walks forward cluster by cluster iterates this instead of
-/// calling that once per step, which would re-seek the rope every time.
+/// forward grapheme stepper: [`cluster_end`] is its first step, and a loop
+/// that walks forward cluster by cluster iterates this instead of calling
+/// that once per step, which would re-seek the rope every time.
 ///
 /// # Why byte offsets internally?
 ///
@@ -140,7 +140,7 @@ impl Iterator for Graphemes<'_> {
 /// `char_offset`, or `slice.len_chars()` when already at the end: the first
 /// step of [`graphemes_at`], for a caller taking a single step. Panics past
 /// the end.
-pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
+pub(crate) fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
     walk_from(slice, char_offset)
         .next()
         .map_or(CharOffset::new(slice.len_chars()), |cluster| cluster.end)
@@ -151,36 +151,13 @@ pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> 
 ///
 /// Returns `0` when `char_offset` is already at the start of the slice.
 /// Panics past the end.
-pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
+pub(crate) fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
     let (mut cur, byte) = ChunkCursor::at_char(slice, char_offset.index());
     if byte == 0 {
         return CharOffset::new(0);
     }
     let prev = cur.prev_boundary(byte);
     CharOffset::new(cur.byte_to_char(prev))
-}
-
-/// Floor `char_offset` to the start of its own grapheme cluster: a no-op
-/// when it's already a cluster start, otherwise the start of the cluster it
-/// sits inside. At the end, the start of the last cluster. Panics past the
-/// end.
-///
-/// The boundary after `char_offset` first, then the one before that:
-/// stepping back from `char_offset` alone finds the *preceding* cluster's
-/// start when `char_offset` is already a boundary.
-pub(crate) fn floor_to_cluster_start(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
-    let at = char_offset.index();
-    let (mut cur, byte) = ChunkCursor::at_char(slice, at);
-    let end = if at == slice.len_chars() {
-        byte
-    } else {
-        cur.next_boundary(byte)
-    };
-    if end == 0 {
-        return CharOffset::new(0);
-    }
-    let start = cur.prev_boundary(end);
-    CharOffset::new(cur.byte_to_char(start))
 }
 
 /// The start of the cluster holding the char at `offset`, which must be
@@ -359,7 +336,7 @@ impl Iterator for ClustersBefore<'_> {
 }
 
 /// Byte offset of the start of the grapheme cluster ending at `byte_pos`:
-/// the `&str` sibling of [`prev_grapheme_boundary`], for the short, already
+/// the `&str` sibling of [`prev_cluster`], for the short, already
 /// contiguous strings the UI edits in place (a minibuffer prompt, a picker
 /// query) rather than a rope. `0` when `byte_pos` is already 0.
 ///
@@ -377,7 +354,7 @@ pub fn prev_str_boundary(s: &str, byte_pos: usize) -> usize {
 }
 
 /// Byte offset just past the grapheme cluster starting at `byte_pos`: the
-/// `&str` sibling of [`next_grapheme_boundary`]. `s.len()` when `byte_pos` is
+/// `&str` sibling of [`cluster_end`]. `s.len()` when `byte_pos` is
 /// at or past the end. See [`prev_str_boundary`] for why these exist.
 pub fn next_str_boundary(s: &str, byte_pos: usize) -> usize {
     s[byte_pos..]

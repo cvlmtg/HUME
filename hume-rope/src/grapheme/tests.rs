@@ -155,20 +155,6 @@ fn prev_past_the_end_panics() {
 }
 
 #[test]
-fn floor_at_the_end_is_the_last_cluster() {
-    let buf = rope("ae\u{301}");
-    assert_eq!(floor_to_cluster_start(buf.slice(..), co(4)), co(3));
-    assert_eq!(floor_to_cluster_start(Rope::new().slice(..), co(0)), co(0));
-}
-
-#[test]
-#[should_panic(expected = "past the text end")]
-fn floor_past_the_end_panics() {
-    let buf = rope("hi");
-    floor_to_cluster_start(buf.slice(..), co(4));
-}
-
-#[test]
 fn prev_at_start_returns_zero() {
     let buf = rope("hi");
     assert_eq!(prev_grapheme_boundary(buf.slice(..), co(0)), co(0));

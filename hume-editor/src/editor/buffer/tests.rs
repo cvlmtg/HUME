@@ -430,6 +430,14 @@ fn branching_undo_then_new_edit() {
     assert_eq!(state(&d), "b-[h]>ello\n");
 }
 
+#[test]
+#[should_panic(expected = "an edit of another text was applied to this buffer")]
+fn an_edit_of_another_text_is_refused() {
+    let mut d = doc("-[h]>ello\n");
+    let other = EditState::at_text_start(BufferText::from("x\n"));
+    d.apply_edit(move |_| insert_char(other, 'y'));
+}
+
 // ── goto_revision ─────────────────────────────────────────────────────────
 
 #[test]

@@ -155,7 +155,7 @@ pub(in crate::editor) fn insert_default_key(
         // Backspace needs no special handling to preserve autoindent
         // ownership: deleting *inside* the owned range only shrinks the
         // line's current whitespace, which stays within the recorded
-        // `allowed.end` (see `is_owned_blank_line`'s containment check),
+        // `allowed.end` (see `owned_indent`'s containment check),
         // matching `:help autoindent`'s own carve-out naming `<BS>` as the
         // one key that doesn't cancel a pending auto-indent trim.
         KeyCode::Backspace => {
@@ -247,13 +247,16 @@ fn is_between_pair(
 ) -> bool {
     let text = doc(state, view, fp.pane()).text();
     pane_view(state, view, fp.pane()).iter().all(|sel| {
-        if !sel.is_cursor() || sel.head().offset() == hume_rope::offset::CharOffset::new(0) {
+        if !sel.is_cursor() {
             return false;
         }
-        // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote
-        // chars are always single codepoints, but using it keeps the logic uniform.
-        let prev = hume_editing::grapheme::prev_grapheme_boundary(text, sel.head().offset());
-        match (text.char_at(prev), text.char_at(sel.head().offset())) {
+        let Some(prev) = hume_editing::grapheme::prev_cluster(text, sel.head().into()) else {
+            return false;
+        };
+        match (
+            text.char_at(prev.offset()),
+            text.char_at(sel.head().offset()),
+        ) {
             (Some(before), Some(at)) => pairs.iter().any(|p| p.open == before && p.close == at),
             _ => false,
         }
@@ -274,6 +277,6 @@ fn should_auto_pair(
     let text = buf.text();
     let chars = effective_word_chars(buf, &state.settings);
     pane_view(state, view, fp.pane()).iter().all(|sel| {
-        !sel.is_cursor() || should_auto_pair_at(text, sel.head().offset(), pair, ap_pairs, chars)
+        !sel.is_cursor() || should_auto_pair_at(text, sel.head().into(), pair, ap_pairs, chars)
     })
 }

@@ -613,14 +613,7 @@ pub(in crate::editor) fn typed_sort(
         }
     };
 
-    super::apply_pane_edit(&mut ed.state, &ed.view, t, move |s| {
-        debug_assert_eq!(
-            s.text().version(),
-            edited.base(),
-            "sort_lines must run against the same buffer just read"
-        );
-        edited
-    })?;
+    super::apply_pane_edit(&mut ed.state, &ed.view, t, move |_| edited)?;
     Ok(())
 }
 

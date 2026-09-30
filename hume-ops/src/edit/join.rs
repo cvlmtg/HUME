@@ -3,11 +3,11 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::{Landing, Landings, edit};
-use hume_editing::lines::{leading_whitespace_end, line_break, line_start};
+use hume_editing::lines::{leading_whitespace_end, line_break};
 use hume_editing::selection::Facing;
 use hume_editing::state::EditState;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::ExclusiveRange;
+use hume_rope::cluster::ClusterRange;
 
 /// Join lines inside each selection and select the inserted spaces.
 ///
@@ -54,21 +54,19 @@ pub fn join_lines_select_spaces(state: EditState) -> Edited {
             };
 
             let mut last_deletion = None;
-            let mut first_line_is_empty = false;
             // Bare-`usize` range, `ContentLine` re-minted each iteration:
             // `ContentLine` has no `Step`/`Range` impl to loop over directly
             // (see CLAUDE.md's "Line counts and ranges"). Sound here: both
             // endpoints are already-valid `ContentLine`s.
             for line_idx in lines.start.index().max(next_unjoined)..end_line.index() {
                 let line = ContentLine::new(line_idx);
-                if last_deletion.is_none() {
-                    first_line_is_empty = line_start(text, line) == line_break(text, line);
-                }
-                let nl_pos = line_break(text, line).offset();
+                let nl_pos = line_break(text, line);
                 let content_start = leading_whitespace_end(text, line.advance(1));
                 let is_blank = content_start >= line_break(text, line.advance(1));
+                let joined = ClusterRange::between(text.full_slice(), nl_pos, content_start.into())
+                    .expect("a line's break comes before the next line's content");
 
-                last_deletion = Some(b.delete(ExclusiveRange::new(nl_pos, content_start.offset())));
+                last_deletion = Some(b.delete(joined));
                 if !is_blank {
                     let mark = b.insert(nl_pos, " ");
                     spaces.push(Landing::covering(mark, Facing::Forward));
@@ -76,11 +74,9 @@ pub fn join_lines_select_spaces(state: EditState) -> Edited {
                 next_unjoined = line_idx + 1;
             }
             // With no space inserted, every later line of the run was blank and
-            // went whole, so the joined line has content before the join point
-            // only if the run's first line does. An empty one has no cluster
-            // to end at, so the cursor takes its own break.
+            // went whole, so the cursor takes the last cluster of the joined
+            // line before the join point, or its break when that line is empty.
             fallback.push(match last_deletion {
-                Some(at) if first_line_is_empty => Landing::cursor(at),
                 Some(at) => Landing::cursor_ending_at(at),
                 None => Landing::kept(sel.selection()),
             });

@@ -155,7 +155,6 @@ use std::sync::Arc;
 
 use hume_editing::text::BufferText;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
-use hume_rope::offset::ExclusiveRange;
 use streaming_iterator::StreamingIterator;
 
 use crate::highlight::RopeProvider;
@@ -428,8 +427,7 @@ fn collect_hulls(
             "text-object span end {end_byte} exceeds buffer length {}: tree is stale",
             text.len_bytes()
         );
-        let chars = ExclusiveRange::new(text.byte_to_char(start_byte), text.byte_to_char(end_byte));
-        out.extend(text.covering(chars));
+        out.extend(text.covering_bytes(start_byte..end_byte));
     }
 }
 

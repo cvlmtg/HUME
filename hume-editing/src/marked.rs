@@ -19,6 +19,7 @@
 //! notation ends with the text's structural `\n` and holds at least one
 //! selection.
 
+use hume_rope::cluster::{ClusterBound, ClusterRange};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::selection::{EditView, Facing, Selection};
@@ -139,3 +140,29 @@ pub fn render(view: EditView<'_>) -> String {
 
 #[cfg(test)]
 mod tests;
+
+/// The cluster boundary at char `n` of `text`.
+///
+/// # Panics
+/// Panics if char `n` is inside a cluster or past the text end.
+pub fn bound_at(text: &BufferText, n: usize) -> ClusterBound {
+    if n == text.len_chars() {
+        return hume_rope::grapheme::text_end(text.full_slice());
+    }
+    let start = text.snap(CharOffset::new(n));
+    assert_eq!(
+        start.offset().index(),
+        n,
+        "marked::bound_at: char {n} is not a cluster boundary"
+    );
+    start.into()
+}
+
+/// The clusters covering chars `a..b` of `text`, clamped to the text.
+///
+/// # Panics
+/// Panics if the range covers no cluster.
+pub fn clusters(text: &BufferText, a: usize, b: usize) -> ClusterRange {
+    text.covering(ExclusiveRange::new(CharOffset::new(a), CharOffset::new(b)))
+        .expect("marked::clusters: the range covers no cluster")
+}

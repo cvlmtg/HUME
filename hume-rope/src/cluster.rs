@@ -126,12 +126,9 @@ impl ClusterRange {
         if chars.start >= end {
             return None;
         }
-        let start = floor_boundary(slice, chars.start);
-        Self::between(
-            slice,
-            ClusterStart::mint(start.offset()),
-            ceil_boundary(slice, end),
-        )
+        let first = snap_to_cluster(slice, chars.start)?;
+        let last = snap_to_cluster(slice, end.retreat(1))?;
+        Some(Self::mint(first.start(), last.start(), last.end()))
     }
 
     /// [`Self::covering`] for a byte range. A bound inside a codepoint moves

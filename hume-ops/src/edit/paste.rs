@@ -2,10 +2,11 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
-use hume_editing::lines::next_line_start;
+use hume_editing::grapheme::cluster_end;
+use hume_editing::lines::{line_break, line_start};
 use hume_editing::selection::Facing;
 use hume_editing::state::EditState;
-use hume_rope::offset::ExclusiveRange;
+use hume_rope::cluster::ClusterRange;
 
 use super::apply_edit;
 use crate::register::{Piece, Shape};
@@ -41,19 +42,11 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
     // When counts mismatch, every selection gets the full joined content,
     // pasting in the shape of the last piece. Computed once so the closure can
     // borrow it.
-    let joined = if n_sels != n_vals {
+    let joined = (n_sels != n_vals).then(|| {
         let shape = values.last().map_or(Shape::Charwise, Piece::shape);
         Piece::new(values.iter().map(Piece::text).collect::<String>(), shape)
-    } else {
-        Piece::new("", Shape::Charwise)
-    };
-    let piece_of = |i: usize| -> &Piece {
-        if n_sels == n_vals {
-            &values[i]
-        } else {
-            &joined
-        }
-    };
+    });
+    let piece_of = |i: usize| -> &Piece { joined.as_ref().unwrap_or_else(|| &values[i]) };
     // Whether the text right before selection `i` is a linewise paste over
     // the selection touching it: that paste already ended its line, so `i`
     // needs no leading '\n' of its own.
@@ -80,9 +73,9 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
                 // Linewise cursor paste: whole new line(s) above or below.
                 let line = sel.head_line();
                 let insert_at = if before {
-                    text.line_to_char(line.into())
+                    line_start(text, line).into()
                 } else {
-                    next_line_start(text, line.into())
+                    cluster_end(text, line_break(text, line))
                 };
                 let mark = b.insert(insert_at, content);
                 return Landing::covering(mark, Facing::Forward);
@@ -109,14 +102,12 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
             // '\n' takes that '\n' too, so no blank line is left.
             let covered = sel.covered();
             let last_line = sel.lines().end;
-            let line_break = hume_rope::lines::line_break(text.rope(), last_line);
+            let line_break = line_break(text, last_line);
             let range = if covered.end() == line_break.into() {
-                ExclusiveRange::new(
-                    covered.start().offset(),
-                    hume_rope::grapheme::cluster_end(text.full_slice(), line_break).offset(),
-                )
+                ClusterRange::through(text.full_slice(), covered.start(), line_break)
+                    .expect("a selection starts before the break after it")
             } else {
-                covered.chars()
+                covered
             };
             if !sel.starts_line() && !follows_pasted_line[sel.index()] {
                 b.insert(sel.start(), "\n");
@@ -126,7 +117,7 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
         }
 
         // Charwise over a selection: the content takes its place.
-        let mark = b.replace(sel.covered().chars(), content);
+        let mark = b.replace(sel.covered(), content);
         Landing::covering(mark, Facing::Forward)
     })
 }

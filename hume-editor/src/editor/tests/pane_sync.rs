@@ -10,7 +10,11 @@ use pretty_assertions::assert_eq;
 
 /// Return the pane's primary cursor as an absolute char offset.
 fn pane_head(ed: &Editor) -> hume_rope::offset::CharOffset {
-    ed.view.panes[ed.state.focus.id()].selections[0]
+    ed.view.panes[ed.state.focus.id()]
+        .selections
+        .as_ref()
+        .expect("a written mirror")
+        .primary()
         .cursor
         .offset()
 }
@@ -92,22 +96,17 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
     // Simulate the per-frame sync.
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
-    // Selections are passed in sorted document order; a flag marks the primary.
-    let pane = &ed.view.panes[ed.state.focus.id()];
+    // Selections are passed in document order; an index names the primary.
+    let mirror = ed.view.panes[ed.state.focus.id()]
+        .selections
+        .as_ref()
+        .expect("a written mirror");
     assert_eq!(
-        pane.selections[0].cursor.offset(),
-        co(0),
-        "pane.selections[0] is the earliest in document order (char 0, 'a')"
+        mirror.iter().map(|s| s.cursor.offset()).collect::<Vec<_>>(),
+        vec![co(0), co(1)],
+        "the mirror lists 'a' then 'b', in document order"
     );
-    assert_eq!(
-        pane.selections[1].cursor.offset(),
-        co(1),
-        "pane.selections[1] is 'b' at char 1"
-    );
-    assert!(
-        pane.selections[1].is_primary && !pane.selections[0].is_primary,
-        "the primary flag must be on 'b' (index 1)"
-    );
+    assert_eq!(mirror.primary_index(), 1, "the primary is 'b' (index 1)");
 }
 
 /// A backward selection whose far end is `e` plus a combining accent paints

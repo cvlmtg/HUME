@@ -4,7 +4,7 @@ mod single;
 mod unbound;
 mod view;
 
-pub(crate) use fit::{assert_fits, check_positions};
+pub(crate) use fit::{assert_fits, assert_positions, check_fit};
 pub use recorded::RecordedSelections;
 pub use single::{Facing, Selection, StickyDisplayCol};
 pub(crate) use unbound::Resolver;
@@ -104,24 +104,22 @@ impl SelectionSet {
         }
 
         let primary_before = self.selections[self.primary];
-        self.selections.sort_by_key(|s| s.first());
+        self.selections.sort_by_key(|s| s.start());
 
         let mut write = 0;
         let mut new_primary = 0;
         let holds_primary = |sel: &Selection| {
-            sel.first() <= primary_before.first() && primary_before.last() <= sel.last()
+            sel.start() <= primary_before.start() && primary_before.last() <= sel.last()
         };
 
         for read in 1..self.selections.len() {
             let sel = self.selections[read];
             let kept = self.selections[write];
 
-            if sel.first() <= kept.last() {
+            if sel.start() <= kept.last() {
                 if sel.last() > kept.last() {
-                    self.selections[write] = match sel.facing() {
-                        Facing::Backward => Selection::new(sel.last(), kept.first()),
-                        Facing::Forward => Selection::new(kept.first(), sel.last()),
-                    };
+                    self.selections[write] =
+                        sel.with_ends(kept.start(), sel.last()).without_sticky();
                 }
                 if holds_primary(&self.selections[write]) {
                     new_primary = write;

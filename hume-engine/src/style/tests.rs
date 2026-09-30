@@ -2,7 +2,9 @@ use super::*;
 use crate::providers::ProviderSet;
 use crate::test_support::{at, bg, fg, painted, theme_with};
 use crate::theme::Theme;
-use crate::types::{CellContent, DisplayLine, DisplayLineKind, Grapheme, ResolvedStyle};
+use crate::types::{
+    CellContent, DisplayLine, DisplayLineKind, Grapheme, PaintedSelections, ResolvedStyle,
+};
 use hume_grid::Rgb;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
@@ -43,10 +45,14 @@ fn apply_styles(
     let mut painted: Vec<_> = selections
         .iter()
         .enumerate()
-        .map(|(i, s)| painted(rope, s.anchor, s.head, i == 0))
+        .map(|(i, s)| (painted(rope, s.anchor, s.head), i == 0))
         .collect();
-    painted.sort_by_key(|s| s.cursor);
-    scratch.populate_sorted_sels(&painted);
+    painted.sort_by_key(|(s, _)| s.cursor);
+    let primary = painted
+        .iter()
+        .position(|&(_, is_first)| is_first)
+        .expect("at least one selection");
+    let painted = PaintedSelections::new(painted.into_iter().map(|(s, _)| s).collect(), primary);
     scratch
         .styles
         .resize(graphemes.len(), ResolvedStyle::default());
@@ -68,14 +74,12 @@ fn apply_styles(
         let line_start_char = co(hume_rope::lines::line_start_char(rope, line_idx).index());
         let line_end_char = hume_rope::lines::next_line_start(rope, line_idx);
         let line_chars = ExclusiveRange::new(line_start_char, line_end_char);
-        let is_head_line = scratch
-            .primary_idx_in_sorted
-            .and_then(|i| scratch.sorted_sels.get(i))
-            .is_some_and(|s| line_chars.contains(s.cursor.offset()));
+        let is_head_line = line_chars.contains(painted.primary().cursor.offset());
         style_display_line(
             dline,
             graphemes,
             line_chars,
+            &painted,
             is_head_line,
             tint,
             mode,
@@ -111,15 +115,16 @@ fn make_display_line(graphemes: std::ops::Range<usize>) -> DisplayLine {
 }
 
 #[test]
-fn no_selections_yields_default_style() {
-    let rope = ropey::Rope::from_str("abc");
+fn a_line_without_selections_keeps_the_default_style() {
+    // The only cursor sits on line 1; line 0 is the one styled.
+    let rope = ropey::Rope::from_str("abc\nd");
     let graphemes = make_graphemes(&rope, 3);
     let lines = vec![make_display_line(0..3)];
     let mut scratch = StyleScratch::new();
     apply_styles(
         &lines,
         &graphemes,
-        &[],
+        &[Sel { anchor: 4, head: 4 }],
         EditorMode::Normal,
         true,
         &Theme::default(),
@@ -144,7 +149,7 @@ fn no_selections_yields_default_style() {
 /// contradicting a kind documented as a full-row *background* tint.
 #[test]
 fn line_tint_applies_only_background_not_fg_or_modifiers() {
-    let rope = ropey::Rope::from_str("abc");
+    let rope = ropey::Rope::from_str("abc\nd");
     let graphemes = make_graphemes(&rope, 3);
     let lines = [make_display_line(0..3)];
     let mut scratch = StyleScratch::new();
@@ -162,7 +167,6 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
     )]);
     theme.bake(&registry);
 
-    scratch.populate_sorted_sels(&[]);
     scratch
         .styles
         .resize(graphemes.len(), ResolvedStyle::default());
@@ -170,6 +174,7 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
         &lines[0],
         &graphemes,
         ExclusiveRange::new(co(0), co(3)),
+        &crate::test_support::cursor_mirror(&rope, 4),
         false, // not the cursor line, which isolates the tint's own contribution
         Some(tint_scope),
         EditorMode::Normal,
@@ -1348,7 +1353,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
     // Insert with an interned scope mapped to fg: Red. The insert cell's
     // resolved style must carry that scope; the real grapheme next to it
     // must not.
-    let rope = ropey::Rope::from_str("ab");
+    let rope = ropey::Rope::from_str("ab\nc");
     let mut registry = crate::theme::ScopeRegistry::new();
     let hint_scope = registry.intern("hint");
     let inserts = vec![crate::providers::InlineInsert {
@@ -1376,7 +1381,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
     apply_styles(
         &fmt.display_lines,
         &fmt.graphemes,
-        &[],
+        &[Sel { anchor: 3, head: 3 }], // the only cursor, off the styled line
         EditorMode::Normal,
         true,
         &theme,
@@ -1474,7 +1479,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
     // `ui.virtual.invisible` regardless of the syntax colour at that
     // position, which is what lets a theme make a bidi override catch the
     // eye. Its neighbours keep their own styling.
-    let rope = ropey::Rope::from_str("a\u{202E}b");
+    let rope = ropey::Rope::from_str("a\u{202E}b\nc");
     let mut registry = crate::theme::ScopeRegistry::new();
     registry.intern("ui.virtual.invisible");
     let mut fmt = crate::format::LineFormat::new();
@@ -1497,7 +1502,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
     apply_styles(
         &fmt.display_lines,
         &fmt.graphemes,
-        &[],
+        &[Sel { anchor: 4, head: 4 }], // the only cursor, off the styled line
         EditorMode::Normal,
         true,
         &theme,
@@ -1531,7 +1536,7 @@ fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
     // An opted-in whitespace glyph must carry `ui.virtual.whitespace`
     // regardless of the syntax colour at that position: the same
     // contract `ui.virtual.invisible` gets for placeholders, above.
-    let rope = ropey::Rope::from_str("a \tb");
+    let rope = ropey::Rope::from_str("a \tb\nc");
     let ws = crate::pane::WhitespaceConfig {
         space: crate::pane::WhitespaceRender::All,
         tab: crate::pane::WhitespaceRender::All,
@@ -1557,7 +1562,7 @@ fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
     apply_styles(
         &fmt.display_lines,
         &fmt.graphemes,
-        &[],
+        &[Sel { anchor: 5, head: 5 }], // the only cursor, off the styled line
         EditorMode::Normal,
         true,
         &theme,
@@ -1592,7 +1597,7 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
     // `ui.virtual.whitespace`. That scope belongs only to the glyph the
     // user opted into, never to the fallback fill a theme's `bg` would
     // otherwise leak onto every tab expansion regardless of the setting.
-    let rope = ropey::Rope::from_str("a\tb");
+    let rope = ropey::Rope::from_str("a\tb\nc");
     let ws = crate::pane::WhitespaceConfig {
         tab: crate::pane::WhitespaceRender::None,
         ..crate::pane::WhitespaceConfig::default()
@@ -1617,7 +1622,7 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
     apply_styles(
         &fmt.display_lines,
         &fmt.graphemes,
-        &[],
+        &[Sel { anchor: 4, head: 4 }], // the only cursor, off the styled line
         EditorMode::Normal,
         true,
         &theme,

@@ -52,7 +52,7 @@ All motions, selections, and edit operations work on grapheme clusters (`unicode
 | | |
 |---|---|
 | **Forbidden** | Stepping a buffer position by a raw `+ 1`/`- 1` in motion or selection code — skips over combining sequences (`é` = U+0065 + U+0301) or ZWJ emoji instead of advancing a full cluster. |
-| **Required** | `next_grapheme_boundary`/`prev_grapheme_boundary` (`hume-editing/src/grapheme.rs`, thin `&BufferText` wrappers over the `RopeSlice`-based implementations in `hume-rope/src/grapheme.rs`) for every position advance in motion/selection logic. A loop walking forward cluster by cluster iterates `graphemes_at` (same files) instead: `next_grapheme_boundary` is its first step, so both are the same stepper, but a per-step call re-seeks the rope every time. |
+| **Required** | `next_cluster`/`prev_cluster`/`cluster_end` (`hume-editing/src/grapheme.rs`, thin `&BufferText` wrappers over the `RopeSlice`-based implementations in `hume-rope/src/grapheme.rs`) for every single step in motion/selection logic. A loop walking cluster by cluster iterates `graphemes_at` forward or `clusters_before` backward (same files) instead: a per-step call re-seeks the rope every time. |
 | **Allowed** | `line += 1` for line-level iteration; `i += 1` in bracket/delimiter scanning (ASCII only). |
 | **Enforced** | The compiler, via `CharOffset` and the cluster position types — see those entries below. One hazard no type reaches: `s.chars().next_back()`/`.last()` return `s`'s last *codepoint*, not the base char of its last cluster (a trailing combining mark) — `hume_rope::grapheme::prev_str_boundary` is the fix. No automated check for this one; relies on ordinary review. |
 

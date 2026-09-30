@@ -2,7 +2,9 @@
 //! shorthand for building a `Theme` from a literal list of scope styles,
 //! for building a `Grapheme::byte_range` from plain integers, for
 //! assembling a `RenderDisplayLine` by hand for a direct `compose_display_line` call,
-//! for a char offset literal (`co`), for a `DisplayLineMap` over a fixed
+//! for a char offset literal (`co`), for the cluster at a char offset
+//! (`at`), for a painted selection (`painted`) and a pane's selection mirror
+//! (`mirror`, `cursor_mirror`), for a `DisplayLineMap` over a fixed
 //! `FormatKey` (`map`), and for a fake `VIRTUAL_LINE` decoration source
 //! (`VirtualLineBlock`), shared by `display_lines::tests` and
 //! `display_lines::scroll::tests`, which are cousins under `display_lines`
@@ -15,7 +17,7 @@ use std::rc::Rc;
 use hume_grid::Rgb;
 use ropey::Rope;
 
-use hume_rope::cluster::{ClusterRange, ClusterStart};
+use hume_rope::cluster::ClusterStart;
 use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
@@ -27,7 +29,7 @@ use crate::providers::{
     Decoration, DecorationKinds, DecorationSource, ProviderSet, VirtualLine, VirtualLineAnchor,
 };
 use crate::theme::Theme;
-use crate::types::{DisplayLine, Grapheme, PaintedSelection, ResolvedStyle};
+use crate::types::{DisplayLine, Grapheme, PaintedSelection, PaintedSelections, ResolvedStyle};
 
 pub(crate) fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
@@ -45,26 +47,28 @@ pub(crate) fn at(rope: &Rope, n: usize) -> ClusterStart {
 
 /// A selection over `rope` from the cluster at char `anchor` to the one at
 /// char `head`, as the host would paint it.
-pub(crate) fn painted(
-    rope: &Rope,
-    anchor: usize,
-    head: usize,
-    is_primary: bool,
-) -> PaintedSelection {
+pub(crate) fn painted(rope: &Rope, anchor: usize, head: usize) -> PaintedSelection {
     let (anchor, head) = (at(rope, anchor), at(rope, head));
     PaintedSelection {
-        covered: ClusterRange::through(rope.slice(..), anchor.min(head), anchor.max(head))
-            .expect("first precedes last"),
+        first: anchor.min(head),
+        last: anchor.max(head),
         cursor: head,
-        is_cursor: anchor == head,
-        is_reverse: head < anchor,
-        is_primary,
     }
 }
 
+/// A selection mirror over `rope` of `(anchor, head)` char pairs, in cursor
+/// order, the one at `primary` primary.
+pub(crate) fn mirror(rope: &Rope, sels: &[(usize, usize)], primary: usize) -> PaintedSelections {
+    let items = sels
+        .iter()
+        .map(|&(anchor, head)| painted(rope, anchor, head))
+        .collect();
+    PaintedSelections::new(items, primary)
+}
+
 /// A selection mirror holding one primary cursor on char `n` of `rope`.
-pub(crate) fn cursor_mirror(rope: &Rope, n: usize) -> Vec<PaintedSelection> {
-    vec![painted(rope, n, n, true)]
+pub(crate) fn cursor_mirror(rope: &Rope, n: usize) -> PaintedSelections {
+    mirror(rope, &[(n, n)], 0)
 }
 
 /// A `DisplayLineMap` over `rope`, built from a fixed `FormatKey` (tag

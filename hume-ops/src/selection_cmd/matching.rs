@@ -74,25 +74,24 @@ pub fn cmd_split_selection_on_newlines(
 /// Returns `None` when no matches are found in any selection; the caller
 /// should keep the original selections unchanged.
 pub fn sift_matches_within(state: &EditState, regex: &Regex) -> Option<EditState> {
-    let view = state.view();
-    let mut new_sels: Vec<Selection> = Vec::new();
-    let mut new_primary = 0;
-
-    for sel in view.iter() {
-        let piece_start = new_sels.len();
-        new_sels.extend(
-            find_matches_in_range(view.text(), regex, sel.covered())
+    let mut matches: Vec<Vec<Selection>> = state
+        .view()
+        .iter()
+        .map(|sel| {
+            find_matches_in_range(sel.text(), regex, sel.covered())
                 .into_iter()
-                .map(|span| Selection::covering(span, Facing::Forward)),
-        );
-
-        // Primary = first match within the original primary selection.
-        if sel.is_primary() && piece_start < new_sels.len() {
-            new_primary = piece_start;
-        }
+                .map(|span| Selection::covering(span, Facing::Forward))
+                .collect()
+        })
+        .collect();
+    if matches.iter().all(Vec::is_empty) {
+        return None;
     }
-
-    (!new_sels.is_empty()).then(|| state.clone().with_selections(new_sels, new_primary))
+    Some(
+        state
+            .clone()
+            .flat_map(|sel| std::mem::take(&mut matches[sel.index()])),
+    )
 }
 
 // ── Trim whitespace ───────────────────────────────────────────────────────────

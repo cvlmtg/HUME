@@ -249,6 +249,22 @@ impl RegisterSet {
         self.write(name, RegisterContent::Text(pieces));
     }
 
+    /// Write `values` to the clipboard register and record the flattened
+    /// text the OS clipboard should hold, which is returned. Pieces are
+    /// separated by a '\n' unless the previous piece's text already ends in
+    /// one, whatever its shape.
+    pub fn write_clipboard(&mut self, values: Vec<Piece>) -> &str {
+        let mut blob = String::new();
+        for (i, v) in values.iter().enumerate() {
+            if i > 0 && !values[i - 1].text().ends_with('\n') {
+                blob.push('\n');
+            }
+            blob.push_str(v.text());
+        }
+        self.write_text(CLIPBOARD_REGISTER, values);
+        self.clipboard_blob.insert(blob)
+    }
+
     /// Write a recorded macro to a register, replacing its previous contents.
     ///
     /// Writes to the black-hole register (`'b'`) are silently discarded.
@@ -447,7 +463,7 @@ pub fn yank_selections(state: &EditState) -> Vec<Piece> {
     state
         .view()
         .iter()
-        .map(|sel| removed_piece(sel, sel.removal().map(|(_, text)| text)))
+        .map(|sel| removed_piece(sel, crate::edit::removal(sel)))
         .collect()
 }
 

@@ -16,7 +16,7 @@ use super::SteelResult;
 use super::args::{
     ArgPane, bool_arg, callable_arg, json_arg, json_params, list_items, list_to_env_pairs,
     list_to_strings, optional_json_arg, optional_string_arg, string_arg, symbol_hash, token_arg,
-    token_or_false, wire_position,
+    wire_position,
 };
 use super::errors::generic_err;
 use super::hooks::{register_entry, require_known_event};
@@ -371,7 +371,7 @@ pub(crate) fn track_position(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResul
     match ctx.host.lsp().map(|lsp| lsp.track_position(pane)) {
         None => Ok(SteelVal::BoolV(false)),
         Some(Err(e)) => Err(generic_err(e)),
-        Some(Ok(token)) => Ok(token_or_false(Some(token))),
+        Some(Ok(token)) => Ok(token.to_steel()),
     }
 }
 

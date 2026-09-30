@@ -282,9 +282,7 @@ impl Editor {
         // scroll position that no longer exists is still worth discarding
         // outright rather than recalling a clamped-but-arbitrary spot.
         // Every pane, active tab or not.
-        for (_, pane) in self.view.panes.every_pane_across_all_tabs_mut() {
-            pane.forget_buffer(id);
-        }
+        lifecycle::forget_saved_views(&mut self.view, id);
     }
 
     /// Redirect `fp` to `target` without recording a jump.

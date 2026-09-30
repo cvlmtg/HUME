@@ -506,6 +506,8 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     assert_eq!(
         engine_pane
             .selections
+            .as_ref()
+            .expect("a written mirror")
             .iter()
             .map(|s| s.cursor.offset())
             .collect::<Vec<_>>(),

@@ -336,6 +336,14 @@ impl Buffer {
         let before = std::mem::replace(&mut self.text, text);
         match change {
             Change::Edit(changes) => {
+                if let Some(syn) = self.syntax.as_mut() {
+                    syn.record_edit(
+                        before.version().generation(),
+                        self.text.version().generation(),
+                        changes,
+                        before.rope(),
+                    );
+                }
                 let change = TextChange::new(&before, &self.text, changes);
                 stores.carry(id, &change);
             }
@@ -576,6 +584,21 @@ impl Buffer {
         }
     }
 
+    /// `cmd`'s edit of `state`, which must be an edit of this buffer's text.
+    ///
+    /// # Panics
+    /// Panics if `cmd` returns an edit of another text: its changeset and
+    /// selections would be installed against the wrong one.
+    fn run_edit(&self, state: EditState, cmd: impl FnOnce(EditState) -> Edited) -> Edited {
+        let edited = cmd(state);
+        assert_eq!(
+            edited.base(),
+            self.text.version(),
+            "an edit of another text was applied to this buffer"
+        );
+        edited
+    }
+
     /// Apply an edit and record it in the undo history.
     ///
     /// Takes `sels` (the acting pane's current selections) by value and returns
@@ -590,7 +613,7 @@ impl Buffer {
     ) -> (SelectionSet, ChangeSet) {
         let pre = EditState::bind(&self.text, sels);
         let pre_sels = pre.recorded();
-        let (post, cs) = cmd(pre).into_parts();
+        let (post, cs) = self.run_edit(pre, cmd).into_parts();
 
         // An identity `cs` moved no bytes: recording it would litter the undo
         // tree with a no-op revision, and a new text version would fire
@@ -620,7 +643,9 @@ impl Buffer {
         group: &mut EditGroup,
         cmd: impl FnOnce(EditState) -> Edited,
     ) -> (SelectionSet, ChangeSet) {
-        let (post, cs) = cmd(EditState::bind(&self.text, sels)).into_parts();
+        let (post, cs) = self
+            .run_edit(EditState::bind(&self.text, sels), cmd)
+            .into_parts();
         let new_text = post.text().clone();
         let new_sels = post.into_selections();
 
@@ -674,37 +699,15 @@ impl Buffer {
         };
 
         group.cs = Some(new_cs);
-        // The selections come back tagged for `new_text`. When the text this
-        // step leaves in the buffer has the same content under another
-        // version, they are carried across to it:
-        // - `propagation_cs` is identity when the previous step and this one
-        //   made the same pure deletion, so the live text already is the
-        //   result and nothing is installed.
-        // - `new_cs` is identity when this step reproduces the snapshot,
-        //   which is an earlier version than the live text. Reaching the same
-        //   content from the live text keeps the version moving forward.
-        let same_content = if propagation_cs.is_identity() {
-            Some(self.text.clone())
-        } else if group.cs.as_ref().is_some_and(ChangeSet::is_identity) {
-            Some(
-                propagation_cs
-                    .apply(&self.text)
-                    .expect("the propagation changeset maps the live text"),
-            )
-        } else {
-            None
-        };
-        let landed = match same_content {
-            Some(text) => {
-                new_sels.translate(&TextChange::new(
-                    &new_text,
-                    &text,
-                    &ChangeSet::identity(text.len_chars()),
-                ));
-                text
-            }
-            None => new_text,
-        };
+        // `propagation_cs` maps the live text onto content equal to
+        // `new_text`, so the result stays in the live text's lineage and the
+        // selections, tagged for `new_text`, are carried across to it. An
+        // identity `propagation_cs` returns the live text itself, which
+        // needs no install.
+        let landed = propagation_cs
+            .apply(&self.text)
+            .expect("the propagation changeset maps the live text");
+        rebind_to_same_content(&mut new_sels, &new_text, &landed);
         if !propagation_cs.is_identity() {
             self.install(id, stores, landed, Change::Edit(&propagation_cs));
         }

@@ -150,7 +150,7 @@ impl Selection {
     }
 
     /// The earlier of anchor and head.
-    pub(crate) fn first(self) -> ClusterStart {
+    pub(crate) fn start(self) -> ClusterStart {
         self.anchor.min(self.head)
     }
 
@@ -159,12 +159,12 @@ impl Selection {
         self.anchor.max(self.head)
     }
 
-    /// This selection with `first` and `last` replaced, facing and sticky
+    /// This selection with `start` and `last` replaced, facing and sticky
     /// column kept.
-    pub(crate) fn with_ends(self, first: ClusterStart, last: ClusterStart) -> Self {
+    pub(crate) fn with_ends(self, start: ClusterStart, last: ClusterStart) -> Self {
         let (anchor, head) = match self.facing() {
-            Facing::Forward => (first, last),
-            Facing::Backward => (last, first),
+            Facing::Forward => (start, last),
+            Facing::Backward => (last, start),
         };
         Self {
             anchor,

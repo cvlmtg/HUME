@@ -15,6 +15,10 @@ pub(in crate::editor) struct CommandLayer {
 }
 
 impl Layer for CommandLayer {
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
+        None
+    }
+
     fn handler(&self) -> LayerHandler {
         command_input
     }

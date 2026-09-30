@@ -1,11 +1,11 @@
 use crate::edit::apply_edit;
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
-use hume_editing::grapheme::prev_grapheme_boundary;
+use hume_editing::grapheme::{cluster_end, prev_cluster};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
-use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_rope::cluster::{ClusterBound, ClusterRange};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -83,12 +83,14 @@ pub fn delete_pair(state: EditState) -> Edited {
     apply_edit(state, |b, sel| {
         debug_assert!(sel.is_cursor(), "delete_pair called on a selection");
         let head = sel.head();
-        let slice = b.text().full_slice();
-        let Some(prev) = hume_rope::grapheme::prev_cluster(slice, head.into()) else {
+        let text = b.text();
+        let next = cluster_end(text, head);
+        let Some(pair) = prev_cluster(text, head.into())
+            .and_then(|prev| ClusterRange::between(text.full_slice(), prev, next))
+        else {
             return Landing::kept(sel.selection());
         };
-        let next = hume_rope::grapheme::cluster_end(slice, head);
-        Landing::cursor(b.delete(ExclusiveRange::new(prev.offset(), next.offset())))
+        Landing::cursor(b.delete(pair))
     })
 }
 
@@ -110,13 +112,13 @@ pub fn delete_pair(state: EditState) -> Edited {
 /// function evaluates a single cursor position.
 pub fn should_auto_pair_at(
     text: &BufferText,
-    head: CharOffset,
+    head: ClusterBound,
     pair: &Pair,
     ap_pairs: &[Pair],
     chars: WordChars<'_>,
 ) -> bool {
     // Check 1: next char (the char the cursor sits on) must be innocuous.
-    let next_ok = match text.char_at(head) {
+    let next_ok = match text.char_at(head.offset()) {
         None => true,                                     // EOF
         Some(c) if c.is_whitespace() => true,             // space, tab, newline, …
         Some(c) => ap_pairs.iter().any(|p| p.close == c), // a configured close char
@@ -126,14 +128,13 @@ pub fn should_auto_pair_at(
     }
 
     // Check 2 (symmetric pairs only): prev char must NOT be a word char.
-    if pair.is_symmetric() && head > CharOffset::new(0) {
-        let prev_pos = prev_grapheme_boundary(text, head);
-        if text
-            .char_at(prev_pos)
+    if pair.is_symmetric()
+        && let Some(prev) = prev_cluster(text, head)
+        && text
+            .char_at(prev.offset())
             .is_some_and(|c| chars.classify(c) == CharClass::Word)
-        {
-            return false;
-        }
+    {
+        return false;
     }
 
     true

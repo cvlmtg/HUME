@@ -4,12 +4,14 @@
 //! what was recorded before it, except that operations at one position take
 //! effect in the order they were recorded. [`edit`] sorts the operations by
 //! position, merges overlapping deletions into their union, and drives
-//! [`ChangeSetBuilder`] front to back. A position deleted by another
-//! operation resolves to the deletion point, the same rule
+//! [`ChangeSetBuilder`] front to back. A position strictly inside a deletion
+//! resolves to the deletion point, the same rule
 //! [`crate::changeset::PosMapCursor`] applies to any position.
 //!
-//! The text keeps ending with its structural `\n`: no deletion reaches it,
-//! and text lands after it only when that text ends with a `\n` of its own.
+//! The text keeps ending with a `\n`, by
+//! [`apply_keeping_final_break`](super::apply_keeping_final_break)'s rule.
+//! Text lands after the structural `\n` only when that text ends with a `\n`
+//! of its own, so under the ceiling only the deletions change.
 //!
 //! Positions of the text being produced come back as [`NewPos`] and [`Mark`]
 //! handles. Only a [`Landing`] consumes one, and the `'id` brand ties each
@@ -18,37 +20,29 @@
 
 use std::marker::PhantomData;
 
-use hume_rope::cluster::ClusterRange;
-use hume_rope::line::ContentLine;
+use hume_rope::cluster::{ClusterBound, ClusterRange};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
-use ropey::RopeSlice;
 
 use super::Edited;
 use crate::changeset::{Assoc, ChangeSet, ChangeSetBuilder};
 use crate::edit::TextChange;
 use crate::selection::{
-    Facing, Resolver, Selection, SelectionSet, SelectionView, UnboundSelection,
+    Facing, Resolver, Selection, SelectionSet, UnboundSelection,
 };
 use crate::state::EditState;
-use crate::text::{BufferText, normalize_line_endings};
+use crate::text::{BufferText, LfText};
 
 /// Ties a handle to the one plan that made it: the lifetime is invariant, and
 /// [`edit`] instantiates it afresh for each call.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Brand<'id>(PhantomData<fn(&'id ()) -> &'id ()>);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Handle {
-    /// Where item `index` starts in the new text, or where it ends.
-    Item { index: usize, after: bool },
-    /// A position of the old text, carried through the finished edit.
-    Old(CharOffset, Assoc),
-}
-
-/// A position in the text an edit is producing.
+/// A position in the text an edit is producing: where item `index` starts
+/// in the new text, or where it ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NewPos<'id> {
-    handle: Handle,
+    index: usize,
+    after: bool,
     brand: Brand<'id>,
 }
 
@@ -77,12 +71,9 @@ struct Item {
 
 #[derive(Debug)]
 enum ItemKind {
-    /// Removes `key..end`. `lines` is set for a whole-line removal.
-    Delete {
-        end: CharOffset,
-        lines: Option<(ContentLine, ContentLine)>,
-    },
-    Insert(String),
+    /// Removes `key..end`.
+    Delete { end: CharOffset },
+    Insert(LfText),
     /// Marks a place in the new text without changing it.
     Anchor,
 }
@@ -92,13 +83,6 @@ pub struct EditBuilder<'a, 'id> {
     text: &'a BufferText,
     items: Vec<Item>,
     brand: Brand<'id>,
-}
-
-/// What [`EditBuilder::remove`] took out of the text: the text to put in a
-/// register, and where the selection lands.
-pub struct Removed<'a, 'id> {
-    pub text: RopeSlice<'a>,
-    pub cursor: Landing<'id>,
 }
 
 /// Records the edit `build` describes for `state`'s text and applies it.
@@ -121,28 +105,35 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
         self.text
     }
 
+    /// # Panics
+    /// Panics if the operation reaches past the text end. Debug builds also
+    /// check that it starts and ends on cluster boundaries of this text.
     fn push(&mut self, key: CharOffset, kind: ItemKind) -> usize {
+        let text_end = self.text.end();
+        let end = match kind {
+            ItemKind::Delete { end } => end,
+            ItemKind::Insert(_) | ItemKind::Anchor => key,
+        };
+        assert!(
+            end <= text_end,
+            "EditBuilder: an operation reaches {end:?}, past the text end {text_end:?}"
+        );
+        debug_assert!(
+            [key, end]
+                .iter()
+                .all(|&at| at == text_end || self.text.snap(at).offset() == at),
+            "EditBuilder: an operation splits a cluster of this text"
+        );
         self.items.push(Item { key, kind });
         self.items.len() - 1
     }
 
     fn pos(&self, index: usize, after: bool) -> NewPos<'id> {
         NewPos {
-            handle: Handle::Item { index, after },
+            index,
+            after,
             brand: self.brand,
         }
-    }
-
-    /// The deletion of `range`, which stops short of the structural `\n`.
-    fn record_delete(
-        &mut self,
-        range: ExclusiveRange<CharOffset>,
-        lines: Option<(ContentLine, ContentLine)>,
-    ) -> usize {
-        let last = self.text.last_char();
-        let key = range.start.min(last);
-        let end = range.end.min(last).max(key);
-        self.push(key, ItemKind::Delete { end, lines })
     }
 
     /// Insert `text` at `at`; returns what it became. At the text's end,
@@ -151,22 +142,22 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
     ///
     /// # Panics
     /// Panics if `at` is past the end of the text.
-    pub fn insert(&mut self, at: impl Into<CharOffset>, text: &str) -> Mark<'id> {
-        let at = at.into();
+    pub fn insert(&mut self, at: impl Into<ClusterBound>, text: &str) -> Mark<'id> {
+        let at = at.into().offset();
         let end = self.text.end();
         assert!(
             at <= end,
             "EditBuilder::insert: position {at:?} is past the text end {end:?}"
         );
-        let text = normalize_line_endings(text);
+        let text = LfText::new(text);
         let key = if at < end {
             at
-        } else if text.ends_with('\n') {
+        } else if text.as_str().ends_with('\n') {
             end
         } else {
             self.text.last_char()
         };
-        let index = self.push(key, ItemKind::Insert(text.into_owned()));
+        let index = self.push(key, ItemKind::Insert(text));
         Mark {
             start: self.pos(index, false),
             end: self.pos(index, true),
@@ -174,43 +165,60 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
     }
 
     /// Delete `range`; returns where it was.
-    pub fn delete(&mut self, range: impl Into<ExclusiveRange<CharOffset>>) -> NewPos<'id> {
-        let index = self.record_delete(range.into(), None);
+    ///
+    /// The range is whole clusters, so a deletion cannot leave part of one
+    /// behind. A char range enters through [`BufferText::within`] or
+    /// [`BufferText::covering`]:
+    ///
+    /// ```
+    /// use hume_editing::edit::{Landing, Landings, edit};
+    /// use hume_editing::state::EditState;
+    /// use hume_editing::text::BufferText;
+    /// use hume_rope::offset::{CharOffset, ExclusiveRange};
+    ///
+    /// let state = EditState::at_text_start(BufferText::from("xe\u{301}y\n"));
+    /// let edited = edit(&state, |b| {
+    ///     let chars = ExclusiveRange::new(CharOffset::new(0), CharOffset::new(2));
+    ///     let range = b.text().within(chars).expect("`x` lies inside the range");
+    ///     Landings::new(vec![Landing::cursor(b.delete(range))], 0)
+    /// });
+    /// assert_eq!(edited.state().text().to_string(), "e\u{301}y\n");
+    /// ```
+    ///
+    /// A char range as it stands does not compile:
+    ///
+    /// ```compile_fail,E0308
+    /// use hume_editing::edit::{Landing, Landings, edit};
+    /// use hume_editing::state::EditState;
+    /// use hume_editing::text::BufferText;
+    /// use hume_rope::offset::{CharOffset, ExclusiveRange};
+    ///
+    /// let state = EditState::at_text_start(BufferText::from("xe\u{301}y\n"));
+    /// let edited = edit(&state, |b| {
+    ///     let chars = ExclusiveRange::new(CharOffset::new(0), CharOffset::new(2));
+    ///     Landings::new(vec![Landing::cursor(b.delete(chars))], 0)
+    /// });
+    /// ```
+    pub fn delete(&mut self, range: ClusterRange) -> NewPos<'id> {
+        let end = range.end().offset();
+        let index = self.push(range.start().offset(), ItemKind::Delete { end });
+        self.pos(index, false)
+    }
+
+    /// Where `pos` is in the new text, for an edit that changes nothing
+    /// there: the place a deletion of nothing would name.
+    pub fn at(&mut self, pos: impl Into<ClusterBound>) -> NewPos<'id> {
+        let index = self.push(pos.into().offset(), ItemKind::Anchor);
         self.pos(index, false)
     }
 
     /// Replace `range` with `text`; returns what the replacement became.
-    ///
-    /// A range reaching the structural `\n` keeps it. When `text` ends in a
-    /// `\n`, that one stands for the kept structural `\n`, so the result has
-    /// no extra line and the returned mark covers the structural `\n`.
-    pub fn replace(
-        &mut self,
-        range: impl Into<ExclusiveRange<CharOffset>>,
-        text: &str,
-    ) -> Mark<'id> {
-        let range = range.into();
-        let text = normalize_line_endings(text);
-        let reaches_break = range.end > self.text.last_char();
-        let deleted = self.record_delete(range, None);
-        let key = self.items[deleted].key;
-        let start = self.pos(deleted, false);
-        match text.strip_suffix('\n') {
-            Some(body) if reaches_break => {
-                self.push(key, ItemKind::Insert(body.to_owned()));
-                let end = NewPos {
-                    handle: Handle::Old(self.text.end(), Assoc::Before),
-                    brand: self.brand,
-                };
-                Mark { start, end }
-            }
-            _ => {
-                let inserted = self.push(key, ItemKind::Insert(text.into_owned()));
-                Mark {
-                    start,
-                    end: self.pos(inserted, true),
-                }
-            }
+    pub fn replace(&mut self, range: ClusterRange, text: &str) -> Mark<'id> {
+        let start = self.delete(range);
+        let inserted = self.push(range.start().offset(), ItemKind::Insert(LfText::new(text)));
+        Mark {
+            start,
+            end: self.pos(inserted, true),
         }
     }
 
@@ -224,110 +232,54 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
         }
     }
 
-    /// Take `sel` out of the text as `d` does. A selection of whole lines
-    /// removes them; when they run to the last line, the break before the
-    /// first of them goes too, so no empty line is left behind, and the
-    /// lines go in the register. Any other selection removes what it covers
-    /// except the structural `\n`, and puts what it removed in the register.
-    /// `None` when nothing can be removed: a cursor on the structural `\n` of
-    /// a line with text, or of the only line.
-    pub fn remove(&mut self, sel: SelectionView<'a>) -> Option<Removed<'a, 'id>> {
-        let (removed, text) = sel.removal()?;
-        if sel.is_linewise() {
-            let lines = sel.lines();
-            let index = self.record_delete(removed, Some((lines.start, lines.end)));
-            return Some(Removed {
-                text,
-                cursor: Landing::line_start_of(self.pos(index, false)),
-            });
-        }
-        let index = self.record_delete(removed, None);
-        Some(Removed {
-            text,
-            cursor: Landing::cursor(self.pos(index, false)),
-        })
-    }
-
-    /// Take what `sel` covers out of the text as `c` does: everything but
-    /// the `\n` it ends on. `None` when that `\n` is all it covers.
-    pub fn remove_content(&mut self, sel: SelectionView<'a>) -> Option<Removed<'a, 'id>> {
-        let content = sel.content()?;
-        let index = self.record_delete(content.chars(), None);
-        Some(Removed {
-            text: self.text.slice(content.chars()),
-            cursor: Landing::cursor(self.pos(index, false)),
-        })
-    }
-
-    /// Whole-line removals that run to the last line take the break before
-    /// the first of them, so the line left last has none of its own trailing
-    /// break doubled.
-    fn extend_removed_run(&mut self) {
-        let last_line = self.text.last_content_line();
-        let mut runs: Vec<(ContentLine, ContentLine, usize)> = self
-            .items
-            .iter()
-            .enumerate()
-            .filter_map(|(index, item)| match item.kind {
-                ItemKind::Delete {
-                    lines: Some((first, last)),
-                    ..
-                } => Some((first, last, index)),
-                _ => None,
-            })
-            .collect();
-        runs.sort_by_key(|&(first, _, _)| first);
-        let Some(mut at) = runs.iter().rposition(|&(_, last, _)| last >= last_line) else {
-            return;
-        };
-        while at > 0 && runs[at - 1].1.advance(1) >= runs[at].0 {
-            at -= 1;
-        }
-        let (first, _, owner) = runs[at];
-        if first.index() > 0 {
-            let before = crate::lines::line_break(self.text, first.retreat_saturating(1));
-            self.items[owner].key = before.offset();
-        }
-    }
-
-    /// The `ChangeSet` of the recorded operations, and where each item
-    /// starts and ends in the new text.
-    fn drive(&self) -> (ChangeSet, Vec<(CharOffset, CharOffset)>) {
+    /// The `ChangeSet` of the recorded operations, with every deletion
+    /// stopping at `ceiling`, and where each item starts and ends in the new
+    /// text.
+    fn drive(&self, ceiling: Option<CharOffset>) -> (ChangeSet, Vec<(CharOffset, CharOffset)>) {
         let mut order: Vec<usize> = (0..self.items.len()).collect();
         order.sort_by_key(|&index| (self.items[index].key, index));
         let mut changes = ChangeSetBuilder::new(self.text.end());
         let mut placed = vec![(CharOffset::default(), CharOffset::default()); self.items.len()];
+        // The old start and new position of the deletion ending at `old_pos`.
+        let mut deletion: Option<(CharOffset, CharOffset)> = None;
         for index in order {
             let item = &self.items[index];
             if item.key > changes.old_pos() {
                 changes.retain_to(item.key);
+                deletion = None;
             }
             let before = changes.new_pos();
             match &item.kind {
-                ItemKind::Delete { end, .. } => {
-                    if *end > changes.old_pos() {
-                        changes.delete_to(*end);
+                ItemKind::Delete { end } => {
+                    let end = ceiling.map_or(*end, |ceiling| (*end).min(ceiling));
+                    if end > changes.old_pos() {
+                        deletion.get_or_insert((item.key, changes.new_pos()));
+                        changes.delete_to(end);
                     }
                 }
                 ItemKind::Insert(text) => {
-                    changes.insert(text);
+                    changes.insert_normalized(text.clone());
                 }
                 ItemKind::Anchor => {}
             }
-            placed[index] = (before, changes.new_pos());
+            placed[index] = match (&item.kind, deletion) {
+                (ItemKind::Anchor, Some((start, at)))
+                    if item.key > start && item.key < changes.old_pos() =>
+                {
+                    (at, at)
+                }
+                _ => (before, changes.new_pos()),
+            };
         }
         (changes.finish(), placed)
     }
 
-    fn finish(mut self, results: Landings<'id>) -> Edited {
-        self.extend_removed_run();
-        let (changes, placed) = self.drive();
-        let text = changes
-            .apply(self.text)
-            .expect("an edit plan produces a changeset for its own text");
+    fn finish(self, results: Landings<'id>) -> Edited {
+        let (text, changes, placed) =
+            super::apply_keeping_final_break(self.text, |ceiling| self.drive(ceiling));
         let selections = {
             let change = TextChange::new(self.text, &text, &changes);
-            let mut resolver = Resolver::new(Some(&change), &text);
+            let mut resolver = Resolver::new(&change, &text);
             let selections = results
                 .items
                 .into_iter()
@@ -349,7 +301,6 @@ pub struct Landing<'id>(Kind<'id>);
 
 enum Kind<'id> {
     Cursor(NewPos<'id>),
-    After(NewPos<'id>),
     CursorEndingAt(NewPos<'id>),
     Covering(Mark<'id>, Facing),
     LineStartOf(NewPos<'id>),
@@ -357,18 +308,15 @@ enum Kind<'id> {
 }
 
 impl<'id> Landing<'id> {
-    /// A cursor on the cluster holding `at`.
+    /// A cursor on the cluster holding `at`, or on the structural `\n` when
+    /// `at` is the text end.
     pub fn cursor(at: NewPos<'id>) -> Self {
         Self(Kind::Cursor(at))
     }
 
-    /// A cursor on the cluster after inserted text ending at `end`; the
-    /// structural `\n` when the text ends there.
-    pub fn after(end: NewPos<'id>) -> Self {
-        Self(Kind::After(end))
-    }
-
-    /// A cursor on the cluster that ends at `end`: the last cluster before it.
+    /// A cursor on the last cluster before `end` on `end`'s own line. When
+    /// `end` starts a line, that line has no cluster before it and the cursor
+    /// sits at `end`; at the text's end that is the structural `\n` before it.
     pub fn cursor_ending_at(end: NewPos<'id>) -> Self {
         Self(Kind::CursorEndingAt(end))
     }
@@ -401,27 +349,25 @@ impl<'id> Landing<'id> {
         resolver: &mut Resolver<'_>,
     ) -> Selection {
         let text = resolver.text();
-        let mut place = |pos: NewPos<'id>| match pos.handle {
-            Handle::Item { index, after } => {
-                let (start, end) = placed[index];
-                if after { end } else { start }
-            }
-            Handle::Old(pos, assoc) => resolver.map_old(pos, assoc),
+        let place = |pos: NewPos<'id>| {
+            let (start, end) = placed[pos.index];
+            if pos.after { end } else { start }
         };
         match self.0 {
             Kind::Cursor(at) => {
                 let at = place(at);
-                debug_assert!(at < text.end(), "a cursor landed past the last cluster");
+                debug_assert!(at <= text.end(), "a cursor landed past the text end");
                 Selection::cursor(text.snap(at))
             }
-            Kind::After(end) => Selection::cursor(text.snap(place(end))),
             Kind::CursorEndingAt(end) => {
                 let end = place(end);
-                assert!(
-                    end > CharOffset::default(),
-                    "no cluster ends at the text start"
-                );
-                Selection::cursor(text.snap(end.retreat(1)))
+                let starts_line =
+                    end == CharOffset::default() || text.char_at(end.retreat(1)) == Some('\n');
+                if starts_line && end < text.end() {
+                    Selection::cursor(text.snap(end))
+                } else {
+                    Selection::cursor(text.snap(end.retreat(1)))
+                }
             }
             Kind::Covering(mark, facing) => {
                 let start = place(mark.start);

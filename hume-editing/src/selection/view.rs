@@ -1,14 +1,12 @@
 //! Reads of a selection set paired with the text it was computed for.
 
-use std::borrow::Cow;
-
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::grapheme::Cluster;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
+use hume_rope::offset::InclusiveRange;
 use ropey::RopeSlice;
 
-use super::{Facing, Selection, SelectionSet, assert_fits, check_positions};
+use super::{Facing, Selection, SelectionSet, assert_fits, check_fit};
 use crate::error::InvariantViolation;
 use crate::text::BufferText;
 
@@ -17,7 +15,7 @@ use crate::text::BufferText;
 /// [`Self::bind`], which checks the set belongs to the text.
 pub struct EditView<'a> {
     text: &'a BufferText,
-    selections: Cow<'a, SelectionSet>,
+    selections: &'a SelectionSet,
 }
 
 impl<'a> EditView<'a> {
@@ -32,10 +30,7 @@ impl<'a> EditView<'a> {
 
     /// A view over a set already known to fit `text`.
     pub(crate) fn fitted(text: &'a BufferText, selections: &'a SelectionSet) -> Self {
-        Self {
-            text,
-            selections: Cow::Borrowed(selections),
-        }
+        Self { text, selections }
     }
 
     pub fn text(&self) -> &'a BufferText {
@@ -51,6 +46,11 @@ impl<'a> EditView<'a> {
     pub fn primary(&self) -> SelectionView<'a> {
         let index = self.selections.primary_pos();
         self.at(index)
+    }
+
+    /// The primary selection's position in [`iter`](Self::iter)'s order.
+    pub fn primary_index(&self) -> usize {
+        self.selections.primary_pos()
     }
 
     /// Every selection in document order.
@@ -69,10 +69,7 @@ impl<'a> EditView<'a> {
     /// Every invariant of the set against the text, the version tag
     /// included.
     pub fn check(&self) -> Result<(), InvariantViolation> {
-        if self.selections.version() != self.text.version() {
-            return Err(InvariantViolation::VersionMismatch);
-        }
-        check_positions(self.text, &self.selections)
+        check_fit(self.text, self.selections)
     }
 
     fn at(&self, index: usize) -> SelectionView<'a> {
@@ -125,7 +122,7 @@ impl<'a> SelectionView<'a> {
 
     /// The first covered cluster.
     pub fn start(self) -> ClusterStart {
-        self.sel.first()
+        self.sel.start()
     }
 
     /// The last covered cluster.
@@ -152,7 +149,7 @@ impl<'a> SelectionView<'a> {
 
     /// Every cluster this selection covers.
     pub fn covered(self) -> ClusterRange {
-        ClusterRange::through(self.text.full_slice(), self.sel.first(), self.sel.last())
+        ClusterRange::through(self.text.full_slice(), self.sel.start(), self.sel.last())
             .expect("a selection's first cluster is not after its last")
     }
 
@@ -167,7 +164,7 @@ impl<'a> SelectionView<'a> {
         if self.ends_on_break() {
             ClusterRange::between(
                 self.text.full_slice(),
-                self.sel.first(),
+                self.sel.start(),
                 self.sel.last().into(),
             )
         } else {
@@ -182,14 +179,14 @@ impl<'a> SelectionView<'a> {
         if self.ends_on_break() {
             self.sel.last()
         } else {
-            self.text.cluster_at_or_last(self.covered().end())
+            self.text.snap(self.covered().end().offset())
         }
     }
 
     /// The lines of the first and last covered clusters.
     pub fn lines(self) -> InclusiveRange<ContentLine> {
         InclusiveRange::new(
-            self.text.char_to_line(self.sel.first().offset()),
+            self.text.char_to_line(self.sel.start().offset()),
             self.text.char_to_line(self.sel.last().offset()),
         )
     }
@@ -198,25 +195,24 @@ impl<'a> SelectionView<'a> {
     /// of them.
     pub fn line_spans(self) -> impl Iterator<Item = LineSpan> + 'a {
         let text = self.text;
-        let covered = self.covered().chars();
+        let covered = self.covered();
         let lines = self.lines();
         // Bare-`usize` range, `ContentLine` re-minted each iteration:
         // `ContentLine` has no `Step` impl to range over, and both endpoints
         // are already valid lines.
         (lines.start.index()..=lines.end.index()).map(move |index| {
             let line = ContentLine::new(index);
-            let start = crate::lines::line_start(text, line).offset();
-            let line_break = crate::lines::line_break(text, line).offset();
-            let content =
-                ExclusiveRange::new(covered.start.max(start), covered.end.min(line_break));
+            let start = crate::lines::line_start(text, line);
+            let line_break = crate::lines::line_break(text, line);
+            let content = ClusterRange::between(
+                text.full_slice(),
+                covered.start().max(start),
+                covered.end().min(line_break.into()),
+            );
             LineSpan {
                 line,
-                content: if content.is_empty() {
-                    None
-                } else {
-                    text.covering(content)
-                },
-                has_break: covered.start <= line_break && line_break < covered.end,
+                content,
+                has_break: covered.start() <= line_break && line_break <= covered.last(),
             }
         })
     }
@@ -227,12 +223,8 @@ impl<'a> SelectionView<'a> {
 
     /// Whether the first covered cluster starts its line.
     pub fn starts_line(self) -> bool {
-        let first = self.sel.first();
-        first
-            == hume_rope::lines::line_start(
-                self.text.rope(),
-                self.text.char_to_line(first.offset()),
-            )
+        let start = self.sel.start();
+        start == crate::lines::line_start(self.text, self.text.char_to_line(start.offset()))
     }
 
     /// Whether this selection covers whole lines: it starts a line and ends
@@ -256,37 +248,19 @@ impl<'a> SelectionView<'a> {
         self.text.slice(self.covered().chars())
     }
 
-    /// What `d` takes out for this selection: the range removed and the text
-    /// a register receives, or `None` when `d` removes nothing. The range
-    /// stops short of the structural `\n`; the text is the whole covered
-    /// text.
-    pub fn removal(self) -> Option<(ExclusiveRange<CharOffset>, RopeSlice<'a>)> {
-        let covered = self.covered();
-        let range = ExclusiveRange::new(
-            covered.start().offset(),
-            covered.end().offset().min(self.text.last_char()),
-        );
-        if self.is_linewise() {
-            (!range.is_empty() || self.lines().start.index() != 0).then(|| (range, self.slice()))
-        } else {
-            (!range.is_empty()).then(|| (range, self.text.slice(range)))
-        }
-    }
-
     /// The covered clusters, in order.
     pub fn clusters(self) -> impl Iterator<Item = Cluster> + 'a {
         let end = self.covered().end();
-        hume_rope::grapheme::graphemes_at(self.text.full_slice(), self.sel.first().into())
+        hume_rope::grapheme::graphemes_at(self.text.full_slice(), self.sel.start().into())
             .take_while(move |cluster| cluster.end() <= end)
     }
 
     /// `sel` read against this view's text, which it must have been computed
     /// for: the next step of a motion that moves a selection several times.
     pub fn with_selection(self, sel: Selection) -> Self {
-        debug_assert!(
-            [sel.anchor(), sel.head()]
-                .iter()
-                .all(|&end| self.text.snap(end.offset()) == end),
+        debug_assert_eq!(
+            super::fit::check_selection(self.text, &sel, self.index()),
+            Ok(()),
             "with_selection: a selection that does not fit this text"
         );
         Self { sel, ..self }

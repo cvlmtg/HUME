@@ -36,6 +36,10 @@ pub(in crate::editor) struct MinibufCompletionLayer {
 }
 
 impl Layer for BufferCompletionLayer {
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
+        None
+    }
+
     fn handler(&self) -> LayerHandler {
         completion_input_buffer
     }
@@ -68,6 +72,10 @@ impl Layer for BufferCompletionLayer {
 }
 
 impl Layer for MinibufCompletionLayer {
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
+        None
+    }
+
     fn handler(&self) -> LayerHandler {
         completion_input_minibuf
     }

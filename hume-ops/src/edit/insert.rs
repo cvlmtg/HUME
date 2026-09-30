@@ -3,10 +3,11 @@
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
 use hume_editing::grapheme::display_col_in_line;
-use hume_editing::lines::leading_whitespace_end;
+use hume_editing::lines::{leading_whitespace_end, line_start};
 use hume_editing::state::EditState;
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use super::apply_edit;
@@ -32,9 +33,9 @@ pub fn insert_str(state: EditState, inserted: &str) -> Edited {
         let mark = if sel.is_cursor() {
             b.insert(sel.start(), inserted)
         } else {
-            b.replace(sel.covered().chars(), inserted)
+            b.replace(sel.covered(), inserted)
         };
-        Landing::after(mark.end())
+        Landing::cursor(mark.end())
     })
 }
 
@@ -46,27 +47,38 @@ pub fn insert_str(state: EditState, inserted: &str) -> Edited {
 /// non-whitespace char, and every line's char content ends in `\n` (buffer
 /// invariant), so a whitespace-only line is the one case where the scan runs
 /// all the way to that `\n` without finding one.
-fn is_blank_indented_line(text: &BufferText, line_start: CharOffset, ws_end: CharOffset) -> bool {
-    ws_end > line_start && text.char_at(ws_end) == Some('\n')
+fn is_blank_indented_line(text: &BufferText, indent: LineIndent) -> bool {
+    indent.ws_end > indent.start && text.char_at(indent.ws_end.offset()) == Some('\n')
 }
 
-/// `[line_start, ws_end)`: the leading-whitespace range of the line
-/// containing `pos`. Single source of truth for that computation: every
-/// caller that needs a line's indent bounds (the blank-line ownership
-/// check and "already consumed by a prior selection" guard below, `O`'s own
-/// indent copy, and the sibling test module's `owns_every_line` stand-in for
-/// `arm_autoindent`) goes through this instead of re-deriving it.
-pub(in crate::edit) fn line_indent_range(
-    text: &BufferText,
-    pos: CharOffset,
-) -> ExclusiveRange<CharOffset> {
+/// Where a line starts and where its leading whitespace ends.
+#[derive(Clone, Copy)]
+pub(in crate::edit) struct LineIndent {
+    start: ClusterStart,
+    ws_end: ClusterStart,
+}
+
+impl LineIndent {
+    /// The leading whitespace as chars; empty when the line has none.
+    pub(in crate::edit) fn chars(self) -> ExclusiveRange<CharOffset> {
+        ExclusiveRange::new(self.start.offset(), self.ws_end.offset())
+    }
+}
+
+/// The indent of the line containing `pos`. Single source of truth for that
+/// computation: every caller that needs a line's indent bounds (the
+/// blank-line ownership check below, `O`'s own indent copy, and the sibling
+/// test module's `owns_every_line` stand-in for `arm_autoindent`) goes
+/// through this instead of re-deriving it.
+pub(in crate::edit) fn line_indent_range(text: &BufferText, pos: CharOffset) -> LineIndent {
     let line_idx = text.char_to_line(pos);
-    let line_start = text.line_to_char(line_idx.into());
-    let ws_end = leading_whitespace_end(text, line_idx);
-    ExclusiveRange::new(line_start, ws_end.offset())
+    LineIndent {
+        start: line_start(text, line_idx),
+        ws_end: leading_whitespace_end(text, line_idx),
+    }
 }
 
-/// `true` if `[line_start, ws_end)` is a blank, auto-indented line (see
+/// The indent `[line_start, ws_end)` when it is a blank, auto-indented line (see
 /// [`is_blank_indented_line`]) AND that whitespace lies entirely within
 /// `allowed`, the range some insert session recorded as its own
 /// auto-inserted indent, in `pos`'s coordinate space.
@@ -85,30 +97,30 @@ pub(in crate::edit) fn line_indent_range(
 /// vacate": [`owned_blank_indent`] (the editor's exit pre-flight check) and
 /// [`try_trim_blank_line`] (the trim itself) both read this, so gate and trim
 /// can never drift on what counts as owned.
-fn is_owned_blank_line(
+fn owned_indent(
     text: &BufferText,
-    line_start: CharOffset,
-    ws_end: CharOffset,
+    indent: LineIndent,
     allowed: Option<ExclusiveRange<CharOffset>>,
-) -> bool {
-    let Some(allowed) = allowed else {
-        return false;
-    };
-    is_blank_indented_line(text, line_start, ws_end)
-        && line_start == allowed.start
-        && ws_end <= allowed.end
+) -> Option<ClusterRange> {
+    let allowed = allowed?;
+    let owned = is_blank_indented_line(text, indent)
+        && indent.start.offset() == allowed.start
+        && indent.ws_end.offset() <= allowed.end;
+    if !owned {
+        return None;
+    }
+    ClusterRange::between(text.full_slice(), indent.start, indent.ws_end.into())
 }
 
 /// `Some(range)` (`[line_start, ws_end)`) if `pos` sits on a blank line
-/// whose whitespace is owned by `allowed` (see `is_owned_blank_line`, this
+/// whose whitespace is owned by `allowed` (see `owned_indent`, this
 /// module), `None` otherwise.
 pub fn owned_blank_indent(
     text: &BufferText,
     pos: CharOffset,
     allowed: Option<ExclusiveRange<CharOffset>>,
 ) -> Option<ExclusiveRange<CharOffset>> {
-    let range = line_indent_range(text, pos);
-    is_owned_blank_line(text, range.start, range.end, allowed).then_some(range)
+    owned_indent(text, line_indent_range(text, pos), allowed).map(ClusterRange::chars)
 }
 
 /// Insert a newline followed by the current line's leading whitespace at every
@@ -125,7 +137,7 @@ pub fn owned_blank_indent(
 /// (the structural `\n` when the selection reached the end of the buffer).
 ///
 /// `allowed`: per-selection (by sorted index) range of whitespace some
-/// earlier auto-indent recorded as its own; see `is_owned_blank_line` (this
+/// earlier auto-indent recorded as its own; see `owned_indent` (this
 /// module). If a collapsed cursor's blank line is owned by its entry, that
 /// whitespace is vacated instead of retained, matching vim's `:help
 /// autoindent` behavior on Enter. Empty (or an index with no entry) for the
@@ -133,24 +145,19 @@ pub fn owned_blank_indent(
 /// earlier session inserted it.
 pub fn insert_newline_indent(state: EditState, allowed: &[ExclusiveRange<CharOffset>]) -> Edited {
     apply_edit(state, |b, sel| {
-        let start = sel.start().offset();
-        let line = line_indent_range(b.text(), start);
-        let inserted = format!("\n{}", b.text().slice(line));
+        let start = sel.start();
+        let indent = line_indent_range(b.text(), start.offset());
+        let inserted = format!("\n{}", b.text().slice(indent.chars()));
         let mark = if sel.is_cursor() {
-            let vacates = is_owned_blank_line(
-                b.text(),
-                line.start,
-                line.end,
-                allowed.get(sel.index()).copied(),
-            );
-            if vacates {
-                b.delete(line);
+            let owned = owned_indent(b.text(), indent, allowed.get(sel.index()).copied());
+            if let Some(owned) = owned {
+                b.delete(owned);
             }
             b.insert(start, &inserted)
         } else {
-            b.replace(sel.covered().chars(), &inserted)
+            b.replace(sel.covered(), &inserted)
         };
-        Landing::after(mark.end())
+        Landing::cursor(mark.end())
     })
 }
 
@@ -176,10 +183,10 @@ pub fn insert_newline_indent(state: EditState, allowed: &[ExclusiveRange<CharOff
 /// same-line cursors into one before this ever runs.
 pub fn open_line_above(state: EditState) -> Edited {
     apply_edit(state, |b, sel| {
-        let line = line_indent_range(b.text(), sel.start().offset());
-        let indent = b.text().slice(line).to_string();
-        let mark = b.insert(line.start, &indent);
-        b.insert(line.start, "\n");
+        let indent = line_indent_range(b.text(), sel.start().offset());
+        let copied = b.text().slice(indent.chars()).to_string();
+        let mark = b.insert(indent.start, &copied);
+        b.insert(indent.start, "\n");
         Landing::cursor(mark.end())
     })
 }
@@ -200,17 +207,10 @@ pub fn clear_blank_line_indent(state: EditState, allowed: &[ExclusiveRange<CharO
         if !sel.is_cursor() {
             return Landing::kept(sel.selection());
         }
-        let line = line_indent_range(b.text(), sel.head().offset());
-        let owned = is_owned_blank_line(
-            b.text(),
-            line.start,
-            line.end,
-            allowed.get(sel.index()).copied(),
-        );
-        if owned {
-            Landing::cursor(b.delete(line))
-        } else {
-            Landing::kept(sel.selection())
+        let indent = line_indent_range(b.text(), sel.head().offset());
+        match owned_indent(b.text(), indent, allowed.get(sel.index()).copied()) {
+            Some(owned) => Landing::cursor(b.delete(owned)),
+            None => Landing::kept(sel.selection()),
         }
     })
 }
@@ -253,7 +253,7 @@ fn space_to_stop(state: EditState, index: usize, tab_width: u8) -> Edited {
         let line = text.char_to_line(start);
         let display_col = display_col_in_line(text, line, start, tab_width);
         let n = hume_rope::width::tab_advance(display_col.get() as usize, tab_width);
-        let mark = b.insert(start, &" ".repeat(n));
+        let mark = b.insert(sel.start(), &" ".repeat(n));
         Landing::cursor(mark.end())
     })
 }

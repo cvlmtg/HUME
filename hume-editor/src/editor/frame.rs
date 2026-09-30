@@ -14,29 +14,31 @@ use hume_engine::types::EditorMode;
 use super::Editor;
 use super::buffer::Buffer;
 
-/// Project a pane's selections into its engine mirror, sorted by cursor as
-/// the engine asserts (see `populate_sorted_sels`). The model stores them in
-/// start order; the two orders differ whenever a selection is backward.
+/// Project a pane's selections into its engine mirror, in the model's start
+/// order. That is also the cursor order the mirror requires: selections never
+/// overlap, so every cursor lies before the next selection's start.
 pub(in crate::editor::frame) fn write_pane_mirror(
     pane: &mut hume_engine::pane::Pane,
     text: &hume_editing::text::BufferText,
     sels: &hume_editing::selection::SelectionSet,
 ) {
-    use hume_editing::selection::{EditView, Facing};
-    use hume_engine::types::PaintedSelection;
-    // Sorted after the mirror is filled rather than through a scratch `Vec` of
-    // references, so the pane's own storage (reused across frames) is the
-    // only buffer involved.
-    pane.selections.clear();
-    pane.selections
-        .extend(EditView::bind(text, sels).iter().map(|s| PaintedSelection {
-            covered: s.covered(),
-            cursor: s.head(),
-            is_cursor: s.is_cursor(),
-            is_reverse: s.facing() == Facing::Backward,
-            is_primary: s.is_primary(),
-        }));
-    pane.selections.sort_by_key(|s| s.cursor);
+    use hume_editing::selection::EditView;
+    use hume_engine::types::{PaintedSelection, PaintedSelections};
+    let view = EditView::bind(text, sels);
+    let items = view.iter().map(|s| PaintedSelection {
+        first: s.start(),
+        last: s.last(),
+        cursor: s.head(),
+    });
+    match &mut pane.selections {
+        Some(mirror) => mirror.rewrite(items, view.primary_index()),
+        None => {
+            pane.selections = Some(PaintedSelections::new(
+                items.collect(),
+                view.primary_index(),
+            ))
+        }
+    }
 }
 
 impl Editor {

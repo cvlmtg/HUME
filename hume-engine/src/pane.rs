@@ -6,7 +6,7 @@ use crate::display_lines::DisplayLinePos;
 use crate::layout::gutter_width_for_line;
 use crate::pipeline::BufferId;
 use crate::providers::ProviderSet;
-use crate::types::PaintedSelection;
+use crate::types::PaintedSelections;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 use ropey::Rope;
@@ -448,10 +448,9 @@ pub struct Pane {
     /// Per-buffer scroll memory: where this pane was when it last viewed each buffer.
     /// Populated by `remember_scroll` on buffer switch; restored by `recall_scroll`.
     pub saved_scrolls: SecondaryMap<BufferId, ScrollPosition>,
-    /// All active selections as the renderer paints them, sorted by cursor
-    /// (`populate_sorted_sels` asserts the order), one of them
-    /// primary. Empty until the host writes the first frame's mirror.
-    pub selections: Vec<PaintedSelection>,
+    /// All active selections as the renderer paints them. `None` until the
+    /// host writes the first frame's mirror.
+    pub selections: Option<PaintedSelections>,
     /// Registered providers for this pane.
     pub providers: ProviderSet,
     /// This pane's wrap-mode override, per buffer it has shown. A view
@@ -488,7 +487,7 @@ impl Pane {
             buffer_id,
             viewport: Viewport::new(80, 24),
             saved_scrolls: SecondaryMap::new(),
-            selections: Vec::new(),
+            selections: None,
             providers: ProviderSet::new(),
             wraps: SecondaryMap::new(),
             line_store: crate::display_lines::line_store::PaneLineStore::new(),
@@ -586,16 +585,8 @@ impl Pane {
 /// O(log n) rope lookup. Takes the two fields rather than `&Pane` so the
 /// render pass can call it while holding a `&mut` on a *different* field of
 /// the same pane (its line store).
-///
-/// Panics (debug and release) if no selection is primary: the mirror was
-/// never written, a violated invariant rather than a recoverable case, so
-/// this fails loudly rather than defaulting to line 0 and hiding the bug.
-pub fn primary_head_line(selections: &[PaintedSelection], rope: &Rope) -> ContentLine {
-    let head = selections
-        .iter()
-        .find(|s| s.is_primary)
-        .expect("pane selection mirror has no primary selection")
-        .cursor;
+pub fn primary_head_line(selections: &PaintedSelections, rope: &Rope) -> ContentLine {
+    let head = selections.primary().cursor;
     debug_assert!(
         head.offset().index() < rope.len_chars(),
         "stale selection mirror: head {head:?} beyond rope len {}: \

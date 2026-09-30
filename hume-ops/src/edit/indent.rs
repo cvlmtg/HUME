@@ -3,10 +3,10 @@
 use hume_editing::changeset::Assoc;
 use hume_editing::edit::Edited;
 use hume_editing::edit::{Landing, Landings, edit};
-use hume_editing::lines::leading_indent;
+use hume_editing::lines::{leading_indent, line_start};
 use hume_editing::state::EditState;
 use hume_editing::tab_style::TabStyle;
-use hume_rope::offset::ExclusiveRange;
+use hume_rope::cluster::ClusterRange;
 use hume_rope::width::indent_stop;
 
 /// Indent every line touched by a selection by `levels` indent levels (`>`).
@@ -103,7 +103,7 @@ fn shift_indent(
     // up, so the mint can't fail.
     for line_idx in lines {
         let line = hume_rope::line::ContentLine::new(line_idx);
-        let line_start = text.line_to_char(line.into());
+        let line_start = line_start(text, line);
         let (ws_end, old_width) = leading_indent(text, line, tab_width);
         // Blank line (empty, or whitespace-only): skipped untouched, matching
         // Vim's `>>`, so a blank separator line never collects trailing
@@ -120,7 +120,8 @@ fn shift_indent(
             continue;
         }
         let new_indent = render_indent(new_width.get() as usize, style, tab_width);
-        rewrites.push((line_start, ws_end.offset(), new_indent));
+        let old_indent = ClusterRange::between(text.full_slice(), line_start, ws_end.into());
+        rewrites.push((line_start, old_indent, new_indent));
     }
 
     if rewrites.is_empty() {
@@ -131,12 +132,14 @@ fn shift_indent(
 
     let primary = view.primary().index();
     edit(&state, |b| {
-        for (line_start, ws_end, new_indent) in &rewrites {
+        for (line_start, old_indent, new_indent) in &rewrites {
             // Insert before delete: the new indent's insertion then sits at
             // the line's start, so a selection end there resolves by its
             // `Assoc` instead of collapsing into the deletion that follows.
             b.insert(*line_start, new_indent);
-            b.delete(ExclusiveRange::new(*line_start, *ws_end));
+            if let Some(old_indent) = old_indent {
+                b.delete(*old_indent);
+            }
         }
         // A linewise selection's start is a rewritten line's start and stays
         // there: `Assoc::Before` sticks to the left of the new indent. Every

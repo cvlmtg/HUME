@@ -222,7 +222,7 @@ pub fn align_selections(state: EditState, tab_width: u8) -> Edited {
             let amount = target.get() as isize - anchor_display_col_now.get() as isize;
 
             if amount > 0 {
-                b.insert(sel_start, &" ".repeat(amount as usize));
+                b.insert(sel.start(), &" ".repeat(amount as usize));
                 line_shift += amount;
             } else if amount < 0 {
                 // Remove whitespace immediately before sel_start, resolving
@@ -241,16 +241,22 @@ pub fn align_selections(state: EditState, tab_width: u8) -> Edited {
                 let threshold = start_display_col.retreat_saturating(need);
                 let cut = char_pos_at_display_col(text, start_line, threshold, tab_width);
                 let remove = sel_start.chars_since(cut.offset()).min(meta[i].rem);
-                let cut_pos = sel_start.retreat(remove);
-                let freed = start_display_col
-                    .cells_since(display_col_in_line(text, start_line, cut_pos, tab_width));
-                // 0 unless a tab's granularity overshot the exact target.
-                let pad = freed.saturating_sub(need);
-                b.delete(ExclusiveRange::new(cut_pos, sel_start));
-                if pad > 0 {
-                    b.insert(sel_start, &" ".repeat(pad as usize));
+                let run = ExclusiveRange::new(sel_start.retreat(remove), sel_start);
+                if let Some(removed) = text.within(run) {
+                    let freed = start_display_col.cells_since(display_col_in_line(
+                        text,
+                        start_line,
+                        removed.start().offset(),
+                        tab_width,
+                    ));
+                    // 0 unless a tab's granularity overshot the exact target.
+                    let pad = freed.saturating_sub(need);
+                    b.delete(removed);
+                    if pad > 0 {
+                        b.insert(sel.start(), &" ".repeat(pad as usize));
+                    }
+                    line_shift += pad as isize - freed as isize;
                 }
-                line_shift += pad as isize - freed as isize;
             }
         }
 

@@ -56,13 +56,13 @@ fn render_test_pane(
     };
     // The host writes a mirror before every frame; these tests stand in for
     // it with a primary cursor at the text start unless a test wrote its own.
-    if pane.selections.is_empty() {
-        pane.selections = crate::test_support::cursor_mirror(rope, 0);
-    }
+    let selections = pane
+        .selections
+        .get_or_insert_with(|| crate::test_support::cursor_mirror(rope, 0));
     let mut pane_ctx = PaneRenderCtx {
         viewport: &mut pane.viewport,
         providers: &pane.providers,
-        selections: &pane.selections,
+        selections,
         rope,
         syntax: None,
         theme,

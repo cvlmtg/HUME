@@ -82,21 +82,8 @@ pub(in crate::editor) fn write_register(
     values: Vec<Piece>,
 ) -> Option<String> {
     if name == CLIPBOARD_REGISTER {
-        // Build the OS clipboard blob per-element: insert a '\n' separator
-        // only when the previous value's text does not already end in one,
-        // whatever its shape. Mixed selections (e.g. ["line\n", "word"])
-        // give "line\nword", not "line\n\nword".
-        let mut blob = String::new();
-        for (i, v) in values.iter().enumerate() {
-            if i > 0 && !values[i - 1].text().ends_with('\n') {
-                blob.push('\n');
-            }
-            blob.push_str(v.text());
-        }
-        let warning = clipboard.write(&blob).err().map(|e| clipboard_warn(&e));
-        registers.write_text(CLIPBOARD_REGISTER, values);
-        registers.set_clipboard_blob(blob);
-        warning
+        let blob = registers.write_clipboard(values);
+        clipboard.write(blob).err().map(|e| clipboard_warn(&e))
     } else {
         registers.write_text(name, values);
         None

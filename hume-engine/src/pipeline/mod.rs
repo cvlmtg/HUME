@@ -578,7 +578,9 @@ impl EngineView {
             let mut pane_ctx = PaneRenderCtx {
                 viewport,
                 providers,
-                selections,
+                selections: selections
+                    .as_ref()
+                    .expect("the host writes the selection mirror before a pane's first frame"),
                 rope,
                 syntax: get_syntax(buffer_id),
                 theme: &self.theme,
@@ -735,8 +737,7 @@ pub(crate) struct PaneRenderCtx<'a> {
     /// method's doc for why a stale top must never reach the walk.
     pub viewport: &'a mut crate::pane::Viewport,
     pub providers: &'a crate::providers::ProviderSet,
-    /// Cursor-sorted, as `populate_sorted_sels` asserts.
-    pub selections: &'a [crate::types::PaintedSelection],
+    pub selections: &'a crate::types::PaintedSelections,
     /// Rope borrowed from the caller's `Document` for this frame only.
     pub rope: &'a ropey::Rope,
     /// Syntax highlight span source borrowed from the caller via

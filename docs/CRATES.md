@@ -63,7 +63,7 @@ Core text-editing model: the document (`BufferText`, a rope of Unicode scalar va
 - hume-ui
 - hume-decorations
 ## Description
-Rendering pipeline and pane geometry: the split/pane layout tree, the frame-render pipeline, decoration/statusline/tabline provider traits, and theming. Has no dependency on `hume-editing`: it renders from ropes and provider-supplied data, and paints selections the editor hands it as `PaintedSelection`s, with no notion of edits or undo.
+Rendering pipeline and pane geometry: the split/pane layout tree, the frame-render pipeline, decoration/statusline/tabline provider traits, and theming. Has no dependency on `hume-editing`: it renders from ropes and provider-supplied data, and paints selections the editor hands it as one `PaintedSelections` set with one primary, with no notion of edits or undo.
 
 # hume-ops
 ### Depends on

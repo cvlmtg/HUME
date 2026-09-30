@@ -4,7 +4,7 @@ use hume_rope::cluster::ClusterStart;
 
 use crate::selection::{
     EditView, RecordedSelections, Selection, SelectionSet, SelectionView, assert_fits,
-    check_positions,
+    assert_positions,
 };
 use crate::text::BufferText;
 
@@ -37,8 +37,7 @@ impl EditState {
 
     /// `text` with one cursor on its first cluster.
     pub fn at_text_start(text: BufferText) -> Self {
-        let first =
-            hume_rope::grapheme::first_cluster(text.full_slice()).expect("a buffer is never empty");
+        let first = crate::grapheme::first_cluster(&text);
         Self::with_cursor(text, first)
     }
 
@@ -70,13 +69,14 @@ impl EditState {
 
     /// `text` with a set computed for it.
     pub(crate) fn from_set(text: BufferText, selections: SelectionSet) -> Self {
-        Self::checked(text, selections)
+        assert_positions(&text, &selections);
+        Self { text, selections }
     }
 
     /// `text` with `selections`, which must have been computed for it.
     pub(crate) fn from_text(text: BufferText, selections: Vec<Selection>, primary: usize) -> Self {
         let selections = SelectionSet::from_parts(selections, primary, text.version());
-        Self::checked(text, selections)
+        Self::from_set(text, selections)
     }
 
     pub fn view(&self) -> EditView<'_> {
@@ -92,7 +92,7 @@ impl EditState {
     pub fn map(self, mut f: impl FnMut(SelectionView<'_>) -> Selection) -> Self {
         let primary = self.selections.primary_pos();
         let selections = self.view().iter().map(&mut f).collect();
-        self.replaced(selections, primary)
+        self.with_selections(selections, primary)
     }
 
     /// Each selection replaced by the selections `f` returns for it. A
@@ -116,7 +116,7 @@ impl EditState {
                 primary = Some(before);
             }
         }
-        self.replaced(selections, primary.unwrap_or(0))
+        self.with_selections(selections, primary.unwrap_or(0))
     }
 
     /// The same text with `selections`, which must have been computed for
@@ -126,22 +126,25 @@ impl EditState {
     /// Panics if `selections` is empty or `primary` is out of range.
     #[must_use]
     pub fn with_selections(self, selections: Vec<Selection>, primary: usize) -> Self {
-        self.replaced(selections, primary)
+        Self::from_text(self.text, selections, primary)
     }
 
     /// The primary selection replaced by `sel`.
     #[must_use]
     pub fn replace_primary(self, sel: Selection) -> Self {
-        let (mut selections, primary) = self.selections.clone().into_parts();
+        let Self {
+            text, selections, ..
+        } = self;
+        let (mut selections, primary) = selections.into_parts();
         selections[primary] = sel;
-        self.replaced(selections, primary)
+        Self::from_text(text, selections, primary)
     }
 
     /// Only the primary selection.
     #[must_use]
     pub fn keep_primary(self) -> Self {
         let primary = self.selections.primary_selection();
-        self.replaced(vec![primary], 0)
+        self.with_selections(vec![primary], 0)
     }
 
     /// The selection at `idx` removed, unless it is the only one. Removing the
@@ -151,11 +154,13 @@ impl EditState {
     /// Panics if `idx` is out of range.
     #[must_use]
     pub fn remove(self, idx: usize) -> Self {
-        let (mut selections, primary) = self.selections.clone().into_parts();
-        assert!(idx < selections.len(), "remove index out of bounds");
-        if selections.len() == 1 {
+        let len = self.selections.selections().len();
+        assert!(idx < len, "remove index out of bounds");
+        if len == 1 {
             return self;
         }
+        let Self { text, selections } = self;
+        let (mut selections, primary) = selections.into_parts();
         selections.remove(idx);
         let primary = if idx < primary {
             primary - 1
@@ -164,16 +169,17 @@ impl EditState {
         } else {
             primary
         };
-        self.replaced(selections, primary)
+        Self::from_text(text, selections, primary)
     }
 
     /// The primary moved `delta` selections along document order, wrapping.
     #[must_use]
     pub fn cycle_primary(self, delta: isize) -> Self {
-        let (selections, primary) = self.selections.clone().into_parts();
+        let Self { text, selections } = self;
+        let (selections, primary) = selections.into_parts();
         let len = selections.len() as isize;
         let primary = (primary as isize + delta).rem_euclid(len) as usize;
-        self.replaced(selections, primary)
+        Self::from_text(text, selections, primary)
     }
 
     /// The selections, to store detached from the text. Reading them again
@@ -185,23 +191,10 @@ impl EditState {
     /// The selections as they stand, sticky columns included, to record and
     /// bind again to a text with this content (an undo step restores them).
     pub fn recorded(&self) -> RecordedSelections {
-        let view = self.view();
-        let selections = view.iter().map(|v| v.selection()).collect();
-        RecordedSelections::new(selections, view.primary().index())
-    }
-
-    fn replaced(self, selections: Vec<Selection>, primary: usize) -> Self {
-        let selections = SelectionSet::from_parts(selections, primary, self.text.version());
-        Self::checked(self.text, selections)
-    }
-
-    fn checked(text: BufferText, selections: SelectionSet) -> Self {
-        debug_assert_eq!(
-            check_positions(&text, &selections),
-            Ok(()),
-            "EditState: selections do not fit the text they were paired with"
-        );
-        Self { text, selections }
+        RecordedSelections::new(
+            self.selections.selections().to_vec(),
+            self.selections.primary_pos(),
+        )
     }
 }
 

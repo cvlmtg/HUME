@@ -3,35 +3,27 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
-use hume_editing::grapheme::prev_grapheme_boundary;
+use hume_editing::grapheme::clusters_before;
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
+use hume_rope::cluster::ClusterRange;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use super::apply_edit;
 
-/// Scans backward from `pos` over identifier (`Word`-class) chars, stopping
-/// at the first non-`Word` boundary: the start of the token immediately
-/// preceding `pos`. Grapheme-safe (steps via `prev_grapheme_boundary`, never
-/// a raw `-= 1`). `chars` folds this buffer's extra word characters into the
-/// scan, so a configured run (e.g. `foo-bar` with `-` as a word char) is
-/// treated as one token, matching every other word operation, including
-/// what the LSP completion fallback this backs is replacing on the buffer's
-/// behalf.
+/// The start of the run of identifier (`Word`-class) clusters ending at
+/// `pos`: the token immediately preceding it, or `pos` itself when the
+/// cluster before it is not a word character. `chars` folds this buffer's
+/// extra word characters into the scan, so a configured run (e.g. `foo-bar`
+/// with `-` as a word char) is treated as one token, matching every other
+/// word operation, including what the LSP completion fallback this backs is
+/// replacing on the buffer's behalf.
 pub fn word_start_before(text: &BufferText, pos: CharOffset, chars: WordChars<'_>) -> CharOffset {
-    let mut cursor = pos;
-    while cursor > CharOffset::new(0) {
-        let prev = prev_grapheme_boundary(text, cursor);
-        let Some(ch) = text.char_at(prev) else {
-            break;
-        };
-        if chars.classify(ch) != CharClass::Word {
-            break;
-        }
-        cursor = prev;
-    }
-    cursor
+    clusters_before(text, text.snap(pos).into())
+        .take_while(|cluster| chars.classify(cluster.first()) == CharClass::Word)
+        .last()
+        .map_or(pos, |cluster| cluster.start().offset())
 }
 
 /// Multi-cursor "replace around each head": for every selection, delete from
@@ -67,11 +59,11 @@ pub fn replace_span_around_cursors(
             start_of(text, sel.index(), head),
             head.shift(forward as isize),
         );
-        let span = text
-            .covering(chars)
-            .map_or(ExclusiveRange::new(head, head), |range| range.chars());
-        let mark = b.replace(span, replacement);
-        Landing::after(mark.end())
+        let mark = match text.covering(chars) {
+            Some(span) => b.replace(span, replacement),
+            None => b.insert(sel.head(), replacement),
+        };
+        Landing::cursor(mark.end())
     })
 }
 
@@ -126,11 +118,22 @@ pub fn replace_selections(state: EditState, ch: char) -> Edited {
             }
             _ => ch,
         };
-        let replacement = effective_ch.to_string();
         let mark = b.keep(sel.covered());
-        for cluster in sel.clusters() {
-            if cluster.first() != '\n' {
-                b.replace(cluster.range(), &replacement);
+        // One replace per run of clusters between `\n`s; the `None` after the
+        // last cluster closes the final run.
+        let mut run: Option<(ClusterRange, usize)> = None;
+        for cluster in sel.clusters().map(Some).chain(std::iter::once(None)) {
+            match cluster {
+                Some(cluster) if cluster.first() != '\n' => {
+                    let (range, count) = run.get_or_insert((cluster.range(), 0));
+                    *range = range.hull(cluster.range());
+                    *count += 1;
+                }
+                _ => {
+                    if let Some((range, count)) = run.take() {
+                        b.replace(range, &effective_ch.to_string().repeat(count));
+                    }
+                }
             }
         }
         Landing::covering(mark, sel.facing())

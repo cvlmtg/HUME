@@ -6,7 +6,7 @@
 //! # Coordinate system
 //!
 //! `regex-cursor` operates on byte offsets; HUME's selection model uses
-//! grapheme clusters. A match converts once, in [`match_range`]: its bytes
+//! grapheme clusters. A match converts through `BufferText::covering_bytes`: its bytes
 //! become chars, and the chars widen to the clusters that hold them, so a
 //! pattern matching a lone combining mark selects the whole cluster it sits
 //! in.
@@ -19,7 +19,6 @@ use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
 use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
 use hume_rope::grapheme::prev_str_boundary;
-use hume_rope::offset::ExclusiveRange;
 
 use crate::MotionMode;
 
@@ -244,7 +243,7 @@ fn matches_in_bytes(
 
     let mut matches: Vec<ClusterRange> = Vec::new();
     for m in regex.find_iter(input) {
-        let Some(range) = match_range(text, m.start()..m.end()) else {
+        let Some(range) = text.covering_bytes(m.start()..m.end()) else {
             continue;
         };
         if matches
@@ -255,15 +254,6 @@ fn matches_in_bytes(
         }
     }
     matches
-}
-
-/// The clusters holding the match at `bytes`, or `None` for a zero-width
-/// match.
-fn match_range(text: &BufferText, bytes: std::ops::Range<usize>) -> Option<ClusterRange> {
-    text.covering(ExclusiveRange::new(
-        text.byte_to_char(bytes.start),
-        text.byte_to_char(bytes.end),
-    ))
 }
 
 /// Escape regex metacharacters so the string matches literally.
@@ -529,7 +519,7 @@ fn search_match_in(
     } else {
         regex.find(input).filter(|m| m.start() < m.end())?
     };
-    match_range(text, m.start()..m.end())
+    text.covering_bytes(m.start()..m.end())
 }
 
 #[cfg(test)]

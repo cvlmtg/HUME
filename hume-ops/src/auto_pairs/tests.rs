@@ -1,6 +1,6 @@
 use super::*;
+use hume_editing::marked::bound_at;
 use hume_editing::word::WordChars;
-use hume_rope::offset::CharOffset;
 use test_fixtures::assert_state;
 
 // ── insert_pair_close — cursor ────────────────────────────────────────────
@@ -171,7 +171,7 @@ fn auto_pair_next_alphanumeric_rejects_asymmetric() {
     let pairs = default_pairs();
     assert!(!should_auto_pair_at(
         &text,
-        CharOffset::new(0),
+        bound_at(&text, 0),
         &paren(),
         &pairs,
         WordChars::default()
@@ -185,7 +185,7 @@ fn auto_pair_next_alphanumeric_rejects_symmetric() {
     let pairs = default_pairs();
     assert!(!should_auto_pair_at(
         &text,
-        CharOffset::new(0),
+        bound_at(&text, 0),
         &quote(),
         &pairs,
         WordChars::default()
@@ -199,7 +199,7 @@ fn auto_pair_next_space_accepts() {
     let pairs = default_pairs();
     assert!(should_auto_pair_at(
         &text,
-        CharOffset::new(3),
+        bound_at(&text, 3),
         &paren(),
         &pairs,
         WordChars::default()
@@ -213,7 +213,7 @@ fn auto_pair_next_newline_accepts() {
     let pairs = default_pairs();
     assert!(should_auto_pair_at(
         &text,
-        CharOffset::new(5),
+        bound_at(&text, 5),
         &paren(),
         &pairs,
         WordChars::default()
@@ -227,7 +227,7 @@ fn auto_pair_next_closing_bracket_accepts() {
     let pairs = default_pairs();
     assert!(should_auto_pair_at(
         &text,
-        CharOffset::new(1),
+        bound_at(&text, 1),
         &paren(),
         &pairs,
         WordChars::default()
@@ -242,7 +242,7 @@ fn auto_pair_symmetric_prev_alphanumeric_rejects() {
     let pairs = default_pairs();
     assert!(!should_auto_pair_at(
         &text,
-        CharOffset::new(3),
+        bound_at(&text, 3),
         &quote(),
         &pairs,
         WordChars::default()
@@ -256,7 +256,7 @@ fn auto_pair_symmetric_prev_space_accepts() {
     let pairs = default_pairs();
     assert!(should_auto_pair_at(
         &text,
-        CharOffset::new(4),
+        bound_at(&text, 4),
         &quote(),
         &pairs,
         WordChars::default()
@@ -271,7 +271,7 @@ fn auto_pair_symmetric_at_position_zero_accepts() {
     let pairs = default_pairs();
     assert!(should_auto_pair_at(
         &text,
-        CharOffset::new(0),
+        bound_at(&text, 0),
         &quote(),
         &pairs,
         WordChars::default()
@@ -285,7 +285,7 @@ fn auto_pair_symmetric_prev_open_bracket_accepts() {
     let pairs = default_pairs();
     assert!(should_auto_pair_at(
         &text,
-        CharOffset::new(1),
+        bound_at(&text, 1),
         &quote(),
         &pairs,
         WordChars::default()
@@ -300,7 +300,7 @@ fn auto_pair_asymmetric_ignores_prev_word_char() {
     let pairs = default_pairs();
     assert!(should_auto_pair_at(
         &text,
-        CharOffset::new(1),
+        bound_at(&text, 1),
         &paren(),
         &pairs,
         WordChars::default()
@@ -317,7 +317,7 @@ fn auto_pair_symmetric_prev_extra_word_char_rejects() {
     let pairs = default_pairs();
     assert!(!should_auto_pair_at(
         &text,
-        CharOffset::new(4),
+        bound_at(&text, 4),
         &quote(),
         &pairs,
         WordChars::new("-")
@@ -332,7 +332,7 @@ fn auto_pairs_between(before: &str, after: &str, pair: &Pair) -> bool {
     let text = BufferText::from(format!("{before}{after}").as_str());
     should_auto_pair_at(
         &text,
-        CharOffset::new(before.chars().count()),
+        bound_at(&text, before.chars().count()),
         pair,
         &default_pairs(),
         WordChars::default(),

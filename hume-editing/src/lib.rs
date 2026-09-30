@@ -13,9 +13,10 @@
 //!   the unit of undo.
 //! - [`history::History`]: tree-structured undo/redo.
 //!
-//! Motion and selection code steps positions with
-//! [`grapheme::next_grapheme_boundary`]/[`grapheme::prev_grapheme_boundary`],
-//! never by raw chars.
+//! Motion and selection code steps positions cluster by cluster with
+//! [`grapheme::next_cluster`]/[`grapheme::prev_cluster`], and walks with
+//! [`grapheme::graphemes_at`]/[`grapheme::clusters_before`], never by raw
+//! chars.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 

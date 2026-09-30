@@ -181,19 +181,18 @@ impl PaneBufferState {
     /// Store a command's resulting selections, raising
     /// [`PaneBufferState::reveal_pending`] iff the primary head moved.
     pub(in crate::editor) fn store(&mut self, state: EditState) {
-        let text = state.text().clone();
-        self.set_selections(state.into_selections(), &text);
+        let moved = state.view().primary().head() != self.view(state.text()).primary().head();
+        self.reveal_pending |= moved;
+        self.selections = state.into_selections();
     }
 
     /// Replace the selections outright with `new`, a set for `text`, the
     /// buffer's current text, raising [`PaneBufferState::reveal_pending`] iff
     /// the primary head actually moved.
     pub(in crate::editor) fn set_selections(&mut self, new: SelectionSet, text: &BufferText) {
-        let new = EditState::bind(text, new);
-        if new.view().primary().head() != self.view(text).primary().head() {
-            self.reveal_pending = true;
-        }
-        self.selections = new.into_selections();
+        let moved = EditView::bind(text, &new).primary().head() != self.view(text).primary().head();
+        self.reveal_pending |= moved;
+        self.selections = new;
     }
 
     /// Carry this pane's positions for the buffer through `change`. Raises

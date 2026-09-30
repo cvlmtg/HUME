@@ -182,10 +182,7 @@ pub(in crate::editor) fn position_params(
     t: crate::editor::commands::CommandPane,
 ) -> Option<serde_json::Value> {
     let id = t.bid(view);
-    let text = state.buffers.get(id).text();
-    let head = t
-        .state(&state.panes.state, view)
-        .view(text)
+    let head = crate::editor::commands::pane_view(state, view, t)
         .primary()
         .head();
     offset_params(state, lsp, id, head.offset())
@@ -520,9 +517,7 @@ pub(in crate::editor) fn primary_range_params(
     let id = t.bid(view);
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let text = state.buffers.get(id).text();
-    let covered = t
-        .state(&state.panes.state, view)
-        .view(text)
+    let covered = crate::editor::commands::pane_view(state, view, t)
         .primary()
         .covered();
     Some(serde_json::json!({

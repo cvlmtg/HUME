@@ -21,6 +21,7 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::edit::{Edited, TextChange};
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
+use hume_editing::text::BufferText;
 
 /// [`apply_doc_history_walk`]'s result: keeps a read-only refusal
 /// distinguishable from genuine root/leaf exhaustion. Collapsing both to
@@ -68,9 +69,9 @@ fn record_lsp_edits(
 /// prompt snapshots) and the syntax edit chain are not here: the `Buffer`
 /// mutator already carried them through the change.
 ///
-/// `rope_pre` is the pre-mutation rope, which the syntax and LSP streams map
-/// their positions from; this runs after the mutation, so it cannot re-derive
-/// it from `buffers`.
+/// `text_pre` is the pre-mutation text the LSP stream maps its positions
+/// from; this runs after the mutation, so it cannot re-derive it from
+/// `buffers`.
 #[allow(clippy::too_many_arguments)]
 fn finish_edit(
     buffers: &mut BufferStore,
@@ -79,13 +80,13 @@ fn finish_edit(
     buf_id: BufferId,
     new_sels: SelectionSet,
     cs: &ChangeSet,
-    rope_pre: &ropey::Rope,
+    text_pre: &BufferText,
 ) {
     pane_state[pane_id][buf_id].set_selections(new_sels, buffers.get(buf_id).text());
     // An identity `cs` moved no bytes: `Buffer::apply_edit*` skipped
     // `install` for it directly, and `commit_edit_group` never records it as
     // a revision for `undo`/`redo` to later replay, so the text version did
-    // not move either way. Feeding the syntax and LSP streams an edit tagged with
+    // not move either way. Feeding the LSP stream an edit tagged with
     // an already-parsed generation would be actively wrong, and paste-stamping
     // must not count a no-op as an edit. Selections are still written above:
     // a no-op edit can still move cursors.
@@ -187,7 +188,7 @@ pub(in crate::editor) fn apply_doc_edit(
         commit_paste_group(buffers, stores.panes, active_session);
     }
     // O(1) clone: ropey uses structural sharing (reference-counted tree nodes).
-    let rope_pre = buffers.get(buf_id).text().rope().clone();
+    let text_pre = buffers.get(buf_id).text().clone();
     let sels = stores.panes[pane_id][buf_id].selections().clone();
     let (new_sels, cs) = buffers
         .get_mut(buf_id)
@@ -199,7 +200,7 @@ pub(in crate::editor) fn apply_doc_edit(
         buf_id,
         new_sels,
         &cs,
-        &rope_pre,
+        &text_pre,
     );
     Ok(())
 }
@@ -251,7 +252,7 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
         buf_id,
         new_sels,
         &cs,
-        text_pre.rope(),
+        &text_pre,
     );
     // This is the one funnel every grouped edit goes through, so it's the
     // one place `DotCapture::chain` (`edit_session.rs`) can be fed without
@@ -283,7 +284,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     if buffers.get(buf_id).is_read_only() {
         return;
     }
-    let rope_pre = buffers.get(buf_id).text().rope().clone();
+    let text_pre = buffers.get(buf_id).text().clone();
     let group = active_session
         .as_mut()
         .filter(|s| s.is_paste_at(pane_id, buf_id))
@@ -301,7 +302,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
         buf_id,
         new_sels,
         &propagation_cs,
-        &rope_pre,
+        &text_pre,
     );
 }
 
@@ -338,7 +339,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
             .is_some_and(|s| s.owned_by(pane_id, buf_id)),
         "apply_doc_history_walk called while a session is open on this (pane, buffer)"
     );
-    let rope_pre = buffers.get(buf_id).text().rope().clone();
+    let text_pre = buffers.get(buf_id).text().clone();
     let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), buf_id, stores) else {
         return Ok(HistoryWalk::Took(0));
     };
@@ -349,7 +350,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
         buf_id,
         new_sels,
         &cs,
-        &rope_pre,
+        &text_pre,
     );
     // `finish_edit` skips `bump_edit_seq` for an identity `cs` (correctly:
     // a normal edit that cancels to identity records no revision at all, so

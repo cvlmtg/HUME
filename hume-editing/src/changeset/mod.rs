@@ -505,13 +505,9 @@ impl ChangeSet {
     /// preceding range when it sits exactly at that range's end (e.g. an
     /// Insert immediately following a Delete at the same position).
     ///
-    /// One O(ops) walk here lets the caller check every selection's line
-    /// against these ranges with a single forward-only cursor, instead of re-walking `self.ops` per
-    /// selection. `pub` (not `pub(crate)`) so a caller translating many
-    /// independent `SelectionSet`s through the same `ChangeSet` (HUME's
-    /// per-pane jump lists) can compute this once and feed it to
-    /// translating each selection set with the same ranges,
-    /// rather than paying the O(ops) walk again per list.
+    /// One O(ops) walk lets a caller check every selection's line against
+    /// these ranges with a single forward-only cursor, instead of re-walking
+    /// `self.ops` per selection.
     pub fn edited_old_ranges(&self) -> Vec<ExclusiveRange<CharOffset>> {
         self.edited_regions().into_iter().map(|r| r.old).collect()
     }

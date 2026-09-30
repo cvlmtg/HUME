@@ -3,13 +3,13 @@ use highlight::HighlightStack;
 pub use highlight::TierBufs;
 pub(crate) use highlight::rebuild_line_decorations;
 
-use hume_rope::cluster::{ClusterBound, ClusterStart};
+use hume_rope::cluster::ClusterStart;
 use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::providers::Decoration;
 use crate::theme::Theme;
-use crate::types::{DisplayLine, EditorMode, Grapheme, PaintedSelection, ResolvedStyle, ScopeId};
+use crate::types::{DisplayLine, EditorMode, Grapheme, PaintedSelections, ResolvedStyle, ScopeId};
 
 // ---------------------------------------------------------------------------
 // Scratch storage
@@ -33,10 +33,6 @@ pub struct StyleScratch {
     pub sel_spans: Vec<(DisplayLineCol, DisplayLineCol)>,
     /// Display columns of each selection head on the current display line (all selections, including primary).
     pub head_display_cols: Vec<DisplayLineCol>,
-    /// Sorted copy of selections; populated once per frame or batch call.
-    pub sorted_sels: Vec<PaintedSelection>,
-    /// Index of the primary selection within `sorted_sels`. `None` if empty.
-    pub primary_idx_in_sorted: Option<usize>,
     /// Display column of the primary selection's head on the current display line. `None` if not on this display line.
     pub primary_head_display_col: Option<DisplayLineCol>,
     /// Display-column span of the primary selection on the current display line. `None` if not on this display line.
@@ -52,23 +48,9 @@ impl StyleScratch {
             tier_bufs: TierBufs::default(),
             sel_spans: Vec::new(),
             head_display_cols: Vec::new(),
-            sorted_sels: Vec::new(),
-            primary_idx_in_sorted: None,
             primary_head_display_col: None,
             primary_sel_span: None,
         }
-    }
-
-    /// Copy `selections` (already sorted by cursor) into `sorted_sels`. No
-    /// sort is performed: the caller guarantees order.
-    pub fn populate_sorted_sels(&mut self, selections: &[PaintedSelection]) {
-        debug_assert!(
-            selections.windows(2).all(|w| w[0].cursor <= w[1].cursor),
-            "selections must be sorted by cursor position",
-        );
-        self.sorted_sels.clear();
-        self.sorted_sels.extend_from_slice(selections);
-        self.primary_idx_in_sorted = selections.iter().position(|s| s.is_primary);
     }
 
     /// Reset all buffers to empty, retaining allocated capacity.
@@ -79,8 +61,6 @@ impl StyleScratch {
         self.tier_bufs.clear();
         self.sel_spans.clear();
         self.head_display_cols.clear();
-        self.sorted_sels.clear();
-        self.primary_idx_in_sorted = None;
         self.primary_head_display_col = None;
         self.primary_sel_span = None;
     }
@@ -104,12 +84,12 @@ impl Default for StyleScratch {
 ///
 /// Call [`rebuild_line_decorations`] for the current buffer line before
 /// this, and pass its returned tint through as `line_tint`.
-/// `scratch.sorted_sels` must be pre-populated and sorted by the caller.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn style_display_line(
     display_line: &DisplayLine,
     graphemes: &[Grapheme],
     line_chars: ExclusiveRange<CharOffset>,
+    selections: &PaintedSelections,
     is_head_line: bool,
     line_tint: Option<ScopeId>,
     mode: EditorMode,
@@ -117,16 +97,14 @@ pub(crate) fn style_display_line(
     theme: &Theme,
     scratch: &mut StyleScratch,
 ) {
-    let primary_idx = scratch.primary_idx_in_sorted;
     // Whether the primary selection runs backward (head before anchor): the
     // one piece of per-display-line context the unpainted-primary-head
     // carve-out below needs. A property of the selection itself, not of
     // this display line, so it's computed once here rather than per grapheme.
-    let primary_is_reverse = primary_idx.is_some_and(|idx| scratch.sorted_sels[idx].is_reverse);
+    let primary_is_reverse = selections.primary().is_reverse();
     collect_selection_spans(
         line_chars,
-        &scratch.sorted_sels,
-        primary_idx,
+        selections,
         graphemes,
         &display_line.graphemes,
         &mut scratch.sel_spans,
@@ -134,8 +112,7 @@ pub(crate) fn style_display_line(
     );
     collect_head_display_cols(
         line_chars,
-        &scratch.sorted_sels,
-        primary_idx,
+        selections,
         graphemes,
         &display_line.graphemes,
         &mut scratch.head_display_cols,
@@ -301,22 +278,20 @@ fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> Resol
 /// `line_chars` is the half-open absolute-char range of the buffer line
 /// being rendered (from `rope.line_to_char`).
 ///
-/// Also sets `primary_sel_span` when the primary selection (at `primary_idx` in
-/// `sorted_sels`) has a visible span on this display line.
+/// Also sets `primary_sel_span` when the primary selection has a visible span
+/// on this display line.
 ///
-/// Rescans all of `sorted_sels` on every call: O(display_lines × selections)
+/// Rescans all of `selections` on every call: O(display_lines × selections)
 /// per frame. Intentional: realistic selection counts are single digits, so
 /// this is nil in practice. The alternative (binding the window of selections
 /// overlapping one line via two `partition_point` calls, hoisted per buffer
-/// line) requires translating `primary_idx` into window-local coordinates and
-/// threading that through `StyleScratch`'s primary-span/primary-head
-/// bookkeeping, a second index space on top of the cursor-sorted order of
-/// `pane.selections`. Not worth it for microseconds; do not "optimize" this
-/// into the windowed form without re-deriving that trade-off.
+/// line) requires translating the primary index into window-local
+/// coordinates and threading that through `StyleScratch`'s
+/// primary-span/primary-head bookkeeping, a second index space on top of the
+/// mirror's cursor order. Not worth it for microseconds.
 fn collect_selection_spans(
     line_chars: ExclusiveRange<CharOffset>,
-    sorted_sels: &[PaintedSelection],
-    primary_idx: Option<usize>,
+    selections: &PaintedSelections,
     graphemes: &[Grapheme],
     grapheme_range: &std::ops::Range<usize>,
     out: &mut Vec<(DisplayLineCol, DisplayLineCol)>,
@@ -338,17 +313,17 @@ fn collect_selection_spans(
         g.display_col.advance_saturating(g.width as u32)
     });
 
-    for (idx, sel) in sorted_sels.iter().enumerate() {
+    for (idx, sel) in selections.iter().enumerate() {
         // A cursor has no extent to paint. The cursor at Tier 0 is its sole
         // representation, and a 1-cell span here would claim the head cell
         // is *selected* rather than merely where the cursor sits.
-        if sel.is_cursor {
+        if sel.is_cursor() {
             continue;
         }
-        let (start, end) = (sel.covered.start(), sel.covered.end());
+        let (start, last) = (sel.first, sel.last);
 
         // Skip if the selection doesn't overlap this line at all.
-        if start.offset() >= line_chars.end || end.offset() <= line_chars.start {
+        if start.offset() >= line_chars.end || last.offset() < line_chars.start {
             continue;
         }
 
@@ -356,8 +331,8 @@ fn collect_selection_spans(
         // intersect this wrap segment. Without this check a selection on
         // wrap segment N would incorrectly highlight all other wrap segments
         // of the same line.
-        if let Some((first, last)) = content
-            && (end <= ClusterBound::from(first) || start > last)
+        if let Some((line_first, line_last)) = content
+            && (last < line_first || start > line_last)
         {
             continue;
         }
@@ -369,12 +344,11 @@ fn collect_selection_spans(
         // The span ends at the right edge of the last covered cluster's cell,
         // so inserts after it stay unselected, or runs to the display line's
         // right edge when that cluster is on a later wrap segment.
-        let display_col_end =
-            resolve_grapheme_display_col(sel.covered.last(), graphemes, grapheme_range)
-                .map_or(right_edge, |(col, width)| col.advance_saturating(width));
+        let display_col_end = resolve_grapheme_display_col(last, graphemes, grapheme_range)
+            .map_or(right_edge, |(col, width)| col.advance_saturating(width));
         if display_col_end > display_col_start {
             out.push((display_col_start, display_col_end));
-            if Some(idx) == primary_idx {
+            if idx == selections.primary_index() {
                 *primary_sel_span = Some((display_col_start, display_col_end));
             }
         }
@@ -386,12 +360,11 @@ fn collect_selection_spans(
 /// `line_chars` is the half-open absolute-char range of the buffer line.
 /// Heads outside this range are skipped.
 ///
-/// Also sets `primary_head_display_col` when the primary selection (identified
-/// by `primary_idx`) has its head on this display line.
+/// Also sets `primary_head_display_col` when the primary selection has its
+/// head on this display line.
 fn collect_head_display_cols(
     line_chars: ExclusiveRange<CharOffset>,
-    sorted_sels: &[PaintedSelection],
-    primary_idx: Option<usize>,
+    selections: &PaintedSelections,
     graphemes: &[Grapheme],
     grapheme_range: &std::ops::Range<usize>,
     out: &mut Vec<DisplayLineCol>,
@@ -399,13 +372,13 @@ fn collect_head_display_cols(
 ) {
     out.clear();
     *primary_head_display_col = None;
-    for (idx, sel) in sorted_sels.iter().enumerate() {
+    for (idx, sel) in selections.iter().enumerate() {
         if !line_chars.contains(sel.cursor.offset()) {
             continue;
         }
         if let Some(display_col) = display_col_at(sel.cursor, graphemes, grapheme_range) {
             out.push(display_col);
-            if Some(idx) == primary_idx {
+            if idx == selections.primary_index() {
                 *primary_head_display_col = Some(display_col);
             }
         }

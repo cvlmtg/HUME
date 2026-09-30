@@ -109,6 +109,45 @@ fn apply_text_edits_single_edit() {
     assert_eq!(ed.doc().text().to_string(), "aXYdef\n");
 }
 
+/// A server replacing the whole document with text that has no final newline
+/// leaves the buffer's structural `\n` in place.
+#[test]
+fn apply_text_edits_whole_document_replace_keeps_the_final_newline() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\ndef\n");
+    apply_wire_text_edits(
+        &mut ed,
+        tmp.path(),
+        vec![wire_edit((0, 0), (2, 0), "xyz")],
+        "",
+    );
+    assert_eq!(ed.doc().text().to_string(), "xyz\n");
+}
+
+/// Deleting only the final newline leaves the text as it was.
+#[test]
+fn apply_text_edits_deleting_the_final_newline_keeps_it() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\ndef\n");
+    apply_wire_text_edits(&mut ed, tmp.path(), vec![wire_edit((1, 3), (2, 0), "")], "");
+    assert_eq!(ed.doc().text().to_string(), "abc\ndef\n");
+}
+
+/// Text a server inserts after the final newline becomes a last line of its
+/// own, ended by the structural `\n`.
+#[test]
+fn apply_text_edits_insert_after_the_final_newline_ends_with_one() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\ndef\n");
+    apply_wire_text_edits(
+        &mut ed,
+        tmp.path(),
+        vec![wire_edit((2, 0), (2, 0), "tail")],
+        "",
+    );
+    assert_eq!(ed.doc().text().to_string(), "abc\ndef\ntail\n");
+}
+
 /// A server can send `new_text` in its own platform's line-ending
 /// convention; nothing guarantees it's `\n`-only. `apply-text-edits!` must
 /// normalize it the same way every other text-insertion path does.

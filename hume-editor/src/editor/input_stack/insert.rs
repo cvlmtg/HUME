@@ -35,6 +35,10 @@ pub(in crate::editor) struct InsertLayer {
 }
 
 impl Layer for InsertLayer {
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
+        None
+    }
+
     fn handler(&self) -> LayerHandler {
         insert_input
     }
