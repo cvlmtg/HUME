@@ -25,9 +25,9 @@ impl StatuslineElement for PositionElement {
 
     fn read(editor: &HumeStatusline<'_>) -> Self::Data {
         let text = editor.doc().text();
-        let head = editor.current_selections().primary().head();
-        let head_line = text.char_to_line(head);
-        let grapheme_col = grapheme_col_in_line(text, head_line, head);
+        let head = editor.current_view().primary().head();
+        let head_line = text.char_to_line(head.offset());
+        let grapheme_col = grapheme_col_in_line(text, head_line, head.offset());
         Position {
             line: head_line.number(),
             grapheme_col: grapheme_col.number(),

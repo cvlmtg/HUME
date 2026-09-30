@@ -29,12 +29,12 @@ fn wire_client(ed: &mut Editor, backend: InlineLspBackend, sid: ServerId) {
 }
 
 /// A `ResponseAnchor` that never drops the response, for a test exercising
-/// something other than the anchor's own text-gen/focus checks.
-/// `allow_stale: true` makes `bid`/`text_gen` irrelevant to admission.
+/// something other than the anchor's own version/focus checks.
+/// `allow_stale: true` makes `bid`/`version` irrelevant to admission.
 fn no_drop_anchor(ed: &Editor) -> ResponseAnchor {
     ResponseAnchor {
         bid: ed.focused_buffer_id(),
-        text_gen: 0,
+        version: ed.doc().text().version(),
         allow_stale: true,
         require_focus: None,
     }
@@ -158,10 +158,10 @@ fn timed_out_request_dispatches_callback_with_timed_out_outcome_and_logs_trace()
 }
 
 #[test]
-fn stale_response_is_dropped_when_buffer_moved_past_text_gen() {
+fn stale_response_is_dropped_when_buffer_moved_past_its_text_version() {
     let mut ed = editor_from("-[w]>ord\n");
     let bid = ed.focused_buffer_id();
-    let sent_gen = ed.state.buffers.get(bid).text_gen;
+    let sent_version = ed.state.buffers.get(bid).text().version();
 
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
@@ -186,7 +186,7 @@ fn stale_response_is_dropped_when_buffer_moved_past_text_gen() {
         id,
         ResponseAnchor {
             bid,
-            text_gen: sent_gen,
+            version: sent_version,
             allow_stale: false,
             require_focus: None,
         },
@@ -195,22 +195,22 @@ fn stale_response_is_dropped_when_buffer_moved_past_text_gen() {
         }),
     );
 
-    // Move the buffer's text_gen past the value the request was sent at.
+    // Move the buffer's text version past the value the request was sent at.
     ed.step(key('d'));
 
     ed.drain_lsp();
 
     assert!(
         !*fired.borrow(),
-        "the buffer moved past the request's text_gen: the callback must be dropped"
+        "the buffer moved past the request's text version: the callback must be dropped"
     );
 }
 
 #[test]
-fn allow_stale_delivers_despite_buffer_moving_past_text_gen() {
+fn allow_stale_delivers_despite_buffer_moving_past_its_text_version() {
     let mut ed = editor_from("-[w]>ord\n");
     let bid = ed.focused_buffer_id();
-    let sent_gen = ed.state.buffers.get(bid).text_gen;
+    let sent_version = ed.state.buffers.get(bid).text().version();
 
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
@@ -232,7 +232,7 @@ fn allow_stale_delivers_despite_buffer_moving_past_text_gen() {
         id,
         ResponseAnchor {
             bid,
-            text_gen: sent_gen,
+            version: sent_version,
             allow_stale: true,
             require_focus: None,
         },

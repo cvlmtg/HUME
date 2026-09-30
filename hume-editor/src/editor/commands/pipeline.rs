@@ -6,6 +6,8 @@
 use std::borrow::Cow;
 
 use hume_editing::selection::Selection;
+use hume_editing::state::EditState;
+use hume_editing::tracked::Tracked;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_scripting::PaneHandle;
 use slotmap::SecondaryMap;
@@ -482,7 +484,7 @@ pub(in crate::editor) fn run_body(
             let buf = t.bid(view);
             match fun {
                 SelectionBody::Plain(fun) => {
-                    apply_pane_motion(state, view, t, |b, s| fun(b, s, count, motion_mode));
+                    apply_pane_motion(state, view, t, |st| fun(st, count, motion_mode));
                 }
                 SelectionBody::Word(fun) => {
                     let doc = state.buffers.get(buf);
@@ -502,7 +504,7 @@ pub(in crate::editor) fn run_body(
                         &mut state.panes.state,
                         t.pid(),
                         buf,
-                        |b, s| fun(b, s, count, ctx),
+                        |st| fun(st, count, ctx),
                     );
                 }
                 SelectionBody::Structural(body) => {
@@ -519,8 +521,8 @@ pub(in crate::editor) fn run_body(
                     // once. `ObjectSpans` is owned precisely so its tree borrow
                     // ends here, before that call.
                     let spans = object_spans(state.buffers.get(buf), body);
-                    apply_pane_motion(state, view, t, |t2, s| {
-                        body.apply(t2, s, count, motion_mode, &spans)
+                    apply_pane_motion(state, view, t, |st| {
+                        body.apply(st, count, motion_mode, &spans)
                     });
                 }
             }
@@ -577,8 +579,33 @@ pub(in crate::editor::commands::pipeline) fn step_capture_pre_jump(
     view: &EngineView,
     t: CommandPane,
     meta: &CmdMeta,
-) -> Option<(Selection, hume_rope::line::ContentLine, BufferId)> {
-    meta.moves_cursor().then(|| jump_position(state, view, t))
+) -> Option<PreJump> {
+    meta.moves_cursor().then(|| {
+        let (primary, line, bid) = jump_position(state, view, t);
+        let text = state.buffers.get(bid).text();
+        let only_primary =
+            EditState::bind(text, t.state(&state.panes.state, view).selections().clone())
+                .keep_primary()
+                .into_selections();
+        PreJump {
+            primary,
+            line,
+            bid,
+            entry: Tracked::new(JumpEntry::new(only_primary, text, bid), text),
+        }
+    })
+}
+
+/// The cursor before a cursor-moving command's body ran, for
+/// [`step_record_jump`]: the position compared against and the jump entry
+/// pushed if the body moved far enough. The entry reads as absent when the
+/// body also changed the buffer's text, since its positions belong to the
+/// text before.
+pub(in crate::editor::commands::pipeline) struct PreJump {
+    primary: Selection,
+    line: hume_rope::line::ContentLine,
+    bid: BufferId,
+    entry: Tracked<JumpEntry>,
 }
 
 /// Invalidate a still-open Insert-mode typed run before a cursor-motion
@@ -626,9 +653,9 @@ fn jump_position(
     t: CommandPane,
 ) -> (Selection, hume_rope::line::ContentLine, BufferId) {
     let bid = t.bid(view);
-    let primary = t.state(&state.panes.state, view).selections().primary();
-    let line = state.buffers.get(bid).text().char_to_line(primary.head());
-    (primary, line, bid)
+    let text = state.buffers.get(bid).text();
+    let primary = t.state(&state.panes.state, view).view(text).primary();
+    (primary.selection(), primary.head_line(), bid)
 }
 
 /// Snapshot selection recipe before body for dot-repeat recording.
@@ -668,17 +695,20 @@ pub(in crate::editor::commands::pipeline) fn step_snapshot_recipe(
 pub(in crate::editor::commands::pipeline) fn step_record_jump(
     state: &mut EditorState,
     view: &EngineView,
-    pre_jump: Option<(Selection, hume_rope::line::ContentLine, BufferId)>,
+    pre_jump: Option<PreJump>,
     is_jump: bool,
     t: CommandPane,
 ) -> bool {
-    let Some((pre_primary, pre_line, pre_bid)) = pre_jump else {
+    let Some(pre) = pre_jump else {
         return false;
     };
     let (post_primary, post_line, post_bid) = jump_position(state, view, t);
-    let moved = post_bid != pre_bid || post_primary != pre_primary;
-    if moved && (is_jump || pre_line.abs_diff(post_line) > state.settings.jump_line_threshold) {
-        state.panes.jumps[t.pid()].push(JumpEntry::from_pre_motion(pre_primary, pre_line, pre_bid));
+    let moved = post_bid != pre.bid || post_primary != pre.primary;
+    if moved
+        && (is_jump || pre.line.abs_diff(post_line) > state.settings.jump_line_threshold)
+        && let Some(entry) = pre.entry.into_inner(state.buffers.get(pre.bid).text())
+    {
+        state.panes.jumps[t.pid()].push(entry);
     }
     moved
 }

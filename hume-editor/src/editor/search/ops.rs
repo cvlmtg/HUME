@@ -12,6 +12,7 @@
 //! so the search-matches reference (`&buffers`) and the cursor write
 //! (`&mut pane_state`) are disjoint, eliminating the two-block borrow dance.
 
+use hume_editing::tracked::Tracked;
 use std::sync::Arc;
 
 use slotmap::SecondaryMap;
@@ -43,7 +44,7 @@ pub(in crate::editor) fn clear_buffer_search(
     }
 }
 
-/// Recompute the match list for `bid` if the pattern or revision changed.
+/// Recompute the match list for `bid` if the pattern or the text changed.
 ///
 /// No-op when no search is active. Cache check uses direct field access
 /// to compare the pattern string by reference, avoiding `pattern_str.clone()`
@@ -54,14 +55,12 @@ pub(in crate::editor) fn update_buffer_matches(buffers: &mut BufferStore, bid: B
     let Some(sp) = buf.search_pattern.as_ref() else {
         return;
     };
-    let revision = buf.revision_id();
 
     // Compare by reference: no clone on the hot cache-hit path.
     if buf
         .search_matches
-        .cache
-        .as_ref()
-        .is_some_and(|(r, s)| *r == revision && s == &sp.pattern_str)
+        .found(buf.text())
+        .is_some_and(|(pattern, _)| pattern == sp.pattern_str)
     {
         return;
     }
@@ -78,8 +77,8 @@ pub(in crate::editor) fn update_buffer_matches(buffers: &mut BufferStore, bid: B
     };
     // text borrow ended, so buf.search_matches can now be written.
 
-    buf.search_matches.matches = matches;
-    buf.search_matches.cache = Some((revision, pattern_str));
+    let text = buf.text().clone();
+    buf.search_matches.set(pattern_str, matches, &text);
 }
 
 /// Recompute `pane_state[pid][bid].search_cursor.match_count` if stale.
@@ -93,22 +92,26 @@ pub(in crate::editor::search::ops) fn update_pane_cursor(
     pid: PaneId,
     bid: BufferId,
 ) {
-    let head = pane_state[pid][bid].selections().primary().head();
-    let sm = &buffers.get(bid).search_matches;
+    let text = buffers.get(bid).text();
+    let head = pane_state[pid][bid].view(text).primary().head();
+    let Some((pattern, matches)) = buffers.get(bid).search_matches.found(text) else {
+        return;
+    };
     let cur = &pane_state[pid][bid].search_cursor;
-
-    if cur.cache_head == Some(head) && cur.cache_matches == sm.cache {
+    if cur
+        .computed_for
+        .as_ref()
+        .and_then(|memo| memo.get(text))
+        .is_some_and(|(p, h)| p == pattern && *h == head)
+    {
         return;
     }
-    if sm.cache.is_none() {
-        return;
-    }
-    let count = search_match_info(&sm.matches, head);
-    // sm borrows from buffers; cursor borrows from pane_state: disjoint params.
+    let count = search_match_info(matches, head);
+    // The matches borrow from buffers; the cursor borrows from pane_state:
+    // disjoint params.
     let cursor = &mut pane_state[pid][bid].search_cursor;
     cursor.match_count = Some(count);
-    cursor.cache_head = Some(head);
-    cursor.cache_matches = sm.cache.clone();
+    cursor.computed_for = Some(Tracked::new((pattern.to_owned(), head), text));
 }
 
 /// Convenience: run `update_buffer_matches` + `update_pane_cursor` for a

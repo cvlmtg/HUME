@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-hume-editing = { path = "../hume-editing" }
+hume-editing = { path = "../hume-editing", features = ["test-util"] }
 hume-rope = { path = "../hume-rope" }
 pretty_assertions = "1.4.1"
 

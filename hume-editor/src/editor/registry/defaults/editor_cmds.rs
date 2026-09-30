@@ -393,7 +393,7 @@ impl CommandRegistry {
         .reg(self);
         // `EditorCmd`, not `selection!`: the body needs `EditorState` to read
         // the buffer's search pattern, a channel `Selection`'s pure
-        // `fn(&BufferText, SelectionSet, ...)` signature has no room for.
+        // `fn(EditState, ...)` signature has no room for.
         // `.establishes_selection()` opts it into the dot-repeat recipe
         // anyway: its whole-buffer result is safe to replay from any cursor.
         ecmd_pane(

@@ -25,13 +25,13 @@ pub(crate) struct FlattenScratch {
 }
 
 /// Diagnostic info for a broken pending-edit chain: a text mutation bumped
-/// `text_gen` without recording an `InputEdit` between two recorded edits.
+/// `generation` without recording an `InputEdit` between two recorded edits.
 /// The editor logs this at `Severity::Trace`; the state machine itself has
 /// no message-log access.
 #[derive(Debug)]
 pub struct ChainBreak {
     pub tree_gen: u64,
-    pub text_gen: u64,
+    pub generation: u64,
     pub first: Option<u64>,
     pub last: Option<u64>,
 }
@@ -57,13 +57,13 @@ pub struct Syntax {
     bundle: Arc<GrammarBundle>,
     /// Committed parse layers. `None` until the first `ParseDone` installs.
     layers: Option<SyntaxLayers>,
-    /// `text_gen` of the most recently installed (or failed) parse result.
+    /// `generation` of the most recently installed (or failed) parse result.
     /// `None` until `install` has run at least once. Distinct from
     /// `Some(0)`, which is a genuine installed generation zero (a freshly
-    /// opened file's `Buffer::text_gen` starts at 0 and never bumps on
+    /// opened file's text generation starts at 0 and never bumps on
     /// open). Collapsing the two into a bare `u64` would make the very
     /// first parse of every opened file indistinguishable from "already up
-    /// to date", discarding it. `Some(g) == Buffer.text_gen` means the
+    /// to date", discarding it. `Some(g) == the buffer text's generation` means the
     /// installed tree is up to date.
     parsed_gen: Option<u64>,
     /// BufferText generation whose coordinates the committed `layers` describe.
@@ -72,11 +72,11 @@ pub struct Syntax {
     /// `tree_gen` advances every frame (via bake) while `parsed_gen` only
     /// advances when the worker delivers a result.
     tree_gen: u64,
-    /// Edits recorded since the last bake or install, `(text_gen, edit)`
+    /// Edits recorded since the last bake or install, `(generation, edit)`
     /// pairs in order. A contiguous chain from `tree_gen + 1` to the current
-    /// `text_gen` enables in-place baking; a gap forces a full reparse.
+    /// `generation` enables in-place baking; a gap forces a full reparse.
     pending_edits: Vec<(u64, tree_sitter::InputEdit)>,
-    /// `text_gen` of the posted-but-unanswered parse request, if any. No
+    /// `generation` of the posted-but-unanswered parse request, if any. No
     /// `config_gen` slot is needed: `bundle` never changes within one
     /// attachment, so the posted config is always `bundle.config_gen`.
     in_flight: Option<u64>,
@@ -103,32 +103,32 @@ impl Syntax {
     }
 
     /// Create a fresh attachment. Empty text short-circuits: `parsed_gen` is
-    /// set to `text_gen` immediately, no request is built, `in_flight` stays
+    /// set to `generation` immediately, no request is built, `in_flight` stays
     /// `None`. Otherwise returns the initial full-parse request; the caller
     /// MUST post it to the parse backend.
     pub fn attach(
         bundle: Arc<GrammarBundle>,
         bid: BufferId,
-        text_gen: u64,
+        generation: u64,
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> (Self, Option<ParseRequest>) {
         let mut syn = Self::detached(Arc::clone(&bundle));
 
         if text.len_bytes() == 0 {
-            syn.parsed_gen = Some(text_gen);
+            syn.parsed_gen = Some(generation);
             return (syn, None);
         }
 
         let req = ParseRequest {
             bid,
-            text_gen,
+            generation,
             bundle,
             text: text.clone(),
             old_tree: None,
             langs: Arc::clone(langs),
         };
-        syn.in_flight = Some(text_gen);
+        syn.in_flight = Some(generation);
         (syn, Some(req))
     }
 
@@ -160,60 +160,60 @@ impl Syntax {
 
     /// Record one batch of `InputEdit`s translated from a `ChangeSet` against
     /// the pre-edit rope. Must be recorded after every text mutation.
-    pub fn record_edit(&mut self, text_gen: u64, cs: &ChangeSet, rope_pre: &ropey::Rope) {
+    pub fn record_edit(&mut self, generation: u64, cs: &ChangeSet, rope_pre: &ropey::Rope) {
         for edit in input_edits_from_changeset(cs, rope_pre) {
-            self.pending_edits.push((text_gen, edit));
+            self.pending_edits.push((generation, edit));
         }
     }
 
     /// Per-frame driver. In order: gen-gate (already up to date → no
     /// request), bake pending edits into the committed layers, in-flight
-    /// dedup (a request for this exact `text_gen` is already posted → no
+    /// dedup (a request for this exact `generation` is already posted → no
     /// request), then build the next incremental request and record it as
     /// in-flight. The caller MUST post a returned request.
     pub fn frame_tick(
         &mut self,
         bid: BufferId,
-        text_gen: u64,
+        generation: u64,
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> FrameTickOutcome {
-        if self.parsed_gen == Some(text_gen) {
+        if self.parsed_gen == Some(generation) {
             return FrameTickOutcome {
                 request: None,
                 chain_break: None,
             };
         }
 
-        let chain_break = self.bake(text_gen);
+        let chain_break = self.bake(generation);
 
-        if self.in_flight == Some(text_gen) {
+        if self.in_flight == Some(generation) {
             return FrameTickOutcome {
                 request: None,
                 chain_break,
             };
         }
 
-        let req = self.build_request(bid, text_gen, text, langs);
-        self.in_flight = Some(text_gen);
+        let req = self.build_request(bid, generation, text, langs);
+        self.in_flight = Some(generation);
         FrameTickOutcome {
             request: Some(req),
             chain_break,
         }
     }
 
-    /// Build the next incremental (or, absent a baked tree at `text_gen`,
+    /// Build the next incremental (or, absent a baked tree at `generation`,
     /// full) parse request: the shared tail of `frame_tick` and
     /// `ensure_current`, which differ only in how the result reaches
     /// `install` (posted to the async worker vs. run inline).
     fn build_request(
         &self,
         bid: BufferId,
-        text_gen: u64,
+        generation: u64,
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> ParseRequest {
-        let old_tree = if self.tree_gen == text_gen {
+        let old_tree = if self.tree_gen == generation {
             self.layers
                 .as_ref()
                 .and_then(SyntaxLayers::root_tree)
@@ -224,7 +224,7 @@ impl Syntax {
 
         ParseRequest {
             bid,
-            text_gen,
+            generation,
             bundle: Arc::clone(&self.bundle),
             text: text.clone(),
             old_tree,
@@ -232,7 +232,7 @@ impl Syntax {
         }
     }
 
-    /// Bring the committed tree up to date with `text_gen` *synchronously*,
+    /// Bring the committed tree up to date with `generation` *synchronously*,
     /// bypassing the async worker entirely. A structural command (text
     /// object, navigation) reads the tree after `frame_tick` has already run
     /// for the frame, but `frame_tick` only *posts* a reparse request. The
@@ -264,21 +264,21 @@ impl Syntax {
     pub fn ensure_current(
         &mut self,
         bid: BufferId,
-        text_gen: u64,
+        generation: u64,
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> Option<ChainBreak> {
         // See `is_current` for why `parsed_gen` alone is the wrong gate here.
-        if self.is_current(text_gen) {
+        if self.is_current(generation) {
             return None;
         }
 
-        let chain_break = self.bake(text_gen);
-        let req = self.build_request(bid, text_gen, text, langs);
+        let chain_break = self.bake(generation);
+        let req = self.build_request(bid, generation, text, langs);
         let mut parser = tree_sitter::Parser::new();
         let cancel = std::sync::atomic::AtomicBool::new(false);
         let done = crate::parse_worker::do_parse(&mut parser, req, &cancel);
-        self.install(done, text_gen);
+        self.install(done, generation);
         chain_break
     }
 
@@ -287,14 +287,14 @@ impl Syntax {
     /// checked *before* the chain-contiguity test so a reloaded buffer (layers
     /// cleared, stale pending) never trace-logs or clears pending here.
     ///
-    /// On a complete chain (`tree_gen + 1 ..= text_gen`, no gaps): applies
+    /// On a complete chain (`tree_gen + 1 ..= generation`, no gaps): applies
     /// every recorded `InputEdit` to every layer's tree, refreshes injected
     /// layers' cached `ranges`, advances `tree_gen`, clears `pending_edits`.
     ///
     /// On a broken chain: clears `pending_edits` (so the caller's `old_tree ==
     /// None` path posts a full reparse) and leaves `tree_gen` untouched,
     /// returning the break info for the caller to log.
-    fn bake(&mut self, text_gen: u64) -> Option<ChainBreak> {
+    fn bake(&mut self, generation: u64) -> Option<ChainBreak> {
         if self.pending_edits.is_empty() || self.layers.is_none() {
             return None;
         }
@@ -306,7 +306,7 @@ impl Syntax {
                 .last()
                 .expect("checked non-empty above")
                 .0
-                == text_gen
+                == generation
             && self.pending_edits.windows(2).all(|w| w[1].0 <= w[0].0 + 1);
 
         if chain_ok {
@@ -330,13 +330,13 @@ impl Syntax {
                     layer.ranges = layer.tree.included_ranges();
                 }
             }
-            self.tree_gen = text_gen;
+            self.tree_gen = generation;
             self.pending_edits.clear();
             None
         } else {
             let break_info = ChainBreak {
                 tree_gen,
-                text_gen,
+                generation,
                 first: self.pending_edits.first().map(|(g, _)| *g),
                 last: self.pending_edits.last().map(|(g, _)| *g),
             };
@@ -347,13 +347,13 @@ impl Syntax {
 
     /// Install a `ParseDone` result.
     ///
-    /// Clears `in_flight` when `done` matches the posted request (`text_gen`
+    /// Clears `in_flight` when `done` matches the posted request (`generation`
     /// equal, and `config_gen` equal; a done from a *previous* attachment
     /// fails the config match and must not clear a newer attachment's
     /// in-flight record). Discards the parse outcome itself (without
     /// touching `parsed_gen`) on a config-gen mismatch (grammar swapped
-    /// in flight), a stale `text_gen` (text moved on since submission), or a
-    /// `text_gen` whose layers are already installed (a synchronous
+    /// in flight), a stale `generation` (text moved on since submission), or a
+    /// `generation` whose layers are already installed (a synchronous
     /// `ensure_current` beat an asynchronous request to the same generation:
     /// the late arrival is redundant, not stale, so it must not re-run the
     /// `ParseOutcome::Ok` arm a second time). The already-installed check
@@ -362,34 +362,34 @@ impl Syntax {
     /// it, or a later `frame_tick` would dedup against a request that will
     /// never resolve.
     ///
-    /// Requires all three of `parsed_gen == Some(text_gen)`, `tree_gen ==
-    /// text_gen`, *and* `layers.is_some()`. No single field distinguishes
+    /// Requires all three of `parsed_gen == Some(generation)`, `tree_gen ==
+    /// generation`, *and* `layers.is_some()`. No single field distinguishes
     /// "already installed" from every other state alone:
     /// - `tree_gen` alone is not enough: `bake` also advances it, on the
     ///   *mainline* path, before this very call: an intact edit chain bakes
-    ///   `tree_gen` up to `text_gen` and only then calls `install` with the
+    ///   `tree_gen` up to `generation` and only then calls `install` with the
     ///   freshly reparsed replacement, which is not redundant and must run.
     /// - `parsed_gen` alone is not enough: `ParseFailed` advances it too, so
     ///   a later result for that same generation (a retried `ensure_current`
     ///   call, or a slow async request that finally lands) would hit this
     ///   guard and be discarded even though it succeeded, leaving
     ///   `layers`/`tree_gen` stuck on stale data until an unrelated edit
-    ///   bumps `text_gen` past this generation entirely.
+    ///   bumps `generation` past this generation entirely.
     /// - `layers.is_some()` resolves the generation-`0` ambiguity `tree_gen`
     ///   would otherwise have on its own: it starts at plain `0`, coinciding
     ///   with a buffer's genuine first parse (also generation `0`, per
-    ///   `Buffer`'s own starting `text_gen`), the same ambiguity
+    ///   `Buffer`'s own starting `generation`), the same ambiguity
     ///   `parsed_gen` is `Option` to avoid.
     ///
-    /// Together: `parsed_gen == Some(text_gen)` means an `install` call has
+    /// Together: `parsed_gen == Some(generation)` means an `install` call has
     /// already *run* for this generation (either arm); `tree_gen ==
-    /// text_gen && layers.is_some()` means the layers it left behind
+    /// generation && layers.is_some()` means the layers it left behind
     /// genuinely reflect that generation, not just a bake pending a
     /// replacement. Only when both hold was this generation's `Ok` result
     /// already committed.
-    pub fn install(&mut self, done: ParseDone, current_text_gen: u64) {
+    pub fn install(&mut self, done: ParseDone, current_generation: u64) {
         let ParseDone {
-            text_gen,
+            generation,
             bundle,
             outcome,
             ..
@@ -398,13 +398,16 @@ impl Syntax {
         if bundle.config_gen != self.bundle.config_gen {
             return; // superseded attachment: must not clear the new one's in_flight
         }
-        if self.in_flight == Some(text_gen) {
+        if self.in_flight == Some(generation) {
             self.in_flight = None;
         }
-        if text_gen != current_text_gen {
+        if generation != current_generation {
             return;
         }
-        if self.parsed_gen == Some(text_gen) && self.tree_gen == text_gen && self.layers.is_some() {
+        if self.parsed_gen == Some(generation)
+            && self.tree_gen == generation
+            && self.layers.is_some()
+        {
             return;
         }
 
@@ -426,17 +429,17 @@ impl Syntax {
                     });
                 }
                 self.layers = Some(SyntaxLayers::new(layers));
-                self.pending_edits.retain(|(g, _)| *g > text_gen);
-                self.tree_gen = text_gen;
+                self.pending_edits.retain(|(g, _)| *g > generation);
+                self.tree_gen = generation;
             }
             ParseOutcome::ParseFailed => {
                 // Advance parsed_gen so this generation is not retried every
                 // frame; tree_gen/layers stay as-is (next edit bumps
-                // text_gen and triggers a fresh attempt).
+                // generation and triggers a fresh attempt).
             }
         }
 
-        self.parsed_gen = Some(text_gen);
+        self.parsed_gen = Some(generation);
     }
 
     /// Committed layers for the renderer. `None` until the first install.
@@ -446,7 +449,7 @@ impl Syntax {
 
     /// Drop the committed layers, keeping the attachment and generations
     /// (buffer reload: content replaced wholesale). The next `frame_tick`
-    /// full-reparses (`tree_gen != text_gen` → `old_tree = None`).
+    /// full-reparses (`tree_gen != generation` → `old_tree = None`).
     pub fn clear_layers(&mut self) {
         self.layers = None;
     }
@@ -461,7 +464,7 @@ impl Syntax {
         self.parsed_gen
     }
 
-    /// Whether the committed layers describe `text_gen` exactly: the
+    /// Whether the committed layers describe `generation` exactly: the
     /// freshness question every caller actually means, and the gate
     /// [`Self::ensure_current`] skips its reparse on.
     ///
@@ -471,7 +474,7 @@ impl Syntax {
     /// they were. A caller gating on `parsed_gen` alone therefore reports
     /// "current" over a tree that predates the edit, and the next reader (a
     /// structural text-object query) hands `byte_to_char` an offset past the
-    /// buffer's own length. Requiring `tree_gen == text_gen` too closes that:
+    /// buffer's own length. Requiring `tree_gen == generation` too closes that:
     /// a `ParseFailed` generation never satisfies it, so the caller reparses
     /// instead of trusting stale layers.
     ///
@@ -479,8 +482,8 @@ impl Syntax {
     /// additionally requires `layers.is_some()`: that one asks whether this
     /// generation's `Ok` result was already committed, not whether the layers
     /// are current.
-    pub fn is_current(&self, text_gen: u64) -> bool {
-        self.parsed_gen == Some(text_gen) && self.tree_gen == text_gen
+    pub fn is_current(&self, generation: u64) -> bool {
+        self.parsed_gen == Some(generation) && self.tree_gen == generation
     }
 
     #[cfg(any(test, feature = "test-util"))]

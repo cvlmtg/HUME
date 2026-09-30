@@ -1,14 +1,12 @@
-use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::BufferText;
+use hume_editing::lines::line_break;
+use hume_editing::selection::Selection;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use hume_ops::MotionMode;
 use hume_ops::edit::{insert_newline_indent, open_line_above};
 use hume_ops::motion::{
-    cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_newline, cmd_goto_line_start,
-    cmd_move_right,
+    cmd_goto_first_nonblank, cmd_goto_line_newline, cmd_goto_line_start, cmd_move_right,
 };
 use hume_ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
 
@@ -30,8 +28,8 @@ pub(in crate::editor) fn cmd_insert_before(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.pane(), |_b, sels| {
-        sels.map(|s| Selection::collapsed(s.start()))
+    apply_pane_motion(state, view, fp.pane(), |st| {
+        st.map(|s| Selection::cursor(s.start()))
     });
     begin_insert_session(state, view, fp)?;
     begin_typed_run(state, view, fp, ExitCursor::StayPut);
@@ -45,8 +43,8 @@ pub(in crate::editor) fn cmd_insert_after(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.pane(), |b, s| {
-        cmd_move_right(b, s, 1, MotionMode::Move)
+    apply_pane_motion(state, view, fp.pane(), |st| {
+        cmd_move_right(st, 1, MotionMode::Move)
     });
     begin_insert_session(state, view, fp)?;
     begin_typed_run(state, view, fp, ExitCursor::StayPut);
@@ -60,8 +58,8 @@ pub(in crate::editor) fn cmd_insert_at_line_start(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.pane(), |b, s| {
-        cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
+    apply_pane_motion(state, view, fp.pane(), |st| {
+        cmd_goto_first_nonblank(st, 1, MotionMode::Move)
     });
     begin_insert_session(state, view, fp)?;
     begin_typed_run(state, view, fp, ExitCursor::StayPut);
@@ -75,22 +73,10 @@ pub(in crate::editor) fn cmd_insert_at_line_end(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.pane(), |b, s| {
-        // Move to line content-end, then step right onto the \n slot, unless the
-        // line is empty, in which case line-end is already the \n and stepping past
-        // it would land on the next line.
-        let max = b.last_char();
-        let at_end = cmd_goto_line_end(b, s, 1, MotionMode::Move);
-        at_end.map(|sel| {
-            let pos = if sel.ends_on_newline(b) {
-                // Empty line: cursor is on the \n; inserting here equals `i`.
-                sel.head()
-            } else {
-                // Non-empty line: advance one grapheme onto the trailing \n slot.
-                next_grapheme_boundary(b, sel.head()).min(max)
-            };
-            Selection::collapsed(pos)
-        })
+    // A cursor on the head line's `\n`, where appended text goes. On an
+    // empty line that is the line itself, so `A` equals `i` there.
+    apply_pane_motion(state, view, fp.pane(), |st| {
+        st.map(|sel| Selection::cursor(line_break(sel.text(), sel.head_line())))
     });
     begin_insert_session(state, view, fp)?;
     begin_typed_run(state, view, fp, ExitCursor::StepBack);
@@ -106,8 +92,8 @@ pub(in crate::editor) fn cmd_insert_at_selection_start(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.pane(), |_b, sels| {
-        sels.map(|sel| Selection::collapsed(sel.start()))
+    apply_pane_motion(state, view, fp.pane(), |st| {
+        st.map(|sel| Selection::cursor(sel.start()))
     });
     begin_insert_session(state, view, fp)?;
     begin_typed_run(state, view, fp, ExitCursor::StayPut);
@@ -119,8 +105,7 @@ pub(in crate::editor) fn cmd_insert_at_selection_start(
 ///
 /// `ExitCursor::StepBack` arms a step-back that applies when there is no
 /// typed span to fall back on instead; see `PaneBufferState::step_back_on_exit`'s
-/// doc for the full rule. Clamps to `len_chars() - 1` so `a` on the
-/// buffer-final `\n` stays in bounds.
+/// doc for the full rule.
 ///
 /// If the selection ends on a `\n` (e.g. after `select-line` / `x`, or on an empty
 /// line), the cursor stays on that `\n` slot rather than stepping past it; `a` on
@@ -132,17 +117,8 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.pane(), |b, sels| {
-        // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
-        let max = b.last_char();
-        sels.map(|sel| {
-            let pos = if sel.ends_on_newline(b) {
-                sel.end_inclusive(b) // selection ends on '\n': insert before it, not past it
-            } else {
-                sel.end_exclusive(b)
-            };
-            Selection::collapsed(pos.min(max))
-        })
+    apply_pane_motion(state, view, fp.pane(), |st| {
+        st.map(|sel| Selection::cursor(sel.append_point()))
     });
     begin_insert_session(state, view, fp)?;
     begin_typed_run(state, view, fp, ExitCursor::StepBack);
@@ -168,10 +144,10 @@ pub(in crate::editor) fn cmd_open_line_below(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     begin_insert_session(state, view, fp)?;
-    apply_pane_motion(state, view, fp.pane(), |b, s| {
-        cmd_goto_line_newline(b, s, 1, MotionMode::Move)
+    apply_pane_motion(state, view, fp.pane(), |st| {
+        cmd_goto_line_newline(st, 1, MotionMode::Move)
     });
-    apply_focused_edit_grouped(state, view, fp, |b, s| insert_newline_indent(b, s, &[]));
+    apply_focused_edit_grouped(state, view, fp, |s| insert_newline_indent(s, &[]));
     // Pin after the structural newline, not before: the anchor must mark
     // the start of typed content, not the blank line's own `\n`.
     begin_typed_run(state, view, fp, ExitCursor::StepBack);
@@ -190,8 +166,8 @@ pub(in crate::editor) fn cmd_open_line_above(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     begin_insert_session(state, view, fp)?;
-    apply_pane_motion(state, view, fp.pane(), |b, s| {
-        cmd_goto_line_start(b, s, 1, MotionMode::Move)
+    apply_pane_motion(state, view, fp.pane(), |st| {
+        cmd_goto_line_start(st, 1, MotionMode::Move)
     });
     apply_focused_edit_grouped(state, view, fp, open_line_above);
     // Pin after the indent + the structural newline `open_line_above` leaves
@@ -286,7 +262,7 @@ fn do_collapse_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,
     t: super::CommandPane,
-    collapse: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
+    collapse: impl FnOnce(hume_editing::state::EditState) -> hume_editing::state::EditState,
 ) {
     state.input.set_extend(false);
     apply_pane_motion(state, view, t, collapse);
@@ -302,8 +278,8 @@ pub(in crate::editor) fn cmd_collapse_to_head_and_exit_extend(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_collapse_and_exit_extend(state, view, fp.pane(), |b, s| {
-        cmd_collapse_selection_to_head(b, s, 0, MotionMode::Move)
+    do_collapse_and_exit_extend(state, view, fp.pane(), |st| {
+        cmd_collapse_selection_to_head(st, 0, MotionMode::Move)
     });
     Ok(())
 }
@@ -321,8 +297,8 @@ pub(in crate::editor) fn cmd_collapse_to_anchor_and_exit_extend(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_collapse_and_exit_extend(state, view, fp.pane(), |b, s| {
-        cmd_collapse_selection_to_anchor(b, s, 0, MotionMode::Move)
+    do_collapse_and_exit_extend(state, view, fp.pane(), |st| {
+        cmd_collapse_selection_to_anchor(st, 0, MotionMode::Move)
     });
     Ok(())
 }

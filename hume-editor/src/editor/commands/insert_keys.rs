@@ -8,10 +8,9 @@
 //! `&mut EditorState` + `&mut EngineView` (see `host_impl.rs`'s own doc),
 //! never a whole `&mut Editor`.
 
-use hume_editing::changeset::ChangeSet;
+use hume_editing::edit::Edited;
 use hume_editing::lines::leading_whitespace_end;
-use hume_editing::selection::SelectionSet;
-use hume_editing::text::BufferText;
+use hume_editing::state::EditState;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use hume_engine::pipeline::EngineView;
@@ -29,7 +28,7 @@ use crate::editor::event::EditorEvent;
 
 use super::{
     FocusedPane, apply_focused_edit_grouped, apply_pane_motion, arm_autoindent, autoindent_owned,
-    doc, effective_word_chars, pane_selections, tab_format,
+    doc, effective_word_chars, pane_view, tab_format,
 };
 
 /// Runs `key`'s Insert-mode default behaviour against `fp`'s (pane,
@@ -65,13 +64,11 @@ pub(in crate::editor) fn insert_default_key(
                         inserted = false;
                     } else if should_auto_pair(state, view, fp, pair, ap_pairs) {
                         // Context is clear: insert open+close or wrap selection.
-                        apply_insert_edit(state, view, fp, |b, s| {
-                            insert_pair_close(b, s, open, close)
-                        });
+                        apply_insert_edit(state, view, fp, |s| insert_pair_close(s, open, close));
                     } else {
                         // Next char is a word char (or symmetric prev is word char):
                         // insert only the typed character.
-                        apply_insert_edit(state, view, fp, |b, s| insert_char(b, s, ch));
+                        apply_insert_edit(state, view, fp, |s| insert_char(s, ch));
                     }
                 } else if ap_pairs.iter().any(|p| p.close == ch && !p.is_symmetric())
                     && should_skip_close(state, view, fp, ch)
@@ -80,10 +77,10 @@ pub(in crate::editor) fn insert_default_key(
                     skip_over_close(state, view, fp);
                     inserted = false;
                 } else {
-                    apply_insert_edit(state, view, fp, |b, s| insert_char(b, s, ch));
+                    apply_insert_edit(state, view, fp, |s| insert_char(s, ch));
                 }
             } else {
-                apply_insert_edit(state, view, fp, |b, s| insert_char(b, s, ch));
+                apply_insert_edit(state, view, fp, |s| insert_char(s, ch));
             }
             if inserted {
                 let buf = fp.bid(view);
@@ -128,7 +125,7 @@ pub(in crate::editor) fn insert_default_key(
         // Soft inserts spaces to the next tab stop (width from `tab-width`).
         KeyCode::Tab => {
             let (style, tw) = tab_format(doc(state, view, fp.pane()), &state.settings);
-            apply_insert_edit(state, view, fp, move |b, s| insert_tab(b, s, style, tw));
+            apply_insert_edit(state, view, fp, move |s| insert_tab(s, style, tw));
             true
         }
 
@@ -143,10 +140,11 @@ pub(in crate::editor) fn insert_default_key(
         // yet. `arm_autoindent` after the edit records the *new* line's own
         // copied indent, so the next Enter/Esc on it trims.
         KeyCode::Enter => {
-            let allowed = autoindent_owned(fp.pane().state(&state.panes.state, view));
-            apply_insert_edit(state, view, fp, move |b, s| {
-                insert_newline_indent(b, s, &allowed)
-            });
+            let allowed = autoindent_owned(
+                fp.pane().state(&state.panes.state, view),
+                doc(state, view, fp.pane()).text(),
+            );
+            apply_insert_edit(state, view, fp, move |s| insert_newline_indent(s, &allowed));
             arm_autoindent(state, view, fp);
             true
         }
@@ -166,7 +164,7 @@ pub(in crate::editor) fn insert_default_key(
                 // Dedent: snap every cursor in leading whitespace back to
                 // the previous tab stop. All-or-nothing: if any cursor
                 // isn't in leading ws, the whole batch falls back.
-                apply_insert_edit(state, view, fp, move |b, s| dedent_tab_backward(b, s, tw));
+                apply_insert_edit(state, view, fp, move |s| dedent_tab_backward(s, tw));
             } else if ap_enabled && is_between_pair(state, view, fp, ap_pairs) {
                 apply_insert_edit(state, view, fp, delete_pair);
             } else {
@@ -195,14 +193,14 @@ fn apply_insert_edit(
     state: &mut EditorState,
     view: &EngineView,
     fp: FocusedPane,
-    cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
+    cmd: impl FnOnce(EditState) -> Edited,
 ) {
     let buf = fp.bid(view);
     let cs = apply_focused_edit_grouped(state, view, fp, cmd);
-    // Read after `apply_focused_edit_grouped` returns, so `text_gen` reflects
+    // Read after `apply_focused_edit_grouped` returns, so text version reflects
     // the edit just applied, not the buffer's state before it.
-    let text_gen = state.buffers.get(buf).text_gen;
-    state.completion_observe_edit(view, buf, &cs, text_gen);
+    let version = state.buffers.get(buf).text().version();
+    state.completion_observe_edit(view, buf, &cs, version);
 }
 
 /// Moves the cursor right past an existing closer instead of inserting a
@@ -213,8 +211,8 @@ fn apply_insert_edit(
 /// reintroduce a keystroke-driven refilter for a motion path that carries
 /// no `ChangeSet` to remap.
 fn skip_over_close(state: &mut EditorState, view: &EngineView, fp: FocusedPane) {
-    apply_pane_motion(state, view, fp.pane(), |b, s| {
-        cmd_move_right(b, s, 1, MotionMode::Move)
+    apply_pane_motion(state, view, fp.pane(), |st| {
+        cmd_move_right(st, 1, MotionMode::Move)
     });
     state.dismiss_completion(view);
 }
@@ -234,21 +232,19 @@ fn skip_over_close(state: &mut EditorState, view: &EngineView, fp: FocusedPane) 
 /// [`leading_whitespace_end`] primitive.
 fn should_dedent_backspace(state: &EditorState, view: &EngineView, fp: FocusedPane) -> bool {
     let text = doc(state, view, fp.pane()).text();
-    pane_selections(state, view, fp.pane())
-        .iter_sorted()
-        .all(|sel| {
-            if !sel.is_collapsed() {
-                return false;
-            }
-            let p = sel.head();
-            let line_idx = text.char_to_line(p);
-            let line_start = text.line_to_char(line_idx.into());
-            // `p > line_start` rules out char_col 0 (nothing to dedent). `p <=
-            // leading_whitespace_end` keeps the all-or-nothing "in leading ws"
-            // rule: at exactly the end the cursor sits on the first content
-            // char and still qualifies.
-            p > line_start && p <= leading_whitespace_end(text, line_idx)
-        })
+    pane_view(state, view, fp.pane()).iter().all(|sel| {
+        if !sel.is_cursor() {
+            return false;
+        }
+        let p = sel.head();
+        let line_idx = text.char_to_line(p.offset());
+        let line_start = text.line_to_char(line_idx.into());
+        // `p > line_start` rules out char_col 0 (nothing to dedent). `p <=
+        // leading_whitespace_end` keeps the all-or-nothing "in leading ws"
+        // rule: at the whitespace end the cursor sits on the first content
+        // char and still qualifies.
+        p.offset() > line_start && p <= leading_whitespace_end(text, line_idx)
+    })
 }
 
 /// Returns `true` if every selection is a cursor AND the character at each
@@ -258,9 +254,9 @@ fn should_dedent_backspace(state: &EditorState, view: &EngineView, fp: FocusedPa
 /// falls back to normal insert, keeping multi-cursor behavior consistent.
 fn should_skip_close(state: &EditorState, view: &EngineView, fp: FocusedPane, ch: char) -> bool {
     let text = doc(state, view, fp.pane()).text();
-    pane_selections(state, view, fp.pane())
-        .iter_sorted()
-        .all(|sel| sel.is_collapsed() && text.char_at(sel.head()) == Some(ch))
+    pane_view(state, view, fp.pane())
+        .iter()
+        .all(|sel| sel.is_cursor() && text.char_at(sel.head().offset()) == Some(ch))
 }
 
 /// Returns `true` if every selection is a cursor AND the pair
@@ -272,20 +268,18 @@ fn is_between_pair(
     pairs: &[Pair],
 ) -> bool {
     let text = doc(state, view, fp.pane()).text();
-    pane_selections(state, view, fp.pane())
-        .iter_sorted()
-        .all(|sel| {
-            if !sel.is_collapsed() || sel.head() == hume_rope::offset::CharOffset::new(0) {
-                return false;
-            }
-            // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote
-            // chars are always single codepoints, but using it keeps the logic uniform.
-            let prev = hume_editing::grapheme::prev_grapheme_boundary(text, sel.head());
-            match (text.char_at(prev), text.char_at(sel.head())) {
-                (Some(before), Some(at)) => pairs.iter().any(|p| p.open == before && p.close == at),
-                _ => false,
-            }
-        })
+    pane_view(state, view, fp.pane()).iter().all(|sel| {
+        if !sel.is_cursor() || sel.head().offset() == hume_rope::offset::CharOffset::new(0) {
+            return false;
+        }
+        // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote
+        // chars are always single codepoints, but using it keeps the logic uniform.
+        let prev = hume_editing::grapheme::prev_grapheme_boundary(text, sel.head().offset());
+        match (text.char_at(prev), text.char_at(sel.head().offset())) {
+            (Some(before), Some(at)) => pairs.iter().any(|p| p.open == before && p.close == at),
+            _ => false,
+        }
+    })
 }
 
 /// Returns `true` if auto-pairing `pair` is appropriate given the current
@@ -301,9 +295,7 @@ fn should_auto_pair(
     let buf = doc(state, view, fp.pane());
     let text = buf.text();
     let chars = effective_word_chars(buf, &state.settings);
-    pane_selections(state, view, fp.pane())
-        .iter_sorted()
-        .all(|sel| {
-            !sel.is_collapsed() || should_auto_pair_at(text, sel.head(), pair, ap_pairs, chars)
-        })
+    pane_view(state, view, fp.pane()).iter().all(|sel| {
+        !sel.is_cursor() || should_auto_pair_at(text, sel.head().offset(), pair, ap_pairs, chars)
+    })
 }

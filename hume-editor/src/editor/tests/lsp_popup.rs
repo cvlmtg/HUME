@@ -327,7 +327,7 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(popup_band_lines(&ed).is_some(), "sanity: showing");
-    let head_before = ed.current_selections().primary().head();
+    let head_before = ed.current_view().primary().head().offset();
 
     ed.feed_key(key('l'));
     assert!(
@@ -335,7 +335,7 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
         "any non-scroll key must close a docked popup"
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         head_before.shift(1),
         "the closing key ('l') must still execute its normal motion"
     );
@@ -782,7 +782,7 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(popup_view(&ed).is_some(), "sanity: showing");
-    let head_before = ed.current_selections().primary().head();
+    let head_before = ed.current_view().primary().head().offset();
 
     // 'l' both closes the popup and still moves the cursor right: a stray
     // key on a scrollable popup is dismiss-and-fall-through, not
@@ -793,7 +793,7 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
         "any non-scroll key must close a scrollable popup"
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         head_before.shift(1),
         "the closing key ('l') must still execute its normal motion"
     );
@@ -901,7 +901,7 @@ fn a_mouse_click_closes_a_scrollable_popup() {
         "a mouse click must close a scrollable popup"
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(3),
         "the click must still move the cursor to the clicked char"
     );

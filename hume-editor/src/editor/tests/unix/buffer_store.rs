@@ -7,10 +7,7 @@ fn p6_edit_opens_new_buffer() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "file content\n").unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("scratch\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
     let initial_bid = ed.focused_buffer_id();
     let canonical = std::fs::canonicalize(&path).unwrap();
     let result = ed.execute_typed("e", Some(path.to_str().unwrap()));
@@ -32,10 +29,7 @@ fn p6_edit_deduplicates_open_file() {
     let path = dir.path().join("dedup.txt");
     std::fs::write(&path, "dedup\n").unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("scratch\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
     // Open the file once.
     let r1 = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(r1.is_ok());
@@ -66,10 +60,7 @@ fn p6_edit_force_reloads_current_file() {
     let path = dir.path().join("reload.txt");
     std::fs::write(&path, "original\n").unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("scratch\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
     // Dirty the buffer.
     ed.handle_key(key('i'));
@@ -209,7 +200,16 @@ fn p6_e_bang_undo_then_edit_branches_off_old_tree() {
 
     // The reload revision survives as a reachable sibling (tree-monotonicity).
     let mut sels = ed.current_selections().clone();
-    ed.doc_mut().goto_revision(&mut sels, r_reload);
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).goto_revision(
+        bid,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut ed.state.panes,
+            &mut ed.state.input,
+        ),
+        &mut sels,
+        r_reload,
+    );
     assert_eq!(
         ed.doc().text().to_string(),
         "changed\n",
@@ -242,7 +242,20 @@ fn p6_e_bang_inverse_is_fine_grained() {
     // (buffer-swap) reload would have produced an inverse of
     // `Delete(whole new) | Insert(whole old)`; the line-diff path produces a
     // small `Insert("beta\n")` instead.
-    let (_, inv_cs, _steps) = ed.doc_mut().undo_n(1).expect("undo returns the inverse CS");
+    let bid = ed.focused_buffer_id();
+    let (_, inv_cs, _steps) = ed
+        .state
+        .buffers
+        .get_mut(bid)
+        .undo_n(
+            bid,
+            &mut crate::editor::position_stores::PositionStores::new(
+                &mut ed.state.panes,
+                &mut ed.state.input,
+            ),
+            1,
+        )
+        .expect("undo returns the inverse CS");
     let has_small_insert = inv_cs
         .ops()
         .iter()

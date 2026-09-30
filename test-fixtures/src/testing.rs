@@ -1,6 +1,7 @@
 use hume_editing::changeset::ChangeSet;
-use hume_editing::grapheme::{is_cluster_boundary, next_grapheme_boundary, snap_to_cluster_start};
+use hume_editing::edit::Edited;
 use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::state::EditState;
 /// Test DSL for HUME editing operations.
 ///
 /// A compact, human-readable string format for editor state (buffer content
@@ -33,6 +34,7 @@ use hume_editing::selection::{Selection, SelectionSet};
 /// starts of the clusters they wrap: `a-[e\u{301}]>b\n` is a cursor on the
 /// whole accented letter. A marker inside a cluster panics.
 use hume_editing::text::BufferText;
+use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::CharOffset;
 
 // ── IntoTestResult ────────────────────────────────────────────────────────────
@@ -42,247 +44,101 @@ use hume_rope::offset::CharOffset;
 ///
 /// Commands have two distinct signature families:
 ///
-/// - **Non-mutating** (motions, text objects, selection commands): take
-///   `&BufferText`, return `SelectionSet`. The buffer is unchanged — the macro
-///   provides its clone via `original_text`.
-/// - **Mutating** (edits): take `BufferText` by value, return
-///   `(BufferText, SelectionSet, ChangeSet)`. The returned buffer
-///   is the edited one — `original_text` is ignored.
+/// - **Non-mutating** (motions, text objects, selection commands): take an
+///   `EditState`, return one for the same text.
+/// - **Mutating** (edits): take an `EditState`, return `Edited`, whose text is
+///   the edited one.
 ///
-/// This trait lets `assert_state!` accept both families without change.
+/// This trait lets `assert_state!` accept both families without change, plus
+/// the bare pairs a test helper may build.
 pub trait IntoTestResult {
-    fn into_test_result(self, original_text: BufferText) -> (BufferText, SelectionSet);
-}
-
-/// Non-mutating commands return only the new `SelectionSet`.
-/// The buffer didn't change, so we pair it with the caller's clone.
-impl IntoTestResult for SelectionSet {
-    fn into_test_result(self, original_text: BufferText) -> (BufferText, SelectionSet) {
-        (original_text, self)
-    }
+    fn into_test_result(self) -> (BufferText, SelectionSet);
 }
 
 /// `(BufferText, SelectionSet)` pair — emitted by internal helpers that don't produce a `ChangeSet`.
 impl IntoTestResult for (BufferText, SelectionSet) {
-    fn into_test_result(self, _original_text: BufferText) -> (BufferText, SelectionSet) {
+    fn into_test_result(self) -> (BufferText, SelectionSet) {
         self
     }
 }
 
-/// Standard edit commands.
-impl IntoTestResult for (BufferText, SelectionSet, ChangeSet) {
-    fn into_test_result(self, _original_text: BufferText) -> (BufferText, SelectionSet) {
-        (self.0, self.1)
+/// Edit commands on the typed model.
+impl IntoTestResult for Edited {
+    fn into_test_result(self) -> (BufferText, SelectionSet) {
+        let (text, sels, _) = parts(self);
+        (text, sels)
     }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+/// Motions, text objects and selection commands on the typed model.
+impl IntoTestResult for EditState {
+    fn into_test_result(self) -> (BufferText, SelectionSet) {
+        (self.text().clone(), self.into_selections())
+    }
+}
 
-/// Count the number of Unicode scalar values in `s`.
-///
-/// We use `str::chars().count()` which is O(n) in the byte length of the
-/// string. Since this is called only during test setup (not in hot paths)
-/// that is perfectly acceptable.
-#[inline]
-fn char_count(s: &str) -> usize {
-    s.chars().count()
+/// `sels` paired with `text`, the input an edit command takes.
+pub fn state(text: BufferText, sels: SelectionSet) -> EditState {
+    EditState::bind(&text, sels)
+}
+
+/// An edit's new text, selections and changeset.
+pub fn parts(edited: Edited) -> (BufferText, SelectionSet, ChangeSet) {
+    let (state, cs) = edited.into_parts();
+    (state.text().clone(), state.into_selections(), cs)
 }
 
 // ── State parsing ─────────────────────────────────────────────────────────────
 
-/// Parse a marker-annotated string into `(BufferText, SelectionSet)`.
-///
-/// The markers are stripped from the returned buffer. Panics with a
-/// descriptive message if the string contains no selection markers, or if a
-/// marker is malformed (e.g. a `-[` with no matching `]>`), or if a marker sits
-/// inside a grapheme cluster. The head and anchor of a parsed selection are the
-/// starts of the clusters it covers, so `-[e\u{301}]>` is a cursor on the
-/// whole accented letter.
+/// Parse a marker-annotated string into `(BufferText, SelectionSet)`. See
+/// [`hume_editing::marked::parse`] for the notation and what panics.
 pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
-    // Single pass, tracking whether we're inside `-[…]>` or `<[…]-` (see
-    // `State` below). Any char not starting one of the four two-char tokens
-    // (recognised by peeking one char ahead) is literal text.
-
-    let mut text = String::with_capacity(input.len());
-    // (open marker offset, close marker offset, forward)
-    let mut spans: Vec<(usize, usize, bool)> = Vec::new();
-
-    #[derive(Debug)]
-    enum State {
-        Normal,
-        /// Inside `-[…]>`: anchor was recorded at `anchor_offset`.
-        InForward {
-            anchor_offset: usize,
-        },
-        /// Inside `<[…]-`: head was recorded at `head_offset`.
-        InBackward {
-            head_offset: usize,
-        },
-    }
-
-    let mut state = State::Normal;
-    let mut chars = input.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        match (&state, ch) {
-            // ── Open forward: `-[` ────────────────────────────────────────
-            (State::Normal, '-') if chars.peek() == Some(&'[') => {
-                chars.next(); // consume '['
-                state = State::InForward {
-                    anchor_offset: char_count(&text),
-                };
-            }
-
-            // ── Open backward: `<[` ───────────────────────────────────────
-            (State::Normal, '<') if chars.peek() == Some(&'[') => {
-                chars.next(); // consume '['
-                state = State::InBackward {
-                    head_offset: char_count(&text),
-                };
-            }
-
-            // ── Close forward: `]>` ───────────────────────────────────────
-            (State::InForward { anchor_offset }, ']') if chars.peek() == Some(&'>') => {
-                chars.next(); // consume '>'
-                let count = char_count(&text);
-                assert!(
-                    count > *anchor_offset,
-                    "parse_state: empty selection `-[]>` in {:?} — \
-                     a selection must cover at least one character",
-                    input
-                );
-                spans.push((*anchor_offset, count, true));
-                state = State::Normal;
-            }
-
-            // ── Close backward: `]-` ──────────────────────────────────────
-            (State::InBackward { head_offset }, ']') if chars.peek() == Some(&'-') => {
-                chars.next(); // consume '-'
-                let count = char_count(&text);
-                assert!(
-                    count > *head_offset,
-                    "parse_state: empty selection `<[]-` in {:?} — \
-                     a selection must cover at least one character",
-                    input
-                );
-                spans.push((*head_offset, count, false));
-                state = State::Normal;
-            }
-
-            // ── Guard: `]` not followed by `>` or `-` is literal text ─────
-            (_, ']') => {
-                text.push(']');
-            }
-
-            // ── Guard: lone `-` not followed by `[` is literal text ───────
-            (_, '-') => {
-                text.push('-');
-            }
-
-            // ── Guard: lone `<` not followed by `[` is literal text ───────
-            (_, '<') => {
-                text.push('<');
-            }
-
-            // ── Regular character — append to buffer text ─────────────────
-            (_, c) => {
-                text.push(c);
-            }
-        }
-    }
-
-    // Validate that the markers were properly closed.
-    match state {
-        State::InForward { .. } => panic!(
-            "parse_state: unterminated `-[` in input: {:?}\n\
-             Did you forget the closing `]>`?",
-            input
-        ),
-        State::InBackward { .. } => panic!(
-            "parse_state: unterminated `<[` in input: {:?}\n\
-             Did you forget the closing `]-`?",
-            input
-        ),
-        State::Normal => {}
-    }
-
-    assert!(
-        !spans.is_empty(),
-        "parse_state: no selection markers found in input: {:?}\n\
-         Add at least one `-[x]>` cursor or `-[text]>` / `<[text]-` selection.",
-        input
-    );
-
-    assert!(
-        text.ends_with('\n'),
-        "parse_state: DSL string must produce a buffer ending with '\\n' (got {:?}).\n\
-         Every buffer has a structural trailing newline — include it explicitly.\n\
-         E.g. use \"-[h]>ello\\n\" not \"-[h]>ello\", \"hello-[\\n]>\" not \"hello-[]\", \
-         \"-[\\n]>\" not \"-[]>\".",
-        input
-    );
-
-    let buf = BufferText::from(text.as_str());
-    let selections = spans
-        .into_iter()
-        .map(|(open, close, forward)| {
-            let (open, close) = (CharOffset::new(open), CharOffset::new(close));
-            assert!(
-                is_cluster_boundary(&buf, open) && is_cluster_boundary(&buf, close),
-                "parse_state: a selection marker splits a grapheme cluster in {input:?}"
-            );
-            let last = snap_to_cluster_start(&buf, close.retreat(1));
-            Selection::directed(open, last, forward)
-        })
-        .collect();
-    (buf, SelectionSet::from_vec(selections, 0))
+    let state = hume_editing::marked::parse(input);
+    (state.text().clone(), state.into_selections())
 }
 
-/// Serialize `(BufferText, SelectionSet)` back to the marker format.
-///
-/// This is the inverse of `parse_state`. It is used in assertions so that
-/// diffs show the annotated marker text rather than raw char offsets.
+// ── Typed positions from char offsets ─────────────────────────────────────────
+
+/// The cluster starting at char `n` of `text`. Panics when `n` is not a
+/// cluster start, so a test's literal offset names the position it means.
+pub fn at(text: &BufferText, n: usize) -> ClusterStart {
+    let pos = text.snap(CharOffset::new(n));
+    assert_eq!(
+        pos.offset(),
+        CharOffset::new(n),
+        "char {n} is not a cluster start"
+    );
+    pos
+}
+
+/// A selection of `text` from char `anchor` to char `head`, both cluster
+/// starts.
+pub fn sel(text: &BufferText, anchor: usize, head: usize) -> Selection {
+    Selection::new(at(text, anchor), at(text, head))
+}
+
+/// A cursor on the cluster starting at char `n` of `text`.
+pub fn cursor(text: &BufferText, n: usize) -> Selection {
+    Selection::cursor(at(text, n))
+}
+
+/// `selections` as a set for `text`, the one at `primary` primary; sorted and
+/// merged like every set.
+pub fn set(text: &BufferText, selections: Vec<Selection>, primary: usize) -> SelectionSet {
+    EditState::at_text_start(text.clone())
+        .with_selections(selections, primary)
+        .into_selections()
+}
+
+/// One selection as a set for `text`.
+pub fn single(text: &BufferText, selection: Selection) -> SelectionSet {
+    set(text, vec![selection], 0)
+}
+
+/// `(BufferText, SelectionSet)` in marker notation: the inverse of
+/// [`parse_state`], so assertion diffs show markers rather than offsets.
 pub fn serialize_state(text: &BufferText, sels: &SelectionSet) -> String {
-    let full = text.to_string();
-    // Include the structural trailing \n in the serialized output so that
-    // DSL strings are explicit about buffer content. Every valid buffer ends
-    // with \n, so every serialized string ends with \n too.
-    let chars: Vec<char> = full.chars().collect();
-    let n = chars.len();
-
-    // Build a lookup: char_offset → what markers to insert before this char.
-    // We use a `Vec` of vecs indexed by char position, plus a special slot
-    // at index `n` for markers that appear after the last character.
-    //
-    // Selections are processed in sorted order (iter_sorted), so closing markers
-    // of one selection are naturally added before opening markers of the next
-    // when they share the same position — producing `]>-[` not `-[]>` etc.
-    let mut markers: Vec<Vec<&'static str>> = vec![vec![]; n + 1];
-
-    for sel in sels.iter_sorted() {
-        if sel.anchor() <= sel.head() {
-            // Forward selection (including cursor where anchor == head).
-            // `-[` at anchor, `]>` after the head's cluster.
-            markers[sel.anchor().index()].push("-[");
-            markers[next_grapheme_boundary(text, sel.head()).index()].push("]>");
-        } else {
-            // Backward selection (anchor > head).
-            // `<[` at head, `]-` after the anchor's cluster.
-            markers[sel.head().index()].push("<[");
-            markers[next_grapheme_boundary(text, sel.anchor()).index()].push("]-");
-        }
-    }
-
-    let mut out = String::with_capacity(full.len() + sels.len() * 8);
-    for i in 0..=n {
-        for &marker in &markers[i] {
-            out.push_str(marker);
-        }
-        if i < n {
-            out.push(chars[i]);
-        }
-    }
-    out
+    hume_editing::marked::render(hume_editing::selection::EditView::bind(text, sels))
 }
 
 // ── Assertion macro ───────────────────────────────────────────────────────────
@@ -292,27 +148,25 @@ pub fn serialize_state(text: &BufferText, sels: &SelectionSet) -> String {
 ///
 /// Both `$initial` and `$expected` are marker-annotated strings (see module
 /// docs for the format). `$op` is a closure that takes `(BufferText, SelectionSet)`
-/// and returns either:
-/// - `(BufferText, SelectionSet, ChangeSet[, Vec<String>])` — for edit commands
-///   that modify the buffer, or
-/// - `SelectionSet` — for motion/selection commands that only move cursors.
+/// and returns anything [`IntoTestResult`] accepts: `Edited` for an edit,
+/// `EditState` for a motion or selection command.
 ///
 /// Both return types are handled automatically via [`IntoTestResult`].
 ///
 /// # Example
 ///
 /// ```text
-/// // Edit command (returns buffer + sels + changeset):
+/// // Edit command:
 /// assert_state!(
 ///     "-[h]>ello\n",
-///     |(text, sels)| delete_char_forward(text, sels),
+///     |(text, sels)| delete_char_forward(state(text, sels)),
 ///     "-[e]>llo\n",
 /// );
 ///
-/// // Motion command (returns SelectionSet only):
+/// // Motion command:
 /// assert_state!(
 ///     "-[h]>ello\n",
-///     |(text, sels)| cmd_move_right(&text, sels, 1, MotionMode::Move),
+///     |(text, sels)| cmd_move_right(state(text, sels), 1, MotionMode::Move),
 ///     "h-[e]>llo\n",
 /// );
 /// ```
@@ -326,14 +180,11 @@ macro_rules! assert_state {
         use $crate::testing::{parse_state, serialize_state};
 
         let (text, sels) = parse_state($initial);
-        sels.debug_assert_valid(&text);
-        // Clone before the op: non-mutating commands return only `SelectionSet`,
-        // so `IntoTestResult` re-pairs it with this clone. Mutating commands
-        // return a new buffer and ignore the clone. Rope clones are O(log n).
-        let text_copy = text.clone();
         let (result_text, result_sels) =
-            $crate::testing::IntoTestResult::into_test_result($op((text, sels)), text_copy);
-        result_sels.debug_assert_valid(&result_text);
+            $crate::testing::IntoTestResult::into_test_result($op((text, sels)));
+        hume_editing::selection::EditView::bind(&result_text, &result_sels)
+            .check()
+            .expect("the command's selections fit its text");
         let (expected_text, expected_sels) = parse_state($expected);
 
         assert_eq!(
@@ -342,12 +193,3 @@ macro_rules! assert_state {
         );
     }};
 }
-
-// ── Tests for the DSL itself ──────────────────────────────────────────────────
-//
-// A test that depends on a broken test helper is worse than no test at all.
-// We thoroughly test `parse_state` and `serialize_state` before using them
-// in any editing operation tests.
-
-#[cfg(test)]
-mod tests;

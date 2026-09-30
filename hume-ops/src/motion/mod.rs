@@ -1,6 +1,6 @@
-use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::BufferText;
-use hume_rope::offset::CharOffset;
+use hume_editing::selection::{Selection, SelectionView};
+use hume_editing::state::EditState;
+use hume_rope::cluster::ClusterStart;
 
 use super::MotionMode;
 
@@ -15,55 +15,43 @@ pub enum FindKind {
 
 // ── Motion framework ──────────────────────────────────────────────────────────
 
-/// Apply an inner motion to every selection in the set, repeated `count` times.
+/// Apply an inner motion to every selection, repeated `count` times.
 ///
-/// `motion` computes one new head position, given the whole current
-/// selection. Most motions only read `sel.head()`, but a motion that needs
-/// to resolve against the whole span (e.g. [`goto_matching_pair`]) can too.
-/// `apply_motion` handles the anchor semantics (via `mode`) and multi-cursor
-/// bookkeeping.
+/// `motion` computes one new head, given the whole current selection. Most
+/// motions only read the head, but a motion that needs to resolve against the
+/// whole span (e.g. [`goto_matching_pair`]) can too. `apply_motion` handles
+/// the anchor semantics (via `mode`) and multi-cursor bookkeeping.
 ///
-/// `count` controls how many times the motion is applied per selection. Each
-/// step rebuilds a `Selection` pinned to the *original* anchor with the
-/// latest head, so a multi-step motion sees a selection shaped like its
-/// caller would see it after one step, not a bare head. The motion is applied
-/// `count` times *inside* the `map` call: each selection independently
-/// accumulates N steps before anchor/merge logic runs. This is semantically
-/// "move 3 words" (not "apply 1w to the whole selection set three times"),
-/// which prevents premature merging of multi-cursor selections between
-/// steps.
-///
-/// Uses `map` (which always merges) so that selections which converge to the
-/// same position after the motion are automatically merged.
+/// Each step views the selection pinned to its *original* anchor with the
+/// latest head, so a multi-step motion sees a selection shaped like its caller
+/// would see it after one step, not a bare head. Every selection takes its
+/// `count` steps before selections merge: "move 3 words", not "apply 1w to the
+/// whole set three times", so multi-cursor selections never merge between
+/// steps. Selections that converge afterwards merge.
 pub(crate) fn apply_motion(
-    text: &BufferText,
-    sels: SelectionSet,
+    state: EditState,
     mode: MotionMode,
     count: usize,
-    motion: impl Fn(&BufferText, &Selection) -> CharOffset,
-) -> SelectionSet {
-    let result = sels.map(|sel| {
-        // Stop at a fixed point. Every motion here is a pure function of
-        // (text, selection), so once a step stops moving the head (clamped
-        // at a buffer edge, or no further match for f/t), every later step
-        // returns the same head. Without this a large count does O(count)
-        // work instead of O(distance moved).
-        let mut s = sel;
+    motion: impl Fn(SelectionView<'_>) -> ClusterStart,
+) -> EditState {
+    state.map(|sel| {
+        // Stop at a fixed point: every motion here is a pure function of
+        // (text, selection), so once a step stops moving the head, every
+        // later step returns the same head. Without this a large count does
+        // O(count) work instead of O(distance moved).
+        let mut step = sel;
         for _ in 0..count {
-            let head = motion(text, &s);
-            if head == s.head() {
+            let head = motion(step);
+            if head == step.head() {
                 break;
             }
-            s = Selection::new(s.anchor(), head);
+            step = step.with_selection(step.selection().with_head(head));
         }
-        let new_head = s.head();
         match mode {
-            MotionMode::Move => Selection::collapsed(new_head),
-            MotionMode::Extend => Selection::new(sel.anchor(), new_head),
+            MotionMode::Move => Selection::cursor(step.head()),
+            MotionMode::Extend => sel.selection().with_head(step.head()),
         }
-    });
-    result.debug_assert_valid(text);
-    result
+    })
 }
 
 mod matching_pair;
@@ -93,17 +81,14 @@ mod tests;
 
 // ── Named commands (public API) ───────────────────────────────────────────────
 //
-// Named commands follow the edit convention (`(BufferText, SelectionSet) ->
-// (BufferText, SelectionSet)`), so they can be used directly with `assert_state!`
-// and, eventually, the command dispatch table.
-//
-// Pure motions do not modify the buffer, so `text` passes through unchanged.
+// Named commands take and return an `EditState`; a motion leaves the text as
+// it is.
 //
 // The `motion_cmd!` macro below generates each command, so the table is just
 // data (name, mode, motion) with no repeated scaffolding.
 
 /// Generate a named motion command whose motion function takes only
-/// `(&BufferText, head)`, wrapped to fit `apply_motion`'s `&Selection` param:
+/// `(&BufferText, head)`, wrapped to fit `apply_motion`'s selection view:
 /// ```text
 /// motion_cmd!(/// doc, cmd_move_right, move_right);
 /// ```
@@ -115,8 +100,8 @@ macro_rules! motion_cmd {
     ($(#[$attr:meta])* $name:ident, $motion:expr) => {
         $(#[$attr])*
         #[allow(non_snake_case)]
-        pub fn $name(text: &BufferText, sels: SelectionSet, count: usize, mode: MotionMode) -> SelectionSet {
-            apply_motion(text, sels, mode, count, |t, s: &Selection| $motion(t, s.head()))
+        pub fn $name(state: EditState, count: usize, mode: MotionMode) -> EditState {
+            apply_motion(state, mode, count, |s| $motion(s.text(), s.head()))
         }
     };
 }
@@ -150,11 +135,6 @@ motion_cmd!(/// Move or extend cursors to the first non-blank character on their
 /// to a bare `#`. Vim's `count%` means "go to N% of the file" (a different
 /// operation this motion doesn't implement), so `count` is ignored rather
 /// than given a meaning nobody asked for.
-pub fn cmd_goto_matching_pair(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    apply_motion(text, sels, mode, 1, goto_matching_pair)
+pub fn cmd_goto_matching_pair(state: EditState, _count: usize, mode: MotionMode) -> EditState {
+    apply_motion(state, mode, 1, goto_matching_pair)
 }

@@ -7,7 +7,6 @@ use std::rc::Rc;
 
 use super::doubles::{FormatProbe, InlineHint, VirtualLineBlock};
 use super::*;
-use hume_editing::selection::Selection;
 use hume_engine::pipeline::RenderContext;
 use hume_engine::providers::VirtualLineAnchor;
 use hume_grid::{Grid, Rect};
@@ -25,16 +24,20 @@ use hume_grid::{Grid, Rect};
 fn many_lines_editor() -> Editor {
     let mut ed = Editor::open(None, Arc::new(|| {})).unwrap();
     let bid = ed.focused_buffer_id();
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_view_content(BufferText::from("a\n".repeat(50).as_str()));
+    ed.state.buffers.get_mut(bid).set_view_content(
+        bid,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut ed.state.panes,
+            &mut ed.state.input,
+        ),
+        &"a\n".repeat(50),
+    );
     set_cursor(&mut ed, 0);
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
     ed
 }
 
-/// A grouped edit (an open Insert session) bumps `Buffer::text_gen` on every
+/// A grouped edit (an open Insert session) bumps the buffer text's version on every
 /// keystroke but does not record a new revision: `commit_edit_group` is what
 /// moves `history.current_id()`, and that only runs on session end. A tag built
 /// from the revision id is therefore frozen for the whole session while the
@@ -70,10 +73,14 @@ fn buffer_tag_changes_across_a_set_view_content_refresh() {
     let bid = ed.focused_buffer_id();
     let before = ed.state.format_key(&ed.view.panes[pid]).buffer_tag;
 
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_view_content(BufferText::from("refreshed\n"));
+    ed.state.buffers.get_mut(bid).set_view_content(
+        bid,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut ed.state.panes,
+            &mut ed.state.input,
+        ),
+        "refreshed\n",
+    );
 
     let after = ed.state.format_key(&ed.view.panes[pid]).buffer_tag;
     assert_ne!(
@@ -227,8 +234,8 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     // 6-column hint makes 12, wrapping it onto a second row, exactly
     // `content_pos_counts_an_inline_hints_extra_wrap_row`'s fixture.
     let text = BufferText::from("abcdef\ny\n");
-    let sels = SelectionSet::single(Selection::collapsed(co(7)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(7, 7)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.state.settings.scroll_margin = 0;
     let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
@@ -290,8 +297,7 @@ fn the_two_frame_passes_format_each_visible_line_once() {
     let text: String = (0..6)
         .map(|i| format!("line{i} with enough text to wrap\n"))
         .collect();
-    let sels = SelectionSet::single(Selection::collapsed(co(0)));
-    let mut ed = Editor::for_testing(Buffer::new(BufferText::from(text.as_str()), sels));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(text.as_str())));
     let pid = ed.state.focus.id();
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Soft { width: 0 };
 

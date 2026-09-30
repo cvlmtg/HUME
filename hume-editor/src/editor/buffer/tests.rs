@@ -1,5 +1,8 @@
 use super::*;
+use crate::editor::position_stores::DetachedStores;
 use crate::editor::tests::co;
+use hume_editing::edit::Edited;
+use hume_editing::state::EditState;
 use hume_ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
     paste_before, repeat_edit,
@@ -20,31 +23,36 @@ struct DocHelper {
 }
 
 impl DocHelper {
-    fn apply_edit(
-        &mut self,
-        cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
-    ) {
-        let sels = std::mem::take(&mut self.sels);
-        let (new_sels, _cs) = self.buf.apply_edit(sels, cmd);
+    fn apply_edit(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
+        let sels = self.sels.clone();
+        let (new_sels, _cs) = self.buf.apply_edit(
+            BufferId::default(),
+            &mut DetachedStores::default().stores(),
+            sels,
+            cmd,
+        );
         self.sels = new_sels;
     }
 
-    fn apply_edit_grouped(
-        &mut self,
-        cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
-    ) {
-        let sels = std::mem::take(&mut self.sels);
+    fn apply_edit_grouped(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
+        let sels = self.sels.clone();
         let group = self
             .edit_group
             .as_mut()
             .expect("apply_edit_grouped called without an open group");
-        let (new_sels, _cs) = self.buf.apply_edit_grouped(sels, group, cmd);
+        let (new_sels, _cs) = self.buf.apply_edit_grouped(
+            BufferId::default(),
+            &mut DetachedStores::default().stores(),
+            sels,
+            group,
+            cmd,
+        );
         self.sels = new_sels;
     }
 
     fn begin_edit_group(&mut self) {
         let pre_sels = self.sels.clone();
-        self.edit_group = Some(self.buf.begin_edit_group(pre_sels));
+        self.edit_group = Some(self.buf.begin_edit_group(pre_sels.clone(), pre_sels));
     }
 
     fn commit_edit_group(&mut self) {
@@ -67,7 +75,11 @@ impl DocHelper {
     /// Returns the number of steps actually taken (short of `count` at the
     /// root).
     fn undo_n(&mut self, count: usize) -> usize {
-        let Some((new_sels, _cs, steps)) = self.buf.undo_n(count) else {
+        let Some((new_sels, _cs, steps)) = self.buf.undo_n(
+            BufferId::default(),
+            &mut DetachedStores::default().stores(),
+            count,
+        ) else {
             return 0;
         };
         self.sels = new_sels;
@@ -77,7 +89,11 @@ impl DocHelper {
     /// Returns the number of steps actually taken (short of `count` at the
     /// tip).
     fn redo_n(&mut self, count: usize) -> usize {
-        let Some((new_sels, _cs, steps)) = self.buf.redo_n(count) else {
+        let Some((new_sels, _cs, steps)) = self.buf.redo_n(
+            BufferId::default(),
+            &mut DetachedStores::default().stores(),
+            count,
+        ) else {
             return 0;
         };
         self.sels = new_sels;
@@ -85,21 +101,31 @@ impl DocHelper {
     }
 
     fn goto_revision(&mut self, target: hume_editing::history::RevisionId) {
-        self.buf.goto_revision(&mut self.sels, target);
+        self.buf.goto_revision(
+            BufferId::default(),
+            &mut DetachedStores::default().stores(),
+            &mut self.sels,
+            target,
+        );
     }
 
     /// Reload the buffer text in place, preserving history. The current
-    /// selections become the stored `pre_sels` (undo restores them);
-    /// `post_sels` becomes both the stored post-reload selection and the
-    /// helper's live `self.sels`.
-    fn reload_from(&mut self, new_text: BufferText, post_sels: SelectionSet) {
+    /// selections become the stored `pre_sels` (undo restores them); a
+    /// cursor at the reloaded text's start becomes both the stored
+    /// post-reload selection and the helper's live `self.sels`.
+    fn reload_from(&mut self, new_text: BufferText) {
         let pre_sels = self.sels.clone();
+        let at_start = |text: &BufferText| EditState::at_text_start(text.clone()).into_selections();
         // Helper's callers assert against `self.buf`/`self.sels` afterward,
         // not the returned ChangeSet.
-        let _ = self
-            .buf
-            .reload_from_text(new_text, pre_sels, post_sels.clone());
-        self.sels = post_sels;
+        let _ = self.buf.reload_from_text(
+            BufferId::default(),
+            &mut DetachedStores::default().stores(),
+            new_text,
+            pre_sels,
+            at_start,
+        );
+        self.sels = at_start(self.buf.text());
     }
 
     fn text(&self) -> &BufferText {
@@ -128,7 +154,7 @@ fn state(d: &DocHelper) -> String {
 
 fn doc(input: &str) -> DocHelper {
     let (text, sels) = parse_state(input);
-    let buf = Buffer::new(text, sels.clone());
+    let buf = Buffer::new(test_fixtures::testing::state(text, sels.clone()));
     DocHelper {
         buf,
         sels,
@@ -141,7 +167,7 @@ fn doc(input: &str) -> DocHelper {
 #[test]
 fn undo_insert_char() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
     assert_eq!(state(&d), "x-[h]>ello\n");
     d.undo();
     assert_eq!(state(&d), "-[h]>ello\n");
@@ -150,7 +176,7 @@ fn undo_insert_char() {
 #[test]
 fn redo_insert_char() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
     d.undo();
     d.redo();
     assert_eq!(state(&d), "x-[h]>ello\n");
@@ -159,7 +185,7 @@ fn redo_insert_char() {
 #[test]
 fn undo_redo_is_identity() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
     d.undo();
     d.redo();
     d.undo();
@@ -193,7 +219,7 @@ fn undo_delete_char_backward() {
 #[test]
 fn undo_delete_selection() {
     let mut d = doc("-[hell]>o\n");
-    d.apply_edit(delete_selection);
+    d.apply_edit(|s| delete_selection(s).edited);
     assert_eq!(state(&d), "-[o]>\n");
     d.undo();
     assert_eq!(state(&d), "-[hell]>o\n");
@@ -204,7 +230,7 @@ fn undo_delete_selection() {
 #[test]
 fn undo_paste_after() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| paste_after(b, s, &["XY".to_string()]));
+    d.apply_edit(|s| paste_after(s, &["XY".to_string()]));
     assert_eq!(state(&d), "h-[XY]>ello\n");
     d.undo();
     assert_eq!(state(&d), "-[h]>ello\n");
@@ -215,7 +241,7 @@ fn undo_paste_after() {
 #[test]
 fn undo_paste_before() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| paste_before(b, s, &["XY".to_string()]));
+    d.apply_edit(|s| paste_before(s, &["XY".to_string()]));
     assert_eq!(state(&d), "-[XY]>hello\n");
     d.undo();
     assert_eq!(state(&d), "-[h]>ello\n");
@@ -255,7 +281,7 @@ fn undo_multi_cursor_delete() {
 #[test]
 fn repeat_edit_is_single_undo_step() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| repeat_edit(3, b, s, delete_char_forward));
+    d.apply_edit(|s| repeat_edit(3, s, delete_char_forward));
     assert_eq!(state(&d), "-[l]>o\n");
     d.undo();
     assert_eq!(state(&d), "-[h]>ello\n");
@@ -267,9 +293,9 @@ fn repeat_edit_is_single_undo_step() {
 #[test]
 fn sequential_undo_multiple_edits() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'a'));
-    d.apply_edit(|b, s| insert_char(b, s, 'b'));
-    d.apply_edit(|b, s| insert_char(b, s, 'c'));
+    d.apply_edit(|s| insert_char(s, 'a'));
+    d.apply_edit(|s| insert_char(s, 'b'));
+    d.apply_edit(|s| insert_char(s, 'c'));
     assert_eq!(state(&d), "abc-[h]>ello\n");
     d.undo();
     assert_eq!(state(&d), "ab-[h]>ello\n");
@@ -290,7 +316,7 @@ fn undo_at_root_is_noop() {
 #[test]
 fn redo_at_latest_is_noop() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
     d.redo();
     assert_eq!(state(&d), "x-[h]>ello\n");
 }
@@ -300,17 +326,17 @@ fn redo_at_latest_is_noop() {
 #[test]
 fn undo_n_matches_stepping_one_at_a_time() {
     let mut stepped = doc("-[h]>ello\n");
-    stepped.apply_edit(|b, s| insert_char(b, s, 'a'));
-    stepped.apply_edit(|b, s| insert_char(b, s, 'b'));
-    stepped.apply_edit(|b, s| insert_char(b, s, 'c'));
+    stepped.apply_edit(|s| insert_char(s, 'a'));
+    stepped.apply_edit(|s| insert_char(s, 'b'));
+    stepped.apply_edit(|s| insert_char(s, 'c'));
     stepped.undo();
     stepped.undo();
     stepped.undo();
 
     let mut composed = doc("-[h]>ello\n");
-    composed.apply_edit(|b, s| insert_char(b, s, 'a'));
-    composed.apply_edit(|b, s| insert_char(b, s, 'b'));
-    composed.apply_edit(|b, s| insert_char(b, s, 'c'));
+    composed.apply_edit(|s| insert_char(s, 'a'));
+    composed.apply_edit(|s| insert_char(s, 'b'));
+    composed.apply_edit(|s| insert_char(s, 'c'));
     let steps = composed.undo_n(3);
 
     assert_eq!(steps, 3);
@@ -320,9 +346,9 @@ fn undo_n_matches_stepping_one_at_a_time() {
 #[test]
 fn redo_n_matches_stepping_one_at_a_time() {
     let mut stepped = doc("-[h]>ello\n");
-    stepped.apply_edit(|b, s| insert_char(b, s, 'a'));
-    stepped.apply_edit(|b, s| insert_char(b, s, 'b'));
-    stepped.apply_edit(|b, s| insert_char(b, s, 'c'));
+    stepped.apply_edit(|s| insert_char(s, 'a'));
+    stepped.apply_edit(|s| insert_char(s, 'b'));
+    stepped.apply_edit(|s| insert_char(s, 'c'));
     stepped.undo();
     stepped.undo();
     stepped.undo();
@@ -331,9 +357,9 @@ fn redo_n_matches_stepping_one_at_a_time() {
     stepped.redo();
 
     let mut composed = doc("-[h]>ello\n");
-    composed.apply_edit(|b, s| insert_char(b, s, 'a'));
-    composed.apply_edit(|b, s| insert_char(b, s, 'b'));
-    composed.apply_edit(|b, s| insert_char(b, s, 'c'));
+    composed.apply_edit(|s| insert_char(s, 'a'));
+    composed.apply_edit(|s| insert_char(s, 'b'));
+    composed.apply_edit(|s| insert_char(s, 'c'));
     composed.undo_n(3);
     let steps = composed.redo_n(3);
 
@@ -344,8 +370,8 @@ fn redo_n_matches_stepping_one_at_a_time() {
 #[test]
 fn undo_n_clamps_at_root_and_reports_short_count() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'a'));
-    d.apply_edit(|b, s| insert_char(b, s, 'b'));
+    d.apply_edit(|s| insert_char(s, 'a'));
+    d.apply_edit(|s| insert_char(s, 'b'));
     let steps = d.undo_n(10);
     assert_eq!(steps, 2, "only 2 revisions exist above the root");
     assert_eq!(state(&d), "-[h]>ello\n");
@@ -355,8 +381,8 @@ fn undo_n_clamps_at_root_and_reports_short_count() {
 #[test]
 fn redo_n_clamps_at_tip_and_reports_short_count() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'a'));
-    d.apply_edit(|b, s| insert_char(b, s, 'b'));
+    d.apply_edit(|s| insert_char(s, 'a'));
+    d.apply_edit(|s| insert_char(s, 'b'));
     d.undo_n(2);
     let steps = d.redo_n(10);
     assert_eq!(steps, 2, "only 2 revisions exist below the tip");
@@ -366,28 +392,29 @@ fn redo_n_clamps_at_tip_and_reports_short_count() {
 #[test]
 fn undo_n_zero_count_is_noop() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'a'));
-    let before_gen = d.buf.text_gen;
+    d.apply_edit(|s| insert_char(s, 'a'));
+    let before_gen = d.buf.text().version().generation();
     let steps = d.undo_n(0);
     assert_eq!(steps, 0);
-    assert_eq!(d.buf.text_gen, before_gen);
+    assert_eq!(d.buf.text().version().generation(), before_gen);
     assert_eq!(state(&d), "a-[h]>ello\n");
 }
 
 /// Undoing an insert and its own later backspace in one composed walk nets
-/// to no text change: `text_gen` must not move, matching `apply_edit`'s own
+/// to no text change: the text version must not move, matching `apply_edit`'s own
 /// identity guard for a single edit.
 #[test]
-fn undo_n_net_identity_walk_does_not_bump_text_gen() {
+fn undo_n_net_identity_walk_keeps_the_text_version() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x')); // "x-[h]>ello\n"
+    d.apply_edit(|s| insert_char(s, 'x')); // "x-[h]>ello\n"
     d.apply_edit(delete_char_backward); // removes the 'x', back to "-[h]>ello\n"
-    let before_gen = d.buf.text_gen;
+    let before_gen = d.buf.text().version().generation();
     let steps = d.undo_n(2);
     assert_eq!(steps, 2);
     assert_eq!(
-        d.buf.text_gen, before_gen,
-        "net-identity composed walk must not bump text_gen"
+        d.buf.text().version().generation(),
+        before_gen,
+        "net-identity composed walk must not change the text version"
     );
     assert_eq!(
         state(&d),
@@ -402,9 +429,9 @@ fn undo_n_net_identity_walk_does_not_bump_text_gen() {
 #[test]
 fn branching_undo_then_new_edit() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'a'));
+    d.apply_edit(|s| insert_char(s, 'a'));
     d.undo();
-    d.apply_edit(|b, s| insert_char(b, s, 'b'));
+    d.apply_edit(|s| insert_char(s, 'b'));
     assert_eq!(state(&d), "b-[h]>ello\n");
     d.undo();
     assert_eq!(state(&d), "-[h]>ello\n");
@@ -417,7 +444,7 @@ fn branching_undo_then_new_edit() {
 #[test]
 fn goto_revision_same_is_noop() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
     let buf_before = state(&d);
     d.goto_revision(d.buf.history.current_id());
     assert_eq!(state(&d), buf_before);
@@ -427,48 +454,36 @@ fn goto_revision_same_is_noop() {
 fn goto_revision_across_branches_restores_buffer() {
     let mut d = doc("-[L]>orem ipsum dolor sit amet\n");
 
-    d.apply_edit(|b, _s| {
+    d.apply_edit(|s| {
         use hume_editing::changeset::ChangeSetBuilder;
         let mut csb = ChangeSetBuilder::new(co(27));
-        csb.retain(6);
-        csb.delete(6);
-        csb.retain_rest();
+        csb.retain_to(co(6));
+        csb.delete_to(co(12));
         let cs = csb.finish();
-        let new_text = cs.apply(&b).unwrap();
-        use hume_editing::selection::{Selection, SelectionSet};
-        let new_sels = SelectionSet::single(Selection::collapsed(co(6)));
-        (new_text, new_sels, cs)
+        hume_editing::edit::Edited::from_changes(s, cs).unwrap()
     });
     let b1_id = d.buf.history.current_id();
     assert_eq!(d.text().to_string(), "Lorem dolor sit amet\n");
 
-    d.apply_edit(|b, _s| {
+    d.apply_edit(|s| {
         use hume_editing::changeset::ChangeSetBuilder;
         let mut csb = ChangeSetBuilder::new(co(21));
-        csb.retain(6);
-        csb.delete(5);
+        csb.retain_to(co(6));
+        csb.delete_to(co(11));
         csb.insert("foo");
-        csb.retain_rest();
         let cs = csb.finish();
-        let new_text = cs.apply(&b).unwrap();
-        use hume_editing::selection::{Selection, SelectionSet};
-        let new_sels = SelectionSet::single(Selection::collapsed(co(6)));
-        (new_text, new_sels, cs)
+        hume_editing::edit::Edited::from_changes(s, cs).unwrap()
     });
     assert_eq!(d.text().to_string(), "Lorem foo sit amet\n");
 
-    d.apply_edit(|b, _s| {
+    d.apply_edit(|s| {
         use hume_editing::changeset::ChangeSetBuilder;
         let mut csb = ChangeSetBuilder::new(co(19));
-        csb.retain(10);
-        csb.delete(3);
+        csb.retain_to(co(10));
+        csb.delete_to(co(13));
         csb.insert("bar");
-        csb.retain_rest();
         let cs = csb.finish();
-        let new_text = cs.apply(&b).unwrap();
-        use hume_editing::selection::{Selection, SelectionSet};
-        let new_sels = SelectionSet::single(Selection::collapsed(co(10)));
-        (new_text, new_sels, cs)
+        hume_editing::edit::Edited::from_changes(s, cs).unwrap()
     });
     let b3_id = d.buf.history.current_id();
     assert_eq!(d.text().to_string(), "Lorem foo bar amet\n");
@@ -478,17 +493,13 @@ fn goto_revision_across_branches_restores_buffer() {
     assert_eq!(d.buf.history.current_id(), b1_id);
     assert_eq!(d.text().to_string(), "Lorem dolor sit amet\n");
 
-    d.apply_edit(|b, _s| {
+    d.apply_edit(|s| {
         use hume_editing::changeset::ChangeSetBuilder;
         let mut csb = ChangeSetBuilder::new(co(21));
-        csb.retain(6);
-        csb.delete(6);
-        csb.retain_rest();
+        csb.retain_to(co(6));
+        csb.delete_to(co(12));
         let cs = csb.finish();
-        let new_text = cs.apply(&b).unwrap();
-        use hume_editing::selection::{Selection, SelectionSet};
-        let new_sels = SelectionSet::single(Selection::collapsed(co(6)));
-        (new_text, new_sels, cs)
+        hume_editing::edit::Edited::from_changes(s, cs).unwrap()
     });
     assert_eq!(d.text().to_string(), "Lorem sit amet\n");
 
@@ -500,20 +511,20 @@ fn goto_revision_across_branches_restores_buffer() {
 #[test]
 fn goto_revision_then_edit_creates_new_branch() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'a'));
-    d.apply_edit(|b, s| insert_char(b, s, 'b'));
+    d.apply_edit(|s| insert_char(s, 'a'));
+    d.apply_edit(|s| insert_char(s, 'b'));
     let rev2 = d.buf.history.current_id();
 
     d.undo();
     d.undo();
 
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
 
     d.goto_revision(rev2);
     assert!(d.text().to_string().starts_with("ab"));
 
     let before_new_edit = d.buf.history.current_id();
-    d.apply_edit(|b, s| insert_char(b, s, 'z'));
+    d.apply_edit(|s| insert_char(s, 'z'));
     let new_rev = d.buf.history.current_id();
     assert_ne!(new_rev, before_new_edit);
     assert_eq!(d.buf.history.parent(new_rev), Some(rev2));
@@ -522,9 +533,9 @@ fn goto_revision_then_edit_creates_new_branch() {
 #[test]
 fn goto_root_from_deep_branch() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'a'));
-    d.apply_edit(|b, s| insert_char(b, s, 'b'));
-    d.apply_edit(|b, s| insert_char(b, s, 'c'));
+    d.apply_edit(|s| insert_char(s, 'a'));
+    d.apply_edit(|s| insert_char(s, 'b'));
+    d.apply_edit(|s| insert_char(s, 'c'));
     let initial = "-[h]>ello\n";
     d.goto_revision(hume_editing::history::History::ROOT);
     assert_eq!(state(&d), initial);
@@ -536,9 +547,9 @@ fn goto_root_from_deep_branch() {
 fn grouped_edits_single_undo_step() {
     let mut d = doc("-[h]>ello\n");
     d.begin_edit_group();
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'a'));
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'c'));
+    d.apply_edit_grouped(|s| insert_char(s, 'a'));
+    d.apply_edit_grouped(|s| insert_char(s, 'b'));
+    d.apply_edit_grouped(|s| insert_char(s, 'c'));
     d.commit_edit_group();
     assert_eq!(state(&d), "abc-[h]>ello\n");
     d.undo();
@@ -559,11 +570,11 @@ fn empty_group_is_noop() {
 fn grouped_edits_with_backspace() {
     let mut d = doc("-[h]>ello\n");
     d.begin_edit_group();
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'a'));
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit_grouped(|s| insert_char(s, 'a'));
+    d.apply_edit_grouped(|s| insert_char(s, 'b'));
+    d.apply_edit_grouped(|s| insert_char(s, 'x'));
     d.apply_edit_grouped(delete_char_backward);
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'c'));
+    d.apply_edit_grouped(|s| insert_char(s, 'c'));
     d.commit_edit_group();
     assert_eq!(state(&d), "abc-[h]>ello\n");
     d.undo();
@@ -575,12 +586,12 @@ fn grouped_edits_with_backspace() {
 fn grouped_then_normal_edit_two_steps() {
     let mut d = doc("-[h]>ello\n");
     d.begin_edit_group();
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'a'));
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
+    d.apply_edit_grouped(|s| insert_char(s, 'a'));
+    d.apply_edit_grouped(|s| insert_char(s, 'b'));
     d.commit_edit_group();
     assert_eq!(state(&d), "ab-[h]>ello\n");
 
-    d.apply_edit(|b, s| insert_char(b, s, 'z'));
+    d.apply_edit(|s| insert_char(s, 'z'));
     assert_eq!(state(&d), "abz-[h]>ello\n");
 
     d.undo();
@@ -595,8 +606,8 @@ fn grouped_then_normal_edit_two_steps() {
 fn grouped_edits_redo() {
     let mut d = doc("-[h]>ello\n");
     d.begin_edit_group();
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'a'));
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
+    d.apply_edit_grouped(|s| insert_char(s, 'a'));
+    d.apply_edit_grouped(|s| insert_char(s, 'b'));
     d.commit_edit_group();
     d.undo();
     assert_eq!(state(&d), "-[h]>ello\n");
@@ -615,14 +626,14 @@ fn fresh_doc_is_not_dirty() {
 #[test]
 fn edit_makes_dirty() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
     assert!(d.is_dirty());
 }
 
 #[test]
 fn mark_saved_clears_dirty() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
     assert!(d.is_dirty());
     d.mark_saved();
     assert!(!d.is_dirty());
@@ -631,9 +642,9 @@ fn mark_saved_clears_dirty() {
 #[test]
 fn undo_to_saved_revision_is_clean() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
     d.mark_saved();
-    d.apply_edit(|b, s| insert_char(b, s, 'y'));
+    d.apply_edit(|s| insert_char(s, 'y'));
     assert!(d.is_dirty());
     d.undo();
     assert!(!d.is_dirty());
@@ -642,7 +653,7 @@ fn undo_to_saved_revision_is_clean() {
 #[test]
 fn undo_past_saved_revision_is_dirty() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
     d.mark_saved();
     d.undo();
     assert!(d.is_dirty());
@@ -657,11 +668,11 @@ fn promotion_remaps_saved_revision_to_root() {
     // Without the saved_revision remap in record_revision, is_dirty() would
     // stay true forever after the promotion.
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
     let saved_state = state(&d);
     d.mark_saved();
     d.set_undo_levels(1);
-    d.apply_edit(|b, s| insert_char(b, s, 'y'));
+    d.apply_edit(|s| insert_char(s, 'y'));
     assert!(d.is_dirty());
 
     d.undo();
@@ -679,8 +690,8 @@ fn promotion_overwriting_root_invalidates_saved_revision() {
     // back to the new root must still read dirty.
     let mut d = doc("-[h]>ello\n");
     d.set_undo_levels(1);
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
-    d.apply_edit(|b, s| insert_char(b, s, 'y'));
+    d.apply_edit(|s| insert_char(s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'y'));
 
     d.undo();
     assert!(d.is_dirty());
@@ -693,17 +704,17 @@ fn evicted_saved_revision_stays_dirty() {
     // RevisionIds are never reused, the buffer must never spontaneously
     // read as clean again until an explicit mark_saved.
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'a'));
-    d.apply_edit(|b, s| insert_char(b, s, 'b'));
+    d.apply_edit(|s| insert_char(s, 'a'));
+    d.apply_edit(|s| insert_char(s, 'b'));
     d.mark_saved();
     d.undo();
     d.undo();
-    d.apply_edit(|b, s| insert_char(b, s, 'c'));
+    d.apply_edit(|s| insert_char(s, 'c'));
     d.set_undo_levels(1);
-    d.apply_edit(|b, s| insert_char(b, s, 'd'));
+    d.apply_edit(|s| insert_char(s, 'd'));
     assert!(d.is_dirty());
 
-    d.apply_edit(|b, s| insert_char(b, s, 'e'));
+    d.apply_edit(|s| insert_char(s, 'e'));
     assert!(d.is_dirty());
 
     d.mark_saved();
@@ -718,10 +729,10 @@ fn undo_after_eviction_stops_at_new_root() {
     // where a further undo is a safe no-op.
     let mut d = doc("-[h]>ello\n");
     d.set_undo_levels(2);
-    d.apply_edit(|b, s| insert_char(b, s, 'a'));
+    d.apply_edit(|s| insert_char(s, 'a'));
     let state_after_a = state(&d);
-    d.apply_edit(|b, s| insert_char(b, s, 'b'));
-    d.apply_edit(|b, s| insert_char(b, s, 'c'));
+    d.apply_edit(|s| insert_char(s, 'b'));
+    d.apply_edit(|s| insert_char(s, 'c'));
 
     d.undo();
     d.undo();
@@ -737,8 +748,8 @@ fn undo_after_eviction_stops_at_new_root() {
 fn grouped_edit_makes_dirty() {
     let mut d = doc("-[h]>ello\n");
     d.begin_edit_group();
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'a'));
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'b'));
+    d.apply_edit_grouped(|s| insert_char(s, 'a'));
+    d.apply_edit_grouped(|s| insert_char(s, 'b'));
     d.commit_edit_group();
     assert!(d.is_dirty());
 }
@@ -748,8 +759,11 @@ fn grouped_edit_makes_dirty() {
 #[test]
 fn yank_paste_undo() {
     let mut d = doc("-[hell]>o\n");
-    let yanked = yank_selections(d.text(), d.sels());
-    d.apply_edit(|b, s| paste_after(b, s, &yanked));
+    let yanked = yank_selections(&hume_editing::state::EditState::bind(
+        d.text(),
+        d.sels().clone(),
+    ));
+    d.apply_edit(|s| paste_after(s, &yanked));
     d.undo();
     assert_eq!(state(&d), "-[hell]>o\n");
 }
@@ -758,14 +772,14 @@ fn yank_paste_undo() {
 
 #[test]
 fn set_path_accepts_paths_with_basename() {
-    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
+    let mut b = Buffer::at_start(BufferText::empty());
     b.set_path(Some(PathBuf::from("/tmp/file.txt")));
     assert_eq!(b.display_name(), "file.txt");
 }
 
 #[test]
 fn set_path_none_clears_path() {
-    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
+    let mut b = Buffer::at_start(BufferText::empty());
     b.set_path(Some(PathBuf::from("/tmp/file.txt")));
     b.set_path(None);
     assert!(b.path().is_none());
@@ -774,7 +788,7 @@ fn set_path_none_clears_path() {
 
 #[test]
 fn set_path_derives_display_path() {
-    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
+    let mut b = Buffer::at_start(BufferText::empty());
     assert!(b.display_path().is_none());
     b.set_path(Some(PathBuf::from("/tmp/file.txt")));
     assert_eq!(
@@ -785,7 +799,7 @@ fn set_path_derives_display_path() {
 
 #[test]
 fn set_path_none_clears_display_path() {
-    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
+    let mut b = Buffer::at_start(BufferText::empty());
     b.set_path(Some(PathBuf::from("/tmp/file.txt")));
     b.set_path(None);
     assert!(b.display_path().is_none());
@@ -794,67 +808,75 @@ fn set_path_none_clears_display_path() {
 #[test]
 #[should_panic(expected = "path must have a basename")]
 fn set_path_rejects_root() {
-    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
+    let mut b = Buffer::at_start(BufferText::empty());
     b.set_path(Some(PathBuf::from("/")));
 }
 
 #[test]
 #[should_panic(expected = "path must have a basename")]
 fn set_path_rejects_dotdot() {
-    let mut b = Buffer::new(BufferText::empty(), SelectionSet::default());
+    let mut b = Buffer::at_start(BufferText::empty());
     b.set_path(Some(PathBuf::from("..")));
 }
 
-// ── text_gen ──────────────────────────────────────────────────────────────
+// ── generation ──────────────────────────────────────────────────────────────
 
 #[test]
-fn text_gen_starts_at_zero() {
-    let b = Buffer::new(BufferText::empty(), SelectionSet::default());
-    assert_eq!(b.text_gen, 0);
+fn text_generation_starts_at_zero() {
+    let b = Buffer::at_start(BufferText::empty());
+    assert_eq!(b.text().version().generation(), 0);
 }
 
 #[test]
-fn text_gen_bumped_by_apply_edit() {
+fn text_generation_advances_on_apply_edit() {
     let mut d = doc("-[h]>ello\n");
-    let before = d.buf.text_gen;
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
-    assert_eq!(d.buf.text_gen, before + 1);
+    let before = d.buf.text().version().generation();
+    d.apply_edit(|s| insert_char(s, 'x'));
+    assert_eq!(d.buf.text().version().generation(), before + 1);
 }
 
 #[test]
-fn text_gen_bumped_by_apply_edit_grouped() {
+fn text_generation_advances_on_apply_edit_grouped() {
     let mut d = doc("-[h]>ello\n");
     d.begin_edit_group();
-    let before = d.buf.text_gen;
-    d.apply_edit_grouped(|b, s| insert_char(b, s, 'x'));
-    assert_eq!(d.buf.text_gen, before + 1, "each grouped edit bumps gen");
+    let before = d.buf.text().version().generation();
+    d.apply_edit_grouped(|s| insert_char(s, 'x'));
+    assert_eq!(
+        d.buf.text().version().generation(),
+        before + 1,
+        "each grouped edit bumps gen"
+    );
 }
 
 #[test]
-fn text_gen_bumped_by_undo() {
+fn text_generation_advances_on_undo() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
-    let before = d.buf.text_gen;
+    d.apply_edit(|s| insert_char(s, 'x'));
+    let before = d.buf.text().version().generation();
     d.undo();
-    assert_eq!(d.buf.text_gen, before + 1);
+    assert_eq!(d.buf.text().version().generation(), before + 1);
 }
 
 #[test]
-fn text_gen_bumped_by_redo() {
+fn text_generation_advances_on_redo() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, 'x'));
+    d.apply_edit(|s| insert_char(s, 'x'));
     d.undo();
-    let before = d.buf.text_gen;
+    let before = d.buf.text().version().generation();
     d.redo();
-    assert_eq!(d.buf.text_gen, before + 1);
+    assert_eq!(d.buf.text().version().generation(), before + 1);
 }
 
 #[test]
-fn text_gen_not_bumped_when_undo_at_root() {
+fn text_generation_unchanged_when_undo_at_root() {
     let mut d = doc("-[h]>ello\n");
-    let before = d.buf.text_gen;
+    let before = d.buf.text().version().generation();
     d.undo(); // nothing to undo, no-op
-    assert_eq!(d.buf.text_gen, before, "no-op undo must not bump gen");
+    assert_eq!(
+        d.buf.text().version().generation(),
+        before,
+        "no-op undo must not bump gen"
+    );
 }
 
 // ── reload_from_text ────────────────────────────────────────────────────
@@ -863,10 +885,7 @@ fn text_gen_not_bumped_when_undo_at_root() {
 fn reload_from_text_keeps_buffer_not_dirty() {
     let mut d = doc("-[a]>lpha\nbeta\ngamma\n");
     assert!(!d.is_dirty());
-    d.reload_from(
-        BufferText::from("alpha\nBETA\ngamma\n"),
-        SelectionSet::default(),
-    );
+    d.reload_from(BufferText::from("alpha\nBETA\ngamma\n"));
     assert!(!d.is_dirty(), "freshly reloaded buffer is clean");
     assert_eq!(d.text().to_string(), "alpha\nBETA\ngamma\n");
 }
@@ -875,7 +894,7 @@ fn reload_from_text_keeps_buffer_not_dirty() {
 fn reload_from_text_is_undoable() {
     let mut d = doc("hel-[l]>o\n");
     let pre_state = state(&d);
-    d.reload_from(BufferText::from("hello world\n"), SelectionSet::default());
+    d.reload_from(BufferText::from("hello world\n"));
     assert!(d.can_undo(), "reload recorded a revision");
     assert_eq!(d.text().to_string(), "hello world\n");
 
@@ -889,7 +908,7 @@ fn reload_from_text_is_undoable() {
 #[test]
 fn reload_from_text_redo_reapplies_reload() {
     let mut d = doc("hel-[l]>o\n");
-    d.reload_from(BufferText::from("hello world\n"), SelectionSet::default());
+    d.reload_from(BufferText::from("hello world\n"));
     d.undo();
     assert_eq!(d.text().to_string(), "hello\n");
     d.redo();
@@ -904,9 +923,9 @@ fn reload_from_text_then_edit_branches_off_old_tree() {
     // `current_id`/redo. Mirrors `branching_preserves_old_path` in
     // history.rs.
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|b, s| insert_char(b, s, '1'));
+    d.apply_edit(|s| insert_char(s, '1'));
     let after_first_edit = d.buf.history.current_id();
-    d.reload_from(BufferText::from("hello world\n"), SelectionSet::default());
+    d.reload_from(BufferText::from("hello world\n"));
     let reload_rev = d.buf.history.current_id();
     assert_ne!(reload_rev, after_first_edit);
 
@@ -914,7 +933,7 @@ fn reload_from_text_then_edit_branches_off_old_tree() {
     // edit. It becomes a sibling of the reload.
     d.undo();
     assert_eq!(d.buf.history.current_id(), after_first_edit);
-    d.apply_edit(|b, s| insert_char(b, s, '2'));
+    d.apply_edit(|s| insert_char(s, '2'));
     let branched_rev = d.buf.history.current_id();
     assert_ne!(branched_rev, reload_rev);
     assert_eq!(d.buf.history.parent(branched_rev), Some(after_first_edit));
@@ -932,7 +951,7 @@ fn reload_from_text_noop_when_unchanged() {
     // clean and at the same revision it started on.
     let mut d = doc("-[s]>ame\ncontent\n");
     let before = d.buf.history.current_id();
-    d.reload_from(BufferText::from("same\ncontent\n"), SelectionSet::default());
+    d.reload_from(BufferText::from("same\ncontent\n"));
     assert!(!d.can_undo(), "no-op reload records no undo step");
     assert_eq!(d.buf.history.current_id(), before, "revision unchanged");
     assert!(!d.is_dirty());
@@ -946,13 +965,14 @@ fn reload_from_text_inverse_is_fine_grained() {
     // full-buffer delete-all. The inverse is what `undo` returns.
     use hume_editing::changeset::Operation;
     let mut d = doc("-[a]>lpha\nbeta\ngamma\n");
-    d.reload_from(
-        BufferText::from("alpha\nBETA\ngamma\n"),
-        SelectionSet::default(),
-    );
+    d.reload_from(BufferText::from("alpha\nBETA\ngamma\n"));
     let (_, inv_cs, _steps) = d
         .buf
-        .undo_n(1)
+        .undo_n(
+            BufferId::default(),
+            &mut DetachedStores::default().stores(),
+            1,
+        )
         .expect("undo after reload returns the inverse CS");
     let has_small_insert = inv_cs
         .ops()

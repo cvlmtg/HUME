@@ -84,9 +84,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     ed.state.settings.scroll_margin = 0;
     type_text(&mut ed, "x\na\nb");
     let bid = ed.focused_buffer_id();
-    ed.set_current_selections(hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(4)), // 'b', line 2
-    ));
+    select(&mut ed, &[(4, 4)], 0);
     let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 3 }),
@@ -108,7 +106,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     ed.prepare_frame(&mut ctx);
 
     let mut vp = ed.view.panes[pid].viewport.clone();
-    let cursor_char = ed.current_selections().primary().head();
+    let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id;
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);

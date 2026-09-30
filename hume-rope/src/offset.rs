@@ -7,10 +7,10 @@
 //! [`CharOffset::checked`], or the trusted [`CharOffset::new`].
 //!
 //! The type guarantees a valid char index, not cluster alignment:
-//! [`crate::cursor::CharCursor`] can yield a mid-cluster offset, and
-//! `Selection::end_inclusive` lands on a cluster's last codepoint. Callers
-//! needing a boundary ask for one ([`crate::grapheme::next_grapheme_boundary`],
-//! [`crate::grapheme::snap_to_cluster_start`]).
+//! [`crate::cursor::CharCursor`] can yield a mid-cluster offset. A cluster
+//! position is [`crate::cluster::ClusterStart`], which only this crate's
+//! boundary walks mint ([`crate::grapheme::snap_to_cluster`] for a foreign
+//! offset).
 
 use ropey::Rope;
 
@@ -31,7 +31,7 @@ impl CharOffset {
     /// any rope; a caller minting from unvalidated input wants
     /// [`CharOffset::checked`] instead. There is no `clamped` counterpart
     /// (see that method's own doc for why).
-    pub fn new(idx: usize) -> Self {
+    pub const fn new(idx: usize) -> Self {
         Self(idx)
     }
 
@@ -42,9 +42,7 @@ impl CharOffset {
     /// blind `idx.min(rope.len_chars())` is the wrong tool everywhere a
     /// position needs clamping. An LSP wire position clamps line-then-column
     /// ([`crate::position_encoding::wire_to_char`]), and landing on a
-    /// grapheme boundary is [`crate::grapheme::snap_to_cluster_start`]'s job
-    /// directly, taken on the type the caller already has rather than routed
-    /// back through this one.
+    /// cluster is [`crate::grapheme::snap_to_cluster`]'s job.
     pub fn checked(rope: &Rope, idx: usize) -> Option<Self> {
         (idx <= rope.len_chars()).then_some(Self(idx))
     }
@@ -171,17 +169,6 @@ impl<T> InclusiveRange<T> {
 impl<T: Copy + PartialOrd> InclusiveRange<T> {
     pub fn contains(&self, pos: T) -> bool {
         pos >= self.start && pos <= self.end
-    }
-}
-
-impl InclusiveRange<CharOffset> {
-    /// This range as a half-open one: same span, exclusive end one char
-    /// past `self.end` (via [`CharOffset::shift`], not a raw `.index() + 1`),
-    /// for handing an inclusive result (`Selection`, a
-    /// text-object/bracket/quote finder) to `text.slice()`, which wants an
-    /// [`ExclusiveRange`].
-    pub fn to_exclusive(self) -> ExclusiveRange<CharOffset> {
-        ExclusiveRange::new(self.start, self.end.shift(1))
     }
 }
 

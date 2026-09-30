@@ -1,11 +1,5 @@
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
-use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
-
-use crate::grapheme::{
-    cluster_last_char, is_cluster_boundary, next_grapheme_boundary, snap_to_cluster_start,
-};
-use crate::lines::is_line_start;
-use crate::text::BufferText;
 
 /// A display column together with the frame it was measured in.
 ///
@@ -45,60 +39,43 @@ pub enum StickyDisplayCol {
     BufferLine { display_col: BufferLineCol },
 }
 
-/// A single selection range within a buffer.
+/// Which end of a selection the cursor is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Facing {
+    /// The head is at or after the anchor: the user extended towards the end
+    /// of the text. A cursor faces forward.
+    Forward,
+    /// The head is before the anchor.
+    Backward,
+}
+
+/// A selection: an anchor, which stays put when the user extends, and a
+/// head, where the cursor is drawn. Both are cluster starts, and the
+/// selection covers every cluster from the earlier through the later, both
+/// included. `anchor == head` is a cursor covering one cluster, never a
+/// zero-width point.
 ///
-/// Both `anchor` and `head` are **char offsets**: indices into the buffer's
-/// sequence of Unicode scalar values. The cursor (the moving end that the user
-/// sees blinking) is always at `head`.
-///
-/// When `anchor == head`, the selection covers a single grapheme cluster, the
-/// one starting at index `head`. This is the smallest possible selection, not
-/// a zero-width point. The cursor block sits on that cluster, matching
-/// Helix/Kakoune's inclusive model.
-///
-/// `anchor` and `head` are always cluster starts, so a cluster of several
-/// chars (`e` + U+0301) is addressed by its first char and covered whole by
-/// [`Self::end_inclusive`] and [`Self::end_exclusive`].
-///
-/// `head` must always be a valid char index (`< text.len_chars()`). Since every
-/// buffer always ends with a trailing `\n`, there is always at least one
-/// character to sit on, even in an "empty" buffer.
-///
-/// # Directional selections
-///
-/// - **Forward** (anchor ≤ head): the user extended towards the end of the file.
-/// - **Backward** (anchor > head): the user extended towards the start.
-///
-/// Use `start()` / `end()` when you need the bounds irrespective of direction,
-/// and `anchor` / `head` when direction matters (e.g., when extending).
+/// A selection holds positions, not text. Reading what it covers needs the
+/// text it was built for, so those reads live on
+/// [`super::SelectionView`], which a paired text and selection set hand out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Selection {
-    /// The stationary end of the selection. Stays put when the user extends.
-    pub(crate) anchor: CharOffset,
-    /// The moving end / cursor position.
-    pub(crate) head: CharOffset,
+    anchor: ClusterStart,
+    head: ClusterStart,
     /// Sticky display column for vertical motion. `None` means "not latched;
-    /// recompute on next vertical move." Any horizontal motion or edit that
-    /// touches this selection's line resets this to `None` by construction
-    /// (constructors set it to `None`; `with_sticky_display_col` sets it, and
-    /// `SelectionSet::translate_in_place` carries it through an edit on a
-    /// different line).
-    pub(crate) sticky_display_col: Option<StickyDisplayCol>,
+    /// recompute on next vertical move." Every constructor and transform
+    /// clears it except [`Self::with_sticky`], and a translation through an
+    /// edit keeps it only when the edit did not touch the head's line.
+    sticky_display_col: Option<StickyDisplayCol>,
 }
 
 impl Selection {
-    /// A collapsed selection at `pos` (anchor == head == pos). `sticky_display_col: None`.
-    pub fn collapsed(pos: CharOffset) -> Self {
-        Self {
-            anchor: pos,
-            head: pos,
-            sticky_display_col: None,
-        }
+    /// A cursor on the cluster starting at `at`.
+    pub fn cursor(at: ClusterStart) -> Self {
+        Self::new(at, at)
     }
 
-    /// A directional range from `anchor` to `head`. `sticky_display_col: None`.
-    /// Passing `anchor == head` produces a single-character selection.
-    pub fn new(anchor: CharOffset, head: CharOffset) -> Self {
+    pub fn new(anchor: ClusterStart, head: ClusterStart) -> Self {
         Self {
             anchor,
             head,
@@ -106,239 +83,101 @@ impl Selection {
         }
     }
 
-    /// This selection with `anchor` and `head` floored to the start of the
-    /// cluster each sits in. Direction and the sticky column are kept.
-    pub fn snap_to_clusters(self, text: &BufferText) -> Self {
-        let floor = |pos: CharOffset| {
-            if is_cluster_boundary(text, pos) {
-                pos
-            } else {
-                snap_to_cluster_start(text, pos)
-            }
-        };
+    /// The selection covering `range`, with the cursor on its last cluster
+    /// when facing forward and on its first when facing backward.
+    pub fn covering(range: ClusterRange, facing: Facing) -> Self {
+        match facing {
+            Facing::Forward => Self::new(range.start(), range.last()),
+            Facing::Backward => Self::new(range.last(), range.start()),
+        }
+    }
+
+    pub fn anchor(self) -> ClusterStart {
+        self.anchor
+    }
+
+    pub fn head(self) -> ClusterStart {
+        self.head
+    }
+
+    pub fn facing(self) -> Facing {
+        if self.anchor <= self.head {
+            Facing::Forward
+        } else {
+            Facing::Backward
+        }
+    }
+
+    pub fn is_cursor(self) -> bool {
+        self.anchor == self.head
+    }
+
+    /// Anchor and head swapped.
+    #[must_use]
+    pub fn flip(self) -> Self {
+        Self::new(self.head, self.anchor)
+    }
+
+    /// The head moved to `head`, the anchor kept.
+    #[must_use]
+    pub fn with_head(self, head: ClusterStart) -> Self {
+        Self::new(self.anchor, head)
+    }
+
+    /// A cursor on the head.
+    #[must_use]
+    pub fn to_head(self) -> Self {
+        Self::cursor(self.head)
+    }
+
+    /// A cursor on the anchor.
+    #[must_use]
+    pub fn to_anchor(self) -> Self {
+        Self::cursor(self.anchor)
+    }
+
+    /// This selection with `col` latched for the next vertical move.
+    #[must_use]
+    pub fn with_sticky(self, col: StickyDisplayCol) -> Self {
         Self {
-            anchor: floor(self.anchor),
-            head: floor(self.head),
+            sticky_display_col: Some(col),
             ..self
         }
     }
 
-    /// A directional selection with a preserved sticky display column.
-    ///
-    /// Carries the column across consecutive vertical moves, or passes an
-    /// existing latch through unchanged. All other code uses
-    /// [`Self::new`] or [`Self::collapsed`], which reset
-    /// `sticky_display_col` to `None`.
-    pub fn with_sticky_display_col(
-        anchor: CharOffset,
-        head: CharOffset,
-        sticky_display_col: StickyDisplayCol,
-    ) -> Self {
-        Self {
-            anchor,
-            head,
-            sticky_display_col: Some(sticky_display_col),
-        }
-    }
-
-    /// Create a selection spanning `[start, end]` with an explicit direction.
-    ///
-    /// `forward` controls which end becomes the anchor and which becomes the
-    /// head (the cursor):
-    /// - `true`  → `anchor = start`, `head = end`  (forward / rightward)
-    /// - `false` → `anchor = end`,   `head = start` (backward / leftward)
-    ///
-    /// This is the preferred constructor when a selection is built from
-    /// content-aware bounds (e.g. trimmed whitespace edges, line extents) and
-    /// the original direction must be preserved. It avoids leaking
-    /// `anchor`/`head` field knowledge into every call site.
-    pub fn directed(start: CharOffset, end: CharOffset, forward: bool) -> Self {
-        if forward {
-            Self::new(start, end)
-        } else {
-            // Backward: anchor at end, head at start, so cursor sits at `start`.
-            Self::new(end, start)
-        }
-    }
-
-    /// This selection's extent unioned with `span` (`min` of both starts,
-    /// `max` of both ends), built with [`Self::from_span`] so the caller
-    /// controls which end becomes the anchor.
-    ///
-    /// Shared by every "extend to cover a newly found match" path.
-    /// A found range only
-    /// guarantees it starts past (or ends before) the search origin, not
-    /// that it extends past the selection's own far edge. A plain
-    /// replacement would shrink the selection when the found range nests
-    /// inside what's already selected; the union absorbs it with no visible
-    /// change instead.
-    pub fn union_span(
-        &self,
-        span: InclusiveRange<CharOffset>,
-        forward: bool,
-        text: &BufferText,
-    ) -> Self {
-        let own = self.span(text);
-        Self::from_span(
-            InclusiveRange::new(own.start.min(span.start), own.end.max(span.end)),
-            forward,
-            text,
-        )
-    }
-
-    /// The chars this selection covers: from its first char to the last char
-    /// of its last cluster.
-    pub fn span(&self, text: &BufferText) -> InclusiveRange<CharOffset> {
-        InclusiveRange::new(self.start(), self.end_inclusive(text))
-    }
-
-    /// The selection covering `span`, facing forward or backward. The one
-    /// conversion from a char range (a finder's result, a trimmed span) to
-    /// the cluster-start `anchor` and `head` a selection stores: an end on a
-    /// combining mark becomes the start of its cluster.
-    pub fn from_span(span: InclusiveRange<CharOffset>, forward: bool, text: &BufferText) -> Self {
-        Self::directed(span.start, span.end, forward).snap_to_clusters(text)
-    }
-
-    /// This selection with `f` applied to its start and then its end, in that
-    /// order, so a forward-only position mapper can be threaded through.
-    /// Direction is kept; the sticky column is dropped. `f` must return
-    /// cluster starts.
-    pub fn map_ends(&self, mut f: impl FnMut(CharOffset) -> CharOffset) -> Self {
-        let lo = f(self.start());
-        let hi = f(self.end());
-        if self.anchor <= self.head {
-            Self::new(lo, hi)
-        } else {
-            Self::new(hi, lo)
-        }
-    }
-
-    /// The stationary end (the end that stays put when the user extends).
-    pub fn anchor(&self) -> CharOffset {
-        self.anchor
-    }
-
-    /// The moving end / cursor position.
-    pub fn head(&self) -> CharOffset {
-        self.head
-    }
-
-    /// Sticky display column for vertical motion, or `None` when not latched.
-    pub fn sticky_display_col(&self) -> Option<StickyDisplayCol> {
+    pub fn sticky_display_col(self) -> Option<StickyDisplayCol> {
         self.sticky_display_col
     }
 
-    /// Is this a single-cluster selection (anchor == head)?
-    pub fn is_collapsed(&self) -> bool {
-        self.anchor == self.head
-    }
-
-    /// The smaller of the two offsets: the start of the selected range.
-    pub fn start(&self) -> CharOffset {
+    /// The earlier of anchor and head.
+    pub(crate) fn first(self) -> ClusterStart {
         self.anchor.min(self.head)
     }
 
-    /// The larger of the two offsets: the start of the selection's last
-    /// cluster, not a range bound. A multi-codepoint cluster (`e` + U+0301)
-    /// extends past it, so range and position reads from outside this crate
-    /// go through [`Self::end_inclusive`] and [`Self::end_exclusive`].
-    pub(crate) fn end(&self) -> CharOffset {
+    /// The later of anchor and head: the start of the last covered cluster.
+    pub(crate) fn last(self) -> ClusterStart {
         self.anchor.max(self.head)
     }
 
-    /// The last char position covered by this selection, inclusive of any
-    /// combining codepoints that extend the last cluster.
-    ///
-    /// For a multi-codepoint cluster (e.g. `e + \u{0301}` = é) this is the
-    /// last codepoint, so that delete and slice operations never orphan a
-    /// combining mark. It is the end of [`Self::span`].
-    pub fn end_inclusive(&self, text: &BufferText) -> CharOffset {
-        cluster_last_char(text, self.end())
-    }
-
-    /// The char offset one past this selection's last char: the exclusive
-    /// counterpart to [`Self::end_inclusive`], for `text.slice(ExclusiveRange::new(start, end_exclusive))`
-    /// and delete-range math. Always `next_grapheme_boundary(text, self.end())`:
-    /// `end_inclusive` is defined as that boundary minus one
-    /// (`cluster_last_char`'s doc), so this recovers the true exclusive bound
-    /// without a raw `+ 1` at the call site.
-    pub fn end_exclusive(&self, text: &BufferText) -> CharOffset {
-        next_grapheme_boundary(text, self.end())
-    }
-
-    /// This selection's text as a rope slice, `text.slice(start..end_exclusive)`
-    /// via [`ExclusiveRange`]. The one place that expression is spelled out;
-    /// every other caller wanting a selection's exact contents goes through here.
-    pub fn slice<'a>(&self, text: &'a BufferText) -> ropey::RopeSlice<'a> {
-        text.slice(ExclusiveRange::new(self.start(), self.end_exclusive(text)))
-    }
-
-    /// Returns `true` if the far end of the selection sits on a `\n`.
-    ///
-    /// A selection produced by `select-line` always ends on the line's trailing
-    /// `\n`. Charwise and word selections end on content characters.
-    pub fn ends_on_newline(&self, text: &BufferText) -> bool {
-        text.char_at(self.end()) == Some('\n')
-    }
-
-    /// The last char offset to delete from this selection without touching the
-    /// structural trailing `\n`.
-    ///
-    /// Equivalent to `end_inclusive(text).min(text.last_content_char())`. Use
-    /// instead of inlining that expression to make the protection intent clear.
-    pub fn content_end(&self, text: &BufferText) -> CharOffset {
-        self.end_inclusive(text).min(text.last_content_char())
-    }
-
-    /// The exclusive counterpart to [`Self::content_end`]: `end_exclusive(text)`
-    /// clamped to `text.last_char()`, so a caller building a
-    /// `text.slice(ExclusiveRange::new(start, content_end_exclusive))` for a
-    /// delete never reaches past the structural trailing `\n`.
-    pub fn content_end_exclusive(&self, text: &BufferText) -> CharOffset {
-        self.end_exclusive(text).min(text.last_char())
-    }
-
-    /// Swap anchor and head. A forward selection becomes backward and vice
-    /// versa. Useful for `flip selection` commands. `sticky_display_col` is
-    /// cleared since the head moved to a potentially different column.
-    #[must_use]
-    pub fn flip(self) -> Self {
+    /// This selection with `first` and `last` replaced, facing and sticky
+    /// column kept.
+    pub(crate) fn with_ends(self, first: ClusterStart, last: ClusterStart) -> Self {
+        let (anchor, head) = match self.facing() {
+            Facing::Forward => (first, last),
+            Facing::Backward => (last, first),
+        };
         Self {
-            anchor: self.head,
-            head: self.anchor,
-            sticky_display_col: None,
+            anchor,
+            head,
+            ..self
         }
     }
-}
 
-/// Returns `true` if `sel` covers whole line(s): starts at a line boundary
-/// and ends on the line's trailing `\n`.
-///
-/// A partial line that merely happens to include a trailing `\n` returns
-/// `false` because its start is not at a line boundary. Use this (not just
-/// `ends_on_newline`) as the single source of truth for "this selection is
-/// linewise" in the selection-geometry domain. It answers `true` for a
-/// selection collapsed on an empty line, since that line's one char is both
-/// its own start and its own `\n`, even when the cursor is merely incidental
-/// there. For *user intent* ("was this deliberately extended across whole
-/// lines?"), use [`linewise_classification`] instead.
-///
-/// Counterpart to `is_register_linewise` in `ops::register`, which answers
-/// "is this *register text* linewise?" at paste time.
-pub fn is_selection_linewise(text: &BufferText, sel: &Selection) -> bool {
-    sel.ends_on_newline(text) && is_line_start(text, sel)
-}
-
-/// A selection collapsed onto a single empty line is ambiguous (see
-/// [`is_selection_linewise`]'s doc for why), so this returns `None` for
-/// exactly that one case; every other selection is
-/// `Some(is_selection_linewise(text, sel))`, unambiguously either linewise
-/// or charwise.
-pub fn linewise_classification(text: &BufferText, sel: &Selection) -> Option<bool> {
-    match is_selection_linewise(text, sel) {
-        true if sel.is_collapsed() => None,
-        linewise => Some(linewise),
+    pub(crate) fn without_sticky(self) -> Self {
+        Self {
+            sticky_display_col: None,
+            ..self
+        }
     }
 }
 

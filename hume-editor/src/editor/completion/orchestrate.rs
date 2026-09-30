@@ -14,6 +14,7 @@
 //! (`rank`) stays here in Rust and only a source flagged `isIncomplete` is
 //! called again as the user types.
 
+use hume_editing::text::TextVersion;
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_rope::offset::CharOffset;
 use steel::rvals::SteelVal;
@@ -94,7 +95,7 @@ impl EditorState {
         };
         let Some(head) = self
             .focused_buffer_state(bid)
-            .map(|pbs| pbs.selections().primary().head())
+            .map(|pbs| pbs.view(self.buffers.get(bid).text()).primary().head())
         else {
             return;
         };
@@ -102,7 +103,7 @@ impl EditorState {
             Some(open) if open.still_valid(self, view) => open,
             _ => {
                 let buf = self.buffers.get(bid);
-                BufferSession::open(bid, pid, buf.text_gen, buf.text().len_chars())
+                BufferSession::open(bid, pid, buf.text().version(), buf.text().len_chars())
             }
         };
         if let Trigger::Explicit = trigger {
@@ -115,14 +116,14 @@ impl EditorState {
             &mut session,
             &ids,
             bid,
-            head,
+            head.offset(),
         );
         self.queue_steel_calls(calls);
         session.rank(
             &self.config.completion_sources,
             Some(LiveDoc {
                 text: self.buffers.get(bid).text(),
-                head,
+                head: head.offset(),
             }),
         );
         if session.is_spent() {
@@ -142,11 +143,11 @@ impl EditorState {
         view: &EngineView,
         bid: BufferId,
         cs: &hume_editing::changeset::ChangeSet,
-        text_gen: u64,
+        version: TextVersion,
     ) {
         let Some(head) = self
             .focused_buffer_state(bid)
-            .map(|pbs| pbs.selections().primary().head())
+            .map(|pbs| pbs.view(self.buffers.get(bid).text()).primary().head())
         else {
             return;
         };
@@ -165,8 +166,8 @@ impl EditorState {
         if !session.observe_edit(
             &self.config.completion_sources,
             cs,
-            text_gen,
-            head,
+            version,
+            head.offset(),
             text,
             chars,
         ) {
@@ -181,7 +182,7 @@ impl EditorState {
             session,
             &to_reinvoke,
             bid,
-            head,
+            head.offset(),
         );
         self.queue_steel_calls(calls);
         // Typed out of every token, and nothing on its way: silent, since the
@@ -389,14 +390,14 @@ impl EditorState {
         let live = self.input.buffer_completion().and_then(|s| {
             let bid = s.bid();
             self.focused_buffer_state(bid)
-                .map(|pbs| (bid, pbs.selections().primary().head()))
+                .map(|pbs| (bid, pbs.view(self.buffers.get(bid).text()).primary().head()))
         });
         let Some(session) = self.input.buffer_completion_mut() else {
             return;
         };
         let live = live.map(|(bid, head)| LiveDoc {
             text: self.buffers.get(bid).text(),
-            head,
+            head: head.offset(),
         });
         session.rank(&self.config.completion_sources, live);
         if self

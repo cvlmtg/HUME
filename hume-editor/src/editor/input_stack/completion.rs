@@ -104,15 +104,13 @@ impl Editor {
             return;
         }
 
-        // A token start is mapped forward through every edit `observe_edit`
-        // was told about, but an edit that bypasses it entirely (an LSP
-        // applyEdit, a file reload) or a pane switch can still leave it
-        // pointing past the focused buffer's current end, or at a buffer
-        // that isn't even the one on screen, in the narrow window before
-        // `Editor::dismiss_invalid_completion`'s next settle-time pass
-        // catches the mismatch (`scripting_setup.rs`). `DisplayLineMap::locate`
-        // (reached via `popup_placement`) has no way to tell a stale offset
-        // from a live one, so this fail-safe checks both here.
+        // An edit that bypasses the session (an LSP applyEdit, a file
+        // reload) or a pane switch can leave the anchor behind the text, or
+        // the session on a buffer that isn't the one on screen, in the narrow
+        // window before `Editor::dismiss_invalid_completion`'s next
+        // settle-time pass catches the mismatch (`scripting_setup.rs`). The
+        // anchor reads as absent against a text it was not ranked on, and the
+        // buffer check below covers the other case.
         //
         // Sequential borrows rather than one closure over
         // `self.state.input`: the session's shared borrow has to end
@@ -123,12 +121,8 @@ impl Editor {
             if session.bid() != self.focused_buffer_id() {
                 return None;
             }
-            let anchor_char = session.menu_anchor_char()?;
-            let len = self.state.buffers.get(session.bid()).text().end();
-            if anchor_char >= len {
-                return None;
-            }
-            let placement = popup_placement(self, ctx, anchor_char)?;
+            let anchor = session.menu_anchor(self.state.buffers.get(session.bid()).text())?;
+            let placement = popup_placement(self, ctx, anchor)?;
 
             let selected_idx = self.state.input.completion_selected();
             let session = self.state.input.buffer_completion()?;

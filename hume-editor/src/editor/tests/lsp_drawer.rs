@@ -792,7 +792,7 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
-    let head_before = ed.current_selections().primary().head();
+    let head_before = ed.current_view().primary().head().offset();
     ed.feed_key(key('l')); // move-right, not one of the drawer's keys
     ed.settle();
 
@@ -805,7 +805,7 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
         "stray key must not invoke the callback"
     );
     assert_ne!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         head_before,
         "stray key must still execute its normal effect"
     );
@@ -821,7 +821,7 @@ fn vertical_motion_keys_fall_through_leaving_the_drawer_selection_untouched() {
     arm_three_items(&mut ed, tmp.path());
 
     let cursor_line = |ed: &Editor| {
-        let head = ed.current_selections().primary().head();
+        let head = ed.current_view().primary().head().offset();
         let bid = ed.focused_buffer_id();
         ed.state.buffers.get(bid).text().char_to_line(head)
     };
@@ -1109,7 +1109,7 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
     ed.feed_key(key_enter());
     ed.settle();
 
-    let head = ed.current_selections().primary().head();
+    let head = ed.current_view().primary().head().offset();
     let bid = ed.focused_buffer_id();
     let text = ed.state.buffers.get(bid).text();
     let line = text.char_to_line(head);

@@ -15,9 +15,10 @@ pub(in crate::editor) mod ops;
 
 use std::sync::Arc;
 
-use hume_editing::history::RevisionId;
+use hume_editing::text::BufferText;
+use hume_editing::tracked::Tracked;
 use hume_ops::search::{SearchDirection, compile_search_input};
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 
 // ── Per-buffer types ──────────────────────────────────────────────────────────
 
@@ -60,15 +61,36 @@ impl SearchPattern {
     }
 }
 
-/// Per-buffer match cache. Stored on `Buffer`. Invalidated by revision or pattern change.
+/// Per-buffer match cache. Stored on `Buffer`. Reads as absent once the text
+/// moves past the one the matches were found in.
 #[derive(Default)]
 pub(in crate::editor) struct SearchMatches {
-    /// All non-overlapping matches as inclusive char ranges, sorted in
-    /// document order.
-    pub matches: Vec<InclusiveRange<CharOffset>>,
-    /// `(revision, pattern)` when `matches` was last computed. `None` = never computed.
-    /// Stored as a pair so both are always in sync: no half-initialised state.
-    pub cache: Option<(RevisionId, String)>,
+    /// The pattern searched for and every non-overlapping match of it,
+    /// sorted in document order, for the text they were found in. `None` =
+    /// never computed.
+    found: Option<(String, Tracked<Vec<ClusterRange>>)>,
+}
+
+impl SearchMatches {
+    /// The pattern and its matches, when they were found in `text`.
+    pub(in crate::editor) fn found(&self, text: &BufferText) -> Option<(&str, &[ClusterRange])> {
+        let (pattern, matches) = self.found.as_ref()?;
+        Some((pattern.as_str(), matches.get(text)?.as_slice()))
+    }
+
+    /// The matches found in `text`, or none when they were not.
+    pub(in crate::editor) fn matches(&self, text: &BufferText) -> &[ClusterRange] {
+        self.found(text).map_or(&[], |(_, matches)| matches)
+    }
+
+    pub(in crate::editor) fn set(
+        &mut self,
+        pattern: String,
+        matches: Vec<ClusterRange>,
+        text: &BufferText,
+    ) {
+        self.found = Some((pattern, Tracked::new(matches, text)));
+    }
 }
 
 // ── Per-(pane, buffer) type ───────────────────────────────────────────────────
@@ -84,11 +106,9 @@ pub(crate) struct SearchCursor {
     pub match_count: Option<(usize, usize)>,
     /// `true` when the last search-next/prev jump wrapped around the buffer boundary.
     pub wrapped: bool,
-    /// Head position when `match_count` was last computed. `None` = never computed.
-    pub cache_head: Option<CharOffset>,
-    /// `SearchMatches::cache` key when `match_count` was last computed.
-    /// Stored as a pair so both fields are always in sync: no half-initialised state.
-    pub cache_matches: Option<(RevisionId, String)>,
+    /// The pattern and primary head `match_count` was computed for, in the
+    /// text it was computed against. `None` = never computed.
+    pub computed_for: Option<Tracked<(String, ClusterStart)>>,
 }
 
 // ── Session-level interaction state ──────────────────────────────────────────

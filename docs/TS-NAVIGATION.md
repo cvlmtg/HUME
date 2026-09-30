@@ -102,8 +102,8 @@ way the committed tree can be a generation behind by the time a query needs it.
 
 `Syntax::ensure_current` closes that window synchronously, at the query site: bake pending edits,
 build the next request (incremental when the baked chain is intact, a full parse otherwise), run
-it inline, install the result. Its own freshness gate requires `parsed_gen == Some(text_gen)`
-*and* `tree_gen == text_gen`: `parsed_gen` alone isn't enough, since a `ParseFailed` install
+it inline, install the result. Its own freshness gate requires `parsed_gen == Some(generation)`
+*and* `tree_gen == generation`, `generation` being the buffer text's. `parsed_gen` alone isn't enough, since a `ParseFailed` install
 advances it while leaving `layers`/`tree_gen` untouched, which would otherwise report "current"
 over a tree that predates a broken edit chain. `install`'s own "already installed" guard mirrors
 this concern from the other side — it must let a later successful result for a generation that

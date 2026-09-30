@@ -15,6 +15,7 @@ use std::rc::Rc;
 use hume_grid::Rgb;
 use ropey::Rope;
 
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
@@ -26,10 +27,44 @@ use crate::providers::{
     Decoration, DecorationKinds, DecorationSource, ProviderSet, VirtualLine, VirtualLineAnchor,
 };
 use crate::theme::Theme;
-use crate::types::{DisplayLine, Grapheme, ResolvedStyle};
+use crate::types::{DisplayLine, Grapheme, PaintedSelection, ResolvedStyle};
 
 pub(crate) fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
+}
+
+/// The cluster starting at char `n` of `rope`. Panics when `n` is not a
+/// cluster start, so a test's literal positions stay the ones it names.
+pub(crate) fn at(rope: &Rope, n: usize) -> ClusterStart {
+    let start = hume_rope::grapheme::snap_to_cluster(rope.slice(..), co(n))
+        .expect("a non-empty text")
+        .start();
+    assert_eq!(start.offset(), co(n), "char {n} is not a cluster start");
+    start
+}
+
+/// A selection over `rope` from the cluster at char `anchor` to the one at
+/// char `head`, as the host would paint it.
+pub(crate) fn painted(
+    rope: &Rope,
+    anchor: usize,
+    head: usize,
+    is_primary: bool,
+) -> PaintedSelection {
+    let (anchor, head) = (at(rope, anchor), at(rope, head));
+    PaintedSelection {
+        covered: ClusterRange::through(rope.slice(..), anchor.min(head), anchor.max(head))
+            .expect("first precedes last"),
+        cursor: head,
+        is_cursor: anchor == head,
+        is_reverse: head < anchor,
+        is_primary,
+    }
+}
+
+/// A selection mirror holding one primary cursor on char `n` of `rope`.
+pub(crate) fn cursor_mirror(rope: &Rope, n: usize) -> Vec<PaintedSelection> {
+    vec![painted(rope, n, n, true)]
 }
 
 /// A `DisplayLineMap` over `rope`, built from a fixed `FormatKey` (tag

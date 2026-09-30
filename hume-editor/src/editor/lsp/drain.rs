@@ -368,8 +368,12 @@ impl Editor {
     /// the two checks and change the state the first one saw, so admission
     /// at drain time alone doesn't guarantee admission at run time.
     pub(in crate::editor) fn anchor_admits(&mut self, anchor: &super::ResponseAnchor) -> bool {
-        let current_gen = self.state.buffers.try_get(anchor.bid).map(|b| b.text_gen);
-        if current_gen != Some(anchor.text_gen) && !anchor.allow_stale {
+        let current_gen = self
+            .state
+            .buffers
+            .try_get(anchor.bid)
+            .map(|b| b.text().version());
+        if current_gen != Some(anchor.version) && !anchor.allow_stale {
             return false; // dropped silently, per parse-worker staleness discipline
         }
         if let Some(pid) = anchor.require_focus {

@@ -4,6 +4,11 @@ use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::line::RopeyLine;
 use hume_rope::lines::ropey_line_count;
 
+/// The char offset of the cluster `g` shows or stands at.
+fn off(g: &Grapheme) -> usize {
+    g.pos.expect("a content cell").offset().index()
+}
+
 fn dc(n: u32) -> DisplayLineCol {
     DisplayLineCol::new(n)
 }
@@ -64,7 +69,7 @@ fn eol_sentinel_emitted_on_non_empty_line() {
         "sentinel must be Empty"
     );
     assert_eq!(sentinel.display_col, dc(5), "sentinel one past last char");
-    assert_eq!(sentinel.char_offset, 5, "sentinel at \\n char offset");
+    assert_eq!(off(sentinel), 5, "sentinel at \\n char offset");
 }
 
 #[test]
@@ -83,7 +88,7 @@ fn a_cr_is_line_content_not_a_line_break() {
         matches!(sentinel.content, CellContent::Empty),
         "sentinel must be Empty"
     );
-    assert_eq!(sentinel.char_offset, 3, "sentinel at the '\\n' char offset");
+    assert_eq!(off(sentinel), 3, "sentinel at the '\\n' char offset");
 }
 
 #[test]
@@ -158,7 +163,8 @@ fn soft_wrap_splits_at_exact_column_not_whitespace() {
     );
     // The 7th grapheme (index 6) must be 'w', proving the split is mid-word.
     assert_eq!(
-        line0[6].char_offset, 6,
+        off(&line0[6]),
+        6,
         "last grapheme of display line 0 is 'w' at char 6"
     );
 }
@@ -209,14 +215,11 @@ fn soft_wrap_defers_wide_char_whole_to_next_display_line_when_it_would_straddle_
         4,
         "display line 0 holds only \"abcd\", not a split '中'"
     );
-    assert_eq!(
-        line0[3].char_offset, 3,
-        "display line 0's last grapheme is 'd'"
-    );
+    assert_eq!(off(&line0[3]), 3, "display line 0's last grapheme is 'd'");
 
     let line1 = &graphemes[lines[1].graphemes.clone()];
     assert_eq!(line1.len(), 4, "'中' + its width continuation + 'e' + 'f'");
-    assert_eq!(line1[0].char_offset, 4, "display line 1 starts with '中'");
+    assert_eq!(off(&line1[0]), 4, "display line 1 starts with '中'");
     assert_eq!(line1[0].width, 2, "'中' keeps its full display width");
     assert_eq!(
         line1[0].display_col,
@@ -227,8 +230,8 @@ fn soft_wrap_defers_wide_char_whole_to_next_display_line_when_it_would_straddle_
         matches!(line1[1].content, CellContent::WidthContinuation),
         "second cell of '中' stays paired with it on the same display line"
     );
-    assert_eq!(line1[2].char_offset, 5, "'e' follows on display line 1");
-    assert_eq!(line1[3].char_offset, 6, "'f' follows on display line 1");
+    assert_eq!(off(&line1[2]), 5, "'e' follows on display line 1");
+    assert_eq!(off(&line1[3]), 6, "'f' follows on display line 1");
 }
 
 #[test]
@@ -254,8 +257,8 @@ fn soft_wrap_defers_tab_whole_to_next_display_line_when_it_would_straddle_column
         "tab starts at column 0 of the new display line"
     );
     assert_eq!(line1[0].width, 4, "tab keeps its full 4-column expansion");
-    assert_eq!(line1[1].char_offset, 5, "'e' follows the tab");
-    assert_eq!(line1[2].char_offset, 6, "'f' follows 'e'");
+    assert_eq!(off(&line1[1]), 5, "'e' follows the tab");
+    assert_eq!(off(&line1[2]), 6, "'f' follows 'e'");
 }
 
 #[test]
@@ -339,7 +342,7 @@ fn soft_wrap_exact_fit_display_line_wraps_the_eol_sentinel_to_a_continuation_dis
         dc(0),
         "sentinel sits at its own display line's first column"
     );
-    assert_eq!(sentinel.char_offset, 5, "sentinel at the \\n char offset");
+    assert_eq!(off(sentinel), 5, "sentinel at the \\n char offset");
 }
 
 #[test]
@@ -418,7 +421,7 @@ fn newline_indicator_all_mode() {
         "index 3 is the eol sentinel"
     );
     assert_eq!(sentinel.display_col, dc(3));
-    assert_eq!(sentinel.char_offset, 3); // char offset of the '\n'
+    assert_eq!(off(sentinel), 3); // char offset of the '\n'
     let nl_indicator = &line0_gs[4];
     assert_eq!(cell_text(&arena, &nl_indicator.content), "⏎");
     assert_eq!(nl_indicator.display_col, dc(3));
@@ -634,10 +637,10 @@ fn word_wrap_space_ends_previous_display_line_not_starts_continuation() {
     let line0 = &graphemes[lines[0].graphemes.clone()];
     let line1 = &graphemes[lines[1].graphemes.clone()];
     assert_eq!(line0.len(), 2, "line0 is \"a \" (a + trailing space)");
-    assert_eq!(line0[0].char_offset, 0, "line0[0] is 'a'");
-    assert_eq!(line0[1].char_offset, 1, "line0[1] is the space");
+    assert_eq!(off(&line0[0]), 0, "line0[0] is 'a'");
+    assert_eq!(off(&line0[1]), 1, "line0[1] is the space");
     assert_eq!(line1.len(), 1, "line1 is \"b\" only");
-    assert_eq!(line1[0].char_offset, 2, "line1[0] is 'b'");
+    assert_eq!(off(&line1[0]), 2, "line1[0] is 'b'");
 }
 
 #[test]
@@ -808,7 +811,7 @@ fn long_line_no_wrap_window_scrolled_right_has_correct_display_cols() {
     for g in &graphemes {
         assert_eq!(
             g.display_col.get() as usize,
-            g.char_offset,
+            off(g),
             "pure-ASCII line: display_col must equal char index"
         );
     }
@@ -816,14 +819,15 @@ fn long_line_no_wrap_window_scrolled_right_has_correct_display_cols() {
     assert!(graphemes.iter().all(|g| g.display_col >= dc(65_000)));
 }
 
-// ── Inline-insert char_offset partition invariant ─────────────────────
+// ── Inline-insert pos partition invariant ──────────────────────────────
 
 #[test]
-fn display_line_char_offsets_are_non_decreasing_with_inline_inserts() {
+fn display_line_positions_are_non_decreasing_with_inline_inserts() {
     // Inserts at several offsets, including one at byte 0 (display-line-start)
     // and one past the last real char (trailing). `resolve_grapheme_display_col`'s
-    // partition_point requires the whole display line sorted by char_offset.
-    let rope = Rope::from_str("abcdef");
+    // partition_point requires the whole display line sorted by pos. The
+    // trailing insert takes the `\n`'s position.
+    let rope = Rope::from_str("abcdef\n");
     let inserts = vec![
         InlineInsert {
             byte_offset: ByteCol::new(0),
@@ -854,16 +858,9 @@ fn display_line_char_offsets_are_non_decreasing_with_inline_inserts() {
         &mut scratch,
     );
     assert!(
-        scratch
-            .graphemes
-            .windows(2)
-            .all(|w| w[0].char_offset <= w[1].char_offset),
-        "char_offset must be non-decreasing across the display line: {:?}",
-        scratch
-            .graphemes
-            .iter()
-            .map(|g| g.char_offset)
-            .collect::<Vec<_>>()
+        scratch.graphemes.windows(2).all(|w| w[0].pos <= w[1].pos),
+        "pos must be non-decreasing across the display line: {:?}",
+        scratch.graphemes.iter().map(|g| g.pos).collect::<Vec<_>>()
     );
 }
 
@@ -1154,7 +1151,7 @@ fn wide_grapheme_in_an_inline_insert_gets_a_width_continuation_cell() {
     assert_eq!(cells[1].width, 0, "and consumes no columns of its own");
     assert!(matches!(cells[1].content, CellContent::WidthContinuation));
     assert_eq!(
-        cells[1].char_offset, cells[0].char_offset,
+        cells[1].pos, cells[0].pos,
         "both cells address the same buffer position"
     );
 }

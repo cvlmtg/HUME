@@ -77,12 +77,12 @@ pub(in crate::editor) fn typed_edit(
         // its caller contract.
         match pos {
             Some(pos) => {
-                let char_pos = crate::editor::pane_state::line_grapheme_to_char(
+                let target = crate::editor::pane_state::line_grapheme_to_cluster(
                     ed.state.buffers.get(bid).text(),
                     pos.line,
                     pos.grapheme_col,
                 );
-                jump_pane_to(&mut ed.state, &mut ed.view, fp.pane(), bid, char_pos);
+                jump_pane_to(&mut ed.state, &mut ed.view, fp.pane(), bid, target);
             }
             None => ed.enter_buffer(fp, bid),
         }

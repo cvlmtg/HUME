@@ -18,7 +18,6 @@ pub(in crate::editor::commands) const DEFAULT_THEME_LABEL: &str = "default (buil
 
 use hume_editing::selection::SelectionSet;
 use hume_editing::tab_style::TabStyle;
-use hume_editing::text::BufferText;
 use hume_engine::display_lines::DisplayLineMap;
 use hume_engine::display_lines::line_store::FormatKey;
 use hume_engine::pane::{Pane, Viewport};
@@ -88,7 +87,7 @@ pub(super) fn apply_pane_motion(
     state: &mut EditorState,
     view: &EngineView,
     t: CommandPane,
-    f: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
+    f: impl FnOnce(hume_editing::state::EditState) -> hume_editing::state::EditState,
 ) {
     let buf = t.bid(view);
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, t.pid(), buf, f);
@@ -101,17 +100,16 @@ pub(in crate::editor::commands) fn apply_pane_edit(
     state: &mut EditorState,
     view: &EngineView,
     t: CommandPane,
-    cmd: impl FnOnce(
-        BufferText,
-        SelectionSet,
-    ) -> (BufferText, SelectionSet, hume_editing::changeset::ChangeSet),
+    cmd: impl FnOnce(hume_editing::state::EditState) -> hume_editing::edit::Edited,
 ) -> Result<(), CommandError> {
     let buf = t.bid(view);
     doc_ops::apply_doc_edit(
         &mut state.buffers,
         &state.config.decorations,
-        &mut state.panes.state,
-        &mut state.panes.jumps,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut state.panes,
+            &mut state.input,
+        ),
         &mut state.active_session,
         t.pid(),
         buf,
@@ -135,17 +133,16 @@ pub(in crate::editor) fn apply_focused_edit_grouped(
     state: &mut EditorState,
     view: &EngineView,
     fp: FocusedPane,
-    cmd: impl FnOnce(
-        BufferText,
-        SelectionSet,
-    ) -> (BufferText, SelectionSet, hume_editing::changeset::ChangeSet),
+    cmd: impl FnOnce(hume_editing::state::EditState) -> hume_editing::edit::Edited,
 ) -> hume_editing::changeset::ChangeSet {
     let buf = fp.bid(view);
     doc_ops::apply_doc_edit_grouped(
         &mut state.buffers,
         &state.config.decorations,
-        &mut state.panes.state,
-        &mut state.panes.jumps,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut state.panes,
+            &mut state.input,
+        ),
         &mut state.active_session,
         fp.pid(),
         buf,
@@ -183,6 +180,17 @@ pub(super) fn pane_selections<'a>(
     t: CommandPane,
 ) -> &'a SelectionSet {
     t.state(&state.panes.state, view).selections()
+}
+
+/// `t`'s selections bound to its buffer's text: the read side of
+/// [`pane_selections`].
+pub(in crate::editor) fn pane_view<'a>(
+    state: &'a EditorState,
+    view: &EngineView,
+    t: CommandPane,
+) -> hume_editing::selection::EditView<'a> {
+    let text = state.buffers.get(t.bid(view)).text();
+    t.state(&state.panes.state, view).view(text)
 }
 
 /// Active search pattern on `t`'s buffer, if any.
@@ -335,17 +343,9 @@ pub(super) fn jump_pane_to(
     view: &mut EngineView,
     t: CommandPane,
     bid: hume_engine::pipeline::BufferId,
-    char_pos: hume_rope::offset::CharOffset,
+    pos: hume_rope::cluster::ClusterStart,
 ) {
     let entry = current_jump_entry(state, view, t);
-
-    // A resolved target position can legitimately land on `len_chars()`
-    // (e.g. a wire line past EOF), but cursors must satisfy `head <
-    // len_chars()`. Clamp to the last char (the buffer's own trailing `\n`,
-    // always present and always its own grapheme boundary, so no snap is
-    // needed).
-    let char_pos = char_pos.min(state.buffers.get(bid).text().last_char());
-
     let pid = t.pid();
     crate::editor::buffer::lifecycle::switch_pane_to_buffer(state, view, pid, bid);
     crate::editor::pane_state::write_cursor(
@@ -354,7 +354,7 @@ pub(super) fn jump_pane_to(
         &view.panes,
         pid,
         bid,
-        char_pos,
+        pos,
     );
     record_jump_if_moved(state, view, t, entry);
     view_center(state, view, pid);
@@ -381,10 +381,8 @@ pub(super) fn set_primary_selection(
 ) {
     let text = state.buffers.get(t.bid(view)).text();
     let pbs = t.state_mut(&mut state.panes.state, view);
-    let idx = pbs.selections().primary_index();
-    let old_head = pbs.selections().primary().head();
-    let sels = pbs.take_selections();
-    pbs.restore_selections(sels.replace(idx, new_sel), old_head, text);
+    let replaced = pbs.state(text).replace_primary(new_sel);
+    pbs.store(replaced);
 }
 
 mod edit;

@@ -4,7 +4,10 @@
 //!
 //! - [`text::BufferText`]: the document rope. Positions are char offsets.
 //! - [`selection::SelectionSet`]: sorted, non-overlapping, non-empty set of
-//!   inclusive [`selection::Selection`]s.
+//!   [`selection::Selection`]s, each covering whole grapheme clusters, tagged
+//!   with the version of the text it was computed for.
+//! - [`state::EditState`]: a text and a selection set that fits it; reads go
+//!   through [`selection::EditView`] and [`selection::SelectionView`].
 //! - [`changeset::ChangeSet`]: an invertible, composable document transform.
 //! - [`transaction::Transaction`]: a `ChangeSet` plus resulting selections,
 //!   the unit of undo.
@@ -18,12 +21,17 @@
 
 pub mod changeset;
 pub mod diff;
+pub mod edit;
 pub mod error;
 pub mod grapheme;
 pub mod history;
 pub mod lines;
+#[cfg(any(test, feature = "test-util"))]
+pub mod marked;
 pub mod selection;
+pub mod state;
 pub mod tab_style;
 pub mod text;
+pub mod tracked;
 pub mod transaction;
 pub mod word;

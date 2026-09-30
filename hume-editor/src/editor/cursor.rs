@@ -18,7 +18,7 @@ use hume_rope::column::DisplayLineCol;
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Compute the pane-content-relative `(x, row)` of `cursor_char` within the
+/// Compute the pane-content-relative `(x, row)` of `cursor` within the
 /// pane content area (i.e., after the gutter, not a terminal-absolute
 /// screen cell; callers add the gutter width and pane origin for that).
 ///
@@ -38,13 +38,13 @@ use hume_rope::column::DisplayLineCol;
 pub(in crate::editor) fn content_pos(
     viewport: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
-    cursor_char: hume_rope::offset::CharOffset,
+    cursor: hume_rope::cluster::ClusterStart,
 ) -> Option<(u16, u16)> {
     let height = viewport.height;
     if height == 0 {
         return None;
     }
-    let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
+    let (cursor_pos, cursor_display_col) = dlm.locate(cursor);
     if cursor_display_col < viewport.horizontal_offset() {
         // Off the visible viewport on the horizontal axis: same contract as
         // a row below the bottom (checked below via `distance`). Every
@@ -121,7 +121,7 @@ pub(in crate::editor) fn gutter_width<'a>(
 // ---------------------------------------------------------------------------
 
 /// Convert a pane-content-relative `(content_x, content_y)` click position to
-/// a buffer char offset.
+/// the buffer cluster it hits.
 ///
 /// `gutter_w` is the width of the gutter in terminal columns (from
 /// [`gutter_width`]). Clicks in the gutter return `None`; every other click
@@ -132,13 +132,13 @@ pub(in crate::editor) fn gutter_width<'a>(
 /// terminal-absolute. Callers translate through `Editor::pane_at_screen_pos`
 /// (`hume-editor/src/editor/mouse.rs`) first, which also decides which pane a
 /// click landed in when more than one is on screen (a `:split`/`:vsplit`).
-pub(in crate::editor) fn screen_to_char_offset(
+pub(in crate::editor) fn screen_to_cluster(
     content_x: u16,
     content_y: u16,
     gutter_w: u16,
     viewport: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
-) -> Option<hume_rope::offset::CharOffset> {
+) -> Option<hume_rope::cluster::ClusterStart> {
     // Clicks inside the gutter (line numbers etc.) do not map to text.
     if content_x < gutter_w {
         return None;

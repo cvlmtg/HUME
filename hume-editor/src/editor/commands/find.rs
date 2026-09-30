@@ -1,5 +1,4 @@
-use hume_editing::selection::SelectionSet;
-use hume_editing::text::BufferText;
+use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 use hume_ops::motion::{find_char_backward, find_char_forward};
@@ -32,10 +31,10 @@ fn find_char(
     count: usize,
     mode: MotionMode,
     kind: FindKind,
-    find_fn: fn(&BufferText, SelectionSet, usize, MotionMode, char, FindKind) -> SelectionSet,
+    find_fn: fn(EditState, usize, MotionMode, char, FindKind) -> EditState,
 ) {
     if let Some(ch) = state.pending_char.take() {
-        apply_pane_motion(state, view, t, |b, s| find_fn(b, s, count, mode, ch, kind));
+        apply_pane_motion(state, view, t, |st| find_fn(st, count, mode, ch, kind));
         state.last_find = Some(FindChar { ch, kind });
     }
 }
@@ -121,10 +120,10 @@ fn repeat_find(
     t: CommandPane,
     count: usize,
     mode: MotionMode,
-    find_fn: fn(&BufferText, SelectionSet, usize, MotionMode, char, FindKind) -> SelectionSet,
+    find_fn: fn(EditState, usize, MotionMode, char, FindKind) -> EditState,
 ) {
     if let Some(FindChar { ch, kind }) = state.last_find {
-        apply_pane_motion(state, view, t, |b, s| find_fn(b, s, count, mode, ch, kind));
+        apply_pane_motion(state, view, t, |st| find_fn(st, count, mode, ch, kind));
     }
 }
 

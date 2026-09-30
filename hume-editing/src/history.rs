@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 use rustc_hash::FxHashMap;
 
 use crate::changeset::ChangeSet;
-use crate::selection::SelectionSet;
+use crate::selection::RecordedSelections;
 use crate::transaction::Transaction;
 
 // ── Arena index ───────────────────────────────────────────────────────────────
@@ -84,7 +84,7 @@ impl History {
     /// `initial_sels` as its selection; this is the state before any edit.
     /// `buf_len` is the character length of the initial buffer (needed to
     /// build the identity ChangeSet).
-    pub fn new(initial_sels: SelectionSet, buf_len: usize) -> Self {
+    pub fn new(initial_sels: RecordedSelections, buf_len: usize) -> Self {
         let identity_cs = ChangeSet::identity(buf_len);
 
         // The root's forward and inverse are both identity transactions.
@@ -152,8 +152,8 @@ impl History {
         &mut self,
         forward_cs: ChangeSet,
         inverse_cs: ChangeSet,
-        pre_edit_sels: SelectionSet,
-        post_edit_sels: SelectionSet,
+        pre_edit_sels: RecordedSelections,
+        post_edit_sels: RecordedSelections,
     ) -> Option<RevisionId> {
         let new_id = RevisionId(self.next_id);
         self.next_id += 1;
@@ -445,7 +445,7 @@ impl History {
     /// across `undo-levels` promotion: `enforce_undo_levels` never touches
     /// the root's `forward`, so this always reflects the buffer's true
     /// open-time selection, not a later revision's post-edit cursor.
-    pub fn initial_sels(&self) -> &SelectionSet {
+    pub fn initial_sels(&self) -> &RecordedSelections {
         self.revisions[&Self::ROOT].forward.selection()
     }
 

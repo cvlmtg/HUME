@@ -1,6 +1,7 @@
 use super::*;
 use crate::column::BufferLineCol;
 use crate::test_support::rope;
+use unicode_segmentation::UnicodeSegmentation;
 
 fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
@@ -135,58 +136,56 @@ fn next_line_start_empty_line_between() {
     assert_eq!(next_line_start(&buf, RopeyLine::new(1)), co(3));
 }
 
-// ── line_break_char ───────────────────────────────────────────────────────
+// ── line_break ────────────────────────────────────────────────────────────
 //
-// Every expected offset below is hand-counted straight off the source
-// string's char positions, never derived by calling `line_end_exclusive`
-// (or anything else under test), so a bug that breaks the `- 1` relationship
-// this function replaces can't also fool its own test.
+// Every expected offset below is hand-counted from the source string's char
+// positions, never derived by calling another function under test.
 
 #[test]
-fn line_break_char_first_line() {
+fn line_break_first_line() {
     // "hello\nworld\n": h=0 e=1 l=2 l=3 o=4 \n=5
     let buf = rope("hello\nworld\n");
-    assert_eq!(line_break_char(&buf, ContentLine::new(0)), co(5));
+    assert_eq!(line_break(&buf, ContentLine::new(0)).offset(), co(5));
 }
 
 #[test]
-fn line_break_char_middle_line() {
+fn line_break_middle_line() {
     // "a\nb\nc\n": a=0 \n=1 b=2 \n=3 c=4 \n=5. Line 1 ("b") breaks at 3.
     let buf = rope("a\nb\nc\n");
-    assert_eq!(line_break_char(&buf, ContentLine::new(1)), co(3));
+    assert_eq!(line_break(&buf, ContentLine::new(1)).offset(), co(3));
 }
 
 #[test]
-fn line_break_char_empty_line() {
+fn line_break_empty_line() {
     // "a\n\nb\n": a=0 \n=1 \n=2 b=3 \n=4. Line 1 is empty, breaks at 2.
     let buf = rope("a\n\nb\n");
-    assert_eq!(line_break_char(&buf, ContentLine::new(1)), co(2));
+    assert_eq!(line_break(&buf, ContentLine::new(1)).offset(), co(2));
 }
 
 #[test]
-fn line_break_char_last_content_line() {
+fn line_break_last_content_line() {
     // "a\nb\nc\n": last content line is 2 ("c"), breaks at 5.
     let buf = rope("a\nb\nc\n");
-    assert_eq!(line_break_char(&buf, last_content_line(&buf)), co(5));
+    assert_eq!(line_break(&buf, last_content_line(&buf)).offset(), co(5));
 }
 
 #[test]
-fn line_break_char_single_line_buffer() {
+fn line_break_single_line_buffer() {
     // "hello\n": one content line, breaks at 5.
     let buf = rope("hello\n");
-    assert_eq!(line_break_char(&buf, ContentLine::new(0)), co(5));
+    assert_eq!(line_break(&buf, ContentLine::new(0)).offset(), co(5));
 }
 
 #[test]
-fn line_break_char_empty_buffer() {
+fn line_break_empty_buffer() {
     // "\n": one empty content line, breaks at 0.
     let buf = rope("\n");
-    assert_eq!(line_break_char(&buf, ContentLine::new(0)), co(0));
+    assert_eq!(line_break(&buf, ContentLine::new(0)).offset(), co(0));
 }
 
 #[test]
 #[should_panic(expected = "is not a real content line")]
-fn line_break_char_asserts_against_the_phantom_trailing_line() {
+fn line_break_asserts_against_the_phantom_trailing_line() {
     // "a\n" has one content line (0); line 1 is the phantom trailing line, where
     // next_line_start(1) - 1 would silently return line 0's own '\n'
     // instead of failing, so this must be caught instead of mis-answered.
@@ -194,7 +193,7 @@ fn line_break_char_asserts_against_the_phantom_trailing_line() {
     // point of this test is that the runtime assert still catches a value
     // minted for a line the type says is content but isn't, for this buffer.
     let buf = rope("a\n");
-    line_break_char(&buf, ContentLine::new(1));
+    line_break(&buf, ContentLine::new(1));
 }
 
 // ── leading_whitespace_end ────────────────────────────────────────────────
@@ -203,21 +202,30 @@ fn line_break_char_asserts_against_the_phantom_trailing_line() {
 fn leading_whitespace_end_none() {
     // "foo\n": no leading whitespace, end is the line start.
     let buf = rope("foo\n");
-    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(0));
+    assert_eq!(
+        leading_whitespace_end(&buf, ContentLine::new(0)).offset(),
+        co(0)
+    );
 }
 
 #[test]
 fn leading_whitespace_end_tabs() {
     // "\t\tfoo\n": 2 tabs, end is char 2 ('f').
     let buf = rope("\t\tfoo\n");
-    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(2));
+    assert_eq!(
+        leading_whitespace_end(&buf, ContentLine::new(0)).offset(),
+        co(2)
+    );
 }
 
 #[test]
 fn leading_whitespace_end_mixed() {
     // "\t  x\n": tab + 2 spaces, end is char 3 ('x').
     let buf = rope("\t  x\n");
-    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(3));
+    assert_eq!(
+        leading_whitespace_end(&buf, ContentLine::new(0)).offset(),
+        co(3)
+    );
 }
 
 #[test]
@@ -227,7 +235,7 @@ fn leading_whitespace_end_whitespace_only_line() {
     let buf = rope("   \n");
     let line_start = line_start_char(&buf, RopeyLine::new(0)).index();
     assert_eq!(
-        leading_whitespace_end(&buf, ContentLine::new(0)),
+        leading_whitespace_end(&buf, ContentLine::new(0)).offset(),
         co(line_start + 3)
     );
 }
@@ -239,7 +247,7 @@ fn leading_whitespace_end_empty_line_equals_line_start() {
     let buf = rope("a\n\nb\n");
     let line_start = line_start_char(&buf, RopeyLine::new(1)).index();
     assert_eq!(
-        leading_whitespace_end(&buf, ContentLine::new(1)),
+        leading_whitespace_end(&buf, ContentLine::new(1)).offset(),
         co(line_start)
     );
 }
@@ -249,13 +257,19 @@ fn leading_whitespace_end_stops_at_the_cluster_after_a_marked_space() {
     // A combining mark on the space makes `" \u{301}"` one cluster, so the
     // run ends at `x`, never between the space and its mark.
     let buf = rope(" \u{301}x\n");
-    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(2));
+    assert_eq!(
+        leading_whitespace_end(&buf, ContentLine::new(0)).offset(),
+        co(2)
+    );
 }
 
 #[test]
 fn leading_whitespace_end_skips_marked_and_plain_spaces() {
     let buf = rope(" \u{301}  x\n");
-    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(4));
+    assert_eq!(
+        leading_whitespace_end(&buf, ContentLine::new(0)).offset(),
+        co(4)
+    );
 }
 
 // ── leading_indent ────────────────────────────────────────────────────────
@@ -265,7 +279,10 @@ fn leading_indent_counts_non_breaking_and_ideographic_spaces() {
     // NBSP is 1 cell, U+3000 is 2, then a tab from column 3 to the stop at 4.
     let buf = rope("\u{a0}\u{3000}\tx\n");
     assert_eq!(
-        leading_indent(&buf, ContentLine::new(0), 4),
+        {
+            let (end, width) = leading_indent(&buf, ContentLine::new(0), 4);
+            (end.offset(), width)
+        },
         (co(3), BufferLineCol::new(4))
     );
 }
@@ -273,7 +290,10 @@ fn leading_indent_counts_non_breaking_and_ideographic_spaces() {
 #[test]
 fn leading_whitespace_end_keeps_a_marked_non_breaking_space_whole() {
     let buf = rope("\u{a0}\u{301}x\n");
-    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(2));
+    assert_eq!(
+        leading_whitespace_end(&buf, ContentLine::new(0)).offset(),
+        co(2)
+    );
 }
 
 #[test]
@@ -291,7 +311,10 @@ fn leading_indent_agrees_with_leading_whitespace_end() {
 fn leading_indent_spaces_width_is_char_count() {
     let buf = rope("   x\n");
     assert_eq!(
-        leading_indent(&buf, ContentLine::new(0), 4),
+        {
+            let (end, width) = leading_indent(&buf, ContentLine::new(0), 4);
+            (end.offset(), width)
+        },
         (co(3), BufferLineCol::new(3))
     );
 }
@@ -301,7 +324,10 @@ fn leading_indent_tab_width_expands_to_next_stop() {
     // One tab at column 0, tab_width 4, advances to column 4, not 1.
     let buf = rope("\tx\n");
     assert_eq!(
-        leading_indent(&buf, ContentLine::new(0), 4),
+        {
+            let (end, width) = leading_indent(&buf, ContentLine::new(0), 4);
+            (end.offset(), width)
+        },
         (co(1), BufferLineCol::new(4))
     );
 }
@@ -312,7 +338,10 @@ fn leading_indent_mixed_tab_then_spaces_is_not_a_whole_multiple() {
     // same off-stop shape `>`/`<` must round-trip on.
     let buf = rope("\t  x\n");
     assert_eq!(
-        leading_indent(&buf, ContentLine::new(0), 4),
+        {
+            let (end, width) = leading_indent(&buf, ContentLine::new(0), 4);
+            (end.offset(), width)
+        },
         (co(3), BufferLineCol::new(6))
     );
 }
@@ -323,7 +352,7 @@ fn leading_indent_mixed_tab_then_spaces_is_not_a_whole_multiple() {
 fn line_content_end_normal_line() {
     // "hello\nworld\n": line 0's last non-newline char is 'o' at offset 4
     let buf = rope("hello\nworld\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(0)), co(4));
+    assert_eq!(line_content_end(&buf, ContentLine::new(0)).offset(), co(4));
 }
 
 #[test]
@@ -331,14 +360,14 @@ fn line_content_end_empty_line_returns_newline_pos() {
     // "hello\n\nworld\n": line 1 is empty; cursor sits on the '\n'
     let buf = rope("hello\n\nworld\n");
     // line 1 starts at char 6, its only char is '\n' → content_end = 6
-    assert_eq!(line_content_end(&buf, ContentLine::new(1)), co(6));
+    assert_eq!(line_content_end(&buf, ContentLine::new(1)).offset(), co(6));
 }
 
 #[test]
 fn line_content_end_single_char_line() {
     // "a\nb\n": line 0 content end is at 'a' (offset 0)
     let buf = rope("a\nb\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(0)), co(0));
+    assert_eq!(line_content_end(&buf, ContentLine::new(0)).offset(), co(0));
 }
 
 #[test]
@@ -347,7 +376,7 @@ fn line_content_end_combining_grapheme_before_newline() {
     // The grapheme "e\u{0301}" starts at char 3. line_content_end must
     // return 3 (the grapheme cluster start), not 4 (mid-cluster).
     let buf = rope("cafe\u{0301}\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(0)), co(3));
+    assert_eq!(line_content_end(&buf, ContentLine::new(0)).offset(), co(3));
 }
 
 #[test]
@@ -355,7 +384,7 @@ fn line_content_end_treats_a_bare_cr_as_content() {
     // "ab\rcd\n" is one line, not two: `\r` is ordinary content here, so the
     // cursor's last landing spot is 'd' (offset 4), not 'b'.
     let buf = rope("ab\rcd\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(0)), co(4));
+    assert_eq!(line_content_end(&buf, ContentLine::new(0)).offset(), co(4));
 }
 
 #[test]
@@ -364,7 +393,7 @@ fn line_content_end_stops_on_the_cr_of_a_crlf() {
     // the `\r` is the line's own last content char and the cursor lands on
     // it (offset 2), one further than a plain "ab\n" would give.
     let buf = rope("ab\r\ncd\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(0)), co(2));
+    assert_eq!(line_content_end(&buf, ContentLine::new(0)).offset(), co(2));
 }
 
 #[test]
@@ -373,48 +402,56 @@ fn line_content_end_crlf_only_line_is_not_empty() {
     // terminator, so the cursor lands on the `\r` (offset 2) as content, not
     // as the empty-line fallback.
     let buf = rope("a\n\r\nb\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(1)), co(2));
+    assert_eq!(line_content_end(&buf, ContentLine::new(1)).offset(), co(2));
 }
 
-// ── line_last_char ───────────────────────────────────────────────────────
+// ── last char of a line ───────────────────────────────────────────────────
 //
 // No CRLF cases here (unlike line_content_end's own suite above): every
-// buffer this function actually sees has `\r` normalized away at
+// buffer has `\r` normalized away at
 // construction (`normalize_line_endings`, called from `BufferText::from`
 // and `ChangeSetBuilder::insert`). A raw `\r` reaches `hume-rope` only
 // through this test module's own `rope()` helper, which bypasses that
 // normalization and so cannot stand in for a real buffer here.
 
+/// The last codepoint of `line`'s last content cluster (its `\n` when the
+/// line is empty).
+fn last_char_of_line(buf: &Rope, line: ContentLine) -> CharOffset {
+    crate::grapheme::cluster_end(buf.slice(..), line_content_end(buf, line))
+        .offset()
+        .retreat(1)
+}
+
 #[test]
-fn line_last_char_normal_line() {
+fn last_char_of_line_normal_line() {
     // "hello\nworld\n": every char is its own cluster, so this is the same
     // answer as line_content_end.
     let buf = rope("hello\nworld\n");
-    assert_eq!(line_last_char(&buf, ContentLine::new(0)), co(4));
+    assert_eq!(last_char_of_line(&buf, ContentLine::new(0)), co(4));
 }
 
 #[test]
-fn line_last_char_empty_line_returns_newline_pos() {
+fn last_char_of_line_empty_line_returns_newline_pos() {
     // "hello\n\nworld\n": line 1 is empty; line_content_end already lands
     // on its own '\n', so the cluster round trip is a no-op.
     let buf = rope("hello\n\nworld\n");
-    assert_eq!(line_last_char(&buf, ContentLine::new(1)), co(6));
+    assert_eq!(last_char_of_line(&buf, ContentLine::new(1)), co(6));
 }
 
 #[test]
-fn line_last_char_combining_grapheme_before_newline() {
+fn last_char_of_line_combining_grapheme_before_newline() {
     // "cafe\u{0301}\n" = c(0) a(1) f(2) e(3) combining_acute(4) \n(5).
-    // line_content_end lands on the cluster's start (3); line_last_char
+    // line_content_end lands on the cluster's start (3); its last char
     // must extend through the combining mark to 4, not stop at 3.
     let buf = rope("cafe\u{0301}\n");
-    assert_eq!(line_last_char(&buf, ContentLine::new(0)), co(4));
+    assert_eq!(last_char_of_line(&buf, ContentLine::new(0)), co(4));
 }
 
 #[test]
-fn line_last_char_last_content_line() {
+fn last_char_of_line_last_content_line() {
     // "a\nb\nc\n": last content line is 2 ("c"), last char at 4.
     let buf = rope("a\nb\nc\n");
-    assert_eq!(line_last_char(&buf, last_content_line(&buf)), co(4));
+    assert_eq!(last_char_of_line(&buf, last_content_line(&buf)), co(4));
 }
 
 // ── snap_to_grapheme_boundary ─────────────────────────────────────────────
@@ -568,7 +605,7 @@ fn char_col_in_line_is_the_inverse_of_place_char_column() {
     // unchanged through place_char_column -> char_col_in_line.
     let buf = rope("hello\nworld\n");
     let char_col = cc(3);
-    let pos = place_char_column(&buf, RopeyLine::new(1), char_col);
+    let pos = place_char_column(&buf, RopeyLine::new(1), char_col).offset();
     assert_eq!(char_col_in_line(&buf, ContentLine::new(1), pos), char_col);
 }
 
@@ -603,7 +640,10 @@ fn advance_byte_point_trailing_newline() {
 fn place_char_column_within_line() {
     // "hello\nworld\n": char col 2 of line 1 lands on 'r' (offset 8).
     let buf = rope("hello\nworld\n");
-    assert_eq!(place_char_column(&buf, RopeyLine::new(1), cc(2)), co(8));
+    assert_eq!(
+        place_char_column(&buf, RopeyLine::new(1), cc(2)).offset(),
+        co(8)
+    );
 }
 
 #[test]
@@ -616,7 +656,11 @@ fn place_char_column_is_monotonic_across_the_line_end_boundary() {
     // moving further right moved the cursor left.
     let buf = rope("abc\ndef\n");
     let placed: Vec<usize> = (0..6)
-        .map(|col| place_char_column(&buf, RopeyLine::new(0), cc(col)).index())
+        .map(|col| {
+            place_char_column(&buf, RopeyLine::new(0), cc(col))
+                .offset()
+                .index()
+        })
         .collect();
     assert_eq!(placed, vec![0, 1, 2, 2, 2, 2]);
     assert!(
@@ -626,8 +670,14 @@ fn place_char_column_is_monotonic_across_the_line_end_boundary() {
     // An empty line keeps landing on its own '\n'. There the last content
     // position *is* the newline.
     let empty = rope("a\n\nb\n");
-    assert_eq!(place_char_column(&empty, RopeyLine::new(1), cc(0)), co(2));
-    assert_eq!(place_char_column(&empty, RopeyLine::new(1), cc(3)), co(2));
+    assert_eq!(
+        place_char_column(&empty, RopeyLine::new(1), cc(0)).offset(),
+        co(2)
+    );
+    assert_eq!(
+        place_char_column(&empty, RopeyLine::new(1), cc(3)).offset(),
+        co(2)
+    );
 }
 
 #[test]
@@ -635,7 +685,10 @@ fn place_char_column_overshoot_clamps_to_line_content_end() {
     // "hi\nhello\n": line 0 only has 2 real chars; char col 10 clamps to
     // 'i' (offset 1).
     let buf = rope("hi\nhello\n");
-    assert_eq!(place_char_column(&buf, RopeyLine::new(0), cc(10)), co(1));
+    assert_eq!(
+        place_char_column(&buf, RopeyLine::new(0), cc(10)).offset(),
+        co(1)
+    );
 }
 
 #[test]
@@ -643,25 +696,24 @@ fn place_char_column_on_empty_line_lands_on_newline() {
     // "a\n\nb\n": line 1 is empty; any char column lands on its '\n'
     // (offset 2).
     let buf = rope("a\n\nb\n");
-    assert_eq!(place_char_column(&buf, RopeyLine::new(1), cc(3)), co(2));
+    assert_eq!(
+        place_char_column(&buf, RopeyLine::new(1), cc(3)).offset(),
+        co(2)
+    );
 }
 
 #[test]
-fn place_char_column_on_the_phantom_line_places_at_len_chars() {
-    // "a\nb\n": the phantom trailing line (ropey index 2) has no content to
-    // walk across, so it places at the buffer's own `len_chars()`
-    // regardless of `char_col`. That is not itself a legal cursor head
-    // (`head < len_chars()`). The one caller that can reach this line (a
-    // scripted `goto-location!` target) clamps the result down itself.
+fn place_char_column_on_the_phantom_line_places_on_the_structural_newline() {
+    // "a\nb\n": the phantom trailing line (ropey index 2) holds no cluster,
+    // so it places on the text's last cluster, the structural `\n`,
+    // regardless of `char_col`.
     let buf = rope("a\nb\n");
-    assert_eq!(
-        place_char_column(&buf, last_ropey_line(&buf), cc(0)),
-        co(buf.len_chars())
-    );
-    assert_eq!(
-        place_char_column(&buf, last_ropey_line(&buf), cc(5)),
-        co(buf.len_chars())
-    );
+    for col in [cc(0), cc(5)] {
+        assert_eq!(
+            place_char_column(&buf, last_ropey_line(&buf), col).offset(),
+            co(buf.len_chars() - 1)
+        );
+    }
 }
 
 // ── place_grapheme_column ────────────────────────────────────────────────
@@ -671,7 +723,10 @@ fn place_grapheme_column_within_line() {
     // "hello\nworld\n": grapheme col 2 of line 1 lands on 'r' (offset 8),
     // same as the char-column case here since every grapheme is one char.
     let buf = rope("hello\nworld\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), gc(2)), co(8));
+    assert_eq!(
+        place_grapheme_column(&buf, RopeyLine::new(1), gc(2)).offset(),
+        co(8)
+    );
 }
 
 #[test]
@@ -680,8 +735,14 @@ fn place_grapheme_column_counts_combining_marks_as_one_column() {
     // Column 0 is the cluster start; column 1 is 'x'; char_col would have
     // landed column 1 on the combining mark itself instead.
     let buf = rope("e\u{0301}x\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), gc(0)), co(0));
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), gc(1)), co(2));
+    assert_eq!(
+        place_grapheme_column(&buf, RopeyLine::new(0), gc(0)).offset(),
+        co(0)
+    );
+    assert_eq!(
+        place_grapheme_column(&buf, RopeyLine::new(0), gc(1)).offset(),
+        co(2)
+    );
 }
 
 #[test]
@@ -690,7 +751,7 @@ fn place_grapheme_column_overshoot_clamps_to_line_content_end() {
     // to 'i' (offset 1).
     let buf = rope("hi\nhello\n");
     assert_eq!(
-        place_grapheme_column(&buf, RopeyLine::new(0), gc(10)),
+        place_grapheme_column(&buf, RopeyLine::new(0), gc(10)).offset(),
         co(1)
     );
 }
@@ -698,7 +759,10 @@ fn place_grapheme_column_overshoot_clamps_to_line_content_end() {
 #[test]
 fn place_grapheme_column_zero_is_line_start() {
     let buf = rope("hello\nworld\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), gc(0)), co(6));
+    assert_eq!(
+        place_grapheme_column(&buf, RopeyLine::new(1), gc(0)).offset(),
+        co(6)
+    );
 }
 
 #[test]
@@ -706,7 +770,10 @@ fn place_grapheme_column_on_empty_line_lands_on_newline() {
     // "a\n\nb\n": line 1 is empty; any grapheme column lands on its '\n'
     // (offset 2).
     let buf = rope("a\n\nb\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), gc(3)), co(2));
+    assert_eq!(
+        place_grapheme_column(&buf, RopeyLine::new(1), gc(3)).offset(),
+        co(2)
+    );
 }
 
 #[test]
@@ -726,7 +793,7 @@ fn grapheme_col_in_line_is_the_inverse_of_place_grapheme_column() {
     // the grapheme/char distinction, not just restate the char-column test.
     let buf = rope("e\u{0301}x\n");
     let grapheme_col = gc(1);
-    let pos = place_grapheme_column(&buf, RopeyLine::new(0), grapheme_col);
+    let pos = place_grapheme_column(&buf, RopeyLine::new(0), grapheme_col).offset();
     assert_eq!(
         crate::grapheme::grapheme_col_in_line(buf.slice(..), ContentLine::new(0), pos),
         grapheme_col
@@ -763,13 +830,6 @@ fn line_segments_skips_a_line_the_range_only_touches_at_its_own_newline() {
     assert_eq!(segs, vec![(1, 0, 2)]);
 }
 
-#[test]
-#[should_panic(expected = "LF-normalized")]
-fn line_last_char_rejects_a_carriage_return() {
-    let buf = rope("ab\r\ncd\n");
-    line_last_char(&buf, ContentLine::new(0));
-}
-
 // ── next_line_start_byte ──────────────────────────────────────────────────
 
 #[test]
@@ -786,7 +846,7 @@ fn next_line_start_byte_counts_utf8_bytes_of_multi_byte_lines() {
 #[test]
 fn place_char_column_snaps_a_column_inside_a_cluster_back_to_its_start() {
     let buf = rope("ae\u{301}b\n");
-    let at = |col| place_char_column(&buf, RopeyLine::new(0), CharCol::new(col));
+    let at = |col| place_char_column(&buf, RopeyLine::new(0), CharCol::new(col)).offset();
     assert_eq!((at(1), at(2), at(3)), (co(1), co(1), co(3)));
 }
 
@@ -795,7 +855,7 @@ fn place_char_column_counts_chars_not_bytes_over_multi_byte_text() {
     let buf = rope("\u{e9}\u{6f22}\u{1f600}x\n");
     for col in 0..4 {
         assert_eq!(
-            place_char_column(&buf, RopeyLine::new(0), CharCol::new(col)),
+            place_char_column(&buf, RopeyLine::new(0), CharCol::new(col)).offset(),
             co(col)
         );
     }
@@ -839,7 +899,104 @@ fn line_segments_report_utf8_byte_columns_per_line() {
 fn leading_indent_measures_a_marked_no_break_space_as_one_cell() {
     let buf = rope("\u{a0}\u{301}x\n");
     assert_eq!(
-        leading_indent(&buf, ContentLine::new(0), 4),
+        {
+            let (end, width) = leading_indent(&buf, ContentLine::new(0), 4);
+            (end.offset(), width)
+        },
         (co(2), BufferLineCol::new(1))
     );
+}
+
+// ── Typed line positions ──────────────────────────────────────────────────
+
+fn cl(n: usize) -> ContentLine {
+    ContentLine::new(n)
+}
+
+#[test]
+fn line_start_and_line_break_are_the_line_ends() {
+    let r = rope("ab\n\ne\u{301}f");
+    assert_eq!(line_start(&r, cl(0)).offset(), co(0));
+    assert_eq!(line_break(&r, cl(0)).offset(), co(2));
+    assert_eq!(line_start(&r, cl(1)).offset(), co(3));
+    assert_eq!(line_break(&r, cl(1)).offset(), co(3));
+    assert_eq!(line_start(&r, cl(2)).offset(), co(4));
+    assert_eq!(line_break(&r, cl(2)).offset(), co(7));
+}
+
+#[test]
+fn ropey_line_start_reaches_the_phantom_line() {
+    let r = rope("ab");
+    assert_eq!(ropey_line_start(&r, RopeyLine::new(0)).offset(), co(0));
+    assert_eq!(ropey_line_start(&r, RopeyLine::new(1)).offset(), co(3));
+}
+
+#[test]
+fn line_range_covers_the_line_and_its_break() {
+    let r = rope("ab\ncd");
+    let range = line_range(&r, cl(1));
+    assert_eq!(range.chars(), ExclusiveRange::new(co(3), co(6)));
+    assert_eq!(range.last(), line_break(&r, cl(1)));
+}
+
+#[test]
+fn lines_range_spans_first_through_last_in_either_order() {
+    let r = rope("ab\ncd\nef");
+    let forward = lines_range(&r, cl(0), cl(1));
+    assert_eq!(forward.chars(), ExclusiveRange::new(co(0), co(6)));
+    assert_eq!(lines_range(&r, cl(1), cl(0)), forward);
+    assert_eq!(lines_range(&r, cl(2), cl(2)), line_range(&r, cl(2)));
+}
+
+#[test]
+fn line_content_range_excludes_the_break_and_is_none_on_an_empty_line() {
+    let r = rope("ae\u{301}\n\n");
+    let content = line_content_range(&r, cl(0)).expect("line 0 has content");
+    assert_eq!(content.chars(), ExclusiveRange::new(co(0), co(3)));
+    assert_eq!(content.last().offset(), co(1));
+    assert_eq!(line_content_range(&r, cl(1)), None);
+}
+
+// ── LineText ──────────────────────────────────────────────────────────────
+
+#[test]
+fn line_text_strips_the_break_and_reports_it() {
+    let r = rope("ab\ncd");
+    let mut line = LineText::new();
+    line.load(&r, RopeyLine::new(0));
+    assert_eq!(line.as_str(), "ab");
+    assert!(line.had_break());
+    assert_eq!(line.break_pos(), Some(line_break(&r, cl(0))));
+    line.load(&r, RopeyLine::new(2));
+    assert_eq!(line.as_str(), "");
+    assert!(!line.had_break());
+    assert_eq!(line.break_pos(), None);
+}
+
+#[test]
+fn line_text_clusters_match_rope_segmentation_over_the_corpus() {
+    for sample in test_fixtures::unicode::ALL {
+        let text = format!("{sample}a{sample}\n{sample}\u{301}\n\n{sample}");
+        let r = rope(&text);
+        let mut line = LineText::new();
+        let mut from_lines = Vec::new();
+        for idx in 0..ropey_line_count(&r).get() {
+            line.load(&r, RopeyLine::new(idx));
+            for cluster in line.clusters() {
+                let bytes = &line.as_str()[cluster.bytes.start.index()..cluster.bytes.end.index()];
+                assert_eq!(cluster.text, bytes);
+                from_lines.push((cluster.start.offset(), cluster.text.to_owned()));
+            }
+            if let Some(pos) = line.break_pos() {
+                from_lines.push((pos.offset(), "\n".to_owned()));
+            }
+        }
+        let mut whole = Vec::new();
+        let mut chars = 0;
+        for g in r.to_string().graphemes(true) {
+            whole.push((co(chars), g.to_owned()));
+            chars += g.chars().count();
+        }
+        assert_eq!(from_lines, whole, "{text:?}");
+    }
 }

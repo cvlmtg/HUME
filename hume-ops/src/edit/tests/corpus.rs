@@ -23,7 +23,7 @@ fn delete_selection_removes_exactly_the_sample() {
     for s in ALL {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
-            |(text, sels)| delete_selection(text, sels),
+            |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
             "x\n-[b]>\n"
         );
     }
@@ -34,7 +34,7 @@ fn delete_char_forward_removes_exactly_one_cluster() {
     for s in single_cluster_samples() {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
-            |(text, sels)| delete_char_forward(text, sels),
+            |(text, sels)| delete_char_forward(test_fixtures::testing::state(text, sels)),
             "x\n-[b]>\n"
         );
     }
@@ -45,7 +45,7 @@ fn delete_char_backward_removes_exactly_one_cluster() {
     for s in single_cluster_samples() {
         assert_state!(
             &format!("x\n{s}-[b]>\n"),
-            |(text, sels)| delete_char_backward(text, sels),
+            |(text, sels)| delete_char_backward(test_fixtures::testing::state(text, sels)),
             "x\n-[b]>\n"
         );
     }
@@ -55,7 +55,10 @@ fn delete_char_backward_removes_exactly_one_cluster() {
 fn yank_returns_exactly_the_sample() {
     for s in ALL {
         let (text, sels) = parse_state(&format!("x\n-[{s}]>b\n"));
-        assert_eq!(yank_selections(&text, &sels), vec![s.to_string()]);
+        assert_eq!(
+            yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone())),
+            vec![s.to_string()]
+        );
     }
 }
 
@@ -64,7 +67,7 @@ fn replace_selections_writes_one_char_per_cluster() {
     for s in ALL {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
-            |(text, sels)| replace_selections(text, sels, 'x'),
+            |(text, sels)| replace_selections(test_fixtures::testing::state(text, sels), 'x'),
             &format!("x\n-[{}]>b\n", "x".repeat(clusters(s)))
         );
     }
@@ -75,7 +78,7 @@ fn insert_char_replaces_a_selection_ending_on_the_sample() {
     for s in ALL {
         assert_state!(
             &format!("-[x\n{s}]>b\n"),
-            |(text, sels)| insert_char(text, sels, 'Z'),
+            |(text, sels)| insert_char(test_fixtures::testing::state(text, sels), 'Z'),
             "Z-[b]>\n"
         );
     }
@@ -86,7 +89,10 @@ fn paste_after_lands_past_the_whole_cluster() {
     for s in single_cluster_samples() {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
-            |(text, sels)| paste_after(text, sels, &["Z".to_string()]),
+            |(text, sels)| paste_after(
+                test_fixtures::testing::state(text, sels),
+                &["Z".to_string()]
+            ),
             &format!("x\n{s}-[Z]>b\n")
         );
     }
@@ -102,7 +108,10 @@ fn paste_before_selects_the_pasted_cluster() {
         };
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
-            |(text, sels)| paste_before(text, sels, &["Z".to_string()]),
+            |(text, sels)| paste_before(
+                test_fixtures::testing::state(text, sels),
+                &["Z".to_string()]
+            ),
             &expected
         );
     }
@@ -113,7 +122,7 @@ fn wrap_each_selection_surrounds_the_whole_sample() {
     for s in ALL {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
-            |(text, sels)| wrap_each_selection(text, sels, '(', ')'),
+            |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
             &format!("x\n({s}-[)]>b\n")
         );
     }
@@ -129,7 +138,7 @@ fn insert_pair_close_lands_on_the_close_before_the_sample() {
         };
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
-            |(text, sels)| insert_pair_close(text, sels, '(', ')'),
+            |(text, sels)| insert_pair_close(test_fixtures::testing::state(text, sels), '(', ')'),
             &expected
         );
     }

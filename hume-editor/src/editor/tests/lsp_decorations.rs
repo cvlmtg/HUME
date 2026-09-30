@@ -589,9 +589,7 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     // Move the cursor onto "bbbb"'s first char (char 6) and open a blank
     // line exactly there: `i` + Enter inserts "\n" at position 6 without
     // touching anything before or after it.
-    ed.set_current_selections(hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(6)),
-    ));
+    select(&mut ed, &[(6, 6)], 0);
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     ed.feed_key(key_esc());

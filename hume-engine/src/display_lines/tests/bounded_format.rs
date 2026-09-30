@@ -36,7 +36,7 @@ fn locate_formats_only_as_far_as_the_target_offset() {
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        dlm.locate(co(5)).1,
+        dlm.locate(at(&rope, 5)).1,
         dc(5),
         "pure ASCII: column equals char offset"
     );
@@ -65,7 +65,7 @@ fn char_at_formats_only_as_far_as_the_target_column() {
             dc(5),
             DisplayColTarget::Cell
         ),
-        co(5)
+        at(&rope, 5)
     );
 
     drop(dlm);
@@ -85,8 +85,12 @@ fn a_wider_offset_on_a_cached_line_reformats() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(dlm.locate(co(3)).1, dc(3));
-    assert_eq!(dlm.locate(co(50)).1, dc(50), "the second query must rescan");
+    assert_eq!(dlm.locate(at(&rope, 3)).1, dc(3));
+    assert_eq!(
+        dlm.locate(at(&rope, 50)).1,
+        dc(50),
+        "the second query must rescan"
+    );
 }
 
 #[test]
@@ -98,8 +102,11 @@ fn a_column_query_after_an_offset_query_reformats() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    let (pos, _) = dlm.locate(co(3));
-    assert_eq!(dlm.char_at(pos, dc(40), DisplayColTarget::Cell), co(40));
+    let (pos, _) = dlm.locate(at(&rope, 3));
+    assert_eq!(
+        dlm.char_at(pos, dc(40), DisplayColTarget::Cell),
+        at(&rope, 40)
+    );
 }
 
 #[test]
@@ -115,7 +122,7 @@ fn locate_display_line_answers_without_formatting_in_no_wrap() {
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        dlm.locate_display_line(co(5)),
+        dlm.locate_display_line(at(&rope, 5)),
         DisplayLinePos::new(ContentLine::new(0), 2),
         "the line's own display line sits after the two Before display lines above it"
     );
@@ -135,8 +142,9 @@ fn locate_display_line_agrees_with_locate_in_both_wrap_modes() {
     // `locate`'s own answers are pinned separately by the `locate_*` tests
     // above.
     //
-    // "a\n\nébc\n" covers an empty line, a line with Before display lines above it, a
-    // multi-byte grapheme, and the phantom line past the last `\n`.
+    // "a\n\nébc\n" covers an empty line, a line with Before display lines above it,
+    // and a multi-byte grapheme. The text end past the last `\n` is not a
+    // cluster start, so neither function can be asked about it.
     let rope = Rope::from_str("a\n\nébc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
@@ -148,13 +156,11 @@ fn locate_display_line_agrees_with_locate_in_both_wrap_modes() {
     for wrap in [WrapMode::None, WrapMode::Soft { width: 2 }] {
         let mut s = PaneLineStore::new();
         let mut dlm = map(&rope, wrap, &providers, &mut s);
-        // Inclusive upper bound is defensive: the buffer invariant keeps a
-        // cursor at `head < len_chars()`.
-        for offset in 0..=rope.len_chars() {
+        for offset in 0..rope.len_chars() {
             // `locate_display_line` first, so it has to be right without a previous
             // `locate` having warmed the scratch.
-            let pos = dlm.locate_display_line(co(offset));
-            let via_locate = dlm.locate(co(offset)).0;
+            let pos = dlm.locate_display_line(at(&rope, offset));
+            let via_locate = dlm.locate(at(&rope, offset)).0;
             assert_eq!(pos, via_locate, "{wrap:?}, offset {offset}");
         }
     }

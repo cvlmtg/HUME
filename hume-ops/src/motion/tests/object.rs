@@ -1,5 +1,6 @@
 use super::super::*;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_editing::text::BufferText;
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 use test_fixtures::assert_state;
 
 // Stand-ins for `hume_treesitter::textobjects::ObjectSpans`. This crate
@@ -14,50 +15,57 @@ const OBJ_INNER: (usize, usize) = (11, 12); // "lm", nested in OBJ_OUTER
 const OBJ3: (usize, usize) = (20, 23); // "uvwx"
 const SPANS: [(usize, usize); 4] = [OBJ1, OBJ_OUTER, OBJ_INNER, OBJ3];
 
+/// The span `(first, last)` of the ASCII test text as clusters.
+fn span(text: &BufferText, (first, last): (usize, usize)) -> ClusterRange {
+    let clusters = |i| text.snap(hume_rope::offset::CharOffset::new(i));
+    ClusterRange::through(text.full_slice(), clusters(first), clusters(last))
+        .expect("first precedes last")
+}
+
 /// Mirrors `ObjectSpans::adjacent(pos, Forward)`: smallest `start > pos`,
 /// ties -> largest `end`.
-fn find_forward(pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
-    let pos = pos.index();
+fn find_forward(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
+    let pos = pos.offset().index();
     SPANS
         .iter()
         .copied()
         .filter(|&(start, _)| start > pos)
         .min_by_key(|&(start, end)| (start, std::cmp::Reverse(end)))
-        .map(|(start, end)| InclusiveRange::new(CharOffset::new(start), CharOffset::new(end)))
+        .map(|s| span(text, s))
 }
 
 /// Mirrors `ObjectSpans::adjacent(pos, Backward)`: largest `start < pos`,
 /// ties -> largest `end`.
-fn find_backward(pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
-    let pos = pos.index();
+fn find_backward(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
+    let pos = pos.offset().index();
     SPANS
         .iter()
         .copied()
         .filter(|&(start, _)| start < pos)
         .max_by_key(|&(start, end)| (start, end))
-        .map(|(start, end)| InclusiveRange::new(CharOffset::new(start), CharOffset::new(end)))
+        .map(|s| span(text, s))
 }
 
-fn cmd_goto(
-    text: &BufferText,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-    backward: bool,
-) -> SelectionSet {
+fn cmd_goto(state: EditState, count: usize, mode: MotionMode, backward: bool) -> EditState {
     let finder = if backward {
         find_backward
     } else {
         find_forward
     };
-    apply_object_motion(text, sels, mode, count, backward, finder)
+    let text = state.text().clone();
+    apply_object_motion(state, mode, count, backward, |pos| finder(&text, pos))
 }
 
 #[test]
 fn move_forward_from_cursor() {
     assert_state!(
         "-[a]>bcdefghijklmnopqrstuvwxyz\n",
-        |(text, sels)| cmd_goto(&text, sels, 1, MotionMode::Move, false),
+        |(text, sels)| cmd_goto(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move,
+            false
+        ),
         "ab<[cdef]-ghijklmnopqrstuvwxyz\n"
     );
 }
@@ -68,7 +76,12 @@ fn move_forward_skips_object_nested_in_the_one_just_selected() {
     // (OBJ_INNER, start 11) never qualifies as `start > origin`.
     assert_state!(
         "abcdefghij<[klmno]-pqrstuvwxyz\n",
-        |(text, sels)| cmd_goto(&text, sels, 1, MotionMode::Move, false),
+        |(text, sels)| cmd_goto(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move,
+            false
+        ),
         "abcdefghijklmnopqrst<[uvwx]-yz\n"
     );
 }
@@ -80,7 +93,12 @@ fn move_backward_from_inside_an_object_lands_on_its_own_start() {
     // object finds that object before walking further back.
     assert_state!(
         "abc-[d]>efghijklmnopqrstuvwxyz\n",
-        |(text, sels)| cmd_goto(&text, sels, 1, MotionMode::Move, true),
+        |(text, sels)| cmd_goto(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move,
+            true
+        ),
         "ab<[cdef]-ghijklmnopqrstuvwxyz\n"
     );
 }
@@ -89,7 +107,12 @@ fn move_backward_from_inside_an_object_lands_on_its_own_start() {
 fn move_forward_count_two() {
     assert_state!(
         "-[a]>bcdefghijklmnopqrstuvwxyz\n",
-        |(text, sels)| cmd_goto(&text, sels, 2, MotionMode::Move, false),
+        |(text, sels)| cmd_goto(
+            test_fixtures::testing::state(text, sels),
+            2,
+            MotionMode::Move,
+            false
+        ),
         "abcdefghij<[klmno]-pqrstuvwxyz\n"
     );
 }
@@ -98,7 +121,12 @@ fn move_forward_count_two() {
 fn move_forward_no_next_object_is_unchanged() {
     assert_state!(
         "abcdefghijklmnopqrstuvwxy-[z]>\n",
-        |(text, sels)| cmd_goto(&text, sels, 1, MotionMode::Move, false),
+        |(text, sels)| cmd_goto(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move,
+            false
+        ),
         "abcdefghijklmnopqrstuvwxy-[z]>\n"
     );
 }
@@ -107,7 +135,12 @@ fn move_forward_no_next_object_is_unchanged() {
 fn extend_forward_keeps_anchor() {
     assert_state!(
         "-[a]>bcdefghijklmnopqrstuvwxyz\n",
-        |(text, sels)| cmd_goto(&text, sels, 1, MotionMode::Extend, false),
+        |(text, sels)| cmd_goto(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend,
+            false
+        ),
         "-[abcdef]>ghijklmnopqrstuvwxyz\n"
     );
 }
@@ -116,7 +149,12 @@ fn extend_forward_keeps_anchor() {
 fn extend_backward_keeps_anchor() {
     assert_state!(
         "abcdefghijklmnopqrstuvwxy-[z]>\n",
-        |(text, sels)| cmd_goto(&text, sels, 1, MotionMode::Extend, true),
+        |(text, sels)| cmd_goto(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend,
+            true
+        ),
         "abcdefghijklmnopqrst<[uvwxyz]-\n"
     );
 }
@@ -130,7 +168,12 @@ fn extend_backward_keeps_anchor() {
 fn extend_forward_after_a_move_keeps_the_selected_object() {
     assert_state!(
         "ab<[cdef]-ghijklmnopqrstuvwxyz\n",
-        |(text, sels)| cmd_goto(&text, sels, 1, MotionMode::Extend, false),
+        |(text, sels)| cmd_goto(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend,
+            false
+        ),
         "ab-[cdefghijklmno]>pqrstuvwxyz\n"
     );
 }
@@ -144,7 +187,12 @@ fn extend_forward_after_a_move_keeps_the_selected_object() {
 fn extend_forward_into_a_nested_object_does_not_shrink_the_selection() {
     assert_state!(
         "abcdefghij<[klmno]-pqrstuvwxyz\n",
-        |(text, sels)| cmd_goto(&text, sels, 1, MotionMode::Extend, false),
+        |(text, sels)| cmd_goto(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend,
+            false
+        ),
         "abcdefghij-[klmno]>pqrstuvwxyz\n"
     );
 }
@@ -154,13 +202,15 @@ fn extend_forward_into_a_nested_object_does_not_shrink_the_selection() {
 /// `apply_word_select_extend`, not `start()`/`end()` as `Move` uses.
 #[test]
 fn extend_searches_from_the_head_not_the_far_edge() {
-    let finder = |pos: CharOffset| -> Option<InclusiveRange<CharOffset>> {
-        (pos < CharOffset::new(3))
-            .then_some(InclusiveRange::new(CharOffset::new(3), CharOffset::new(4)))
-    };
     assert_state!(
         "ab<[cd]-efghijklmnopqrstuvwxyz\n",
-        |(text, sels)| apply_object_motion(&text, sels, MotionMode::Extend, 1, false, finder),
+        |(text, sels)| {
+            let state = test_fixtures::testing::state(text, sels);
+            let text = state.text().clone();
+            apply_object_motion(state, MotionMode::Extend, 1, false, |pos| {
+                (pos.offset().index() < 3).then(|| span(&text, (3, 4)))
+            })
+        },
         "ab-[cde]>fghijklmnopqrstuvwxyz\n"
     );
 }
@@ -171,7 +221,12 @@ fn multi_cursor_convergence_merges() {
     // collapses the two resulting selections into one.
     assert_state!(
         "-[a]>-[b]>cdefghijklmnopqrstuvwxyz\n",
-        |(text, sels)| cmd_goto(&text, sels, 1, MotionMode::Move, false),
+        |(text, sels)| cmd_goto(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move,
+            false
+        ),
         "ab<[cdef]-ghijklmnopqrstuvwxyz\n"
     );
 }

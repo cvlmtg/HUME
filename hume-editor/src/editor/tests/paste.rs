@@ -541,7 +541,7 @@ fn redo_after_undo_keeps_ring_stamp_stale() {
 /// A composed undo whose net `ChangeSet` is identity (insert 'x', delete 'x')
 /// still moves the revision and the selections: `apply_doc_history_walk`
 /// must bump `edit_seq` for it same as any other walk, even though
-/// `finish_edit` skips `set_text` for an identity CS. Without that bump, a
+/// `Buffer::apply_edit*` skips `install` for an identity CS. Without that bump, a
 /// stamp taken right before the walk would stay "fresh" across it, and a
 /// bare `p` right after would incorrectly cycle the ring instead of falling
 /// back to the clipboard.
@@ -583,7 +583,6 @@ fn net_identity_undo_still_bumps_edit_seq_and_ends_paste_session() {
 /// stales A's stamp exactly as an edit in A itself would.
 #[test]
 fn edit_in_other_buffer_invalidates_ring_stamp() {
-    use hume_editing::selection::SelectionSet;
     use hume_editing::text::BufferText;
     use hume_ops::register::CLIPBOARD_REGISTER;
 
@@ -594,10 +593,7 @@ fn edit_in_other_buffer_invalidates_ring_stamp() {
     ed.feed_key(key('d')); // delete "ab" in buffer A → ring = ["ab"], stamp fresh
 
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("xy\n"),
-        SelectionSet::default(),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("xy\n")));
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_b);
     // `i`/type/`Esc`, not `d`/`c`/`y`. A capturing edit in B would legitimately
     // write a *fresh* stamp pointing at B's own capture, which isn't what this
@@ -731,7 +727,7 @@ fn paste_after_repeat_over_backward_selection_collapses_to_end() {
     assert_eq!(
         state(&ed),
         "ab-[ab]>cd\n",
-        "backward selection must still collapse to the span's end (start()/end_inclusive()), not head()"
+        "backward selection must still collapse to the span's end (start()/last()), not head()"
     );
 }
 
@@ -1554,10 +1550,10 @@ fn paste_during_an_empty_open_insert_session_is_refused_and_leaves_the_session_i
 /// requires a *still-open* Paste session to do anything at all) finds none
 /// and no-ops instead of re-pasting from a now-stale snapshot.
 ///
-/// Without that commit, the open session's `text_snapshot` would still be
+/// Without that commit, the open session's `snapshot` would still be
 /// the pre-bracketed-paste text. `[` would then re-derive the whole buffer
 /// from that stale snapshot (`apply_edit_regrouped`'s own contract: "every
-/// cycle cleanly discards the previous paste output") and call `set_text`
+/// cycle cleanly discards the previous paste output") and call `install`
 /// with the result, silently discarding the bracketed paste along with it.
 #[test]
 fn direct_edit_during_open_paste_session_commits_it_first() {

@@ -19,10 +19,10 @@ use crate::pane::{Viewport, WrapMode};
 use crate::providers::{
     Decoration, DecorationKinds, DecorationSource, ProviderSet, VirtualLineAnchor,
 };
-use crate::test_support::{VirtualLineBlock, co, map};
+use crate::test_support::{VirtualLineBlock, at, map};
+use hume_rope::cluster::ClusterStart;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::CharOffset;
 
 fn viewport(top: usize, height: u16, width: u16) -> Viewport {
     let mut v = Viewport::new(width, height);
@@ -34,7 +34,7 @@ fn viewport(top: usize, height: u16, width: u16) -> Viewport {
 fn local_content_pos(
     v: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
-    cursor_char: CharOffset,
+    cursor_char: ClusterStart,
 ) -> Option<(u16, u16)> {
     if v.height == 0 {
         return None;
@@ -186,7 +186,7 @@ fn cursor_sub_display_line_no_wrap() {
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
-    let sub = dlm.locate(co(5)).0.slot;
+    let sub = dlm.locate(at(&r, 5)).0.slot;
     assert_eq!(sub, 0);
 }
 
@@ -196,8 +196,8 @@ fn cursor_sub_display_line_wrapped() {
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::Soft { width: 4 }, &providers, 80, &mut s);
-    assert_eq!(dlm.locate(co(0)).0.slot, 0);
-    assert_eq!(dlm.locate(co(4)).0.slot, 1);
+    assert_eq!(dlm.locate(at(&r, 0)).0.slot, 0);
+    assert_eq!(dlm.locate(at(&r, 4)).0.slot, 1);
 }
 
 // ── reveal (wrap) top/bottom margin enforcement ──────────────────────────
@@ -207,8 +207,7 @@ fn wrap_cursor_within_top_margin_scrolls_up() {
     let r = Rope::from_str(&"ab\n".repeat(10));
     let mut v = Viewport::new(3, 8);
     v.seed_top_for_test(DisplayLinePos::new(ContentLine::new(3), 0));
-    let cursor_char =
-        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(3)).index());
+    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(3));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
@@ -223,8 +222,7 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
     let r = Rope::from_str(&"ab\n".repeat(10));
     let mut v = Viewport::new(3, 8);
     v.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 0));
-    let cursor_char =
-        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(7)).index());
+    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(7));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
@@ -342,8 +340,7 @@ fn settled_row_is_some_at_the_documents_start_saturation() {
 fn view_top_then_scroll_margin_trims_cursor_inward() {
     let r = Rope::from_str(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
-    let cursor_char =
-        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(25)).index());
+    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(25));
     let providers = no_providers();
 
     let mut s = PaneLineStore::new();
@@ -362,8 +359,7 @@ fn view_top_then_scroll_margin_trims_cursor_inward() {
 fn view_bottom_then_scroll_margin_trims_cursor_inward() {
     let r = Rope::from_str(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
-    let cursor_char =
-        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(25)).index());
+    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(25));
     let providers = no_providers();
 
     let mut s = PaneLineStore::new();
@@ -386,8 +382,7 @@ fn reveal_accounts_for_a_stolen_virtual_display_line() {
     let mut v = viewport(0, 2, 80);
     let wrap = WrapMode::Soft { width: 80 };
     let providers = providers_with_before_line(2);
-    let cursor_char =
-        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(3)).index());
+    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(3));
 
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, wrap, &providers, 80, &mut s);
@@ -415,8 +410,7 @@ fn reveal_accounts_for_a_stolen_virtual_display_line_no_wrap() {
     let mut v = viewport(0, 2, 80);
     let wrap = WrapMode::None;
     let providers = providers_with_before_line(2);
-    let cursor_char =
-        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(3)).index());
+    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(3));
 
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, wrap, &providers, 80, &mut s);
@@ -446,8 +440,7 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
         VirtualLineAnchor::Before(ContentLine::new(0)),
         3,
     )));
-    let cursor_char =
-        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(2)).index());
+    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(2));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut v = viewport(2, 20, 80);
@@ -512,7 +505,7 @@ fn top_at_is_a_noop_when_already_valid() {
 fn reveal_is_safe_to_call_directly_on_a_stale_top() {
     let r = Rope::from_str("a\nb\n");
     let providers = ProviderSet::new(); // no virtual lines: every line's block is exactly 1 slot
-    let cursor_char = co(0); // line 0's own first char, so the cursor never has to move
+    let cursor_char = at(&r, 0); // line 0's own first char, so the cursor never has to move
 
     let mut stale = viewport(0, 5, 80);
     stale.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 200)); // wildly stale
@@ -550,7 +543,7 @@ fn horizontal_scroll_margin_uses_content_width_not_viewport_width() {
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
-    let cursor_char = co(70);
+    let cursor_char = at(&r, 70);
 
     let mut dlm = map(&r, WrapMode::None, &providers, 72, &mut s);
     let cursor_display_col = dlm.locate(cursor_char).1;
@@ -569,7 +562,7 @@ fn horizontal_scroll_margin_no_scroll_when_within_content_width() {
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
-    let cursor_char = co(70);
+    let cursor_char = at(&r, 70);
 
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let cursor_display_col = dlm.locate(cursor_char).1;
@@ -590,7 +583,7 @@ fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
-    let cursor_char = co(69_999);
+    let cursor_char = at(&r, 69_999);
 
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let cursor_display_col = dlm.locate(cursor_char).1;
@@ -624,8 +617,7 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
                 for line in
                     (0..hume_rope::lines::content_line_count(&r).get()).map(ContentLine::new)
                 {
-                    let cursor_char =
-                        co(hume_rope::lines::line_start_char(&r, line.into()).index());
+                    let cursor_char = hume_rope::lines::line_start(&r, line);
                     let mut v = viewport(top, height, 80);
 
                     let mut s = PaneLineStore::new();
@@ -660,7 +652,7 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FormatProbe::new(0, Rc::clone(&formats))));
     let mut v = viewport(0, 10, 80);
-    let cursor_char = co(4_000);
+    let cursor_char = at(&r, 4_000);
 
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);

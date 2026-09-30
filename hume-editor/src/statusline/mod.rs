@@ -336,12 +336,10 @@ impl HumeStatusline<'_> {
         self.state.buffers.get(self.focused_bid)
     }
 
-    pub(in crate::statusline) fn current_selections(
-        &self,
-    ) -> &hume_editing::selection::SelectionSet {
+    pub(in crate::statusline) fn current_view(&self) -> hume_editing::selection::EditView<'_> {
         self.state
             .focused_buffer_state_or_panic(self.focused_bid)
-            .selections()
+            .view(self.doc().text())
     }
 
     pub(in crate::statusline) fn current_search_cursor(

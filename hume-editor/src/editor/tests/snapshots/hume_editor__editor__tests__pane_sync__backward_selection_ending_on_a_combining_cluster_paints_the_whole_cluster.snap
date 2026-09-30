@@ -1,0 +1,7 @@
+---
+source: hume-editor/src/editor/tests/pane_sync.rs
+expression: snap
+---
+<fg=#ebdbb2,bg=#3c3836>a</><fg=#3c3836,bg=#bdae93>b</><fg=#ebdbb2,bg=#665c54>é</><fg=#ebdbb2,bg=#3c3836>c</>
+<fg=#928374,bg=#282828>~</>
+<fg=#3c3836,bg=#bdae93,bold>     1:2 *scr…</><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

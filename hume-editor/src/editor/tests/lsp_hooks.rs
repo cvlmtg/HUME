@@ -162,8 +162,6 @@ fn set_hook_triggers_from_inside_a_hook_handler_takes_effect() {
 /// language's buffer must not fire at all.
 #[test]
 fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each_other() {
-    use hume_editing::selection::Selection;
-
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid_a = ed.focused_buffer_id();
@@ -192,10 +190,7 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
     ed.lsp
         .insert_server_key_for_test("python".to_string(), PathBuf::from("."), sid_b);
 
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("x\n"),
-        SelectionSet::single(Selection::collapsed(co(0))),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
     let lang = ed.state.config.languages.intern("python");
     ed.state.buffers.get_mut(bid_b).language = Some(lang);
     ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
@@ -256,10 +251,7 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
     // didn't clobber "rust"'s "." entry (checked above), and that "rust"'s
     // registration doesn't leak into "python"'s buffer either.
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_b);
-    let mut plain_b = Editor::for_testing(Buffer::new(
-        BufferText::from("x\n"),
-        SelectionSet::single(Selection::collapsed(co(0))),
-    ));
+    let mut plain_b = Editor::for_testing(Buffer::at_start(BufferText::from("x\n")));
     ed.feed_key(key('i'));
     ed.settle();
     plain_b.feed_key(key('i'));

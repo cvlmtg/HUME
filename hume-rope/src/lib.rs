@@ -19,12 +19,13 @@
 //! `\n` alone and `\r` (like VT, FF, NEL, LS, PS) is ordinary content. Line
 //! terminator logic here is therefore single-char. `BufferText` normalizes
 //! every line ending to `\n`, so a `\r` never reaches the functions that
-//! resolve a line's last grapheme cluster (`line_last_char`,
-//! `char_pos_at_display_col`): a `\r\n` cluster would straddle the
-//! terminator, and they debug-assert against it.
+//! walk a line's clusters up to its terminator (`char_pos_at_display_col`):
+//! a `\r\n` cluster would straddle the terminator, and it debug-asserts
+//! against it.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 
+pub mod cluster;
 pub mod column;
 pub mod cursor;
 pub mod grapheme;

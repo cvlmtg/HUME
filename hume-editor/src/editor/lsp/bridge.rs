@@ -34,7 +34,7 @@ impl Editor {
         // (its own `try_get` is where a stale bid would have been caught).
         // Nothing between the two calls can close it, so this is a plain
         // read, not a second liveness check.
-        let text_gen = self.state.buffers.get(req.bid).text_gen;
+        let version = self.state.buffers.get(req.bid).text().version();
         let timeout_ms = self.state.settings.lsp_request_timeout_ms as u64;
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
 
@@ -58,7 +58,7 @@ impl Editor {
 
         let anchor = ResponseAnchor {
             bid: req.bid,
-            text_gen,
+            version,
             allow_stale: req.allow_stale,
             require_focus: req.require_focus,
         };

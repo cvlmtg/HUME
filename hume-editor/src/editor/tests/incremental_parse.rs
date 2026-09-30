@@ -12,7 +12,6 @@ use hume_treesitter::grammar::LoadedGrammar;
 use test_fixtures::{grammar_parser_path, require_grammars};
 
 use crate::editor::buffer::Buffer;
-use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 
 /// Create an editor with `source` as buffer text and a JSON grammar attached.
@@ -21,7 +20,7 @@ use hume_editing::text::BufferText;
 /// `reparse_stale_buffers` call: InlineParseBackend resolves it immediately,
 /// so the first drain installs it.
 fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
-    let buf = Buffer::new(BufferText::from(source), SelectionSet::default());
+    let buf = Buffer::at_start(BufferText::from(source));
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
@@ -51,7 +50,7 @@ fn first_parse_full_reparse_no_pending() {
     let syn = buf.syntax.as_ref().unwrap();
     assert_eq!(
         syn.parsed_gen(),
-        Some(buf.text_gen),
+        Some(buf.text().version().generation()),
         "initial parse must be up-to-date"
     );
     assert!(
@@ -65,7 +64,7 @@ fn first_parse_full_reparse_no_pending() {
 fn edit_records_pending_edits() {
     require_grammars(&["json"]);
     let (mut ed, bid) = json_editor("{}\n");
-    let gen_before = ed.state.buffers.get(bid).text_gen;
+    let gen_before = ed.state.buffers.get(bid).text().version().generation();
 
     // Insert a char in insert mode.
     ed.feed_key(key('i'));
@@ -73,7 +72,10 @@ fn edit_records_pending_edits() {
     ed.feed_key(key_esc());
 
     let buf = ed.state.buffers.get(bid);
-    assert!(buf.text_gen > gen_before, "edit must bump text_gen");
+    assert!(
+        buf.text().version().generation() > gen_before,
+        "edit must change the text version"
+    );
     let syn = buf.syntax.as_ref().unwrap();
     assert!(
         !syn.pending_edits().is_empty(),
@@ -90,7 +92,7 @@ fn reparse_after_edit_drains_pending() {
     ed.feed_key(key(' '));
     ed.feed_key(key_esc());
 
-    let gen_after_edit = ed.state.buffers.get(bid).text_gen;
+    let gen_after_edit = ed.state.buffers.get(bid).text().version().generation();
 
     // InlineParseBackend: post request (first call) then drain+install (second call).
     reparse_edit(&mut ed);
@@ -104,7 +106,7 @@ fn reparse_after_edit_drains_pending() {
     assert_eq!(
         syn.parsed_gen(),
         Some(gen_after_edit),
-        "parsed_gen matches text_gen after edit"
+        "parsed_gen matches generation after edit"
     );
     assert!(syn.layers().is_some());
 }
@@ -118,14 +120,14 @@ fn two_edits_batched_chain_resolves() {
     ed.feed_key(key('i'));
     ed.feed_key(key('1'));
     ed.feed_key(key_esc());
-    let gen_1 = ed.state.buffers.get(bid).text_gen;
+    let gen_1 = ed.state.buffers.get(bid).text().version().generation();
 
     ed.feed_key(key('a'));
     ed.feed_key(key('2'));
     ed.feed_key(key_esc());
-    let gen_2 = ed.state.buffers.get(bid).text_gen;
+    let gen_2 = ed.state.buffers.get(bid).text().version().generation();
 
-    assert!(gen_2 > gen_1, "two edits must produce two text_gen bumps");
+    assert!(gen_2 > gen_1, "two edits must produce two generation bumps");
 
     // Both edits must be in pending_edits.
     let pending_count = ed
@@ -206,8 +208,8 @@ fn incremental_tree_matches_full_reparse() {
 ///
 /// With InlineParseBackend, `post` resolves immediately into the queue but does
 /// NOT drain in the same call.  So after exactly one `reparse_stale_buffers`:
-/// - the bake has run  (tree_gen == text_gen, pending cleared, tree coords shifted)
-/// - the precise parse is queued but NOT yet installed (parsed_gen < text_gen)
+/// - the bake has run  (tree_gen == generation, pending cleared, tree coords shifted)
+/// - the precise parse is queued but NOT yet installed (parsed_gen < generation)
 #[test]
 fn bake_aligns_committed_tree_before_precise_install() {
     require_grammars(&["json"]);
@@ -219,7 +221,7 @@ fn bake_aligns_committed_tree_before_precise_install() {
     ed.feed_key(key(' '));
     ed.feed_key(key_esc());
 
-    let text_gen_after = ed.state.buffers.get(bid).text_gen;
+    let generation_after = ed.state.buffers.get(bid).text().version().generation();
     let new_byte_len = ed.state.buffers.get(bid).text().len_bytes();
     assert_eq!(new_byte_len, old_byte_len + 1, "insert added one byte");
 
@@ -231,12 +233,12 @@ fn bake_aligns_committed_tree_before_precise_install() {
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
     assert_eq!(
         syn.tree_gen(),
-        text_gen_after,
-        "tree_gen must equal text_gen after bake"
+        generation_after,
+        "tree_gen must equal generation after bake"
     );
     assert!(
-        syn.parsed_gen() < Some(text_gen_after),
-        "parsed_gen must not yet equal text_gen: precise parse queued, not installed",
+        syn.parsed_gen() < Some(generation_after),
+        "parsed_gen must not yet equal generation: precise parse queued, not installed",
     );
     assert!(
         syn.pending_edits().is_empty(),
@@ -266,7 +268,7 @@ fn bake_handles_multi_edit_chain_in_one_shot() {
     require_grammars(&["json"]);
     let (mut ed, bid) = json_editor("{}\n");
 
-    // Two separate insert-mode characters → two text_gen bumps, two pending edits.
+    // Two separate insert-mode characters → two generation bumps, two pending edits.
     ed.feed_key(key('i'));
     ed.feed_key(key('A'));
     ed.feed_key(key_esc());
@@ -274,7 +276,7 @@ fn bake_handles_multi_edit_chain_in_one_shot() {
     ed.feed_key(key('B'));
     ed.feed_key(key_esc());
 
-    let text_gen_after = ed.state.buffers.get(bid).text_gen;
+    let generation_after = ed.state.buffers.get(bid).text().version().generation();
     let new_byte_len = ed.state.buffers.get(bid).text().len_bytes();
 
     let pending_count = ed
@@ -297,8 +299,8 @@ fn bake_handles_multi_edit_chain_in_one_shot() {
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
     assert_eq!(
         syn.tree_gen(),
-        text_gen_after,
-        "tree_gen must jump to text_gen after bake"
+        generation_after,
+        "tree_gen must jump to generation after bake"
     );
     assert!(
         syn.pending_edits().is_empty(),

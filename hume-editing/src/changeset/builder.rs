@@ -2,26 +2,24 @@ use hume_rope::offset::CharOffset;
 
 use super::{ChangeSet, Operation, push_merge};
 
-/// Incremental builder for constructing a `ChangeSet`.
+/// Incremental builder for constructing a `ChangeSet` from positions in the
+/// old document, for edits that arrive as raw char ranges (a language
+/// server's text edits). Commands build their edits with
+/// [`crate::edit::EditBuilder`] instead.
 ///
-/// The builder tracks two cursors: `old_pos` (how far we've consumed in the
-/// old document) and `new_pos` (how far we've produced in the new document).
-/// This dual tracking is the key benefit: callers can read `new_pos()` at
-/// any point to know where a cursor should land in the new document, with no
-/// separate delta accumulator needed.
-///
-/// Adjacent operations of the same kind are auto-merged (via `push_merge`),
-/// and zero-length operations are silently dropped.
+/// The builder tracks two cursors: `old_pos` (how far it has consumed in the
+/// old document) and `new_pos` (how far it has produced in the new one).
+/// Adjacent operations of the same kind are merged (via `push_merge`), and
+/// zero-length operations are dropped.
 ///
 /// # Usage pattern
 ///
 /// ```text
 /// let mut b = ChangeSetBuilder::new(text.end());
-/// b.retain(5);        // skip first 5 chars
-/// b.delete(3);        // delete next 3
-/// b.insert("hello");  // insert replacement
-/// b.retain_rest();    // keep everything else
-/// let cs = b.finish();
+/// b.retain_to(start);  // keep everything before `start`
+/// b.delete_to(end);    // delete `start..end`
+/// b.insert("hello");   // insert the replacement
+/// let cs = b.finish(); // keep everything else
 /// ```
 pub struct ChangeSetBuilder {
     ops: Vec<Operation>,
@@ -46,7 +44,7 @@ impl ChangeSetBuilder {
     ///
     /// # Panics
     /// Debug-panics if `old_pos + n` would exceed `doc_len`.
-    pub fn retain(&mut self, n: usize) -> &mut Self {
+    pub(crate) fn retain(&mut self, n: usize) -> &mut Self {
         debug_assert!(
             self.old_pos.shift(n as isize) <= self.doc_len,
             "ChangeSetBuilder::retain: old_pos ({:?}) + n ({n}) > doc_len ({:?})",
@@ -63,7 +61,7 @@ impl ChangeSetBuilder {
     ///
     /// # Panics
     /// Debug-panics if `old_pos + n` would exceed `doc_len`.
-    pub fn delete(&mut self, n: usize) -> &mut Self {
+    pub(crate) fn delete(&mut self, n: usize) -> &mut Self {
         debug_assert!(
             self.old_pos.shift(n as isize) <= self.doc_len,
             "ChangeSetBuilder::delete: old_pos ({:?}) + n ({n}) > doc_len ({:?})",
@@ -111,7 +109,7 @@ impl ChangeSetBuilder {
     }
 
     /// Current position in the old document (chars consumed so far).
-    pub fn old_pos(&self) -> CharOffset {
+    pub(crate) fn old_pos(&self) -> CharOffset {
         self.old_pos
     }
 
@@ -119,13 +117,24 @@ impl ChangeSetBuilder {
     ///
     /// After emitting an `insert`, `new_pos()` tells you exactly where a
     /// cursor should land in the result buffer.
-    pub fn new_pos(&self) -> CharOffset {
+    pub(crate) fn new_pos(&self) -> CharOffset {
         self.new_pos
     }
 
+    /// Keep the old document up to `pos`, which must not be before what the
+    /// builder has consumed.
+    pub fn retain_to(&mut self, pos: CharOffset) -> &mut Self {
+        self.retain(pos.chars_since(self.old_pos))
+    }
+
+    /// Delete the old document up to `pos`, which must not be before what
+    /// the builder has consumed.
+    pub fn delete_to(&mut self, pos: CharOffset) -> &mut Self {
+        self.delete(pos.chars_since(self.old_pos))
+    }
+
     /// Retain all remaining chars from `old_pos` to end of document.
-    /// Convenience for finishing the changeset.
-    pub fn retain_rest(&mut self) -> &mut Self {
+    pub(crate) fn retain_rest(&mut self) -> &mut Self {
         let remaining = self.doc_len.chars_since(self.old_pos);
         if remaining > 0 {
             self.retain(remaining);
@@ -133,13 +142,20 @@ impl ChangeSetBuilder {
         self
     }
 
-    /// Consume the builder and return the finished `ChangeSet`.
+    /// Keep the rest of the old document and return the finished
+    /// `ChangeSet`.
+    pub fn finish(mut self) -> ChangeSet {
+        self.retain_rest();
+        self.finish_consumed()
+    }
+
+    /// Return the finished `ChangeSet`.
     ///
     /// # Panics
     /// Panics if the builder hasn't consumed the entire old document
     /// (`old_pos != doc_len`). This catches bugs where the caller forgot
     /// to `retain_rest()`.
-    pub fn finish(self) -> ChangeSet {
+    pub(crate) fn finish_consumed(self) -> ChangeSet {
         assert_eq!(
             self.old_pos, self.doc_len,
             "ChangeSetBuilder::finish: old_pos ({:?}) != doc_len ({:?}). \

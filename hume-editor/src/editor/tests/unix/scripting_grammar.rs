@@ -327,9 +327,8 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(data_dir.clone());
-    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
+    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(
         hume_editing::text::BufferText::empty(),
-        hume_editing::selection::SelectionSet::default(),
     ));
     let effects = {
         let mut ih = init_host!(ed);
@@ -712,8 +711,8 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
         .parsed_gen();
     assert_eq!(
         parsed_gen,
-        Some(ed.state.buffers.get(bid).text_gen),
-        "parsed_gen must catch up to text_gen after the drain"
+        Some(ed.state.buffers.get(bid).text().version().generation()),
+        "parsed_gen must catch up to generation after the drain"
     );
 }
 

@@ -7,7 +7,6 @@ fn pure_insert_at_start() {
     let rope = ropey::Rope::from_str("hello\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.insert("AB");
-    b.retain_rest();
     let cs = b.finish();
 
     let edits = input_edits_from_changeset(&cs, &rope);
@@ -25,9 +24,8 @@ fn pure_insert_at_start() {
 fn pure_insert_middle() {
     let rope = ropey::Rope::from_str("hello\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
-    b.retain(3);
+    b.retain_to(CharOffset::new(3));
     b.insert("XY");
-    b.retain_rest();
     let cs = b.finish();
 
     let edits = input_edits_from_changeset(&cs, &rope);
@@ -43,9 +41,8 @@ fn pure_insert_middle() {
 fn pure_delete_single_char() {
     let rope = ropey::Rope::from_str("abc\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
-    b.retain(1);
-    b.delete(1);
-    b.retain_rest();
+    b.retain_to(CharOffset::new(1));
+    b.delete_to(CharOffset::new(2));
     let cs = b.finish();
 
     let edits = input_edits_from_changeset(&cs, &rope);
@@ -60,9 +57,8 @@ fn pure_delete_single_char() {
 fn delete_crosses_line_boundary() {
     let rope = ropey::Rope::from_str("foo\nbar\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
-    b.retain(3);
-    b.delete(3); // deletes "\nba"
-    b.retain_rest();
+    b.retain_to(CharOffset::new(3));
+    b.delete_to(CharOffset::new(6)); // deletes "\nba"
     let cs = b.finish();
 
     let edits = input_edits_from_changeset(&cs, &rope);
@@ -78,10 +74,9 @@ fn delete_crosses_line_boundary() {
 fn replace_within_one_line() {
     let rope = ropey::Rope::from_str("hello world\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
-    b.retain(6);
-    b.delete(5);
+    b.retain_to(CharOffset::new(6));
+    b.delete_to(CharOffset::new(11));
     b.insert("Rust");
-    b.retain_rest();
     let cs = b.finish();
 
     let edits = input_edits_from_changeset(&cs, &rope);
@@ -101,10 +96,9 @@ fn replace_within_one_line_insert_before_delete() {
     // emits) must coalesce into the same single edit either way.
     let rope = ropey::Rope::from_str("hello world\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
-    b.retain(6);
+    b.retain_to(CharOffset::new(6));
     b.insert("Rust");
-    b.delete(5);
-    b.retain_rest();
+    b.delete_to(CharOffset::new(11));
     let cs = b.finish();
 
     let edits = input_edits_from_changeset(&cs, &rope);
@@ -120,9 +114,8 @@ fn replace_within_one_line_insert_before_delete() {
 fn multiline_insert_new_end_position() {
     let rope = ropey::Rope::from_str("ab\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
-    b.retain(1);
+    b.retain_to(CharOffset::new(1));
     b.insert("foo\nbar\n");
-    b.retain_rest();
     let cs = b.finish();
 
     let edits = input_edits_from_changeset(&cs, &rope);
@@ -137,10 +130,9 @@ fn multiline_insert_new_end_position() {
 fn two_separate_edit_sites_emit_two_edits() {
     let rope = ropey::Rope::from_str("abc\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
-    b.delete(1); // delete 'a'
-    b.retain(1); // keep 'b'
-    b.delete(1); // delete 'c'
-    b.retain_rest();
+    b.delete_to(CharOffset::new(1)); // delete 'a'
+    b.retain_to(CharOffset::new(2)); // keep 'b'
+    b.delete_to(CharOffset::new(3)); // delete 'c'
     let cs = b.finish();
 
     let edits = input_edits_from_changeset(&cs, &rope);
@@ -164,8 +156,7 @@ fn multibyte_utf8_byte_offsets() {
     // "漢" = U+6F22 = 3 bytes, 1 char.
     let rope = ropey::Rope::from_str("é漢\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
-    b.delete(1); // delete "é" (1 char, but 2 bytes)
-    b.retain_rest();
+    b.delete_to(CharOffset::new(1)); // delete "é" (1 char, but 2 bytes)
     let cs = b.finish();
 
     let edits = input_edits_from_changeset(&cs, &rope);
@@ -219,13 +210,12 @@ fn multi_edit_changeset_incremental_tree_matches_full_reparse() {
     // Edit 1: chars [2,5) → "X"   (byte delta: 1 - 3 = -2)
     // Edit 2: chars [8,11) → "YY" (byte delta: 2 - 3 = -1)
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
-    b.retain(2);
-    b.delete(3);
+    b.retain_to(CharOffset::new(2));
+    b.delete_to(CharOffset::new(5));
     b.insert("X");
-    b.retain(3);
-    b.delete(3);
+    b.retain_to(CharOffset::new(8));
+    b.delete_to(CharOffset::new(11));
     b.insert("YY");
-    b.retain_rest();
     let cs = b.finish();
 
     // Verify edits come out in descending order (right before left).

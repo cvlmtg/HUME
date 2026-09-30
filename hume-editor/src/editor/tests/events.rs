@@ -475,7 +475,8 @@ fn hook_call_is_dispatched() {
 }
 
 /// Propagate an edit through two panes that view the same buffer and verify
-/// the non-focused pane's engine selections are updated immediately.
+/// the non-focused pane's engine mirror shows its translated selection once
+/// the frame syncs the mirrors.
 #[test]
 fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     let mut ed = editor_from("-[a]>b\n");
@@ -498,12 +499,18 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
 
-    // The non-focused pane's engine selections must have been synced by
-    // propagate_cs_to_panes, not left empty or stale.
+    // The non-focused pane's cursor sat on 'a'; the insert before it moves
+    // it one char right, and the frame sync writes that into its mirror.
+    ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
     let engine_pane = &ed.view.panes[second_pane];
-    assert!(
-        !engine_pane.selections.is_empty(),
-        "non-focused pane engine selections must be synced after edit"
+    assert_eq!(
+        engine_pane
+            .selections
+            .iter()
+            .map(|s| s.cursor.offset())
+            .collect::<Vec<_>>(),
+        vec![co(1)],
+        "non-focused pane mirror must show the translated cursor"
     );
 }
 
@@ -729,18 +736,11 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
 /// B untouched and no error in the message log.
 #[test]
 fn on_buffer_save_native_call_on_a_paneless_bid_errors() {
-    use hume_editing::selection::SelectionSet;
     use hume_editing::text::BufferText;
 
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("aaa\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("aaa\n")));
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("bbb\n"),
-        SelectionSet::default(),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("bbb\n")));
     // `open_buffer` does not move focus, nor show the buffer in any pane:
     // A stays focused, B is paneless.
     assert_eq!(ed.focused_buffer_id(), bid_a, "setup: A stays focused");
@@ -788,20 +788,13 @@ fn on_buffer_save_native_call_on_a_paneless_bid_errors() {
 #[test]
 fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
     use crate::editor::commands::open_pane_in_layout;
-    use hume_editing::selection::SelectionSet;
     use hume_editing::text::BufferText;
     use hume_engine::pipeline::Direction;
 
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("aaa\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("aaa\n")));
     let bid_a = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("bbb\n"),
-        SelectionSet::default(),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("bbb\n")));
     open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
@@ -1395,9 +1388,9 @@ fn several_edits_before_one_settle_coalesce_into_one_event() {
     );
 }
 
-/// Undo fires `on-text-changed` (it bumps `text_gen` via `Buffer::undo`); a
+/// Undo fires `on-text-changed` (it changes the text version via `Buffer::undo`); a
 /// second undo once history is back at its root does not, since nothing
-/// mutated (`buffer/tests.rs`'s `text_gen_not_bumped_when_undo_at_root` pins
+/// mutated (`buffer/tests.rs`'s `text_generation_unchanged_when_undo_at_root` pins
 /// the same non-bump at the `Buffer` layer).
 #[test]
 fn undo_fires_but_a_no_op_undo_at_root_does_not() {
@@ -1464,7 +1457,7 @@ fn e_bang_reload_fires_on_text_changed() {
     ed.scripting = Some(host);
     ed.settle();
 
-    let replacement = Buffer::new(BufferText::from("reloaded\n"), SelectionSet::default());
+    let replacement = Buffer::at_start(BufferText::from("reloaded\n"));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
     ed.settle();
 
@@ -1478,11 +1471,11 @@ fn e_bang_reload_fires_on_text_changed() {
 }
 
 /// An edit refused by the read-only guard (`doc_ops::apply_doc_edit`'s early
-/// `return` before `cmd` ever runs) never bumps `text_gen`, so it must not
+/// `return` before `cmd` ever runs) never changes the text version, so it must not
 /// fire `on-text-changed`.
 ///
 /// Without the read-only guard, or with this raise moved upstream of it,
-/// `insert_char` would run, `text_gen` would bump, and the hook would fire.
+/// `insert_char` would run, the text version would bump, and the hook would fire.
 #[test]
 fn read_only_refused_edit_fires_no_on_text_changed() {
     use crate::editor::doc_ops;
@@ -1504,24 +1497,26 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
     ed.settle();
 
     let focused = ed.state.focus.id();
-    let before_gen = ed.state.buffers.get(bid).text_gen;
+    let before_gen = ed.state.buffers.get(bid).text().version().generation();
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
         &ed.state.config.decorations,
-        &mut ed.state.panes.state,
-        &mut ed.state.panes.jumps,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut ed.state.panes,
+            &mut ed.state.input,
+        ),
         &mut ed.state.active_session,
         focused,
         bid,
-        |text, sels| hume_ops::edit::insert_char(text, sels, 'z'),
+        |sels| hume_ops::edit::insert_char(sels, 'z'),
     )
     .unwrap();
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid).text_gen,
+        ed.state.buffers.get(bid).text().version().generation(),
         before_gen,
-        "read-only guard must block the edit before it reaches set_text"
+        "read-only guard must block the edit before it reaches install"
     );
     assert_eq!(
         ed.state
@@ -1535,7 +1530,7 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
 }
 
 /// Opening a buffer fires `on-buffer-open`, not `on-text-changed`. A fresh
-/// buffer's `text_gen` starts at 0 and `announced_text_gen` is seeded to
+/// buffer's the text version starts at 0 and `announced_version` is seeded to
 /// match, so there is no diff to observe.
 #[test]
 fn opening_a_buffer_fires_on_buffer_open_not_on_text_changed() {
@@ -1582,7 +1577,7 @@ fn opening_a_buffer_fires_on_buffer_open_not_on_text_changed() {
 /// The handler alternates `make-text-uppercase`/`make-text-lowercase` on the
 /// selected letter: whichever direction the selection is in, at least one
 /// of the two always changes the character (a lowercase letter capitalizes;
-/// an uppercase one lowercases), so every invocation bumps `text_gen` and
+/// an uppercase one lowercases), so every invocation changes the text version and
 /// re-triggers `on-text-changed`, guaranteeing the loop never runs dry on
 /// its own.
 #[test]
@@ -1752,8 +1747,8 @@ fn read_only_view_refresh_fires_on_text_changed() {
 }
 
 /// An identity edit (a command whose `ChangeSet` is the identity transform,
-/// every op a `Retain`) must not bump `text_gen`: `Buffer::apply_edit` skips
-/// `set_text` entirely for one, so it must not fire `on-text-changed` either.
+/// every op a `Retain`) must not bump the text version: `Buffer::apply_edit` skips
+/// `install` entirely for one, so it must not fire `on-text-changed` either.
 /// Also asserts `doc_ops::finish_edit`'s matching guard: `edit_seq` (the
 /// global paste-staleness counter, see `BufferStore::edit_seq`'s doc) must
 /// not move either, or a no-op edit command would wrongly stale a pending
@@ -1762,7 +1757,6 @@ fn read_only_view_refresh_fires_on_text_changed() {
 fn identity_edit_fires_no_on_text_changed() {
     use crate::editor::doc_ops;
     use crate::testing::MockHost;
-    use hume_editing::changeset::ChangeSet;
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
@@ -1778,28 +1772,27 @@ fn identity_edit_fires_no_on_text_changed() {
     ed.settle();
 
     let focused = ed.state.focus.id();
-    let before_gen = ed.state.buffers.get(bid).text_gen;
+    let before_gen = ed.state.buffers.get(bid).text().version().generation();
     let before_edit_seq = ed.state.buffers.edit_seq();
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
         &ed.state.config.decorations,
-        &mut ed.state.panes.state,
-        &mut ed.state.panes.jumps,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut ed.state.panes,
+            &mut ed.state.input,
+        ),
         &mut ed.state.active_session,
         focused,
         bid,
-        |text, sels| {
-            let len = text.len_chars();
-            (text, sels, ChangeSet::identity(len))
-        },
+        hume_editing::edit::Edited::unchanged,
     )
     .unwrap();
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid).text_gen,
+        ed.state.buffers.get(bid).text().version().generation(),
         before_gen,
-        "an identity edit must not bump text_gen"
+        "an identity edit must not change the text version"
     );
     assert_eq!(
         ed.state.buffers.edit_seq(),
@@ -1824,7 +1817,6 @@ fn identity_edit_fires_no_on_text_changed() {
 #[test]
 fn identity_edit_records_no_undo_revision() {
     use crate::editor::doc_ops;
-    use hume_editing::changeset::ChangeSet;
 
     let mut ed = editor_from("-[a]>b\n");
     let bid = ed.focused_buffer_id();
@@ -1846,15 +1838,14 @@ fn identity_edit_records_no_undo_revision() {
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
         &ed.state.config.decorations,
-        &mut ed.state.panes.state,
-        &mut ed.state.panes.jumps,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut ed.state.panes,
+            &mut ed.state.input,
+        ),
         &mut ed.state.active_session,
         focused,
         bid,
-        |text, sels| {
-            let len = text.len_chars();
-            (text, sels, ChangeSet::identity(len))
-        },
+        hume_editing::edit::Edited::unchanged,
     )
     .unwrap();
     ed.settle();
@@ -1877,8 +1868,8 @@ fn identity_edit_records_no_undo_revision() {
 /// An insert session whose composed edits cancel out to the identity
 /// transform (type a character, then backspace it, all inside one insert
 /// session) must record no undo revision at all: `commit_edit_group`'s
-/// identity guard. `text_gen` still moves during the session itself (each
-/// keystroke is individually a real, non-identity `set_text`, so
+/// identity guard. the text version still moves during the session itself (each
+/// keystroke is individually a real, non-identity `install`, so
 /// `on-text-changed` correctly fires once for it, coalesced). The guard's
 /// job is narrower: making sure nothing lands on the undo stack for `u` to
 /// later replay as a *second*, phantom mutation.
@@ -1960,9 +1951,9 @@ fn insert_then_backspace_records_no_revision() {
 }
 
 /// A byte-identical `:e!` reload (`reload_from_text`'s `forward.is_identity()`
-/// case) must not bump `text_gen`, so it must not fire `on-text-changed`.
+/// case) must not bump the text version, so it must not fire `on-text-changed`.
 ///
-/// The identity guard sits above `set_text`. Below it, `text_gen` would
+/// The identity guard sits above `install`. Below it, the text version would
 /// already have bumped by the time the guard returned, and the hook would
 /// fire.
 #[test]
@@ -1983,15 +1974,15 @@ fn identity_reload_fires_no_on_text_changed() {
     ed.scripting = Some(host);
     ed.settle();
 
-    let before_gen = ed.state.buffers.get(bid).text_gen;
-    let replacement = Buffer::new(text_before, SelectionSet::default());
+    let before_gen = ed.state.buffers.get(bid).text().version().generation();
+    let replacement = Buffer::at_start(text_before);
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid).text_gen,
+        ed.state.buffers.get(bid).text().version().generation(),
         before_gen,
-        "a byte-identical reload must not bump text_gen"
+        "a byte-identical reload must not change the text version"
     );
     assert_eq!(
         ed.state
@@ -2017,10 +2008,7 @@ fn identity_reload_fires_no_on_text_changed() {
 fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("hello\n"),
-        SelectionSet::default(),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("hello\n")));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_b);
 
     let mut host = hume_scripting::ScriptingHost::new();
@@ -2035,7 +2023,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
     ed.scripting = Some(host);
     ed.settle(); // drain startup on-buffer-open/on-buffer-enter
 
-    // Real edit on B: bumps text_gen, not yet observed by a drain pass.
+    // Real edit on B: changes the text version, not yet observed by a drain pass.
     ed.feed_key(key('i'));
     ed.feed_key(key('z'));
     ed.feed_key(key_esc());
@@ -2165,10 +2153,9 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.open_buffer(Buffer::new(
-        hume_editing::text::BufferText::from("x\n"),
-        hume_editing::selection::SelectionSet::default(),
-    ));
+    ed.open_buffer(Buffer::at_start(hume_editing::text::BufferText::from(
+        "x\n",
+    )));
     let bid = ed.focused_buffer_id();
 
     let mut host = ScriptingHost::new();

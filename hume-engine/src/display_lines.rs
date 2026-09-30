@@ -311,13 +311,12 @@ impl<'a> DisplayLineMap<'a> {
         hume_rope::lines::last_content_line(self.rope)
     }
 
-    /// The content line a char offset resolves to, clamping the buffer's own
-    /// trailing phantom line down to [`DisplayLineMap::last_line`], reachable when
-    /// `char_offset == len_chars()` (the debug_assert in every caller below
-    /// admits it), and there is no display line to address on a line that
-    /// doesn't exist. Same posture as `hume_rope::lines::place_char_column`
-    /// on a phantom `line` argument: land on the last real line instead of
-    /// an address no render pass can lay out.
+    /// The content line of a cluster position's ropey line. A position read
+    /// from the current text lies before its end, so this is never the
+    /// trailing phantom line; a stale one that does reach it is clamped down
+    /// to [`DisplayLineMap::last_line`] rather than addressing a line no
+    /// render pass can lay out. Same posture as
+    /// `hume_rope::lines::place_char_column` on a phantom `line` argument.
     fn content_line_of(&self, ropey_line: hume_rope::line::RopeyLine) -> ContentLine {
         ropey_line
             .to_content(self.rope)

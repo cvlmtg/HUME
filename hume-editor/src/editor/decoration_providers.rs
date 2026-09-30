@@ -8,7 +8,7 @@ use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, u
 use hume_engine::types::EditorMode;
 
 use super::Editor;
-use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
+use hume_editing::lines::{char_to_line_byte, line_break, line_segments};
 use hume_ops::pair::matching_bracket;
 use hume_rope::column::ByteCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
@@ -135,17 +135,15 @@ impl Editor {
             // Matches are sorted by document order. Binary-search to the first
             // match that starts at or after this pane's `top_line`.
             let top_char = text.line_to_char(visible.start);
-            let matches = &buf.search_matches.matches;
-            let first = matches.partition_point(|span| span.start < top_char);
+            let matches = buf.search_matches.matches(text);
+            let first = matches.partition_point(|span| span.start().offset() < top_char);
             let mut spans = Vec::new();
             for &span in &matches[first..] {
-                let start_line = text.char_to_line(span.start);
+                let start_line = text.char_to_line(span.start().offset());
                 if hume_rope::line::RopeyLine::from(start_line) >= visible.end {
                     break;
                 }
-                let mut range = span.to_exclusive();
-                range.end = range.end.min(text.end());
-                push_match_highlight_lines(text, range, search_scope, &mut spans);
+                push_match_highlight_lines(text, span.chars(), search_scope, &mut spans);
             }
             self.state.panes.render[pid].set_search(spans);
         }
@@ -167,14 +165,19 @@ impl Editor {
         if !in_insert && self.state.panes.render.contains_key(self.state.focus.id()) {
             let focused = self.state.focus.id();
             let text = self.doc().text();
-            let primary = self.state.panes.state[focused][self.focused_buffer_id()]
-                .selections()
-                .primary();
-            if let Some(match_pos) = matching_bracket(text, primary) {
-                let (line, byte) = char_to_line_byte(text, match_pos);
-                // Single-char match: byte_end = byte + utf8 length of the char.
-                let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
-                let byte_end = byte.advance_saturating(ch_len);
+            let sels = self.state.panes.state[focused][self.focused_buffer_id()].selections();
+            if let Some(match_pos) =
+                matching_bracket(hume_editing::selection::EditView::bind(text, sels).primary())
+            {
+                let (line, byte) = char_to_line_byte(text, match_pos.offset());
+                // The whole cluster holding the partner bracket.
+                let cluster = hume_rope::cluster::ClusterRange::through(
+                    text.full_slice(),
+                    match_pos,
+                    match_pos,
+                )
+                .expect("one cluster");
+                let byte_end = byte.advance_saturating(text.slice(cluster.chars()).len_bytes());
                 // Trusted narrow: a bracket match is always a real
                 // selection position, never the buffer's phantom line.
                 let line = hume_rope::line::ContentLine::new(line.index());
@@ -475,8 +478,8 @@ impl Editor {
                     // the next line; see `char_to_line_byte`'s doc comment
                     // on the same pattern used for inlay hints' `'after`
                     // anchor).
-                    let line_newline = line_break_char(text, line);
-                    let (_, byte_offset) = char_to_line_byte(text, line_newline);
+                    let line_newline = line_break(text, line);
+                    let (_, byte_offset) = char_to_line_byte(text, line_newline.offset());
                     (
                         source,
                         line,

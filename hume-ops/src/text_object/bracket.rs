@@ -1,58 +1,30 @@
 //! Inner/around bracket-pair text objects: `()`, `[]`, `{}`, `<>`.
 
-use hume_editing::grapheme::{next_grapheme_boundary, snap_to_cluster_start};
-use hume_editing::selection::SelectionSet;
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 
-use super::{apply_text_object_by_mode, before_delimiter};
+use super::{apply_text_object_by_mode, inner_of_pair};
 use crate::MotionMode;
 use crate::pair::find_bracket_pair;
 
-/// Shrink a `(open, close)` delimiter pair to its inner range, or `None` if
-/// the pair is empty (no inner content in the inclusive selection model).
-/// Shared with quote.rs's `inner_quote`.
-pub(super) fn inner_of_pair(
-    text: &BufferText,
-    pair: InclusiveRange<CharOffset>,
-) -> Option<InclusiveRange<CharOffset>> {
-    let start = next_grapheme_boundary(text, pair.start);
-    if start >= snap_to_cluster_start(text, pair.end) {
-        return None;
-    }
-    Some(InclusiveRange::new(start, before_delimiter(text, pair.end)))
-}
-
 fn inner_bracket(
     text: &BufferText,
-    pos: CharOffset,
+    pos: ClusterStart,
     open: char,
     close: char,
-) -> Option<InclusiveRange<CharOffset>> {
-    let pair = find_bracket_pair(text, pos, open, close)?;
-    inner_of_pair(text, pair)
+) -> Option<ClusterRange> {
+    inner_of_pair(text, find_bracket_pair(text, pos, open, close)?)
 }
 
 macro_rules! bracket_cmds {
     ($inner_name:ident, $around_name:ident, $open:literal, $close:literal) => {
-        pub fn $inner_name(
-            text: &BufferText,
-            sels: SelectionSet,
-            _count: usize,
-            mode: MotionMode,
-        ) -> SelectionSet {
-            apply_text_object_by_mode(text, sels, mode, |b, pos| {
-                inner_bracket(b, pos, $open, $close)
-            })
+        pub fn $inner_name(state: EditState, _count: usize, mode: MotionMode) -> EditState {
+            apply_text_object_by_mode(state, mode, |t, pos| inner_bracket(t, pos, $open, $close))
         }
-        pub fn $around_name(
-            text: &BufferText,
-            sels: SelectionSet,
-            _count: usize,
-            mode: MotionMode,
-        ) -> SelectionSet {
-            apply_text_object_by_mode(text, sels, mode, |b, pos| {
-                find_bracket_pair(b, pos, $open, $close)
+        pub fn $around_name(state: EditState, _count: usize, mode: MotionMode) -> EditState {
+            apply_text_object_by_mode(state, mode, |t, pos| {
+                find_bracket_pair(t, pos, $open, $close)
             })
         }
     };

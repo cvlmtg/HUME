@@ -10,14 +10,27 @@ use crate::registry::GrammarBundle;
 use crate::syntax::Syntax;
 use crate::test_support::{empty_langs, fresh_bid, make_bundle};
 use hume_editing::changeset::ChangeSetBuilder;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::cluster::{ClusterRange, ClusterStart};
+use hume_rope::offset::CharOffset;
 
 fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
 }
 
-fn ir(start: usize, end: usize) -> InclusiveRange<CharOffset> {
-    InclusiveRange::new(co(start), co(end))
+/// An ASCII text long enough for every synthetic span below, so each char
+/// is its own cluster.
+fn ascii() -> BufferText {
+    BufferText::from(format!("{}\n", "x".repeat(40)).as_str())
+}
+
+/// The cluster at char `n` of [`ascii`].
+fn at(n: usize) -> ClusterStart {
+    ascii().snap(co(n))
+}
+
+/// The clusters from char `start` through char `end` of [`ascii`].
+fn ir(start: usize, end: usize) -> ClusterRange {
+    ClusterRange::through(ascii().full_slice(), at(start), at(end)).expect("start precedes end")
 }
 
 fn compile(source: &str) -> TextObjectsQuery {
@@ -116,38 +129,38 @@ fn spans_from(list: &[(usize, usize)]) -> ObjectSpans {
 #[test]
 fn enclosing_picks_the_smallest_containing_span() {
     let spans = spans_from(&[(0, 20), (5, 10)]);
-    assert_eq!(spans.enclosing(co(7)), Some(ir(5, 10)));
+    assert_eq!(spans.enclosing(at(7)), Some(ir(5, 10)));
 }
 
 #[test]
 fn enclosing_returns_none_when_nothing_contains_pos() {
     let spans = spans_from(&[(0, 5)]);
-    assert_eq!(spans.enclosing(co(10)), None);
+    assert_eq!(spans.enclosing(at(10)), None);
 }
 
 #[test]
 fn enclosing_includes_pos_on_a_spans_last_char() {
     let spans = spans_from(&[(0, 5)]);
-    assert_eq!(spans.enclosing(co(5)), Some(ir(0, 5)));
+    assert_eq!(spans.enclosing(at(5)), Some(ir(0, 5)));
 }
 
 #[test]
 fn adjacent_forward_picks_smallest_start_after_pos() {
     let spans = spans_from(&[(0, 5), (10, 15), (20, 25)]);
-    assert_eq!(spans.adjacent(co(6), Direction::Forward), Some(ir(10, 15)));
+    assert_eq!(spans.adjacent(at(6), Direction::Forward), Some(ir(10, 15)));
 }
 
 #[test]
 fn adjacent_forward_ties_pick_largest_end() {
     let spans = spans_from(&[(10, 12), (10, 20)]);
-    assert_eq!(spans.adjacent(co(5), Direction::Forward), Some(ir(10, 20)));
+    assert_eq!(spans.adjacent(at(5), Direction::Forward), Some(ir(10, 20)));
 }
 
 #[test]
 fn adjacent_backward_picks_largest_start_before_pos() {
     let spans = spans_from(&[(0, 5), (10, 15), (20, 25)]);
     assert_eq!(
-        spans.adjacent(co(18), Direction::Backward),
+        spans.adjacent(at(18), Direction::Backward),
         Some(ir(10, 15))
     );
 }
@@ -160,7 +173,7 @@ fn adjacent_backward_picks_largest_start_before_pos() {
 fn adjacent_backward_from_inside_an_object_lands_on_its_own_start() {
     let spans = spans_from(&[(0, 5), (10, 20)]);
     assert_eq!(
-        spans.adjacent(co(15), Direction::Backward),
+        spans.adjacent(at(15), Direction::Backward),
         Some(ir(10, 20))
     );
 }
@@ -168,15 +181,15 @@ fn adjacent_backward_from_inside_an_object_lands_on_its_own_start() {
 #[test]
 fn adjacent_backward_ties_pick_largest_end() {
     let spans = spans_from(&[(0, 5), (0, 10)]);
-    assert_eq!(spans.adjacent(co(8), Direction::Backward), Some(ir(0, 10)));
+    assert_eq!(spans.adjacent(at(8), Direction::Backward), Some(ir(0, 10)));
 }
 
 #[test]
 fn adjacent_returns_none_at_buffer_edges() {
     let forward_only = spans_from(&[(0, 5)]);
-    assert_eq!(forward_only.adjacent(co(10), Direction::Forward), None);
+    assert_eq!(forward_only.adjacent(at(10), Direction::Forward), None);
     let backward_only = spans_from(&[(10, 15)]);
-    assert_eq!(backward_only.adjacent(co(5), Direction::Backward), None);
+    assert_eq!(backward_only.adjacent(at(5), Direction::Backward), None);
 }
 
 // ── ObjectSpans::collect / collect_for_navigation — real rust fixture ──────
@@ -202,10 +215,10 @@ fn markdown_bundle_with_helix_injections() -> Arc<GrammarBundle> {
     make_bundle("markdown", "tree_sitter_markdown", "", Some(&source), None)
 }
 
-/// The buffer text at `span`, inclusive end, for asserting on the actual
-/// text a hull collected rather than hand-counted char offsets.
-fn span_text(text: &BufferText, span: InclusiveRange<CharOffset>) -> String {
-    text.slice(span.to_exclusive()).to_string()
+/// The buffer text at `span`, for asserting on the actual text a hull
+/// collected rather than hand-counted char offsets.
+fn span_text(text: &BufferText, span: ClusterRange) -> String {
+    text.slice(span.chars()).to_string()
 }
 
 /// Parse `source` as rust with the real Helix `textobjects.scm` attached.
@@ -223,7 +236,7 @@ fn function_around_on_an_attributed_function_includes_the_attributes() {
     let source = "#[inline]\nfn foo() {\n    1\n}\n";
     let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find('1').unwrap());
+    let pos = text.snap(text.byte_to_char(source.find('1').unwrap()));
 
     let around = ObjectSpans::collect(layers, &text, ObjectKind::Function, ObjectSpan::Around);
     let span = around.enclosing(pos).expect("function.around at the body");
@@ -243,7 +256,7 @@ fn parameter_around_probed_at_a_non_last_argument_includes_its_trailing_comma() 
     let source = "fn add(a: i32, b: i32) -> i32 { a + b }\n";
     let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find("a: i32").unwrap());
+    let pos = text.snap(text.byte_to_char(source.find("a: i32").unwrap()));
 
     let around = ObjectSpans::collect(layers, &text, ObjectKind::Parameter, ObjectSpan::Around);
     let around_span = around
@@ -257,7 +270,7 @@ fn parameter_inside_at_the_same_argument_excludes_the_comma() {
     let source = "fn add(a: i32, b: i32) -> i32 { a + b }\n";
     let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find("a: i32").unwrap());
+    let pos = text.snap(text.byte_to_char(source.find("a: i32").unwrap()));
 
     let inside = ObjectSpans::collect(layers, &text, ObjectKind::Parameter, ObjectSpan::Inside);
     let inside_span = inside
@@ -271,7 +284,7 @@ fn collect_for_navigation_parameter_yields_inside_spans_no_trailing_comma() {
     let source = "fn add(a: i32, b: i32) -> i32 { a + b }\n";
     let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find("a: i32").unwrap());
+    let pos = text.snap(text.byte_to_char(source.find("a: i32").unwrap()));
 
     let nav = ObjectSpans::collect_for_navigation(layers, &text, ObjectKind::Parameter);
     let span = nav
@@ -297,7 +310,7 @@ fn collect_for_navigation_parameter_falls_back_to_around_without_inside() {
     let text = BufferText::from(source);
     let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find("a: i32").unwrap());
+    let pos = text.snap(text.byte_to_char(source.find("a: i32").unwrap()));
 
     let nav = ObjectSpans::collect_for_navigation(layers, &text, ObjectKind::Parameter);
     assert!(
@@ -318,7 +331,7 @@ fn comment_around_on_the_last_line_of_a_block_is_the_whole_block() {
     let source = "// line one\n// line two\n// line three\nfn foo() {}\n";
     let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find("line three").unwrap());
+    let pos = text.snap(text.byte_to_char(source.find("line three").unwrap()));
 
     let around = ObjectSpans::collect(layers, &text, ObjectKind::Comment, ObjectSpan::Around);
     let span = around
@@ -347,7 +360,7 @@ fn test_around_spans_attribute_and_body() {
     let source = "#[test]\nfn it_works() {\n    assert!(true);\n}\n";
     let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find("assert!").unwrap());
+    let pos = text.snap(text.byte_to_char(source.find("assert!").unwrap()));
 
     let around = ObjectSpans::collect(layers, &text, ObjectKind::Test, ObjectSpan::Around);
     let span = around.enclosing(pos).expect("test.around at the body");
@@ -404,7 +417,7 @@ fn function_around_drops_the_attribute_across_a_comment_today() {
     let source = "#[inline]\n// why inline\nfn foo() {\n    1\n}\n";
     let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find('1').unwrap());
+    let pos = text.snap(text.byte_to_char(source.find('1').unwrap()));
 
     let around = ObjectSpans::collect(layers, &text, ObjectKind::Function, ObjectSpan::Around);
     let span = around.enclosing(pos).expect("function.around at the body");
@@ -421,7 +434,7 @@ fn test_around_hulls_a_comment_explicitly_captured_between_attribute_and_functio
     let source = "#[test]\n// why\nfn one() {\n    assert!(true);\n}\n";
     let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find("assert!").unwrap());
+    let pos = text.snap(text.byte_to_char(source.find("assert!").unwrap()));
 
     let around = ObjectSpans::collect(layers, &text, ObjectKind::Test, ObjectSpan::Around);
     let span = around.enclosing(pos).expect("test.around at the body");
@@ -439,7 +452,7 @@ fn test_around_with_two_attributes_on_one_test_still_hulls_both() {
     let source = "#[test]\n#[should_panic]\nfn one() {\n    panic!();\n}\n";
     let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find("panic!").unwrap());
+    let pos = text.snap(text.byte_to_char(source.find("panic!").unwrap()));
 
     let around = ObjectSpans::collect(layers, &text, ObjectKind::Test, ObjectSpan::Around);
     let span = around.enclosing(pos).expect("test.around at the body");
@@ -480,7 +493,7 @@ fn class_inside_in_an_impl_method_body_picks_the_impl_body() {
     let source = "impl Foo {\n    fn bar() {\n        1\n    }\n}\n";
     let (syn, text) = rust_syntax(source);
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find('1').unwrap());
+    let pos = text.snap(text.byte_to_char(source.find('1').unwrap()));
 
     let inside = ObjectSpans::collect(layers, &text, ObjectKind::Class, ObjectSpan::Inside);
     let span = inside
@@ -505,7 +518,7 @@ fn movement_capture_priority_affects_navigation_not_selection() {
     let text = BufferText::from(source);
     let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
     let layers = syn.layers().expect("layers installed");
-    let pos = text.byte_to_char(source.find('1').unwrap());
+    let pos = text.snap(text.byte_to_char(source.find('1').unwrap()));
 
     let nav = ObjectSpans::collect_for_navigation(layers, &text, ObjectKind::Function);
     assert_eq!(
@@ -548,20 +561,20 @@ fn collect_merges_spans_across_root_and_injected_layers() {
 
     let select = ObjectSpans::collect(layers, &text, ObjectKind::Function, ObjectSpan::Around);
 
-    let pos_in_function = text.byte_to_char(source.find('1').unwrap());
+    let pos_in_function = text.snap(text.byte_to_char(source.find('1').unwrap()));
     let span = select
         .enclosing(pos_in_function)
         .expect("must find the fenced rust function");
     assert!(span_text(&text, span).contains("fn foo"));
 
-    let pos_in_prose = text.byte_to_char(source.find("prose").unwrap());
+    let pos_in_prose = text.snap(text.byte_to_char(source.find("prose").unwrap()));
     assert_eq!(
         select.enclosing(pos_in_prose),
         None,
         "prose is not a function"
     );
 
-    let pos_in_fence_not_function = text.byte_to_char(source.find("use std").unwrap());
+    let pos_in_fence_not_function = text.snap(text.byte_to_char(source.find("use std").unwrap()));
     assert_eq!(
         select.enclosing(pos_in_fence_not_function),
         None,
@@ -607,7 +620,7 @@ fn for_selector_does_not_answer_a_different_selector_from_the_cache() {
     assert!(!Arc::ptr_eq(&around, &inside));
 
     // Each must equal what the uncached collector returns.
-    let pos = text.byte_to_char("fn foo(a: i32) {\n    1".find('1').unwrap());
+    let pos = text.snap(text.byte_to_char("fn foo(a: i32) {\n    1".find('1').unwrap()));
     for (cached, span) in [(&around, ObjectSpan::Around), (&inside, ObjectSpan::Inside)] {
         let fresh = ObjectSpans::collect(layers, &text, ObjectKind::Function, span);
         assert_eq!(cached.enclosing(pos), fresh.enclosing(pos), "{span:?}");
@@ -635,7 +648,6 @@ fn for_selector_cache_does_not_survive_a_bake() {
     let rope_pre = ropey::Rope::from_str(source);
     let mut b = ChangeSetBuilder::new(co(rope_pre.len_chars()));
     b.insert("// lead\n");
-    b.retain_rest();
     // `attach_sync` installs at generation 1, so the edit is generation 2.
     syn.record_edit(2, &b.finish(), &rope_pre);
     let text = BufferText::from(edited.as_str());
@@ -648,7 +660,7 @@ fn for_selector_cache_does_not_survive_a_bake() {
         "the cache must not survive a bake"
     );
     let fresh = ObjectSpans::collect(layers, &text, ObjectKind::Function, ObjectSpan::Around);
-    let pos = text.byte_to_char(edited.find('1').unwrap());
+    let pos = text.snap(text.byte_to_char(edited.find('1').unwrap()));
     assert_eq!(
         after.enclosing(pos),
         fresh.enclosing(pos),

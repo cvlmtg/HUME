@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use ropey::RopeSlice;
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete, UnicodeSegmentation};
 
+use crate::cluster::{ClusterBound, ClusterRange, ClusterStart};
 use crate::column::{BufferLineCol, GraphemeCol};
 use crate::line::ContentLine;
 use crate::offset::CharOffset;
@@ -12,16 +13,29 @@ use crate::offset::CharOffset;
 /// letter, not the combining mark after it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cluster {
-    pub start: CharOffset,
-    pub end: CharOffset,
-    pub first: char,
+    pub(crate) start: CharOffset,
+    pub(crate) end: CharOffset,
+    pub(crate) first: char,
 }
 
 impl Cluster {
-    /// The cluster's last char, including a trailing combining mark: the
-    /// inclusive counterpart of `end`.
-    pub fn last_char(&self) -> CharOffset {
-        self.end.retreat(1)
+    pub fn start(&self) -> ClusterStart {
+        ClusterStart::mint(self.start)
+    }
+
+    pub fn end(&self) -> ClusterBound {
+        ClusterBound::mint(self.end)
+    }
+
+    /// This cluster alone, as a range.
+    pub fn range(&self) -> ClusterRange {
+        ClusterRange::mint(self.start(), self.start(), self.end())
+    }
+
+    /// The char that classifies the cluster: a base letter, not the
+    /// combining mark after it.
+    pub fn first(&self) -> char {
+        self.first
     }
 }
 
@@ -29,9 +43,6 @@ impl Cluster {
 /// forward grapheme stepper: [`next_grapheme_boundary`] is its first step, and
 /// a loop that walks forward cluster by cluster iterates this instead of
 /// calling that once per step, which would re-seek the rope every time.
-///
-/// If `pos` is inside a cluster, the first item runs from `pos` to that
-/// cluster's end.
 ///
 /// # Why byte offsets internally?
 ///
@@ -47,7 +58,14 @@ impl Cluster {
 /// space. `GraphemeCursor` takes the text a chunk at a time
 /// (`next_boundary` / `provide_context`), and the walk keeps its current chunk
 /// between clusters, so the rope is descended once per chunk, not per step.
-pub fn graphemes_at(slice: RopeSlice<'_>, pos: CharOffset) -> Graphemes<'_> {
+pub fn graphemes_at(slice: RopeSlice<'_>, from: ClusterBound) -> Graphemes<'_> {
+    walk_from(slice, from.offset())
+}
+
+/// [`graphemes_at`] from any char offset: a start inside a cluster yields
+/// that cluster's tail as the first item. For the offset-based functions
+/// below, whose callers may hold such a position.
+fn walk_from(slice: RopeSlice<'_>, pos: CharOffset) -> Graphemes<'_> {
     let char = pos.min(CharOffset::new(slice.len_chars()));
     let byte = slice.char_to_byte(char.index());
     Graphemes {
@@ -144,7 +162,7 @@ impl Iterator for Graphemes<'_> {
 /// `char_offset`, or `slice.len_chars()` when already at (or past) the end:
 /// the first step of [`graphemes_at`], for a caller taking a single step.
 pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
-    graphemes_at(slice, char_offset)
+    walk_from(slice, char_offset)
         .next()
         .map_or(CharOffset::new(slice.len_chars()), |cluster| cluster.end)
 }
@@ -203,43 +221,99 @@ pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> 
 /// too far back when `char_offset` is already a boundary. Advancing to the
 /// next boundary first (identity if already on one), then retreating, lands
 /// on the boundary that actually opens `char_offset`'s own cluster.
-pub fn snap_to_cluster_start(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
+fn floor_to_cluster_start(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
     prev_grapheme_boundary(slice, next_grapheme_boundary(slice, char_offset))
 }
 
-/// Whether `char_offset` is a cluster boundary: the start of a cluster, or the
-/// end of the slice.
-///
-/// Two adjacent ASCII chars are always a boundary except for `\r\n`, which
-/// answers without a grapheme walk. Any non-ASCII neighbour takes the walk:
-/// a Prepend char before an ASCII base glues to it.
-pub fn is_cluster_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> bool {
-    if char_offset.index() == 0 || char_offset.index() >= slice.len_chars() {
-        return true;
-    }
-    let prev = slice.char(char_offset.retreat(1).index());
-    let next = slice.char(char_offset.index());
-    if prev.is_ascii() && next.is_ascii() {
-        return !(prev == '\r' && next == '\n');
-    }
-    snap_to_cluster_start(slice, char_offset) == char_offset
+/// The boundary after the cluster starting at `start`.
+pub fn cluster_end(slice: RopeSlice<'_>, start: ClusterStart) -> ClusterBound {
+    ClusterBound::mint(next_grapheme_boundary(slice, start.offset()))
 }
 
-/// Last codepoint of the grapheme cluster starting at `cluster_start`: the
-/// inverse of [`snap_to_cluster_start`], and the inclusive counterpart to
-/// [`next_grapheme_boundary`]'s exclusive one.
-///
-/// For a single-codepoint cluster (the common case) this equals
-/// `cluster_start`. For a multi-codepoint cluster such as `e` + U+0301
-/// (combining acute) it includes the trailing combining mark, so a selection
-/// or delete range built from this end never orphans it. A caller already
-/// holding a [`Cluster`] uses [`Cluster::last_char`] instead. Past the end of
-/// the slice this clamps to its last char.
-pub fn cluster_last_char(slice: RopeSlice<'_>, cluster_start: CharOffset) -> CharOffset {
-    graphemes_at(slice, cluster_start).next().map_or(
-        CharOffset::new(slice.len_chars()).retreat_saturating(1),
-        |cluster| cluster.last_char(),
-    )
+/// The cluster after the one starting at `start`, or `None` when `start` is
+/// the last cluster.
+pub fn next_cluster(slice: RopeSlice<'_>, start: ClusterStart) -> Option<ClusterStart> {
+    let end = cluster_end(slice, start).offset();
+    (end.index() < slice.len_chars()).then(|| ClusterStart::mint(end))
+}
+
+/// The cluster ending at `bound`, or `None` at the text start.
+pub fn prev_cluster(slice: RopeSlice<'_>, bound: ClusterBound) -> Option<ClusterStart> {
+    (bound.offset().index() > 0)
+        .then(|| ClusterStart::mint(prev_grapheme_boundary(slice, bound.offset())))
+}
+
+/// The slice's first cluster, or `None` when it is empty.
+pub fn first_cluster(slice: RopeSlice<'_>) -> Option<ClusterStart> {
+    (slice.len_chars() > 0).then(|| ClusterStart::mint(CharOffset::new(0)))
+}
+
+/// The slice's last cluster, or `None` when it is empty.
+pub fn last_cluster(slice: RopeSlice<'_>) -> Option<ClusterStart> {
+    prev_cluster(slice, text_end(slice))
+}
+
+/// The boundary at the slice's end.
+pub fn text_end(slice: RopeSlice<'_>) -> ClusterBound {
+    ClusterBound::mint(CharOffset::new(slice.len_chars()))
+}
+
+/// The cluster holding the char at `offset`; the last cluster when `offset`
+/// is at or past the end. `None` only for an empty slice. The entry point for
+/// a position from a foreign coordinate system.
+pub fn snap_to_cluster(slice: RopeSlice<'_>, offset: CharOffset) -> Option<Cluster> {
+    let last = slice.len_chars().checked_sub(1)?;
+    let start = floor_to_cluster_start(slice, offset.min(CharOffset::new(last)));
+    walk_from(slice, start).next()
+}
+
+/// The boundary at or before `offset`, which must not be past the end.
+pub(crate) fn floor_boundary(slice: RopeSlice<'_>, offset: CharOffset) -> ClusterBound {
+    match snap_to_cluster(slice, offset) {
+        Some(cluster) if offset.index() < slice.len_chars() => cluster.start().into(),
+        _ => text_end(slice),
+    }
+}
+
+/// The boundary at or after `offset`, which must not be past the end.
+pub(crate) fn ceil_boundary(slice: RopeSlice<'_>, offset: CharOffset) -> ClusterBound {
+    match snap_to_cluster(slice, offset) {
+        Some(cluster) if offset.index() < slice.len_chars() => {
+            if cluster.start == offset {
+                cluster.start().into()
+            } else {
+                cluster.end()
+            }
+        }
+        _ => text_end(slice),
+    }
+}
+
+/// The clusters of `slice` before `bound`, nearest first: the backward
+/// counterpart of [`graphemes_at`].
+pub fn clusters_before(slice: RopeSlice<'_>, bound: ClusterBound) -> ClustersBefore<'_> {
+    ClustersBefore { slice, bound }
+}
+
+/// See [`clusters_before`].
+pub struct ClustersBefore<'a> {
+    slice: RopeSlice<'a>,
+    bound: ClusterBound,
+}
+
+impl Iterator for ClustersBefore<'_> {
+    type Item = Cluster;
+
+    fn next(&mut self) -> Option<Cluster> {
+        let start = prev_cluster(self.slice, self.bound)?;
+        let cluster = Cluster {
+            start: start.offset(),
+            end: self.bound.offset(),
+            first: self.slice.char(start.offset().index()),
+        };
+        self.bound = start.into();
+        Some(cluster)
+    }
 }
 
 /// Byte offset of the start of the grapheme cluster ending at `byte_pos`:
@@ -285,7 +359,7 @@ pub(crate) fn grapheme_count(
     from_char: CharOffset,
     to_char: CharOffset,
 ) -> usize {
-    graphemes_at(slice, from_char)
+    walk_from(slice, from_char)
         .take_while(|cluster| cluster.end <= to_char)
         .count()
 }
@@ -347,7 +421,7 @@ pub fn display_col_in_line(
 ) -> BufferLineCol {
     let line_start = crate::lines::slice_line_start_char(slice, line_idx.into());
     let mut display_col = BufferLineCol::new(0);
-    for cluster in graphemes_at(slice, line_start) {
+    for cluster in walk_from(slice, line_start) {
         if cluster.end > char_pos {
             break;
         }
@@ -390,14 +464,14 @@ pub fn char_pos_at_display_col(
     line_idx: ContentLine,
     target_display_col: BufferLineCol,
     tab_width: u8,
-) -> CharOffset {
+) -> ClusterStart {
     let line_start = crate::lines::slice_line_start_char(slice, line_idx.into());
     if target_display_col == BufferLineCol::new(0) {
-        return line_start;
+        return ClusterStart::mint(line_start);
     }
     let mut display_col = BufferLineCol::new(0);
     let mut pos = line_start;
-    for cluster in graphemes_at(slice, line_start) {
+    for cluster in walk_from(slice, line_start) {
         debug_assert!(
             cluster.first != '\r',
             "char_pos_at_display_col: text must be LF-normalized, found a '\\r'"
@@ -420,7 +494,9 @@ pub fn char_pos_at_display_col(
             break;
         }
     }
-    pos
+    // A cluster start: the line's start, or the end of a cluster before the
+    // line's `\n`.
+    ClusterStart::mint(pos)
 }
 
 #[cfg(test)]

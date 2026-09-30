@@ -176,7 +176,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
 
     let graphemes = vec![crate::types::Grapheme {
         byte_range: crate::test_support::byte_range(0, 1),
-        char_offset: 0,
+        pos: None,
         display_col: DisplayLineCol::new(0),
         width: 1,
         content: crate::types::CellContent::Grapheme,
@@ -264,7 +264,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
 
     let graphemes = vec![crate::types::Grapheme {
         byte_range: crate::test_support::byte_range(0, 1),
-        char_offset: 0,
+        pos: None,
         display_col: DisplayLineCol::new(0),
         width: 1,
         content: crate::types::CellContent::Grapheme,
@@ -491,7 +491,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
 
     let graphemes = vec![crate::types::Grapheme {
         byte_range: crate::test_support::byte_range(0, 1),
-        char_offset: 0,
+        pos: None,
         display_col: DisplayLineCol::new(0),
         width: 1,
         content: crate::types::CellContent::Grapheme,

@@ -1,7 +1,10 @@
+use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
 use hume_rope::cursor::CharCursor;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use ropey::{Rope, RopeSlice};
 use std::borrow::Cow;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Whether the original file used LF or CRLF line endings.
 ///
@@ -94,6 +97,45 @@ pub struct BufferText {
     /// Original line-ending style. The rope is always LF-normalized internally;
     /// this field records what to write back on save.
     line_ending: LineEnding,
+    version: TextVersion,
+    /// The last generation issued in this text's lineage, shared by every
+    /// text derived from the same original, so two edits applied to one
+    /// snapshot never receive the same version.
+    generations: Arc<AtomicU64>,
+}
+
+/// Which content a [`BufferText`] holds. Equal versions mean equal content.
+///
+/// A text built from a string starts a new lineage at generation 0. Applying
+/// a non-identity [`crate::changeset::ChangeSet`] gives the next generation
+/// of the same lineage; a clone or an identity apply keeps the version.
+/// Within one buffer generations increase by one per recorded edit, which is
+/// what an LSP document version and tree-sitter's incremental edit chain count.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct TextVersion {
+    lineage: u64,
+    generation: u64,
+}
+
+impl TextVersion {
+    pub fn generation(self) -> u64 {
+        self.generation
+    }
+
+    /// Whether `self` was derived from `earlier` by one or more edits.
+    pub fn is_later_than(self, earlier: TextVersion) -> bool {
+        self.lineage == earlier.lineage && self.generation > earlier.generation
+    }
+}
+
+static NEXT_LINEAGE: AtomicU64 = AtomicU64::new(0);
+
+fn new_lineage() -> (TextVersion, Arc<AtomicU64>) {
+    let version = TextVersion {
+        lineage: NEXT_LINEAGE.fetch_add(1, Ordering::Relaxed),
+        generation: 0,
+    };
+    (version, Arc::new(AtomicU64::new(0)))
 }
 
 /// True if `rope` satisfies the invariant every `BufferText` upholds by
@@ -117,7 +159,8 @@ pub(crate) fn is_cr_free(rope: &Rope) -> bool {
 }
 
 impl BufferText {
-    /// Wrap a raw `Rope` into a `BufferText`.
+    /// `rope` as the next generation of this text's lineage, keeping its
+    /// line ending: the result of applying a non-identity changeset.
     ///
     /// The trailing-`\n` invariant is enforced
     /// by `ChangeSet::apply` returning `Err(TrailingNewlineMissing)` before
@@ -126,10 +169,7 @@ impl BufferText {
     /// O(log n), so a runtime `Err` would cost every edit a full-buffer scan).
     /// Both `debug_assert`s here are defense-in-depth for internal bugs in
     /// non-production builds.
-    ///
-    /// `line_ending` must be propagated from the source buffer so that CRLF
-    /// metadata is preserved across edits and correctly written back on save.
-    pub(crate) fn from_rope(rope: Rope, line_ending: LineEnding) -> Self {
+    pub(crate) fn successor(&self, rope: Rope) -> Self {
         // Raw constructor for ChangeSet::apply. No line-ending normalization
         // needed: the rope it hands over is the source buffer's own (already
         // `\r`-free) content plus insertions the changeset builder normalized
@@ -143,7 +183,44 @@ impl BufferText {
             is_cr_free(&rope),
             "BufferText invariant violated: rope must not contain '\\r'",
         );
-        Self { rope, line_ending }
+        Self {
+            rope,
+            line_ending: self.line_ending,
+            version: self.next_version(),
+            generations: Arc::clone(&self.generations),
+        }
+    }
+
+    fn next_version(&self) -> TextVersion {
+        TextVersion {
+            lineage: self.version.lineage,
+            generation: self.generations.fetch_add(1, Ordering::Relaxed) + 1,
+        }
+    }
+
+    /// `content` as the next generation of this text's lineage: a wholesale
+    /// replacement that stays one document, as a refreshed view buffer does.
+    /// The line ending is detected from `content`.
+    pub fn replaced_with(&self, content: &str) -> Self {
+        let fresh = Self::from(content);
+        Self {
+            version: self.next_version(),
+            generations: Arc::clone(&self.generations),
+            ..fresh
+        }
+    }
+
+    /// This text with `line_ending` recorded for saving. The content and
+    /// version are unchanged.
+    pub fn with_line_ending(self, line_ending: LineEnding) -> Self {
+        Self {
+            line_ending,
+            ..self
+        }
+    }
+
+    pub fn version(&self) -> TextVersion {
+        self.version
     }
 
     /// Borrow the inner `Rope`.
@@ -163,9 +240,12 @@ impl BufferText {
 
     /// Create an empty buffer (contains only the structural trailing newline).
     pub fn empty() -> Self {
+        let (version, generations) = new_lineage();
         Self {
             rope: Rope::from_str("\n"),
             line_ending: LineEnding::Lf,
+            version,
+            generations,
         }
     }
 
@@ -187,8 +267,8 @@ impl BufferText {
     /// Index of the last content character: the character just before the
     /// structural trailing `\n`.
     ///
-    /// Edit operations that must not consume the trailing `\n` cap their
-    /// `end_inclusive` at this value.
+    /// Edit operations that must not consume the trailing `\n` stop their
+    /// deletions at this value.
     ///
     /// Degenerate case: on an empty buffer (`"\n"`, one char) this returns 0,
     /// which is the structural `\n` itself; there is no content character to
@@ -323,9 +403,8 @@ impl BufferText {
     /// [`ropey::RopeSlice`] is a lightweight view with no allocation. It is the
     /// input type for grapheme-cluster iteration in `grapheme.rs`.
     ///
-    /// Takes [`ExclusiveRange`] so an inclusive result (`Selection`, a
-    /// finder) must cross via `to_exclusive()` at the call site instead of
-    /// hand-adding `+ 1`.
+    /// Takes [`ExclusiveRange`]; a cluster range crosses via
+    /// `ClusterRange::chars`.
     ///
     /// # Panics
     /// Panics if `range.start > range.end` or either bound is out of range.
@@ -336,6 +415,31 @@ impl BufferText {
     /// A slice spanning the entire buffer.
     pub fn full_slice(&self) -> ropey::RopeSlice<'_> {
         self.rope.slice(..)
+    }
+
+    /// The cluster holding the char at `offset`, or the last cluster (the
+    /// structural `\n`) when `offset` is at or past the end. The entry point
+    /// for a position from a foreign coordinate system.
+    pub fn snap(&self, offset: CharOffset) -> ClusterStart {
+        hume_rope::grapheme::snap_to_cluster(self.full_slice(), offset)
+            .expect("a buffer is never empty")
+            .start()
+    }
+
+    /// See [`ClusterRange::covering`].
+    pub fn covering(&self, chars: ExclusiveRange<CharOffset>) -> Option<ClusterRange> {
+        ClusterRange::covering(self.full_slice(), chars)
+    }
+
+    /// See [`ClusterRange::within`].
+    pub fn within(&self, chars: ExclusiveRange<CharOffset>) -> Option<ClusterRange> {
+        ClusterRange::within(self.full_slice(), chars)
+    }
+
+    /// The cluster starting at `bound`, or the last cluster when `bound` is
+    /// the text end.
+    pub fn cluster_at_or_last(&self, bound: ClusterBound) -> ClusterStart {
+        self.snap(bound.offset())
     }
 
     /// Returns the Unicode scalar value at `char_idx`, or `None` if out of bounds.
@@ -391,10 +495,7 @@ impl BufferText {
         // Clone is O(log n) due to ropey's structural sharing.
         let mut rope = self.rope.clone();
         rope.insert(at, text);
-        Self {
-            rope,
-            line_ending: self.line_ending,
-        }
+        self.successor(rope)
     }
 
     /// Returns a new buffer with `range` of chars removed.
@@ -413,10 +514,7 @@ impl BufferText {
     fn remove(&self, range: std::ops::Range<usize>) -> Self {
         let mut rope = self.rope.clone();
         rope.remove(range);
-        Self {
-            rope,
-            line_ending: self.line_ending,
-        }
+        self.successor(rope)
     }
 }
 
@@ -436,7 +534,13 @@ impl From<&str> for BufferText {
             r.insert_char(r.len_chars(), '\n');
             r
         };
-        Self { rope, line_ending }
+        let (version, generations) = new_lineage();
+        Self {
+            rope,
+            line_ending,
+            version,
+            generations,
+        }
     }
 }
 
@@ -454,8 +558,8 @@ impl std::fmt::Display for BufferText {
 }
 
 // `PartialEq` for tests: compare text content only.
-// `line_ending` is file-origin metadata: two buffers with identical content
-// but different original line endings are considered equal.
+// `line_ending` is file-origin metadata and the version names a lineage, so
+// two buffers with identical content are equal whatever their origin.
 impl PartialEq for BufferText {
     fn eq(&self, other: &Self) -> bool {
         self.rope == other.rope

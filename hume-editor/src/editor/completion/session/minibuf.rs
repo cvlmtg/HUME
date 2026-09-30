@@ -140,7 +140,7 @@ impl MinibufSession {
         self.core.rows_in(range)
     }
 
-    /// Where the menu anchors; see `BufferSession::menu_anchor_char`'s
+    /// Where the menu anchors; see `BufferSession::menu_anchor`'s
     /// own doc, a byte offset into [`Self::input`] here instead of a
     /// `CharOffset`.
     pub(in crate::editor) fn menu_anchor_byte(&self) -> Option<usize> {

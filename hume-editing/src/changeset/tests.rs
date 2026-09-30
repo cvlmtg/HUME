@@ -178,10 +178,10 @@ fn builder_insert_char_normalizes_a_lone_cr() {
 
 #[test]
 #[should_panic(expected = "old_pos (CharOffset(3)) != doc_len (CharOffset(10))")]
-fn builder_finish_panics_on_unconsumed() {
+fn builder_finish_consumed_panics_on_unconsumed() {
     let mut b = ChangeSetBuilder::new(co(10));
     b.retain(3);
-    b.finish(); // should panic: 7 chars unconsumed
+    b.finish_consumed(); // should panic: 7 chars unconsumed
 }
 
 #[test]
@@ -1552,4 +1552,26 @@ fn apply_returns_err_on_length_mismatch() {
     );
     // Original buffer is untouched.
     assert_eq!(text.to_string(), "hi\n");
+}
+
+#[test]
+fn applying_an_identity_keeps_the_text_version() {
+    let text = BufferText::from("abc\n");
+    let mut b = ChangeSetBuilder::new(text.end());
+    b.retain_rest();
+    let applied = b.finish().apply(&text).expect("identity applies");
+    assert_eq!(applied.version(), text.version());
+}
+
+#[test]
+fn applying_an_edit_advances_the_generation_by_one() {
+    let text = BufferText::from("abc\n");
+    let mut b = ChangeSetBuilder::new(text.end());
+    b.insert("x");
+    b.retain_rest();
+    let applied = b.finish().apply(&text).expect("insert applies");
+    assert_eq!(
+        applied.version().generation(),
+        text.version().generation() + 1
+    );
 }

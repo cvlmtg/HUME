@@ -1,4 +1,6 @@
 use super::super::*;
+use hume_editing::selection::{Facing, Selection};
+use hume_editing::state::EditState;
 use test_fixtures::assert_state;
 
 // `inner_argument`/`around_argument` register from `register_structural`
@@ -6,22 +8,12 @@ use test_fixtures::assert_state;
 // `cmd_*` wrapper. These two exist only so the tests below can drive the
 // bare functions through the same `apply_text_object_by_mode` dispatch the
 // shipped closures use.
-fn cmd_inner_argument(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, mode, inner_argument)
+fn cmd_inner_argument(state: EditState, _count: usize, mode: MotionMode) -> EditState {
+    apply_text_object_by_mode(state, mode, inner_argument)
 }
 
-fn cmd_around_argument(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, mode, around_argument)
+fn cmd_around_argument(state: EditState, _count: usize, mode: MotionMode) -> EditState {
+    apply_text_object_by_mode(state, mode, around_argument)
 }
 
 // ── Arguments ─────────────────────────────────────────────────────────────
@@ -32,7 +24,11 @@ fn cmd_around_argument(
 fn inner_argument_first() {
     assert_state!(
         "foo(-[a]>aa, bbb, ccc)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[aaa]>, bbb, ccc)\n"
     );
 }
@@ -41,7 +37,11 @@ fn inner_argument_first() {
 fn inner_argument_middle() {
     assert_state!(
         "foo(aaa, -[b]>bb, ccc)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(aaa, -[bbb]>, ccc)\n"
     );
 }
@@ -50,7 +50,11 @@ fn inner_argument_middle() {
 fn inner_argument_last() {
     assert_state!(
         "foo(aaa, bbb, -[c]>cc)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(aaa, bbb, -[ccc]>)\n"
     );
 }
@@ -59,7 +63,11 @@ fn inner_argument_last() {
 fn inner_argument_single() {
     assert_state!(
         "foo(-[a]>aa)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[aaa]>)\n"
     );
 }
@@ -69,7 +77,11 @@ fn inner_argument_trims_whitespace() {
     // Leading/trailing spaces inside the segment are excluded.
     assert_state!(
         "foo(  -[a]>aa  , bbb)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(  -[aaa]>  , bbb)\n"
     );
 }
@@ -79,7 +91,11 @@ fn inner_argument_nested_parens_skips_inner_comma() {
     // The comma inside bar(x, y) is at depth 1, not a segment boundary.
     assert_state!(
         "foo(-[b]>ar(x, y), z)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[bar(x, y)]>, z)\n"
     );
 }
@@ -88,7 +104,11 @@ fn inner_argument_nested_parens_skips_inner_comma() {
 fn inner_argument_nested_brackets_skips_inner_comma() {
     assert_state!(
         "foo(-[b]>ar[x, y], z)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[bar[x, y]]>, z)\n"
     );
 }
@@ -99,7 +119,11 @@ fn inner_argument_nested_braces_skips_inner_comma() {
     // Cursor in the second argument selects "ccc", not something split by the inner comma.
     assert_state!(
         "foo({a: 1, b: 2}, cc-[c]>)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo({a: 1, b: 2}, -[ccc]>)\n"
     );
 }
@@ -110,7 +134,11 @@ fn inner_argument_picks_tightest_bracket_pair() {
     // The tightest enclosing pair is (), not [].
     assert_state!(
         "[(aaa, -[b]>bb), ccc]\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "[(aaa, -[bbb]>), ccc]\n"
     );
 }
@@ -120,7 +148,11 @@ fn inner_argument_cursor_on_comma_associates_with_next() {
     // Cursor on the comma: treated as belonging to the following segment.
     assert_state!(
         "foo(aaa-[,]> bbb)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(aaa, -[bbb]>)\n"
     );
 }
@@ -129,7 +161,11 @@ fn inner_argument_cursor_on_comma_associates_with_next() {
 fn inner_argument_cursor_on_open_bracket() {
     assert_state!(
         "foo-[(]>aaa, bbb)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[aaa]>, bbb)\n"
     );
 }
@@ -138,7 +174,11 @@ fn inner_argument_cursor_on_open_bracket() {
 fn inner_argument_cursor_on_close_bracket() {
     assert_state!(
         "foo(aaa, bbb-[)]>\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(aaa, -[bbb]>)\n"
     );
 }
@@ -147,7 +187,11 @@ fn inner_argument_cursor_on_close_bracket() {
 fn inner_argument_empty_brackets_is_noop() {
     assert_state!(
         "foo-[(]>)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo-[(]>)\n"
     );
 }
@@ -156,7 +200,11 @@ fn inner_argument_empty_brackets_is_noop() {
 fn inner_argument_no_enclosing_bracket_is_noop() {
     assert_state!(
         "foo-[,]>bar\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo-[,]>bar\n"
     );
 }
@@ -165,7 +213,11 @@ fn inner_argument_no_enclosing_bracket_is_noop() {
 fn inner_argument_array_items() {
     assert_state!(
         "[-[1]>11, 222, 333]\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "[-[111]>, 222, 333]\n"
     );
 }
@@ -174,7 +226,11 @@ fn inner_argument_array_items() {
 fn inner_argument_object_fields() {
     assert_state!(
         "{-[f]>oo, a: b}\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "{-[foo]>, a: b}\n"
     );
 }
@@ -183,7 +239,11 @@ fn inner_argument_object_fields() {
 fn inner_argument_multi_cursor() {
     assert_state!(
         "foo(-[a]>aa, bbb, -[c]>cc)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[aaa]>, bbb, -[ccc]>)\n"
     );
 }
@@ -195,7 +255,11 @@ fn inner_argument_trims_nbsp_matching_blank_class() {
     // not survive as part of the selected argument.
     assert_state!(
         "foo(aaa,\u{a0}-[b]>bb)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(aaa,\u{a0}-[bbb]>)\n"
     );
 }
@@ -214,7 +278,11 @@ fn inner_argument_crossed_nesting_picks_the_smallest_span_not_the_nearest_open()
     // is farther from the cursor than `(`'s.
     assert_state!(
         "{(a-[b]>c}    )\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "{-[(abc]>}    )\n"
     );
 }
@@ -225,7 +293,11 @@ fn inner_argument_crossed_nesting_equal_spans_break_the_tie_in_bracket_pairs_ord
     // `()` first, so it wins the tie.
     assert_state!(
         "({-[a]>)}\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "(-[{a]>)}\n"
     );
 }
@@ -237,7 +309,11 @@ fn inner_argument_bracket_type_with_no_closing_bracket_is_dropped_not_ranked() {
     // ignored". `()` = (0, 8) wins by being the only resolved candidate.
     assert_state!(
         "({-[a]>aa, b)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "(-[{aaa, b]>)\n"
     );
 }
@@ -250,7 +326,11 @@ fn inner_argument_cursor_on_open_bracket_only_shortcuts_that_type() {
     // directions and resolves to the wider (0, 7).
     assert_state!(
         "[-[(]>a, b)]\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "[(-[a]>, b)]\n"
     );
 }
@@ -261,7 +341,11 @@ fn inner_argument_cursor_on_close_bracket_only_shortcuts_that_type() {
     // shortcut.
     assert_state!(
         "[(a, b-[)]>]\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "[(a, -[b]>)]\n"
     );
 }
@@ -274,7 +358,11 @@ fn inner_argument_smallest_span_can_resolve_after_a_larger_candidate_already_did
     // instead.
     assert_state!(
         "{xxx(-[a]>}xx)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "{xxx(-[a}xx]>)\n"
     );
 }
@@ -286,7 +374,11 @@ fn around_argument_first() {
     // Deletes "aaa, ": no orphan space before bbb.
     assert_state!(
         "foo(-[a]>aa, bbb, ccc)\n",
-        |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[aaa, ]>bbb, ccc)\n"
     );
 }
@@ -296,7 +388,11 @@ fn around_argument_middle() {
     // Deletes ", bbb", eating the preceding comma.
     assert_state!(
         "foo(aaa, -[b]>bb, ccc)\n",
-        |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(aaa-[, bbb]>, ccc)\n"
     );
 }
@@ -306,7 +402,11 @@ fn around_argument_last() {
     // Deletes ", ccc", eating the preceding comma.
     assert_state!(
         "foo(aaa, bbb, -[c]>cc)\n",
-        |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(aaa, bbb-[, ccc]>)\n"
     );
 }
@@ -316,7 +416,11 @@ fn around_argument_single_equals_inner() {
     // No comma to eat: same as inner.
     assert_state!(
         "foo(-[a]>aa)\n",
-        |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[aaa]>)\n"
     );
 }
@@ -326,7 +430,11 @@ fn around_argument_nested() {
     // First arg is a nested call; around eats trailing ", ".
     assert_state!(
         "foo(-[b]>ar(x, y), z)\n",
-        |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[bar(x, y), ]>z)\n"
     );
 }
@@ -340,7 +448,11 @@ fn around_argument_single_on_outer_bracket_descends_into_nested() {
     // and selects `a`, not `(a)`.
     assert_state!(
         "foo-[(]>(a))\n",
-        |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo((-[a]>))\n"
     );
 }
@@ -352,7 +464,11 @@ fn around_argument_empty_slot_is_noop() {
     // is a no-op and never selects " , ".
     assert_state!(
         "foo(-[ ]>, bbb)\n",
-        |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[ ]>, bbb)\n"
     );
 }
@@ -363,15 +479,12 @@ fn around_argument_empty_slot_is_noop() {
 // come from the lexical scan above: the same rule hume-editor's structural
 // dispatch applies to a tree-sitter `parameter.inside` capture.
 
-fn cmd_around_from_inner(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    _mode: MotionMode,
-) -> SelectionSet {
-    sels.map(|sel| {
-        let range = around_from_inner(text, sel.span(text));
-        Selection::from_span(range, true, text)
+fn cmd_around_from_inner(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
+    state.map(|sel| {
+        Selection::covering(
+            around_from_inner(sel.text(), sel.covered()),
+            Facing::Forward,
+        )
     })
 }
 
@@ -379,7 +492,11 @@ fn cmd_around_from_inner(
 fn around_from_inner_first() {
     assert_state!(
         "foo(-[aaa]>, bbb, ccc)\n",
-        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_from_inner(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[aaa, ]>bbb, ccc)\n"
     );
 }
@@ -388,7 +505,11 @@ fn around_from_inner_first() {
 fn around_from_inner_middle() {
     assert_state!(
         "foo(aaa, -[bbb]>, ccc)\n",
-        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_from_inner(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(aaa-[, bbb]>, ccc)\n"
     );
 }
@@ -397,7 +518,11 @@ fn around_from_inner_middle() {
 fn around_from_inner_last() {
     assert_state!(
         "foo(aaa, bbb, -[ccc]>)\n",
-        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_from_inner(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(aaa, bbb-[, ccc]>)\n"
     );
 }
@@ -407,7 +532,11 @@ fn around_from_inner_only_is_unchanged() {
     // No comma on either side: nothing to extend into.
     assert_state!(
         "foo(-[aaa]>)\n",
-        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_from_inner(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[aaa]>)\n"
     );
 }
@@ -419,7 +548,11 @@ fn around_from_inner_multiline() {
     // next argument (only space/tab count as inline blank).
     assert_state!(
         "foo(\n    -[a]>,\n    b\n)\n",
-        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_from_inner(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(-[\n    a,]>\n    b\n)\n"
     );
 }
@@ -432,7 +565,11 @@ fn around_from_inner_multiline_last_argument_eats_the_trailing_newline() {
     // before the closing delimiter.
     assert_state!(
         "foo(\n    a,\n    -[b]>\n)\n",
-        |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_from_inner(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "foo(\n    a-[,\n    b\n]>)\n"
     );
 }
@@ -443,7 +580,11 @@ fn around_from_inner_multiline_last_argument_eats_the_trailing_newline() {
 fn extend_inner_argument_basic() {
     assert_state!(
         "foo(aaa, -[b]>bb, ccc)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Extend),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Extend
+        ),
         "foo(aaa, -[bbb]>, ccc)\n"
     );
 }
@@ -452,7 +593,11 @@ fn extend_inner_argument_basic() {
 fn inner_argument_ending_on_a_combining_mark_covers_the_whole_cluster() {
     assert_state!(
         "f(-[a\u{301}]>, b)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "f(-[a\u{301}]>, b)\n"
     );
 }
@@ -461,7 +606,11 @@ fn inner_argument_ending_on_a_combining_mark_covers_the_whole_cluster() {
 fn around_argument_after_a_comma_that_carries_a_combining_mark_starts_on_the_next_arg() {
     assert_state!(
         "f(a,\u{301} -[b]>)\n",
-        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "f(a,\u{301} -[b]>)\n"
     );
 }
@@ -475,7 +624,11 @@ fn inner_argument_selects_exactly_each_corpus_sample() {
     {
         assert_state!(
             &format!("f(a, -[{s}]>, c)\n"),
-            |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+            |(text, sels)| cmd_inner_argument(
+                test_fixtures::testing::state(text, sels),
+                0,
+                MotionMode::Move
+            ),
             &format!("f(a, -[{s}]>, c)\n")
         );
     }
@@ -485,7 +638,11 @@ fn inner_argument_selects_exactly_each_corpus_sample() {
 fn around_argument_takes_the_separator_and_keeps_a_wide_argument_whole() {
     assert_state!(
         "f(a, -[\u{6f22}\u{5b57}]>, c)\n",
-        |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_argument(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "f(a-[, \u{6f22}\u{5b57}]>, c)\n"
     );
 }

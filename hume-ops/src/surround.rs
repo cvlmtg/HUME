@@ -12,10 +12,12 @@
 use crate::MotionMode;
 use crate::edit::apply_edit;
 use crate::pair::{find_bracket_pair, find_quote_pair};
-use hume_editing::changeset::ChangeSet;
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::edit::Edited;
+use hume_editing::edit::Landing;
+use hume_editing::selection::Selection;
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 
 // ── Pair lookup ──────────────────────────────────────────────────────────────
 
@@ -52,31 +54,21 @@ fn is_symmetric(ch: char) -> bool {
 
 // ── Wrap selections ──────────────────────────────────────────────────────────
 
-/// Wrap every selection (including single-char cursors) with `open` + selected_text + `close`.
+/// Wrap the content of every selection (including single-char cursors) with
+/// `open` + selected_text + `close`. The content stops before the `\n` a
+/// selection ends on, and a selection covering only a `\n` has nothing to
+/// wrap.
 ///
 /// Cursor placement: lands on the `close` character after the wrapped content.
 /// Multi-cursor: each selection is wrapped independently via `apply_edit`.
-pub fn wrap_each_selection(
-    text: BufferText,
-    sels: SelectionSet,
-    open: char,
-    close: char,
-) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
-        let start = sel.start();
-        // When `start` sits on (or past) the structural trailing '\n', there's nothing
-        // user-visible to wrap. Skip so `insert_char(close)` is never placed after '\n'.
-        if start >= text.last_char() {
-            new_sels.push(Selection::collapsed(b.new_pos()));
-            return;
-        }
-        b.retain(start.chars_since(b.old_pos()));
-        b.insert_char(open);
-        b.retain(sel.content_end_exclusive(text).chars_since(start)); // copy selected text through, no String alloc
-        b.insert_char(close);
-        // Cursor on the close char. new_pos.retreat(1) is safe: close is always
-        // preceded by at least open + one retained char (HUME selections are ≥ 1 char).
-        new_sels.push(Selection::collapsed(b.new_pos().retreat(1)));
+pub fn wrap_each_selection(state: EditState, open: char, close: char) -> Edited {
+    apply_edit(state, |b, sel| {
+        let Some(content) = sel.content() else {
+            return Landing::kept(sel.selection());
+        };
+        b.insert(content.start(), open.encode_utf8(&mut [0; 4]));
+        let closer = b.insert(content.end(), close.encode_utf8(&mut [0; 4]));
+        Landing::cursor(closer.start())
     })
 }
 
@@ -118,57 +110,35 @@ pub(crate) fn smart_replace_char(replacement: char, current: char, sel_index: us
 
 // ── Select surrounding delimiters ────────────────────────────────────────────
 
-/// Shared implementation: map each selection to two cursors on the pair
-/// endpoints, or preserve unchanged on no-match.
+/// Shared implementation: map each selection to two cursors on the pair's
+/// delimiter clusters, or preserve unchanged on no-match.
 fn select_surround(
-    text: &BufferText,
-    sels: SelectionSet,
-    find_pair: impl Fn(&BufferText, CharOffset) -> Option<InclusiveRange<CharOffset>>,
-) -> SelectionSet {
-    let primary_idx = sels.primary_index();
-    let mut new_sels = Vec::with_capacity(sels.len() * 2);
-    let mut new_primary = 0;
-
-    for (i, sel) in sels.iter_sorted().enumerate() {
-        if i == primary_idx {
-            new_primary = new_sels.len();
-        }
-        if let Some(range) = find_pair(text, sel.head()) {
-            new_sels.push(Selection::collapsed(range.start));
-            new_sels.push(Selection::collapsed(range.end));
-        } else {
-            new_sels.push(*sel);
-        }
-    }
-
-    let result = SelectionSet::from_vec(new_sels, new_primary);
-    result.debug_assert_valid(text);
-    result
+    state: EditState,
+    find_pair: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
+) -> EditState {
+    state.flat_map(|sel| {
+        let (first, second) = match find_pair(sel.text(), sel.head()) {
+            Some(pair) => (
+                Selection::cursor(pair.start()),
+                Some(Selection::cursor(pair.last())),
+            ),
+            None => (sel.selection(), None),
+        };
+        std::iter::once(first).chain(second)
+    })
 }
 
 // ── Generated surround commands ──────────────────────────────────────────────
 
 macro_rules! surround_cmd {
     ($name:ident, bracket, $open:literal, $close:literal) => {
-        pub fn $name(
-            text: &BufferText,
-            sels: SelectionSet,
-            _count: usize,
-            _mode: MotionMode,
-        ) -> SelectionSet {
-            select_surround(text, sels, |b, pos| {
-                find_bracket_pair(b, pos, $open, $close)
-            })
+        pub fn $name(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
+            select_surround(state, |t, pos| find_bracket_pair(t, pos, $open, $close))
         }
     };
     ($name:ident, quote, $quote:literal) => {
-        pub fn $name(
-            text: &BufferText,
-            sels: SelectionSet,
-            _count: usize,
-            _mode: MotionMode,
-        ) -> SelectionSet {
-            select_surround(text, sels, |b, pos| find_quote_pair(b, pos, $quote))
+        pub fn $name(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
+            select_surround(state, |t, pos| find_quote_pair(t, pos, $quote))
         }
     };
 }

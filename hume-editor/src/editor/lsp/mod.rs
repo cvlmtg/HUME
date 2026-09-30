@@ -19,6 +19,7 @@ use std::time::Instant;
 
 use rustc_hash::FxHashMap;
 
+use hume_editing::text::TextVersion;
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend};
 use hume_lsp::client::{LspClient, Outcome, RequestMeta, ServerState};
@@ -84,8 +85,8 @@ pub(in crate::editor) struct ResponseAnchor {
     /// If `bid` has moved past this generation by drain time, the outcome is
     /// dropped silently unless `allow_stale` opts out: the parse-worker
     /// staleness discipline.
-    pub(in crate::editor) text_gen: u64,
-    /// `#:allow-stale`: skips the `text_gen` check above.
+    pub(in crate::editor) version: TextVersion,
+    /// `#:allow-stale`: skips the text version check above.
     pub(in crate::editor) allow_stale: bool,
     /// `#:require-focus`: the pane the request was made from, if the
     /// outcome should be dropped (Trace-logged) unless it's still the

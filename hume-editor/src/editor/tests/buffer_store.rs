@@ -5,7 +5,6 @@ use pretty_assertions::assert_eq;
 
 use crate::editor::commands::open_pane_in_layout;
 use crate::editor::doc_ops;
-use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_scripting::host::CommandHost;
 
@@ -15,12 +14,9 @@ use hume_scripting::host::CommandHost;
 /// visit; see `lifecycle::open_buffer`'s doc).
 #[test]
 fn p6_open_buffer_defers_pane_state_seeding() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("hello\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("hello\n")));
     let initial_bid = ed.focused_buffer_id();
-    let doc2 = Buffer::new(BufferText::from("world\n"), SelectionSet::default());
+    let doc2 = Buffer::at_start(BufferText::from("world\n"));
     let bid2 = ed.open_buffer(doc2);
     assert_ne!(bid2, initial_bid);
     assert!(
@@ -38,12 +34,9 @@ fn p6_open_buffer_defers_pane_state_seeding() {
 /// `close_buffer` with one other buffer redirects panes and frees the slot.
 #[test]
 fn p6_close_buffer_redirects_to_mru() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("alpha\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("alpha\n")));
     let bid_alpha = ed.focused_buffer_id();
-    let doc_beta = Buffer::new(BufferText::from("beta\n"), SelectionSet::default());
+    let doc_beta = Buffer::at_start(BufferText::from("beta\n"));
     let bid_beta = ed.open_buffer(doc_beta);
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_beta);
     assert_eq!(ed.focused_buffer_id(), bid_beta);
@@ -65,10 +58,7 @@ fn p6_close_buffer_redirects_to_mru() {
 /// under the closed id, which a captured `bid` could then alias.
 #[test]
 fn p6_close_last_buffer_becomes_scratch() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("only\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("only\n")));
     let bid = ed.focused_buffer_id();
     ed.close_buffer(bid);
     assert!(
@@ -97,10 +87,7 @@ fn p6_close_last_buffer_becomes_scratch() {
 /// instead of raising "invalid buffer id".
 #[test]
 fn p6_bid_captured_before_last_buffer_close_reads_dead_afterward() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("only\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("only\n")));
     let tmp = safe_tempdir();
     // `bid` is the typed command's own injected leading param, the only
     // buffer, so it's the one `close-buffer!` below closes. Reusing that
@@ -129,10 +116,7 @@ fn p6_bid_captured_before_last_buffer_close_reads_dead_afterward() {
 /// already pins.
 #[test]
 fn p6_close_last_buffer_reseeds_selections() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("old content\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("old content\n")));
     let bid = ed.focused_buffer_id();
     // Move the cursor somewhere non-zero.
     let focused = ed.state.focus.id();
@@ -141,16 +125,17 @@ fn p6_close_last_buffer_reseeds_selections() {
         &mut ed.state.panes.state,
         focused,
         bid,
-        |b, _sels| {
-            let head = co(b.len_chars().saturating_sub(2));
-            SelectionSet::single(hume_editing::selection::Selection::collapsed(head))
+        |st| {
+            let cursor =
+                test_fixtures::testing::cursor(st.text(), st.text().len_chars().saturating_sub(2));
+            st.with_selections(vec![cursor], 0)
         },
     );
     ed.close_buffer(bid);
     // Selections should be reset to initial (cursor at 0).
-    let sels = ed.current_selections();
+    let sels = ed.current_view();
     assert_eq!(
-        sels.primary().head(),
+        sels.primary().head().offset(),
         co(0),
         "selections reset after closing the last buffer"
     );
@@ -160,19 +145,10 @@ fn p6_close_last_buffer_reseeds_selections() {
 /// `:bnext` / `:bprev` cycle through buffers in open-order.
 #[test]
 fn p6_bnext_bprev_cycle() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("a\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("a\n")));
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("b\n"),
-        SelectionSet::default(),
-    ));
-    let bid_c = ed.open_buffer(Buffer::new(
-        BufferText::from("c\n"),
-        SelectionSet::default(),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("b\n")));
+    let bid_c = ed.open_buffer(Buffer::at_start(BufferText::from("c\n")));
     // Still focused on a. bnext → b.
     let _ = ed.execute_typed("bn", None);
     assert_eq!(ed.focused_buffer_id(), bid_b, "bnext advances to b");
@@ -191,19 +167,10 @@ fn p6_bnext_bprev_cycle() {
 /// the mappable, key-bindable siblings of `:bnext`/`:bprev`.
 #[test]
 fn goto_next_prev_buffer_cycle() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("a\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("a\n")));
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("b\n"),
-        SelectionSet::default(),
-    ));
-    let bid_c = ed.open_buffer(Buffer::new(
-        BufferText::from("c\n"),
-        SelectionSet::default(),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("b\n")));
+    let bid_c = ed.open_buffer(Buffer::at_start(BufferText::from("c\n")));
     // Still focused on a. goto-next-buffer → b.
     let pane = focused_pane(&ed);
     live_host!(ed)
@@ -250,15 +217,9 @@ fn goto_next_prev_buffer_registered_as_jump() {
 /// `:bd` closes the current buffer.
 #[test]
 fn p6_bd_closes_focused_buffer() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("first\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("first\n")));
     let bid_first = ed.focused_buffer_id();
-    let bid_second = ed.open_buffer(Buffer::new(
-        BufferText::from("second\n"),
-        SelectionSet::default(),
-    ));
+    let bid_second = ed.open_buffer(Buffer::at_start(BufferText::from("second\n")));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_second);
     let _ = ed.execute_typed("bd", None);
     assert_eq!(
@@ -275,15 +236,9 @@ fn p6_bd_closes_focused_buffer() {
 /// `:bd!` closes a dirty buffer without error.
 #[test]
 fn p6_bd_force_closes_dirty_buffer() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("clean\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("clean\n")));
     let bid_clean = ed.focused_buffer_id();
-    let bid_dirty = ed.open_buffer(Buffer::new(
-        BufferText::from("dirty\n"),
-        SelectionSet::default(),
-    ));
+    let bid_dirty = ed.open_buffer(Buffer::at_start(BufferText::from("dirty\n")));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_dirty);
     // Make it dirty by inserting a character.
     ed.handle_key(key('i'));
@@ -308,16 +263,10 @@ fn p6_bd_force_closes_dirty_buffer() {
 /// redirect branch: both the focused and a non-focused pane must be redirected.
 #[test]
 fn p6_close_buffer_redirects_all_panes_to_mru() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("a\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("a\n")));
     let bid_a = ed.focused_buffer_id();
     // open_buffer seeds pane_state for the focused pane but doesn't switch the pane view.
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("b\n"),
-        SelectionSet::default(),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("b\n")));
 
     let pid_1 = ed.state.focus.id();
     // Second pane also views A.
@@ -362,14 +311,9 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
 /// reloaded content is identical.
 #[test]
 fn p6_reload_preserves_cursor_same_content() {
-    use hume_editing::selection::Selection;
-
     // Five content lines: line 0..4, each "lineN\n" (6 chars).
     let content = "line0\nline1\nline2\nline3\nline4\n";
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from(content),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(content)));
     let bid = ed.focused_buffer_id();
     let focused = ed.state.focus.id();
 
@@ -380,15 +324,18 @@ fn p6_reload_preserves_cursor_same_content() {
         &mut ed.state.panes.state,
         focused,
         bid,
-        |_, _| SelectionSet::single(Selection::collapsed(expected_head)),
+        |st| {
+            let cursor = test_fixtures::testing::cursor(st.text(), expected_head.index());
+            st.with_selections(vec![cursor], 0)
+        },
     );
 
     // Reload with identical content.
-    let replacement = Buffer::new(BufferText::from(content), SelectionSet::default());
+    let replacement = Buffer::at_start(BufferText::from(content));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         expected_head,
         "cursor preserved at same position after reload with identical content",
     );
@@ -398,14 +345,9 @@ fn p6_reload_preserves_cursor_same_content() {
 /// reloaded file has fewer lines than the original cursor position.
 #[test]
 fn p6_reload_clamps_cursor_to_last_line() {
-    use hume_editing::selection::Selection;
-
     // Five content lines; cursor on line 4.
     let content = "line0\nline1\nline2\nline3\nline4\n";
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from(content),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(content)));
     let bid = ed.focused_buffer_id();
     let focused = ed.state.focus.id();
 
@@ -415,16 +357,19 @@ fn p6_reload_clamps_cursor_to_last_line() {
         &mut ed.state.panes.state,
         focused,
         bid,
-        |_, _| SelectionSet::single(Selection::collapsed(co(24))),
+        |st| {
+            let cursor = test_fixtures::testing::cursor(st.text(), 24);
+            st.with_selections(vec![cursor], 0)
+        },
     );
 
     // Reload with a 1-line file.
-    let replacement = Buffer::new(BufferText::from("short\n"), SelectionSet::default());
+    let replacement = Buffer::at_start(BufferText::from("short\n"));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
     // last_line=0, target_line=0, col=0 → head=0.
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "cursor clamped to line 0 after reload with fewer lines",
     );
@@ -436,12 +381,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
 /// line's terminating `\n`.
 #[test]
 fn p6_reload_clamps_char_col_to_line_end() {
-    use hume_editing::selection::Selection;
-
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("hello world\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("hello world\n")));
     let bid = ed.focused_buffer_id();
     let focused = ed.state.focus.id();
 
@@ -451,17 +391,20 @@ fn p6_reload_clamps_char_col_to_line_end() {
         &mut ed.state.panes.state,
         focused,
         bid,
-        |_, _| SelectionSet::single(Selection::collapsed(co(10))),
+        |st| {
+            let cursor = test_fixtures::testing::cursor(st.text(), 10);
+            st.with_selections(vec![cursor], 0)
+        },
     );
 
     // Reload with a shorter line "hi\n" (h=0,i=1,\n=2).
-    let replacement = Buffer::new(BufferText::from("hi\n"), SelectionSet::default());
+    let replacement = Buffer::at_start(BufferText::from("hi\n"));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
     // last content char='i' (char 1); overshooting col 10 clamps there, not
     // onto the '\n' at char 2.
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(1),
         "cursor clamped to the last content char when col exceeds new line length",
     );
@@ -471,25 +414,20 @@ fn p6_reload_clamps_char_col_to_line_end() {
 /// cluster back to the cluster's start.
 #[test]
 fn p6_reload_snaps_char_col_to_grapheme_boundary() {
-    // "caf" + é (U+0065 U+0301, two chars) + "\n" → len_chars=6.
+    // Replacement "caf" + é (U+0065 U+0301, two chars) + "\n" → len_chars=6.
     // Grapheme boundaries: 0,1,2,3,5,6; é occupies chars 3..5.
-    let content = "caf\u{0065}\u{0301}\n";
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from(content),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("cafee\n")));
 
-    // Place cursor mid-cluster at char 4 (the combining acute U+0301).
-    // Normal motions won't do this; set directly.
+    // Cursor at char col 4, the second 'e': a cluster start before the
+    // reload, the combining acute U+0301 inside é after it.
     set_cursor(&mut ed, 4);
 
-    // Reload with identical content: col=4 is mid-cluster.
-    let replacement = Buffer::new(BufferText::from(content), SelectionSet::default());
+    let replacement = Buffer::at_start(BufferText::from("caf\u{0065}\u{0301}\n"));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
-    // snap_to_grapheme_boundary(text, 0, 4) should land at 3 (start of é).
+    // Col 4 is mid-cluster in the new text, so it lands at 3 (start of é).
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(3),
         "cursor snapped back to grapheme cluster start",
     );
@@ -498,37 +436,25 @@ fn p6_reload_snaps_char_col_to_grapheme_boundary() {
 /// `reload_buffer_in_place` collapses multi-cursor selections to the primary.
 #[test]
 fn p6_reload_collapses_multi_selection_to_primary() {
-    use hume_editing::selection::Selection;
-
     // "line0\nline1\nline2\n": line 0 starts at 0, line 1 at 6, line 2 at 12.
     let content = "line0\nline1\nline2\n";
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from(content),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(content)));
 
     // Two selections: primary at line 1 (head=6), secondary at line 2 (head=12).
-    ed.set_current_selections(SelectionSet::from_vec(
-        vec![Selection::collapsed(co(6)), Selection::collapsed(co(12))],
-        0, // primary index
-    ));
-    assert_eq!(
-        ed.current_selections().len(),
-        2,
-        "sanity: two selections set"
-    );
+    select(&mut ed, &[(6, 6), (12, 12)], 0);
+    assert_eq!(ed.current_view().len(), 2, "sanity: two selections set");
 
-    let replacement = Buffer::new(BufferText::from(content), SelectionSet::default());
+    let replacement = Buffer::at_start(BufferText::from(content));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
-    let sels = ed.current_selections();
+    let sels = ed.current_view();
     assert_eq!(
         sels.len(),
         1,
         "multi-selection collapsed to single after reload"
     );
     assert_eq!(
-        sels.primary().head(),
+        sels.primary().head().offset(),
         co(6),
         "primary cursor preserved at line 1 col 0",
     );
@@ -551,10 +477,7 @@ fn p6_reload_collapses_multi_selection_to_primary() {
 #[cfg(windows)]
 #[test]
 fn find_by_path_matches_verbatim_prefixed_stored_path_against_a_plain_query() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("hello\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("hello\n")));
     let bid = ed.focused_buffer_id();
     ed.state
         .buffers
@@ -578,10 +501,7 @@ fn find_by_path_leaves_verbatim_unc_paths_alone() {
     // `\\?\UNC\…` (verbatim network share) must NOT be treated as equivalent
     // to a plain `\\server\share\…` form; strip_unc_prefix deliberately
     // leaves it untouched, so these two remain distinct buffers.
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("hello\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("hello\n")));
     let bid = ed.focused_buffer_id();
     ed.state
         .buffers
@@ -606,17 +526,11 @@ fn find_by_path_leaves_verbatim_unc_paths_alone() {
 /// way, unlike a `LiveBid`-checked builtin.
 #[test]
 fn buffer_live_reflects_open_and_closed_state() {
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("a\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("a\n")));
     // A second buffer so the probe's own close below frees its slot
     // outright rather than hitting the last-buffer scratch-replacement
     // branch.
-    ed.open_buffer(Buffer::new(
-        BufferText::from("b\n"),
-        SelectionSet::default(),
-    ));
+    ed.open_buffer(Buffer::at_start(BufferText::from("b\n")));
 
     let tmp = safe_tempdir();
     run(

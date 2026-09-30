@@ -4,7 +4,6 @@
 
 use super::*;
 use crate::editor::buffer::Buffer;
-use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_scripting::ScriptingHost;
 
@@ -871,10 +870,7 @@ fn a_buffer_switch_dismisses_the_session_at_settle() {
     open_completion_session(&mut ed, &["candidate"]);
     assert!(ed.state.input.buffer_completion().is_some(), "sanity: open");
 
-    let other = ed.open_buffer(Buffer::new(
-        BufferText::from("other\n"),
-        SelectionSet::default(),
-    ));
+    let other = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), other);
     ed.settle();
     assert!(

@@ -10,7 +10,6 @@
 //! what's under test, not `begin_insert_session`'s.
 
 use super::*;
-use hume_editing::selection::{Selection, SelectionSet};
 use hume_rope::offset::CharOffset;
 
 const ACCEPT_0: &str = r#"(define-command! "finish" "" (lambda () (completion-accept! 0)))"#;
@@ -349,18 +348,20 @@ fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
     let bid = ed.focused_buffer_id();
     let text = ed.doc().text().clone();
     let pre_sels = ed.state.panes.state[pid][bid].selections().clone();
+    let mut group = ed
+        .state
+        .buffers
+        .get(bid)
+        .begin_edit_group(pre_sels.clone(), pre_sels);
+    group.cs = Some(hume_editing::changeset::ChangeSet::identity(
+        text.len_chars(),
+    ));
     crate::editor::edit_session::open_or_retarget(
         &mut ed.state.active_session,
         pid,
         bid,
         crate::editor::edit_session::EditSessionKind::Paste { before: false },
-        || crate::editor::edit_session::EditGroup {
-            cs: Some(hume_editing::changeset::ChangeSet::identity(
-                text.len_chars(),
-            )),
-            text_snapshot: text,
-            pre_sels,
-        },
+        || group,
     )
     .expect("no session open yet: open_or_retarget must succeed");
 
@@ -637,7 +638,7 @@ fn accepting_a_server_text_edit_also_lands_at_every_cursor() {
     let mut ed = editor_from("-[foo]> -[bar]>\n");
     ed.feed_key(key('c'));
     type_chars(&mut ed, "st");
-    let head = ed.current_selections().primary().head().index();
+    let head = ed.current_view().primary().head().offset().index();
     // `newText` distinct from `label`/`insertText`: the server's range
     // drove the replacement, not the fallback.
     run(
@@ -820,13 +821,14 @@ fn accepting_never_retreats_a_shorter_cursor_across_a_line_boundary() {
     // The marker is a placeholder. Real selections are set explicitly
     // below (`editor_from` requires at least one).
     let mut ed = editor_from("let a-[b]>\nx\n");
-    ed.set_current_selections(SelectionSet::from_vec(
-        vec![
-            Selection::collapsed(CharOffset::new(6)), // right after "ab"
-            Selection::collapsed(CharOffset::new(8)), // right after "x"
+    select(
+        &mut ed,
+        &[
+            (CharOffset::new(6).index(), CharOffset::new(6).index()),
+            (CharOffset::new(8).index(), CharOffset::new(8).index()),
         ],
         0,
-    ));
+    );
     raw_insert_with_source(
         &mut ed,
         tmp.path(),
@@ -851,14 +853,14 @@ fn token_remap_keeps_the_filter_correct_when_primary_is_not_the_first_cursor() {
     let mut ed = editor_from("-[foo]> -[bar]>\n");
     ed.feed_key(key('c'));
     let heads: Vec<_> = ed
-        .current_selections()
-        .iter_sorted()
-        .map(|s| s.head())
+        .current_view()
+        .iter()
+        .map(|s| {
+            let head = s.head().offset().index();
+            (head, head)
+        })
         .collect();
-    ed.set_current_selections(SelectionSet::from_vec(
-        heads.iter().map(|&h| Selection::collapsed(h)).collect(),
-        1,
-    ));
+    select(&mut ed, &heads, 1);
     open_completion_session(&mut ed, &["stable", "xyz"]);
     type_chars(&mut ed, "st");
     assert_eq!(

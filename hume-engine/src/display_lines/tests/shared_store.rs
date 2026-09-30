@@ -54,7 +54,7 @@ fn two_passes_over_one_pane_format_each_line_once() {
 
 /// A line read back from the store must produce the display line list the formatter
 /// would have. The line carries a tab and an inline insert so both the
-/// `line_texts` slices (`Grapheme::byte_range`) and the `virtual_texts` arena
+/// `line_text` slices (`Grapheme::byte_range`) and the `virtual_texts` arena
 /// (`CellContent`'s `(start, len)`) are exercised. Those offsets are
 /// line-local, which is what makes an entry readable on its own.
 #[test]
@@ -253,7 +253,7 @@ fn a_shape_only_entry_allocates_no_format_buffers() {
         "a walked-but-unformatted entry must hold no grapheme buffer"
     );
     assert_eq!(
-        format.line_texts.capacity(),
+        format.line_text.capacity(),
         0,
         "a walked-but-unformatted entry must hold no line-text buffer"
     );

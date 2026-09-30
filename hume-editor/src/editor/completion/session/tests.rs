@@ -12,6 +12,7 @@ use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
 use hume_engine::pipeline::{BufferId, PaneId};
+use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::CharOffset;
 use steel::rvals::SteelVal;
 
@@ -72,7 +73,12 @@ fn text(s: &str) -> BufferText {
 /// keys do.
 fn buffer_session(content: &str) -> (BufferSession, BufferText) {
     let text = text(content);
-    let session = BufferSession::open(BufferId::default(), PaneId::default(), 0, text.len_chars());
+    let session = BufferSession::open(
+        BufferId::default(),
+        PaneId::default(),
+        text.version(),
+        text.len_chars(),
+    );
     (session, text)
 }
 
@@ -114,10 +120,9 @@ fn ranked_labels(session: &BufferSession, reg: &SourceRegistry) -> Vec<String> {
 /// text it produces.
 fn edit(text: &BufferText, from: usize, to: usize, with: &str) -> (ChangeSet, BufferText) {
     let mut b = ChangeSetBuilder::new(text.end());
-    b.retain(from);
-    b.delete(to - from);
-    b.insert(with);
-    b.retain_rest();
+    b.retain_to(CharOffset::new(from))
+        .delete_to(CharOffset::new(to))
+        .insert(with);
     let cs = b.finish();
     let mut s = text.to_string();
     s.replace_range(
@@ -189,7 +194,10 @@ fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
         &["./foo.txt"],
     );
     session.rank(&reg, live(&text, 4));
-    assert_eq!(session.menu_anchor_char(), Some(CharOffset::new(0)));
+    assert_eq!(
+        session.menu_anchor(&text).map(ClusterStart::offset),
+        Some(CharOffset::new(0))
+    );
 
     // "b" narrows the dir slot out ("./foo.txt" has no 'b') but not the
     // word slot, so the anchor moves to the word token's start.
@@ -197,14 +205,17 @@ fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
     assert!(session.observe_edit(
         &reg,
         &cs,
-        1,
+        text.version(),
         CharOffset::new(5),
         &text,
         WordChars::default()
     ));
     session.rank(&reg, live(&text, 5));
     assert_eq!(ranked_labels(&session, &reg), vec!["foobar"]);
-    assert_eq!(session.menu_anchor_char(), Some(CharOffset::new(2)));
+    assert_eq!(
+        session.menu_anchor(&text).map(ClusterStart::offset),
+        Some(CharOffset::new(2))
+    );
 }
 
 #[test]
@@ -372,7 +383,7 @@ fn backspacing_past_the_dropped_word_brings_it_back() {
     assert!(session.observe_edit(
         &reg,
         &cs,
-        1,
+        text.version(),
         CharOffset::new(2),
         &text,
         WordChars::default()
@@ -500,7 +511,7 @@ fn typing_at_the_tokens_end_extends_it() {
     assert!(session.observe_edit(
         &reg,
         &cs,
-        1,
+        text.version(),
         CharOffset::new(3),
         &text,
         WordChars::default()
@@ -532,7 +543,7 @@ fn a_non_word_char_at_the_tokens_end_does_not_extend_it() {
     assert!(session.observe_edit(
         &reg,
         &cs,
-        1,
+        text.version(),
         CharOffset::new(3),
         &text,
         WordChars::default()
@@ -559,7 +570,7 @@ fn deleting_before_the_token_drops_the_slot_but_deleting_its_first_char_does_not
     assert!(session.observe_edit(
         &reg,
         &cs,
-        1,
+        text.version(),
         CharOffset::new(3),
         &text,
         WordChars::default()
@@ -568,7 +579,7 @@ fn deleting_before_the_token_drops_the_slot_but_deleting_its_first_char_does_not
     assert!(session.observe_edit(
         &reg,
         &cs,
-        2,
+        text.version(),
         CharOffset::new(2),
         &text,
         WordChars::default()
@@ -585,7 +596,7 @@ fn deleting_before_the_token_drops_the_slot_but_deleting_its_first_char_does_not
     assert!(session.observe_edit(
         &reg,
         &cs,
-        3,
+        text.version(),
         CharOffset::new(1),
         &text,
         WordChars::default()
@@ -604,7 +615,7 @@ fn a_deletion_elsewhere_shifts_the_token_without_dropping_it() {
     assert!(session.observe_edit(
         &reg,
         &cs,
-        1,
+        text.version(),
         CharOffset::new(5),
         &text,
         WordChars::default()
@@ -612,7 +623,10 @@ fn a_deletion_elsewhere_shifts_the_token_without_dropping_it() {
     assert!(session.has_live_sources());
     session.rank(&reg, live(&text, 5));
     assert_eq!(ranked_labels(&session, &reg), vec!["foo"]);
-    assert_eq!(session.menu_anchor_char(), Some(CharOffset::new(3)));
+    assert_eq!(
+        session.menu_anchor(&text).map(ClusterStart::offset),
+        Some(CharOffset::new(3))
+    );
 }
 
 #[test]
@@ -625,7 +639,7 @@ fn a_cursor_outside_the_token_drops_the_slot() {
     assert!(session.observe_edit(
         &reg,
         &cs,
-        1,
+        text.version(),
         CharOffset::new(5),
         &text,
         WordChars::default()
@@ -644,7 +658,7 @@ fn an_edit_the_session_never_saw_is_refused() {
         !session.observe_edit(
             &reg,
             &cs,
-            1,
+            text.version(),
             CharOffset::new(2),
             &text,
             WordChars::default()
@@ -665,7 +679,7 @@ fn a_later_invocation_starts_from_its_own_snapshot() {
     assert!(session.observe_edit(
         &reg,
         &cs,
-        1,
+        text.version(),
         CharOffset::new(3),
         &text,
         WordChars::default()
@@ -676,14 +690,17 @@ fn a_later_invocation_starts_from_its_own_snapshot() {
     assert!(session.observe_edit(
         &reg,
         &cs,
-        2,
+        text.version(),
         CharOffset::new(4),
         &text,
         WordChars::default()
     ));
     session.rank(&reg, live(&text, 4));
     assert_eq!(ranked_labels(&session, &reg), vec!["foobar"]);
-    assert_eq!(session.menu_anchor_char(), Some(CharOffset::new(0)));
+    assert_eq!(
+        session.menu_anchor(&text).map(ClusterStart::offset),
+        Some(CharOffset::new(0))
+    );
 }
 
 // ── Selection stepping ───────────────────────────────────────────────────────

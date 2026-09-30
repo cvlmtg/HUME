@@ -245,8 +245,8 @@ fn reparse_advances_parsed_gen_after_edit() {
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain the initial parse result
 
-    // setup_buffer_syntax sets parsed_gen = text_gen (after drain).
-    let gen0 = ed.state.buffers.get(bid).text_gen;
+    // setup_buffer_syntax sets parsed_gen = generation (after drain).
+    let gen0 = ed.state.buffers.get(bid).text().version().generation();
     assert_eq!(
         ed.state
             .buffers
@@ -256,15 +256,15 @@ fn reparse_advances_parsed_gen_after_edit() {
             .unwrap()
             .parsed_gen(),
         Some(gen0),
-        "parsed_gen must equal text_gen after initial setup",
+        "parsed_gen must equal generation after initial setup",
     );
 
-    // Insert a character: bumps text_gen.
+    // Insert a character: changes the text version.
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
     ed.feed_key(key_esc());
-    let gen1 = ed.state.buffers.get(bid).text_gen;
-    assert!(gen1 > gen0, "edit must bump text_gen");
+    let gen1 = ed.state.buffers.get(bid).text().version().generation();
+    assert!(gen1 > gen0, "edit must change the text version");
     assert_eq!(
         ed.state
             .buffers
@@ -274,7 +274,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             .unwrap()
             .parsed_gen(),
         Some(gen0),
-        "parsed_gen must lag behind text_gen before reparse",
+        "parsed_gen must lag behind generation before reparse",
     );
 
     // First call posts the request (inline: parse + stash); result not yet installed.
@@ -290,7 +290,7 @@ fn reparse_advances_parsed_gen_after_edit() {
             .unwrap()
             .parsed_gen(),
         Some(gen1),
-        "reparse must advance parsed_gen to current text_gen",
+        "reparse must advance parsed_gen to current generation",
     );
 
     // Third call is a no-op: parsed_gen stays at gen1.
@@ -462,7 +462,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
 /// a reload when the buffer's language is unchanged.
 ///
 /// Mechanism: `reload_from_text` leaves `state.syntax` (the highlighter) intact
-/// and bumps `text_gen`. `reparse_stale_buffers` sees `syntax.is_some()` + a
+/// and changes the text version. `reparse_stale_buffers` sees `syntax.is_some()` + a
 /// gen mismatch → posts a fresh full parse (no pending edits, so no incremental
 /// baking) → second tick drains and installs the new tree.
 ///
@@ -475,7 +475,6 @@ fn reparse_reattaches_after_shrink_under_cap() {
 #[test]
 fn reload_buffer_in_place_keeps_syntax_highlighting() {
     use crate::editor::buffer::Buffer;
-    use hume_editing::selection::SelectionSet;
     use hume_editing::text::BufferText;
 
     require_grammars(&["json"]);
@@ -522,7 +521,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     // a stale tree (not rebuilt) would report end_byte() == 9, not 10.
     let new_text = "[1, 2, 3]\n";
     let new_byte_len = new_text.len();
-    let mut replacement = Buffer::new(BufferText::from(new_text), SelectionSet::default());
+    let mut replacement = Buffer::at_start(BufferText::from(new_text));
     replacement.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
     // Two ticks: first `reparse_stale_buffers` sees the gen mismatch and posts the
@@ -554,11 +553,11 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
 
     // A second reload with byte-identical content: `reload_from_text`'s
     // `forward.is_identity()` branch returns `false` (no mutation) without
-    // touching `text_gen`. `reload_buffer_in_place` must not call
+    // touching the text version. `reload_buffer_in_place` must not call
     // `clear_layers` on that no-mutation path: doing so would drop the tree
-    // just installed above with no `text_gen` bump to trigger a reparse,
+    // just installed above with no the text version bump to trigger a reparse,
     // leaving the buffer unhighlighted until the next real edit.
-    let mut identical = Buffer::new(BufferText::from(new_text), SelectionSet::default());
+    let mut identical = Buffer::at_start(BufferText::from(new_text));
     identical.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), identical);
     ed.reparse_stale_buffers();
@@ -604,13 +603,13 @@ fn parse_worker_result_is_async_then_installed() {
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain initial parse result
 
-    let gen0 = ed.state.buffers.get(bid).text_gen;
+    let gen0 = ed.state.buffers.get(bid).text().version().generation();
 
-    // Edit: bumps text_gen.
+    // Edit: changes the text version.
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
     ed.feed_key(key_esc());
-    let gen1 = ed.state.buffers.get(bid).text_gen;
+    let gen1 = ed.state.buffers.get(bid).text().version().generation();
     assert!(gen1 > gen0);
 
     // First call: drain (nothing) then post request.  Result stashed but not yet installed.
@@ -638,7 +637,7 @@ fn parse_worker_result_is_async_then_installed() {
             .unwrap()
             .parsed_gen(),
         Some(gen1),
-        "parsed_gen must equal text_gen after second reparse_stale_buffers",
+        "parsed_gen must equal generation after second reparse_stale_buffers",
     );
 }
 
@@ -646,7 +645,7 @@ fn parse_worker_result_is_async_then_installed() {
 /// leave a stale `InFlight` entry that silences the follow-up request.
 ///
 /// If `sweep_buffers_for_grammars` did not clear `in_flight[bid]`, the
-/// next `reparse_stale_buffers` call would see in_flight.text_gen == text_gen and
+/// next `reparse_stale_buffers` call would see in_flight.generation == generation and
 /// skip posting, leaving parsed_gen permanently stale.
 #[test]
 fn grammar_swap_clears_stale_in_flight() {

@@ -17,11 +17,11 @@
 //! keyed by a per-pane map).
 
 use hume_editing::changeset::ChangeSet;
-use hume_editing::selection::SelectionSet;
-use hume_editing::text::BufferText;
+use hume_editing::selection::RecordedSelections;
+use hume_editing::state::EditState;
 use hume_engine::pipeline::{BufferId, PaneId};
-use hume_rope::offset::CharOffset;
 
+use crate::editor::dot_chain::DotChain;
 use crate::editor::error::CommandError;
 
 /// The editor's one live Insert or paste session, if any.
@@ -177,7 +177,7 @@ pub(in crate::editor) fn check_can_open(
 /// open is on this exact `(pane, buffer)` and is still the Replay
 /// placeholder. Nothing has composed into it (nothing ever can, see that
 /// variant's own doc), so retargeting its `kind` in place costs nothing and
-/// keeps its already-correct `text_snapshot`/`pre_sels`, both captured
+/// keeps its already-correct `snapshot`/`undo_sels`, both captured
 /// before *any* dispatch in the current action ran, exactly what a fresh
 /// open right now would capture too, since nothing has touched the buffer
 /// in between. This is what lets a replayed Steel body that pre-opens the
@@ -257,7 +257,7 @@ pub(in crate::editor) enum EditSessionKind {
 /// with_dot_capture`; if the dispatch it wraps opens a picker,
 /// `picker::open_picker` takes it off the session and attaches it to the
 /// `PickerSession` instead (so an edit made elsewhere while the picker is
-/// open, such as a timer or an LSP response, does not land in `edits`, since
+/// open, such as a timer or an LSP response, does not land in `chain`, since
 /// nothing is armed on the `EditSession` to feed); when the picker resolves,
 /// `close_picker_with`/`PickerLayer::tear_down` hand it to the queued
 /// `PendingWork::Call` that will run its `on_select`; `Editor::
@@ -278,46 +278,10 @@ pub(in crate::editor) struct DotCapture {
     /// no longer be this one.
     pub(in crate::editor) pane: PaneId,
     pub(in crate::editor) buffer: BufferId,
-    /// The primary cursor's head in the old-document space `edits[0]`'s own
-    /// `ChangeSet` was computed against: the point `cursor_replacement_at`
-    /// (`replay.rs`) locates the net edit relative to, once `edits` is
-    /// composed into one. Refreshed from the *current* cursor whenever
-    /// `Editor::run_dot_captured` re-arms a capture whose `edits` is still
-    /// empty (which is exactly the coordinate space the *next* edit
-    /// `apply_doc_edit_grouped` pushes will use), but left alone once
-    /// `edits` holds at least one entry, since every later entry must chain
-    /// from that first one's own old-document space for
-    /// `ChangeSet::compose_all` to line up. See [`Self::text_gen`] for what
-    /// guards that chain against a foreign edit breaking it.
-    pub(in crate::editor) head_before: CharOffset,
-    /// Every `ChangeSet` composed into this session's group
-    /// (`doc_ops::apply_doc_edit_grouped`'s own funnel push) while this
-    /// capture was armed, in order. `ChangeSet::compose_all` folds them
-    /// into the capture's net transform. Whatever ran between arming and
-    /// resolving collapses into *one* edit this way: a binding that accepts
-    /// a completion and then runs its own follow-up edit records both
-    /// together, never the accept alone. Once any part of a dispatch goes
-    /// interactive, none of it is safe to re-derive at a new cursor, so the
-    /// whole thing is captured as data instead.
-    pub(in crate::editor) edits: Vec<ChangeSet>,
-    /// The buffer's `text_gen` right after `edits`' own last push (or at arm
-    /// time, if `edits` is still empty). Set alongside every push in
-    /// `apply_doc_edit_grouped`'s funnel, and at construction in
-    /// `Editor::with_dot_capture`. `run_dot_captured`'s re-arm compares this
-    /// against the buffer's *current* `text_gen`: a match means the buffer
-    /// is exactly as this capture left it, so it's safe to refresh
-    /// `head_before` (if `edits` is still empty) or keep composing (if not:
-    /// `edits`' last entry's `len_after` still matches the buffer). A
-    /// mismatch means a foreign edit (a hook, an LSP response, a timer)
-    /// landed on this buffer while the capture sat detached from it (armed
-    /// on a picker instead of this session). That is harmless when `edits` was
-    /// still empty (nothing of this capture's own to break), but breaks the
-    /// composition chain outright once `edits` already holds an entry:
-    /// `compose_all` would panic on a length mismatch between that entry's
-    /// `len_after` and the next one's `len_before`. `run_dot_captured`
-    /// detects that case from the mismatch and drops the capture instead of
-    /// composing it.
-    pub(in crate::editor) text_gen: u64,
+    /// The edits recorded while this capture was armed and the head they
+    /// are measured from. `Editor::run_dot_captured` rearms it on every
+    /// hand-back and drops the capture when the chain cannot continue.
+    pub(in crate::editor) chain: DotChain,
     /// Set by `EditorState::mark_dot_interactive`.
     pub(in crate::editor) interactive: bool,
     /// What to record if this capture turns out non-interactive: the
@@ -330,12 +294,14 @@ pub(in crate::editor) struct DotCapture {
 
 /// Accumulated state for an in-progress insert or paste session.
 pub(in crate::editor) struct EditGroup {
-    /// Buffer text snapshot taken at `begin_edit_group`; inverted at commit
-    /// to record a single history revision.
-    pub(in crate::editor) text_snapshot: BufferText,
-    /// Selection state at group open, stored in the history revision so
-    /// undo restores the cursor to its pre-insert position.
-    pub(in crate::editor) pre_sels: SelectionSet,
+    /// The text and selections at `begin_edit_group`: the text is inverted
+    /// at commit to record a single history revision, and a paste cycle
+    /// re-applies from this whole state.
+    pub(in crate::editor) snapshot: EditState,
+    /// The selections undo restores: the ones the command that opened the
+    /// group was made from. Usually `snapshot`'s own; a smart paste repeat
+    /// applies to collapsed cursors but undoes to the selection it saw.
+    pub(in crate::editor) undo_sels: RecordedSelections,
     /// Running composition of all forward ChangeSets applied since the group
     /// opened. `None` until the first keystroke (empty session = no revision
     /// recorded on commit).

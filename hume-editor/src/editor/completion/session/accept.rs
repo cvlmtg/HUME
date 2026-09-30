@@ -70,7 +70,7 @@ impl BufferSession {
         // registry borrow (or `source`) alive across the `&mut state` uses
         // below just to read it again at the bottom.
         let may_resolve = state.config.completion_sources.buffer_get(source).resolve;
-        edits::checked_buffer(state, bid, Some(self.generation))?;
+        edits::checked_buffer(state, bid, Some(self.version.generation()))?;
         // A source that hasn't declared `#:resolve` isn't claiming to be
         // genuine LSP-server-origin (that flag's own doc), so its own
         // `textEdit`/`additionalTextEdits` have no wire encoding to honor.
@@ -137,16 +137,16 @@ impl BufferSession {
             // completing at it, and `replace_*_cursors` force-collapses
             // every selection it touches, which would silently discard a
             // real selection set.
-            if !pbs.selections().all_collapsed() {
+            let sels = pbs.view(state.buffers.get(bid).text());
+            if !sels.all_cursors() {
                 return Err("completion-accept!: selections must be collapsed".to_string());
             }
             // Every cursor's own head, not just the primary's: the overlap
             // check below (span is uniform, but each cursor's own live head
             // differs) needs every one of them to catch an `additionalTextEdits`
             // insertion landing inside a *non-primary* cursor's own span.
-            let heads_now: Vec<CharOffset> =
-                pbs.selections().iter_sorted().map(|s| s.head()).collect();
-            (pbs.selections().primary().head(), heads_now)
+            let heads_now: Vec<CharOffset> = sels.iter().map(|s| s.head().offset()).collect();
+            (sels.primary().head(), heads_now)
         };
 
         // Both arms below produce a `(start_now, end_now)` pair in today's
@@ -211,14 +211,14 @@ impl BufferSession {
         // silently computing a span from a stale reference point. This also
         // keeps the `chars_since` calls below from tripping their inversion
         // assert.
-        if !contains_cursor(&(start_now..end_now), head_now) {
+        if !contains_cursor(&(start_now..end_now), head_now.offset()) {
             return Err(format!(
                 "completion-accept!: {what} does not contain the cursor"
             ));
         }
         let (back, forward) = (
-            head_now.chars_since(start_now),
-            end_now.chars_since(head_now),
+            head_now.offset().chars_since(start_now),
+            end_now.chars_since(head_now.offset()),
         );
 
         // Captured before any edit lands: a resolve response (if one ends
@@ -280,9 +280,9 @@ impl BufferSession {
                     // one this can reach: an edit strictly ahead of `head` leaves
                     // `head` itself untouched by `Assoc::After`, so it can never
                     // land inside this cursor's own retreat): the header inserts
-                    // before the cursor edit lands, so `translate_in_place`'s
-                    // `Assoc::After` on selection heads
-                    // (`hume-editing/src/selection/mod.rs`) walks the live head
+                    // before the cursor edit lands, so carrying the selections
+                    // through it (`SelectionSet::translate`, `Assoc::After` on
+                    // heads) walks the live head
                     // past the inserted text. The cursor edit's own retreat
                     // then eats that inserted text instead of the span the
                     // server asked for. Guarded on `start_now < head`: a
@@ -361,7 +361,7 @@ impl BufferSession {
         // `per_cursor_back[i]` chars behind it, travels forward through
         // `additionalTextEdits` for free: `apply_doc_edit_grouped` below
         // reads selections `commit_char_edits` above already shifted across
-        // those edits (`translate_in_place`, `Assoc::After` on heads), and
+        // those edits (`SelectionSet::translate`, `Assoc::After` on heads), and
         // `per_cursor_back` is a fixed count from *before* either edit
         // landed, immune to that shift the way a live re-scan of the
         // (already-shifted) text wouldn't be (see `per_cursor_back`'s own
@@ -387,24 +387,27 @@ impl BufferSession {
             Some(_) => crate::editor::doc_ops::apply_doc_edit_grouped(
                 &mut state.buffers,
                 &state.config.decorations,
-                &mut state.panes.state,
-                &mut state.panes.jumps,
+                &mut crate::editor::position_stores::PositionStores::new(
+                    &mut state.panes,
+                    &mut state.input,
+                ),
                 &mut state.active_session,
                 pid,
                 bid,
-                move |b, s| replace_around_cursors(b, s, back, forward, &new_text),
+                move |s| replace_around_cursors(s, back, forward, &new_text),
             ),
             None => crate::editor::doc_ops::apply_doc_edit_grouped(
                 &mut state.buffers,
                 &state.config.decorations,
-                &mut state.panes.state,
-                &mut state.panes.jumps,
+                &mut crate::editor::position_stores::PositionStores::new(
+                    &mut state.panes,
+                    &mut state.input,
+                ),
                 &mut state.active_session,
                 pid,
                 bid,
-                move |b, s| {
+                move |s| {
                     replace_span_around_cursors(
-                        b,
                         s,
                         move |_text, i, head| head.retreat_saturating(per_cursor_back[i]),
                         forward,
@@ -502,7 +505,7 @@ impl BufferSession {
             method: "completionItem/resolve".to_string(),
             deadline,
         };
-        let gen_after = state.buffers.get(bid).text_gen;
+        let gen_after = state.buffers.get(bid).text().version();
         let Some(id) = lsp.send_request(
             server_id,
             "completionItem/resolve",
@@ -548,7 +551,7 @@ impl BufferSession {
         });
         let anchor = ResponseAnchor {
             bid,
-            text_gen: gen_after,
+            version: gen_after,
             allow_stale: false,
             require_focus: None,
         };

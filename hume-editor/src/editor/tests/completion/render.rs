@@ -138,7 +138,7 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
         .input
         .buffer_completion()
         .unwrap()
-        .menu_anchor_char()
+        .menu_anchor(ed.doc().text())
         .unwrap();
     let pane_rect = ed.view.pane_rect(pid).expect("rect");
     let buf = ed.state.buffers.get(bid);

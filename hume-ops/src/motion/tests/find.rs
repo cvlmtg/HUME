@@ -1,17 +1,37 @@
 use super::super::*;
+use hume_editing::selection::SelectionSet;
+use hume_editing::text::BufferText;
 use test_fixtures::assert_state;
 
 // ── find_char_forward / find_char_backward ────────────────────────────────
 
 // Helper wrappers with fixed mode so assert_state! closures stay tidy.
-fn fwd(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
-    find_char_forward(&text, sels, 1, MotionMode::Move, ch, kind)
+fn fwd(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditState {
+    find_char_forward(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move,
+        ch,
+        kind,
+    )
 }
-fn bwd(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
-    find_char_backward(&text, sels, 1, MotionMode::Move, ch, kind)
+fn bwd(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditState {
+    find_char_backward(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move,
+        ch,
+        kind,
+    )
 }
-fn fwd_ext(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> SelectionSet {
-    find_char_forward(&text, sels, 1, MotionMode::Extend, ch, kind)
+fn fwd_ext(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditState {
+    find_char_forward(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Extend,
+        ch,
+        kind,
+    )
 }
 fn fwd_count(
     text: BufferText,
@@ -19,8 +39,14 @@ fn fwd_count(
     ch: char,
     kind: FindKind,
     n: usize,
-) -> SelectionSet {
-    find_char_forward(&text, sels, n, MotionMode::Move, ch, kind)
+) -> EditState {
+    find_char_forward(
+        test_fixtures::testing::state(text, sels),
+        n,
+        MotionMode::Move,
+        ch,
+        kind,
+    )
 }
 
 #[test]

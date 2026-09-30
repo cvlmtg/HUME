@@ -775,6 +775,6 @@ fn undo_also_refreshes_hints() {
         request_count(&requests, "textDocument/inlayHint"),
         2,
         "undo must also trigger a refresh via on-text-changed: it bumps \
-         text_gen exactly like the insert above did"
+         generation exactly like the insert above did"
     );
 }

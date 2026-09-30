@@ -43,7 +43,7 @@ fn ls_cursor_on_current_line() {
     ed.execute_typed("ls", None).unwrap();
 
     // After :ls the [buffers] view is focused; cursor position is in pane_state.
-    let cursor_char = ed.current_selections().primary().head();
+    let cursor_char = ed.current_view().primary().head().offset();
     let cursor_line =
         hume_rope::lines::char_to_ropey_line(ed.doc().text().rope(), cursor_char).index();
     let content = ed.doc().text().rope().to_string();

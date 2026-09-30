@@ -430,10 +430,9 @@ fn plum_install_grammar_resolves_helix_inherits_chain() {
     let data_tmp = safe_tempdir();
     let data_dir = data_tmp.path().join("hume");
 
-    let buf = crate::editor::buffer::Buffer::new(
-        hume_editing::text::BufferText::from("const x: number = 1;\n"),
-        hume_editing::selection::SelectionSet::default(),
-    );
+    let buf = crate::editor::buffer::Buffer::at_start(hume_editing::text::BufferText::from(
+        "const x: number = 1;\n",
+    ));
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
     load_plum(&mut ed, data_tmp.path());

@@ -3,12 +3,13 @@ use highlight::HighlightStack;
 pub use highlight::TierBufs;
 pub(crate) use highlight::rebuild_line_decorations;
 
+use hume_rope::cluster::{ClusterBound, ClusterStart};
 use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::providers::Decoration;
 use crate::theme::Theme;
-use crate::types::{DisplayLine, EditorMode, Grapheme, ResolvedStyle, ScopeId, Selection};
+use crate::types::{DisplayLine, EditorMode, Grapheme, PaintedSelection, ResolvedStyle, ScopeId};
 
 // ---------------------------------------------------------------------------
 // Scratch storage
@@ -33,14 +34,8 @@ pub struct StyleScratch {
     /// Display columns of each selection head on the current display line (all selections, including primary).
     pub head_display_cols: Vec<DisplayLineCol>,
     /// Sorted copy of selections; populated once per frame or batch call.
-    pub sorted_sels: Vec<Selection>,
+    pub sorted_sels: Vec<PaintedSelection>,
     /// Index of the primary selection within `sorted_sels`. `None` if empty.
-    ///
-    /// The primary is always `selections[0]` by convention (the selection the viewport follows).
-    /// We track it by post-sort index rather than adding an `is_primary: bool` field on
-    /// `Selection`, because `Selection` is a pure data type (anchor + head) and "primary" is a
-    /// display concern; it would bleed UI logic into the core model. Using an index also avoids
-    /// fragile DocPos equality: two distinct selections could share the same head position.
     pub primary_idx_in_sorted: Option<usize>,
     /// Display column of the primary selection's head on the current display line. `None` if not on this display line.
     pub primary_head_display_col: Option<DisplayLineCol>,
@@ -64,20 +59,16 @@ impl StyleScratch {
         }
     }
 
-    /// Copy `selections` (already sorted in ascending document order) into
-    /// `sorted_sels`. No sort is performed: the caller guarantees order.
-    pub fn populate_sorted_sels(&mut self, selections: &[Selection], primary_idx: usize) {
+    /// Copy `selections` (already sorted by cursor) into `sorted_sels`. No
+    /// sort is performed: the caller guarantees order.
+    pub fn populate_sorted_sels(&mut self, selections: &[PaintedSelection]) {
         debug_assert!(
-            selections.windows(2).all(|w| w[0].head <= w[1].head),
-            "selections must be sorted by head position",
+            selections.windows(2).all(|w| w[0].cursor <= w[1].cursor),
+            "selections must be sorted by cursor position",
         );
         self.sorted_sels.clear();
         self.sorted_sels.extend_from_slice(selections);
-        self.primary_idx_in_sorted = if selections.is_empty() {
-            None
-        } else {
-            Some(primary_idx)
-        };
+        self.primary_idx_in_sorted = selections.iter().position(|s| s.is_primary);
     }
 
     /// Reset all buffers to empty, retaining allocated capacity.
@@ -131,9 +122,7 @@ pub(crate) fn style_display_line(
     // one piece of per-display-line context the unpainted-primary-head
     // carve-out below needs. A property of the selection itself, not of
     // this display line, so it's computed once here rather than per grapheme.
-    let primary_is_reverse = primary_idx
-        .map(|idx| scratch.sorted_sels[idx].head < scratch.sorted_sels[idx].anchor)
-        .unwrap_or(false);
+    let primary_is_reverse = primary_idx.is_some_and(|idx| scratch.sorted_sels[idx].is_reverse);
     collect_selection_spans(
         line_chars,
         &scratch.sorted_sels,
@@ -310,8 +299,7 @@ fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> Resol
 /// Collect (start_display_col, end_display_col_exclusive) spans for the given line within `grapheme_range`.
 ///
 /// `line_chars` is the half-open absolute-char range of the buffer line
-/// being rendered (from `rope.line_to_char`). Selections use absolute char
-/// offsets.
+/// being rendered (from `rope.line_to_char`).
 ///
 /// Also sets `primary_sel_span` when the primary selection (at `primary_idx` in
 /// `sorted_sels`) has a visible span on this display line.
@@ -322,13 +310,12 @@ fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> Resol
 /// overlapping one line via two `partition_point` calls, hoisted per buffer
 /// line) requires translating `primary_idx` into window-local coordinates and
 /// threading that through `StyleScratch`'s primary-span/primary-head
-/// bookkeeping, a second index space on top of the existing
-/// head-sorted-vs-start-sorted subtlety around `pane.selections`, which has
-/// bitten this project before. Not worth it for microseconds; do not
-/// "optimize" this into the windowed form without re-deriving that trade-off.
+/// bookkeeping, a second index space on top of the cursor-sorted order of
+/// `pane.selections`. Not worth it for microseconds; do not "optimize" this
+/// into the windowed form without re-deriving that trade-off.
 fn collect_selection_spans(
     line_chars: ExclusiveRange<CharOffset>,
-    sorted_sels: &[Selection],
+    sorted_sels: &[PaintedSelection],
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
     grapheme_range: &std::ops::Range<usize>,
@@ -342,66 +329,50 @@ fn collect_selection_spans(
     // This display line has real content only when it has graphemes at all,
     // and its first and last don't collapse to the same empty point: an
     // empty line's sole grapheme (the EOL sentinel) has an empty `byte_range`.
-    // The style stage never runs on a virtual display line (whose cells carry
-    // `Grapheme::char_offset`'s no-buffer-position sentinel; see its doc),
-    // so `first`/`last`'s own char offsets are always genuine positions here.
-    let content_chars = match (gs.first(), gs.last()) {
-        (Some(first), Some(last)) if first.byte_range.start < last.byte_range.end => Some((
-            CharOffset::new(first.char_offset),
-            CharOffset::new(last.char_offset),
-        )),
+    // The style stage never runs on a virtual display line (whose cells have
+    // no `Grapheme::pos`), so `first`/`last` carry genuine positions here.
+    let content = match (gs.first(), gs.last()) {
+        (Some(first), Some(last)) if first.byte_range.start < last.byte_range.end => {
+            first.pos.zip(last.pos)
+        }
         _ => None,
     };
+    let right_edge = gs.last().map_or(DisplayLineCol::new(0), |g| {
+        g.display_col.advance_saturating(g.width as u32)
+    });
 
     for (idx, sel) in sorted_sels.iter().enumerate() {
-        // A collapsed selection (anchor == head) has no extent to paint. The
-        // cursor at Tier 0 is its sole representation, and a 1-cell span here
-        // would claim the head cell is *selected* rather than merely where the
-        // cursor sits.
-        if sel.is_collapsed() {
+        // A cursor has no extent to paint. The cursor at Tier 0 is its sole
+        // representation, and a 1-cell span here would claim the head cell
+        // is *selected* rather than merely where the cursor sits.
+        if sel.is_cursor {
             continue;
         }
-        let span = sel.range(); // absolute char offsets
-        let (start, end) = (span.start, span.end);
+        let (start, end) = (sel.covered.start(), sel.covered.end());
 
         // Skip if the selection doesn't overlap this line at all.
-        if start >= line_chars.end || end < line_chars.start {
+        if start.offset() >= line_chars.end || end.offset() <= line_chars.start {
             continue;
         }
-
-        // Clamp the selection to this line's char range.
-        let sel_char_start = start.max(line_chars.start);
-        // `None` signals "extends past the end of this display line"; the
-        // `display_col` fallback below will then use the last grapheme's
-        // trailing column.
-        let sel_char_end = (end < line_chars.end).then_some(end);
 
         // For display lines with real content, skip if the selection doesn't
         // intersect this wrap segment. Without this check a selection on
         // wrap segment N would incorrectly highlight all other wrap segments
         // of the same line.
-        if let Some((first_char, last_char)) = content_chars {
-            let ends_before = sel_char_end.is_some_and(|end| end <= first_char);
-            let starts_after = sel_char_start > last_char;
-            if ends_before || starts_after {
-                continue;
-            }
+        if let Some((first, last)) = content
+            && (end <= ClusterBound::from(first) || start > last)
+        {
+            continue;
         }
 
+        // A start before this display line resolves to no cell and paints
+        // from its left edge.
         let display_col_start =
-            char_offset_to_display_col(sel_char_start, graphemes, grapheme_range)
-                .unwrap_or(DisplayLineCol::new(0));
-        // Selections are inclusive at both ends, so the exclusive upper bound is
-        // the right edge of the end grapheme (display_col + width), not its
-        // left edge (display_col). Using the left edge caused backward
-        // selections to silently drop their anchor cell from the highlighted span.
-        let display_col_end = sel_char_end
-            .and_then(|end| char_offset_to_end_display_col(end, graphemes, grapheme_range))
-            .unwrap_or_else(|| {
-                gs.last().map_or(DisplayLineCol::new(0), |g| {
-                    g.display_col.advance_saturating(g.width as u32)
-                })
-            });
+            display_col_at(start, graphemes, grapheme_range).unwrap_or(DisplayLineCol::new(0));
+        // The span ends at the left edge of the first cell at or past `end`,
+        // the first cluster the selection does not cover, or runs to the
+        // display line's right edge when no such cell is on it.
+        let display_col_end = boundary_display_col(end, gs).unwrap_or(right_edge);
         if display_col_end > display_col_start {
             out.push((display_col_start, display_col_end));
             if Some(idx) == primary_idx {
@@ -420,7 +391,7 @@ fn collect_selection_spans(
 /// by `primary_idx`) has its head on this display line.
 fn collect_head_display_cols(
     line_chars: ExclusiveRange<CharOffset>,
-    sorted_sels: &[Selection],
+    sorted_sels: &[PaintedSelection],
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
     grapheme_range: &std::ops::Range<usize>,
@@ -430,10 +401,10 @@ fn collect_head_display_cols(
     out.clear();
     *primary_head_display_col = None;
     for (idx, sel) in sorted_sels.iter().enumerate() {
-        if !line_chars.contains(sel.head) {
+        if !line_chars.contains(sel.cursor.offset()) {
             continue;
         }
-        if let Some(display_col) = char_offset_to_display_col(sel.head, graphemes, grapheme_range) {
+        if let Some(display_col) = display_col_at(sel.cursor, graphemes, grapheme_range) {
             out.push(display_col);
             if Some(idx) == primary_idx {
                 *primary_head_display_col = Some(display_col);
@@ -442,72 +413,66 @@ fn collect_head_display_cols(
     }
 }
 
-/// Binary-search for the grapheme in `grapheme_range` whose `char_offset` equals or
-/// immediately follows `char_offset`, returning `(display_col, width)`.
+/// Binary-search for the grapheme in `grapheme_range` at `pos`, or the first
+/// one after it, returning `(display_col, width)`.
 ///
-/// Returns `None` when `char_offset` falls before this display line's first
-/// grapheme (it belongs to an earlier wrap segment and must not be claimed
-/// for this display line).
+/// Returns `None` when `pos` falls before this display line's first grapheme
+/// (it belongs to an earlier wrap segment and must not be claimed for this
+/// display line).
 ///
-/// A display line's graphemes are non-decreasing in `char_offset` (inline-insert `Virtual` cells
-/// carry the offset of the real grapheme they precede, pushed just before it),
-/// so `partition_point` can land on an insert rather than the real grapheme at
-/// that offset. The loop below skips forward past any such ties.
+/// A display line's graphemes are non-decreasing in `pos` (inline-insert
+/// `Virtual` cells carry the cluster of the real grapheme they precede,
+/// pushed just before it), so `partition_point` can land on an insert rather
+/// than the real grapheme at that cluster. The loop below skips forward past
+/// any such ties.
 ///
 /// `pub(crate)`: also the resolver `display_lines::DisplayLineMap::locate_in_line` uses, so the
 /// two column-lookup paths (selection styling, cursor placement) can't drift
 /// on how they treat a `Virtual` tie.
 pub(crate) fn resolve_grapheme_display_col(
-    char_offset: CharOffset,
+    pos: ClusterStart,
     graphemes: &[Grapheme],
     grapheme_range: &std::ops::Range<usize>,
 ) -> Option<(DisplayLineCol, u32)> {
-    let char_offset = char_offset.index();
+    let pos = Some(pos);
     let gs = &graphemes[grapheme_range.clone()];
-    let idx = gs.partition_point(|g| g.char_offset < char_offset);
-    // If char_offset falls before this display line's first grapheme, the
-    // position belongs to an earlier wrap segment, so don't claim it for this
-    // display line.
-    if idx == 0 && gs.first().is_some_and(|g| char_offset < g.char_offset) {
+    let idx = gs.partition_point(|g| g.pos < pos);
+    // If `pos` falls before this display line's first grapheme, the position
+    // belongs to an earlier wrap segment, so don't claim it for this display
+    // line.
+    if idx == 0 && gs.first().is_some_and(|g| pos < g.pos) {
         return None;
     }
     // The cursor/selection must land on the real character, not an inline-insert
-    // decoration sharing its offset, so skip forward past any `Virtual` cells.
+    // decoration sharing its cluster, so skip forward past any `Virtual` cells.
     let mut idx = idx;
     while gs.get(idx).is_some_and(|g| {
-        g.char_offset == char_offset
-            && matches!(g.content, crate::types::CellContent::Virtual { .. })
+        g.pos == pos && matches!(g.content, crate::types::CellContent::Virtual { .. })
     }) {
         idx += 1;
     }
     gs.get(idx).map(|g| (g.display_col, g.width as u32))
 }
 
-/// Left edge (`g.display_col`) of the grapheme at `char_offset` in this display line.
+/// Left edge (`g.display_col`) of the grapheme at `pos` in this display line.
 ///
 /// Returns `None` for a position on an earlier wrap segment. Callers use a
 /// fallback when `None`.
-fn char_offset_to_display_col(
-    char_offset: CharOffset,
+fn display_col_at(
+    pos: ClusterStart,
     graphemes: &[Grapheme],
     grapheme_range: &std::ops::Range<usize>,
 ) -> Option<DisplayLineCol> {
-    resolve_grapheme_display_col(char_offset, graphemes, grapheme_range)
-        .map(|(display_col, _)| display_col)
+    resolve_grapheme_display_col(pos, graphemes, grapheme_range).map(|(display_col, _)| display_col)
 }
 
-/// Exclusive right edge (`g.display_col + g.width`) of the grapheme at `char_offset`.
-///
-/// Used for inclusive selection-span upper bounds: the span
-/// `[display_col_start, display_col_end)` must cover the end grapheme
-/// itself, which requires `display_col_end = display_col + width`.
-fn char_offset_to_end_display_col(
-    char_offset: CharOffset,
-    graphemes: &[Grapheme],
-    grapheme_range: &std::ops::Range<usize>,
-) -> Option<DisplayLineCol> {
-    resolve_grapheme_display_col(char_offset, graphemes, grapheme_range)
-        .map(|(display_col, width)| display_col.advance_saturating(width))
+/// Left edge of the first cell in `gs` at or past `end`: where a span that
+/// stops before `end` ends. An inline insert preceding the cluster at `end`
+/// is the first such cell, so the span stops before the insert too. `None`
+/// when every cell on the display line comes before `end`.
+fn boundary_display_col(end: ClusterBound, gs: &[Grapheme]) -> Option<DisplayLineCol> {
+    let idx = gs.partition_point(|g| g.pos.is_some_and(|p| ClusterBound::from(p) < end));
+    gs.get(idx).map(|g| g.display_col)
 }
 
 // ---------------------------------------------------------------------------

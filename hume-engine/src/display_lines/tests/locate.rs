@@ -1,6 +1,7 @@
-//! `locate()`/`char_at()`/`content_display_line_char_bounds()` tests.
+//! `locate()`/`char_at()`/`content_display_line_clusters()` tests.
 
 use super::*;
+use hume_rope::cluster::ClusterRange;
 
 // ---------------------------------------------------------------------------
 // locate() / char_at()
@@ -15,22 +16,22 @@ fn locate_returns_the_wrap_display_line_and_column_of_a_char() {
     let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
-        dlm.locate(co(0)),
+        dlm.locate(at(&rope, 0)),
         (DisplayLinePos::new(ContentLine::new(0), 0), dc(0)),
         "'a': display line 0, column 0"
     );
     assert_eq!(
-        dlm.locate(co(2)),
+        dlm.locate(at(&rope, 2)),
         (DisplayLinePos::new(ContentLine::new(0), 0), dc(2)),
         "'c': display line 0, column 2"
     );
     assert_eq!(
-        dlm.locate(co(4)),
+        dlm.locate(at(&rope, 4)),
         (DisplayLinePos::new(ContentLine::new(0), 1), dc(0)),
         "'e': display line 1, column 0"
     );
     assert_eq!(
-        dlm.locate(co(5)),
+        dlm.locate(at(&rope, 5)),
         (DisplayLinePos::new(ContentLine::new(0), 1), dc(1)),
         "'f': display line 1, column 1"
     );
@@ -51,7 +52,7 @@ fn locate_offsets_the_display_line_by_the_lines_before_block() {
     let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
-        dlm.locate(co(5)),
+        dlm.locate(at(&rope, 5)),
         (DisplayLinePos::new(ContentLine::new(0), 3), dc(1))
     );
 }
@@ -69,7 +70,7 @@ fn locate_skips_a_mid_line_inline_insert_sharing_the_real_graphemes_offset() {
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        dlm.locate(co(1)),
+        dlm.locate(at(&rope, 1)),
         (DisplayLinePos::new(ContentLine::new(0), 0), dc(3))
     );
 }
@@ -91,7 +92,7 @@ fn char_at_cell_lands_on_the_eol_sentinel_past_the_text() {
             dc(99),
             DisplayColTarget::Cell
         ),
-        co(2)
+        at(&rope, 2)
     );
 }
 
@@ -110,7 +111,7 @@ fn char_at_nearest_content_stays_off_the_eol_sentinel() {
             dc(99),
             DisplayColTarget::NearestContent
         ),
-        co(1)
+        at(&rope, 1)
     );
 }
 
@@ -127,7 +128,7 @@ fn locate_resolves_the_eol_sentinel_of_an_exactly_full_wrapped_display_line() {
     let mut dlm = map(&rope, WrapMode::Soft { width: 5 }, &providers, &mut s);
 
     assert_eq!(
-        dlm.locate(co(5)),
+        dlm.locate(at(&rope, 5)),
         (DisplayLinePos::new(ContentLine::new(0), 1), dc(0))
     );
 }
@@ -164,7 +165,7 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
             dc(99),
             DisplayColTarget::NearestContent
         ),
-        co(1),
+        at(&rope, 1),
         "sticky column must land on 'i', not the newline indicator"
     );
 }
@@ -188,7 +189,7 @@ fn char_at_nearest_content_skips_a_trailing_inline_insert() {
             dc(10),
             DisplayColTarget::NearestContent
         ),
-        co(1),
+        at(&rope, 1),
         "sticky column must land on 'i', not the trailing insert or the newline"
     );
 }
@@ -207,7 +208,7 @@ fn char_at_nearest_content_falls_back_to_the_sentinel_on_an_empty_line() {
             dc(5),
             DisplayColTarget::NearestContent
         ),
-        co(0)
+        at(&rope, 0)
     );
 }
 
@@ -226,7 +227,7 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
             dc(3),
             DisplayColTarget::Cell
         ),
-        co(0),
+        at(&rope, 0),
         "a click at column 3 hit the tab, so it selects the tab"
     );
     assert_eq!(
@@ -235,7 +236,7 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
             dc(3),
             DisplayColTarget::NearestContent
         ),
-        co(1),
+        at(&rope, 1),
         "a sticky column of 3 is nearer 'x' at column 4 than the tab at 0"
     );
 }
@@ -258,7 +259,7 @@ fn char_at_cell_on_the_right_half_of_a_wide_grapheme_selects_the_grapheme() {
             dc(1),
             DisplayColTarget::Cell
         ),
-        co(0),
+        at(&rope, 0),
         "clicking the wide glyph's right half must select the glyph itself"
     );
 }
@@ -281,7 +282,7 @@ fn char_at_cell_inside_a_placeholder_selects_the_placeholder() {
             dc(3),
             DisplayColTarget::Cell
         ),
-        co(1),
+        at(&rope, 1),
         "a click inside the placeholder's span must select the char it stands in for"
     );
 }
@@ -306,7 +307,7 @@ fn char_at_nearest_content_prefers_real_content_over_a_width_continuation_tie() 
             dc(2),
             DisplayColTarget::NearestContent
         ),
-        co(1),
+        at(&rope, 1),
         "sticky column 2 must land on 'x' (char 1), not '中' via its continuation cell"
     );
 }
@@ -336,7 +337,10 @@ fn char_at_on_a_virtual_display_line_clamps_to_the_lines_own_content() {
             dc(0),
             DisplayColTarget::Cell
         ),
-        co(hume_rope::lines::line_start_char(&rope, RopeyLine::new(1)).index()),
+        at(
+            &rope,
+            hume_rope::lines::line_start_char(&rope, RopeyLine::new(1)).index()
+        ),
         "the Before display line resolves to line 1's first content display line"
     );
     assert_eq!(
@@ -345,7 +349,10 @@ fn char_at_on_a_virtual_display_line_clamps_to_the_lines_own_content() {
             dc(0),
             DisplayColTarget::Cell
         ),
-        co(hume_rope::lines::line_start_char(&rope, RopeyLine::new(2)).index()),
+        at(
+            &rope,
+            hume_rope::lines::line_start_char(&rope, RopeyLine::new(2)).index()
+        ),
         "the After display line resolves to line 2's last content display line"
     );
 }
@@ -355,7 +362,7 @@ fn char_at_on_a_virtual_display_line_clamps_to_the_lines_own_content() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn content_display_line_char_bounds_scopes_to_one_wrap_display_line() {
+fn content_display_line_clusters_scopes_to_one_wrap_display_line() {
     // "abcdefgh\n" at width 4: display line 0 covers chars 0..4, display line 1 covers 4..8.
     // Row 1 ("efgh") exactly fills the wrap width, so the trailing '\n's own
     // sentinel wraps onto a display line of its own (char 8, the '\n' itself) instead
@@ -366,22 +373,25 @@ fn content_display_line_char_bounds_scopes_to_one_wrap_display_line() {
     let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
-        dlm.content_display_line_char_bounds(DisplayLinePos::new(ContentLine::new(0), 0)),
+        dlm.content_display_line_clusters(DisplayLinePos::new(ContentLine::new(0), 0))
+            .map(ClusterRange::chars),
         Some(ex(0, 4))
     );
     assert_eq!(
-        dlm.content_display_line_char_bounds(DisplayLinePos::new(ContentLine::new(0), 1)),
+        dlm.content_display_line_clusters(DisplayLinePos::new(ContentLine::new(0), 1))
+            .map(ClusterRange::chars),
         Some(ex(4, 8))
     );
     assert_eq!(
-        dlm.content_display_line_char_bounds(DisplayLinePos::new(ContentLine::new(0), 2)),
+        dlm.content_display_line_clusters(DisplayLinePos::new(ContentLine::new(0), 2))
+            .map(ClusterRange::chars),
         Some(ex(8, 9)),
         "the wrapped sentinel display line covers just the '\\n' itself"
     );
 }
 
 #[test]
-fn content_display_line_char_bounds_rejects_a_virtual_display_line() {
+fn content_display_line_clusters_rejects_a_virtual_display_line() {
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
@@ -393,12 +403,14 @@ fn content_display_line_char_bounds_rejects_a_virtual_display_line() {
     let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
-        dlm.content_display_line_char_bounds(DisplayLinePos::new(ContentLine::new(0), 0)),
+        dlm.content_display_line_clusters(DisplayLinePos::new(ContentLine::new(0), 0))
+            .map(ClusterRange::chars),
         None,
         "display line 0 is the Before display line, not content"
     );
     assert_eq!(
-        dlm.content_display_line_char_bounds(DisplayLinePos::new(ContentLine::new(0), 1)),
+        dlm.content_display_line_clusters(DisplayLinePos::new(ContentLine::new(0), 1))
+            .map(ClusterRange::chars),
         Some(ex(0, 4)),
         "display line 1 is the line's first content display line"
     );

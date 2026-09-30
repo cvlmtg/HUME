@@ -12,6 +12,7 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool};
 use hume_lsp::codec::ResponseError;
+use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_rope::position_encoding::{PositionEncoding, WirePos, wire_to_line_char_col};
 
@@ -37,7 +38,7 @@ pub(in crate::editor) fn checked_buffer(
         return Err("buffer is read-only".to_string());
     }
     if let Some(expected_gen) = expect_gen
-        && buf.text_gen != expected_gen
+        && buf.text().version().generation() != expected_gen
     {
         return Err("buffer changed since these edits were computed".to_string());
     }
@@ -121,11 +122,10 @@ fn build_changeset_from_char_edits(
 
     let mut b = ChangeSetBuilder::new(len_before);
     for (range, text) in &char_edits {
-        b.retain(range.start.chars_since(b.old_pos()));
-        b.delete(range.end.chars_since(range.start));
+        b.retain_to(range.start);
+        b.delete_to(range.end);
         b.insert(text);
     }
-    b.retain_rest();
     Ok(b.finish())
 }
 
@@ -152,18 +152,16 @@ fn commit_changeset(
     doc_ops::apply_doc_edit(
         &mut state.buffers,
         &state.config.decorations,
-        &mut state.panes.state,
-        &mut state.panes.jumps,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut state.panes,
+            &mut state.input,
+        ),
         &mut state.active_session,
         pid,
         bid,
-        move |text, mut sels| {
-            let text_pre = text.clone();
-            let new_text = cs
-                .apply(&text)
-                .expect("cs built from this buffer's own rope, just above");
-            sels.translate_in_place(&cs, &text_pre, &new_text);
-            (new_text, sels, cs)
+        move |s| {
+            hume_editing::edit::Edited::from_changes(s, cs)
+                .expect("cs built from this buffer's own rope, just above")
         },
     )
     .map_err(|e| e.to_string())?;
@@ -383,7 +381,12 @@ pub(in crate::editor) fn apply_workspace_edit(
     // is checked separately, per entry, below.
     if let Some(expect_gen) = expect_gen {
         let requesting_bid = view.panes[pid].buffer_id;
-        let current_gen = state.buffers.get(requesting_bid).text_gen;
+        let current_gen = state
+            .buffers
+            .get(requesting_bid)
+            .text()
+            .version()
+            .generation();
         if current_gen != expect_gen {
             return Err(
                 "apply-workspace-edit!: buffer has changed since the request that produced \
@@ -477,7 +480,7 @@ fn char_indexed_to_char_pos(
     bid: BufferId,
     line: hume_rope::line::RopeyLine,
     char_col: hume_rope::column::CharCol,
-) -> CharOffset {
+) -> ClusterStart {
     let buf = state.buffers.get(bid);
     let text = buf.text();
     let line = hume_rope::line::RopeyLine::clamped(text.rope(), line.index());
@@ -503,14 +506,14 @@ fn resolve_path_or_uri(
     resolve_or_open(state, view, std::path::Path::new(expanded.as_ref()))
 }
 
-/// Resolves `target` to `(bid, char_pos)`: the one fallible step. Callers
+/// Resolves `target` to `(bid, cluster)`: the one fallible step. Callers
 /// must push the jump entry only *after* this succeeds (`goto_location`'s
 /// "no jump entry on failure" contract).
 fn resolve_goto_target(
     state: &mut EditorState,
     view: &mut EngineView,
     target: GotoTarget,
-) -> Result<(BufferId, CharOffset), String> {
+) -> Result<(BufferId, ClusterStart), String> {
     match target {
         GotoTarget::Wire { uri, pos, encoding } => {
             let path = hume_lsp::uri::uri_to_path(&uri)
@@ -551,7 +554,7 @@ fn resolve_goto_target(
     }
 }
 
-/// Moves `t`'s own pane to `(bid, char_pos)`, recording a jump entry only
+/// Moves `t`'s own pane to `(bid, pos)`, recording a jump entry only
 /// if resolution succeeded and it actually lands somewhere else: same
 /// "commit point" discipline as `:goto` (`typed_misc.rs`) and buffer
 /// switches (`switch_to_buffer_with_jump`).
@@ -561,12 +564,8 @@ pub(in crate::editor) fn goto_location(
     t: crate::editor::commands::CommandPane,
     target: GotoTarget,
 ) -> Result<(), String> {
-    let (bid, char_pos) = resolve_goto_target(state, view, target)?;
-    // `jump_pane_to` clamps `char_pos` to the buffer's last char: every path
-    // above can legitimately return `len_chars()` (e.g. a wire line past
-    // EOF, or a char-indexed target on the trailing structural line, both
-    // clamp to that line's start = `len_chars()`).
-    crate::editor::commands::jump_pane_to(state, view, t, bid, char_pos);
+    let (bid, pos) = resolve_goto_target(state, view, target)?;
+    crate::editor::commands::jump_pane_to(state, view, t, bid, pos);
 
     Ok(())
 }

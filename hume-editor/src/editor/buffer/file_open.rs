@@ -2,13 +2,18 @@ use std::io;
 use std::path::PathBuf;
 
 use hume_engine::pipeline::{BufferId, PaneId};
-use hume_rope::offset::CharOffset;
 
 use crate::editor::buffer::Buffer;
 use crate::editor::commands::FocusedPane;
 
 use super::lifecycle;
+use crate::editor::position_stores::PositionStores;
 use crate::editor::{Editor, Severity};
+use hume_editing::state::EditState;
+use hume_editing::text::BufferText;
+use hume_rope::cluster::ClusterStart;
+use hume_rope::column::CharCol;
+use hume_rope::line::ContentLine;
 
 impl Editor {
     // ── Working directory ─────────────────────────────────────────────────────
@@ -196,20 +201,21 @@ impl Editor {
     /// `Buffer` swap), this delegates to [`Buffer::reload_from_text`]; see
     /// its doc for the history/undo mechanics.
     ///
-    /// Each pane's primary cursor is captured as `(line, char_col)` before the
-    /// reload and restored against the new content; multi-selections collapse
-    /// to the primary (stale against fresh content). Cursor and `top_line`
-    /// are clamped if the file shrank: past-end lines land on the new last
-    /// line, past-end columns on the line's last content character.
+    /// The reload is an edit: `Buffer::reload_from_text` carries every stored
+    /// position (every pane's selections for the buffer, jump lists, prompt
+    /// snapshots) through its line-diff `ChangeSet`. On top of that, each pane
+    /// that holds selections for the buffer, whether or not it shows it now,
+    /// has its primary cursor captured as `(line, char_col)` before the
+    /// reload and placed back against the new content: multi-selections
+    /// collapse to the primary (stale against fresh content), and a cursor
+    /// past the end of a shrunk file lands on the new last line, a column
+    /// past the line's end on its last content character.
     ///
-    /// Only `fp`'s pre/post selections are written into the
-    /// history revision (undo/redo restore its cursor); other panes on the
-    /// same buffer ride the inverse `ChangeSet` via `propagate_cs_to_panes`
-    /// like any edit.
+    /// Only `fp`'s pre/post selections are written into the history revision
+    /// (undo/redo restore its cursor).
     ///
-    /// Survives the reload: jump list (remapped through the reload's forward
-    /// `ChangeSet`, same as any edit), per-buffer search state (match cache
-    /// rebuilds lazily). Dropped as stale: in-progress edit groups/paste
+    /// Survives the reload: per-buffer search state (match cache rebuilds
+    /// lazily). Dropped as stale: in-progress edit groups/paste
     /// sessions, the engine-side syntax tree, and saved scrolls.
     pub(in crate::editor) fn reload_buffer_in_place(
         &mut self,
@@ -217,7 +223,6 @@ impl Editor {
         mut new_doc: Buffer,
     ) {
         use hume_editing::lines::{char_col_in_line, place_char_column};
-        use hume_editing::selection::{Selection, SelectionSet};
 
         let id = fp.bid(&self.view);
         // End any open Insert/paste session the same way every other
@@ -228,15 +233,16 @@ impl Editor {
         // session whose group no longer matches the buffer.
         crate::editor::focus::end_focus_sessions(&mut self.state, &self.view);
 
-        // Capture (line, char_col) per pane + focused pane's pre_sels.
-        // Every pane showing `id`, active tab or not: a background pane's
-        // cursor needs remapping through this reload's `ChangeSet` too, or
-        // it desyncs the moment its tab is refocused.
+        // Capture (line, char_col) per pane + focused pane's pre_sels. Every
+        // pane that holds selections for `id`: one showing it on another tab,
+        // or one that showed it and moved to another buffer, meets them again
+        // the moment it comes back.
         let pane_ids: Vec<PaneId> = self
-            .view
+            .state
             .panes
-            .every_pane_across_all_tabs()
-            .filter(|(_, p)| p.buffer_id == id)
+            .state
+            .iter()
+            .filter(|(_, buffers)| buffers.contains_key(id))
             .map(|(pid, _)| pid)
             .collect();
         let focused = fp.pid();
@@ -251,40 +257,25 @@ impl Editor {
             pane_ids
                 .iter()
                 .map(|&pid| {
-                    let head = self.state.panes.state[pid][id]
-                        .selections()
-                        .primary()
-                        .head();
-                    let line = text.char_to_line(head);
-                    let char_col = char_col_in_line(text, line, head);
+                    let head = self.state.panes.state[pid][id].view(text).primary().head();
+                    let line = text.char_to_line(head.offset());
+                    let char_col = char_col_in_line(text, line, head.offset());
                     (pid, line, char_col)
                 })
                 .collect()
         }; // borrows on text and panes.state end here
 
-        // Clamp (line, char_col) against the new text.
-        // Borrow `new_doc.text()` immutably, then move `new_text` out below.
-        let post_heads: Vec<(PaneId, CharOffset)> = {
-            let new_text = new_doc.text();
-            let last_line = new_text.last_content_line();
-            let mut heads = Vec::with_capacity(cursor_coords.len());
-            for &(pid, line, char_col) in &cursor_coords {
-                let target_line = line.min(last_line);
-                let head = place_char_column(new_text, target_line.into(), char_col);
-                heads.push((pid, head));
-            }
-            heads
-        }; // new_text borrow ends here
-
+        // Each pane's (line, char_col), clamped against the reloaded text.
+        let place = |text: &BufferText, line: ContentLine, char_col: CharCol| -> ClusterStart {
+            place_char_column(text, line.min(text.last_content_line()).into(), char_col)
+        };
         // `id` is `fp`'s own buffer, so `fp` is in `pane_ids` and thus in
-        // `post_heads`. A miss means an internal invariant broke, so fail loud
-        // rather than silently anchoring undo to char 0.
-        let focused_post_head = post_heads
+        // `cursor_coords`. A miss means an internal invariant broke, so fail
+        // loud rather than anchoring undo to char 0.
+        let &(_, focused_line, focused_col) = cursor_coords
             .iter()
-            .find(|(pid, _)| *pid == focused)
-            .map(|(_, h)| *h)
+            .find(|(pid, _, _)| *pid == focused)
             .expect("focused pane must view the reloaded buffer");
-        let post_sels = SelectionSet::single(Selection::collapsed(focused_post_head));
 
         // History-preserving reload.
         // Refresh `file_meta` so save-time permission/ownership checks see
@@ -295,24 +286,21 @@ impl Editor {
         let new_file_meta = std::mem::take(&mut new_doc.file_meta);
         drop(new_doc);
 
-        // Captured before the reload mutates `self.text`: `translate_in_place`
-        // needs the pre-reload content to identify which lines the reload
-        // touched, same requirement as any other edit's `text_pre`.
-        let text_pre = self.state.buffers.get(id).text().clone();
-        let reload_cs = self
+        let mutated = self
             .state
             .buffers
             .get_mut(id)
-            .reload_from_text(new_text, pre_sels, post_sels);
-        let mutated = reload_cs.is_some();
-        if let Some(cs) = &reload_cs {
-            let edits = cs.edited_old_ranges();
-            let text_post = self.state.buffers.get(id).text();
-            self.state
-                .panes
-                .jumps
-                .translate(id, &edits, cs, &text_pre, text_post);
-        }
+            .reload_from_text(
+                id,
+                &mut PositionStores::new(&mut self.state.panes, &mut self.state.input),
+                new_text,
+                pre_sels,
+                |text| {
+                    EditState::with_cursor(text.clone(), place(text, focused_line, focused_col))
+                        .into_selections()
+                },
+            )
+            .is_some();
         self.state.buffers.get_mut(id).file_meta = new_file_meta;
         // Flush any didChange already queued for this buffer *before* the
         // whole-document one below. Otherwise, under macro replay (an edit
@@ -326,11 +314,11 @@ impl Editor {
         // text: diagnostics/decorations char offsets, the engine syntax
         // tree, a whole-document didChange at a fresh version. A no-op
         // reload (`mutated == false`) never touched `self.text` or
-        // `text_gen`, so that state is still valid against the (unchanged)
+        // the text version, so that state is still valid against the (unchanged)
         // current content, so skip discarding it rather than throw away
         // perfectly good syntax highlighting/diagnostics for nothing.
         if mutated {
-            // `reload_from_text` bumped text_gen via set_text but produced no
+            // `reload_from_text` changed the text version but produced no
             // *queued incremental* change the LSP pending-queue mechanism can
             // consume, so send the reload as a whole-document didChange instead.
             self.lsp_did_change_whole_document(id);
@@ -347,7 +335,7 @@ impl Editor {
 
             // Drop the stale committed layers (they reference pre-reload
             // content), keeping the grammar attachment and generation
-            // bookkeeping intact. `set_text` bumped `text_gen`, so
+            // bookkeeping intact. The reload changed the text version, so
             // `reparse_stale_buffers` will post a fresh full parse on the
             // next tick.
             if let Some(syn) = self.state.buffers.get_mut(id).syntax.as_mut() {
@@ -363,7 +351,8 @@ impl Editor {
         // Targeted, not `fresh_from_buf`: selections are restored to the clamped
         // post-reload cursor. Any open session was already ended above, before
         // this reload's own edit, so no per-pane group nulling needed here.
-        for &(pid, head) in &post_heads {
+        for &(pid, line, char_col) in &cursor_coords {
+            let head = place(self.state.buffers.get(id).text(), line, char_col);
             crate::editor::pane_state::write_cursor(
                 &mut self.state.panes.state,
                 &self.state.buffers,
@@ -377,11 +366,8 @@ impl Editor {
         // `recall_scroll` clamps the top's line to the buffer's current last
         // line, but a saved top slot/`horizontal_offset` for a
         // scroll position that no longer exists is still worth discarding
-        // outright rather than recalling a clamped-but-arbitrary spot. The
-        // jump list was already remapped through `reload_cs` above;
-        // same-buffer-id survival alone isn't enough, since the reload can
-        // shift or delete the text an entry pointed at.
-        // Every pane, active tab or not; see the comment above.
+        // outright rather than recalling a clamped-but-arbitrary spot.
+        // Every pane, active tab or not.
         for (_, pane) in self.view.panes.every_pane_across_all_tabs_mut() {
             pane.forget_buffer(id);
         }
@@ -452,25 +438,22 @@ impl Editor {
         content: &str,
         cursor_line: Option<hume_rope::line::ContentLine>,
     ) -> BufferId {
-        use hume_editing::text::BufferText;
-
-        let text = BufferText::from(content);
         let bid = if let Some(existing) = self.state.buffers.find_by_label(label) {
-            self.state.buffers.get_mut(existing).set_view_content(text);
-            // `set_view_content` resets history: a regenerated view buffer
-            // (`[messages]`, `[buffers]`) shares nothing but its id with the
-            // old content, so every per-pane store keyed to it is stale, not
-            // just the jump list.
-            lifecycle::reseed_panes_after_content_reset(
-                &mut self.view,
-                &self.state.buffers,
-                &mut self.state.panes.state,
-                &mut self.state.panes.jumps,
+            // `set_view_content` resets history and every position stored
+            // for the buffer: a regenerated view buffer (`[messages]`,
+            // `[buffers]`) shares nothing but its id with the old content.
+            self.state.buffers.get_mut(existing).set_view_content(
                 existing,
+                &mut PositionStores::new(&mut self.state.panes, &mut self.state.input),
+                content,
             );
+            lifecycle::forget_saved_views(&mut self.view, existing);
             existing
         } else {
-            let doc = Buffer::read_only_view(text, label.to_owned());
+            let doc = Buffer::read_only_view(
+                hume_editing::text::BufferText::from(content),
+                label.to_owned(),
+            );
             self.open_buffer(doc)
         };
 

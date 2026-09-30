@@ -108,10 +108,7 @@ fn lsp_stop_deregisters_the_server_and_clears_buffer_attachment() {
 fn lsp_stop_targets_the_named_buffer_regardless_of_focus() {
     let mut ed = editor_from("-[w]>ord\n");
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("other\n"),
-        SelectionSet::default(),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
     assert_eq!(ed.focused_buffer_id(), bid_a, "still focused on a");
 
     let mut backend = InlineLspBackend::new();
@@ -168,7 +165,7 @@ fn lsp_stop_clears_the_buffer_s_pending_change_queue() {
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
     let mut b = hume_editing::changeset::ChangeSetBuilder::new(co(4));
-    b.retain(0).insert("X").retain_rest();
+    b.insert("X");
     ed.state
         .buffers
         .get_mut(bid)
@@ -283,7 +280,7 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
         .expect("attached on open");
 
     let uri = hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap();
-    let current_gen = ed.state.buffers.get(bid).text_gen as i32;
+    let current_gen = ed.state.buffers.get(bid).text().version().generation() as i32;
     let mut params = serde_json::json!({
         "uri": uri.as_str(),
         "version": current_gen,
@@ -313,7 +310,8 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
 
     // The fresh server republishes the same diagnostic. This must replace
     // the old, now-detached server's entry, not stack alongside it.
-    params["version"] = serde_json::json!(ed.state.buffers.get(bid).text_gen as i32);
+    params["version"] =
+        serde_json::json!(ed.state.buffers.get(bid).text().version().generation() as i32);
     ed.ingest_publish_diagnostics(new_sid, serde_json::from_value(params).unwrap());
 
     assert_eq!(

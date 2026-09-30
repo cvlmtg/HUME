@@ -18,7 +18,7 @@
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::BufferText;
+use hume_editing::state::EditState;
 use hume_ops::MotionMode;
 use hume_ops::edit::{paste_after, paste_before};
 use hume_ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER};
@@ -108,25 +108,18 @@ impl EditorState {
 /// scripts get a predictable contract. The check is all-or-nothing: the paste
 /// op applies one mode to every selection, so partial agreement falls back to
 /// replace. Already-collapsed selections are unaffected either way.
-fn collapse_if_repeat(
-    text: &BufferText,
-    sels: SelectionSet,
-    values: &[String],
-    before: bool,
-) -> SelectionSet {
-    let repeats = values.len() == sels.len()
-        && sels
-            .iter_sorted()
-            .zip(values)
-            .all(|(sel, v)| sel.slice(text) == *v);
+fn collapse_if_repeat(state: EditState, values: &[String], before: bool) -> EditState {
+    let view = state.view();
+    let repeats =
+        values.len() == view.len() && view.iter().zip(values).all(|(sel, v)| sel.slice() == *v);
     if !repeats {
-        return sels;
+        return state;
     }
-    sels.map(|s| {
+    state.map(|s| {
         if before {
-            Selection::collapsed(s.start())
+            Selection::cursor(s.start())
         } else {
-            Selection::collapsed(s.end_inclusive(text))
+            Selection::cursor(s.last())
         }
     })
 }
@@ -143,7 +136,8 @@ struct ResolvedPaste {
     bare: bool,
 }
 
-/// Core paste implementation: applies `resolved` at `sels`, opens the
+/// Core paste implementation: applies `resolved` at `sels`, which undo
+/// returns to `undo_sels` (the selections the command saw), opens the
 /// paste/ring-cycle session, and stamps [`PasteStamp`]/seeds the ring cycle
 /// for bare pastes. Carries no knowledge
 /// of where `resolved` came from or of the repeat-vs-swap rule. Callers
@@ -166,28 +160,31 @@ fn do_paste(
     before: bool,
     resolved: ResolvedPaste,
     sels: SelectionSet,
+    undo_sels: SelectionSet,
 ) -> Result<(), CommandError> {
     let ResolvedPaste { values, from, bare } = resolved;
 
-    let pre_sels = sels.clone();
+    let base = sels.clone();
     state.panes.state[focused][buf].set_selections(sels, state.buffers.get(buf).text());
     edit_session::open_or_retarget(
         &mut state.active_session,
         focused,
         buf,
         EditSessionKind::Paste { before },
-        || state.buffers.get(buf).begin_edit_group(pre_sels),
+        || state.buffers.get(buf).begin_edit_group(base, undo_sels),
     )?;
     let paste_fn = if before { paste_before } else { paste_after };
     doc_ops::apply_doc_edit_regrouped(
         &mut state.buffers,
         &state.config.decorations,
-        &mut state.panes.state,
-        &mut state.panes.jumps,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut state.panes,
+            &mut state.input,
+        ),
         &mut state.active_session,
         focused,
         buf,
-        |b, s| paste_fn(b, s, &values),
+        |s| paste_fn(s, &values),
     );
 
     // An explicit register prefix opts out of the stamp entirely; see
@@ -341,9 +338,9 @@ fn do_normal_paste(
     before: bool,
 ) -> Result<(), CommandError> {
     let (pid, buf) = (fp.pid(), fp.bid(view));
-    // Checked before `take_selections` below, not left to `do_paste`'s own
-    // `open_or_retarget` call, so a refusal here leaves the live selection
-    // untouched instead of stranding it in `SelectionSet::default()`.
+    // Checked here, not left to `do_paste`'s own `open_or_retarget` call,
+    // which runs after `do_paste` has written the selections it pastes at:
+    // a refusal here leaves the pane untouched.
     edit_session::check_can_open(&state.active_session, pid, buf)?;
     if super::refuse_if_read_only(state, view, fp.pane()) {
         return Ok(());
@@ -351,8 +348,8 @@ fn do_normal_paste(
     let Some(resolved) = resolve_plain(state) else {
         return Ok(());
     };
-    let sels = state.panes.state[pid][buf].take_selections();
-    do_paste(state, pid, buf, before, resolved, sels)
+    let sels = state.panes.state[pid][buf].selections().clone();
+    do_paste(state, pid, buf, before, resolved, sels.clone(), sels)
 }
 
 /// Smart paste: resolve from the stamp-driven source (ring while nothing has
@@ -374,12 +371,19 @@ fn do_smart_paste(
     let Some(resolved) = resolve_smart(state) else {
         return Ok(());
     };
-    let mut sels = state.panes.state[pid][buf].take_selections();
-    if resolved.bare {
-        let text = state.buffers.get(buf).text();
-        sels = collapse_if_repeat(text, sels, &resolved.values, before);
-    }
-    do_paste(state, pid, buf, before, resolved, sels)
+    let pbs = &state.panes.state[pid][buf];
+    let sels = pbs.selections().clone();
+    let base = if resolved.bare {
+        collapse_if_repeat(
+            pbs.state(state.buffers.get(buf).text()),
+            &resolved.values,
+            before,
+        )
+        .into_selections()
+    } else {
+        sels.clone()
+    };
+    do_paste(state, pid, buf, before, resolved, base, sels)
 }
 
 /// Paste after the selection: plain paste, kill-ring head by default.
@@ -460,12 +464,14 @@ fn do_paste_cycle(
         doc_ops::apply_doc_edit_regrouped(
             &mut state.buffers,
             &state.config.decorations,
-            &mut state.panes.state,
-            &mut state.panes.jumps,
+            &mut crate::editor::position_stores::PositionStores::new(
+                &mut state.panes,
+                &mut state.input,
+            ),
             &mut state.active_session,
             focused,
             buf,
-            |b, s| paste_fn(b, s, &values),
+            |s| paste_fn(s, &values),
         );
         // Cycling always lands on a ring slot, so reflect it in the stamp so a
         // following bare paste (of either variant) continues from here.

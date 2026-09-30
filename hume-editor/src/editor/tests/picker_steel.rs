@@ -533,7 +533,12 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
     let pane = &ed.view.panes[pid];
     assert_eq!(pane.buffer_id, bid);
     assert_eq!(
-        pane.selections[pane.primary_idx].head,
+        pane.selections
+            .iter()
+            .find(|s| s.is_primary)
+            .expect("a primary selection")
+            .cursor
+            .offset(),
         co(0),
         "rendered mirror must reflect buffer B's fresh selection, not A's stale head"
     );
@@ -587,7 +592,11 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
         "sanity: switched to the tall buffer"
     );
 
-    let cursor_char = ed.state.panes.state[pid][bid].selections().primary().head();
+    let cursor_char = ed.state.panes.state[pid][bid]
+        .view(ed.state.buffers.get(bid).text())
+        .primary()
+        .head()
+        .offset();
     let rope = ed.state.buffers.get(bid).text().rope();
     let cursor_line = hume_rope::lines::char_to_ropey_line(rope, cursor_char).index();
 

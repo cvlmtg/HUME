@@ -326,8 +326,12 @@ fn kitty_ctrl_z_z_does_not_extend() {
     ed.handle_key(key_ctrl('z'));
     ed.handle_key(key('z'));
     // Selection must stay collapsed.
-    let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor(), sel.head(), "Ctrl-z z must not extend");
+    let sel = ed.current_view().primary();
+    assert_eq!(
+        sel.anchor().offset(),
+        sel.head().offset(),
+        "Ctrl-z z must not extend"
+    );
 }
 
 /// Esc after Ctrl-g must clear pending_ctrl_extend so the next keypress
@@ -339,10 +343,10 @@ fn kitty_ctrl_g_esc_then_l_does_not_extend() {
     ed.handle_key(key_esc());
     ed.handle_key(key('l'));
     // Selection must stay collapsed: Esc cancelled the Ctrl-g sequence.
-    let sel = ed.current_selections().primary();
+    let sel = ed.current_view().primary();
     assert_eq!(
-        sel.anchor(),
-        sel.head(),
+        sel.anchor().offset(),
+        sel.head().offset(),
         "Esc must clear pending_ctrl_extend"
     );
 }
@@ -367,14 +371,13 @@ fn kitty_ctrl_shift_u_is_noop() {
 // ── Ctrl-d / Ctrl-u — explicit leaf, must NOT extend ─────────────────────
 
 fn scroll_test_editor_kitty() -> Editor {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
     // 30 single-char lines, same shape as page_scroll tests.
     // Viewport height = 24 → half-page = 12.
     let content = "a\n".repeat(30);
     let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(co(0)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.kitty_enabled = true;
     ed
 }
@@ -386,24 +389,28 @@ fn scroll_test_editor_kitty() -> Editor {
 #[test]
 fn ctrl_d_does_not_extend_in_normal_mode() {
     let mut ed = scroll_test_editor_kitty();
-    let before = ed.current_selections().primary();
+    let before = ed.current_view().primary().selection();
     assert_eq!(
-        before.anchor(),
-        before.head(),
+        before.anchor().offset(),
+        before.head().offset(),
         "precondition: collapsed selection"
     );
 
     ed.handle_key(key_ctrl('d'));
 
-    let after = ed.current_selections().primary();
+    let after = ed.current_view().primary();
     // Selection must still be collapsed: anchor == head.
     assert_eq!(
-        after.anchor(),
-        after.head(),
+        after.anchor().offset(),
+        after.head().offset(),
         "Ctrl-d must not extend the selection"
     );
     // The cursor must have moved (scroll actually did something).
-    assert_ne!(after.head(), before.head(), "Ctrl-d must move the cursor");
+    assert_ne!(
+        after.head().offset(),
+        before.head().offset(),
+        "Ctrl-d must move the cursor"
+    );
 }
 
 /// Ctrl-u scrolls without extending (symmetric with Ctrl-d).
@@ -414,10 +421,10 @@ fn ctrl_u_does_not_extend_in_normal_mode() {
     ed.handle_key(key_ctrl('d'));
     ed.handle_key(key_ctrl('u'));
 
-    let after = ed.current_selections().primary();
+    let after = ed.current_view().primary();
     assert_eq!(
-        after.anchor(),
-        after.head(),
+        after.anchor().offset(),
+        after.head().offset(),
         "Ctrl-u must not extend the selection"
     );
 }
@@ -427,18 +434,22 @@ fn ctrl_u_does_not_extend_in_normal_mode() {
 #[test]
 fn extend_mode_ctrl_d_extends() {
     let mut ed = scroll_test_editor_kitty();
-    let before_anchor = ed.current_selections().primary().anchor();
+    let before_anchor = ed.current_view().primary().anchor().offset();
 
     ed.handle_key(key('e')); // enter sticky Extend mode
     ed.handle_key(key_ctrl('d'));
 
-    let after = ed.current_selections().primary();
+    let after = ed.current_view().primary();
     // In Extend mode the anchor must not have moved.
     assert_eq!(
-        after.anchor(),
+        after.anchor().offset(),
         before_anchor,
         "anchor must be pinned in Extend mode"
     );
     // And head must have moved (scroll happened).
-    assert_ne!(after.head(), before_anchor, "head must move in Extend mode");
+    assert_ne!(
+        after.head().offset(),
+        before_anchor,
+        "head must move in Extend mode"
+    );
 }

@@ -27,9 +27,9 @@ fn report_chain_break(state: &mut EditorState, bid: BufferId, brk: &ChainBreak) 
         Severity::Trace,
         format!(
             "syntax: pending-edit chain broken for {bid:?}: \
-             tree_gen={}, text_gen={}, first={:?}, last={:?}; \
+             tree_gen={}, generation={}, first={:?}, last={:?}; \
              full reparse triggered",
-            brk.tree_gen, brk.text_gen, brk.first, brk.last,
+            brk.tree_gen, brk.generation, brk.first, brk.last,
         ),
     );
 }
@@ -55,10 +55,10 @@ impl Editor {
             return;
         }
 
-        let text_gen = self.state.buffers.get(bid).text_gen;
+        let generation = self.state.buffers.get(bid).text().version().generation();
         let text = self.state.buffers.get(bid).text().clone();
         let langs = self.state.config.languages.grammar_snapshot();
-        let (syn, req) = Syntax::attach(bundle, bid, text_gen, &text, &langs);
+        let (syn, req) = Syntax::attach(bundle, bid, generation, &text, &langs);
         self.state.buffers.get_mut(bid).syntax = Some(syn);
         if let Some(req) = req {
             self.parse_worker.post(req);
@@ -78,9 +78,9 @@ impl Editor {
         let Some(buf) = self.state.buffers.try_get_mut(done.bid) else {
             return;
         };
-        let text_gen = buf.text_gen;
+        let generation = buf.text().version().generation();
         if let Some(syn) = buf.syntax.as_mut() {
-            syn.install(done, text_gen);
+            syn.install(done, generation);
         }
     }
 
@@ -161,7 +161,7 @@ impl Editor {
         for bid in visible {
             let size_ok = self.state.syntax_size_ok(bid);
             let buf = self.state.buffers.get(bid);
-            let text_gen = buf.text_gen;
+            let generation = buf.text().version().generation();
 
             // Detach if grown past cap.
             if buf.syntax.is_some() && !size_ok {
@@ -186,7 +186,7 @@ impl Editor {
                 continue;
             }
 
-            // frame_tick is a no-op once parsed_gen == text_gen, so check that
+            // frame_tick is a no-op once parsed_gen == generation, so check that
             // before paying for the text clone and grammar-snapshot Arc bump.
             //
             // Deliberately `parsed_gen`, not `Syntax::is_current`: this asks
@@ -199,7 +199,7 @@ impl Editor {
             if buf
                 .syntax
                 .as_ref()
-                .is_some_and(|s| s.parsed_gen() == Some(text_gen))
+                .is_some_and(|s| s.parsed_gen() == Some(generation))
             {
                 continue;
             }
@@ -213,7 +213,7 @@ impl Editor {
                 .syntax
                 .as_mut()
                 .expect("syntax is_some checked above");
-            let outcome = syn.frame_tick(bid, text_gen, &text, &langs);
+            let outcome = syn.frame_tick(bid, generation, &text, &langs);
 
             if let Some(brk) = outcome.chain_break {
                 report_chain_break(&mut self.state, bid, &brk);
@@ -249,14 +249,14 @@ impl Editor {
 pub(in crate::editor) fn ensure_syntax_current(state: &mut EditorState, bid: BufferId) {
     let size_ok = state.syntax_size_ok(bid);
     let buf = state.buffers.get(bid);
-    let text_gen = buf.text_gen;
+    let generation = buf.text().version().generation();
     let Some(syn) = buf.syntax.as_ref() else {
         return;
     };
-    // Must be `is_current`, not `parsed_gen() == Some(text_gen)`: the weaker
+    // Must be `is_current`, not `parsed_gen() == Some(generation)`: the weaker
     // form returns early on a generation whose parse failed, leaving the
     // stale-layer window `Syntax::ensure_current` exists to close wide open.
-    if syn.is_current(text_gen) {
+    if syn.is_current(generation) {
         return;
     }
     let Some(layers) = syn.layers() else {
@@ -281,7 +281,7 @@ pub(in crate::editor) fn ensure_syntax_current(state: &mut EditorState, bid: Buf
         .syntax
         .as_mut()
         .expect("syntax is_some checked above");
-    if let Some(brk) = syn.ensure_current(bid, text_gen, &text, &langs) {
+    if let Some(brk) = syn.ensure_current(bid, generation, &text, &langs) {
         report_chain_break(state, bid, &brk);
     }
 }

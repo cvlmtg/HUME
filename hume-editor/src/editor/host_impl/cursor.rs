@@ -1,6 +1,5 @@
 //! `EditorHostImpl`'s live cursor/selection reads.
 
-use hume_editing::grapheme::snap_to_cluster_start;
 use hume_rope::offset::CharOffset;
 
 use crate::editor::commands::CommandPane;
@@ -21,17 +20,18 @@ impl<'a> EditorHostImpl<'a> {
         t: CommandPane,
     ) -> (
         &crate::editor::buffer::Buffer,
-        &hume_editing::selection::SelectionSet,
+        hume_editing::selection::EditView<'_>,
     ) {
         let bid = t.bid(self.view);
+        let buf = self.buffer(bid).expect("resolved CommandPane's own buffer");
         (
-            self.buffer(bid).expect("resolved CommandPane's own buffer"),
-            t.state(&self.state.panes.state, self.view).selections(),
+            buf,
+            t.state(&self.state.panes.state, self.view).view(buf.text()),
         )
     }
 
     /// `true` if every *unambiguous* selection in `t`'s pane satisfies `pred`
-    /// (see `hume_editing::selection::linewise_classification`); a selection
+    /// (see `SelectionView::linewise_classification`); a selection
     /// collapsed on an empty line carries no vote either way and is skipped.
     /// A set where every selection is ambiguous votes `pred(false)`: it reads as
     /// charwise, the default a bare collapsed cursor already gets. Deriving that
@@ -40,11 +40,10 @@ impl<'a> EditorHostImpl<'a> {
     /// construction, since `Iterator::all` alone would agree `true` with both
     /// polarities over an empty sequence.
     fn all_unambiguous_selections(&self, t: CommandPane, pred: impl Fn(bool) -> bool) -> bool {
-        let (buf, sels) = self.buffer_and_selections(t);
-        let text = buf.text();
+        let (_, sels) = self.buffer_and_selections(t);
         let mut classified = sels
-            .iter_sorted()
-            .filter_map(|sel| hume_editing::selection::linewise_classification(text, sel))
+            .iter()
+            .filter_map(|sel| sel.linewise_classification())
             .peekable();
         if classified.peek().is_none() {
             pred(false)
@@ -60,18 +59,22 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         let (_, sels) = self.buffer_and_selections(t);
         let bid = t.bid(self.view);
         Ok(self
-            .offset_to_line(bid, sels.primary().head().index())
+            .offset_to_line(bid, sels.primary().head().offset().index())
             .expect("resolved CommandPane's own head offset is always in range"))
     }
 
     fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<(usize, usize, bool)>, String> {
         let t = self.command_pane(pane)?;
         let (_, sels) = self.buffer_and_selections(t);
-        let primary_index = sels.primary_index();
         Ok(sels
-            .iter_sorted()
-            .enumerate()
-            .map(|(i, sel)| (sel.anchor().index(), sel.head().index(), i == primary_index))
+            .iter()
+            .map(|sel| {
+                (
+                    sel.anchor().offset().index(),
+                    sel.head().offset().index(),
+                    sel.is_primary(),
+                )
+            })
             .collect())
     }
 
@@ -89,8 +92,8 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         let t = self.command_pane(pane)?;
         let (buf, sels) = self.buffer_and_selections(t);
         let text = buf.text();
-        let head = snap_to_cluster_start(text, sels.primary().head());
-        let Some(ch) = text.char_at(head) else {
+        let head = sels.primary().head();
+        let Some(ch) = text.char_at(head.offset()) else {
             return Ok(String::new());
         };
         let chars = effective_word_chars(buf, &self.state.settings);
@@ -105,7 +108,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         ) else {
             return Ok(String::new());
         };
-        Ok(text.slice(range.to_exclusive()).to_string())
+        Ok(text.slice(range.chars()).to_string())
     }
 
     fn selections_linewise(&self, pane: PaneHandle) -> Result<bool, String> {

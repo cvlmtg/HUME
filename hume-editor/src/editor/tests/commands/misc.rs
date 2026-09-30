@@ -538,3 +538,28 @@ fn three_indent_is_one_undo_step() {
     assert_eq!(state(&ed), "-[f]>oo\n");
     assert!(!ed.doc().can_undo());
 }
+
+/// `d` that removes nothing (a cursor on the structural `\n` of a line with
+/// text) leaves its register as it was.
+#[test]
+fn d_that_removes_nothing_writes_no_register() {
+    let mut ed = editor_from("-[a]>b\n");
+    for k in ['"', '5', 'd', 'l'] {
+        ed.handle_key(key(k));
+    }
+    assert_eq!(
+        state(&ed),
+        "b-[\n]>",
+        "pre-condition: cursor on the final \\n"
+    );
+    assert_eq!(
+        reg(&ed, '5'),
+        vec!["a"],
+        "pre-condition: the first d wrote '5'"
+    );
+    for k in ['"', '5', 'd'] {
+        ed.handle_key(key(k));
+    }
+    assert_eq!(state(&ed), "b-[\n]>");
+    assert_eq!(reg(&ed, '5'), vec!["a"]);
+}

@@ -1,17 +1,38 @@
 use super::*;
 use crate::editor::tests::co;
 use hume_editing::changeset::ChangeSetBuilder;
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::edit::TextChange;
+use hume_editing::selection::EditView;
 use hume_editing::text::BufferText;
+use test_fixtures::testing::{cursor, single};
+
+/// One text shared by every entry whose text no test builds: long enough for
+/// the largest `char_pos` a test names, and one lineage so any entry built on
+/// it reads back against it.
+fn filler() -> &'static BufferText {
+    static FILLER: std::sync::LazyLock<BufferText> =
+        std::sync::LazyLock::new(|| BufferText::from(format!("{}\n", "x".repeat(10_000)).as_str()));
+    &FILLER
+}
 
 /// Helper: build a JumpEntry with a cursor at `char_pos` on `line`.
-/// Bypasses `JumpEntry::new` since unit tests don't have a BufferText.
+/// Bypasses `JumpEntry::new` so a test can name `line` apart from the text.
 fn entry(char_pos: usize, line: usize) -> JumpEntry {
+    let text = filler();
     JumpEntry {
         buffer_id: hume_engine::pipeline::BufferId::default(),
-        selections: SelectionSet::single(Selection::collapsed(co(char_pos))),
+        selections: single(text, cursor(text, char_pos)),
         primary_line: hume_rope::line::ContentLine::new(line),
     }
+}
+
+/// The primary head of `entry`, read against `text`, the text its
+/// selections belong to.
+fn head(text: &BufferText, entry: &JumpEntry) -> hume_rope::offset::CharOffset {
+    EditView::bind(text, &entry.selections)
+        .primary()
+        .head()
+        .offset()
 }
 
 #[test]
@@ -231,7 +252,7 @@ fn deduplication() {
     assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(10));
     let e = jl.backward(entry(0, 0)).unwrap();
     assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(5));
-    assert_eq!(e.selections.primary().head(), co(3));
+    assert_eq!(head(filler(), e), co(3));
 }
 
 #[test]
@@ -283,11 +304,18 @@ fn backward_saves_current_position() {
 
 /// Helper to create a JumpEntry for a specific BufferId (for prune tests).
 fn entry_for(char_pos: usize, line: usize, bid: BufferId) -> JumpEntry {
+    let text = filler();
     JumpEntry {
         buffer_id: bid,
-        selections: SelectionSet::single(Selection::collapsed(co(char_pos))),
+        selections: single(text, cursor(text, char_pos)),
         primary_line: hume_rope::line::ContentLine::new(line),
     }
+}
+
+/// An entry for a cursor at `char_pos` of `text`, bound to it so a change
+/// from `text` can carry it.
+fn entry_in(text: &BufferText, char_pos: usize, bid: BufferId) -> JumpEntry {
+    JumpEntry::new(single(text, cursor(text, char_pos)), text, bid)
 }
 
 /// Helper: allocate two distinct real BufferIds via a temporary SlotMap.
@@ -393,20 +421,18 @@ fn translate_in_place_shifts_offset_and_primary_line() {
     let (bid, _other) = two_buffer_ids();
     let text_pre = BufferText::from("aaaa\nbbbb\ncccc");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
-    jl.push(entry_for(7, 1, bid)); // head=7 sits inside "bbbb" on line 1
+    jl.push(entry_in(&text_pre, 7, bid)); // head=7 sits inside "bbbb" on line 1
 
     // Insert "XX" at position 0: shifts everything after it by 2.
-    let mut b = ChangeSetBuilder::new(co(14));
+    let mut b = ChangeSetBuilder::new(text_pre.end());
     b.insert("XX");
-    b.retain_rest();
     let cs = b.finish();
-    let edits = cs.edited_old_ranges();
-    let text_post = BufferText::from("XXaaaa\nbbbb\ncccc");
+    let text_post = cs.apply(&text_pre).expect("built for text_pre");
 
-    jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
+    jl.translate_in_place(bid, &TextChange::new(&text_pre, &text_post, &cs));
 
-    let e = jl.backward(entry_for(0, 0, bid)).unwrap();
-    assert_eq!(e.selections.primary().head(), co(9));
+    let e = jl.backward(entry_in(&text_pre, 0, bid)).unwrap();
+    assert_eq!(head(&text_post, e), co(9));
     assert_eq!(
         e.primary_line,
         hume_rope::line::ContentLine::new(line_of("XXaaaa\nbbbb\ncccc", 9))
@@ -425,24 +451,19 @@ fn translate_in_place_shifts_offset_and_primary_line() {
 fn translate_in_place_skips_entries_for_other_buffers() {
     let (edited_bid, other_bid) = two_buffer_ids();
     let text_pre = BufferText::from("aaaa\nbbbb");
+    let other_text = BufferText::from("aaaa\nbbbb");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
-    jl.push(entry_for(2, 0, other_bid));
+    jl.push(entry_in(&other_text, 2, other_bid));
 
-    let mut b = ChangeSetBuilder::new(co(9));
+    let mut b = ChangeSetBuilder::new(text_pre.end());
     b.insert("XX");
-    b.retain_rest();
     let cs = b.finish();
-    let edits = cs.edited_old_ranges();
-    let text_post = BufferText::from("XXaaaa\nbbbb");
+    let text_post = cs.apply(&text_pre).expect("built for text_pre");
 
-    jl.translate_in_place(edited_bid, &edits, &cs, &text_pre, &text_post);
+    jl.translate_in_place(edited_bid, &TextChange::new(&text_pre, &text_post, &cs));
 
-    let e = jl.backward(entry_for(0, 0, other_bid)).unwrap();
-    assert_eq!(
-        e.selections.primary().head(),
-        co(2),
-        "untouched: different buffer"
-    );
+    let e = jl.backward(entry_in(&other_text, 0, other_bid)).unwrap();
+    assert_eq!(head(&other_text, e), co(2), "untouched: different buffer");
     assert_eq!(
         e.primary_line,
         hume_rope::line::ContentLine::new(0),
@@ -458,19 +479,17 @@ fn translate_in_place_collapses_entry_inside_a_full_deletion() {
     let (bid, _other) = two_buffer_ids();
     let text_pre = BufferText::from("abcdef");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
-    jl.push(entry_for(1, 0, bid));
+    jl.push(entry_in(&text_pre, 1, bid));
 
-    let mut b = ChangeSetBuilder::new(co(6));
-    b.delete(6); // remove "abcdef" entirely
-    b.retain_rest();
+    let mut b = ChangeSetBuilder::new(text_pre.end());
+    b.delete_to(co(6)); // remove "abcdef" entirely
     let cs = b.finish();
-    let edits = cs.edited_old_ranges();
-    let text_post = BufferText::from("");
+    let text_post = cs.apply(&text_pre).expect("built for text_pre");
 
-    jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
+    jl.translate_in_place(bid, &TextChange::new(&text_pre, &text_post, &cs));
 
-    let e = jl.backward(entry_for(99, 99, bid)).unwrap();
-    assert_eq!(e.selections.primary().head(), co(0));
+    let e = jl.backward(entry_in(&text_pre, 0, bid)).unwrap();
+    assert_eq!(head(&text_post, e), co(0));
     assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(0));
 }
 
@@ -483,30 +502,28 @@ fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
     // line0 = "aaaa\n" [0,5), line1 = "bbbb\n" [5,10), line2 = "cccc" [10,14)
     let text_pre = BufferText::from("aaaa\nbbbb\ncccc");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
-    jl.push(entry_for(1, 0, bid)); // older: inside line0
-    jl.push(entry_for(7, 1, bid)); // newer: inside line1
+    jl.push(entry_in(&text_pre, 1, bid)); // older: inside line0
+    jl.push(entry_in(&text_pre, 7, bid)); // newer: inside line1
     assert_eq!(jl.len(), 2);
     assert_eq!(jl.cursor, 2, "at the present before the remap");
 
     // Delete "aaaa\nbbbb\n" (positions 0..10): both entries fall inside it
     // and collapse onto the same post-edit point.
-    let mut b = ChangeSetBuilder::new(co(14));
-    b.delete(10);
-    b.retain_rest();
+    let mut b = ChangeSetBuilder::new(text_pre.end());
+    b.delete_to(co(10));
     let cs = b.finish();
-    let edits = cs.edited_old_ranges();
-    let text_post = BufferText::from("cccc");
+    let text_post = cs.apply(&text_pre).expect("built for text_pre");
 
-    jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
+    jl.translate_in_place(bid, &TextChange::new(&text_pre, &text_post, &cs));
 
     assert_eq!(jl.len(), 1, "both entries collapsed into one");
     assert_eq!(jl.cursor, 1, "present remapped to the new length");
 
-    let e = jl.backward(entry_for(99, 99, bid)).unwrap();
-    assert_eq!(e.selections.primary().head(), co(0));
+    let e = jl.backward(entry_in(&text_pre, 0, bid)).unwrap();
+    assert_eq!(head(&text_post, e), co(0));
     assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(0));
     assert!(
-        jl.backward(entry_for(0, 0, bid)).is_none(),
+        jl.backward(entry_in(&text_pre, 0, bid)).is_none(),
         "only one entry survives the collapse"
     );
 }
@@ -522,10 +539,10 @@ fn translate_in_place_preserves_a_backward_created_duplicate_pair() {
     let text_pre = BufferText::from("aaaa\nbbbb\ncccc");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
 
-    jl.push(entry_for(1, 0, bid)); // one entry on line 0
+    jl.push(entry_in(&text_pre, 1, bid)); // one entry on line 0
     // At the present: `backward` saves `current` without dedup, even though
     // it lands on the same line as the last recorded jump.
-    jl.backward(entry_for(3, 0, bid));
+    jl.backward(entry_in(&text_pre, 3, bid));
     assert_eq!(
         jl.len(),
         2,
@@ -534,14 +551,12 @@ fn translate_in_place_preserves_a_backward_created_duplicate_pair() {
 
     // Insert a line above both. A uniform shift, not a collision: both
     // entries move from line 0 to line 1 together.
-    let mut b = ChangeSetBuilder::new(co(14));
+    let mut b = ChangeSetBuilder::new(text_pre.end());
     b.insert("XXXX\n");
-    b.retain_rest();
     let cs = b.finish();
-    let edits = cs.edited_old_ranges();
-    let text_post = BufferText::from("XXXX\naaaa\nbbbb\ncccc");
+    let text_post = cs.apply(&text_pre).expect("built for text_pre");
 
-    jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
+    jl.translate_in_place(bid, &TextChange::new(&text_pre, &text_post, &cs));
 
     assert_eq!(
         jl.len(),
@@ -561,9 +576,9 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
     // line0="aaaa\n"[0,5) line1="bbbb\n"[5,10) line2="cccc\n"[10,15) line3="dddd"[15,19)
     let text_pre = BufferText::from("aaaa\nbbbb\ncccc\ndddd");
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
-    jl.push(entry_for(1, 0, bid)); // A: inside line0, original index 0
-    jl.push(entry_for(7, 1, bid)); // B: inside line1, original index 1
-    jl.push(entry_for(17, 3, bid)); // C: inside line3, original index 2
+    jl.push(entry_in(&text_pre, 1, bid)); // A: inside line0, original index 0
+    jl.push(entry_in(&text_pre, 7, bid)); // B: inside line1, original index 1
+    jl.push(entry_in(&text_pre, 17, bid)); // C: inside line3, original index 2
     assert_eq!(jl.len(), 3);
 
     // Simulate mid-navigation: the user is currently viewing C (original
@@ -575,14 +590,12 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
     // Delete "aaaa\nbbbb\n" (0..10): A and B both fall inside it and
     // collapse onto the same post-edit point; C, past the deletion, merely
     // shifts and lands on a different line.
-    let mut b = ChangeSetBuilder::new(co(19));
-    b.delete(10);
-    b.retain_rest();
+    let mut b = ChangeSetBuilder::new(text_pre.end());
+    b.delete_to(co(10));
     let cs = b.finish();
-    let edits = cs.edited_old_ranges();
-    let text_post = BufferText::from("cccc\ndddd");
+    let text_post = cs.apply(&text_pre).expect("built for text_pre");
 
-    jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
+    jl.translate_in_place(bid, &TextChange::new(&text_pre, &text_post, &cs));
 
     assert_eq!(
         jl.len(),
@@ -597,8 +610,8 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
 
     // Oldest-to-newest: the merged A/B entry, then C. `backward` then
     // `forward` walks both without disturbing which one the cursor lands on.
-    let kept_ab = jl.backward(entry_for(99, 99, bid)).unwrap();
-    assert_eq!(kept_ab.selections.primary().head(), co(0));
+    let kept_ab = jl.backward(entry_in(&text_pre, 0, bid)).unwrap();
+    assert_eq!(head(&text_post, kept_ab), co(0));
     assert_eq!(
         kept_ab.primary_line,
         hume_rope::line::ContentLine::new(0),
@@ -606,7 +619,7 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
     );
     let survivor_c = jl.forward().unwrap();
     assert_eq!(
-        survivor_c.selections.primary().head(),
+        head(&text_post, survivor_c),
         co(7),
         "C merely shifts by the 10-char deletion, unaffected by the A/B merge"
     );

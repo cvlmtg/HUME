@@ -1,6 +1,6 @@
 //! Document sync: mirrors buffer text to attached LSP servers via
 //! `textDocument/didOpen` / `didChange` / `didSave` / `didClose`. Pure
-//! protocol, zero Steel involvement. Version = `Buffer.text_gen`, no
+//! protocol, zero Steel involvement. Version = the buffer text's generation, no
 //! second counter.
 
 use hume_editing::changeset::ChangeSet;
@@ -21,8 +21,8 @@ use crate::editor::buffer::Buffer;
 
 /// One text mutation queued for `didChange` conversion. `before` is the
 /// pre-edit rope (an O(1) clone via ropey's structural sharing, the same
-/// discipline `doc_ops.rs` already uses for `propagate_cs_to_panes`);
-/// `version` is the buffer's `text_gen` *after* this edit, the version the
+/// discipline `doc_ops.rs` uses for its own `rope_pre`);
+/// `version` is the buffer's `generation` *after* this edit, the version the
 /// eventual `didChange` notification claims.
 pub(in crate::editor) struct LspPendingChange {
     pub(in crate::editor) cs: ChangeSet,
@@ -68,7 +68,7 @@ impl Editor {
                 "textDocument": {
                     "uri": uri.as_str(),
                     "languageId": language_id,
-                    "version": wire_version(buf.text_gen),
+                    "version": wire_version(buf.text().version().generation()),
                     "text": buf.text().to_string(),
                 }
             })
@@ -101,7 +101,7 @@ impl Editor {
         }
         self.send_doc_notification(bid, DidChangeTextDocument::METHOD, |buf, uri| {
             serde_json::json!({
-                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text_gen) },
+                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text().version().generation()) },
                 "contentChanges": [{ "text": buf.text().to_string() }],
             })
         });
@@ -233,7 +233,7 @@ pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp:
         {
             let buf = state.buffers.get(bid);
             let params = serde_json::json!({
-                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text_gen) },
+                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text().version().generation()) },
                 "contentChanges": [{ "text": buf.text().to_string() }],
             });
             client.send_or_queue(

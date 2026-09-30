@@ -1,7 +1,7 @@
 //! The seam the editor holds: `Box<dyn LspBackend>`, mirroring
 //! `parse_worker: Box<dyn ParseBackend>` in `hume-treesitter`.
 //!
-//! Transport-flavored only: no capabilities, no `text_gen`, no buffer
+//! Transport-flavored only: no capabilities, no `generation`, no buffer
 //! knowledge. That client-level state lives above this trait.
 
 use std::path::Path;

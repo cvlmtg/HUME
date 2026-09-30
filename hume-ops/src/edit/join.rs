@@ -1,14 +1,13 @@
 //! `join-lines-select-spaces`: join lines inside each selection and select
 //! the inserted spaces.
 
-use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::lines::{leading_whitespace_end, line_break_char, next_line_start};
-use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::BufferText;
+use hume_editing::edit::Edited;
+use hume_editing::edit::{Landing, Landings, edit};
+use hume_editing::lines::{leading_whitespace_end, line_break};
+use hume_editing::selection::Facing;
+use hume_editing::state::EditState;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::CharOffset;
-
-use super::apply_edit;
+use hume_rope::offset::ExclusiveRange;
 
 /// Join lines inside each selection and select the inserted spaces.
 ///
@@ -20,78 +19,72 @@ use super::apply_edit;
 /// whitespace of the next line) with a single space. Whitespace-only or empty
 /// next lines produce no separator; the newline is simply removed.
 ///
-/// After the join, every inserted space becomes a 1-char selection.
-pub fn join_lines_select_spaces(
-    text: BufferText,
-    sels: SelectionSet,
-) -> (BufferText, SelectionSet, ChangeSet) {
-    // Fast path: no selection spans or reaches a joinable line pair.
-    // Return unchanged to avoid resetting cursors (all on last line → no-op).
-    let has_work = sels.iter_sorted().any(|sel| {
-        let start = text.char_to_line(sel.start());
-        let end = text.char_to_line(sel.end_inclusive(&text));
-        start != end || start < text.last_content_line()
+/// After the join, every inserted space becomes a selection of the cluster
+/// it lands in.
+pub fn join_lines_select_spaces(state: EditState) -> Edited {
+    let view = state.view();
+    let last_content_line = state.text().last_content_line();
+    // No selection spans or reaches a joinable line pair (all on the last
+    // line): nothing changes, cursors included.
+    let has_work = view.iter().any(|sel| {
+        let lines = sel.lines();
+        lines.start != lines.end || lines.start < last_content_line
     });
     if !has_work {
-        let mut b = ChangeSetBuilder::new(text.end());
-        b.retain_rest();
-        return (text, sels, b.finish());
+        return Edited::unchanged(state);
     }
 
-    let mut space_positions: Vec<CharOffset> = Vec::new();
+    let text = state.text();
+    let primary = view.primary().index();
+    edit(&state, |b| {
+        let mut spaces = Vec::new();
+        let mut fallback = Vec::new();
+        // The first line not yet joined: selections and the lines each spans
+        // ascend, so a line an earlier selection joined is skipped.
+        let mut next_unjoined = 0;
 
-    let (new_text, fallback_sels, cs) = apply_edit(text, sels, |b, text, _i, sel, new_sels| {
-        let start_line = text.char_to_line(sel.start());
-        let mut end_line = text.char_to_line(sel.end_inclusive(text));
-        if start_line == end_line {
-            // Clamp to the last content line: a cursor there must not join
-            // with the trailing structural-newline line: it would delete
-            // the structural '\n' and panic in the changeset validator.
-            end_line = end_line.advance(1).min(text.last_content_line());
-        }
+        for sel in view.iter() {
+            let lines = sel.lines();
+            // A cursor on the last content line has no next line to join: the
+            // structural '\n' stays.
+            let end_line = if lines.start == lines.end {
+                lines.end.advance(1).min(last_content_line)
+            } else {
+                lines.end
+            };
 
-        // Bare-`usize` range, `ContentLine` re-minted each iteration:
-        // `ContentLine` has no `Step`/`Range` impl to loop over directly (see
-        // CLAUDE.md's "Line counts and ranges"). Sound here: both endpoints
-        // are already-valid `ContentLine`s.
-        for line_idx in start_line.index()..end_line.index() {
-            let line = ContentLine::new(line_idx);
-            let nl_pos = line_break_char(text, line);
-            let next_end_excl = next_line_start(text, line.advance(1).into());
-            let content_start = leading_whitespace_end(text, line.advance(1));
+            let mut last_deletion = None;
+            // Bare-`usize` range, `ContentLine` re-minted each iteration:
+            // `ContentLine` has no `Step`/`Range` impl to loop over directly
+            // (see CLAUDE.md's "Line counts and ranges"). Sound here: both
+            // endpoints are already-valid `ContentLine`s.
+            for line_idx in lines.start.index().max(next_unjoined)..end_line.index() {
+                let line = ContentLine::new(line_idx);
+                let nl_pos = line_break(text, line).offset();
+                let content_start = leading_whitespace_end(text, line.advance(1));
+                let is_blank = content_start >= line_break(text, line.advance(1));
 
-            let is_blank = content_start >= next_end_excl.retreat(1);
-
-            b.retain(nl_pos.max(b.old_pos()).chars_since(b.old_pos()));
-            b.delete(content_start.chars_since(nl_pos));
-
-            if !is_blank {
-                b.insert(" ");
-                space_positions.push(b.new_pos().retreat(1));
+                last_deletion = Some(b.delete(ExclusiveRange::new(nl_pos, content_start.offset())));
+                if !is_blank {
+                    let mark = b.insert(nl_pos, " ");
+                    spaces.push(Landing::covering(mark, Facing::Forward));
+                }
+                next_unjoined = line_idx + 1;
             }
+            fallback.push(match last_deletion {
+                Some(at) => Landing::cursor_ending_at(at),
+                None => Landing::kept(sel.selection()),
+            });
         }
 
-        // Saturating, not `retreat(1)` like `space_positions` above: the loop
-        // can run zero times (single-line selection), leaving `new_pos()` at
-        // 0 for a leading selection.
-        new_sels.push(Selection::collapsed(b.new_pos().retreat_saturating(1)));
-    });
-
-    // Result is the inserted spaces. The command's contract is "select the
-    // separators so they can be adjusted." Selections on lines that didn't join
-    // produce no space and are intentionally dropped; keeping them would scatter
-    // cursors on untouched chars outside the edit. The empty case keeps the
-    // original cursors only because a SelectionSet can't be empty, not as a
-    // competing rule.
-    let new_sel_set = if space_positions.is_empty() {
-        fallback_sels
-    } else {
-        let sels: Vec<Selection> = space_positions
-            .into_iter()
-            .map(Selection::collapsed)
-            .collect();
-        SelectionSet::from_vec(sels, 0)
-    };
-
-    (new_text, new_sel_set, cs)
+        // The result is the inserted spaces, so they can be adjusted;
+        // selections whose lines did not join leave none and are dropped. With
+        // no space at all, the original selections' results stand in, since a
+        // selection set is never empty.
+        if spaces.is_empty() {
+            Landings::new(fallback, primary)
+        } else {
+            Landings::new(spaces, 0)
+        }
+    })
 }

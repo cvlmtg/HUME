@@ -206,9 +206,13 @@ fn split_path_arg_does_not_inherit_source_panes_view() {
     let bid_b = ed.view.panes[pid_b].buffer_id;
     assert_ne!(bid_b, bid_a, "sanity: new pane views a different buffer");
 
+    let text = ed.state.buffers.get(bid_b).text();
     assert_eq!(
-        *ed.state.panes.state[pid_b][bid_b].selections(),
-        ed.state.buffers.get(bid_b).initial_sels(),
+        test_fixtures::testing::serialize_state(
+            text,
+            ed.state.panes.state[pid_b][bid_b].selections()
+        ),
+        test_fixtures::testing::serialize_state(text, &ed.state.buffers.get(bid_b).initial_sels()),
         "new pane starts at the opened file's initial selection, not A's cursor"
     );
 }

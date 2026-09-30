@@ -80,7 +80,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
     ed.feed_key(key_up());
     ed.feed_key(key_down());
     let bid = ed.focused_buffer_id();
-    let cursor_char = ed.current_selections().primary().head();
+    let cursor_char = ed.current_view().primary().head().offset();
     assert_eq!(
         ed.state.buffers.get(bid).text().char_to_line(cursor_char),
         hume_rope::line::ContentLine::new(1),

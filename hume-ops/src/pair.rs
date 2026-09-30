@@ -1,10 +1,19 @@
 //! Scanning primitives for paired delimiters (brackets and quotes).
 
-use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::lines::next_line_start;
-use hume_editing::selection::Selection;
+use hume_editing::lines::line_range;
+use hume_editing::selection::SelectionView;
 use hume_editing::text::BufferText;
-use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
+use hume_rope::cluster::{ClusterRange, ClusterStart};
+use hume_rope::offset::{CharOffset, ExclusiveRange};
+
+/// The clusters from the one holding the delimiter at `open` through the one
+/// holding the delimiter at `close`. The scans below walk chars, and a
+/// delimiter can share its cluster with a preceding prepend mark, so every
+/// pair they find leaves this module through here.
+fn delimited(text: &BufferText, open: CharOffset, close: CharOffset) -> ClusterRange {
+    ClusterRange::through(text.full_slice(), text.snap(open), text.snap(close))
+        .expect("an open delimiter precedes its close")
+}
 
 // ---------------------------------------------------------------------------
 // Bracket pairs
@@ -60,37 +69,43 @@ pub(crate) fn scan_right_for_close(
     None
 }
 
-/// Find the innermost bracket pair `(open, close)` that encloses `pos`.
+/// The char offsets of the innermost `(open, close)` bracket pair enclosing
+/// the char at `pos`.
 ///
-/// If the cursor is ON an open bracket, that bracket itself is the start.
+/// If `pos` is ON an open bracket, that bracket itself is the start.
 /// If ON a close bracket, that bracket is the end.
 /// Otherwise, scans both directions for the enclosing pair.
-pub(crate) fn find_bracket_pair(
+fn bracket_pair_chars(
     text: &BufferText,
     pos: CharOffset,
     open: char,
     close: char,
-) -> Option<InclusiveRange<CharOffset>> {
+) -> Option<(CharOffset, CharOffset)> {
     match text.char_at(pos)? {
         ch if ch == open => {
-            // Cursor is on an open bracket: scan right for the matching close.
             // `pos.shift(1)` cannot panic: `char_at` above already proved
             // `pos < text.len_chars()`.
             let close_pos = scan_right_for_close(text, pos.shift(1), open, close)?;
-            Some(InclusiveRange::new(pos, close_pos))
+            Some((pos, close_pos))
         }
-        ch if ch == close => {
-            // Cursor is on a close bracket: scan left for the matching open.
-            let open_pos = scan_left_for_open(text, pos, open, close)?;
-            Some(InclusiveRange::new(open_pos, pos))
-        }
-        _ => {
-            // Cursor is inside: scan both directions.
-            let open_pos = scan_left_for_open(text, pos, open, close)?;
-            let close_pos = scan_right_for_close(text, pos, open, close)?;
-            Some(InclusiveRange::new(open_pos, close_pos))
-        }
+        ch if ch == close => Some((scan_left_for_open(text, pos, open, close)?, pos)),
+        _ => Some((
+            scan_left_for_open(text, pos, open, close)?,
+            scan_right_for_close(text, pos, open, close)?,
+        )),
     }
+}
+
+/// The innermost `open`/`close` bracket pair enclosing `pos`, delimiters
+/// included. A cluster on either bracket belongs to that bracket's pair.
+pub(crate) fn find_bracket_pair(
+    text: &BufferText,
+    pos: ClusterStart,
+    open: char,
+    close: char,
+) -> Option<ClusterRange> {
+    let (open_pos, close_pos) = bracket_pair_chars(text, pos.offset(), open, close)?;
+    Some(delimited(text, open_pos, close_pos))
 }
 
 /// `bracket_role` for every ASCII byte, built from `BRACKET_PAIRS` so the
@@ -182,8 +197,9 @@ fn step_bracket(
 /// in `BRACKET_PAIRS` order.
 pub(crate) fn find_tightest_bracket_pair(
     text: &BufferText,
-    pos: CharOffset,
-) -> Option<InclusiveRange<CharOffset>> {
+    pos: ClusterStart,
+) -> Option<ClusterRange> {
+    let pos = pos.offset();
     let ch = text.char_at(pos)?;
     let role = bracket_role(ch);
 
@@ -274,13 +290,13 @@ pub(crate) fn find_tightest_bracket_pair(
         .zip(&closes)
         .filter_map(|(&open_pos, &close_pos)| open_pos.zip(close_pos))
         .min_by_key(|&(open_pos, close_pos)| close_pos.chars_since(open_pos))
-        .map(|(open_pos, close_pos)| InclusiveRange::new(open_pos, close_pos))
+        .map(|(open_pos, close_pos)| delimited(text, open_pos, close_pos))
 }
 
 /// Find the bracket nearest `sel`'s head, scanning the selection span.
 ///
-/// `sel`'s head is always one extremity of the span (`start()` or `end()`;
-/// for a collapsed selection the two coincide), never interior, so
+/// `sel`'s head is always one extremity of the span (its first or last
+/// cluster; for a cursor the two coincide), never interior, so
 /// "nearest to head, within the selection" is just "scan the span from the
 /// head's end inward"; the first hit is, by construction, the nearest one.
 /// Uses `chars_at` rather than indexed `char_at` calls so the scan pays
@@ -296,19 +312,22 @@ pub(crate) fn find_tightest_bracket_pair(
 /// This never loses the motivating `") "` case: `expand_word_unit`'s
 /// whitespace bookend stops at a newline, so a `w`/`W`/`maw` selection never
 /// crosses one.
-fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(CharOffset, char, char)> {
+fn nearest_bracket(sel: SelectionView<'_>) -> Option<(CharOffset, char, char)> {
     let classify = |(i, ch): (CharOffset, char)| {
         let (k, _) = bracket_role(ch)?;
         let (o, c) = BRACKET_PAIRS[k];
         Some((i, o, c))
     };
-    let head = sel.head();
-    let span = if text.char_to_line(sel.start()) == text.char_to_line(sel.end_inclusive(text)) {
-        ExclusiveRange::new(sel.start(), sel.end_exclusive(text))
+    let text = sel.text();
+    let lines = sel.lines();
+    let span: ExclusiveRange<CharOffset> = if lines.start == lines.end {
+        sel.covered().chars()
     } else {
-        ExclusiveRange::new(head, next_grapheme_boundary(text, head))
+        ClusterRange::through(text.full_slice(), sel.head(), sel.head())
+            .expect("one cluster")
+            .chars()
     };
-    if head == span.start {
+    if sel.head().offset() == span.start {
         text.chars_at(span.start)
             .take(span.end.chars_since(span.start))
             .find_map(classify)
@@ -335,9 +354,9 @@ fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(CharOffset, cha
 /// head's own cluster is always checked first: a bracket char is always
 /// ASCII and never itself combines forward, but a `GC_Prepend` codepoint
 /// immediately before one (e.g. U+0600 ARABIC NUMBER SIGN) joins *into* it,
-/// so a head landing on that leading codepoint (exactly where
-/// [`hume_editing::grapheme::snap_to_cluster_start`] leaves a motion after
-/// matching such a bracket) must still resolve, or a second `%`-style press
+/// so a head landing on that leading codepoint (where every position that
+/// matches such a bracket lands, since it is the cluster's start) must still
+/// resolve, or a second `%`-style press
 /// (an involution) finds nothing and the cursor-match highlight goes dark on
 /// a bracket the cursor is visibly beside.
 ///
@@ -348,14 +367,16 @@ fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(CharOffset, cha
 /// cursor highlight (`hume-editor`'s `decoration_providers`). Both need the
 /// same answer to "what does this character pair with", so there is exactly
 /// one place `BRACKET_PAIRS` gets consulted for it.
-pub fn matching_bracket(text: &BufferText, sel: Selection) -> Option<CharOffset> {
-    let (bracket_pos, open, close) = nearest_bracket(text, sel)?;
-    let range = find_bracket_pair(text, bracket_pos, open, close)?;
-    Some(if bracket_pos == range.start {
-        range.end
+pub fn matching_bracket(sel: SelectionView<'_>) -> Option<ClusterStart> {
+    let text = sel.text();
+    let (bracket_pos, open, close) = nearest_bracket(sel)?;
+    let (open_pos, close_pos) = bracket_pair_chars(text, bracket_pos, open, close)?;
+    let partner = if bracket_pos == open_pos {
+        close_pos
     } else {
-        range.start
-    })
+        open_pos
+    };
+    Some(text.snap(partner))
 }
 
 // ---------------------------------------------------------------------------
@@ -371,19 +392,18 @@ pub fn matching_bracket(text: &BufferText, sel: Selection) -> Option<CharOffset>
 /// If `pos` is ON a quote char, parity resolves whether it is open or close.
 pub(crate) fn find_quote_pair(
     text: &BufferText,
-    pos: CharOffset,
+    pos: ClusterStart,
     quote: char,
-) -> Option<InclusiveRange<CharOffset>> {
-    let line = text.char_to_line(pos);
-    let line_start = text.line_to_char(line.into());
-    let line_end = next_line_start(text, line.into());
+) -> Option<ClusterRange> {
+    let pos = pos.offset();
+    let line = line_range(text, text.char_to_line(pos)).chars();
 
     // Single pass: track the opening quote position; on every second hit we
     // have a complete pair and can test whether `pos` falls inside it.
     let mut open: Option<CharOffset> = None;
     for (i, ch) in text
-        .chars_at(line_start)
-        .take(line_end.chars_since(line_start))
+        .chars_at(line.start)
+        .take(line.end.chars_since(line.start))
     {
         if ch == quote {
             match open {
@@ -391,7 +411,7 @@ pub(crate) fn find_quote_pair(
                 Some(open_pos) => {
                     // even occurrence → closing quote
                     if open_pos <= pos && pos <= i {
-                        return Some(InclusiveRange::new(open_pos, i));
+                        return Some(delimited(text, open_pos, i));
                     }
                     open = None; // reset for next pair
                 }

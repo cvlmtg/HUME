@@ -28,7 +28,7 @@ fn goto_next_paragraph_centers_view_by_default() {
     // whose content line is 2*15 = 30.
     key_count(&mut ed, 15, '}');
 
-    let head = ed.current_selections().primary().head();
+    let head = ed.current_view().primary().head().offset();
     assert_eq!(
         head,
         co(hume_rope::lines::line_start_char(
@@ -57,7 +57,7 @@ fn goto_next_paragraph_centers_view_in_extend_mode() {
     let mut ed = paragraph_editor(20);
     ed.execute_keymap_command("goto-next-paragraph".into(), Some(15), true);
 
-    let head = ed.current_selections().primary().head();
+    let head = ed.current_view().primary().head().offset();
     assert_eq!(
         head,
         co(hume_rope::lines::line_start_char(
@@ -85,7 +85,7 @@ fn goto_next_paragraph_count_past_the_last_paragraph_still_centers() {
     let mut ed = paragraph_editor(20);
     ed.execute_keymap_command("goto-next-paragraph".into(), Some(50), false);
 
-    let head = ed.current_selections().primary().head();
+    let head = ed.current_view().primary().head().offset();
     assert_eq!(
         head,
         co(hume_rope::lines::line_start_char(
@@ -206,7 +206,7 @@ fn goto_next_function_centers_view_by_default() {
     ed.execute_keymap_command("goto-next-function".into(), None, false);
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(hume_rope::lines::line_start_char(
             ed.doc().text().rope(),
             hume_rope::line::RopeyLine::new(21)

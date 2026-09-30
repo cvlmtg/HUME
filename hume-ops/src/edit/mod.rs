@@ -1,8 +1,8 @@
-use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
-use hume_editing::text::BufferText;
-use hume_rope::offset::CharOffset;
+use hume_editing::edit::{EditBuilder, Edited, Landing, Landings, edit};
+use hume_editing::selection::SelectionView;
+use hume_editing::state::EditState;
+#[cfg(test)]
+use hume_editing::{selection::SelectionSet, text::BufferText};
 
 mod align;
 mod case;
@@ -17,7 +17,7 @@ mod sort;
 pub use align::align_selections;
 pub use case::{make_text_capitalized, make_text_lowercase, make_text_uppercase};
 pub use delete::{
-    change_span, dedent_tab_backward, delete_char_backward, delete_char_forward, delete_selection,
+    Removal, dedent_tab_backward, delete_char_backward, delete_char_forward, delete_selection,
     delete_selection_content, delete_word_backward,
 };
 pub use indent::{indent_lines, unindent_lines};
@@ -32,205 +32,29 @@ pub use replace::{
 };
 pub use sort::{SortOpts, SortRefusal, sort_lines};
 
-// ── Edit scaffolding ──────────────────────────────────────────────────────────
-//
-// Every editing operation follows the same structural pattern:
-//   1. Create a ChangeSetBuilder sized to the current buffer.
-//   2. Walk selections in sorted order, executing per-selection logic.
-//   3. Retain everything after the last selection (retain_rest).
-//   4. Apply the changeset to produce the new buffer.
-//   5. Assemble and merge the new SelectionSet.
-//
-// Rather than repeat this 5-step frame across every function, `apply_edit`
-// extracts it and delegates the per-selection work to a closure. Every
-// sibling in this directory (insert/delete/paste/replace/case/join/align)
-// builds on it.
-//
-// The ChangeSet is returned so the undo system can call `cs.invert(&old_text)`
-// to produce the inverse transaction. The caller (Document) holds the pre-edit
-// buffer and handles the invert timing constraint.
-
-/// Apply an edit command `count` times, composing all changesets into one.
-///
-/// The command must return `(BufferText, SelectionSet, ChangeSet)`. The N
-/// changesets are folded with [`ChangeSet::compose`] so the whole repetition
-/// becomes a single undo step when passed to the editor buffer's own
-/// `apply_edit`.
-///
-/// For motions, count is handled inside `apply_motion` per-selection instead
-/// (prevents premature merging of multi-cursor selections between steps).
-///
-/// If `count == 0`, returns the original state with an identity ChangeSet.
+/// Apply an edit command `count` times as one edit, so the repetition is a
+/// single undo step. `count == 0` leaves `state` unchanged.
 ///
 /// Test-only, but used from `hume-editor`'s test suite too (a downstream
 /// crate); see the `test-util` feature.
 #[cfg(any(test, feature = "test-util"))]
-pub fn repeat_edit(
-    count: usize,
-    text: BufferText,
-    sels: SelectionSet,
-    cmd: impl Fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
-) -> (BufferText, SelectionSet, ChangeSet) {
-    let mut current_text = text;
-    let mut current_sels = sels;
-    let mut composed: Option<ChangeSet> = None;
-
-    for _ in 0..count {
-        let (new_text, new_sels, cs) = cmd(current_text, current_sels);
-        // ChangeSet::compose(A, B) produces A→C from A→B and B→C, combining
-        // N individual edits into one for purposes of undo/redo granularity.
-        composed = Some(match composed {
-            None => cs,
-            Some(prev) => prev.compose(cs),
-        });
-        current_text = new_text;
-        current_sels = new_sels;
-    }
-
-    let cs = composed.unwrap_or_else(|| {
-        // count == 0: produce an identity changeset (all Retain).
-        let mut b = ChangeSetBuilder::new(current_text.end());
-        b.retain_rest();
-        b.finish()
-    });
-    (current_text, current_sels, cs)
+pub fn repeat_edit(count: usize, state: EditState, cmd: impl Fn(EditState) -> Edited) -> Edited {
+    (0..count).fold(Edited::unchanged(state), |edited, _| edited.then(&cmd))
 }
 
-/// Core loop for all editing operations.
-///
-/// The closure `f` receives:
-///   - `b`: the changeset builder (original-buffer coordinate space)
-///   - `text`: shared borrow of the original buffer for read-only queries
-///   - `i`: 0-based iteration index in sorted order
-///   - `sel`: the current selection
-///   - `new_sels`: accumulator for result selections; `f` must push exactly one entry
-///
-/// Returns the new buffer, merged selection set, and changeset.
-///
-/// # Why `FnMut` and not `Fn`?
-///
-/// Rust's closure traits form a hierarchy: `FnOnce ⊇ FnMut ⊇ Fn`.
-/// `FnMut` means the closure may mutate its captured environment across calls,
-/// which is the right default for a closure invoked in a loop. Even when the
-/// closure only captures `Copy` values (like `char`), requiring `FnMut` keeps
-/// the bound consistent and allows future closures to close over counters or
-/// accumulators without changing the helper's signature.
-pub fn apply_edit<F>(
-    text: BufferText,
-    sels: SelectionSet,
-    mut f: F,
-) -> (BufferText, SelectionSet, ChangeSet)
+/// One edit made selection by selection. `f` receives the builder and the
+/// selection, and returns where that selection lands; the primary stays on
+/// the primary's result. The builder applies its operations in position
+/// order, so the order `f` records them in does not matter.
+pub fn apply_edit<F>(state: EditState, mut f: F) -> Edited
 where
-    F: FnMut(&mut ChangeSetBuilder, &BufferText, usize, &Selection, &mut Vec<Selection>),
+    F: for<'a, 'id> FnMut(&mut EditBuilder<'a, 'id>, SelectionView<'a>) -> Landing<'id>,
 {
-    let mut b = ChangeSetBuilder::new(text.end());
-    let mut new_sels = Vec::with_capacity(sels.len());
-    let primary_idx = sels.primary_index();
-
-    for (i, sel) in sels.iter_sorted().enumerate() {
-        f(&mut b, &text, i, sel, &mut new_sels);
-    }
-
-    b.retain_rest();
-    // finish() before apply() so the ChangeSet is available for undo/redo
-    // bookkeeping. invert() must be called against the pre-edit buffer; the
-    // caller (Buffer) holds that buffer and handles the timing constraint.
-    let cs = b.finish();
-    let new_text = cs
-        .apply(&text)
-        .expect("edit operation produced an invalid changeset: this is a bug");
-    // Positions in `new_sels` are in the edited text, whose cluster
-    // boundaries the closure cannot see: an inserted combining mark can merge
-    // with the char before it, and a run ending on a mark ends inside its
-    // cluster.
-    let new_sel_set = SelectionSet::from_vec_snapped(new_sels, primary_idx, &new_text);
-    new_sel_set.debug_assert_valid(&new_text);
-    (new_text, new_sel_set, cs)
-}
-
-/// Delete the grapheme cluster at `p` and push a cursor result onto `new_sels`.
-///
-/// No-op when `p` is the last position in the buffer (the structural trailing
-/// `\n`): deleting it would violate the buffer invariant.
-///
-/// All offsets fed to `b` are in original-buffer coordinate space. The builder
-/// translates them to result-buffer positions internally.
-fn delete_one_grapheme(
-    b: &mut ChangeSetBuilder,
-    text: &BufferText,
-    new_sels: &mut Vec<Selection>,
-    p: CharOffset,
-) {
-    if p >= text.last_char() {
-        // Cursor is on the structural trailing '\n', so it cannot be deleted.
-        b.retain(p.chars_since(b.old_pos()));
-        let sel = Selection::collapsed(b.new_pos());
-        new_sels.push(sel);
-        return;
-    }
-    let end = next_grapheme_boundary(text, p);
-    b.retain(p.chars_since(b.old_pos()));
-    b.delete(end.chars_since(p));
-    let sel = Selection::collapsed(b.new_pos());
-    new_sels.push(sel);
-}
-
-/// Delete the entire region covered by `sel` and push a cursor at `start()`.
-///
-/// Uses `sel.end_inclusive()` so that multi-codepoint grapheme clusters
-/// (e.g. `e + \u{0301}`) are deleted atomically. The deletion is capped at
-/// the last content character (`text.last_content_char()`) so that the
-/// structural trailing `\n` is never removed, matching the protection in
-/// `delete_one_grapheme`.
-///
-/// **Last-line whole-line special case**: when the selection spans the entire
-/// last content line (head on the structural `\n`, anchor at the line's start)
-/// *and* there is a preceding line, the preceding `\n` is consumed instead of
-/// the structural one. This matches the vim `dd`-on-last-line convention:
-/// rather than leaving a blank trailing line the line merges back into the one
-/// above it by removing the separator newline.
-fn delete_sel_region(
-    b: &mut ChangeSetBuilder,
-    text: &BufferText,
-    sel: &Selection,
-    new_sels: &mut Vec<Selection>,
-) {
-    let start = sel.start();
-    // Special case: whole last line with a preceding line.
-    // `is_selection_linewise` confirms the selection spans full lines (starts at a
-    // line boundary, ends on '\n'). `end_inclusive > last_content_char` confirms
-    // the selection reaches the structural trailing '\n' (i.e. this is the last
-    // line). `start > 0` confirms there is a line above to merge into.
-    let on_last_line = sel.end_inclusive(text) > text.last_content_char();
-    if on_last_line && is_selection_linewise(text, sel) && start > CharOffset::new(0) {
-        // Consume the preceding '\n' instead of the structural one so the last
-        // line disappears rather than becoming an empty trailing line (vim
-        // `dd`-on-last-line convention).
-        let del_start = hume_editing::grapheme::prev_grapheme_boundary(text, start);
-        if del_start >= b.old_pos() {
-            // Cursor: land at the start of the merged line (what was the line
-            // above the deleted one). Compute as (del_start's new_pos) minus
-            // del_start's char column within its original line. This stays
-            // correct in the multi-cursor case where b.new_pos() != b.old_pos().
-            let prev_line = text.char_to_line(del_start);
-            let char_col = hume_editing::lines::char_col_in_line(text, prev_line, del_start);
-            b.retain(del_start.chars_since(b.old_pos()));
-            // Saturating, not `retreat`: earlier lines' edits can shorten the
-            // content above, landing `new_pos()` below `char_col`.
-            let cursor_new = b.new_pos().retreat_saturating(char_col.index());
-            // Delete from the preceding '\n' through the last content char,
-            // keeping the structural trailing '\n'. `last_char()` is exactly
-            // `last_content_char() + 1` (the buffer's own exclusive content
-            // bound), so no `+ 1` is needed here.
-            b.delete(text.last_char().chars_since(del_start));
-            new_sels.push(Selection::collapsed(cursor_new));
-            return;
-        }
-    }
-    // Normal path: cap at the last content char so the structural '\n' is never removed.
-    b.retain(start.chars_since(b.old_pos()));
-    b.delete(sel.content_end_exclusive(text).chars_since(start));
-    new_sels.push(Selection::collapsed(b.new_pos()));
+    let primary = state.view().primary().index();
+    edit(&state, |plan| {
+        let landings = state.view().iter().map(|sel| f(plan, sel)).collect();
+        Landings::new(landings, primary)
+    })
 }
 
 #[cfg(test)]

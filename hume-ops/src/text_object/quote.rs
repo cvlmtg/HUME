@@ -1,40 +1,24 @@
 //! Inner/around quote text objects: `"`, `'`, `` ` ``.
 
-use hume_editing::selection::SelectionSet;
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 
-use super::apply_text_object_by_mode;
-use super::bracket::inner_of_pair;
+use super::{apply_text_object_by_mode, inner_of_pair};
 use crate::MotionMode;
 use crate::pair::find_quote_pair;
 
-fn inner_quote(
-    text: &BufferText,
-    pos: CharOffset,
-    quote: char,
-) -> Option<InclusiveRange<CharOffset>> {
-    let pair = find_quote_pair(text, pos, quote)?;
-    inner_of_pair(text, pair)
+fn inner_quote(text: &BufferText, pos: ClusterStart, quote: char) -> Option<ClusterRange> {
+    inner_of_pair(text, find_quote_pair(text, pos, quote)?)
 }
 
 macro_rules! quote_cmds {
     ($inner_name:ident, $around_name:ident, $quote:literal) => {
-        pub fn $inner_name(
-            text: &BufferText,
-            sels: SelectionSet,
-            _count: usize,
-            mode: MotionMode,
-        ) -> SelectionSet {
-            apply_text_object_by_mode(text, sels, mode, |b, pos| inner_quote(b, pos, $quote))
+        pub fn $inner_name(state: EditState, _count: usize, mode: MotionMode) -> EditState {
+            apply_text_object_by_mode(state, mode, |t, pos| inner_quote(t, pos, $quote))
         }
-        pub fn $around_name(
-            text: &BufferText,
-            sels: SelectionSet,
-            _count: usize,
-            mode: MotionMode,
-        ) -> SelectionSet {
-            apply_text_object_by_mode(text, sels, mode, |b, pos| find_quote_pair(b, pos, $quote))
+        pub fn $around_name(state: EditState, _count: usize, mode: MotionMode) -> EditState {
+            apply_text_object_by_mode(state, mode, |t, pos| find_quote_pair(t, pos, $quote))
         }
     };
 }

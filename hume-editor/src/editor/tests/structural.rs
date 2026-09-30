@@ -7,10 +7,6 @@
 // `textobjects.scm`: run scripts/fetch-test-grammars.sh.
 
 use super::*;
-
-use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::selection::Selection;
-use hume_rope::offset::ExclusiveRange;
 use hume_treesitter::registry::QueryPaths;
 use test_fixtures::{
     grammar_query_path, helix_textobjects_path, helix_textobjects_path_unchecked,
@@ -61,29 +57,21 @@ pub(super) fn rust_editor(source: &str) -> Editor {
     ed
 }
 
-/// The text a selection covers (inclusive of the grapheme at `end()`).
-fn text_of(text: &BufferText, sel: Selection) -> String {
-    let end = next_grapheme_boundary(text, sel.end_inclusive(text));
-    text.slice(ExclusiveRange::new(sel.start(), end))
-        .to_string()
-}
-
 /// The text covered by the focused buffer's primary selection. A slice
 /// rather than the marker-annotated `state()` string: Rust source is
 /// multi-line, and hand-computing exact marker offsets across a whole
 /// function body is more error-prone than checking the selected substring
 /// itself.
 fn selected_text(ed: &Editor) -> String {
-    text_of(ed.doc().text(), ed.current_selections().primary())
+    ed.current_view().primary().slice().to_string()
 }
 
 /// The text covered by every selection, sorted by position, for
 /// multi-cursor assertions.
 fn selection_texts(ed: &Editor) -> Vec<String> {
-    let text = ed.doc().text();
-    ed.current_selections()
-        .iter_sorted()
-        .map(|&sel| text_of(text, sel))
+    ed.current_view()
+        .iter()
+        .map(|sel| sel.slice().to_string())
         .collect()
 }
 
@@ -172,7 +160,7 @@ fn goto_next_function_selects_the_whole_next_function_head_at_start() {
         "fn alpha() {\n    let c = || {\n        1;\n    };\n}"
     );
     // Head at the object's start (first char of "fn").
-    let sel = ed.current_selections().primary();
+    let sel = ed.current_view().primary();
     assert_eq!(sel.head(), sel.start());
 }
 
@@ -271,11 +259,11 @@ fn goto_next_function_records_a_jump_list_entry() {
 #[test]
 fn goto_next_function_extend_keeps_the_anchor() {
     let mut ed = rust_editor(NAV_SRC);
-    let anchor_before = ed.current_selections().primary().anchor();
+    let anchor_before = ed.current_view().primary().anchor().offset();
     ed.execute_keymap_command("goto-next-function".into(), None, true);
-    let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor(), anchor_before);
-    assert_ne!(sel.head(), anchor_before);
+    let sel = ed.current_view().primary();
+    assert_eq!(sel.anchor().offset(), anchor_before);
+    assert_ne!(sel.head().offset(), anchor_before);
 }
 
 /// `goto-next-argument` navigates `parameter.inside` (not `.around`, whose
@@ -295,7 +283,7 @@ fn inner_function_two_cursors_in_two_functions_selects_both() {
     for ch in "mif".chars() {
         ed.handle_key(key(ch));
     }
-    assert_eq!(ed.current_selections().len(), 2);
+    assert_eq!(ed.current_view().len(), 2);
     assert_eq!(
         selection_texts(&ed),
         vec!["{\n    1;\n}".to_string(), "{\n    2;\n}".to_string()]
@@ -308,7 +296,7 @@ fn inner_function_two_cursors_in_one_function_merge() {
     for ch in "mif".chars() {
         ed.handle_key(key(ch));
     }
-    assert_eq!(ed.current_selections().len(), 1);
+    assert_eq!(ed.current_view().len(), 1);
     assert_eq!(selected_text(&ed), "{\n    let a = 1;\n    let b = 2;\n}");
 }
 
@@ -364,7 +352,7 @@ fn structural_command_before_the_first_parse_lands_is_a_no_op() {
 /// pre-edit text, so reading them would resolve spans against byte offsets
 /// the buffer no longer has.
 ///
-/// A gate on `parsed_gen() == Some(text_gen)` in place of `Syntax::is_current`
+/// A gate on `parsed_gen() == Some(generation)` in place of `Syntax::is_current`
 /// would return early here and leave `m i f` collecting from the stale gen-0
 /// tree, selecting the pre-edit body text (or tripping `collect_hulls`'s
 /// `end_byte <= len_bytes` debug assert).
@@ -382,7 +370,7 @@ fn structural_command_after_a_failed_parse_reparses_instead_of_reading_stale_lay
     assert_eq!(ed.doc().text().to_string(), "fn target() {\n}\n");
 
     // That generation's parse fails: parsed_gen advances, layers do not.
-    let text_gen = ed.state.buffers.get(bid).text_gen;
+    let generation = ed.state.buffers.get(bid).text().version().generation();
     let bundle = {
         let syn = ed.state.buffers.get(bid).syntax.as_ref().expect("syntax");
         std::sync::Arc::clone(syn.bundle())
@@ -396,16 +384,16 @@ fn structural_command_after_a_failed_parse_reparses_instead_of_reading_stale_lay
         .install(
             ParseDone {
                 bid,
-                text_gen,
+                generation,
                 bundle,
                 outcome: ParseOutcome::ParseFailed,
             },
-            text_gen,
+            generation,
         );
     let syn = ed.state.buffers.get(bid).syntax.as_ref().expect("syntax");
-    assert_eq!(syn.parsed_gen(), Some(text_gen));
+    assert_eq!(syn.parsed_gen(), Some(generation));
     assert!(
-        !syn.is_current(text_gen),
+        !syn.is_current(generation),
         "layers must still predate the edit, otherwise this test proves nothing"
     );
 
@@ -581,7 +569,7 @@ fn goto_next_class_selects_the_whole_next_struct() {
         rust_editor("-[/]>/ c\nstruct Alpha {\n    a: i32,\n}\n\nstruct Beta {\n    b: i32,\n}\n");
     ed.execute_keymap_command("goto-next-class".into(), None, false);
     assert_eq!(selected_text(&ed), "struct Alpha {\n    a: i32,\n}");
-    let sel = ed.current_selections().primary();
+    let sel = ed.current_view().primary();
     assert_eq!(sel.head(), sel.start());
 }
 

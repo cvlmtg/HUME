@@ -40,7 +40,7 @@ pub trait CursorHost {
     /// `(selections-linewise? pane)`: every *unambiguous* selection in
     /// `pane`'s own pane is linewise (spans whole lines, anchor to trailing
     /// `\n`). A selection collapsed onto a single empty line is ambiguous
-    /// (see `hume_editing::selection::linewise_classification`) and carries
+    /// (see `SelectionView::linewise_classification`) and carries
     /// no vote either way. `false` when every selection is ambiguous,
     /// matching an ordinary collapsed cursor's default.
     ///

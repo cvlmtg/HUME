@@ -50,7 +50,7 @@ pub(crate) const MAX_INJECTION_DEPTH: u8 = 3;
 
 pub struct ParseRequest {
     pub bid: BufferId,
-    pub text_gen: u64,
+    pub generation: u64,
     /// The grammar bundle to parse with. Read on the worker thread for
     /// `set_language` and injection resolution.
     pub bundle: Arc<GrammarBundle>,
@@ -96,7 +96,7 @@ pub struct ParsedInjection {
 
 pub struct ParseDone {
     pub bid: BufferId,
-    pub text_gen: u64,
+    pub generation: u64,
     /// The grammar bundle this was parsed with. Its `config_gen` is compared
     /// on the main thread to detect grammar swaps that occurred while the
     /// request was in flight.
@@ -106,7 +106,7 @@ pub struct ParseDone {
 
 // ── Coalescing helper ─────────────────────────────────────────────────────────
 
-/// Insert `req` into `batch`, keeping only the highest-`text_gen` entry per `bid`.
+/// Insert `req` into `batch`, keeping only the highest-`generation` entry per `bid`.
 /// Older or equal-gen duplicates are dropped without cloning.
 fn coalesce_one(batch: &mut FxHashMap<BufferId, ParseRequest>, req: ParseRequest) {
     use std::collections::hash_map::Entry;
@@ -118,8 +118,8 @@ fn coalesce_one(batch: &mut FxHashMap<BufferId, ParseRequest>, req: ParseRequest
             // Keep the latest generation; when generations are equal, a different
             // config_gen means a grammar swap on a quiescent buffer, so take the
             // new entry so the fresh grammar wins even without a text edit.
-            if req.text_gen > o.get().text_gen
-                || (req.text_gen == o.get().text_gen
+            if req.generation > o.get().generation
+                || (req.generation == o.get().generation
                     && req.bundle.config_gen != o.get().bundle.config_gen)
             {
                 o.insert(req);
@@ -212,7 +212,7 @@ pub(crate) fn do_parse(
 
     ParseDone {
         bid: req.bid,
-        text_gen: req.text_gen,
+        generation: req.generation,
         bundle: req.bundle,
         outcome,
     }
@@ -239,7 +239,7 @@ impl WorkerState {
             };
 
             // Coalesce: drain any additional queued requests, keeping only the
-            // highest-text_gen request per BufferId.  Superseded requests are
+            // highest-generation request per BufferId.  Superseded requests are
             // already obsolete and would produce trees the main thread discards.
             let mut batch: FxHashMap<BufferId, ParseRequest> = FxHashMap::default();
             coalesce_one(&mut batch, first);

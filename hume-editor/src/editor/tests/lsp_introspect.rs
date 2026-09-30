@@ -6,11 +6,8 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
-use crate::editor::buffer::Buffer;
 use crate::editor::commands::open_pane_in_layout;
 use crate::editor::lsp::LspState;
-use hume_editing::selection::SelectionSet;
-use hume_editing::text::BufferText;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
@@ -432,10 +429,10 @@ fn lsp_linewise_ranges_params_splits_on_a_gap() {
 }
 
 /// A selection collapsed onto an empty line reads as linewise by
-/// `is_selection_linewise`'s definition, but is ambiguous (see
+/// `SelectionView::is_linewise`'s definition, but is ambiguous (see
 /// `linewise_classification`), not a deliberate selection. It must not
 /// bridge two real linewise selections it happens to touch on both sides
-/// into one coalesced range that silently reformats the blank line's
+/// into one coalesced range that reformats the blank line's
 /// neighbors together.
 #[test]
 fn lsp_linewise_ranges_params_does_not_bridge_across_a_collapsed_blank_line_selection() {
@@ -550,22 +547,17 @@ fn lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise() {
 /// selection's inclusive `head` sits on the cluster's first char.
 #[test]
 fn lsp_primary_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
-    use hume_editing::selection::Selection;
-
     let tmp = safe_tempdir();
     // "caf" + é (U+0065 U+0301, two chars) + "\n". Grapheme boundaries:
     // 0,1,2,3,5,6; é occupies chars 3..5. Selection anchor=0, head=3
     // (inclusive) covers "caf" plus é's first char only.
     let content = "caf\u{0065}\u{0301}\n";
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from(content),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(content)));
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-range-grapheme.rs")));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
 
-    ed.set_current_selections(SelectionSet::single(Selection::new(co(0), co(3))));
+    select(&mut ed, &[(0, 3)], 0);
 
     let fired = run_probe(
         &mut ed,

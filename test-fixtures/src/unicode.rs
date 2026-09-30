@@ -81,14 +81,13 @@ pub const ALL: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use hume_rope::grapheme::graphemes_at;
-    use hume_rope::offset::CharOffset;
     use ropey::Rope;
 
     use super::*;
 
     fn clusters(s: &str) -> usize {
         let rope = Rope::from_str(s);
-        graphemes_at(rope.slice(..), CharOffset::new(0)).count()
+        graphemes_at(rope.slice(..), hume_rope::cluster::ClusterBound::TEXT_START).count()
     }
 
     #[test]

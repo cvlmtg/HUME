@@ -14,7 +14,7 @@
 - hume-scripting
 - test-fixtures *(dev-only)*
 ## Description
-Rope-domain primitives: line counting and ranges, grapheme-cluster boundaries, buffer char offsets, display-column width, and LSP wire-position conversion. The single source of truth every other crate defers to for "how many lines" and "how wide is this text" — a pure math layer with no knowledge of buffers, selections, or rendering.
+Rope-domain primitives: line counting and ranges, grapheme-cluster boundaries and the typed cluster positions only it can mint (`ClusterStart`, `ClusterBound`, `ClusterRange`), buffer char offsets, display-column width, and LSP wire-position conversion. The single source of truth every other crate defers to for "how many lines" and "how wide is this text" — a pure math layer with no knowledge of buffers, selections, or rendering.
 
 # hume-grid
 ### Depends on
@@ -50,7 +50,7 @@ Platform abstraction layer: terminal control, frame presentation, process spawni
 - hume-decorations
 - hume-scripting
 ## Description
-Core text-editing model: the document (`BufferText`, a rope of Unicode scalar values with a recorded line-ending style), the cursor model (`Selection`/`SelectionSet`), edits as data (`ChangeSet`, invertible and composable), and the undo tree (`History`). A pure data-and-algorithm layer — no knowledge of the editor, keymaps, rendering, or scripting.
+Core text-editing model: the document (`BufferText`, a rope of Unicode scalar values with a recorded line-ending style), the selection model (`Selection`/`SelectionSet`, read and changed only paired with their text as `EditView`/`EditState`), edits as data (`EditBuilder` producing `ChangeSet`s, invertible and composable), and the undo tree (`History`). A pure data-and-algorithm layer — no knowledge of the editor, keymaps, rendering, or scripting.
 
 # hume-engine
 ### Depends on
@@ -63,7 +63,7 @@ Core text-editing model: the document (`BufferText`, a rope of Unicode scalar va
 - hume-ui
 - hume-decorations
 ## Description
-Rendering pipeline and pane geometry: the split/pane layout tree, the frame-render pipeline, decoration/statusline/tabline provider traits, and theming. Deliberately has no dependency on `hume-editing`: it renders from ropes and provider-supplied data and has no notion of selections, edits, or undo.
+Rendering pipeline and pane geometry: the split/pane layout tree, the frame-render pipeline, decoration/statusline/tabline provider traits, and theming. Has no dependency on `hume-editing`: it renders from ropes and provider-supplied data, and paints selections the editor hands it as `PaintedSelection`s, with no notion of edits or undo.
 
 # hume-ops
 ### Depends on

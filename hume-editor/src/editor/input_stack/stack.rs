@@ -143,6 +143,13 @@ pub(in crate::editor) trait Layer: Any {
     /// callback yet, regardless of which reason applies.
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView, _why: Removal) {}
 
+    /// The pane snapshot this layer restores on exit, for the layers that
+    /// keep one (`Search`, `Sift`), so a text change can carry it. `None` by
+    /// default.
+    fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
+        None
+    }
+
     /// The minibuffer this layer owns, if it's one of the four
     /// minibuf-backed mode layers (`Command`/`Search`/`Sift`/`Prompt`).
     /// [`InputStack::minibuf`] walks topmost-first over this. At most one
@@ -384,6 +391,15 @@ impl InputStack {
             .iter()
             .rev()
             .find_map(|(_, layer)| layer.downcast_ref())
+    }
+
+    /// Every open layer's pane snapshot.
+    pub(in crate::editor) fn snapshots_mut(
+        &mut self,
+    ) -> impl Iterator<Item = &mut super::PaneSnapshot> + '_ {
+        self.layers
+            .iter_mut()
+            .filter_map(|(_, layer)| layer.snapshot_mut())
     }
 
     pub(in crate::editor) fn find_mut<L: Layer>(&mut self) -> Option<&mut L> {

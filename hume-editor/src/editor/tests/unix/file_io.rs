@@ -435,7 +435,7 @@ fn edit_position_suffix_on_an_unopened_file_places_the_cursor() {
     ed.execute_typed("e", Some(&arg)).unwrap();
 
     assert_eq!(ed.doc().path(), Some(canonical.as_path()));
-    assert_eq!(ed.current_selections().primary().head(), co(14));
+    assert_eq!(ed.current_view().primary().head().offset(), co(14));
 }
 
 #[test]
@@ -459,7 +459,7 @@ fn edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor
     ed.execute_typed("e", Some(&arg)).unwrap();
 
     assert_eq!(ed.doc().path(), Some(canonical1.as_path()));
-    assert_eq!(ed.current_selections().primary().head(), co(18));
+    assert_eq!(ed.current_view().primary().head().offset(), co(18));
 }
 
 #[test]
@@ -467,19 +467,19 @@ fn edit_position_suffix_on_the_focused_buffer_records_a_jump_entry() {
     let (_f, canonical) = three_line_file();
 
     let mut ed = Editor::open(Some(canonical.clone()), std::sync::Arc::new(|| {})).unwrap();
-    let before = ed.current_selections().primary().head();
+    let before = ed.current_view().primary().head().offset();
 
     let arg = format!("{}:3", canonical.display());
     ed.execute_typed("e", Some(&arg)).unwrap();
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(18),
         "cursor must move to line 3"
     );
 
     ed.handle_key(key_ctrl('o'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         before,
         "Ctrl-o must return to the pre-:e position"
     );
@@ -494,7 +494,7 @@ fn edit_position_suffix_on_another_file_ctrl_o_returns_in_one_step() {
 
     let mut ed = Editor::open(Some(canonical1.clone()), std::sync::Arc::new(|| {})).unwrap();
     ed.execute_typed("goto", Some("2")).unwrap();
-    let before = ed.current_selections().primary().head();
+    let before = ed.current_view().primary().head().offset();
 
     let arg = format!("{}:3", canonical2.display());
     ed.execute_typed("e", Some(&arg)).unwrap();
@@ -511,7 +511,7 @@ fn edit_position_suffix_on_another_file_ctrl_o_returns_in_one_step() {
         "one Ctrl-o must return to the first file, not stop on the second file's own start"
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         before,
         "Ctrl-o must land exactly on the pre-:e position"
     );
@@ -532,7 +532,7 @@ fn edit_a_disk_file_literally_named_with_a_colon_number_opens_without_splitting(
         "the literal path must win over splitting"
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "no position suffix was split off, so the cursor stays at the buffer start"
     );
@@ -609,7 +609,7 @@ fn edit_position_suffix_tolerates_a_trailing_colon() {
     ed.execute_typed("e", Some(&arg)).unwrap();
 
     assert_eq!(ed.doc().path(), Some(canonical.as_path()));
-    assert_eq!(ed.current_selections().primary().head(), co(18));
+    assert_eq!(ed.current_view().primary().head().offset(), co(18));
 }
 
 #[test]
@@ -624,7 +624,7 @@ fn edit_position_suffix_column_past_line_end_clamps() {
     ed.execute_typed("e", Some(&arg)).unwrap();
 
     assert_eq!(ed.doc().path(), Some(canonical.as_path()));
-    assert_eq!(ed.current_selections().primary().head(), co(16));
+    assert_eq!(ed.current_view().primary().head().offset(), co(16));
 }
 
 /// A new-file buffer opened while an intermediate directory was missing is
@@ -720,7 +720,7 @@ fn apply_startup_positions_places_focused_cursor() {
     );
     ed.apply_startup_positions();
 
-    assert_eq!(ed.current_selections().primary().head(), co(14));
+    assert_eq!(ed.current_view().primary().head().offset(), co(14));
 }
 
 /// The `cmd_view_center` call inside `apply_startup_positions` (and its
@@ -765,8 +765,6 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
 
 #[test]
 fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() {
-    use hume_editing::selection::SelectionSet;
-
     let f1 = safe_named_tempfile();
     let f2 = safe_named_tempfile();
     std::fs::write(f1.path(), "hello\n").unwrap();
@@ -791,9 +789,16 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
     ed.apply_startup_positions();
 
     let pid = ed.state.focus.id();
+    let text = ed.state.buffers.get(extra_bid).text();
     assert_eq!(
-        *ed.state.panes.state[pid][extra_bid].selections(),
-        SelectionSet::single(hume_editing::selection::Selection::collapsed(co(12))),
+        test_fixtures::testing::serialize_state(
+            text,
+            ed.state.panes.state[pid][extra_bid].selections()
+        ),
+        test_fixtures::testing::serialize_state(
+            text,
+            &test_fixtures::testing::single(text, test_fixtures::testing::cursor(text, 12))
+        ),
         "non-focused buffer's parked pane state must hold the requested position"
     );
     assert_eq!(
@@ -802,7 +807,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
         "a startup placement on another buffer must not move focus"
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "the focused buffer, which got no placement, must be untouched"
     );
@@ -832,7 +837,7 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
     ed.apply_startup_positions();
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(18),
         "a line past the buffer's end must clamp to the last content line, not error"
     );
@@ -970,7 +975,7 @@ fn wa_skips_pathless_buffers() {
 
     // Only one file buffer: scratch shouldn't add to the count.
     let scratch_bid = {
-        let scratch = Buffer::new(BufferText::from("scratch\n"), SelectionSet::default());
+        let scratch = Buffer::at_start(BufferText::from("scratch\n"));
         let bid = ed.open_buffer(scratch);
         ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid);
         dirty_focused(&mut ed);

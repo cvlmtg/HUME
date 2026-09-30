@@ -162,18 +162,18 @@ fn view_buffer_arrow_keys_move_cursor_not_select() {
     ed.execute_typed("messages", None).unwrap();
 
     // Cursor starts at last content line. Move up one line.
-    let head_before = ed.current_selections().primary().head();
+    let head_before = ed.current_view().primary().head().offset();
     ed.handle_key(key_up());
 
-    let sel = ed.current_selections().primary();
+    let sel = ed.current_view().primary();
     // Selection must be collapsed (anchor == head), not a whole-line span.
     assert_eq!(
-        sel.anchor(),
-        sel.head(),
+        sel.anchor().offset(),
+        sel.head().offset(),
         "Up in view buffer must produce a collapsed cursor, not a selection"
     );
     assert!(
-        sel.head() < head_before,
+        sel.head().offset() < head_before,
         "Up must move the cursor backward in the buffer"
     );
 }
@@ -378,12 +378,14 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
     let result = doc_ops::apply_doc_history_walk(
         &mut ed.state.buffers,
         &ed.state.config.decorations,
-        &mut ed.state.panes.state,
-        &mut ed.state.panes.jumps,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut ed.state.panes,
+            &mut ed.state.input,
+        ),
         &ed.state.active_session,
         focused,
         bid,
-        |b| b.undo_n(1),
+        |b, id, stores| b.undo_n(id, stores, 1),
     )
     .unwrap();
     assert_eq!(

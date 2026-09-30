@@ -7,7 +7,6 @@ use std::path::Path;
 use super::*;
 use crate::editor::buffer::Buffer;
 use crate::editor::lsp::LspState;
-use hume_editing::selection::SelectionSet;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
@@ -268,7 +267,7 @@ fn apply_text_edits_is_one_undo_step() {
 fn apply_text_edits_version_mismatch_rejected() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let stale_gen = ed.doc().text_gen;
+    let stale_gen = ed.doc().text().version().generation();
     // Make an unrelated edit first so the buffer's generation moves past
     // what the (fictional) LSP response was computed against.
     ed.handle_key(key('i'));
@@ -564,10 +563,7 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
     // to the focused pane's own open session, the same shape a `call!`
     // targeting a different pane would produce.
     let pid_a = ed.state.focus.id();
-    let other_bid = ed.open_buffer(Buffer::new(
-        BufferText::from("misc\n"),
-        SelectionSet::default(),
-    ));
+    let other_bid = ed.open_buffer(Buffer::at_start(BufferText::from("misc\n")));
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
@@ -672,7 +668,7 @@ fn goto_location_same_buffer_char_indexed_shape() {
     let before = state(&ed);
     type_cmd(&mut ed, ":go");
     assert_ne!(state(&ed), before);
-    assert_eq!(ed.current_selections().primary().head(), co(3));
+    assert_eq!(ed.current_view().primary().head().offset(), co(3));
 
     // A jump entry was pushed: Ctrl-o must return to the origin.
     ed.handle_key(key_ctrl('o'));
@@ -701,7 +697,7 @@ fn goto_location_noop_does_not_clobber_forward_history() {
     ed.handle_key(key_ctrl('o'));
     let back_at_start = state(&ed);
     assert_ne!(back_at_start, after_percent);
-    assert_eq!(ed.current_selections().primary().head(), co(0));
+    assert_eq!(ed.current_view().primary().head().offset(), co(0));
 
     // `:go` targets char 0 (already there): a no-op.
     type_cmd(&mut ed, ":go");
@@ -746,7 +742,7 @@ fn goto_location_other_open_buffer_by_path_string() {
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(ed.focused_buffer_id(), other_bid);
-    assert_eq!(ed.current_selections().primary().head(), co(1));
+    assert_eq!(ed.current_view().primary().head().offset(), co(1));
 }
 
 #[test]
@@ -767,7 +763,7 @@ fn goto_location_unopened_path_opens_it() {
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "hello\n");
-    assert_eq!(ed.current_selections().primary().head(), co(2));
+    assert_eq!(ed.current_view().primary().head().offset(), co(2));
 }
 
 #[test]
@@ -782,7 +778,7 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
     );
     type_cmd(&mut ed, ":go");
     let len_chars = ed.doc().text().end();
-    let head = ed.current_selections().primary().head();
+    let head = ed.current_view().primary().head().offset();
     assert!(
         head < len_chars,
         "head must satisfy head < len_chars(): got head={head:?}, len_chars={len_chars:?}"
@@ -813,8 +809,8 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     // times as far down.
     let content: String = (0..30).map(|_| format!("{}\n", "x".repeat(25))).collect();
     let text = hume_editing::text::BufferText::from(content.as_str());
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     let pid = ed.state.focus.id();
     ed.execute_typed("set", Some("pane wrap-mode=soft:10"))
         .unwrap();
@@ -829,7 +825,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     );
     type_cmd(&mut ed, ":go");
 
-    let cursor_char = ed.current_selections().primary().head();
+    let cursor_char = ed.current_view().primary().head();
     let bid = ed.focused_buffer_id();
     let key = ed.state.format_key(&ed.view.panes[pid]);
     let (mut dlm, viewport) = crate::editor::commands::pane_display_lines(
@@ -912,7 +908,7 @@ fn goto_location_wire_shape_decodes_with_the_responses_encoding() {
         .expect("goto-location! must have opened the target file");
     assert_eq!(ed.focused_buffer_id(), bid);
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(2),
         "byte offset 3 on \"aébcdef\" names char index 2 ('b'); a UTF-16 guess would land on \
          char index 3 ('c') instead"

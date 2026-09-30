@@ -1,13 +1,13 @@
 //! `align-selections`: align each selection's anchor to the primary
 //! selection's anchor display column.
 
-use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
+use hume_editing::edit::Edited;
+use hume_editing::edit::Landing;
 use hume_editing::grapheme::{char_pos_at_display_col, display_col_in_line};
-use hume_editing::selection::SelectionSet;
-use hume_editing::text::BufferText;
+use hume_editing::state::EditState;
 use hume_rope::column::BufferLineCol;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use super::apply_edit;
 
@@ -30,32 +30,34 @@ use super::apply_edit;
 /// `rem_cells` display cells (what the target math uses), so `fit_need` is
 /// exact. Deleting a tab can free more cells than needed; the surplus is
 /// padded back with spaces so every selection lands on `target`.
-pub fn align_selections(
-    text: BufferText,
-    sels: SelectionSet,
-    tab_width: u8,
-) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn align_selections(state: EditState, tab_width: u8) -> Edited {
+    let text = state.text();
+    let view = state.view();
     // ── Pass 1: measure ────────────────────────────────────────────────────────
 
-    // Geometry for each selection in sorted order (matches apply_edit iteration).
+    // Geometry for each selection in sorted order.
     struct SelMeta {
         start_line: ContentLine,
         is_multiline: bool,
         anchor_display_col: BufferLineCol, // display col of sel.anchor() (left for forward, right for backward)
         start_display_col: BufferLineCol, // display col of sel.start(), the same value pass 3 re-derives from the same unedited text, cached here to avoid the second walk
-        rem: usize,          // chars removable before sel.start() while keeping ≥1 space
-        rem_cells: u32,      // display-cell width of the `rem`-char run (tab-aware)
+        rem: usize, // chars removable before sel.start(): the whitespace run back to the previous selection's end or the line start, less one kept space
+        rem_cells: u32, // display-cell width of the `rem`-char run (tab-aware)
         slot: Option<usize>, // None = multiline or extra (slot >= N)
     }
 
-    let primary_line = text.char_to_line(sels.primary().anchor());
+    let primary_line = text.char_to_line(view.primary().anchor().offset());
     let mut slots_on_line = rustc_hash::FxHashMap::<ContentLine, usize>::default();
 
-    let mut meta: Vec<SelMeta> = sels
-        .iter_sorted()
+    let mut previous_end = CharOffset::new(0);
+    let mut meta: Vec<SelMeta> = view
+        .iter()
         .map(|sel| {
-            let start_line = text.char_to_line(sel.start());
-            let is_multiline = start_line != text.char_to_line(sel.end_inclusive(&text));
+            let run_floor = previous_end;
+            previous_end = sel.covered().end().offset();
+            let lines = sel.lines();
+            let start_line = lines.start;
+            let is_multiline = lines.start != lines.end;
             if is_multiline {
                 return SelMeta {
                     start_line,
@@ -68,9 +70,9 @@ pub fn align_selections(
                 };
             }
             let anchor_display_col =
-                display_col_in_line(&text, start_line, sel.anchor(), tab_width);
+                display_col_in_line(text, start_line, sel.anchor().offset(), tab_width);
             let line_start = text.line_to_char(start_line.into());
-            let sel_start = sel.start();
+            let sel_start = sel.start().offset();
             // `sel.start()` is `anchor.min(head)`, so for a forward selection
             // (anchor <= head) it's the anchor itself, so reuse the column just
             // walked above rather than walking the same prefix again. Only a
@@ -78,9 +80,9 @@ pub fn align_selections(
             let start_display_col = if sel.anchor() <= sel.head() {
                 anchor_display_col
             } else {
-                display_col_in_line(&text, start_line, sel_start, tab_width)
+                display_col_in_line(text, start_line, sel_start, tab_width)
             };
-            let rem = (line_start.index()..sel_start.index())
+            let rem = (run_floor.max(line_start).index()..sel_start.index())
                 .rev()
                 .take_while(|&p| matches!(text.char_at(CharOffset::new(p)), Some(' ') | Some('\t')))
                 .count()
@@ -93,7 +95,7 @@ pub fn align_selections(
             // content width into the run's width.
             let run_start = sel_start.retreat(rem);
             let rem_cells = start_display_col
-                .cells_since(display_col_in_line(&text, start_line, run_start, tab_width));
+                .cells_since(display_col_in_line(text, start_line, run_start, tab_width));
             let counter = slots_on_line.entry(start_line).or_insert(0);
             let slot = *counter;
             *counter += 1;
@@ -114,10 +116,7 @@ pub fn align_selections(
 
     if n_slots == 0 {
         // Primary is multiline: no slot structure, everything passes through.
-        let mut b = ChangeSetBuilder::new(text.end());
-        b.retain_rest();
-        let cs = b.finish();
-        return (text, sels, cs);
+        return Edited::unchanged(state);
     }
 
     // Mark slots >= n_slots as extras → pass through.
@@ -140,7 +139,7 @@ pub fn align_selections(
     }
 
     // Group participating metas by line for pair-wise constraint computation.
-    // Values are in slot order (sels.iter_sorted() is ascending by start).
+    // Values are in slot order (selections are in document order).
     let mut by_line: rustc_hash::FxHashMap<ContentLine, Vec<&SelMeta>> =
         rustc_hash::FxHashMap::default();
     for m in &meta {
@@ -204,86 +203,60 @@ pub fn align_selections(
     let mut current_line: Option<ContentLine> = None;
     let mut line_shift = 0isize;
 
-    apply_edit(text, sels, |b, text, i, sel, new_sels| {
-        let sel_start = sel.start();
-        let content_len = sel.end_exclusive(text).chars_since(sel_start);
-        let start_line = text.char_to_line(sel_start);
+    apply_edit(state, |b, sel| {
+        let i = sel.index();
+        let text = b.text();
+        let sel_start = sel.start().offset();
+        let start_line = sel.lines().start;
 
         if Some(start_line) != current_line {
             current_line = Some(start_line);
             line_shift = 0;
         }
 
-        match meta[i].slot {
-            None => {
-                // Extras + multiline: retain up to sel_start, capture the global
-                // delta (from all edits before this position), retain the
-                // content, push shifted selection.
-                b.retain(sel_start.chars_since(b.old_pos()));
-                let delta = b.new_pos().index() as isize - b.old_pos().index() as isize;
-                b.retain(content_len);
-                new_sels.push(sel.map_ends(|pos| pos.shift(delta)));
-            }
-            Some(slot) => {
-                let target = targets[slot];
-                // Adjust the original anchor display column by the net shift
-                // from earlier edits on this line to get the current anchor
-                // display column.
-                // Measured in pass 1 from the same (still unedited) text:
-                // a `Some(slot)` meta is exactly one that took pass 1's
-                // single-line branch, which is what populates this field.
-                let anchor_display_col_now =
-                    meta[i].anchor_display_col.shift_saturating(line_shift);
-                let amount = target.get() as isize - anchor_display_col_now.get() as isize;
+        if let Some(slot) = meta[i].slot {
+            let target = targets[slot];
+            // The original anchor display column moved by the net shift from
+            // earlier edits on this line.
+            let anchor_display_col_now = meta[i].anchor_display_col.shift_saturating(line_shift);
+            let amount = target.get() as isize - anchor_display_col_now.get() as isize;
 
-                if amount > 0 {
-                    b.retain(sel_start.chars_since(b.old_pos()));
-                    b.insert(&" ".repeat(amount as usize));
-                    line_shift += amount;
-                } else if amount < 0 {
-                    // Remove whitespace immediately before sel_start, resolving
-                    // the needed cell count back to a char count. Measured in
-                    // original-buffer columns throughout (`start_display_col`,
-                    // `threshold`, `freed`), the same origin `need` (derived
-                    // from `amount`, itself anchor-based) already assumes;
-                    // mixing origins across this subtraction would be worse
-                    // than the approximation `line_shift` already makes below.
-                    let need = (-amount) as u32;
-                    // Same unedited-text walk pass 1 already did for this
-                    // selection (see `SelMeta::start_display_col`'s doc),
-                    // reused rather than repeated.
-                    let start_display_col = meta[i].start_display_col;
-                    let max_remove = meta[i].rem.min(sel_start.chars_since(b.old_pos()));
-                    // Largest position whose column is still `need` cells left
-                    // of sel_start: char_pos_at_display_col stops *before* a
-                    // grapheme that would overshoot, so a tab straddling the
-                    // threshold is deleted whole and the surplus padded back.
-                    let threshold = start_display_col.retreat_saturating(need);
-                    let cut = char_pos_at_display_col(text, start_line, threshold, tab_width);
-                    let remove = sel_start.chars_since(cut).min(max_remove);
-                    let cut_pos = sel_start.retreat(remove);
-                    let freed = start_display_col
-                        .cells_since(display_col_in_line(text, start_line, cut_pos, tab_width));
-                    // 0 unless a tab's granularity overshot the exact target.
-                    let pad = freed.saturating_sub(need);
-                    b.retain(cut_pos.chars_since(b.old_pos()));
-                    if remove > 0 {
-                        b.delete(remove);
-                    }
-                    if pad > 0 {
-                        b.insert(&" ".repeat(pad as usize));
-                    }
-                    line_shift += pad as isize - freed as isize;
-                } else {
-                    b.retain(sel_start.chars_since(b.old_pos()));
+            if amount > 0 {
+                b.insert(sel_start, &" ".repeat(amount as usize));
+                line_shift += amount;
+            } else if amount < 0 {
+                // Remove whitespace immediately before sel_start, resolving
+                // the needed cell count back to a char count. Measured in
+                // original-buffer columns throughout (`start_display_col`,
+                // `threshold`, `freed`), the same origin `need` (derived
+                // from `amount`, itself anchor-based) already assumes;
+                // mixing origins across this subtraction would be worse
+                // than the approximation `line_shift` already makes.
+                let need = (-amount) as u32;
+                let start_display_col = meta[i].start_display_col;
+                // Largest position whose column is still `need` cells left
+                // of sel_start: char_pos_at_display_col stops *before* a
+                // grapheme that would overshoot, so a tab straddling the
+                // threshold is deleted whole and the surplus padded back.
+                let threshold = start_display_col.retreat_saturating(need);
+                let cut = char_pos_at_display_col(text, start_line, threshold, tab_width);
+                let remove = sel_start.chars_since(cut.offset()).min(meta[i].rem);
+                let cut_pos = sel_start.retreat(remove);
+                let freed = start_display_col
+                    .cells_since(display_col_in_line(text, start_line, cut_pos, tab_width));
+                // 0 unless a tab's granularity overshot the exact target.
+                let pad = freed.saturating_sub(need);
+                b.delete(ExclusiveRange::new(cut_pos, sel_start));
+                if pad > 0 {
+                    b.insert(sel_start, &" ".repeat(pad as usize));
                 }
-
-                // b.old_pos() is now at sel_start. Record the mapped start, retain
-                // content, then push the selection shifted onto it.
-                let delta = b.new_pos().index() as isize - sel_start.index() as isize;
-                b.retain(content_len);
-                new_sels.push(sel.map_ends(|pos| pos.shift(delta)));
+                line_shift += pad as isize - freed as isize;
             }
         }
+
+        // Extras and multiline selections only move with the edits before
+        // them.
+        let mark = b.keep(sel.covered());
+        Landing::covering(mark, sel.facing())
     })
 }

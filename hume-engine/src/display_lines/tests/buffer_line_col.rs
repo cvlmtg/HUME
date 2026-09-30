@@ -18,10 +18,10 @@ fn line_display_col_matches_locate_column_in_no_wrap() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    for offset in 0..=rope.len_chars() {
-        let expected = dlm.locate(co(offset)).1;
+    for offset in 0..rope.len_chars() {
+        let expected = dlm.locate(at(&rope, offset)).1;
         assert_eq!(
-            dlm.buffer_line_col(co(offset)).get(),
+            dlm.buffer_line_col(at(&rope, offset)).get(),
             expected.get(),
             "offset {offset}"
         );
@@ -41,14 +41,14 @@ fn buffer_line_col_accumulates_across_a_wrap_display_line() {
 
     // Sanity: the display-line boundary actually falls where the arithmetic assumes.
     assert_eq!(
-        dlm.locate(co(2)).0.slot,
+        dlm.locate(at(&rope, 2)).0.slot,
         1,
         "third character starts display line 1"
     );
 
     for offset in 0..4 {
         assert_eq!(
-            dlm.buffer_line_col(co(offset)),
+            dlm.buffer_line_col(at(&rope, offset)),
             ldc(offset as u32 * 2),
             "offset {offset}"
         );
@@ -71,7 +71,7 @@ fn line_display_col_excludes_wrap_indent() {
 
     for offset in 0..rope.len_chars() {
         assert_eq!(
-            dlm.buffer_line_col(co(offset)),
+            dlm.buffer_line_col(at(&rope, offset)),
             ldc(offset as u32),
             "offset {offset}"
         );
@@ -82,7 +82,7 @@ fn line_display_col_excludes_wrap_indent() {
     // column (`locate`) disagrees with the buffer-line-relative one, proving
     // `buffer_line_col` isn't just forwarding `locate`'s answer verbatim.
     let last = rope.len_chars() - 1;
-    let (pos, display_line_col) = dlm.locate(co(last));
+    let (pos, display_line_col) = dlm.locate(at(&rope, last));
     assert!(
         pos.slot > 0,
         "the line must actually wrap for this test to mean anything"
@@ -108,12 +108,12 @@ fn line_display_col_counts_a_preceding_inline_insert() {
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        dlm.buffer_line_col(co(0)),
+        dlm.buffer_line_col(at(&rope, 0)),
         ldc(0),
         "'a' precedes the insert"
     );
     assert_eq!(
-        dlm.buffer_line_col(co(1)),
+        dlm.buffer_line_col(at(&rope, 1)),
         ldc(3),
         "'b' is pushed right by the insert's 2 cells"
     );
@@ -132,10 +132,10 @@ fn char_at_line_display_col_round_trips_with_line_display_col() {
     let mut dlm = map(&rope, WrapMode::Indent { width: 7 }, &providers, &mut s);
 
     for offset in 0..rope.len_chars() - 1 {
-        let col = dlm.buffer_line_col(co(offset));
+        let col = dlm.buffer_line_col(at(&rope, offset));
         assert_eq!(
             dlm.char_at_buffer_line_col(ContentLine::new(0), col, DisplayColTarget::NearestContent),
-            co(offset),
+            at(&rope, offset),
             "offset {offset}, col {col:?}"
         );
     }
@@ -158,7 +158,10 @@ fn char_at_line_display_col_clamps_to_last_char_on_a_shorter_line() {
             ldc(5),
             DisplayColTarget::NearestContent
         ),
-        co(hume_rope::lines::line_start_char(&rope, RopeyLine::new(1)).index() + 1),
+        at(
+            &rope,
+            hume_rope::lines::line_start_char(&rope, RopeyLine::new(1)).index() + 1
+        ),
         "clamps to 'b', not the '\\n'"
     );
 }
@@ -177,7 +180,7 @@ fn char_at_line_display_col_lands_on_newline_for_an_empty_line() {
             ldc(5),
             DisplayColTarget::NearestContent
         ),
-        co(0)
+        at(&rope, 0)
     );
 }
 

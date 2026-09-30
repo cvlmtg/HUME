@@ -5,7 +5,6 @@
 use super::*;
 use crate::editor::buffer::Buffer;
 use crate::editor::host_impl::EditorHostImpl;
-use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_scripting::host::{PopupKind, UiHost};
 use termina::event::{KeyCode, Modifiers};
@@ -546,13 +545,14 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
             .input
             .buffer_completion()
             .unwrap()
-            .menu_anchor_char()
+            .menu_anchor(ed.doc().text())
             .unwrap()
+            .offset()
             > co(3),
         "sanity: the token is deep in the buffer"
     );
 
-    let replacement = Buffer::new(BufferText::from("hi\n"), SelectionSet::default());
+    let replacement = Buffer::at_start(BufferText::from("hi\n"));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
     ed.settle();

@@ -11,8 +11,41 @@ fn sort_whole_lines_selected_as_one_multiline_span() {
     // positions still bound the (now reordered) block.
     assert_state!(
         "-[banana\napple\ncherry\n]>",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[apple\nbanana\ncherry\n]>"
+    );
+}
+
+#[test]
+fn sort_whole_lines_keeps_the_selection_end_on_the_last_break_when_a_longer_line_moves_last() {
+    assert_state!(
+        "-[ccc\na\nbb\n]>",
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
+        "-[a\nbb\nccc\n]>"
+    );
+}
+
+#[test]
+fn sort_clamps_a_multiline_selection_end_to_the_last_cluster_of_a_shorter_line() {
+    assert_state!(
+        "-[aaa\nbbbb]>b\n",
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts {
+                reverse: true,
+                ..SortOpts::default()
+            }
+        )
+        .unwrap(),
+        "-[bbbbb\naaa]>\n"
     );
 }
 
@@ -23,7 +56,11 @@ fn sort_swaps_whole_lines_keyed_by_a_single_char_each() {
     // `F`/`G`) has nothing to do with the sort order.
     assert_state!(
         "C -[B]> D\nF -[A]> G\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "F -[A]> G\nC -[B]> D\n"
     );
 }
@@ -34,7 +71,11 @@ fn sort_groups_are_independent_across_a_gap() {
     // independently: the gap line is untouched and no text crosses it.
     assert_state!(
         "-[b]>\n-[a]>\nx\n-[d]>\n-[c]>\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[a]>\n-[b]>\nx\n-[c]>\n-[d]>\n"
     );
 }
@@ -45,8 +86,12 @@ fn sort_single_line_group_is_refused() {
     // 2-adjacent-line selection and the refusal disappears.
     let (text, sels) = test_fixtures::testing::parse_state("-[a]>\nx\n-[b]>\n");
     assert_eq!(
-        sort_lines(text, sels, SortOpts::default()),
-        Err(SortRefusal::NoAdjacentLines)
+        sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .err(),
+        Some(SortRefusal::NoAdjacentLines)
     );
 }
 
@@ -57,8 +102,12 @@ fn sort_already_ordered_input_is_refused() {
     // refusal is what lets the caller skip applying anything.
     let (text, sels) = test_fixtures::testing::parse_state("-[a]>\n-[b]>\n");
     assert_eq!(
-        sort_lines(text, sels, SortOpts::default()),
-        Err(SortRefusal::AlreadySorted)
+        sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .err(),
+        Some(SortRefusal::AlreadySorted)
     );
 }
 
@@ -67,8 +116,7 @@ fn sort_reverse_flips_the_order() {
     assert_state!(
         "-[a]>\n-[b]>\n",
         |(text, sels)| sort_lines(
-            text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             SortOpts {
                 reverse: true,
                 ..Default::default()
@@ -85,8 +133,7 @@ fn sort_insensitive_folds_case_for_comparison_only() {
     assert_state!(
         "-[Banana]>\n-[apple]>\n",
         |(text, sels)| sort_lines(
-            text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             SortOpts {
                 insensitive: true,
                 ..Default::default()
@@ -101,7 +148,11 @@ fn sort_insensitive_folds_case_for_comparison_only() {
 fn sort_numeric_auto_detects_and_orders_correctly() {
     assert_state!(
         "-[2]>\n-[10]>\n-[1]>\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[1]>\n-[2]>\n-[10]>\n"
     );
 
@@ -118,7 +169,11 @@ fn sort_numeric_auto_detects_and_orders_correctly() {
 fn sort_decimal_keys_order_numerically() {
     assert_state!(
         "-[9.5]>\n-[10.2]>\n-[2.75]>\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[2.75]>\n-[9.5]>\n-[10.2]>\n"
     );
 
@@ -141,7 +196,11 @@ fn sort_non_finite_float_keys_fall_back_to_lexicographic() {
     // not just a coincidentally-matching one.
     assert_state!(
         "-[2.5]>\n-[inf]>\n-[10.5]>\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[10.5]>\n-[2.5]>\n-[inf]>\n"
     );
 }
@@ -152,7 +211,11 @@ fn sort_mixed_numeric_and_text_keys_falls_back_to_lexicographic() {
     // comparison; the group falls back to plain string order.
     assert_state!(
         "-[2]>\n-[a]>\n-[1]>\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[1]>\n-[2]>\n-[a]>\n"
     );
 }
@@ -164,7 +227,11 @@ fn sort_is_stable_for_equal_keys() {
     // relative order after the sort.
     assert_state!(
         "-[b]>1\n-[a]>\n-[b]>2\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[a]>\n-[b]>1\n-[b]>2\n"
     );
 }
@@ -175,7 +242,11 @@ fn sort_follows_a_selection_at_a_nonzero_char_column() {
     // the same char column offset on its new line.
     assert_state!(
         "xx-[b]>\nyy-[a]>\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "yy-[a]>\nxx-[b]>\n"
     );
 }
@@ -186,7 +257,11 @@ fn sort_compound_key_from_two_selections_on_one_line() {
     // order. Neither selection is discarded.
     assert_state!(
         "-[b]> -[2]> x\n-[a1]> y\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[a1]> y\n-[b]> -[2]> x\n"
     );
 }
@@ -197,7 +272,11 @@ fn sort_preserves_combining_grapheme_clusters_through_remap() {
     // ("e\u{0301}") and the post-sort remap include the accent.
     assert_state!(
         "-[e\u{0301}]>\n-[a]>\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[a]>\n-[e\u{0301}]>\n"
     );
 }
@@ -210,7 +289,11 @@ fn sort_blank_line_inside_a_run_gets_an_empty_key_and_sorts_first() {
     // keeps its char range unchanged and still wraps the whole reordered block.
     assert_state!(
         "-[b\n\na\n]>",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[\na\nb\n]>"
     );
 }
@@ -219,7 +302,11 @@ fn sort_blank_line_inside_a_run_gets_an_empty_key_and_sorts_first() {
 fn sort_orders_a_line_with_a_trailing_combining_mark_after_its_bare_twin() {
     assert_state!(
         "-[e\u{301}\ne]>\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[e\ne\u{301}]>\n"
     );
 }
@@ -228,7 +315,11 @@ fn sort_orders_a_line_with_a_trailing_combining_mark_after_its_bare_twin() {
 fn sort_treats_precomposed_and_decomposed_text_as_equal_keys() {
     assert_state!(
         "-[\u{e9}\ne\u{301}\na]>\n",
-        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(
+            test_fixtures::testing::state(text, sels),
+            SortOpts::default()
+        )
+        .unwrap(),
         "-[a\n\u{e9}\ne\u{301}]>\n"
     );
 }
@@ -241,7 +332,7 @@ fn sort_insensitive_treats_a_capital_and_a_decomposed_lowercase_as_equal_keys() 
     };
     assert_state!(
         "-[\u{c9}\ne\u{301}\na]>\n",
-        |(text, sels)| sort_lines(text, sels, opts).unwrap(),
+        |(text, sels)| sort_lines(test_fixtures::testing::state(text, sels), opts).unwrap(),
         "-[a\n\u{c9}\ne\u{301}]>\n"
     );
 }

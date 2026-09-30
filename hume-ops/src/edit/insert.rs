@@ -1,9 +1,10 @@
 //! Character/string insertion, auto-indent on Enter/`o`/`O`, and Tab.
 
-use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
+use hume_editing::edit::Edited;
+use hume_editing::edit::Landing;
 use hume_editing::grapheme::display_col_in_line;
-use hume_editing::lines::{leading_whitespace_end, next_line_start};
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::lines::leading_whitespace_end;
+use hume_editing::state::EditState;
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
@@ -12,56 +13,27 @@ use super::apply_edit;
 
 /// Insert `ch` at every selection.
 ///
-/// - **Single-character selection**: `ch` is inserted before the cursor
-///   character; the cursor advances to land on the character that follows it.
-/// - **Multi-character selection**: the selected region is deleted first, then
-///   `ch` is inserted at the start of the former selection. The cursor lands
-///   one past the inserted character.
+/// - **Cursor**: `ch` goes before the cursor's cluster, and the cursor stays
+///   on that cluster.
+/// - **Selection**: what it covers is deleted first (never the structural
+///   `\n`), then `ch` goes in its place, and the cursor lands after it.
 ///
 /// This covers single-cursor typing, multicursor typing, and "replace
 /// selection with typed character", all via the same loop.
-pub fn insert_char(
-    text: BufferText,
-    sels: SelectionSet,
-    ch: char,
-) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
-        let start = sel.start();
-        b.retain(start.chars_since(b.old_pos()));
-        if !sel.is_collapsed() {
-            b.delete(sel.content_end_exclusive(text).chars_since(start));
-        }
-        b.insert_char(ch);
-        // new_pos() is one past the inserted char, so the cursor sits on the
-        // character that was originally at `start` (now shifted right by 1).
-        let sel = Selection::collapsed(b.new_pos());
-        new_sels.push(sel);
-    })
+pub fn insert_char(state: EditState, ch: char) -> Edited {
+    insert_str(state, ch.encode_utf8(&mut [0; 4]))
 }
 
-/// Insert `text` at every selection: the bulk-string counterpart of
+/// Insert `inserted` at every selection: the bulk-string counterpart of
 /// [`insert_char`], used for pasted text so a paste is one edit rather than
 /// one `insert_char` call per character.
-///
-/// Same shape as `insert_char`: single-character selections get `inserted`
-/// inserted before the cursor; non-collapsed selections are replaced. The
-/// cursor lands at `new_pos()` (one past the inserted text) in both cases,
-/// no manual position arithmetic, so a multi-char `inserted` can't land mid
-/// grapheme-cluster.
-pub fn insert_str(
-    text: BufferText,
-    sels: SelectionSet,
-    inserted: &str,
-) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
-        let start = sel.start();
-        b.retain(start.chars_since(b.old_pos()));
-        if !sel.is_collapsed() {
-            b.delete(sel.content_end_exclusive(text).chars_since(start));
+pub fn insert_str(state: EditState, inserted: &str) -> Edited {
+    apply_edit(state, |b, sel| {
+        if !sel.is_cursor() {
+            b.delete(sel.covered());
         }
-        b.insert(inserted);
-        let sel = Selection::collapsed(b.new_pos());
-        new_sels.push(sel);
+        let mark = b.insert(sel.start(), inserted);
+        Landing::cursor(mark.end())
     })
 }
 
@@ -90,7 +62,7 @@ pub(in crate::edit) fn line_indent_range(
     let line_idx = text.char_to_line(pos);
     let line_start = text.line_to_char(line_idx.into());
     let ws_end = leading_whitespace_end(text, line_idx);
-    ExclusiveRange::new(line_start, ws_end)
+    ExclusiveRange::new(line_start, ws_end.offset())
 }
 
 /// `true` if `[line_start, ws_end)` is a blank, auto-indented line (see
@@ -138,54 +110,6 @@ pub fn owned_blank_indent(
     is_owned_blank_line(text, range.start, range.end, allowed).then_some(range)
 }
 
-/// Shared per-selection prelude for [`insert_newline_indent`] and
-/// [`clear_blank_line_indent`]: `pos`'s line info as `[line_start, ws_end)`,
-/// or `None` if a prior selection's blank-line clear already consumed past
-/// `pos` (two cursors on the same whitespace-only line). In that case the
-/// caller should land the cursor at `b.new_pos()` and emit nothing further,
-/// rather than retaining backwards past what the builder already emitted.
-fn line_context_if_unconsumed(
-    b: &ChangeSetBuilder,
-    text: &BufferText,
-    pos: CharOffset,
-) -> Option<ExclusiveRange<CharOffset>> {
-    if pos < b.old_pos() {
-        return None;
-    }
-    Some(line_indent_range(text, pos))
-}
-
-/// Attempts the blank-line whitespace-vacate trim for a collapsed selection.
-///
-/// Returns `true` (and emits `retain` + `delete` into `b`) when `sel` is
-/// collapsed, its line's whitespace is owned by `allowed` (see
-/// [`is_owned_blank_line`]), and `line_start` has not already been passed by
-/// a prior selection's edits in this pass (`line_start >= b.old_pos()`): two
-/// cursors can land on the *same* blank line (one mid-whitespace, one on the
-/// trailing `\n`), and the first cursor's delete can advance `old_pos()` past
-/// this cursor's `line_start`, which would otherwise underflow the `retain`.
-/// When that happens, the caller falls back to its non-blank arm instead
-/// (retaining forward to its own position, which is always safe since `pos >=
-/// b.old_pos()` per [`line_context_if_unconsumed`]).
-fn try_trim_blank_line(
-    b: &mut ChangeSetBuilder,
-    text: &BufferText,
-    sel: &Selection,
-    line_start: CharOffset,
-    ws_end: CharOffset,
-    allowed: Option<ExclusiveRange<CharOffset>>,
-) -> bool {
-    if !sel.is_collapsed()
-        || !is_owned_blank_line(text, line_start, ws_end, allowed)
-        || line_start < b.old_pos()
-    {
-        return false;
-    }
-    b.retain(line_start.chars_since(b.old_pos()));
-    b.delete(ws_end.chars_since(line_start));
-    true
-}
-
 /// Insert a newline followed by the current line's leading whitespace at every
 /// selection.
 ///
@@ -206,28 +130,25 @@ fn try_trim_blank_line(
 /// autoindent` behavior on Enter. Empty (or an index with no entry) for the
 /// first Enter on an already-blank line: nothing to vacate yet, since no
 /// earlier session inserted it.
-pub fn insert_newline_indent(
-    text: BufferText,
-    sels: SelectionSet,
-    allowed: &[ExclusiveRange<CharOffset>],
-) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, text, i, sel, new_sels| {
-        let start = sel.start();
-        let Some(line) = line_context_if_unconsumed(b, text, start) else {
-            new_sels.push(Selection::collapsed(b.new_pos()));
-            return;
-        };
-
-        if !try_trim_blank_line(b, text, sel, line.start, line.end, allowed.get(i).copied()) {
-            b.retain(start.chars_since(b.old_pos()));
-            if !sel.is_collapsed() {
-                b.delete(sel.content_end_exclusive(text).chars_since(start));
-            }
+pub fn insert_newline_indent(state: EditState, allowed: &[ExclusiveRange<CharOffset>]) -> Edited {
+    apply_edit(state, |b, sel| {
+        let start = sel.start().offset();
+        let line = line_indent_range(b.text(), start);
+        let vacates = sel.is_cursor()
+            && is_owned_blank_line(
+                b.text(),
+                line.start,
+                line.end,
+                allowed.get(sel.index()).copied(),
+            );
+        if vacates {
+            b.delete(line);
+        } else if !sel.is_cursor() {
+            b.delete(sel.covered());
         }
-        let indent = text.slice(line).to_string();
-        b.insert_char('\n');
-        b.insert(&indent);
-        new_sels.push(Selection::collapsed(b.new_pos()));
+        let indent = b.text().slice(line).to_string();
+        let mark = b.insert(start, &format!("\n{indent}"));
+        Landing::cursor(mark.end())
     })
 }
 
@@ -238,33 +159,26 @@ pub fn insert_newline_indent(
 /// the break, so the indent is inserted before the `\n`, not after it. The
 /// cursor lands on that inserted `\n`, the new blank line.
 ///
-/// Unlike `insert_newline_indent`, this never deletes: `apply_edit` visits
-/// selections in ascending-`start()` order, and each iteration only retains
-/// forward to its own line's start, so an earlier selection's edit can never
-/// advance `old_pos()` past a later selection's line start the way a delete
-/// could, so no "already consumed" guard is needed.
+/// Unlike `insert_newline_indent`, this never deletes: each selection only
+/// inserts at its own line's start.
 ///
 /// Two preconditions its only caller (`cmd_open_line_above`) satisfies but
 /// this function does not enforce: every selection must already be
 /// collapsed. Unlike every sibling insertion op in this module, a
 /// non-collapsed selection here is neither deleted nor preserved, it is
-/// simply orphaned by the pushed `Selection::collapsed`. Also at most one
+/// simply orphaned by the resulting cursor. Also at most one
 /// selection per line: two cursors on the same line each open their own
 /// blank line above it, rather than sharing one the way vim/Helix do. The
 /// caller supplies both: `cmd_goto_line_start` collapses every selection to
-/// its line start first, and `SelectionSet::map`'s overlap merge folds
+/// its line start first, and the selection set's overlap merge folds
 /// same-line cursors into one before this ever runs.
-pub fn open_line_above(
-    text: BufferText,
-    sels: SelectionSet,
-) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
-        let line = line_indent_range(text, sel.start());
-        b.retain(line.start.chars_since(b.old_pos()));
-        let indent = text.slice(line).to_string();
-        b.insert(&indent);
-        new_sels.push(Selection::collapsed(b.new_pos()));
-        b.insert_char('\n');
+pub fn open_line_above(state: EditState) -> Edited {
+    apply_edit(state, |b, sel| {
+        let line = line_indent_range(b.text(), sel.start().offset());
+        let indent = b.text().slice(line).to_string();
+        let mark = b.insert(line.start, &indent);
+        b.insert(line.start, "\n");
+        Landing::cursor(mark.end())
     })
 }
 
@@ -279,41 +193,23 @@ pub fn open_line_above(
 ///
 /// `allowed`: see [`insert_newline_indent`]'s own doc. Same per-selection
 /// ownership record, read here instead of armed.
-pub fn clear_blank_line_indent(
-    text: BufferText,
-    sels: SelectionSet,
-    allowed: &[ExclusiveRange<CharOffset>],
-) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, text, i, sel, new_sels| {
-        if sel.is_collapsed() {
-            let head = sel.head();
-            let Some(line) = line_context_if_unconsumed(b, text, head) else {
-                new_sels.push(Selection::collapsed(b.new_pos()));
-                return;
-            };
-            if !try_trim_blank_line(b, text, sel, line.start, line.end, allowed.get(i).copied()) {
-                b.retain(head.chars_since(b.old_pos()));
-            }
-            new_sels.push(Selection::collapsed(b.new_pos()));
-            return;
+pub fn clear_blank_line_indent(state: EditState, allowed: &[ExclusiveRange<CharOffset>]) -> Edited {
+    apply_edit(state, |b, sel| {
+        if !sel.is_cursor() {
+            return Landing::kept(sel.selection());
         }
-
-        // Non-collapsed selections are never trimmed: identity edit that
-        // preserves anchor and head. `start < b.old_pos()` can only happen if
-        // a prior collapsed cursor's blank-line trim reached into this
-        // selection's own line; fall back to landing the cursor at
-        // `new_pos()` rather than underflowing the retain.
-        let start = sel.start();
-        if start < b.old_pos() {
-            new_sels.push(Selection::collapsed(b.new_pos()));
-            return;
+        let line = line_indent_range(b.text(), sel.head().offset());
+        let owned = is_owned_blank_line(
+            b.text(),
+            line.start,
+            line.end,
+            allowed.get(sel.index()).copied(),
+        );
+        if owned {
+            Landing::cursor(b.delete(line))
+        } else {
+            Landing::kept(sel.selection())
         }
-        b.retain(start.chars_since(b.old_pos()));
-        let delta = b.new_pos().index() as isize - b.old_pos().index() as isize;
-        b.retain(sel.end_exclusive(text).chars_since(start));
-        let new_anchor = sel.anchor().shift(delta);
-        let new_head = sel.head().shift(delta);
-        new_sels.push(Selection::new(new_anchor, new_head));
     })
 }
 
@@ -329,53 +225,33 @@ pub fn clear_blank_line_indent(
 ///
 /// Non-collapsed selections are deleted first, same as `insert_char`: Tab
 /// over a selection replaces it, just like typing any other key.
-pub fn insert_tab(
-    text: BufferText,
-    sels: SelectionSet,
-    style: TabStyle,
-    tab_width: u8,
-) -> (BufferText, SelectionSet, ChangeSet) {
+pub fn insert_tab(state: EditState, style: TabStyle, tab_width: u8) -> Edited {
     if style == TabStyle::Hard {
-        return insert_char(text, sels, '\t');
+        return insert_char(state, '\t');
     }
-    // Track the accumulated display-column shift from insertions/deletions made by
-    // earlier cursors on the same line. Without this, the second cursor on a line
-    // would compute its tab-stop offset from the original-buffer column, missing the
-    // spaces the first cursor already inserted.
-    let mut prev_line: Option<hume_rope::line::ContentLine> = None;
-    let mut display_col_shift: isize = 0;
-    apply_edit(text, sels, move |b, text, _i, sel, new_sels| {
-        let start = sel.start();
-        b.retain(start.chars_since(b.old_pos()));
-        let line_idx = text.char_to_line(start);
-        if prev_line != Some(line_idx) {
-            display_col_shift = 0;
-            prev_line = Some(line_idx);
+    // A selection's deletion can join lines, and an earlier cursor's spaces
+    // move every later cursor on its line, so each tab stop is read from the
+    // text the edits before it left: one edit per cursor, left to right.
+    let count = state.view().len();
+    let mut edited = insert_str(state, "");
+    for index in 0..count {
+        edited = edited.then(|state| space_to_stop(state, index, tab_width));
+    }
+    edited
+}
+
+/// Spaces to the next tab stop at the cursor of selection `index`.
+fn space_to_stop(state: EditState, index: usize, tab_width: u8) -> Edited {
+    apply_edit(state, |b, sel| {
+        if sel.index() != index {
+            return Landing::kept(sel.selection());
         }
-        // Compute the effective display column of the cursor after all prior
-        // same-line edits. `shift_saturating` is signed (a selection deletion
-        // can decrease it) and saturates at 0 rather than underflowing.
-        // Walks the line prefix grapheme by grapheme, so it's measured once
-        // and reused by the deletion-width computation below.
-        let start_display_col = display_col_in_line(text, line_idx, start, tab_width);
-        let display_col = start_display_col.shift_saturating(display_col_shift);
-        if !sel.is_collapsed() {
-            let del_end = sel.content_end_exclusive(text);
-            // Clamp del_end to the line boundary before computing the display-column
-            // width to keep display_col_shift accurate. A multi-line selection
-            // (del_end on a different line) would otherwise walk past the '\n'
-            // when counting columns, making display_col_shift wrong for later
-            // same-line cursors.
-            let line_end = next_line_start(text, line_idx.into());
-            let del_end_clamped = del_end.min(line_end);
-            let del_width = display_col_in_line(text, line_idx, del_end_clamped, tab_width)
-                .cells_since(start_display_col);
-            b.delete(del_end.chars_since(start));
-            display_col_shift -= del_width as isize;
-        }
+        let text = b.text();
+        let start = sel.start().offset();
+        let line = text.char_to_line(start);
+        let display_col = display_col_in_line(text, line, start, tab_width);
         let n = hume_rope::width::tab_advance(display_col.get() as usize, tab_width);
-        b.insert(&" ".repeat(n));
-        display_col_shift += n as isize;
-        new_sels.push(Selection::collapsed(b.new_pos()));
+        let mark = b.insert(start, &" ".repeat(n));
+        Landing::cursor(mark.end())
     })
 }

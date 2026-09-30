@@ -1,6 +1,5 @@
 use super::*;
-use crate::types::Selection;
-use hume_rope::offset::CharOffset;
+use crate::test_support::{cursor_mirror, painted};
 
 #[test]
 fn viewport_defaults() {
@@ -301,12 +300,9 @@ fn whitespace_config_defaults() {
     assert_eq!(wc.nbsp_char, "⍽");
 }
 
-fn make_pane_at_char(head_char: usize) -> Pane {
+fn make_pane_at_char(rope: &ropey::Rope, head_char: usize) -> Pane {
     Pane {
-        selections: vec![Selection {
-            anchor: CharOffset::new(head_char),
-            head: CharOffset::new(head_char),
-        }],
+        selections: cursor_mirror(rope, head_char),
         ..Pane::new(crate::pipeline::BufferId::default())
     }
 }
@@ -316,20 +312,21 @@ fn primary_head_line_returns_head_line() {
     // "aaa\nbbb\nccc": line 0 is chars 0..3, line 1 is chars 4..7, line 2 is chars 8..11.
     // Char 8 (start of line 2) should resolve to line 2.
     let rope = ropey::Rope::from_str("aaa\nbbb\nccc");
-    let pane = make_pane_at_char(8); // first char of line 2
+    let pane = make_pane_at_char(&rope, 8); // first char of line 2
     assert_eq!(pane.primary_head_line(&rope).index(), 2);
 }
 
 #[test]
-fn primary_head_line_uses_primary_idx() {
-    // Two selections; primary_idx points to the second one (on line 2).
+fn primary_head_line_follows_the_primary_flag() {
+    // Two selections; the second one (on line 2) is primary.
     // "aaa\nbbb\nccc": char 0 = line 0, char 8 = line 2.
     let rope = ropey::Rope::from_str("aaa\nbbb\nccc");
-    let mut pane = make_pane_at_char(0); // first selection on line 0
-    pane.selections.push(Selection {
-        anchor: CharOffset::new(8),
-        head: CharOffset::new(8),
-    }); // second on line 2
-    pane.primary_idx = 1;
+    let mut pane = Pane {
+        selections: vec![painted(&rope, 0, 0, false), painted(&rope, 8, 8, true)],
+        ..Pane::new(crate::pipeline::BufferId::default())
+    };
     assert_eq!(pane.primary_head_line(&rope).index(), 2);
+    pane.selections[1].is_primary = false;
+    pane.selections[0].is_primary = true;
+    assert_eq!(pane.primary_head_line(&rope).index(), 0);
 }

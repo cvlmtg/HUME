@@ -11,14 +11,10 @@ fn select_all_matches_creates_selection_per_match() {
 
     ed.execute_keymap_command("select-all-matches".into(), Some(1), false);
 
-    assert_eq!(
-        ed.current_selections().len(),
-        2,
-        "one selection per 'ab' match"
-    );
-    let sels: Vec<_> = ed.current_selections().iter_sorted().collect();
-    assert_eq!(sels[0].start(), co(0));
-    assert_eq!(sels[1].start(), co(6));
+    assert_eq!(ed.current_view().len(), 2, "one selection per 'ab' match");
+    let sels: Vec<_> = ed.current_view().iter().collect();
+    assert_eq!(sels[0].start().offset(), co(0));
+    assert_eq!(sels[1].start().offset(), co(6));
 }
 
 /// `select-all-matches` with no active search is a no-op.
@@ -42,7 +38,7 @@ fn select_all_matches_uses_search_register_fallback() {
 
     ed.execute_keymap_command("select-all-matches".into(), Some(1), false);
 
-    assert_eq!(ed.current_selections().len(), 2);
+    assert_eq!(ed.current_view().len(), 2);
 }
 
 /// `m/` keybind reaches `select-all-matches` (tests the keymap path, not just `:select-all-matches`).
@@ -52,7 +48,7 @@ fn select_all_matches_via_m_slash_keybind() {
     ed.handle_key(key('m'));
     ed.handle_key(key('/'));
     assert_eq!(
-        ed.current_selections().len(),
+        ed.current_view().len(),
         2,
         "m/ should select all 'ab' matches"
     );
@@ -102,8 +98,11 @@ fn star_on_partial_selection_expands_to_word() {
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(
-        matches,
-        vec![hume_rope::offset::InclusiveRange::new(co(0), co(4))],
+        matches
+            .iter()
+            .map(|m| (m.start().offset(), m.last().offset()))
+            .collect::<Vec<_>>(),
+        vec![(co(0), co(4))],
         "pattern must match the word it came from"
     );
 }
@@ -179,8 +178,11 @@ fn star_whole_word_skips_substring_matches() {
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(
-        matches,
-        vec![hume_rope::offset::InclusiveRange::new(co(0), co(1))],
+        matches
+            .iter()
+            .map(|m| (m.start().offset(), m.last().offset()))
+            .collect::<Vec<_>>(),
+        vec![(co(0), co(1))],
         "only standalone 'as' must match"
     );
 }
@@ -189,13 +191,7 @@ fn star_whole_word_skips_substring_matches() {
 #[test]
 fn star_punctuation_run_stays_literal() {
     // Buffer: "a -> b\n". Collapsed cursor on '-' (position 2).
-    let mut ed = editor_from("-[a]>b\n");
-    let text = hume_editing::text::BufferText::from("a -> b\n");
-    let sels = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(2)),
-    );
-    *ed.doc_mut() = crate::editor::buffer::Buffer::new(text, sels.clone());
-    ed.set_current_selections(sels);
+    let mut ed = editor_from("a -[-]>> b\n");
 
     ed.handle_key(key('*'));
     let r = reg(&ed, 's');
@@ -222,8 +218,11 @@ fn star_on_double_slash_punctuation_run_stays_literal() {
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(
-        matches,
-        vec![hume_rope::offset::InclusiveRange::new(co(2), co(3))],
+        matches
+            .iter()
+            .map(|m| (m.start().offset(), m.last().offset()))
+            .collect::<Vec<_>>(),
+        vec![(co(2), co(3))],
         "pattern must match the full \"//\" run"
     );
 }
@@ -252,11 +251,11 @@ fn search_selection_uses_literal_text() {
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(
-        matches,
-        vec![
-            hume_rope::offset::InclusiveRange::new(co(1), co(3)),
-            hume_rope::offset::InclusiveRange::new(co(6), co(8)),
-        ]
+        matches
+            .iter()
+            .map(|m| (m.start().offset(), m.last().offset()))
+            .collect::<Vec<_>>(),
+        vec![(co(1), co(3)), (co(6), co(8)),]
     );
 }
 
@@ -288,8 +287,11 @@ fn search_selection_escapes_metacharacters() {
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(
-        matches,
-        vec![hume_rope::offset::InclusiveRange::new(co(0), co(2))],
+        matches
+            .iter()
+            .map(|m| (m.start().offset(), m.last().offset()))
+            .collect::<Vec<_>>(),
+        vec![(co(0), co(2))],
         "escaped '.' must not match 'axb'"
     );
 }

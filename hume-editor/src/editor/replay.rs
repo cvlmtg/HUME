@@ -6,13 +6,12 @@
 //! replayed at a different cursor. Macro replay drains a queue of recorded
 //! keys through the normal event path.
 
-use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::EngineView;
-use hume_rope::offset::CharOffset;
 use std::borrow::Cow;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::dispatch::CmdCtx;
+use super::dot_chain::{ChainBroken, DotChain};
 use super::edit_session::{self, DotCapture, EditSessionKind};
 use super::registry::MappableCommand;
 use super::{Editor, EditorState, Mode, commands, doc_ops};
@@ -230,11 +229,14 @@ impl EditorState {
         {
             return Err("no Insert session to apply the recorded result to".to_string());
         }
-        if !self.panes.state[pid][bid].selections().all_collapsed() {
+        if !self.panes.state[pid][bid]
+            .view(self.buffers.get(bid).text())
+            .all_cursors()
+        {
             return Err("cannot replay a recorded result onto a selection".to_string());
         }
-        commands::apply_focused_edit_grouped(self, view, fp, |b, s| {
-            hume_ops::edit::replace_around_cursors(b, s, r.back, r.forward, &r.text)
+        commands::apply_focused_edit_grouped(self, view, fp, |s| {
+            hume_ops::edit::replace_around_cursors(s, r.back, r.forward, &r.text)
         });
         self.dismiss_completion(view);
         Ok(())
@@ -243,20 +245,26 @@ impl EditorState {
     /// `Editor::run_dot_captured`'s finalize step, and `tear_down_insert`'s
     /// own backstop for a capture whose session ends before that checkpoint
     /// runs (an Insert-key binding that accepts a completion and then calls
-    /// `exit-insert` in the same dispatch). Interactive: composes `cap`'s
-    /// recorded edits into one net transform via [`ChangeSet::compose_all`]
-    /// and extracts the region under `cap.head_before` via
-    /// [`cursor_replacement_at`], recording it as a `Result`, or nothing at
-    /// all if the composed edit didn't touch the cursor (an Esc-dismissed
-    /// picker whose `on_select` received `#f` and did nothing). Not
-    /// interactive: records `cap.fallback` instead: the `Binding` entry an
-    /// ordinary Insert-key dispatch stands for, or nothing for a bare
-    /// completion-popup Enter, which has no binding of its own.
+    /// `exit-insert` in the same dispatch). Interactive: records the
+    /// chain's replacement at the cursor as a `Result`, or nothing at all
+    /// if the composed edit didn't touch the cursor (an Esc-dismissed
+    /// picker whose `on_select` received `#f` and did nothing) or an edit
+    /// the chain never saw broke it. Not interactive: records
+    /// `cap.fallback` instead: the `Binding` entry an ordinary Insert-key
+    /// dispatch stands for, or nothing for a bare completion-popup Enter,
+    /// which has no binding of its own.
     pub(in crate::editor) fn finalize_dot_capture(&mut self, cap: DotCapture) {
         let input = if cap.interactive {
-            ChangeSet::compose_all(cap.edits)
-                .and_then(|delta| cursor_replacement_at(&delta, cap.head_before))
-                .map(InsertInput::Result)
+            match cap.chain.finish() {
+                Ok(replacement) => replacement.map(InsertInput::Result),
+                Err(ChainBroken) => {
+                    self.report(
+                        super::Severity::Warning,
+                        "`.` won't repeat this edit: the buffer changed while it ran".to_string(),
+                    );
+                    None
+                }
+            }
         } else {
             cap.fallback
         };
@@ -442,7 +450,12 @@ impl Editor {
                 pid,
                 bid,
                 EditSessionKind::Replay,
-                || self.state.buffers.get(bid).begin_edit_group(sels),
+                || {
+                    self.state
+                        .buffers
+                        .get(bid)
+                        .begin_edit_group(sels.clone(), sels)
+                },
             );
             if opened.is_err() {
                 return;
@@ -571,18 +584,17 @@ impl Editor {
     ) {
         let fp = commands::FocusedPane::current(&self.state);
         let (pane, buffer) = (fp.pid(), fp.bid(&self.view));
-        let head_before = self.state.panes.state[pane][buffer]
-            .selections()
+        let text = self.state.buffers.get(buffer).text();
+        let head = self.state.panes.state[pane][buffer]
+            .view(text)
             .primary()
             .head();
         let cap = DotCapture {
             pane,
             buffer,
-            head_before,
-            edits: Vec::new(),
+            chain: DotChain::new(head, text),
             interactive: false,
             fallback,
-            text_gen: self.state.buffers.get(buffer).text_gen,
         };
         self.run_dot_captured(cap, f);
     }
@@ -610,37 +622,29 @@ impl Editor {
             .as_mut()
             .filter(|s| s.is_insert_at(pane, buffer))
         {
-            let current_text_gen = self.state.buffers.get(buffer).text_gen;
-            if cap.edits.is_empty() {
-                // Nothing of this capture's own has run yet, so whatever
-                // happened to this buffer since it was last detached (a
-                // foreign edit landing while a picker it was handed to sat
-                // open) is exactly what `head_before`/`text_gen` must now
-                // measure from: the *current* cursor and generation, not
-                // whichever ones this capture was last armed with. See
-                // `DotCapture::head_before`'s own doc for why a non-empty
-                // `edits` must NOT be refreshed the same way.
-                cap.head_before = self.state.panes.state[pane][buffer]
-                    .selections()
-                    .primary()
-                    .head();
-                cap.text_gen = current_text_gen;
-                session.arm_dot_capture(cap);
-            } else if cap.text_gen == current_text_gen {
-                session.arm_dot_capture(cap);
-            } else {
-                // A foreign edit landed on this buffer while `cap` sat
-                // detached (armed on a picker instead of this session), and
-                // `cap.edits` already holds an entry chained from the
-                // pre-foreign-edit document, and composing the next edit onto
-                // it would panic in `ChangeSet::compose`'s length assert
-                // (see `DotCapture::text_gen`'s own doc). Report and drop
-                // the whole capture instead of arming it: nothing here is
-                // safe to record, interactive or not.
-                self.report(
-                    super::Severity::Warning,
-                    "`.` won't repeat this pick: the buffer changed while it was open".to_string(),
-                );
+            let text = self.state.buffers.get(buffer).text();
+            let head = self.state.panes.state[pane][buffer]
+                .view(text)
+                .primary()
+                .head();
+            match cap.chain.rearm(head, text) {
+                Some(chain) => {
+                    cap.chain = chain;
+                    session.arm_dot_capture(cap);
+                }
+                None => {
+                    // An edit landed on this buffer while `cap` sat detached
+                    // (armed on a picker instead of this session) after it
+                    // had recorded one of its own, so nothing it holds
+                    // composes with the next. Report and drop the whole
+                    // capture: nothing here is safe to record, interactive
+                    // or not.
+                    self.report(
+                        super::Severity::Warning,
+                        "`.` won't repeat this pick: the buffer changed while it was open"
+                            .to_string(),
+                    );
+                }
             }
         }
         f(self);
@@ -713,116 +717,5 @@ impl Editor {
         if self.state.mode() != Mode::Insert {
             self.state.last_repeatable_action = saved_action;
         }
-    }
-}
-
-/// Extracts the edited region of `delta` that contains `head` (a position
-/// in `delta`'s *old* document), as a cursor-relative replacement, or `None`
-/// if `delta` is identity, or every edited region lands away from `head`.
-/// `delta` can hold more than one region (a completion's own
-/// `additionalTextEdits`, or a second cursor's own edit under a
-/// multi-cursor accept), and any region other than the one at `head` is
-/// simply skipped: it's document-absolute, or belongs to a different
-/// cursor, the same reasoning [`CursorReplacement`]'s own doc gives for
-/// excluding `additionalTextEdits` from the replacement it records.
-///
-/// [`ChangeSet::edited_regions`] already pairs a region's `Delete`/`Insert`
-/// ops in either order, so this only has to pick the one at `head`.
-fn cursor_replacement_at(delta: &ChangeSet, head: CharOffset) -> Option<CursorReplacement> {
-    delta
-        .edited_regions()
-        .into_iter()
-        .find(|r| head >= r.old.start && head <= r.old.end)
-        .map(|r| CursorReplacement {
-            back: head.chars_since(r.old.start),
-            forward: r.old.end.chars_since(head),
-            text: r.inserted.into_owned(),
-        })
-}
-
-#[cfg(test)]
-mod cursor_replacement_tests {
-    use super::cursor_replacement_at;
-    use hume_editing::changeset::ChangeSetBuilder;
-    use hume_rope::offset::CharOffset;
-
-    fn co(n: usize) -> CharOffset {
-        CharOffset::new(n)
-    }
-
-    #[test]
-    fn identity_has_no_replacement() {
-        let mut b = ChangeSetBuilder::new(co(6));
-        b.retain_rest();
-        assert!(cursor_replacement_at(&b.finish(), co(3)).is_none());
-    }
-
-    #[test]
-    fn insert_only_region_at_head() {
-        // "ab|cd" → "ab|Xcd": inserting with nothing deleted, head right at
-        // the insertion point.
-        let mut b = ChangeSetBuilder::new(co(4));
-        b.retain(2);
-        b.insert("X");
-        b.retain_rest();
-        let r = cursor_replacement_at(&b.finish(), co(2)).expect("insert at head must match");
-        assert_eq!((r.back, r.forward, r.text.as_str()), (0, 0, "X"));
-    }
-
-    #[test]
-    fn delete_and_insert_region_containing_head() {
-        // "abcd" → "aXd": delete "bc" (old positions 1..3), insert "X". A
-        // head inside the deleted span (2) reports the split around it.
-        let mut b = ChangeSetBuilder::new(co(4));
-        b.retain(1);
-        b.delete(2);
-        b.insert("X");
-        b.retain_rest();
-        let r = cursor_replacement_at(&b.finish(), co(2))
-            .expect("head inside the deleted span must match");
-        assert_eq!((r.back, r.forward, r.text.as_str()), (1, 1, "X"));
-    }
-
-    #[test]
-    fn insert_then_delete_region_containing_head() {
-        // "abcd" → "aXd": the *other* op order a replacement can take
-        // (`invert`/`compose`/`indent` all emit insert-then-delete):
-        // insert "X" at old position 1, then delete "bc" (old 1..3). A head
-        // inside the deleted span (2) must still report the replacement
-        // text, not an empty one.
-        let mut b = ChangeSetBuilder::new(co(4));
-        b.retain(1);
-        b.insert("X");
-        b.delete(2);
-        b.retain_rest();
-        let r = cursor_replacement_at(&b.finish(), co(2))
-            .expect("head inside the deleted span must match");
-        assert_eq!((r.back, r.forward, r.text.as_str()), (1, 1, "X"));
-    }
-
-    #[test]
-    fn region_away_from_head_is_ignored() {
-        // The edit lands at the start; head sits at the untouched end.
-        let mut b = ChangeSetBuilder::new(co(4));
-        b.delete(1);
-        b.insert("X");
-        b.retain_rest();
-        assert!(cursor_replacement_at(&b.finish(), co(4)).is_none());
-    }
-
-    /// The shape a completion's `additionalTextEdits` produces alongside its
-    /// own cursor edit: two edited regions in one delta. Only the one at
-    /// `head` is extracted; the other (document-absolute, or a different
-    /// cursor's own edit under a multi-cursor accept) is skipped.
-    #[test]
-    fn picks_the_region_at_head_and_skips_the_other() {
-        let mut b = ChangeSetBuilder::new(co(6));
-        b.insert("// "); // an import, landing away from the cursor
-        b.retain(2);
-        b.delete(2);
-        b.insert("XYZ"); // the accept's own edit, at the cursor
-        b.retain_rest();
-        let r = cursor_replacement_at(&b.finish(), co(4)).expect("the region at head must match");
-        assert_eq!((r.back, r.forward, r.text.as_str()), (2, 0, "XYZ"));
     }
 }

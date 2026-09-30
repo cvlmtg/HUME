@@ -7,7 +7,11 @@ use test_fixtures::assert_state;
 fn goto_line_start_from_middle() {
     assert_state!(
         "hel-[l]>o\n",
-        |(text, sels)| cmd_goto_line_start(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_start(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[h]>ello\n"
     );
 }
@@ -16,7 +20,11 @@ fn goto_line_start_from_middle() {
 fn goto_line_start_already_at_start() {
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| cmd_goto_line_start(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_start(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[h]>ello\n"
     );
 }
@@ -25,7 +33,11 @@ fn goto_line_start_already_at_start() {
 fn goto_line_start_second_line() {
     assert_state!(
         "hello\nwor-[l]>d\n",
-        |(text, sels)| cmd_goto_line_start(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_start(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "hello\n-[w]>orld\n"
     );
 }
@@ -34,7 +46,11 @@ fn goto_line_start_second_line() {
 fn goto_line_start_empty_buffer() {
     assert_state!(
         "-[\n]>",
-        |(text, sels)| cmd_goto_line_start(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_start(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[\n]>"
     );
 }
@@ -45,7 +61,11 @@ fn goto_line_start_empty_buffer() {
 fn goto_line_end_from_start() {
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "hell-[o]>\n"
     );
 }
@@ -54,7 +74,11 @@ fn goto_line_end_from_start() {
 fn goto_line_end_already_at_end() {
     assert_state!(
         "hell-[o]>\n",
-        |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "hell-[o]>\n"
     );
 }
@@ -64,7 +88,11 @@ fn goto_line_end_stops_before_newline() {
     // Cursor must land on 'o', not on '\n'.
     assert_state!(
         "-[h]>ello\nworld\n",
-        |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "hell-[o]>\nworld\n"
     );
 }
@@ -74,7 +102,11 @@ fn goto_line_end_empty_line() {
     // Line contains only '\n'. Cursor stays on it.
     assert_state!(
         "-[\n]>",
-        |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[\n]>"
     );
 }
@@ -83,7 +115,11 @@ fn goto_line_end_empty_line() {
 fn goto_line_end_last_line_no_newline() {
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "hell-[o]>\n"
     );
 }
@@ -92,7 +128,11 @@ fn goto_line_end_last_line_no_newline() {
 fn goto_line_end_empty_buffer() {
     assert_state!(
         "-[\n]>",
-        |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[\n]>"
     );
 }
@@ -103,7 +143,11 @@ fn goto_line_end_empty_buffer() {
 fn goto_first_nonblank_skips_spaces() {
     assert_state!(
         "-[ ]> hello\n",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "  -[h]>ello\n"
     );
 }
@@ -112,7 +156,11 @@ fn goto_first_nonblank_skips_spaces() {
 fn goto_first_nonblank_from_middle() {
     assert_state!(
         "  hel-[l]>o\n",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "  -[h]>ello\n"
     );
 }
@@ -121,7 +169,11 @@ fn goto_first_nonblank_from_middle() {
 fn goto_first_nonblank_steps_over_a_marked_space_as_one_cluster() {
     assert_state!(
         "-[ \u{301}]>x\n",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         " \u{301}-[x]>\n"
     );
 }
@@ -130,7 +182,11 @@ fn goto_first_nonblank_steps_over_a_marked_space_as_one_cluster() {
 fn goto_first_nonblank_skips_tab() {
     assert_state!(
         "-[\t]>hello\n",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "\t-[h]>ello\n"
     );
 }
@@ -139,7 +195,11 @@ fn goto_first_nonblank_skips_tab() {
 fn goto_first_nonblank_no_leading_whitespace() {
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[h]>ello\n"
     );
 }
@@ -149,12 +209,20 @@ fn goto_first_nonblank_all_blank_line() {
     // Line is all spaces: no non-blank found, cursor is unchanged.
     assert_state!(
         "-[ ]>  \n",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[ ]>  \n"
     );
     assert_state!(
         " -[ ]>\n",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         " -[ ]>\n"
     );
 }
@@ -165,7 +233,11 @@ fn goto_first_nonblank_all_blank_line() {
 fn goto_line_start_multi_cursor() {
     assert_state!(
         "hel-[l]>o\nwor-[l]>d\n",
-        |(text, sels)| cmd_goto_line_start(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_start(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[h]>ello\n-[w]>orld\n"
     );
 }
@@ -174,7 +246,11 @@ fn goto_line_start_multi_cursor() {
 fn goto_line_end_multi_cursor() {
     assert_state!(
         "-[h]>ello\n-[w]>orld\n",
-        |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "hell-[o]>\nworl-[d]>\n"
     );
 }
@@ -184,7 +260,11 @@ fn goto_first_nonblank_multi_cursor() {
     // Both cursors are mid-line; each jumps to the first non-blank of its line.
     assert_state!(
         "  hel-[l]>o\n  wor-[l]>d\n",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "  -[h]>ello\n  -[w]>orld\n"
     );
 }
@@ -193,7 +273,11 @@ fn goto_first_nonblank_multi_cursor() {
 fn goto_first_nonblank_empty_buffer() {
     assert_state!(
         "-[\n]>",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[\n]>"
     );
 }
@@ -205,7 +289,11 @@ fn extend_line_start_from_mid_line() {
     // Cursor on 'l' in "hello"; extend to line start: anchor stays at 'l', head at 'h'.
     assert_state!(
         "hel-[l]>o\n",
-        |(text, sels)| cmd_goto_line_start(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_goto_line_start(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend
+        ),
         "<[hell]-o\n"
     );
 }
@@ -215,7 +303,11 @@ fn extend_line_start_already_at_start() {
     // Already at line start: no-op.
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| cmd_goto_line_start(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_goto_line_start(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend
+        ),
         "-[h]>ello\n"
     );
 }
@@ -225,7 +317,11 @@ fn extend_line_end_from_start() {
     // Cursor on 'h'; extend to end: anchor stays at 'h', head at 'o'.
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend
+        ),
         "-[hello]>\n"
     );
 }
@@ -235,7 +331,11 @@ fn extend_line_end_already_at_end() {
     // Already at line end: no-op.
     assert_state!(
         "hell-[o]>\n",
-        |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend
+        ),
         "hell-[o]>\n"
     );
 }
@@ -245,7 +345,11 @@ fn extend_first_nonblank_from_mid_line() {
     // Cursor on 'l'; extend to first nonblank 'h': backward extension.
     assert_state!(
         "hel-[l]>o\n",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend
+        ),
         "<[hell]-o\n"
     );
 }
@@ -257,7 +361,11 @@ fn extend_first_nonblank_from_indent() {
     // Serialized with ]> after head: "-[  h]>ello\n".
     assert_state!(
         "-[ ]> hello\n",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend
+        ),
         "-[  h]>ello\n"
     );
 }
@@ -266,7 +374,11 @@ fn extend_first_nonblank_from_indent() {
 fn goto_first_nonblank_skips_non_breaking_and_ideographic_spaces() {
     assert_state!(
         "-[\u{a0}]>\u{3000}x\n",
-        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_first_nonblank(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "\u{a0}\u{3000}-[x]>\n"
     );
 }
@@ -275,7 +387,11 @@ fn goto_first_nonblank_skips_non_breaking_and_ideographic_spaces() {
 fn goto_line_newline_lands_on_the_newline_after_a_cluster() {
     assert_state!(
         "-[a]>e\u{301}\n",
-        |(text, sels)| cmd_goto_line_newline(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_newline(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "ae\u{301}-[\n]>"
     );
 }
@@ -284,7 +400,11 @@ fn goto_line_newline_lands_on_the_newline_after_a_cluster() {
 fn goto_line_end_lands_on_the_start_of_a_multi_codepoint_last_cluster() {
     assert_state!(
         "-[a]>\u{1f468}\u{200d}\u{1f469}\n",
-        |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "a-[\u{1f468}\u{200d}\u{1f469}]>\n"
     );
 }

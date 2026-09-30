@@ -1,6 +1,4 @@
 use super::super::*;
-use hume_editing::selection::Selection;
-use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
 
@@ -11,7 +9,7 @@ fn align_single_selection_noop() {
     // Only the primary: always at target col, no change.
     assert_state!(
         "foo -[=]> 1\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "foo -[=]> 1\n"
     );
 }
@@ -22,7 +20,7 @@ fn align_forward_insert_spaces() {
     // One space inserted before secondary to reach col 4.
     assert_state!(
         "foo -[=]> 1\nfo -[=]> 2\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "foo -[=]> 1\nfo  -[=]> 2\n"
     );
 }
@@ -34,7 +32,7 @@ fn align_forward_multiple_spaces_inserted() {
     // "foo = 1" has no selection, just buffer content.
     assert_state!(
         "foo = 1\nab-[=]>c\n-[=]>de\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "foo = 1\nab-[=]>c\n  -[=]>de\n"
     );
 }
@@ -47,7 +45,7 @@ fn align_forward_two_secondaries_insert() {
     // "fo = 3":     secondary '=' at col 3, needs 4 spaces
     assert_state!(
         "foobar -[=]> 1\nfoo -[=]> 2\nfo -[=]> 3\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "foobar -[=]> 1\nfoo    -[=]> 2\nfo     -[=]> 3\n"
     );
 }
@@ -60,7 +58,7 @@ fn align_forward_remove_spaces() {
     // Line 0: insert 1 space → col 4. Line 1: remove 2 spaces → col 4.
     assert_state!(
         "fo -[=]> 1\nfoo   -[=]> 2\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "fo  -[=]> 1\nfoo -[=]> 2\n"
     );
 }
@@ -73,7 +71,7 @@ fn align_forward_clamped_removal_one_space_left() {
     // Line 0: insert 4 spaces → col 6. Line 1: remove 1 space → col 6.
     assert_state!(
         "ab-[=]>\nabcde  -[=]>\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "ab    -[=]>\nabcde -[=]>\n"
     );
 }
@@ -86,7 +84,7 @@ fn align_clamped_exactly_one_space_available_removes_nothing() {
     // Line 0: insert 1 space → col 4. Line 1: amount=0 → unchanged.
     assert_state!(
         "fo -[=]>\nfoo -[=]>\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "fo  -[=]>\nfoo -[=]>\n"
     );
 }
@@ -99,7 +97,7 @@ fn align_bidirectional_insert_and_remove() {
     // max_remove = N-1 = 2 → remove 2, col 4.
     assert_state!(
         "foo -[=]>\nfo -[=]>\nfoo   -[=]>\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "foo -[=]>\nfo  -[=]>\nfoo -[=]>\n"
     );
 }
@@ -109,7 +107,7 @@ fn align_direction_preserved_forward() {
     // Forward selection spans multiple chars; direction preserved after align.
     assert_state!(
         "foo -[== ]> 1\nfo -[== ]> 2\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "foo -[== ]> 1\nfo  -[== ]> 2\n"
     );
 }
@@ -121,7 +119,7 @@ fn align_backward_selection_right_aligns() {
     // "foo = 2":  secondary, backward '=' anchor at col 4. Insert 1 space.
     assert_state!(
         "foo  <[=]- 1\nfoo <[=]- 2\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "foo  <[=]- 1\nfoo  <[=]- 2\n"
     );
 }
@@ -133,7 +131,7 @@ fn align_multiline_passthrough() {
     // buffer positions shift by +1 (the space inserted for the single-line sel).
     assert_state!(
         "foo -[=]>\nfo -[=]>\nfoo -[bar\nbaz]>\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "foo -[=]>\nfo  -[=]>\nfoo -[bar\nbaz]>\n"
     );
 }
@@ -143,7 +141,7 @@ fn align_primary_unchanged() {
     // Primary selection itself is never modified (amount == 0).
     assert_state!(
         "foo -[=]>\nfoo -[=]>\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "foo -[=]>\nfoo -[=]>\n"
     );
 }
@@ -164,14 +162,18 @@ fn align_remove_tab_before_selection() {
     // fit_0 = max(line 0: 1, line 1: 4 − 3 = 1) = 1, matching the primary's
     // own baseline exactly. target[0] stays 1, so the primary never moves.
     let text = BufferText::from(" =\n  \t=\n");
-    let sels = SelectionSet::from_vec(
+    let sels = test_fixtures::testing::set(
+        &text,
         vec![
-            Selection::collapsed(CharOffset::new(1)), // primary: '=' col 1
-            Selection::collapsed(CharOffset::new(6)), // secondary: '=' col 3
+            test_fixtures::testing::cursor(&text, 1), // primary: '=' col 1
+            test_fixtures::testing::cursor(&text, 6), // secondary: '=' col 3
         ],
         0,
     );
-    let (new_text, _new_sels, _cs) = align_selections(text, sels, 4);
+    let (new_text, _new_sels, _cs) = test_fixtures::testing::parts(align_selections(
+        test_fixtures::testing::state(text, sels),
+        4,
+    ));
     assert_eq!(
         new_text.to_string(),
         " =\n =\n",
@@ -194,14 +196,18 @@ fn align_tab_in_removable_run_pads_to_exact_target() {
     // more than needed. Deleting the tab and padding 1 space back lands '='
     // exactly on col 3, not one column left of it.
     let text = BufferText::from("aa =\na \t=\n");
-    let sels = SelectionSet::from_vec(
+    let sels = test_fixtures::testing::set(
+        &text,
         vec![
-            Selection::collapsed(CharOffset::new(3)), // primary: '=' col 3
-            Selection::collapsed(CharOffset::new(8)), // secondary: '=' col 4
+            test_fixtures::testing::cursor(&text, 3), // primary: '=' col 3
+            test_fixtures::testing::cursor(&text, 8), // secondary: '=' col 4
         ],
         0,
     );
-    let (new_text, _new_sels, _cs) = align_selections(text, sels, 4);
+    let (new_text, _new_sels, _cs) = test_fixtures::testing::parts(align_selections(
+        test_fixtures::testing::state(text, sels),
+        4,
+    ));
     assert_eq!(
         new_text.to_string(),
         "aa =\na  =\n",
@@ -222,14 +228,18 @@ fn align_accounts_for_a_tab_before_the_alignment_point() {
     // grapheme counts. Aligning by display column inserts enough to match
     // column 6, where both actually line up on screen.
     let text = BufferText::from("a\tx = 1\nbb = 2\n");
-    let sels = SelectionSet::from_vec(
+    let sels = test_fixtures::testing::set(
+        &text,
         vec![
-            Selection::collapsed(CharOffset::new(4)), // primary: '=' in "a\tx = 1"
-            Selection::collapsed(CharOffset::new(11)), // secondary: '=' in "bb = 2"
+            test_fixtures::testing::cursor(&text, 4), // primary: '=' in "a\tx = 1"
+            test_fixtures::testing::cursor(&text, 11), // secondary: '=' in "bb = 2"
         ],
         0,
     );
-    let (new_text, _new_sels, _cs) = align_selections(text, sels, 4);
+    let (new_text, _new_sels, _cs) = test_fixtures::testing::parts(align_selections(
+        test_fixtures::testing::state(text, sels),
+        4,
+    ));
     assert_eq!(
         new_text.to_string(),
         "a\tx = 1\nbb    = 2\n",
@@ -245,7 +255,7 @@ fn align_two_slots_per_line() {
     // while line 0's 'b' gains one.
     assert_state!(
         "-[a]> -[b]>\n-[xy]>  -[z]>\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "-[a]>  -[b]>\n-[xy]> -[z]>\n"
     );
 }
@@ -256,7 +266,7 @@ fn align_two_slots_overflow_widens_primary() {
     // so spaces are inserted on the primary line too (primary may move).
     assert_state!(
         "-[x]> -[y]>\n-[loooong]> -[z]>\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "-[x]>       -[y]>\n-[loooong]> -[z]>\n"
     );
 }
@@ -273,18 +283,22 @@ fn align_two_slots_static_text_between() {
     let text = BufferText::from(
         "const foo = 444; // foo\nconst foobar = 6757383; // bar\nconst a = 34; // a\n",
     );
-    let sels = SelectionSet::from_vec(
+    let sels = test_fixtures::testing::set(
+        &text,
         vec![
-            Selection::collapsed(CharOffset::new(10)), // primary: '=' on line 0
-            Selection::collapsed(CharOffset::new(17)), // '//' on line 0
-            Selection::collapsed(CharOffset::new(37)), // '=' on line 1
-            Selection::collapsed(CharOffset::new(48)), // '//' on line 1
-            Selection::collapsed(CharOffset::new(63)), // '=' on line 2
-            Selection::collapsed(CharOffset::new(69)), // '//' on line 2
+            test_fixtures::testing::cursor(&text, 10), // primary: '=' on line 0
+            test_fixtures::testing::cursor(&text, 17), // '//' on line 0
+            test_fixtures::testing::cursor(&text, 37), // '=' on line 1
+            test_fixtures::testing::cursor(&text, 48), // '//' on line 1
+            test_fixtures::testing::cursor(&text, 63), // '=' on line 2
+            test_fixtures::testing::cursor(&text, 69), // '//' on line 2
         ],
         0,
     );
-    let (new_text, _new_sels, _cs) = align_selections(text, sels, 4);
+    let (new_text, _new_sels, _cs) = test_fixtures::testing::parts(align_selections(
+        test_fixtures::testing::state(text, sels),
+        4,
+    ));
     assert_eq!(
         new_text.to_string(),
         "const foo    = 444;     // foo\nconst foobar = 6757383; // bar\nconst a      = 34;      // a\n",
@@ -299,7 +313,7 @@ fn align_extras_on_same_line_pass_through() {
     // edit delta; selection count is preserved.
     assert_state!(
         "foo -[x]>\na -[b]> -[c]>\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "foo -[x]>\na   -[b]> -[c]>\n"
     );
 }
@@ -311,7 +325,7 @@ fn align_counts_a_wide_char_as_two_columns() {
     // '=' after "漢" sits at col 2; '=' after "a" at col 1 needs one space.
     assert_state!(
         "\u{6f22}-[=]>1\na-[=]>2\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "\u{6f22}-[=]>1\na -[=]>2\n"
     );
 }
@@ -321,7 +335,7 @@ fn align_counts_a_combining_cluster_as_one_column() {
     // "e◌́" is one column, so "e◌́=" and "a=" are already aligned.
     assert_state!(
         "e\u{301}-[=]>1\na-[=]>2\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "e\u{301}-[=]>1\na-[=]>2\n"
     );
 }
@@ -331,7 +345,19 @@ fn align_measures_a_tab_before_a_wide_char_by_display_column() {
     // "\t漢=" puts '=' at col 6 with tab_width 4; "abcdef=" at col 6: aligned.
     assert_state!(
         "\t\u{6f22}-[=]>1\nabcdef-[=]>2\n",
-        |(text, sels)| align_selections(text, sels, 4),
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
         "\t\u{6f22}-[=]>1\nabcdef-[=]>2\n"
+    );
+}
+
+#[test]
+fn align_keeps_the_whitespace_a_previous_selection_covers() {
+    // On the second line the first slot is a selected space, so the run
+    // before the second slot starts after it: one space of that run stays
+    // and one goes, and both lines end with their slots on columns 1 and 3.
+    assert_state!(
+        "-[a]>  -[b]>\nc-[ ]>  -[d]>\n",
+        |(text, sels)| align_selections(test_fixtures::testing::state(text, sels), 4),
+        " -[a]> -[b]>\nc-[ ]> -[d]>\n"
     );
 }

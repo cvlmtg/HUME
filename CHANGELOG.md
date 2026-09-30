@@ -32,11 +32,19 @@
 ### Commands
 - `:e path:line[:col]` jumps to a position on open, matching `hume path:line:col` on the command line.
 - A selection never ends between a letter and its combining mark, or inside an emoji sequence or a flag: text objects, motions, edits, search matches, `:sort`, join, paste and undo all keep whole characters. This fixes `mi(`/`mi"` next to a delimiter that carries a mark, `J` over an indent that carries a mark, `:sort` dropping a trailing mark from its key, and argument objects after a comma that carries a mark.
+- Undoing a smart paste that repeated the selected text restores the selection it was made from, not a cursor at its edge.
+- Reloading a file from disk keeps the cursor of a pane that showed it and has since moved to another buffer inside the reloaded text when that pane comes back.
+- Cancelling a search or sift after a language server edited the buffer restores the selection on the same text it started on.
+- A mouse drag extends from the current selection's anchor, so a key that changes the selection mid-drag moves where the drag extends from.
+- Backward search starts from the last character of the selection as a whole, so a selection ending in a letter with combining marks behaves like one ending in a plain letter. The matching-bracket highlight covers the whole character holding the bracket.
 - `f`/`t`/`F`/`T` match a typed character against both its composed and decomposed forms (`é` finds `e` followed by a combining accent), and a typed `e` skips an accented one.
 - `:sort` treats composed and decomposed text as equal.
 - `G C` capitalizes with title case (`ǆ` becomes `ǅ`, `ﬁ` becomes `Fi`).
 - `#` matches tags whose names contain non-ASCII letters, and tags with a no-break space before the closing `>`.
 - No-break and ideographic spaces count as indentation for `g s`, `J`, auto-indent, and `>`/`<`, which rewrite such an indent with spaces or tabs.
+- `d` and `y` put in the register exactly the text `d` removes. A selection ending on the file's last line break leaves that line break out, unless it covers whole lines. A cursor on the last line break of a line with text removes and copies nothing, and leaves the register as it was.
+- `>`/`<` in front of a line that starts with a combining mark, `J` after a line ending in a prepend character, and pasting an empty register entry beside another paste keep the cursor on whole characters in the right place.
+- Search highlights follow a paste while it can still be cycled with `[`/`]`.
 
 ### Theming
 - `gruvbox_light`'s picker cursor now matches upstream's reversed style, instead of the parent theme's explicit colors.

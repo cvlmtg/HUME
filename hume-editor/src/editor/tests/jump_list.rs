@@ -15,7 +15,7 @@ fn goto_first_line_records_jump() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(0)
     );
 
@@ -62,13 +62,13 @@ fn jump_backward_then_forward() {
 #[test]
 fn goto_matching_pair_records_jump() {
     let text = BufferText::from("foo(bar)\n");
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(3))); // on '('
-    let doc = Buffer::new(text, sels);
+    let sels = sels_at(&text, &[(3, 3)], 0); // on '('
+    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
     let mut ed = Editor::for_testing(doc);
     let before = state(&ed);
 
     ed.handle_key(key('#'));
-    assert_eq!(ed.current_selections().primary().head(), co(7)); // on ')'
+    assert_eq!(ed.current_view().primary().head().offset(), co(7)); // on ')'
 
     // jump-backward should restore the pre-jump position.
     ed.handle_key(key_ctrl('o'));
@@ -106,7 +106,7 @@ fn large_motion_records_jump() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(10)
     );
 
@@ -130,7 +130,7 @@ fn search_confirm_records_jump() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(15)
     );
 
@@ -148,8 +148,8 @@ fn search_confirm_noop_does_not_clobber_forward_history() {
     // `search_sel` itself builds, so confirming search truly changes
     // nothing, not just "landed near where it started".
     let text = BufferText::from("foo\n");
-    let sels = SelectionSet::single(hume_editing::selection::Selection::new(co(0), co(2)));
-    let doc = Buffer::new(text, sels);
+    let sels = sels_at(&text, &[(0, 2)], 0);
+    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
     let mut ed = Editor::for_testing(doc);
 
     // `%`: jump-flagged, moves elsewhere, records a jump.
@@ -233,10 +233,8 @@ fn search_next_records_jump() {
 fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     // Two "editor" matches on the same line.
     let text = hume_editing::text::BufferText::from("the editor and the editor\nother line\n");
-    let sels = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(0)),
-    );
-    let doc = crate::editor::buffer::Buffer::new(text, sels);
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let doc = crate::editor::buffer::Buffer::new(test_fixtures::testing::state(text, sels));
     let mut ed = Editor::for_testing(doc);
     ed.kitty_enabled = true;
 
@@ -288,7 +286,7 @@ fn select_all_records_jump() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(19),
         "% should place the cursor at the last line"
     );
@@ -310,28 +308,28 @@ fn select_all_records_jump() {
 fn select_all_from_last_char_still_records_jump() {
     let text = BufferText::from("foo\nbar\n");
     let last = text.last_char();
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(last));
-    let doc = Buffer::new(text, sels);
+    let sels = sels_at(&text, &[(last.index(), last.index())], 0);
+    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
     let mut ed = Editor::for_testing(doc);
 
     ed.handle_key(key('%'));
-    let after = ed.current_selections().primary();
+    let after = ed.current_view().primary();
     assert_eq!(
-        after.head(),
+        after.head().offset(),
         last,
         "head shouldn't move: already on the last char"
     );
     assert_eq!(
-        after.anchor(),
+        after.anchor().offset(),
         co(0),
         "% should still select the whole buffer"
     );
 
     // Ctrl-o must restore the pre-% collapsed cursor.
     ed.handle_key(key_ctrl('o'));
-    let restored = ed.current_selections().primary();
-    assert_eq!(restored.anchor(), last);
-    assert_eq!(restored.head(), last);
+    let restored = ed.current_view().primary();
+    assert_eq!(restored.anchor().offset(), last);
+    assert_eq!(restored.head().offset(), last);
 }
 
 /// A no-op `#` (cursor not on a bracket or tag) must not truncate forward
@@ -372,8 +370,8 @@ fn goto_matching_pair_noop_does_not_clobber_forward_history() {
 #[test]
 fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
     let text = BufferText::from("hello\n\nworld\n");
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
-    let doc = Buffer::new(text, sels);
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
     let mut ed = Editor::for_testing(doc);
     let before = state(&ed);
 
@@ -394,8 +392,8 @@ fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
 #[test]
 fn goto_prev_paragraph_records_jump_even_for_a_short_hop() {
     let text = BufferText::from("hello\n\nworld\n");
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(7))); // on 'w'
-    let doc = Buffer::new(text, sels);
+    let sels = sels_at(&text, &[(7, 7)], 0); // on 'w'
+    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
     let mut ed = Editor::for_testing(doc);
     let before = state(&ed);
 
@@ -519,9 +517,10 @@ fn search_n_ctrl_o_ctrl_i_different_lines() {
 /// tautological.
 fn assert_cursor_at_marker(ed: &Editor, text: &str, marker: &str, msg: &str) {
     let target = text.find(marker).expect("marker line present");
+    let text = BufferText::from(text);
     let expected = serialize_state(
-        &BufferText::from(text),
-        &SelectionSet::single(hume_editing::selection::Selection::collapsed(co(target))),
+        &text,
+        &test_fixtures::testing::single(&text, test_fixtures::testing::cursor(&text, target)),
     );
     assert_eq!(state(ed), expected, "{msg}");
 }
@@ -675,10 +674,7 @@ fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
     std::fs::write(&file1, &content).unwrap();
     std::fs::write(&file2, "other\nfile\n").unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("scratch\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
     ed.execute_typed("e", Some(file1.to_str().unwrap()))
         .unwrap();
     let buf1 = ed.focused_buffer_id();
@@ -729,10 +725,7 @@ fn reload_remaps_jump_entries_through_line_diff() {
     let content: String = (0..20).map(|i| format!("line {i}\n")).collect();
     std::fs::write(&path, &content).unwrap();
 
-    let mut ed = Editor::for_testing(Buffer::new(
-        BufferText::from("scratch\n"),
-        SelectionSet::default(),
-    ));
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
 
     for _ in 0..10 {
@@ -823,7 +816,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     ed.handle_key(key('g'));
     ed.handle_key(key('e')); // goto-last-line
     assert_ne!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "cursor actually moved off the initial position"
     );
@@ -838,9 +831,13 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
         Some(hume_rope::line::ContentLine::new(0)),
     );
 
+    let text = ed.state.buffers.get(bid).text();
     assert_eq!(
-        *ed.state.panes.state[pid_b][bid].selections(),
-        ed.state.buffers.get(bid).initial_sels(),
+        test_fixtures::testing::serialize_state(
+            text,
+            ed.state.panes.state[pid_b][bid].selections()
+        ),
+        test_fixtures::testing::serialize_state(text, &ed.state.buffers.get(bid).initial_sels()),
         "a sibling pane's selection must be reseeded on a view-buffer refresh, not left stale"
     );
 }
@@ -872,7 +869,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     ed.handle_key(key('g'));
     ed.handle_key(key('e')); // goto-last-line
     assert_ne!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "cursor actually moved off the initial position"
     );
@@ -895,9 +892,10 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     // `bid` must have been reseeded by the refresh, not left stale.
     ed.switch_focused_pane(pid_a);
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid);
+    let text = ed.state.buffers.get(bid).text();
     assert_eq!(
-        ed.current_selections(),
-        &ed.state.buffers.get(bid).initial_sels(),
+        test_fixtures::testing::serialize_state(text, ed.current_selections()),
+        test_fixtures::testing::serialize_state(text, &ed.state.buffers.get(bid).initial_sels()),
         "a pane that switched away before a view-buffer refresh must still be reseeded, \
          not just panes that were viewing it at refresh time"
     );

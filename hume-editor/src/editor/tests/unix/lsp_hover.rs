@@ -343,14 +343,14 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     ed.prepare_frame(&mut ctx);
     assert!(popup_lines(&ed).is_some(), "sanity: popup shown");
 
-    let head_before = ed.current_selections().primary().head();
+    let head_before = ed.current_view().primary().head().offset();
     ed.feed_key(key_ctrl('d'));
     assert!(
         ed.state.input.popup().is_none(),
         "Ctrl-d on a popup with nothing to scroll must close it, not swallow the key"
     );
     assert!(
-        ed.current_selections().primary().head() > head_before,
+        ed.current_view().primary().head().offset() > head_before,
         "Ctrl-d must fall through to the buffer's half-page-down motion once the popup closes"
     );
 }
@@ -577,7 +577,7 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
 
     ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
 
-    // Bump the buffer's text_gen between send and drain. Without
+    // Bump the buffer's generation between send and drain. Without
     // #:allow-stale this response would be dropped. No settle() call until
     // after the edit: settle() unconditionally drains LSP too;
     // draining any earlier would deliver the

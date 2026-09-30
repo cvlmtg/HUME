@@ -14,7 +14,7 @@ use hume_scripting::host::WidgetToken;
 use super::super::Editor;
 use super::super::commands::half_page;
 use super::super::widget_token;
-use super::placement::{focused_cursor_char, popup_placement};
+use super::placement::{focused_cursor, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 /// `(show-popup! text)`'s raw, unwrapped content, held on `EditorState`
@@ -152,8 +152,8 @@ impl Editor {
             return;
         }
 
-        let anchor_char = focused_cursor_char(self);
-        let Some(placement) = popup_placement(self, ctx, anchor_char) else {
+        let anchor = focused_cursor(self);
+        let Some(placement) = popup_placement(self, ctx, anchor) else {
             self.state.views.popup.set(None);
             return;
         };

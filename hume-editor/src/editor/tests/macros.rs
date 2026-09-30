@@ -118,7 +118,7 @@ fn macro_big_q_replays_from_register() {
     ed.handle_key(key('j'));
     ed.handle_key(key('Q'));
 
-    let before = ed.current_selections().primary().head();
+    let before = ed.current_view().primary().head().offset();
 
     // `qq` replays from the default register, no extra key needed.
     ed.handle_key(key('q'));
@@ -126,7 +126,7 @@ fn macro_big_q_replays_from_register() {
 
     ed.drain_replay_queue();
 
-    let after = ed.current_selections().primary().head();
+    let after = ed.current_view().primary().head().offset();
     assert!(after > before, "cursor should have moved down after replay");
 }
 
@@ -141,7 +141,7 @@ fn macro_big_q_non_register_key_cancels() {
     ed.handle_key(key('j'));
     ed.handle_key(key('Q'));
 
-    let before = ed.current_selections().primary().head();
+    let before = ed.current_view().primary().head().offset();
 
     // `q` then `Q` (uppercase, not a valid register): cancelled, cursor stays put.
     ed.handle_key(key('q'));
@@ -149,7 +149,7 @@ fn macro_big_q_non_register_key_cancels() {
 
     ed.drain_replay_queue();
 
-    let after = ed.current_selections().primary().head();
+    let after = ed.current_view().primary().head().offset();
     assert_eq!(before, after, "cancelled replay should not move cursor");
 }
 
@@ -324,7 +324,7 @@ fn macro_replay_with_count() {
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
 
-    let start = ed.current_selections().primary().head();
+    let start = ed.current_view().primary().head().offset();
     let start_line = ed.doc().text().char_to_line(start);
     assert_eq!(
         start_line,
@@ -341,7 +341,7 @@ fn macro_replay_with_count() {
     let end_line = ed
         .doc()
         .text()
-        .char_to_line(ed.current_selections().primary().head());
+        .char_to_line(ed.current_view().primary().head().offset());
     assert_eq!(
         end_line,
         hume_rope::line::ContentLine::new(3),
@@ -405,7 +405,7 @@ fn macro_with_find_char() {
     // After recording, cursor is on first 'x'. Move to 'c' so replay can find next 'x'.
     ed.handle_key(key('l')); // step right to 'c'
 
-    let before_pos = ed.current_selections().primary().head();
+    let before_pos = ed.current_view().primary().head().offset();
     let before_char = ed.doc().text().char_at(before_pos);
 
     // Replay: `f x` from 'c' should land on the second 'x'.
@@ -413,7 +413,7 @@ fn macro_with_find_char() {
     ed.handle_key(key('q'));
     ed.drain_replay_queue();
 
-    let after_pos = ed.current_selections().primary().head();
+    let after_pos = ed.current_view().primary().head().offset();
     assert!(after_pos > before_pos, "cursor should have moved right");
     assert_eq!(
         ed.doc().text().char_at(after_pos),
@@ -843,7 +843,7 @@ fn macro_q_on_read_only_buffer_does_not_arm_pending() {
     ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only(), "focused buffer must be read-only");
 
-    let head_before = ed.current_selections().primary().head();
+    let head_before = ed.current_view().primary().head().offset();
 
     ed.handle_key(key('q'));
     assert!(
@@ -855,7 +855,7 @@ fn macro_q_on_read_only_buffer_does_not_arm_pending() {
     // normally: Up should move the cursor backward in the buffer.
     ed.handle_key(key_up());
     assert!(
-        ed.current_selections().primary().head() < head_before,
+        ed.current_view().primary().head().offset() < head_before,
         "Up after q on read-only must move the cursor, not be swallowed as a register name"
     );
 }
@@ -937,8 +937,8 @@ fn macro_replay_resolves_non_conformant_shift_delivery_like_clean_press() {
         "mode must match"
     );
     assert_eq!(
-        recorded.current_selections().primary().head(),
-        direct.current_selections().primary().head(),
+        recorded.current_view().primary().head().offset(),
+        direct.current_view().primary().head().offset(),
         "cursor position must match"
     );
 }

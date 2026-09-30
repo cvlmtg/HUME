@@ -1,5 +1,6 @@
 //! The `Sift` layer: the `s`-prompt (sift-within) minibuffer mode.
 
+use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::search::compile_search_input;
@@ -32,9 +33,9 @@ impl Layer for SiftLayer {
     fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
         self.snap.capture(state, view);
     }
-    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView, _why: Removal) {
+    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         self.snap
-            .take_restore(&mut state.panes.state, &state.buffers, view);
+            .take_restore(&mut state.panes.state, &state.buffers);
         // Sift has no history ring of its own (`begin_session_all`
         // only touches the command/search rings, so this is a no-op
         // for Sift), but every other minibuf-backed mode's teardown
@@ -42,6 +43,9 @@ impl Layer for SiftLayer {
         // them rather than being special-cased as the one mode that
         // skips it.
         state.history.begin_session_all();
+    }
+    fn snapshot_mut(&mut self) -> Option<&mut PaneSnapshot> {
+        Some(&mut self.snap)
     }
     fn minibuf(&self) -> Option<&MiniBuffer> {
         Some(&self.minibuf)
@@ -111,13 +115,17 @@ fn update_live_sift(ed: &mut Editor, r: LayerRef) {
     let Some(sift) = ed.state.input.at::<SiftLayer>(r) else {
         return;
     };
-    let result = sift
-        .snap
-        .selections()
-        .and_then(|sels| sift_matches_within(ed.doc().text(), sels, &regex));
+    let pane = sift.snap.pane();
+    let result = sift.snap.selections().and_then(|(bid, sels)| {
+        let text = ed.state.buffers.get(bid).text();
+        sift_matches_within(&EditState::bind(text, sels.clone()), &regex).map(|s| (bid, s))
+    });
 
     match result {
-        Some(new_sels) => ed.set_current_selections(new_sels),
+        Some((bid, new_state)) => {
+            let text = new_state.text().clone();
+            ed.state.panes.state[pane][bid].set_selections(new_state.into_selections(), &text);
+        }
         None => restore_sift_snapshot(ed, r),
     }
 }
@@ -132,5 +140,5 @@ fn restore_sift_snapshot(ed: &mut Editor, r: LayerRef) {
         return;
     };
     sift.snap
-        .restore(&mut ed.state.panes.state, &ed.state.buffers, &ed.view);
+        .restore(&mut ed.state.panes.state, &ed.state.buffers);
 }

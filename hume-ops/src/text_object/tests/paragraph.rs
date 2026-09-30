@@ -7,7 +7,11 @@ use test_fixtures::assert_state;
 fn inner_paragraph_single_line() {
     assert_state!(
         "-[h]>ello\n\nworld\n",
-        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[hello]>\n\nworld\n"
     );
 }
@@ -18,7 +22,11 @@ fn inner_paragraph_multiline_excludes_gap() {
     // blank gap after them.
     assert_state!(
         "para one\n-[l]>ine two\n\nworld\n",
-        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[para one\nline two]>\n\nworld\n"
     );
 }
@@ -28,7 +36,11 @@ fn inner_paragraph_blank_line_is_noop() {
     // Cursor sits in the gap, not inside any paragraph.
     assert_state!(
         "hello\n-[\n]>world\n",
-        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "hello\n-[\n]>world\n"
     );
 }
@@ -37,7 +49,11 @@ fn inner_paragraph_blank_line_is_noop() {
 fn inner_paragraph_last_paragraph_no_gap() {
     assert_state!(
         "hello\n\n-[w]>orld\n",
-        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "hello\n\n-[world]>\n"
     );
 }
@@ -48,7 +64,11 @@ fn inner_paragraph_last_paragraph_no_gap() {
 fn around_paragraph_includes_gap() {
     assert_state!(
         "-[h]>ello\n\nworld\n",
-        |(text, sels)| cmd_around_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[hello\n\n]>world\n"
     );
 }
@@ -57,7 +77,11 @@ fn around_paragraph_includes_gap() {
 fn around_paragraph_multiple_blank_lines() {
     assert_state!(
         "-[h]>ello\n\n\nworld\n",
-        |(text, sels)| cmd_around_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[hello\n\n\n]>world\n"
     );
 }
@@ -67,7 +91,11 @@ fn around_paragraph_last_paragraph_equals_inner() {
     // No trailing gap: `m a p` on the last paragraph is the same as `m i p`.
     assert_state!(
         "hello\n\n-[w]>orld\n",
-        |(text, sels)| cmd_around_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "hello\n\n-[world]>\n"
     );
 }
@@ -76,7 +104,11 @@ fn around_paragraph_last_paragraph_equals_inner() {
 fn around_paragraph_blank_line_is_noop() {
     assert_state!(
         "hello\n-[\n]>world\n",
-        |(text, sels)| cmd_around_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "hello\n-[\n]>world\n"
     );
 }
@@ -89,7 +121,11 @@ fn around_paragraph_gap_reaches_buffer_end() {
     // one past it. See `paragraph_span`'s doc comment.
     assert_state!(
         "-[a]>\n\n\n",
-        |(text, sels)| cmd_around_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[a\n\n\n]>"
     );
 }
@@ -103,7 +139,11 @@ fn inner_paragraph_combining_grapheme_at_end() {
     // end must land on the combining mark (4), not the 'e' alone (3).
     assert_state!(
         "-[c]>afe\u{0301}\n\nworld\n",
-        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[cafe\u{0301}]>\n\nworld\n"
     );
 }
@@ -117,7 +157,11 @@ fn inner_paragraph_whitespace_only_line_does_not_split() {
     // three lines are one paragraph.
     assert_state!(
         "-[a]>\n   \nb\n\nc\n",
-        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[a\n   \nb]>\n\nc\n"
     );
 }
@@ -128,7 +172,11 @@ fn inner_paragraph_whitespace_only_line_does_not_split() {
 fn extend_inner_paragraph_unions_with_selection() {
     assert_state!(
         "para -[o]>ne\nline two\n\nworld\n",
-        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Extend),
+        |(text, sels)| cmd_inner_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Extend
+        ),
         "-[para one\nline two]>\n\nworld\n"
     );
 }
@@ -140,7 +188,11 @@ fn extend_around_paragraph_grows_past_current() {
     // and its gap too (the past-end retry in apply_text_object_extend).
     assert_state!(
         "-[hello\n\n]>world\n\nfoo\n",
-        |(text, sels)| cmd_around_paragraph(&text, sels, 0, MotionMode::Extend),
+        |(text, sels)| cmd_around_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Extend
+        ),
         "-[hello\n\nworld\n\n]>foo\n"
     );
 }
@@ -151,7 +203,11 @@ fn extend_around_paragraph_grows_past_current() {
 fn inner_paragraph_multi_cursor_distinct_paragraphs() {
     assert_state!(
         "-[h]>ello\n\n-[w]>orld\n",
-        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[hello]>\n\n-[world]>\n"
     );
 }
@@ -177,7 +233,11 @@ fn inner_paragraph_multiline_backward_climb_crosses_chunk_boundaries() {
     let expected = format!("-[{padding_no_trailing_nl}]>\n\nafter\n");
     assert_state!(
         initial.as_str(),
-        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_paragraph(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         expected.as_str()
     );
 }

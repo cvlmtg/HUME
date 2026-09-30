@@ -87,12 +87,3 @@ fn inclusive_range_covers_its_own_end() {
     assert!(r.contains(CharOffset::new(5)));
     assert!(!r.contains(CharOffset::new(6)));
 }
-
-#[test]
-fn inclusive_range_to_exclusive_keeps_span() {
-    let r = InclusiveRange::new(CharOffset::new(2), CharOffset::new(5));
-    assert_eq!(
-        r.to_exclusive(),
-        ExclusiveRange::new(CharOffset::new(2), CharOffset::new(6))
-    );
-}

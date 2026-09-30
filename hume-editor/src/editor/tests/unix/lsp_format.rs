@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 
 use super::*;
 use crate::editor::lsp::LspState;
-use hume_editing::selection::{Selection, SelectionSet};
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
@@ -103,26 +102,20 @@ fn setup_with_caps(
 
 fn select_full_line_1(ed: &mut Editor) {
     // 'line1\n': chars [0, 6).
-    ed.set_current_selections(SelectionSet::single(Selection::new(co(0), co(5))));
+    select(ed, &[(0, 5)], 0);
 }
 
 fn select_full_lines_1_and_3(ed: &mut Editor) {
     // Two disjoint linewise selections: 'line1\n' (chars [0, 6)) and
     // 'line3\n' (chars [12, 17]). 'line2\n' in between is untouched by
     // either.
-    ed.set_current_selections(SelectionSet::from_vec(
-        vec![Selection::new(co(0), co(5)), Selection::new(co(12), co(17))],
-        0,
-    ));
+    select(ed, &[(0, 5), (12, 17)], 0);
 }
 
 fn select_full_line_1_and_a_sub_line_selection(ed: &mut Editor) {
     // 'line1\n' whole (chars [0, 6)), plus "lin" on line 2 (chars 6..=8),
     // not linewise.
-    ed.set_current_selections(SelectionSet::from_vec(
-        vec![Selection::new(co(0), co(5)), Selection::new(co(6), co(8))],
-        0,
-    ));
+    select(ed, &[(0, 5), (6, 8)], 0);
 }
 
 /// For `"line1\n\nline3\n"` (a blank line2): a real charwise selection on
@@ -130,10 +123,7 @@ fn select_full_line_1_and_a_sub_line_selection(ed: &mut Editor) {
 /// line2 (char 6): the shape a multi-cursor command can leave behind when
 /// one cursor happens to land on a blank line.
 fn select_mid_line_and_a_blank_line_cursor(ed: &mut Editor) {
-    ed.set_current_selections(SelectionSet::from_vec(
-        vec![Selection::new(co(1), co(2)), Selection::collapsed(co(6))],
-        0,
-    ));
+    select(ed, &[(1, 2), (6, 6)], 0);
 }
 
 fn run_fmt(ed: &mut Editor) {

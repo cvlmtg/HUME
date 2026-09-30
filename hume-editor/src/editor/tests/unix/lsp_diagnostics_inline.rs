@@ -228,7 +228,7 @@ fn the_next_key_after_gn_dismisses_the_popup_but_still_executes() {
         ed.state.input.popup().is_some(),
         "popup must be open after gn"
     );
-    let line_before = ed.current_selections().primary().head();
+    let line_before = ed.current_view().primary().head().offset();
 
     ed.feed_key(key('j')); // an ordinary Normal-mode motion, not a special dismiss key
 
@@ -237,7 +237,7 @@ fn the_next_key_after_gn_dismisses_the_popup_but_still_executes() {
         "any key press must dismiss the overlay"
     );
     assert_ne!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         line_before,
         "the dismissing key must still perform its own action (passive \
          dismiss, not swallowed)"

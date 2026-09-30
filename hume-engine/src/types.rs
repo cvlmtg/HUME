@@ -1,7 +1,8 @@
 use std::ops::Range;
 
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::column::{ByteCol, DisplayLineCol};
-use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
+use hume_rope::offset::ExclusiveRange;
 
 // ---------------------------------------------------------------------------
 // Theme & Style
@@ -50,15 +51,15 @@ pub use hume_grid::{Modifiers, ResolvedStyle, UnderlineStyle};
 pub struct Grapheme {
     /// Byte range within the materialized line buffer (empty for virtual content).
     pub byte_range: ExclusiveRange<ByteCol>,
-    /// Absolute char offset from the start of the buffer.
+    /// The buffer cluster this cell shows or stands at.
     ///
     /// Populated by the format stage so the style stage can resolve selection
     /// head positions without any rope lookups. A content display line's
-    /// inline-insert (`Virtual`) cells and its newline indicator still carry
-    /// the real char offset of the buffer position they sit at or precede.
-    /// `usize::MAX` is reserved for a virtual display line's cells, which
-    /// have no buffer position at all (see [`crate::display_lines::DisplayLineMap::render_display_line`]).
-    pub char_offset: usize,
+    /// inline-insert (`Virtual`) cells and its newline indicator carry the
+    /// cluster they sit at or precede. `None` for a virtual display line's
+    /// cells, which have no buffer position at all (see
+    /// [`crate::display_lines::DisplayLineMap::render_display_line`]).
+    pub pos: Option<ClusterStart>,
     /// Display column within the display line this grapheme ended up on
     /// (0-based, accounting for the widths before it). Display-line-relative:
     /// when a buffer line wraps, the graphemes carried onto the continuation
@@ -194,38 +195,20 @@ impl DisplayLineKind {
 // Selections & Cursor
 // ---------------------------------------------------------------------------
 
-/// An editor selection: an anchor and a head, both as absolute char offsets
-/// from the start of the buffer, each the start of a grapheme cluster.
-///
-/// Anchor == head is a single-cluster selection covering the cluster that
-/// starts at that index (the editor's inclusive selection invariant). The
-/// selection covers the clusters starting at min(anchor, head) through
-/// max(anchor, head), so the far end of [`Selection::range`] is the start of
-/// the last covered cluster, not its last char.
-///
-/// Using char offsets avoids per-frame rope lookups at the editor→engine
-/// boundary: the editor simply copies its char-offset selections directly.
+/// A selection as the renderer paints it. The editor builds these from its
+/// selection model each frame; the engine only reads them.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Selection {
-    pub anchor: CharOffset,
-    pub head: CharOffset,
-}
-
-impl Selection {
-    /// Returns the selection range as an inclusive char span, ordered
-    /// start <= end regardless of which of anchor/head came first.
-    pub fn range(self) -> InclusiveRange<CharOffset> {
-        if self.anchor <= self.head {
-            InclusiveRange::new(self.anchor, self.head)
-        } else {
-            InclusiveRange::new(self.head, self.anchor)
-        }
-    }
-
-    /// True if this selection is collapsed (anchor == head, no range).
-    pub fn is_collapsed(self) -> bool {
-        self.anchor == self.head
-    }
+pub struct PaintedSelection {
+    /// Every cluster the selection covers.
+    pub covered: ClusterRange,
+    /// The cluster the cursor sits on: the selection's head.
+    pub cursor: ClusterStart,
+    /// The selection covers one cluster and has no extent to paint.
+    pub is_cursor: bool,
+    /// The head comes before the anchor.
+    pub is_reverse: bool,
+    /// The selection the viewport follows.
+    pub is_primary: bool,
 }
 
 /// Ceiling on a command's numeric count prefix (e.g. the `3` in `3w`).

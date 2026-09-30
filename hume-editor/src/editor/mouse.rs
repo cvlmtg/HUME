@@ -6,7 +6,7 @@
 //!
 //! Click coordinates are terminal-absolute, so [`Editor::pane_at_screen_pos`]
 //! first finds the pane under the pointer and translates into its frame
-//! before `screen_to_char_offset` resolves a buffer offset.
+//! before `screen_to_cluster` resolves the buffer cluster it hits.
 //!
 //! The wheel runs `commands::scroll_view` with `count = mouse-scroll-lines`,
 //! like `Ctrl-d`/`Ctrl-u`. It scrolls the pane under the pointer (the focused
@@ -22,10 +22,11 @@ use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::commands::{self, pane_display_lines};
 use super::cursor;
-use hume_editing::selection::{Selection, SelectionSet};
 use hume_ops::MotionMode;
 
 use super::Editor;
+use hume_editing::selection::{EditView, Selection};
+use hume_editing::state::EditState;
 
 /// Whether `kind` is a *fresh* user action rather than the tail of a gesture
 /// that began before the current layer existed: a press or a wheel notch is
@@ -57,7 +58,7 @@ impl Editor {
                 self.mouse_left_drag(mouse.column, mouse.row)
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                self.state.mouse_drag_anchor = None;
+                self.state.mouse_drag = None;
             }
             MouseEventKind::ScrollUp => self.mouse_scroll(mouse.column, mouse.row, false),
             MouseEventKind::ScrollDown => self.mouse_scroll(mouse.column, mouse.row, true),
@@ -89,29 +90,36 @@ impl Editor {
         // `focus_pane` exits Insert (if active) BEFORE resolving the click's
         // char offset below, and while the *previously* focused pane is
         // still current: `end_insert_session` can shrink that pane's
-        // buffer (the blank-line indent trim), so computing `click_to_char`
-        // first would resolve against a buffer length the exit is about to
-        // invalidate: the offset could land past the new end, or simply on
-        // the wrong char once positions shift.
+        // buffer (the blank-line indent trim), so computing `click_to_cluster`
+        // first would resolve against a buffer the exit is about to change.
         super::focus::focus_pane(&mut self.state, &self.view, pid);
 
-        if let Some(char_off) = self.click_to_char(pid, pane_x, pane_y) {
-            // Collapse the primary selection to the clicked position.
-            let sel = Selection::collapsed(char_off);
-            self.set_current_selections(SelectionSet::single(sel));
+        if let Some(pos) = self.click_to_cluster(pid, pane_x, pane_y) {
+            // Collapse the selections to one cursor on the clicked cluster.
+            self.select_only(Selection::cursor(pos));
             self.clear_pending_input();
-            // Record anchor for potential drag-select.
-            self.state.mouse_drag_anchor = Some(char_off);
+            // The cursor is the anchor of a drag that follows.
+            self.state.mouse_drag = Some(pid);
         }
+    }
+
+    /// Replace the focused pane's selections with `sel`, a selection on its
+    /// buffer's current text.
+    fn select_only(&mut self, sel: Selection) {
+        let text = self.doc().text();
+        let only = EditState::bind(text, self.current_selections().clone())
+            .with_selections(vec![sel], 0)
+            .into_selections();
+        self.set_current_selections(only);
     }
 
     /// Reset transient input state every click starts fresh from: any
     /// half-typed key sequence (`pending_keys`/`count`) and the status line.
-    /// Leaves `mouse_drag_anchor`
+    /// Leaves `mouse_drag`
     /// alone: `mouse_left_down` sets its own right after calling this, and
     /// `tabline_click` clears it explicitly, since a tab switch is exactly
-    /// the case where a stale anchor would extend a drag against a buffer
-    /// that isn't even focused anymore.
+    /// the case where a stale drag would extend a selection in a pane that
+    /// isn't even focused anymore.
     fn clear_pending_input(&mut self) {
         self.state.pending_keys.clear();
         self.state.count = None;
@@ -122,16 +130,15 @@ impl Editor {
 
     fn mouse_left_drag(&mut self, x: u16, y: u16) {
         // Drag events are only received when `mouse_select = true` (mode 1002).
-        let Some(anchor) = self.state.mouse_drag_anchor else {
-            return;
-        };
-
         // A drag never moves focus mid-gesture. It extends the selection in
-        // the pane the click that started it already focused. Hit-test only
-        // that pane's own rect, so a drag that leaves it (as a fast mouse
-        // move easily can) is ignored rather than resolving against the
-        // wrong pane.
+        // the pane the click that started it focused, and only while that
+        // pane still has focus. Hit-test only that pane's own rect, so a drag
+        // that leaves it (as a fast mouse move easily can) is ignored rather
+        // than resolving against the wrong pane.
         let pid = self.state.focus.id();
+        if self.state.mouse_drag != Some(pid) {
+            return;
+        }
         let Some((pane_x, pane_y)) = self
             .view
             .pane_rect(pid)
@@ -140,9 +147,13 @@ impl Editor {
             return;
         };
 
-        if let Some(head) = self.click_to_char(pid, pane_x, pane_y) {
-            let sel = Selection::new(anchor, head);
-            self.set_current_selections(SelectionSet::single(sel));
+        if let Some(head) = self.click_to_cluster(pid, pane_x, pane_y) {
+            // The anchor is read from the selection, not remembered from the
+            // click, so a key that changes the selection mid-drag moves it.
+            let anchor = EditView::bind(self.doc().text(), self.current_selections())
+                .primary()
+                .anchor();
+            self.select_only(Selection::new(anchor, head));
         }
     }
 
@@ -209,7 +220,7 @@ impl Editor {
             // at this point, before moving focus to the new tab's pane. See
             // `focus_pane`'s own doc for why that order matters.
             self.clear_pending_input();
-            self.state.mouse_drag_anchor = None;
+            self.state.mouse_drag = None;
             crate::editor::tab::switch_to_tab(&mut self.state, &mut self.view, id);
         }
         true
@@ -217,7 +228,7 @@ impl Editor {
 
     /// Which pane `(x, y)` (terminal-absolute) falls in, and its
     /// position translated into that pane's own rect-relative coordinates,
-    /// what `click_to_char` and `screen_to_char_offset` expect. `None` for a
+    /// what `click_to_cluster` and `screen_to_cluster` expect. `None` for a
     /// click outside every pane's rect (statusline, tabline, a divider seam).
     fn pane_at_screen_pos(&self, x: u16, y: u16) -> Option<(PaneId, u16, u16)> {
         let (pid, rect) = self.view.layout().find_containing(
@@ -229,14 +240,14 @@ impl Editor {
         Some((pid, pane_x, pane_y))
     }
 
-    /// Resolve a pane-relative `(x, y)` click in pane `pid` to a buffer
-    /// char offset.
-    fn click_to_char(
+    /// Resolve a pane-relative `(x, y)` click in pane `pid` to the buffer
+    /// cluster it hits.
+    fn click_to_cluster(
         &mut self,
         pid: PaneId,
         x: u16,
         y: u16,
-    ) -> Option<hume_rope::offset::CharOffset> {
+    ) -> Option<hume_rope::cluster::ClusterStart> {
         let buf_id = self.view.panes[pid].buffer_id;
         let gutter_w = {
             let pane = &self.view.panes[pid];
@@ -251,7 +262,7 @@ impl Editor {
             &mut self.view.panes[pid],
             key,
         );
-        cursor::screen_to_char_offset(x, y, gutter_w, viewport, &mut dlm)
+        cursor::screen_to_cluster(x, y, gutter_w, viewport, &mut dlm)
     }
 }
 
@@ -260,7 +271,7 @@ impl Editor {
 // ---------------------------------------------------------------------------
 
 /// Translate terminal-absolute `(x, y)` into `rect`'s own frame (the space
-/// `click_to_char` and `screen_to_char_offset` expect), or `None` when the
+/// `click_to_cluster` and `screen_to_cluster` expect), or `None` when the
 /// position falls outside `rect`. The `contains` guard is what keeps the
 /// `u16` subtraction from underflowing on a position left of/above the rect
 /// origin.

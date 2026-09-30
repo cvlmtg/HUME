@@ -16,6 +16,6 @@ rustc-hash.workspace = true
 [features]
 # Exposes test-only doubles and oracles (RecordingLspBackend,
 # apply_events_to_string_mirror) to consumers' own test code — hume-editor's
-# text_gen staleness-token tests need both. Mirrors the
+# generation staleness-token tests need both. Mirrors the
 # hume-treesitter/hume-scripting precedent.
 test-util = []

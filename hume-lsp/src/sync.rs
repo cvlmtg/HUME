@@ -88,13 +88,14 @@ pub fn apply_events_to_string_mirror(
     text
 }
 
-/// `Buffer.text_gen` (a monotonic `u64` edit counter) -> the wire's `i32`
-/// document version. `text_gen` would need over two billion edits to a
+/// A buffer text's generation (a `u64` that grows by one per edit) -> the
+/// wire's `i32` document version. It would need over two billion edits to a
 /// single buffer to overflow this (effectively unreachable), but a silent
 /// wraparound would desync diagnostics/didChange version correlation in a
 /// way that's very hard to diagnose, so this fails loudly instead of `as i32`.
-pub fn wire_version(text_gen: u64) -> i32 {
-    i32::try_from(text_gen).expect("text_gen overflowed i32: over 2 billion edits to one buffer")
+pub fn wire_version(generation: u64) -> i32 {
+    i32::try_from(generation)
+        .expect("generation overflowed i32: over 2 billion edits to one buffer")
 }
 
 /// `(line, character)` → byte offset in `text`, via plain string scanning,

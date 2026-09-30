@@ -1,11 +1,13 @@
 use crate::changeset::ChangeSet;
 use crate::error::TransactionError;
-use crate::selection::SelectionSet;
+use crate::selection::RecordedSelections;
+use crate::state::EditState;
 use crate::text::BufferText;
 
-/// A text change bundled with the resulting selection state: the unit of
-/// editing and of undo. `selection` is always the post-apply selection, for
-/// forward and inverse transactions alike.
+/// A text change bundled with the resulting selections: the unit of editing
+/// and of undo. `selection` is always the post-apply selection, for forward
+/// and inverse transactions alike, recorded as positions of the text the
+/// transaction produces.
 ///
 /// For undo, build two transactions from one `ChangeSet`: `forward` from
 /// `cs` with the post-edit selections, and `inverse` from
@@ -15,49 +17,36 @@ use crate::text::BufferText;
 #[derive(Debug, Clone)]
 pub struct Transaction {
     changes: ChangeSet,
-    selection: SelectionSet,
+    selection: RecordedSelections,
 }
 
 impl Transaction {
     /// Create a transaction from a changeset and the resulting selection.
-    pub fn new(changes: ChangeSet, selection: SelectionSet) -> Self {
+    pub fn new(changes: ChangeSet, selection: RecordedSelections) -> Self {
         Self { changes, selection }
     }
 
-    /// Apply this transaction to a buffer, returning the new buffer and the
-    /// new selection state.
+    /// Apply this transaction to a buffer, returning the new text paired with
+    /// the recorded selections.
     ///
     /// Takes `text` by reference so the original buffer remains available to
-    /// the caller on the error path, with no undo needed. On success the caller
-    /// should drop the old buffer (or push an inverse transaction to the undo
-    /// stack before doing so).
-    ///
-    /// This is the trust boundary for plugin-constructed transactions. Internal
-    /// named commands build changesets by construction and call
-    /// [`ChangeSet::apply`] directly. A plugin assembling a [`Transaction`]
-    /// manually goes through here and gets a clear error instead of silent
-    /// corruption or a crash.
+    /// the caller on the error path, with no undo needed.
     ///
     /// # Errors
     /// - [`TransactionError::Apply`] if the changeset is invalid for `text`
     ///   (length mismatch or deleted the structural trailing `\n`).
-    /// - [`TransactionError::Validation`] if any selection head or anchor is
-    ///   out of bounds for the post-apply buffer.
-    pub fn apply(&self, text: &BufferText) -> Result<(BufferText, SelectionSet), TransactionError> {
+    /// - [`TransactionError::Selections`] if the recorded selections do not
+    ///   fit the text the changes produce.
+    pub fn apply(&self, text: &BufferText) -> Result<EditState, TransactionError> {
         let new_text = self.changes.apply(text)?;
-        self.selection.validate(new_text.len_chars())?;
-        // Canonicalize before handing the set to the editor: a plugin-built
-        // Transaction can carry unsorted, overlapping or cluster-splitting
-        // selections, which downstream code only debug-asserts against.
-        // Identity on sets that are already canonical (every internally-built
-        // one), so undo/redo round-trips are unaffected.
-        let mut sels = self.selection.clone();
-        sels.snap_to_clusters(&new_text);
-        Ok((new_text, sels))
+        self.selection
+            .clone()
+            .bind(new_text)
+            .map_err(TransactionError::Selections)
     }
 
     /// The selection state recorded in this transaction.
-    pub fn selection(&self) -> &SelectionSet {
+    pub fn selection(&self) -> &RecordedSelections {
         &self.selection
     }
 

@@ -3,7 +3,6 @@ use std::ops::Range;
 use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::offset::ExclusiveRange;
 use ropey::Rope;
-use unicode_segmentation::UnicodeSegmentation;
 
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::InlineInsert;
@@ -55,25 +54,11 @@ pub fn format_buffer_line(
     inline_inserts: &[InlineInsert],
     out: &mut LineFormat,
 ) {
-    // The caller (`display_lines::DisplayLineMap::ensure_formatted`) resets `out` right before
-    // this call, so `text_start` is always 0. It is kept as a variable (not
-    // assumed) so `line_str` below stays correct if that contract ever
-    // changes. Rope chunks are valid UTF-8.
-    let text_start = out.line_texts.len();
-    let line_slice = rope.line(line_idx.index());
-    // The one buffer whose final size is known before writing it. Reserving
-    // turns the chunk loop into a single allocation instead of a doubling
-    // chain, which matters because `LineFormat::new` deliberately hands over
-    // an empty buffer.
-    out.line_texts.reserve(line_slice.len_bytes());
-    for chunk in line_slice.chunks() {
-        out.line_texts.push_str(chunk);
-    }
-    // Strip the trailing `\n` ropey includes for every non-final line: the
-    // EOL sentinel below is emitted only for a line that actually had one.
-    let had_newline = hume_rope::lines::truncate_line_break(&mut out.line_texts);
-
-    let line_str = &out.line_texts[text_start..];
+    // The caller (`display_lines::DisplayLineMap::ensure_formatted`) resets
+    // `out` right before this call; `load` replaces the held text anyway.
+    out.line_text.load(rope, line_idx);
+    let had_newline = out.line_text.had_break();
+    let line_str = out.line_text.as_str();
 
     // Byte offset where trailing whitespace begins. A ws grapheme is
     // "trailing" iff its byte offset is at/after this point, which excludes
@@ -123,10 +108,6 @@ pub fn format_buffer_line(
 
     let mut in_leading_ws = true;
 
-    // Running absolute char position within the buffer. Populated per grapheme
-    // so the style stage can resolve selection positions without rope lookups.
-    let mut char_pos = hume_rope::lines::line_start_char(rope, line_idx).index();
-
     // Set when the scan stopped early: either `h_window` reached its right
     // edge, or `bound` was satisfied. Everything past that point (the EOL
     // sentinel, trailing inserts, the newline indicator) sits at or beyond
@@ -134,7 +115,9 @@ pub fn format_buffer_line(
     // the truncated scan never reached.
     let mut clipped = false;
 
-    'lines: for (byte_offset, grapheme_str) in line_str.grapheme_indices(true) {
+    'lines: for cluster in out.line_text.clusters() {
+        let byte_offset = cluster.bytes.start.index();
+        let grapheme_str = cluster.text;
         // ── Inject inline inserts before this byte offset ─────────────────
         while insert_idx < inline_inserts.len()
             && inline_inserts[insert_idx].byte_offset.index() <= byte_offset
@@ -161,7 +144,7 @@ pub fn format_buffer_line(
                         &VirtualRun {
                             text: &ins.text,
                             byte_offset,
-                            char_offset: char_pos,
+                            pos: Some(cluster.start),
                             indent_depth,
                         },
                         tab_width,
@@ -208,7 +191,7 @@ pub fn format_buffer_line(
                             &VirtualRun {
                                 text: &ins.text,
                                 byte_offset,
-                                char_offset: char_pos,
+                                pos: Some(cluster.start),
                                 indent_depth,
                             },
                             tab_width,
@@ -281,23 +264,18 @@ pub fn format_buffer_line(
         };
 
         // ── Emit grapheme ─────────────────────────────────────────────────
-        let char_count = grapheme_str.chars().count();
         // Read after `maybe_wrap`, which rewrites `current_display_col` when it moves
         // this grapheme to a continuation display line. Shared by the pushed cell and
         // the `bound` check below so the two cannot disagree.
         let start_display_col = wrap.current_display_col;
-        let byte_start = ByteCol::new(byte_offset);
-        let byte_range = ExclusiveRange::new(
-            byte_start,
-            byte_start.advance_saturating(grapheme_str.len()),
-        );
+        let byte_range = cluster.bytes;
         let visible = h_window
             .as_ref()
             .is_none_or(|w| start_display_col.advance_saturating(width as u32) > w.start);
         if visible {
             graphemes_out.push(Grapheme {
                 byte_range,
-                char_offset: char_pos,
+                pos: Some(cluster.start),
                 display_col: start_display_col,
                 width,
                 content,
@@ -305,7 +283,6 @@ pub fn format_buffer_line(
                 scope: None,
             });
         }
-        char_pos += char_count;
         wrap.current_display_col = wrap.current_display_col.advance_saturating(width as u32);
 
         // For CJK (width == 2): emit a WidthContinuation placeholder so the
@@ -315,8 +292,8 @@ pub fn format_buffer_line(
             // Backing up the primary to avoid overflow is not yet implemented.
             graphemes_out.push(Grapheme {
                 byte_range,
-                // Same char as the primary cell; this is not a distinct buffer position.
-                char_offset: char_pos - char_count,
+                // Same cluster as the primary cell; not a distinct buffer position.
+                pos: Some(cluster.start),
                 display_col: wrap.current_display_col,
                 width: 0, // zero: does not consume columns
                 content: CellContent::WidthContinuation,
@@ -356,18 +333,18 @@ pub fn format_buffer_line(
     // three sit at or past the true end of line, which is off-screen by
     // definition once the window's right edge has been passed.
     if !clipped {
+        let break_pos = out.line_text.break_pos();
         // Both the EOL sentinel and the newline indicator below sit at the
         // line's own end byte: an empty span, since neither is real line
         // content.
         let eol_bytes =
             ExclusiveRange::new(ByteCol::new(line_str.len()), ByteCol::new(line_str.len()));
 
-        // Emit an Empty grapheme at the char offset of the trailing `\n` whenever
-        // the line has a trailing newline. This gives the cursor/selection-head a
-        // cell to land on when positioned on the newline character (e.g. after `x`
-        // selects the whole line). Without this, `char_offset_to_display_col` in
-        // the style stage finds no grapheme at the `\n` position and leaves the cursor
-        // invisible in block-cursor modes.
+        // Emit an Empty grapheme at the trailing `\n` whenever the line has
+        // one. This gives the cursor/selection-head a cell to land on when
+        // positioned on the newline character (e.g. after `x` selects the
+        // whole line). Without this, the style stage finds no grapheme at the
+        // `\n` position and leaves the cursor invisible in block-cursor modes.
         //
         // For truly empty lines (just "\n") this is the only grapheme (display_col 0).
         // For non-empty lines it sits one column past the last visible character.
@@ -390,7 +367,7 @@ pub fn format_buffer_line(
             );
             graphemes_out.push(Grapheme {
                 byte_range: eol_bytes,
-                char_offset: char_pos, // char offset of the `\n`
+                pos: break_pos,
                 display_col: wrap.current_display_col,
                 width: 1,
                 content: CellContent::Empty,
@@ -407,7 +384,7 @@ pub fn format_buffer_line(
                 &VirtualRun {
                     text: &ins.text,
                     byte_offset: line_str.len(),
-                    char_offset: char_pos,
+                    pos: break_pos,
                     indent_depth,
                 },
                 tab_width,
@@ -424,11 +401,11 @@ pub fn format_buffer_line(
             let (start, len) = push_arena_text(virtual_texts_out, whitespace.newline_char);
             graphemes_out.push(Grapheme {
                 byte_range: eol_bytes,
-                // Same offset as the EOL sentinel (the `\n` position). Style-stage
-                // lookups resolve to the *first* grapheme at a given offset, which
-                // is the EOL sentinel pushed earlier in this function. The
-                // indicator itself is never the cursor-cell match.
-                char_offset: char_pos,
+                // Same cluster as the EOL sentinel (the `\n`). Style-stage
+                // lookups resolve to the *first* grapheme at a given cluster,
+                // which is the EOL sentinel pushed earlier in this function.
+                // The indicator itself is never the cursor-cell match.
+                pos: break_pos,
                 display_col: wrap.current_display_col,
                 width: 1,
                 content: CellContent::Whitespace { start, len },

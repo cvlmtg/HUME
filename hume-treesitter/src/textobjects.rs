@@ -1,7 +1,7 @@
 //! Tree-sitter structural text objects and navigation: kinds, spans, the
 //! per-`(kind, span)` capture-index table a compiled `textobjects.scm`
 //! resolves to, and [`ObjectSpans`], which runs that query over a buffer's
-//! syntax layers into a sorted list of inclusive char spans.
+//! syntax layers into a sorted list of cluster ranges.
 //!
 //! Freshness (the tree matches the text before a command runs) is
 //! `Syntax::ensure_current`; selection policy (Move/Extend, count,
@@ -153,9 +153,9 @@ impl TextObjectsQuery {
 
 use std::sync::Arc;
 
-use hume_editing::grapheme::prev_grapheme_boundary;
 use hume_editing::text::BufferText;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::cluster::{ClusterRange, ClusterStart};
+use hume_rope::offset::ExclusiveRange;
 use streaming_iterator::StreamingIterator;
 
 use crate::highlight::RopeProvider;
@@ -163,8 +163,7 @@ use crate::layers::{SyntaxLayer, SyntaxLayers};
 
 /// A structural object's captured region, hull-collected from a
 /// `textobjects.scm` match and merged with every other match across a
-/// buffer's syntax layers: a sorted, deduplicated list of inclusive char
-/// spans. Owned rather than an iterator over the tree: `hume-editor` needs
+/// buffer's syntax layers: a sorted, deduplicated list of cluster ranges. Owned rather than an iterator over the tree: `hume-editor` needs
 /// `&state.buffers` and `&mut state.panes.state` at once when it applies the
 /// resulting selection, so the tree borrow this collects from must end
 /// before that, and N cursors × `count` navigation steps then probe a
@@ -177,12 +176,12 @@ use crate::layers::{SyntaxLayer, SyntaxLayers};
 /// uses, rather than a second, `Option`-shaped "nothing to collect" case.
 #[derive(Default)]
 pub struct ObjectSpans {
-    /// Inclusive char spans, sorted by `(start, Reverse(end))` and
+    /// Cluster ranges, sorted by `(start, Reverse(end))` and
     /// deduplicated; `adjacent`'s `partition_point` walk depends on this
     /// exact ordering. `enclosing` is a full linear scan and doesn't need
     /// it, but keeps the same sorted-and-deduplicated data rather than a
     /// second representation.
-    spans: Vec<InclusiveRange<CharOffset>>,
+    spans: Vec<ClusterRange>,
 }
 
 impl ObjectSpans {
@@ -304,19 +303,22 @@ impl ObjectSpans {
         Self::finish(spans)
     }
 
-    fn finish(mut spans: Vec<InclusiveRange<CharOffset>>) -> Self {
-        spans.sort_by(|a, b| a.start.cmp(&b.start).then(b.end.cmp(&a.end)));
+    fn finish(mut spans: Vec<ClusterRange>) -> Self {
+        spans.sort_by(|a, b| a.start().cmp(&b.start()).then(b.end().cmp(&a.end())));
         spans.dedup();
         Self { spans }
     }
 
-    /// The smallest span containing `pos` (`start <= pos <= end`).
-    pub fn enclosing(&self, pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
+    /// The smallest span containing `pos`.
+    pub fn enclosing(&self, pos: ClusterStart) -> Option<ClusterRange> {
         self.spans
             .iter()
             .copied()
             .filter(|span| span.contains(pos))
-            .min_by_key(|span| span.end.chars_since(span.start))
+            .min_by_key(|span| {
+                let chars = span.chars();
+                chars.end.chars_since(chars.start)
+            })
     }
 
     /// The next/previous object relative to `pos`.
@@ -330,13 +332,13 @@ impl ObjectSpans {
     ///
     /// `Forward`: smallest `start > pos`, ties -> largest `end`.
     /// `Backward`: largest `start < pos`, ties -> largest `end`.
-    pub fn adjacent(&self, pos: CharOffset, dir: Direction) -> Option<InclusiveRange<CharOffset>> {
+    pub fn adjacent(&self, pos: ClusterStart, dir: Direction) -> Option<ClusterRange> {
         match dir {
             Direction::Forward => {
                 // First span past every `start <= pos` entry. Since ties
                 // are pre-sorted by descending `end`, that span is already
                 // the largest-end winner within its start.
-                let idx = self.spans.partition_point(|span| span.start <= pos);
+                let idx = self.spans.partition_point(|span| span.start() <= pos);
                 self.spans.get(idx).copied()
             }
             Direction::Backward => {
@@ -344,9 +346,10 @@ impl ObjectSpans {
                 // largest `start < pos`, then walk to the first span
                 // sharing that start (the descending-`end` sort puts the
                 // largest-end tie-break winner there).
-                let idx = self.spans.partition_point(|span| span.start < pos);
-                let target_start = self.spans[..idx].last()?.start;
-                let run_start = self.spans[..idx].partition_point(|span| span.start < target_start);
+                let idx = self.spans.partition_point(|span| span.start() < pos);
+                let target_start = self.spans[..idx].last()?.start();
+                let run_start =
+                    self.spans[..idx].partition_point(|span| span.start() < target_start);
                 self.spans.get(run_start).copied()
             }
         }
@@ -388,10 +391,12 @@ fn capture_hull(m: &tree_sitter::QueryMatch, capture_idx: u32) -> Option<(usize,
 }
 
 /// Run `query`'s matches over `layer`'s tree and, for every match that
-/// captures `capture_idx`, push [`capture_hull`]'s result as an inclusive
-/// char span. A match without the capture, or whose captured nodes aren't
+/// captures `capture_idx`, push the clusters holding [`capture_hull`]'s
+/// result. A match without the capture, or whose captured nodes aren't
 /// contiguous, contributes nothing; so does a zero-width hull (a `MISSING`
-/// node standing in for absent syntax).
+/// node standing in for absent syntax). A hull that starts or ends inside a
+/// cluster (a grammar that makes a combining mark its own token) widens to
+/// the whole cluster.
 ///
 /// `set_byte_range` is deliberately never used here, unlike the highlighter:
 /// the cursor prunes children outside its range, which truncates a grouped
@@ -404,7 +409,7 @@ fn collect_hulls(
     capture_idx: u32,
     layer: &SyntaxLayer,
     text: &BufferText,
-    out: &mut Vec<InclusiveRange<CharOffset>>,
+    out: &mut Vec<ClusterRange>,
 ) {
     let mut cursor = tree_sitter::QueryCursor::new();
     let root = layer.tree.root_node();
@@ -420,26 +425,13 @@ fn collect_hulls(
         // let a node's byte range run past the live buffer's own length.
         // `Syntax::ensure_current` makes that impossible by construction, so
         // a violation here is a bug, not a case to paper over silently.
-        debug_assert!(
+        assert!(
             end_byte <= text.len_bytes(),
             "text-object span end {end_byte} exceeds buffer length {}: tree is stale",
             text.len_bytes()
         );
-        let start = text.byte_to_char(start_byte);
-        let end_exclusive = text.byte_to_char(end_byte);
-        let end = prev_grapheme_boundary(text, end_exclusive);
-        // The byte-space guard above doesn't survive the grapheme-boundary
-        // step: a hull whose byte range covers only a combining mark or ZWJ
-        // continuation (its own token in some grammars) converts to a
-        // one-char span, and stepping back to that cluster's start can land
-        // `end` before `start`, and `enclosing`'s `span.end.chars_since(span.start)`
-        // debug-asserts `start <= end` and would fire on a span this
-        // malformed. Same "not a real object" treatment as the byte-space
-        // degenerate case above.
-        if end < start {
-            continue;
-        }
-        out.push(InclusiveRange::new(start, end));
+        let chars = ExclusiveRange::new(text.byte_to_char(start_byte), text.byte_to_char(end_byte));
+        out.extend(text.covering(chars));
     }
 }
 

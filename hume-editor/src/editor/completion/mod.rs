@@ -155,7 +155,6 @@ mod testing {
 
     use super::*;
     use crate::editor::buffer::Buffer;
-    use hume_editing::selection::SelectionSet;
     use hume_editing::text::BufferText;
     use hume_engine::pipeline::{BufferId, EngineView};
     use hume_engine::theme::Theme;
@@ -209,7 +208,7 @@ mod testing {
     }
 
     pub(in crate::editor::completion) fn make_buf() -> Buffer {
-        Buffer::new(BufferText::from("a\n"), SelectionSet::default())
+        Buffer::at_start(BufferText::from("a\n"))
     }
 
     pub(in crate::editor::completion) fn buf_with_path(path: &str) -> Buffer {

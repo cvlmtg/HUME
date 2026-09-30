@@ -10,7 +10,9 @@ use pretty_assertions::assert_eq;
 
 /// Return the pane's primary cursor as an absolute char offset.
 fn pane_head(ed: &Editor) -> hume_rope::offset::CharOffset {
-    ed.view.panes[ed.state.focus.id()].selections[0].head
+    ed.view.panes[ed.state.focus.id()].selections[0]
+        .cursor
+        .offset()
 }
 
 /// After `c` (change): the selection is deleted and Insert mode entered; the
@@ -80,38 +82,42 @@ fn pane_selections_synced_after_exit_insert() {
 /// the engine treat the earliest selection as primary.
 #[test]
 fn pane_selections_primary_is_first_even_when_not_earliest() {
-    use hume_editing::selection::{Selection, SelectionSet};
-
     let mut ed = editor_from("-[a]>b\n");
 
     // Two cursors: one at "a" (char 0) and one at "b" (char 1).
     // Primary is index 1: the "b" cursor, which is LATER in document order.
-    let two_sels = SelectionSet::from_vec(
-        vec![
-            Selection::collapsed(co(0)), // at "a", NOT primary
-            Selection::collapsed(co(1)), // at "b", IS primary
-        ],
-        1,
-    );
+    let two_sels = sels_at(ed.doc().text(), &[(0, 0), (1, 1)], 1);
     ed.set_current_selections(two_sels);
 
     // Simulate the per-frame sync.
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
-    // Selections are passed in sorted document order; primary_idx identifies the primary.
+    // Selections are passed in sorted document order; a flag marks the primary.
     let pane = &ed.view.panes[ed.state.focus.id()];
     assert_eq!(
-        pane.selections[0].head,
+        pane.selections[0].cursor.offset(),
         co(0),
         "pane.selections[0] is the earliest in document order (char 0, 'a')"
     );
     assert_eq!(
-        pane.selections[1].head,
+        pane.selections[1].cursor.offset(),
         co(1),
         "pane.selections[1] is 'b' at char 1"
     );
-    assert_eq!(
-        pane.primary_idx, 1,
-        "primary_idx must point to 'b' (index 1)"
+    assert!(
+        pane.selections[1].is_primary && !pane.selections[0].is_primary,
+        "the primary flag must be on 'b' (index 1)"
     );
+}
+
+/// A backward selection whose far end is `e` plus a combining accent paints
+/// that whole cluster and stops before the next one: the mirror's covered
+/// range ends past the accent, not on the cluster's first char.
+#[test]
+fn backward_selection_ending_on_a_combining_cluster_paints_the_whole_cluster() {
+    let mut ed = editor_from("a<[be\u{301}]-c\n");
+    ed.view.theme = crate::testing::build_snapshot_theme();
+    let snap =
+        super::render_snapshot::render_to_styled_string(&mut ed, hume_grid::Rect::new(0, 0, 20, 3));
+    insta::assert_snapshot!(snap);
 }

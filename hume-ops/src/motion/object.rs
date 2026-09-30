@@ -5,59 +5,64 @@
 //! `hume_treesitter::textobjects::ObjectSpans::adjacent` for the tree-sitter
 //! kinds. The paragraph motions (`super::paragraph`) are a second, in-crate
 //! caller whose `finder` is a lexical blank-line scan instead. `apply_object_motion`
-//! only cares that `finder` returns `Option<InclusiveRange<CharOffset>>` and
-//! honors the strict-progress contract described below, not how the span was
-//! found.
+//! only cares that `finder` returns the object's clusters and honors the
+//! strict-progress contract described below, not how the object was found.
 
 use super::MotionMode;
-use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::BufferText;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_editing::selection::{Facing, Selection};
+use hume_editing::state::EditState;
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 
-/// Apply structural navigation to every selection in the set, repeated
-/// `count` times. `finder` maps an origin to a whole object span; `backward`
-/// picks the search direction and which span edge becomes the head.
+/// Apply structural navigation to every selection, repeated `count` times.
+/// `finder` maps an origin to a whole object; `backward` picks the search
+/// direction and which edge becomes the head.
 ///
-/// **Move**: origin is `current.end()` forward, `current.start()` backward,
-/// so a repeated press skips objects nested in the one just selected. The
-/// result has anchor at the object's end and head at its start in both
-/// directions, so the viewport lands on the object's signature.
+/// **Move**: origin is the selection's last cluster forward, its first
+/// backward, so a repeated press skips objects nested in the one just
+/// selected. The result faces backward in both directions (head at the
+/// object's start), so the viewport lands on the object's signature.
 ///
-/// **Extend**: origin is `current.head()`, since searching from a Move
-/// result's reversed anchor would skip every object up to the head. The
-/// result is `current.union_span(span, !backward)`, not an edge replacement:
-/// the found span may be nested inside the current selection, and a
-/// replacement would drop everything past its end.
+/// **Extend**: origin is the head, since searching from a Move result's
+/// reversed anchor would skip every object up to the head. The result covers
+/// the current selection and the object together, not an edge replacement:
+/// the object may be nested inside the current selection, and a replacement
+/// would drop everything past its end.
 ///
-/// `finder` must make strict progress (`start > pos` forward, `start < pos`
-/// backward), so no fixed-point check is needed. `None` stops that
+/// `finder` must make strict progress (start past the origin forward, before
+/// it backward), so no fixed-point check is needed. `None` stops that
 /// selection's loop and keeps its last result. Converging cursors merge.
 pub fn apply_object_motion(
-    text: &BufferText,
-    sels: SelectionSet,
+    state: EditState,
     mode: MotionMode,
     count: usize,
     backward: bool,
-    finder: impl Fn(CharOffset) -> Option<InclusiveRange<CharOffset>>,
-) -> SelectionSet {
-    let result = sels.map(|sel| {
-        let mut current = sel;
+    finder: impl Fn(ClusterStart) -> Option<ClusterRange>,
+) -> EditState {
+    state.map(|sel| {
+        let mut current = sel.selection();
+        let mut covered = sel.covered();
         for _ in 0..count {
             let origin = match mode {
-                MotionMode::Move if backward => current.start(),
-                MotionMode::Move => current.end_inclusive(text),
+                MotionMode::Move if backward => covered.start(),
+                MotionMode::Move => covered.last(),
                 MotionMode::Extend => current.head(),
             };
-            let Some(span) = finder(origin) else {
+            let Some(object) = finder(origin) else {
                 break;
             };
-            current = match mode {
-                MotionMode::Move => Selection::from_span(span, false, text),
-                MotionMode::Extend => current.union_span(span, !backward, text),
+            (current, covered) = match mode {
+                MotionMode::Move => (Selection::covering(object, Facing::Backward), object),
+                MotionMode::Extend => {
+                    let union = covered.hull(object);
+                    let facing = if backward {
+                        Facing::Backward
+                    } else {
+                        Facing::Forward
+                    };
+                    (Selection::covering(union, facing), union)
+                }
             };
         }
         current
-    });
-    result.debug_assert_valid(text);
-    result
+    })
 }

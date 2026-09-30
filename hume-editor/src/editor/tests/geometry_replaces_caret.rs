@@ -148,7 +148,7 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
     let content: String = numbered_lines(60);
     let mut ed = unwrapped_editor(&content, 0);
     seek_to_line(&mut ed, 30);
-    let shared_head = ed.current_selections().primary().head();
+    let shared_head = ed.current_view().primary().head().offset();
 
     assert!(
         frame(&mut ed, 80, 15).cursor_content_pos.is_some(),
@@ -160,9 +160,15 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
     // pane has never visited it, so its own primary head numerically
     // matches the outgoing buffer's right from the switch.
     let second_text = BufferText::from(content.as_str());
-    let second_sels =
-        SelectionSet::single(hume_editing::selection::Selection::collapsed(shared_head));
-    let second_bid = ed.open_buffer(Buffer::new(second_text, second_sels));
+    let second_sels = sels_at(
+        &second_text,
+        &[(shared_head.index(), shared_head.index())],
+        0,
+    );
+    let second_bid = ed.open_buffer(Buffer::new(test_fixtures::testing::state(
+        second_text,
+        second_sels,
+    )));
 
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), second_bid);
 
@@ -299,8 +305,8 @@ fn a_tab_width_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
         }
     }
     let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.state.settings.scroll_margin = 0;
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 10 }),
@@ -467,10 +473,7 @@ fn a_revisit_with_nothing_changed_leaves_a_parked_view_parked() {
     );
     let top_before = ed.view.panes[pid].viewport.top();
 
-    let second_bid = ed.open_buffer(Buffer::new(
-        BufferText::from("x\n"),
-        SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0))),
-    ));
+    let second_bid = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), second_bid);
     frame(&mut ed, 80, 20);
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid);

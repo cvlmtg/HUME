@@ -30,7 +30,7 @@ fn zz_centres_cursor_in_viewport() {
     assert_eq!(ed.viewport().top().slot, 0);
     // Cursor is unchanged.
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(hume_rope::lines::line_start_char(
             ed.doc().text().rope(),
             hume_rope::line::RopeyLine::new(25)
@@ -102,7 +102,6 @@ fn zj_puts_cursor_at_bottom() {
 
 #[test]
 fn zz_in_wrap_mode_walks_display_lines() {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
 
     // Three buffer lines, the middle one wraps to 4 rows under Soft{4}:
@@ -119,8 +118,8 @@ fn zz_in_wrap_mode_walks_display_lines() {
     )
     .index()
         + 8);
-    let sels = SelectionSet::single(Selection::collapsed(head));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(head.index(), head.index())], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 4 }),
         saved: None,
@@ -142,7 +141,6 @@ fn zz_in_wrap_mode_walks_display_lines() {
 
 #[test]
 fn zk_in_wrap_mode_anchors_cursor_display_line_at_top() {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
 
     let content = "line0\nabcdefghijklmnop\nline2\n";
@@ -155,8 +153,8 @@ fn zk_in_wrap_mode_anchors_cursor_display_line_at_top() {
     )
     .index()
         + 9);
-    let sels = SelectionSet::single(Selection::collapsed(head));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(head.index(), head.index())], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 4 }),
         saved: None,

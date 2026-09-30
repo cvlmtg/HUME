@@ -1,22 +1,20 @@
-use hume_editing::lines::{leading_whitespace_end, line_break_char, line_content_end};
+use hume_editing::lines::{leading_whitespace_end, line_break, line_content_end, line_start};
 use hume_editing::text::BufferText;
-use hume_rope::offset::CharOffset;
+use hume_rope::cluster::ClusterStart;
 
 // ── Line motions (inner) ──────────────────────────────────────────────────────
 
 /// Jump to the first character on the current line.
-pub(super) fn goto_line_start(text: &BufferText, head: CharOffset) -> CharOffset {
-    text.line_to_char(text.char_to_line(head).into())
+pub(super) fn goto_line_start(text: &BufferText, head: ClusterStart) -> ClusterStart {
+    line_start(text, text.char_to_line(head.offset()))
 }
 
 /// Jump to the last non-newline grapheme cluster on the current line.
 ///
 /// On an empty line (containing only `\n`), the cursor stays on the newline:
 /// there is no other character to land on.
-pub(super) fn goto_line_end(text: &BufferText, head: CharOffset) -> CharOffset {
-    // The core logic lives in hume_editing::lines::line_content_end, which is
-    // also used by selection_cmd.rs: one implementation, two callers.
-    line_content_end(text, text.char_to_line(head))
+pub(super) fn goto_line_end(text: &BufferText, head: ClusterStart) -> ClusterStart {
+    line_content_end(text, text.char_to_line(head.offset()))
 }
 
 /// Jump to the `\n` that terminates the current line.
@@ -24,20 +22,19 @@ pub(super) fn goto_line_end(text: &BufferText, head: CharOffset) -> CharOffset {
 /// Unlike `goto_line_end` (which stops at the last non-newline grapheme and
 /// therefore lands on the `\n` itself only on empty lines), this always
 /// returns the `\n` position.
-pub(super) fn goto_line_newline(text: &BufferText, head: CharOffset) -> CharOffset {
-    let line = text.char_to_line(head);
-    line_break_char(text, line)
+pub(super) fn goto_line_newline(text: &BufferText, head: ClusterStart) -> ClusterStart {
+    line_break(text, text.char_to_line(head.offset()))
 }
 
 /// Jump to the first non-blank character on the current line.
 ///
-/// "Blank" means ASCII space or tab. If no non-blank character exists on the
-/// line (e.g. a line of only spaces), the motion is a no-op and the cursor
-/// stays at its current position.
-pub(super) fn goto_first_nonblank(text: &BufferText, head: CharOffset) -> CharOffset {
-    let line = text.char_to_line(head);
+/// If no non-blank character exists on the line (e.g. a line of only
+/// spaces), the motion is a no-op and the cursor stays at its current
+/// position.
+pub(super) fn goto_first_nonblank(text: &BufferText, head: ClusterStart) -> ClusterStart {
+    let line = text.char_to_line(head.offset());
     let first = leading_whitespace_end(text, line);
-    if first == line_break_char(text, line) {
+    if first == line_break(text, line) {
         head
     } else {
         first

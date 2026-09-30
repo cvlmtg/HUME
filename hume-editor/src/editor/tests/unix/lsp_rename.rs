@@ -68,8 +68,10 @@ fn setup(
         .and_then(|by_buf| by_buf.get_mut(bid))
         .expect("pane buffer state must exist");
     pbs.set_selections(
-        hume_editing::selection::SelectionSet::single(
-            hume_editing::selection::Selection::collapsed(co(16)), // 'h' of "helper" on line 1
+        test_fixtures::testing::single(
+            ed.state.buffers.get(bid).text(),
+            // 'h' of "helper" on line 1
+            test_fixtures::testing::cursor(ed.state.buffers.get(bid).text(), 16),
         ),
         ed.state.buffers.get(bid).text(),
     );

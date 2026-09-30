@@ -9,6 +9,7 @@
 //! sift-within, undo/redo, and multi-cursor, all interacting.
 #[cfg(test)]
 mod tests {
+    use hume_editing::selection::EditView;
     use proptest::prelude::*;
     use termina::event::{Event as TerminalEvent, KeyCode, KeyEvent, Modifiers};
 
@@ -20,7 +21,8 @@ mod tests {
 
     fn assert_editor_invariants(ed: &Editor) {
         let text = ed.doc().text();
-        let sels = ed.current_selections();
+        let sels = EditView::bind(text, ed.current_selections());
+        sels.check().expect("the selections fit the text");
 
         // Text always ends with structural '\n'.
         assert!(
@@ -33,30 +35,30 @@ mod tests {
         assert!(sels.len() > 0, "selection set must not be empty");
 
         // Every anchor and head is a grapheme-cluster start.
-        for sel in sels.iter_sorted() {
+        for sel in sels.iter() {
             assert!(
-                hume_editing::grapheme::is_cluster_boundary(text, sel.anchor())
-                    && hume_editing::grapheme::is_cluster_boundary(text, sel.head()),
+                text.snap(sel.anchor().offset()) == sel.anchor()
+                    && text.snap(sel.head().offset()) == sel.head(),
                 "selection ({:?}, {:?}) splits a grapheme cluster of {:?}",
-                sel.anchor(),
-                sel.head(),
+                sel.anchor().offset(),
+                sel.head().offset(),
                 text.to_string()
             );
         }
 
         // All selection positions are within the buffer.
         let len = text.end();
-        for sel in sels.iter_sorted() {
+        for sel in sels.iter() {
             assert!(
-                sel.head() < len,
+                sel.head().offset() < len,
                 "selection head {:?} out of bounds (buf len {:?})",
-                sel.head(),
+                sel.head().offset(),
                 len
             );
             assert!(
-                sel.anchor() < len,
+                sel.anchor().offset() < len,
                 "selection anchor {:?} out of bounds (buf len {:?})",
-                sel.anchor(),
+                sel.anchor().offset(),
                 len
             );
         }
@@ -152,7 +154,7 @@ mod tests {
         ]
         .prop_map(|s| {
             let (text, sels) = parse_state(s);
-            Editor::for_testing(Buffer::new(text, sels))
+            Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)))
         })
     }
 

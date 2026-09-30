@@ -7,6 +7,7 @@
 use std::ops::Range;
 
 use hume_rope::column::{ByteCol, DisplayLineCol};
+use hume_rope::lines::LineText;
 use hume_rope::offset::ExclusiveRange;
 
 use crate::types::{DisplayLine, Grapheme};
@@ -14,7 +15,7 @@ use crate::types::{DisplayLine, Grapheme};
 /// One buffer line's formatted display lines.
 ///
 /// Every index inside is line-local: `DisplayLine::graphemes` indexes
-/// `graphemes`, `Grapheme::byte_range` indexes `line_texts` from 0, and
+/// `graphemes`, `Grapheme::byte_range` indexes `line_text` from 0, and
 /// `CellContent`'s arena `(start, len)` pairs index `virtual_texts`. That is
 /// what lets one of these be held alongside others, or handed between the
 /// passes that walk a line, without rebasing anything.
@@ -31,7 +32,7 @@ pub struct LineFormat {
     /// Pre-materialised text for this line. Written by
     /// [`format_buffer_line`](super::format_buffer_line); read by `display_lines::DisplayLineMap`'s render accessors as
     /// `RenderDisplayLine::line_text`.
-    pub line_texts: String,
+    pub line_text: LineText,
     /// Arena backing this line's `CellContent::Virtual` (inline inserts) and
     /// `Whitespace` (indicator glyphs) text ranges, none of which can be
     /// `&'static str` (LSP hints, Steel-configured icons). `TabFill` needs no
@@ -85,7 +86,7 @@ impl LineFormat {
         Self {
             display_lines: Vec::new(),
             graphemes: Vec::new(),
-            line_texts: String::new(),
+            line_text: LineText::new(),
             virtual_texts: String::new(),
             extent: None,
             h_window: None,
@@ -97,7 +98,7 @@ impl LineFormat {
     pub fn reset(&mut self) {
         self.display_lines.clear();
         self.graphemes.clear();
-        self.line_texts.clear();
+        self.line_text.clear();
         self.virtual_texts.clear();
         self.extent = None;
         self.h_window = None;
@@ -139,7 +140,7 @@ impl LineFormat {
         }
         shrink!(self.display_lines, DISPLAY_LINES_CEILING);
         shrink!(self.graphemes, GRAPHEMES_CEILING);
-        shrink!(self.line_texts, LINE_TEXTS_CEILING);
+        shrink!(self.line_text, LINE_TEXTS_CEILING);
         shrink!(self.virtual_texts, VIRTUAL_TEXTS_CEILING);
     }
 

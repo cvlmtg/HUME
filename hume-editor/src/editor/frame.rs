@@ -14,33 +14,29 @@ use hume_engine::types::EditorMode;
 use super::Editor;
 use super::buffer::Buffer;
 
-/// Project a `SelectionSet` into an engine pane's head-sorted selection mirror.
-///
-/// `SelectionSet` stores selections in `start()` order; the engine asserts they
-/// are sorted by `head` (see `populate_sorted_sels`).  The two orderings differ
-/// whenever a selection is backward (`anchor > head`).  `primary_idx` is
-/// re-located after the sort by matching the primary's unique head value.
+/// Project a pane's selections into its engine mirror, sorted by cursor as
+/// the engine asserts (see `populate_sorted_sels`). The model stores them in
+/// start order; the two orders differ whenever a selection is backward.
 pub(in crate::editor::frame) fn write_pane_mirror(
     pane: &mut hume_engine::pane::Pane,
+    text: &hume_editing::text::BufferText,
     sels: &hume_editing::selection::SelectionSet,
 ) {
-    use hume_engine::types::Selection as EngineSelection;
-    let primary_head = sels.primary().head();
+    use hume_editing::selection::{EditView, Facing};
+    use hume_engine::types::PaintedSelection;
     // Sorted after the mirror is filled rather than through a scratch `Vec` of
     // references, so the pane's own storage (reused across frames) is the
     // only buffer involved.
     pane.selections.clear();
     pane.selections
-        .extend(sels.iter_sorted().map(|s| EngineSelection {
-            anchor: s.anchor(),
-            head: s.head(),
+        .extend(EditView::bind(text, sels).iter().map(|s| PaintedSelection {
+            covered: s.covered(),
+            cursor: s.head(),
+            is_cursor: s.is_cursor(),
+            is_reverse: s.facing() == Facing::Backward,
+            is_primary: s.is_primary(),
         }));
-    pane.selections.sort_by_key(|s| s.head);
-    pane.primary_idx = pane
-        .selections
-        .iter()
-        .position(|s| s.head == primary_head)
-        .unwrap_or(0);
+    pane.selections.sort_by_key(|s| s.cursor);
 }
 
 impl Editor {
@@ -523,7 +519,10 @@ impl Editor {
             // Per (pane, buffer) state: a pane that just switched buffers
             // reads a fresh entry whose `last_layout_key` is `None`.
             let pbs = &mut self.state.panes.state[pid][buf_id];
-            let cursor_char = pbs.selections().primary().head();
+            let cursor = pbs
+                .view(self.state.buffers.get(buf_id).text())
+                .primary()
+                .head();
             let layout_changed = pbs.last_layout_key.replace(layout_key) != Some(layout_key);
             // A layout change reveals only a pane that isn't parked: one
             // parked behind an unfollowable scroll must not snap back onto
@@ -534,7 +533,7 @@ impl Editor {
             let outcome = scroll_into_view(
                 self.state.buffers.get(buf_id),
                 &mut self.view.panes[pid],
-                cursor_char,
+                cursor,
                 format_key,
                 scroll_margin,
                 reveal,
@@ -578,10 +577,8 @@ impl Editor {
     /// Sync every active-tab pane's selection mirror from the authoritative
     /// `pane_state`.
     ///
-    /// The engine requires `pane.selections` sorted by `head` (not by `start()` as
-    /// `SelectionSet` stores internally); `primary_idx` is re-located by matching
-    /// the primary's head value after the sort.  This is the **single sync point**:
-    /// no other code path writes `pane.selections` or `pane.primary_idx`.
+    /// This is the **single sync point**: no other code path writes
+    /// `pane.selections`.
     ///
     /// Called once per frame from `prepare_frame`, after the async/Steel
     /// drains and before `render()`, passing the same `active_pane_ids()`
@@ -593,7 +590,11 @@ impl Editor {
         for &pid in active {
             let pane = &mut view.panes[pid];
             if let Some(pbs) = state.panes.buffer_state(pid, pane.buffer_id) {
-                write_pane_mirror(pane, pbs.selections());
+                write_pane_mirror(
+                    pane,
+                    state.buffers.get(pane.buffer_id).text(),
+                    pbs.selections(),
+                );
             }
         }
     }
@@ -639,7 +640,7 @@ struct ScrollOutcome {
     parked: bool,
 }
 
-/// Scroll the pane viewport so `cursor_char` stays within the visible area.
+/// Scroll the pane viewport so `cursor` stays within the visible area.
 ///
 /// Calls both the vertical (`reveal`) and horizontal (`reveal_horizontal`)
 /// verbs in one shot, over a single display-line map, so the two agree on
@@ -661,7 +662,7 @@ struct ScrollOutcome {
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
-    cursor_char: hume_rope::offset::CharOffset,
+    cursor: hume_rope::cluster::ClusterStart,
     format_key: hume_engine::display_lines::line_store::FormatKey,
     scroll_margin: usize,
     reveal: bool,
@@ -679,7 +680,7 @@ fn scroll_into_view(
             parked: false,
         };
     };
-    let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
+    let (cursor_pos, cursor_display_col) = dlm.locate(cursor);
     // Horizontal scroll is its own axis (a fixed margin, no `scroll-margin`, no
     // document-edge special-casing; see `reveal_horizontal`'s own doc) and
     // has no snap-back to guard against, so it always runs: a

@@ -17,7 +17,6 @@
 use super::doubles::{InlineHint, VirtualLineBlock};
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
-use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_engine::pane::WrapMode;
 use hume_engine::providers::VirtualLineAnchor;
@@ -27,8 +26,8 @@ use hume_grid::Rect;
 /// directly on the pane, cursor at line 0's start.
 fn editor_with_before_line() -> Editor {
     let text = BufferText::from("x\ny\n");
-    let sels = SelectionSet::single(Selection::collapsed(co(0)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(WrapMode::Soft { width: 0 }),
@@ -68,7 +67,7 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     // code does after `prepare_frame`.
     let pid = ed.state.focus.id();
     let mut vp = ed.view.panes[pid].viewport.clone();
-    let cursor_char = ed.current_selections().primary().head();
+    let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id;
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
@@ -192,7 +191,7 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
     assert!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head())
+            .char_to_line(ed.current_view().primary().head().offset())
             > hume_rope::line::ContentLine::new(8),
         "the cursor must have advanced past the block too, not stayed stuck at its near edge"
     );
@@ -291,7 +290,7 @@ fn wheel_reaches_a_trailing_after_last_line_block() {
 // ── A parked view is not disturbed by a change elsewhere ──────────────────
 //
 // `EditorState::layout_key` folds in the buffer's own edit generation
-// (`text_gen`) and decoration generation alongside layout facts like resize
+// (its text version) and decoration generation alongside layout facts like resize
 // and wrap mode. A parked pane (this module's own trailing-block fixture)
 // must not snap back onto its cursor just because one of those changed for
 // a reason that had nothing to do with this pane's own action.
@@ -324,7 +323,7 @@ fn a_parked_view_survives_a_decoration_change() {
 }
 
 /// A sibling pane's edit to the same buffer, past this pane's own parked
-/// cursor, bumps `text_gen` but moves nothing this pane can see: it must not
+/// cursor, changes the text version but moves nothing this pane can see: it must not
 /// un-park this pane's view either.
 #[test]
 fn a_parked_view_survives_a_sibling_panes_edit() {
@@ -346,10 +345,10 @@ fn a_parked_view_survives_a_sibling_panes_edit() {
     // structural `\n`, one past the parked cursor's own line): the insertion
     // lands after every position translation could move, so pane A's head
     // is provably untouched by this edit, isolating the assertion to the
-    // `text_gen` change alone.
+    // the text version change alone.
     ed.switch_focused_pane(pid_b);
     let end = ed.doc().text().len_chars() - 1;
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(end))));
+    select(&mut ed, &[(end, end)], 0);
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
     ed.feed_key(key_esc());
@@ -445,10 +444,13 @@ fn view_scroll_cursor_follow_counts_virtual_lines_toward_its_budget() {
 
     let content: String = numbered_lines(6);
     let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(co(0)));
+    let sels = sels_at(&text, &[(0, 0)], 0);
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 0 }] {
-        let mut ed = Editor::for_testing(Buffer::new(text.clone(), sels.clone()));
+        let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(
+            text.clone(),
+            sels.clone(),
+        )));
         let pid = ed.state.focus.id();
         ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
             mode: Some(wrap),
@@ -465,7 +467,7 @@ fn view_scroll_cursor_follow_counts_virtual_lines_toward_its_budget() {
         let cursor_line = ed
             .doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head());
+            .char_to_line(ed.current_view().primary().head().offset());
         assert_eq!(
             cursor_line,
             hume_rope::line::ContentLine::new(2),
@@ -494,8 +496,8 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     //   row 2  y            ← line 1, pushed down by the hint's extra display line
     let text = BufferText::from("abcdef\ny\n");
     // Cursor on line 1 (char 7), below the wrap the hint causes.
-    let sels = SelectionSet::single(Selection::collapsed(co(7)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(7, 7)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.state.settings.scroll_margin = 0;
     let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
@@ -518,7 +520,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     assert_eq!(cell(&rendered, 0, 2), "y", "line 1 follows at row 2");
 
     let mut vp = ed.view.panes[pid].viewport.clone();
-    let cursor_char = ed.current_selections().primary().head();
+    let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id;
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);

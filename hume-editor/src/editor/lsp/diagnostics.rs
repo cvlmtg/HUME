@@ -325,7 +325,7 @@ impl Editor {
         // (already-remapped) stored diagnostics keep displaying meanwhile.
         // Absent version is always ingested (older/simpler servers omit it).
         if let Some(v) = parsed.version
-            && v != wire_version(self.state.buffers.get(bid).text_gen)
+            && v != wire_version(self.state.buffers.get(bid).text().version().generation())
         {
             self.report(
                 Severity::Trace,

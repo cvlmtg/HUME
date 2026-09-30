@@ -1,6 +1,6 @@
 use super::super::*;
 use crate::WordCtx;
-use hume_editing::selection::{Selection, SelectionSet, StickyDisplayCol};
+use hume_editing::selection::StickyDisplayCol;
 use hume_editing::word::WordChars;
 use hume_rope::column::BufferLineCol;
 use hume_rope::offset::CharOffset;
@@ -26,7 +26,11 @@ fn inner_word_middle() {
     // head=o (last char of `hello`).
     assert_state!(
         "-[h]>ello world\n",
-        |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello]> world\n"
     );
 }
@@ -35,7 +39,11 @@ fn inner_word_middle() {
 fn inner_word_cursor_at_end_of_word() {
     assert_state!(
         "hell-[o]> world\n",
-        |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello]> world\n"
     );
 }
@@ -47,7 +55,11 @@ fn inner_word_cursor_on_whitespace() {
     // head = second space, serialised as `#[ | ]#`.
     assert_state!(
         "foo-[ ]> bar\n",
-        |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "foo-[  ]>bar\n"
     );
 }
@@ -57,7 +69,11 @@ fn inner_word_cursor_on_punctuation() {
     // Both `!!` are Punctuation, selected as one run.
     assert_state!(
         "foo-[!]>!\n",
-        |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "foo-[!!]>\n"
     );
 }
@@ -68,7 +84,11 @@ fn around_word_first_word_of_buffer_takes_trailing() {
     // so it falls back to its trailing space; head = the space char.
     assert_state!(
         "-[h]>ello world\n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello ]>world\n"
     );
 }
@@ -79,7 +99,11 @@ fn around_word_leading_preferred() {
     // space, regardless of what follows it (here, EOL).
     assert_state!(
         "hello -[w]>orld\n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "hello-[ world]>\n"
     );
 }
@@ -90,7 +114,11 @@ fn around_word_mid_line_takes_leading() {
     // even though a trailing space exists too.
     assert_state!(
         "hello -[w]>orld baz\n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "hello-[ world]> baz\n"
     );
 }
@@ -110,7 +138,11 @@ fn inner_word_includes_combining_grapheme() {
     // cluster is included.
     assert_state!(
         "-[c]>afe\u{0301} world\n",
-        |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[cafe\u{0301}]> world\n"
     );
 }
@@ -120,7 +152,11 @@ fn inner_word_from_the_last_cluster_of_a_word_ending_in_a_combining_mark_selects
     // The head sits on the last cluster {e◌́}, where `w` leaves it.
     assert_state!(
         "caf-[e\u{0301}]> world\n",
-        |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[cafe\u{0301}]> world\n"
     );
 }
@@ -133,7 +169,11 @@ fn inner_uppercase_word_spans_punctuation() {
     // `hello.world` is one WORD (no whitespace boundary within it).
     assert_state!(
         "-[h]>ello.world foo\n",
-        |(text, sels)| cmd_inner_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello.world]> foo\n"
     );
 }
@@ -155,7 +195,11 @@ fn select_word_around_move_first_word_of_buffer_takes_trailing() {
     // so it falls back to its trailing space.
     assert_state!(
         "-[h]>ello world\n",
-        |(text, sels)| cmd_select_word(&text, sels, 0, WordCtx::around(MotionMode::Move)),
+        |(text, sels)| cmd_select_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::around(MotionMode::Move)
+        ),
         "-[hello ]>world\n"
     );
 }
@@ -166,7 +210,11 @@ fn select_word_around_move_leading_preferred() {
     // space regardless of what follows it (here, EOL).
     assert_state!(
         "hello -[w]>orld\n",
-        |(text, sels)| cmd_select_word(&text, sels, 0, WordCtx::around(MotionMode::Move)),
+        |(text, sels)| cmd_select_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::around(MotionMode::Move)
+        ),
         "hello-[ world]>\n"
     );
 }
@@ -176,12 +224,20 @@ fn select_word_around_move_matches_around_word() {
     // mm and maw select the identical span mid-line.
     assert_state!(
         "foo -[b]>ar baz\n",
-        |(text, sels)| cmd_select_word(&text, sels, 0, WordCtx::around(MotionMode::Move)),
+        |(text, sels)| cmd_select_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::around(MotionMode::Move)
+        ),
         "foo-[ bar]> baz\n"
     );
     assert_state!(
         "foo -[b]>ar baz\n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "foo-[ bar]> baz\n"
     );
 }
@@ -192,7 +248,11 @@ fn select_word_around_move_indented_first_word_keeps_indent() {
     // indentation and is never absorbed; the trailing space is used instead.
     assert_state!(
         "x\n  -[f]>oo bar\n",
-        |(text, sels)| cmd_select_word(&text, sels, 0, WordCtx::around(MotionMode::Move)),
+        |(text, sels)| cmd_select_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::around(MotionMode::Move)
+        ),
         "x\n  -[foo ]>bar\n"
     );
 }
@@ -205,7 +265,11 @@ fn select_word_around_extend_honors_the_setting() {
     // bare; compare extend_text_object_preserves_backward_direction above).
     assert_state!(
         "<[he]-llo world\n",
-        |(text, sels)| cmd_select_word(&text, sels, 0, WordCtx::around(MotionMode::Extend)),
+        |(text, sels)| cmd_select_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::around(MotionMode::Extend)
+        ),
         "<[hello ]-world\n"
     );
 }
@@ -225,7 +289,11 @@ fn around_word_on_interior_newline_selects_next_word_without_eol() {
     // itself is never part of the span.
     assert_state!(
         "hello-[\n]>world\n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "hello\n-[world]>\n"
     );
 }
@@ -236,7 +304,11 @@ fn around_word_on_trailing_structural_newline_snaps_backward() {
     // to "hello", the first word of its line, with no trailing space → bare.
     assert_state!(
         "hello-[\n]>",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello]>\n"
     );
 }
@@ -248,7 +320,11 @@ fn around_word_on_blank_line_snaps_forward_past_the_newline_run() {
     // with none of the newlines.
     assert_state!(
         "hello\n-[\n]>world\n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "hello\n\n-[world]>\n"
     );
 }
@@ -260,7 +336,11 @@ fn around_word_on_indentation_excludes_the_indent() {
     // same as pressing maw on "foo" itself.
     assert_state!(
         "-[ ]> foo bar\n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "  -[foo ]>bar\n"
     );
 }
@@ -270,7 +350,11 @@ fn around_word_on_whitespace_only_buffer_is_noop() {
     // No word adjacent to the run in either direction: no-op.
     assert_state!(
         "-[ ]>  \n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[ ]>  \n"
     );
 }
@@ -282,7 +366,11 @@ fn select_word_around_extend_at_buffer_end_never_consumes_trailing_newline() {
     // covered), not grow the selection onto the newline.
     assert_state!(
         "-[hello world]>\n",
-        |(text, sels)| cmd_select_word(&text, sels, 0, WordCtx::around(MotionMode::Extend)),
+        |(text, sels)| cmd_select_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::around(MotionMode::Extend)
+        ),
         "-[hello world]>\n"
     );
 }
@@ -294,7 +382,11 @@ fn select_uppercase_word_around_move_spans_punctuation_and_whitespace() {
     // falls back to its trailing space.
     assert_state!(
         "-[h]>ello.world foo\n",
-        |(text, sels)| cmd_select_uppercase_word(&text, sels, 0, WordCtx::around(MotionMode::Move)),
+        |(text, sels)| cmd_select_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::around(MotionMode::Move)
+        ),
         "-[hello.world ]>foo\n"
     );
 }
@@ -303,7 +395,11 @@ fn select_uppercase_word_around_move_spans_punctuation_and_whitespace() {
 fn inner_word_multi_cursor_different_words() {
     assert_state!(
         "-[h]>ello -[w]>orld\n",
-        |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello]> -[world]>\n"
     );
 }
@@ -313,7 +409,11 @@ fn inner_word_multi_cursor_same_word_merges() {
     // Two cursors in the same word: both select "hello", merge to one selection.
     assert_state!(
         "-[h]>el-[l]>o world\n",
-        |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello]> world\n"
     );
 }
@@ -323,7 +423,11 @@ fn around_word_multi_cursor() {
     // "hello world foo\n": cursor 0 on 'h'(0) → "hello "(0..5); cursor 1 on 'f'(12) → " foo"(11..14).
     assert_state!(
         "-[h]>ello world-[ ]>foo\n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello ]>world-[ foo]>\n"
     );
 }
@@ -333,7 +437,11 @@ fn around_word_multi_cursor() {
 fn inner_uppercase_word_multi_cursor() {
     assert_state!(
         "-[h]>ello.world -[f]>oo\n",
-        |(text, sels)| cmd_inner_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello.world]> -[foo]>\n"
     );
 }
@@ -345,7 +453,11 @@ fn inner_uppercase_word_multi_cursor() {
 fn around_uppercase_word_includes_trailing_space() {
     assert_state!(
         "-[h]>ello.world foo\n",
-        |(text, sels)| cmd_around_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello.world ]>foo\n"
     );
 }
@@ -356,7 +468,11 @@ fn around_uppercase_word_no_trailing_space_uses_leading() {
     // Last WORD has no trailing space, so it grabs leading space instead.
     assert_state!(
         "hello.world -[f]>oo\n",
-        |(text, sels)| cmd_around_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "hello.world-[ foo]>\n"
     );
 }
@@ -375,7 +491,11 @@ fn around_uppercase_word_first_word_of_line_uses_uppercase_word_boundary() {
     // "foo.bar", not the wrong predicate's bare "foo".
     assert_state!(
         "  -[f]>oo.bar\n",
-        |(text, sels)| cmd_around_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "  -[foo.bar]>\n"
     );
 }
@@ -385,7 +505,11 @@ fn around_uppercase_word_first_word_of_line_uses_uppercase_word_boundary() {
 fn around_uppercase_word_cursor_on_whitespace_extends_to_next_uppercase_word() {
     assert_state!(
         "foo-[ ]>bar\n",
-        |(text, sels)| cmd_around_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "foo-[ bar]>\n"
     );
 }
@@ -396,7 +520,11 @@ fn around_uppercase_word_multi_cursor() {
     // "hello world foo\n": cursor on 'h'(0) → "hello "(0..5); cursor on 'f'(12) → " foo"(11..14).
     assert_state!(
         "-[h]>ello world-[ ]>foo\n",
-        |(text, sels)| cmd_around_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[hello ]>world-[ foo]>\n"
     );
 }
@@ -409,7 +537,11 @@ fn around_uppercase_word_treats_punctuation_as_part_of_word() {
     // around_word would only select "foo " (stopping at '.').
     assert_state!(
         "-[f]>oo.bar baz\n",
-        |(text, sels)| cmd_around_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[foo.bar ]>baz\n"
     );
 }
@@ -422,7 +554,11 @@ fn around_word_stops_at_punctuation() {
     // trailing space either → no expansion. Result: just "foo".
     assert_state!(
         "-[f]>oo.bar baz\n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[foo]>.bar baz\n"
     );
 }
@@ -435,7 +571,11 @@ fn inner_word_on_structural_newline() {
     // (Eol class), which equals the original cursor: no visible change.
     assert_state!(
         "-[\n]>",
-        |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[\n]>"
     );
 }
@@ -445,7 +585,11 @@ fn inner_word_on_structural_newline() {
 fn inner_uppercase_word_on_structural_newline() {
     assert_state!(
         "-[\n]>",
-        |(text, sels)| cmd_inner_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[\n]>"
     );
 }
@@ -454,13 +598,15 @@ fn inner_uppercase_word_on_structural_newline() {
 fn extend_text_object_preserves_backward_direction() {
     // Backward selection "<[he]-llo world\n": head=0 ('h'), anchor=1 ('e').
     // extend_inner_word at head=0 → inner_word "hello" (0,4).
-    // Union: sel.start()=0, sel.end()=1, word=(0,4).
-    //   new_start=min(0,0)=0, new_end=max(1,4)=4, forward=false.
-    // Result: Selection::directed(0,4,false) = {anchor=4, head=0}.
-    // Serialized: `]-` placed at (anchor+1)=5 → "<[hello]- world\n".
+    // Union of the selection (0,1) and the word (0,4) is (0,4), still facing
+    // backward: {anchor=4, head=0}, serialized "<[hello]- world\n".
     assert_state!(
         "<[he]-llo world\n",
-        |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Extend)),
+        |(text, sels)| cmd_inner_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Extend)
+        ),
         "<[hello]- world\n"
     );
 }
@@ -478,8 +624,7 @@ fn nearest_on_word_selects_inner_word() {
     assert_state!(
         "hello wor-[l]>d foo\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
@@ -494,8 +639,7 @@ fn nearest_on_whitespace_prev_closer() {
     assert_state!(
         "foo-[ ]>  bar\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
@@ -510,8 +654,7 @@ fn nearest_on_whitespace_next_closer() {
     assert_state!(
         "foo  -[ ]>bar\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
@@ -526,8 +669,7 @@ fn nearest_on_whitespace_tie_picks_prev() {
     assert_state!(
         "foo -[ ]> bar\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
@@ -542,8 +684,7 @@ fn nearest_at_line_start_whitespace_no_cross_to_prev_line() {
     assert_state!(
         "end\n-[ ]>start\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
@@ -559,8 +700,7 @@ fn nearest_at_line_end_whitespace_no_cross_to_next_line() {
     assert_state!(
         "end -[ ]>\nnext\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
@@ -574,8 +714,7 @@ fn nearest_on_blank_line_is_noop() {
     assert_state!(
         "hello\n-[\n]>world\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
@@ -589,8 +728,7 @@ fn nearest_on_whitespace_only_line_is_noop() {
     assert_state!(
         "hello\n-[ ]>  \nworld\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
@@ -602,12 +740,19 @@ fn nearest_on_whitespace_only_line_is_noop() {
 fn nearest_preserves_sticky_display_col_on_word() {
     // sel.sticky_display_col = Some(5) must survive the snap to a word.
     let text = BufferText::from("hello world\n");
-    let sels = SelectionSet::single(Selection::with_sticky_display_col(co(6), co(6), sticky(5)));
-    let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Move));
-    let sel = result.primary();
+    let sels = test_fixtures::testing::single(
+        &text,
+        test_fixtures::testing::sel(&text, 6, 6).with_sticky(sticky(5)),
+    );
+    let result = cmd_select_word_nearest_on_line(
+        test_fixtures::testing::state(text, sels),
+        0,
+        WordCtx::bare(MotionMode::Move),
+    );
+    let sel = result.view().primary().selection();
     // "world" spans chars 6–10.
     assert_eq!(
-        (sel.anchor(), sel.head()),
+        (sel.anchor().offset(), sel.head().offset()),
         (co(6), co(10)),
         "expected word range"
     );
@@ -625,11 +770,18 @@ fn nearest_preserves_sticky_display_col_on_whitespace() {
     let text = BufferText::from("hi   world\n");
     //                    0123456789
     // spaces at 2,3,4; head=3 (space), prev word = "hi" ends at 1.
-    let sels = SelectionSet::single(Selection::with_sticky_display_col(co(3), co(3), sticky(3)));
-    let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Move));
-    let sel = result.primary();
+    let sels = test_fixtures::testing::single(
+        &text,
+        test_fixtures::testing::sel(&text, 3, 3).with_sticky(sticky(3)),
+    );
+    let result = cmd_select_word_nearest_on_line(
+        test_fixtures::testing::state(text, sels),
+        0,
+        WordCtx::bare(MotionMode::Move),
+    );
+    let sel = result.view().primary().selection();
     assert_eq!(
-        (sel.anchor(), sel.head()),
+        (sel.anchor().offset(), sel.head().offset()),
         (co(0), co(1)),
         "expected 'hi' range"
     );
@@ -645,9 +797,13 @@ fn nearest_no_sticky_display_col_is_cleared() {
     // When input sel has sticky_display_col=None, output must also have
     // sticky_display_col=None.
     let text = BufferText::from("hello world\n");
-    let sels = SelectionSet::single(Selection::new(co(6), co(6)));
-    let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Move));
-    let sel = result.primary();
+    let sels = test_fixtures::testing::single(&text, test_fixtures::testing::sel(&text, 6, 6));
+    let result = cmd_select_word_nearest_on_line(
+        test_fixtures::testing::state(text, sels),
+        0,
+        WordCtx::bare(MotionMode::Move),
+    );
+    let sel = result.view().primary().selection();
     assert_eq!(
         sel.sticky_display_col(),
         None,
@@ -665,24 +821,38 @@ fn nearest_extend_grows_selection_to_snapped_word() {
     // Snap uses anchor=0 → nearest_word finds "hello" = [0,4] (anchor is already on a word).
     // new_end = max(10, 4) = 10 → selection stays (0, 10); head is already past "hello".
     let text = BufferText::from("hello\n     world\n");
-    let sels = SelectionSet::single(Selection::new(co(0), co(10))); // anchor=0, head=10 (space)
-    let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Extend));
-    let sel = result.primary();
+    let sels = test_fixtures::testing::single(&text, test_fixtures::testing::sel(&text, 0, 10)); // anchor=0, head=10 (space)
+    let result = cmd_select_word_nearest_on_line(
+        test_fixtures::testing::state(text, sels),
+        0,
+        WordCtx::bare(MotionMode::Extend),
+    );
+    let sel = result.view().primary().selection();
     assert_eq!(
-        (sel.anchor(), sel.head()),
+        (sel.anchor().offset(), sel.head().offset()),
         (co(0), co(10)),
         "extend must not shrink selection when anchor word is already covered"
     );
-    assert!(sel.anchor() <= sel.head(), "selection must remain forward");
+    assert!(
+        sel.anchor().offset() <= sel.head().offset(),
+        "selection must remain forward"
+    );
 }
 
 #[test]
 fn nearest_extend_preserves_sticky_display_col() {
     let text = BufferText::from("hello world\n");
-    let sels = SelectionSet::single(Selection::with_sticky_display_col(co(0), co(5), sticky(7))); // anchor=0, head=5 (space)
-    let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Extend));
+    let sels = test_fixtures::testing::single(
+        &text,
+        test_fixtures::testing::sel(&text, 0, 5).with_sticky(sticky(7)),
+    ); // anchor=0, head=5 (space)
+    let result = cmd_select_word_nearest_on_line(
+        test_fixtures::testing::state(text, sels),
+        0,
+        WordCtx::bare(MotionMode::Extend),
+    );
     assert_eq!(
-        result.primary().sticky_display_col(),
+        result.view().primary().selection().sticky_display_col(),
         Some(sticky(7)),
         "sticky_display_col must survive extend mode"
     );
@@ -705,8 +875,7 @@ fn nearest_on_word_around_absorbs_leading_whitespace() {
     assert_state!(
         "hello wor-[l]>d foo\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::around(MotionMode::Move)
         ),
@@ -723,8 +892,7 @@ fn nearest_on_whitespace_around_expands_snapped_word() {
     assert_state!(
         "foo  -[ ]>bar\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::around(MotionMode::Move)
         ),
@@ -742,8 +910,7 @@ fn nearest_on_whitespace_around_keeps_indentation_protected() {
     assert_state!(
         "end\n-[ ]>start\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::around(MotionMode::Move)
         ),
@@ -760,7 +927,7 @@ fn inner_word_with_extra_word_char_selects_whole_run() {
     let ctx = WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"));
     assert_state!(
         "foo-b-[a]>r\n",
-        |(text, sels)| cmd_inner_word(&text, sels, 0, ctx),
+        |(text, sels)| cmd_inner_word(test_fixtures::testing::state(text, sels), 0, ctx),
         "-[foo-bar]>\n"
     );
 }
@@ -770,7 +937,7 @@ fn around_word_with_extra_word_char_absorbs_leading_space() {
     let ctx = WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"));
     assert_state!(
         "x -[f]>oo-bar\n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, ctx),
+        |(text, sels)| cmd_around_word(test_fixtures::testing::state(text, sels), 0, ctx),
         "x-[ foo-bar]>\n"
     );
 }
@@ -780,7 +947,7 @@ fn select_word_mm_with_extra_word_char_selects_whole_run() {
     let ctx = WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"));
     assert_state!(
         "foo-b-[a]>r\n",
-        |(text, sels)| cmd_select_word(&text, sels, 0, ctx),
+        |(text, sels)| cmd_select_word(test_fixtures::testing::state(text, sels), 0, ctx),
         "-[foo-bar]>\n"
     );
 }
@@ -793,8 +960,7 @@ fn nearest_word_on_line_with_extra_word_char_selects_whole_run() {
     assert_state!(
         "foo-[-]>bar\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"))
         ),
@@ -809,8 +975,7 @@ fn nearest_word_measures_distance_in_clusters_not_chars() {
     assert_state!(
         "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}-[ ]> x\n",
         |(text, sels)| cmd_select_word_nearest_on_line(
-            &text,
-            sels,
+            test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
@@ -823,7 +988,11 @@ fn nearest_word_measures_distance_in_clusters_not_chars() {
 fn inner_uppercase_word_takes_a_whole_token_of_marked_cjk_and_emoji() {
     assert_state!(
         "-[c]>afe\u{301}.\u{6f22}\u{1f600} z\n",
-        |(text, sels)| cmd_inner_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_inner_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[cafe\u{301}.\u{6f22}\u{1f600}]> z\n"
     );
 }
@@ -833,7 +1002,11 @@ fn inner_uppercase_word_takes_a_whole_token_of_marked_cjk_and_emoji() {
 fn around_uppercase_word_takes_a_leading_no_break_space_run() {
     assert_state!(
         "a\u{a0}-[c]>afe\u{301}\n",
-        |(text, sels)| cmd_around_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_uppercase_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "a-[\u{a0}cafe\u{301}]>\n"
     );
 }
@@ -842,7 +1015,11 @@ fn around_uppercase_word_takes_a_leading_no_break_space_run() {
 fn around_word_first_on_line_takes_its_trailing_space_after_a_combining_mark() {
     assert_state!(
         "-[c]>afe\u{301} x\n",
-        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
         "-[cafe\u{301} ]>x\n"
     );
 }

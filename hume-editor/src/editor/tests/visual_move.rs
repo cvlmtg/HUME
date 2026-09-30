@@ -50,11 +50,10 @@ fn visual_test_editor(head: usize) -> Editor {
     let line0: String = "a".repeat(80);
     let content = format!("{}\nshort\n", line0);
     // Build manually so we can place the cursor at an exact char offset.
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
     let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(co(head)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(head, head)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     // Pin to 76-column indent-wrap so the char-offset expectations in the tests
     // are stable regardless of terminal size.
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
@@ -70,12 +69,12 @@ fn visual_move_down_within_wrapped_line() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(76),
         "j: display line 0 → display line 1, col 0 → char 76"
     );
     assert_eq!(
-        ed.current_selections().primary().sticky_display_col(),
+        ed.current_view().primary().selection().sticky_display_col(),
         Some(sticky_display_line(0)),
         "sticky col latched on first j"
     );
@@ -87,7 +86,7 @@ fn visual_move_down_crosses_buffer_line() {
     let mut ed = visual_test_editor(76); // display line 1 of line 0
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(81),
         "j: last display line → first char of next buffer line"
     );
@@ -99,7 +98,7 @@ fn visual_move_up_enters_last_display_line_of_previous_line() {
     let mut ed = visual_test_editor(81); // start of "short"
     ed.handle_key(key('k'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(76),
         "k: buffer line n+1 → last display line of line n, col 0 → char 76"
     );
@@ -111,7 +110,7 @@ fn visual_move_up_within_wrapped_line() {
     let mut ed = visual_test_editor(76); // display line 1 of line 0
     ed.handle_key(key('k'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "k: display line 1 → display line 0, col 0 → char 0"
     );
@@ -123,7 +122,7 @@ fn visual_move_up_at_top_stays_put() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('k'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "k at first display line: no-op"
     );
@@ -136,7 +135,7 @@ fn visual_move_down_at_bottom_stays_put() {
     let mut ed = visual_test_editor(81);
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(81),
         "j at last display line: no-op"
     );
@@ -153,12 +152,12 @@ fn visual_preferred_display_col_stickiness() {
     // Closest to col 40 is char 79 (col 3, last 'a' on display line 1).
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(79),
         "j: clamped to last char on short display line"
     );
     assert_eq!(
-        ed.current_selections().primary().sticky_display_col(),
+        ed.current_view().primary().selection().sticky_display_col(),
         Some(sticky_display_line(40)),
         "sticky col stays at 40"
     );
@@ -167,12 +166,12 @@ fn visual_preferred_display_col_stickiness() {
     // Closest to 40 is 't' at col 4, char 85.
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(85),
         "j: clamped to last char on short second line"
     );
     assert_eq!(
-        ed.current_selections().primary().sticky_display_col(),
+        ed.current_view().primary().selection().sticky_display_col(),
         Some(sticky_display_line(40)),
         "sticky col still 40"
     );
@@ -184,16 +183,18 @@ fn visual_preferred_display_col_reset_on_horizontal_motion() {
     let mut ed = visual_test_editor(40);
     ed.handle_key(key('j')); // latches sticky_display_col on the selection
     assert!(
-        ed.current_selections()
+        ed.current_view()
             .primary()
+            .selection()
             .sticky_display_col()
             .is_some(),
         "j latches sticky col"
     );
-    ed.handle_key(key('l')); // horizontal motion: Selection::new() clears sticky_display_col
+    ed.handle_key(key('l')); // horizontal motion clears sticky_display_col
     assert!(
-        ed.current_selections()
+        ed.current_view()
             .primary()
+            .selection()
             .sticky_display_col()
             .is_none(),
         "l resets sticky col"
@@ -213,12 +214,12 @@ fn visual_move_no_wrap_content_display_line_is_a_buffer_line() {
 
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(81),
         "WrapMode::None: a content display line is a buffer line"
     );
     assert_eq!(
-        ed.current_selections().primary().sticky_display_col(),
+        ed.current_view().primary().selection().sticky_display_col(),
         Some(sticky_buffer_line(0)),
         "sticky display column latches even in no-wrap mode"
     );
@@ -237,7 +238,7 @@ fn visual_move_down_with_count() {
     // 2j from char 0: first hop → char 81 (buffer line 1); second hop is a
     // no-op (buffer line 2 is the phantom trailing line).
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(81),
         "2j: buffer-line movement, clamped at the last real line"
     );
@@ -256,12 +257,12 @@ fn visual_move_down_with_explicit_count_moves_buffer_lines() {
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(81),
         "1j: one buffer line skips the display-line-1 stop entirely"
     );
     assert_eq!(
-        ed.current_selections().primary().sticky_display_col(),
+        ed.current_view().primary().selection().sticky_display_col(),
         Some(sticky_buffer_line(0)),
         "buffer-line path latches a Line-variant sticky display column"
     );
@@ -275,7 +276,7 @@ fn visual_move_up_with_explicit_count_moves_buffer_lines() {
     ed.handle_key(key('1'));
     ed.handle_key(key('k'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "1k: one buffer line lands on line 0 col 0, not the last display line (char 76)"
     );
@@ -297,7 +298,7 @@ fn explicit_count_move_down_basic() {
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(6),
         "lands on 'w'"
     );
@@ -309,7 +310,7 @@ fn explicit_count_move_down_preserves_display_column() {
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(8),
         "col 2 of \"world\" is 'r'"
     );
@@ -321,7 +322,7 @@ fn explicit_count_move_down_clamps_to_shorter_line() {
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(7),
         "clamps to 'b'"
     );
@@ -333,7 +334,7 @@ fn explicit_count_move_down_clamp_at_document_edge() {
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(6),
         "head stays exactly put, not re-clamped onto the same line"
     );
@@ -344,7 +345,7 @@ fn explicit_count_move_up_clamp_at_document_edge() {
     let mut ed = unwrapped_editor("hello\nworld\n", 0); // already on the first line
     ed.handle_key(key('1'));
     ed.handle_key(key('k'));
-    assert_eq!(ed.current_selections().primary().head(), co(0));
+    assert_eq!(ed.current_view().primary().head().offset(), co(0));
 }
 
 /// `j` at the document's last line must still collapse a non-empty selection
@@ -385,7 +386,7 @@ fn explicit_count_move_down_to_empty_line() {
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(6),
         "the empty line's only cell is its own '\\n'"
     );
@@ -393,7 +394,6 @@ fn explicit_count_move_down_to_empty_line() {
 
 #[test]
 fn explicit_count_move_down_multi_cursor_merge() {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
 
     // Two cursors on line 0 at different columns (2 and 4), both past line
@@ -401,17 +401,14 @@ fn explicit_count_move_down_multi_cursor_merge() {
     // `SelectionSet::map` must still merge them through the new
     // `move_buffer_line` path, same as it does for every other motion.
     let text = BufferText::from("hello\nab\n");
-    let sels = SelectionSet::from_vec(
-        vec![Selection::collapsed(co(2)), Selection::collapsed(co(4))],
-        0,
-    );
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(2, 2), (4, 4)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     pin_no_wrap(&mut ed);
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
-    let sels = ed.current_selections().clone();
+    let sels = ed.current_view();
     assert_eq!(sels.len(), 1, "both cursors clamp onto 'b' and merge");
-    assert_eq!(sels.primary().head(), co(7));
+    assert_eq!(sels.primary().head().offset(), co(7));
 }
 
 #[test]
@@ -424,7 +421,7 @@ fn explicit_count_move_down_preserves_display_column_across_a_tab() {
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(12),
         "lands on 'f'"
     );
@@ -439,7 +436,7 @@ fn explicit_count_move_down_preserves_display_column_across_a_wide_cjk_char() {
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(6),
         "lands on 'c'"
     );
@@ -451,7 +448,7 @@ fn explicit_count_move_up_basic() {
     ed.handle_key(key('1'));
     ed.handle_key(key('k'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "lands on 'h'"
     );
@@ -463,7 +460,7 @@ fn explicit_count_move_up_preserves_display_column() {
     ed.handle_key(key('1'));
     ed.handle_key(key('k'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(3),
         "col 3 of \"hello\" is 'l'"
     );
@@ -475,7 +472,7 @@ fn explicit_count_move_up_clamps_to_shorter_line() {
     ed.handle_key(key('1'));
     ed.handle_key(key('k'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(1),
         "clamps to 'b'"
     );
@@ -497,7 +494,7 @@ fn explicit_count_move_down_holds_display_column_through_a_short_line() {
     ed.handle_key(key('2'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(12),
         "lands on line 2's 'd': landing on 'x' first would truncate the column to 0"
     );
@@ -509,7 +506,7 @@ fn explicit_count_move_up_holds_display_column_through_a_short_line() {
     ed.handle_key(key('2'));
     ed.handle_key(key('k'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(3),
         "lands on line 0's 'd'"
     );
@@ -517,26 +514,27 @@ fn explicit_count_move_up_holds_display_column_through_a_short_line() {
 
 #[test]
 fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_line_one() {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
 
     let text = BufferText::from("abcdefgh\nABCDEFGH\n");
 
     // A `BufferLine`-tagged latch is this call's own domain and seeds the
     // hop directly.
-    let seeded = SelectionSet::single(Selection::with_sticky_display_col(
-        co(2),
-        co(2),
-        StickyDisplayCol::BufferLine {
+    let seeded = test_fixtures::testing::single(
+        &text,
+        test_fixtures::testing::cursor(&text, 2).with_sticky(StickyDisplayCol::BufferLine {
             display_col: BufferLineCol::new(6),
-        },
-    ));
-    let mut ed = Editor::for_testing(Buffer::new(text.clone(), seeded));
+        }),
+    );
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(
+        text.clone(),
+        seeded,
+    )));
     pin_no_wrap(&mut ed);
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(15),
         "BufferLine latch (6) is reused: lands on 'G'"
     );
@@ -544,20 +542,19 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_l
     // A `DisplayLine`-tagged one is a different quantity under wrap (see
     // `StickyDisplayCol`'s own doc) and must be re-derived from `head`
     // instead. Reusing it as a buffer-line column would be a sideways jump.
-    let ignored = SelectionSet::single(Selection::with_sticky_display_col(
-        co(2),
-        co(2),
-        StickyDisplayCol::DisplayLine {
+    let ignored = test_fixtures::testing::single(
+        &text,
+        test_fixtures::testing::cursor(&text, 2).with_sticky(StickyDisplayCol::DisplayLine {
             display_col: DisplayLineCol::new(6),
             wrap_width: None,
-        },
-    ));
-    let mut ed = Editor::for_testing(Buffer::new(text, ignored));
+        }),
+    );
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, ignored)));
     pin_no_wrap(&mut ed);
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(11),
         "DisplayLine latch is ignored: re-derives from head (col 2), lands on 'C'"
     );
@@ -565,7 +562,6 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_l
 
 #[test]
 fn resize_invalidates_a_display_line_latch_measured_at_the_old_wrap_width() {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
 
     // Line 0 ("0123456789ABCDE", 15 chars) wraps under a content-width-driven
@@ -574,8 +570,8 @@ fn resize_invalidates_a_display_line_latch_measured_at_the_old_wrap_width() {
     // out of the resized block entirely: the case a stale sticky column
     // would misplace worst.
     let text = BufferText::from("0123456789ABCDE\nFGHIJ\n");
-    let sels = SelectionSet::single(Selection::collapsed(co(2))); // '2', display line 0 col 2
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(2, 2)], 0); // '2', display line 0 col 2
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
@@ -590,7 +586,7 @@ fn resize_invalidates_a_display_line_latch_measured_at_the_old_wrap_width() {
     // column of 2 measured against width 10.
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(12),
         "lands on 'C'"
     );
@@ -603,7 +599,7 @@ fn resize_invalidates_a_display_line_latch_measured_at_the_old_wrap_width() {
 
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(20),
         "lands on line 1's col 4 ('J'), not col 2 ('H') from the stale latch"
     );
@@ -615,12 +611,12 @@ fn explicit_count_move_down_emits_a_buffer_line_tagged_sticky_column() {
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(8),
         "lands on 'r' (col 2 of \"world\")"
     );
     assert_eq!(
-        ed.current_selections().primary().sticky_display_col(),
+        ed.current_view().primary().selection().sticky_display_col(),
         Some(sticky_buffer_line(2)),
         "output must latch a Line-tagged sticky column"
     );
@@ -628,24 +624,22 @@ fn explicit_count_move_down_emits_a_buffer_line_tagged_sticky_column() {
 
 #[test]
 fn explicit_count_move_down_past_last_content_line_leaves_head_exactly_where_it_was() {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
 
     // Already on the buffer's last content line; a further count must leave
     // `head` untouched rather than landing on whatever this line's own width
     // resolves the (absurdly large) latched column to.
     let text = BufferText::from("ab\ncdefgh\n");
-    let sels = SelectionSet::single(Selection::with_sticky_display_col(
-        co(5),
-        co(5),
-        sticky_buffer_line(200),
-    ));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = test_fixtures::testing::single(
+        &text,
+        test_fixtures::testing::cursor(&text, 5).with_sticky(sticky_buffer_line(200)),
+    );
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     pin_no_wrap(&mut ed);
     ed.handle_key(key('3'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(5),
         "head must stay exactly on 'e'"
     );
@@ -666,20 +660,19 @@ fn explicit_count_move_down_past_last_content_line_leaves_head_exactly_where_it_
 /// switch from the display-line-domain path to the buffer-line one.
 #[test]
 fn no_wrap_j_then_count_2_holds_display_column_across_the_family_switch() {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
 
     // line0 = "\tfoo" (tab_width 4: 'f' at display col 4), line1 = "x" (1
     // char), line2 = "abcdefgh" (8 chars, cols 0..7).
     let content = "\tfoo\nx\nabcdefgh\n";
     let text = BufferText::from(content);
-    let sels = SelectionSet::single(Selection::collapsed(co(1))); // 'f', display col 4
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(1, 1)], 0); // 'f', display col 4
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     pin_no_wrap(&mut ed);
 
     ed.handle_key(key('j')); // bare j: display-line-domain path, latches Line(4)
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(5),
         "j clamps to the only char on line 1 ('x')"
     );
@@ -687,7 +680,7 @@ fn no_wrap_j_then_count_2_holds_display_column_across_the_family_switch() {
     ed.handle_key(key('2'));
     ed.handle_key(key('j')); // 2j: hume-ops buffer-line path
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(11),
         "2j reuses the col-4 latch, landing on 'e'; re-deriving from the \
          drifted col-0 landing on 'x' would land on 'a' (char 7) instead"
@@ -702,7 +695,6 @@ fn no_wrap_j_then_count_2_holds_display_column_across_the_family_switch() {
 /// would fall into.
 #[test]
 fn wrapped_j_then_count_2_rederives_instead_of_reading_the_display_line_latch_as_a_line_column() {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
 
     // line0 = 80 'a's (wraps at col 76, same layout as `visual_test_editor`);
@@ -712,17 +704,17 @@ fn wrapped_j_then_count_2_rederives_instead_of_reading_the_display_line_latch_as
     let line1: String = "b".repeat(100);
     let content = format!("{line0}\n{line1}\n");
     let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(co(40))); // display line 0, display col 40
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(40, 40)], 0); // display line 0, display col 40
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
         saved: None,
     });
 
     ed.handle_key(key('j')); // bare j: display line 0 -> display line 1, clamped to col 3
-    assert_eq!(ed.current_selections().primary().head(), co(79));
+    assert_eq!(ed.current_view().primary().head().offset(), co(79));
     assert_eq!(
-        ed.current_selections().primary().sticky_display_col(),
+        ed.current_view().primary().selection().sticky_display_col(),
         Some(sticky_display_line(40)),
         "sticky col latches the display-line-relative column, 40"
     );
@@ -730,7 +722,7 @@ fn wrapped_j_then_count_2_rederives_instead_of_reading_the_display_line_latch_as
     ed.handle_key(key('2'));
     ed.handle_key(key('j')); // 2j: buffer-line path
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(160),
         "must re-derive from head's buffer-line column (79), landing on \
          line1's 80th 'b' (char 160); misreading the display-line latch (40) as a \
@@ -753,15 +745,14 @@ fn wrapped_j_then_count_2_rederives_instead_of_reading_the_display_line_latch_as
 fn no_wrap_bare_j_and_view_scroll_agree_on_display_column() {
     use crate::editor::commands::scroll_view;
     use crate::editor::visual_move::{VerticalMove, apply_visual_vertical};
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
     use hume_ops::MotionMode;
 
     let no_wrap_editor_at_f = || {
         let content = "\tfoo\nabcdefgh\n";
         let text = BufferText::from(content);
-        let sels = SelectionSet::single(Selection::collapsed(co(1))); // 'f', display col 4
-        let mut ed = Editor::for_testing(Buffer::new(text, sels));
+        let sels = sels_at(&text, &[(1, 1)], 0); // 'f', display col 4
+        let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
         pin_no_wrap(&mut ed);
         ed
     };
@@ -777,7 +768,7 @@ fn no_wrap_bare_j_and_view_scroll_agree_on_display_column() {
         MotionMode::Move,
         VerticalMove::ContentDisplayLine,
     );
-    let bare_j_head = bare_j.current_selections().primary().head();
+    let bare_j_head = bare_j.current_view().primary().head().offset();
 
     let mut view_scroll = no_wrap_editor_at_f();
     let view_scroll_pid = view_scroll.state.focus.id();
@@ -789,7 +780,7 @@ fn no_wrap_bare_j_and_view_scroll_agree_on_display_column() {
         true,
         MotionMode::Move,
     );
-    let view_scroll_head = view_scroll.current_selections().primary().head();
+    let view_scroll_head = view_scroll.current_view().primary().head().offset();
 
     assert_eq!(
         bare_j_head, view_scroll_head,
@@ -825,7 +816,7 @@ fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
         VerticalMove::ContentDisplayLine,
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(76),
         "VerticalMove::ContentDisplayLine must move one display line even with explicit_count=true"
     );
@@ -843,20 +834,12 @@ fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
 /// k → display line 1: A should return to col 0 = char 76, B to col 3 = char 79.
 #[test]
 fn visual_move_per_selection_sticky_display_col() {
-    use hume_editing::selection::{Selection, SelectionSet};
-
     let line0: String = "a".repeat(80);
     let content = format!("{}\nshort\n", line0);
     let text = hume_editing::text::BufferText::from(content.as_str());
     // A at col 0, B at col 3 (primary).
-    let sels = SelectionSet::from_vec(
-        vec![
-            Selection::collapsed(co(76)), // A: col 0 on display line 1
-            Selection::collapsed(co(79)), // B: col 3 on display line 1
-        ],
-        1, // primary is B
-    );
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(76, 76), (79, 79)], 1);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
         saved: None,
@@ -864,18 +847,18 @@ fn visual_move_per_selection_sticky_display_col() {
 
     // j: each cursor should use its own column, not the primary's.
     ed.handle_key(key('j'));
-    let sels = ed.current_selections().clone();
+    let sels = ed.current_view();
     assert_eq!(sels.len(), 2, "two cursors remain distinct");
     // Sorted by start(): A is first.
-    let heads: Vec<_> = sels.iter_sorted().map(|s| s.head()).collect();
+    let heads: Vec<_> = sels.iter().map(|s| s.head().offset()).collect();
     assert_eq!(heads[0], co(81), "A (col 0) → char 81 on line 1");
     assert_eq!(heads[1], co(84), "B (col 3) → char 84 on line 1");
 
     // k: sticky cols should bring each cursor back to its original column.
     ed.handle_key(key('k'));
-    let sels = ed.current_selections().clone();
+    let sels = ed.current_view();
     assert_eq!(sels.len(), 2, "two cursors remain distinct");
-    let heads: Vec<_> = sels.iter_sorted().map(|s| s.head()).collect();
+    let heads: Vec<_> = sels.iter().map(|s| s.head().offset()).collect();
     assert_eq!(
         heads[0],
         co(76),
@@ -905,10 +888,8 @@ fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
     // line 0: hint "HHH" (3 cols) before "abc", cursor on 'c' (char 2,
     // display col 5: 3 hint cols + 'a','b'). line 1: hint-free "abcdefgh".
     let text = hume_editing::text::BufferText::from("abc\nabcdefgh\n");
-    let sels = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(2)),
-    );
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(2, 2)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     pin_no_wrap(&mut ed);
     ed.view.panes[ed.state.focus.id()]
         .providers
@@ -917,7 +898,7 @@ fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(9),
         "col 5 (hint-inclusive) of \"abcdefgh\" is 'f'; the rope-only mirror \
          would have derived col 2 and landed on 'c' (char 6) instead"
@@ -935,10 +916,8 @@ fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
     // line 0: "xyz" (plain). line 1: hint "HHH" before "abc", bare j lands
     // on 'a' (char 4). line 2: hint-free "abcdefgh", 2j's target.
     let text = hume_editing::text::BufferText::from("xyz\nabc\nabcdefgh\n");
-    let sels = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(0)),
-    );
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     // Wide enough that nothing actually wraps: only `is_wrapping()` matters,
     // to force bare `j` to tag `DisplayLine` instead of `BufferLine`.
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
@@ -951,12 +930,12 @@ fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
 
     ed.handle_key(key('j')); // bare j: col 0 target, clamps onto 'a' (virtual hint cells excluded)
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(4),
         "lands on 'a'"
     );
     assert_eq!(
-        ed.current_selections().primary().sticky_display_col(),
+        ed.current_view().primary().selection().sticky_display_col(),
         // Not `sticky_display_line(0)`: that helper's `wrap_width` matches
         // `visual_test_editor`'s width-76 fixture, not this test's own
         // `WrapMode::Soft { width: 200 }`.
@@ -970,7 +949,7 @@ fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
     ed.handle_key(key('2'));
     ed.handle_key(key('j')); // 2j: crosses families, re-derives from 'a' through the hint
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(11),
         "re-derives head's line-relative column as 3 (the hint's width) and \
          lands on 'd'; a rope-only re-derivation would compute column 0 \
@@ -990,9 +969,17 @@ fn visual_extend_down_within_wrapped_line() {
     let mut ed = visual_test_editor(0);
     ed.handle_key(key('e')); // enter extend mode
     ed.handle_key(key('j'));
-    let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor(), co(0), "anchor fixed at display line 0 col 0");
-    assert_eq!(sel.head(), co(76), "head extends to display line 1 col 0");
+    let sel = ed.current_view().primary();
+    assert_eq!(
+        sel.anchor().offset(),
+        co(0),
+        "anchor fixed at display line 0 col 0"
+    );
+    assert_eq!(
+        sel.head().offset(),
+        co(76),
+        "head extends to display line 1 col 0"
+    );
 }
 
 /// extend-down crosses to the next buffer line when already on the last display line.
@@ -1001,10 +988,14 @@ fn visual_extend_down_crosses_buffer_line() {
     let mut ed = visual_test_editor(76); // last display line of line 0
     ed.handle_key(key('e'));
     ed.handle_key(key('j'));
-    let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor(), co(76), "anchor fixed at last display line");
+    let sel = ed.current_view().primary();
     assert_eq!(
-        sel.head(),
+        sel.anchor().offset(),
+        co(76),
+        "anchor fixed at last display line"
+    );
+    assert_eq!(
+        sel.head().offset(),
         co(81),
         "head crosses to first char of next buffer line"
     );
@@ -1016,9 +1007,17 @@ fn visual_extend_up_within_wrapped_line() {
     let mut ed = visual_test_editor(76); // display line 1 of line 0
     ed.handle_key(key('e'));
     ed.handle_key(key('k'));
-    let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor(), co(76), "anchor fixed at display line 1");
-    assert_eq!(sel.head(), co(0), "head retreats to display line 0 col 0");
+    let sel = ed.current_view().primary();
+    assert_eq!(
+        sel.anchor().offset(),
+        co(76),
+        "anchor fixed at display line 1"
+    );
+    assert_eq!(
+        sel.head().offset(),
+        co(0),
+        "head retreats to display line 0 col 0"
+    );
 }
 
 /// extend-up enters the last display line of the previous buffer line.
@@ -1027,10 +1026,14 @@ fn visual_extend_up_enters_previous_line_last_display_line() {
     let mut ed = visual_test_editor(81); // start of "short"
     ed.handle_key(key('e'));
     ed.handle_key(key('k'));
-    let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor(), co(81), "anchor fixed at line 1 start");
+    let sel = ed.current_view().primary();
     assert_eq!(
-        sel.head(),
+        sel.anchor().offset(),
+        co(81),
+        "anchor fixed at line 1 start"
+    );
+    assert_eq!(
+        sel.head().offset(),
         co(76),
         "head enters last display line of previous buffer line"
     );
@@ -1053,12 +1056,11 @@ fn visual_extend_up_enters_previous_line_last_display_line() {
 //   85  = 's'  (start of "short")
 
 fn word_wrap_editor() -> Editor {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
     let content = format!("{}+ ratatui\nshort\n", "a".repeat(75));
     let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(co(0)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
         saved: None,
@@ -1078,7 +1080,7 @@ fn select_word_nearest_scopes_to_visual_display_line() {
 
     // j: head moves to char 76 (leading space of display line 1).
     ed.handle_key(key('j'));
-    assert_eq!(ed.current_selections().primary().head(), co(76));
+    assert_eq!(ed.current_view().primary().head().offset(), co(76));
 
     ed.execute_keymap_command(
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
@@ -1086,19 +1088,19 @@ fn select_word_nearest_scopes_to_visual_display_line() {
         false,
     );
 
-    let sel = ed.current_selections().primary();
+    let sel = ed.current_view().primary();
     assert_ne!(
-        sel.head(),
+        sel.head().offset(),
         co(75),
         "must NOT snap to '+' across the wrap boundary"
     );
     assert_eq!(
-        sel.head(),
+        sel.head().offset(),
         co(83),
         "must snap to 'ratatui' (last char = 'i' at char 83)"
     );
     assert_eq!(
-        sel.sticky_display_col(),
+        sel.selection().sticky_display_col(),
         Some(sticky_display_line(0)),
         "sticky_display_col preserved through snap"
     );
@@ -1124,12 +1126,12 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
     // First j + select: lands on "ratatui" (head = 83).
     ed.handle_key(key('j'));
     call_select(&mut ed);
-    let head_after_first_select = ed.current_selections().primary().head();
+    let head_after_first_select = ed.current_view().primary().head().offset();
     assert_eq!(head_after_first_select, co(83));
 
     // Second j: must advance past 83 (crosses to line 1, display line 0 → 's' at 85).
     ed.handle_key(key('j'));
-    let head_after_second_j = ed.current_selections().primary().head();
+    let head_after_second_j = ed.current_view().primary().head().offset();
     assert!(
         head_after_second_j > head_after_first_select,
         "second j must advance past {head_after_first_select:?}; got {head_after_second_j:?}"
@@ -1137,7 +1139,7 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
 
     // Second select: must land strictly past the first select, never back.
     call_select(&mut ed);
-    let head_after_second_select = ed.current_selections().primary().head();
+    let head_after_second_select = ed.current_view().primary().head().offset();
     assert!(
         head_after_second_select > head_after_first_select,
         "second select must advance past {head_after_first_select:?}; got {head_after_second_select:?} (oscillation)"
@@ -1159,13 +1161,13 @@ fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
         false,
     );
 
-    let sel = ed.current_selections().primary();
+    let sel = ed.current_view().primary();
     assert_eq!(
-        sel.anchor(),
+        sel.anchor().offset(),
         co(76),
         "leading space must be absorbed, matching mm's word_unit_at rule"
     );
-    assert_eq!(sel.head(), co(83), "still snaps to 'ratatui'");
+    assert_eq!(sel.head().offset(), co(83), "still snaps to 'ratatui'");
 }
 
 /// A word beginning exactly at a wrapped display line's start (no leading space
@@ -1175,13 +1177,12 @@ fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
 /// was given instead of walking into the previous display line.
 #[test]
 fn select_word_nearest_does_not_absorb_previous_display_line_whitespace() {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
     // "hello wordB\n": wrap at column 6 puts "hello " (space included) on
     // display line 0, so "wordB" starts display line 1 with no leading space on it.
     let text = BufferText::from("hello wordB\n");
-    let sels = SelectionSet::single(Selection::collapsed(co(8))); // 'r' inside "wordB"
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(8, 8)], 0); // 'r' inside "wordB"
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 6 }),
         saved: None,
@@ -1193,13 +1194,13 @@ fn select_word_nearest_does_not_absorb_previous_display_line_whitespace() {
         false,
     );
 
-    let sel = ed.current_selections().primary();
+    let sel = ed.current_view().primary();
     assert_eq!(
-        sel.anchor(),
+        sel.anchor().offset(),
         co(6),
         "must not absorb the space at char 5: it belongs to the previous visual display line"
     );
-    assert_eq!(sel.head(), co(10), "still selects all of 'wordB'");
+    assert_eq!(sel.head().offset(), co(10), "still selects all of 'wordB'");
 }
 
 /// `mm` (`select-word`) is NOT wrap-aware, unlike
@@ -1216,14 +1217,13 @@ fn select_word_nearest_does_not_absorb_previous_display_line_whitespace() {
 /// visible, intentional decision rather than a silent regression.
 #[test]
 fn select_word_absorbs_previous_display_line_whitespace_unlike_nearest_on_line() {
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
     // Same buffer/wrap as `select_word_nearest_does_not_absorb_previous_display_line_whitespace`:
     // "hello " (space included) wraps onto display line 0, so "wordB" starts
     // display line 1 with no leading space on it.
     let text = BufferText::from("hello wordB\n");
-    let sels = SelectionSet::single(Selection::collapsed(co(8))); // 'r' inside "wordB"
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(8, 8)], 0); // 'r' inside "wordB"
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 6 }),
         saved: None,
@@ -1231,13 +1231,13 @@ fn select_word_absorbs_previous_display_line_whitespace_unlike_nearest_on_line()
 
     ed.execute_keymap_command(std::borrow::Cow::Borrowed("select-word"), Some(1), false);
 
-    let sel = ed.current_selections().primary();
+    let sel = ed.current_view().primary();
     assert_eq!(
-        sel.anchor(),
+        sel.anchor().offset(),
         co(5),
         "mm DOES absorb the previous display line's space (char 5): no display-line floor"
     );
-    assert_eq!(sel.head(), co(10), "still selects all of 'wordB'");
+    assert_eq!(sel.head().offset(), co(10), "still selects all of 'wordB'");
 }
 
 /// With `word-selects-whitespace` off, the selection stays a bare inner word
@@ -1254,13 +1254,13 @@ fn select_word_nearest_respects_word_selects_whitespace_off() {
         false,
     );
 
-    let sel = ed.current_selections().primary();
+    let sel = ed.current_view().primary();
     assert_eq!(
-        sel.anchor(),
+        sel.anchor().offset(),
         co(77),
         "inner word only: leading space must not be absorbed"
     );
-    assert_eq!(sel.head(), co(83), "still snaps to 'ratatui'");
+    assert_eq!(sel.head().offset(), co(83), "still snaps to 'ratatui'");
 }
 
 // ── Dispatch-origin count semantics ────────────────────────────────────────
@@ -1291,7 +1291,7 @@ fn run_command_sync_some_count_moves_buffer_line() {
             .expect("run_command_sync must not error for move-down");
     }
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(81),
         "scripted move-down (Some(1)) must move a full buffer line, not stop at the wrap boundary"
     );
@@ -1337,7 +1337,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
     ed.execute_keymap_command("steel-move-down".into(), Some(5), false);
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(81),
         "inner (call! \"move-down\") must move one buffer line, not one visual display line \
          and not the outer key's count of 5 buffer lines"
@@ -1378,7 +1378,7 @@ fn steel_wrapper_bare_dispatch_moves_visual_display_line() {
     ed.execute_keymap_command("steel-jk".into(), None, false);
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(76),
         "bare dispatch through a forwarding Steel wrapper must move one visual \
          display line (char 76), not one buffer line (char 81)"
@@ -1396,15 +1396,14 @@ fn steel_wrapper_bare_dispatch_moves_visual_display_line() {
 #[test]
 fn steel_wrapper_explicit_count_moves_buffer_lines() {
     use crate::editor::host_impl::EditorHostImpl;
-    use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
     use hume_scripting::ScriptingHost;
 
     let line0: String = "a".repeat(80);
     let content = format!("{line0}\nb\nc\nd\n");
     let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(co(0)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
         saved: None,
@@ -1423,7 +1422,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
     ed.execute_keymap_command("steel-jk".into(), Some(3), false);
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(85),
         "3<key> through the forwarding wrapper must move 3 buffer lines (char \
          85), not 3 visual display lines (char 83)"
@@ -1455,7 +1454,7 @@ fn steel_call_move_down_zero_count_moves_visual_display_line() {
     ed.execute_keymap_command("steel-vis".into(), Some(1), false);
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(76),
         "(call! \"move-down\" 0) must move one visual display line (char 76), not one \
          buffer line (char 81)"
@@ -1501,7 +1500,7 @@ fn generated_bare_name_wrapper_accepts_zero_count() {
     ed.execute_keymap_command("steel-vis-direct".into(), Some(1), false);
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(76),
         "(move-down 0) via the generated variadic wrapper must move one \
          visual display line (char 76), not one buffer line (char 81)"

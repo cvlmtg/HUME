@@ -180,7 +180,7 @@ fn sift_mode_paste_triggers_live_sift() {
     // Live sift-within already narrowed to the two "ab" matches within the
     // original selection: the paste ran through the same `Edited` arm a
     // typed pattern would.
-    assert_eq!(ed.current_selections().len(), 2);
+    assert_eq!(ed.current_view().len(), 2);
     assert_eq!(ed.state.minibuf().unwrap().input, "ab");
 }
 

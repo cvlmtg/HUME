@@ -29,7 +29,7 @@ fn coalesce_one_keeps_higher_gen() {
         &mut batch,
         ParseRequest {
             bid,
-            text_gen: 2,
+            generation: 2,
             bundle: Arc::clone(&bundle),
             text: BufferText::from("bb\n"),
             old_tree: None,
@@ -41,7 +41,7 @@ fn coalesce_one_keeps_higher_gen() {
         &mut batch,
         ParseRequest {
             bid,
-            text_gen: 1,
+            generation: 1,
             bundle: Arc::clone(&bundle),
             text: BufferText::from("a\n"),
             old_tree: None,
@@ -49,7 +49,7 @@ fn coalesce_one_keeps_higher_gen() {
         },
     );
     assert_eq!(
-        batch[&bid].text_gen, 2,
+        batch[&bid].generation, 2,
         "lower-gen request must not overwrite"
     );
     assert_eq!(
@@ -63,14 +63,14 @@ fn coalesce_one_keeps_higher_gen() {
         &mut batch,
         ParseRequest {
             bid,
-            text_gen: 3,
+            generation: 3,
             bundle: Arc::clone(&bundle),
             text: BufferText::from("ccc\n"),
             old_tree: None,
             langs: empty_langs(),
         },
     );
-    assert_eq!(batch[&bid].text_gen, 3, "higher-gen request must win");
+    assert_eq!(batch[&bid].generation, 3, "higher-gen request must win");
     assert_eq!(batch[&bid].text.len_chars(), 4);
 
     // Equal gen must not overwrite (no-op).
@@ -78,7 +78,7 @@ fn coalesce_one_keeps_higher_gen() {
         &mut batch,
         ParseRequest {
             bid,
-            text_gen: 3,
+            generation: 3,
             bundle: Arc::clone(&bundle),
             text: BufferText::from("REPLACED\n"),
             old_tree: None,
@@ -105,7 +105,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
         &mut batch,
         ParseRequest {
             bid,
-            text_gen: 5,
+            generation: 5,
             bundle: Arc::clone(&bundle_a),
             text: BufferText::from("{}\n"),
             old_tree: None,
@@ -117,7 +117,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
         &mut batch,
         ParseRequest {
             bid,
-            text_gen: 5,
+            generation: 5,
             bundle: Arc::clone(&bundle_b),
             text: BufferText::from("fn f(){}\n"),
             old_tree: None,
@@ -140,7 +140,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
         &mut batch,
         ParseRequest {
             bid,
-            text_gen: 5,
+            generation: 5,
             bundle: Arc::clone(&bundle_b),
             text: BufferText::from("REPLACED\n"),
             old_tree: None,
@@ -179,7 +179,7 @@ fn worker_language_switch_produces_trees_for_both() {
 
     worker.post(ParseRequest {
         bid,
-        text_gen: 1,
+        generation: 1,
         bundle: Arc::clone(&json_bundle),
         text: BufferText::from("{\"x\": 1}\n"),
         old_tree: None,
@@ -199,7 +199,7 @@ fn worker_language_switch_produces_trees_for_both() {
 
     worker.post(ParseRequest {
         bid,
-        text_gen: 2,
+        generation: 2,
         bundle: Arc::clone(&rust_bundle),
         text: BufferText::from("fn main() {}\n"),
         old_tree: None,
@@ -230,7 +230,7 @@ fn parse_completion_fires_waker() {
 
     worker.post(ParseRequest {
         bid: fresh_bid(),
-        text_gen: 1,
+        generation: 1,
         bundle,
         text: BufferText::from("{}\n"),
         old_tree: None,

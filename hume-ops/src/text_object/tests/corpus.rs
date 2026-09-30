@@ -16,7 +16,11 @@ fn inner_paren_selects_exactly_the_sample() {
     for s in delimited_samples() {
         assert_state!(
             &format!("x\n(-[{s}]>)\n"),
-            |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
+            |(text, sels)| cmd_inner_paren(
+                test_fixtures::testing::state(text, sels),
+                0,
+                MotionMode::Move
+            ),
             &format!("x\n(-[{s}]>)\n")
         );
     }
@@ -27,7 +31,11 @@ fn around_paren_selects_the_delimiters_and_the_sample() {
     for s in delimited_samples() {
         assert_state!(
             &format!("x\n(-[{s}]>)\n"),
-            |(text, sels)| cmd_around_paren(&text, sels, 0, MotionMode::Move),
+            |(text, sels)| cmd_around_paren(
+                test_fixtures::testing::state(text, sels),
+                0,
+                MotionMode::Move
+            ),
             &format!("x\n-[({s})]>\n")
         );
     }
@@ -38,7 +46,11 @@ fn inner_double_quote_selects_exactly_the_sample() {
     for s in delimited_samples() {
         assert_state!(
             &format!("x\n\"-[{s}]>\"\n"),
-            |(text, sels)| cmd_inner_double_quote(&text, sels, 0, MotionMode::Move),
+            |(text, sels)| cmd_inner_double_quote(
+                test_fixtures::testing::state(text, sels),
+                0,
+                MotionMode::Move
+            ),
             &format!("x\n\"-[{s}]>\"\n")
         );
     }
@@ -49,7 +61,11 @@ fn around_double_quote_selects_the_quotes_and_the_sample() {
     for s in delimited_samples() {
         assert_state!(
             &format!("x\n\"-[{s}]>\"\n"),
-            |(text, sels)| cmd_around_double_quote(&text, sels, 0, MotionMode::Move),
+            |(text, sels)| cmd_around_double_quote(
+                test_fixtures::testing::state(text, sels),
+                0,
+                MotionMode::Move
+            ),
             &format!("x\n-[\"{s}\"]>\n")
         );
     }
@@ -60,7 +76,11 @@ fn inner_line_covers_the_sample_and_the_rest_of_the_line() {
     for s in ALL {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
-            |(text, sels)| cmd_inner_line(&text, sels, 0, MotionMode::Move),
+            |(text, sels)| cmd_inner_line(
+                test_fixtures::testing::state(text, sels),
+                0,
+                MotionMode::Move
+            ),
             &format!("x\n-[{s}b]>\n")
         );
     }
@@ -71,7 +91,11 @@ fn around_line_covers_the_sample_and_the_newline() {
     for s in ALL {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
-            |(text, sels)| cmd_around_line(&text, sels, 0, MotionMode::Move),
+            |(text, sels)| cmd_around_line(
+                test_fixtures::testing::state(text, sels),
+                0,
+                MotionMode::Move
+            ),
             &format!("x\n-[{s}b\n]>")
         );
     }
@@ -94,7 +118,11 @@ fn inner_word_groups_a_sample_with_its_neighbours_only_when_it_is_a_word_char() 
         };
         assert_state!(
             &input,
-            |(text, sels)| cmd_inner_word(&text, sels, 0, crate::WordCtx::bare(MotionMode::Move)),
+            |(text, sels)| cmd_inner_word(
+                test_fixtures::testing::state(text, sels),
+                0,
+                crate::WordCtx::bare(MotionMode::Move)
+            ),
             &expected
         );
     }
@@ -110,8 +138,7 @@ fn select_next_word_lands_on_the_whole_sample() {
         assert_state!(
             &format!("x\n-[a]> {s} b\n"),
             |(text, sels)| crate::motion::cmd_select_next_word(
-                &text,
-                sels,
+                test_fixtures::testing::state(text, sels),
                 1,
                 crate::WordCtx::bare(MotionMode::Move)
             ),

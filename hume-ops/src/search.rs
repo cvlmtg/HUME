@@ -1,24 +1,25 @@
 //! Incremental search over a rope buffer using `regex-cursor`.
 //!
 //! All functions here are pure: they read `BufferText` and a compiled `Regex`,
-//! return char-offset ranges, and never modify editor state. The regex match
-//! byte offsets from `regex-cursor` are converted to HUME's char offsets via
-//! `BufferText::byte_to_char`.
+//! return cluster ranges, and never modify editor state.
 //!
 //! # Coordinate system
 //!
-//! `regex-cursor` operates on byte offsets; HUME's selection model uses char
-//! (Unicode scalar value) offsets. Conversion is done here at the boundary so
-//! callers work exclusively in char offsets.
+//! `regex-cursor` operates on byte offsets; HUME's selection model uses
+//! grapheme clusters. A match converts once, in [`match_range`]: its bytes
+//! become chars, and the chars widen to the clusters that hold them, so a
+//! pattern matching a lone combining mark selects the whole cluster it sits
+//! in.
 
 use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
 
-use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::selection::{Facing, Selection, SelectionView};
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
+use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
 use hume_rope::grapheme::prev_str_boundary;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::offset::ExclusiveRange;
 
 use crate::MotionMode;
 
@@ -159,16 +160,15 @@ pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
 ///
 /// # Direction
 ///
-/// - **Forward**: finds the first match whose start is ≥ `from_char` (in byte
-///   terms). Wraps to the start of the buffer if no match is found forward.
-/// - **Backward**: finds the last match whose start is < `from_char`. Wraps to
+/// - **Forward**: finds the first match whose start is ≥ `from`. Wraps to the
+///   start of the buffer if no match is found forward.
+/// - **Backward**: finds the last match whose start is < `from`. Wraps to
 ///   the end of the buffer if no match is found backward.
 ///
 /// # Return value
 ///
 /// `Some((span, wrapped))` on success, where:
-/// - `span` is the inclusive char range of the match (HUME's inclusive
-///   selection model: `anchor == head` is a 1-char selection)
+/// - `span` is the clusters holding the match
 /// - `wrapped` is `true` when the match was found after wrapping around the
 ///   buffer boundary
 ///
@@ -177,10 +177,10 @@ pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
 pub fn find_next_match(
     text: &BufferText,
     regex: &Regex,
-    from_char: CharOffset,
+    from: ClusterBound,
     direction: SearchDirection,
-) -> Option<(InclusiveRange<CharOffset>, bool)> {
-    let from_byte = text.char_to_byte(from_char);
+) -> Option<(ClusterRange, bool)> {
+    let from_byte = text.char_to_byte(from.offset());
     let total_bytes = text.len_bytes();
 
     match direction {
@@ -209,42 +209,61 @@ pub fn find_next_match(
     None
 }
 
-/// Return all non-overlapping regex matches in `text` as inclusive char
-/// ranges, in document order. Zero-width matches are skipped.
-pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<InclusiveRange<CharOffset>> {
-    find_matches_in_range(
-        text,
-        regex,
-        InclusiveRange::new(CharOffset::new(0), text.last_char()),
-    )
+/// Return all non-overlapping regex matches in `text`, in document order.
+/// Zero-width matches are skipped.
+pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<ClusterRange> {
+    matches_in_bytes(text, regex, 0..text.len_bytes())
 }
 
-/// Return all non-overlapping regex matches within a char range of `text`.
-///
-/// Only matches that fall entirely within `range` are returned, as inclusive
-/// char ranges in document order. Zero-width matches are skipped.
+/// Return all non-overlapping regex matches that fall entirely within
+/// `range`, in document order. Zero-width matches are skipped.
 pub fn find_matches_in_range(
     text: &BufferText,
     regex: &Regex,
-    range: InclusiveRange<CharOffset>,
-) -> Vec<InclusiveRange<CharOffset>> {
-    let start_byte = text.char_to_byte(range.start);
-    // range.end is inclusive; we need the byte after the last char in range.
-    let end_byte = text.char_to_byte(range.end.shift(1));
+    range: ClusterRange,
+) -> Vec<ClusterRange> {
+    let chars = range.chars();
+    matches_in_bytes(
+        text,
+        regex,
+        text.char_to_byte(chars.start)..text.char_to_byte(chars.end),
+    )
+}
 
+/// The matches in `byte_range` as cluster ranges. Two matches that widen to
+/// the same cluster (a base char and its combining mark matched apart) keep
+/// only the first, so the list stays sorted and non-overlapping.
+fn matches_in_bytes(
+    text: &BufferText,
+    regex: &Regex,
+    byte_range: std::ops::Range<usize>,
+) -> Vec<ClusterRange> {
     let cursor = RopeyCursor::new(text.full_slice());
     let mut input = Input::new(cursor);
-    input.set_range(start_byte..end_byte);
+    input.set_range(byte_range);
 
-    regex
-        .find_iter(input)
-        .filter(|m| m.start() < m.end()) // skip zero-width matches
-        .map(|m| {
-            let s = text.byte_to_char(m.start());
-            let e = text.byte_to_char(m.end()).retreat(1);
-            InclusiveRange::new(s, e)
-        })
-        .collect()
+    let mut matches: Vec<ClusterRange> = Vec::new();
+    for m in regex.find_iter(input) {
+        let Some(range) = match_range(text, m.start()..m.end()) else {
+            continue;
+        };
+        if matches
+            .last()
+            .is_none_or(|prev| prev.end() <= ClusterBound::from(range.start()))
+        {
+            matches.push(range);
+        }
+    }
+    matches
+}
+
+/// The clusters holding the match at `bytes`, or `None` for a zero-width
+/// match.
+fn match_range(text: &BufferText, bytes: std::ops::Range<usize>) -> Option<ClusterRange> {
+    text.covering(ExclusiveRange::new(
+        text.byte_to_char(bytes.start),
+        text.byte_to_char(bytes.end),
+    ))
 }
 
 /// Escape regex metacharacters so the string matches literally.
@@ -310,29 +329,26 @@ pub fn word_search_pattern(word: &str, chars: WordChars<'_>) -> String {
 ///
 /// `total` is the number of matches in `matches`.
 /// `current_1based` is the 1-based index of the match whose range contains
-/// `cursor_head`, or `0` when the cursor is not on any match (e.g. during
+/// `head`, or `0` when the cursor is not on any match (e.g. during
 /// live search before a hit is found).
 ///
 /// `matches` must be in document order (sorted by start position, non-overlapping),
 /// as produced by [`find_all_matches`].
-pub fn search_match_info(
-    matches: &[InclusiveRange<CharOffset>],
-    cursor_head: CharOffset,
-) -> (usize, usize) {
+pub fn search_match_info(matches: &[ClusterRange], head: ClusterStart) -> (usize, usize) {
     let total = matches.len();
-    // partition_point gives the first index where start > cursor_head, so
-    // idx-1 is the last match that could contain cursor_head. If cursor_head
-    // also falls within its end, the cursor is on that match.
-    let idx = matches.partition_point(|span| span.start <= cursor_head);
+    // partition_point gives the first index where start > head, so idx-1 is
+    // the last match that could contain head. If that match also contains
+    // head, the cursor is on it.
+    let idx = matches.partition_point(|span| span.start() <= head);
     let current = idx
         .checked_sub(1)
-        .filter(|&i| cursor_head <= matches[i].end)
+        .filter(|&i| matches[i].contains(head))
         .map(|i| i + 1) // convert to 1-based
         .unwrap_or(0);
     (current, total)
 }
 
-/// Find the next match relative to `from_char` by binary-searching a
+/// Find the next match relative to `from` by binary-searching a
 /// pre-computed, sorted match list rather than re-scanning the buffer.
 ///
 /// This is O(log M) where M is the number of matches, vs O(buffer_size) for
@@ -348,25 +364,26 @@ pub fn search_match_info(
 ///
 /// # Direction
 ///
-/// - **Forward**: first match whose `start ≥ from_char`. Wraps to `matches[0]`
-///   if none is found at or after `from_char`.
-/// - **Backward**: last match whose `start < from_char`. Wraps to
-///   `matches.last()` if none is found before `from_char`.
+/// - **Forward**: first match whose `start ≥ from`. Wraps to `matches[0]`
+///   if none is found at or after `from`.
+/// - **Backward**: last match whose `start < from`. Wraps to
+///   `matches.last()` if none is found before `from`.
 ///
 /// Returns `None` only when `matches` is empty.
 /// Returns `Some((span, wrapped))` otherwise.
 pub fn find_match_from_cache(
-    matches: &[InclusiveRange<CharOffset>],
-    from_char: CharOffset,
+    matches: &[ClusterRange],
+    from: ClusterBound,
     direction: SearchDirection,
-) -> Option<(InclusiveRange<CharOffset>, bool)> {
+) -> Option<(ClusterRange, bool)> {
     if matches.is_empty() {
         return None;
     }
+    let before_from = |span: &ClusterRange| ClusterBound::from(span.start()) < from;
     match direction {
         SearchDirection::Forward => {
-            // First match with start >= from_char.
-            let idx = matches.partition_point(|span| span.start < from_char);
+            // First match with start >= from.
+            let idx = matches.partition_point(before_from);
             if let Some(&span) = matches.get(idx) {
                 Some((span, false))
             } else {
@@ -375,8 +392,8 @@ pub fn find_match_from_cache(
             }
         }
         SearchDirection::Backward => {
-            // Last match with start < from_char.
-            let idx = matches.partition_point(|span| span.start < from_char);
+            // Last match with start < from.
+            let idx = matches.partition_point(before_from);
             if let Some(&span) = idx.checked_sub(1).and_then(|i| matches.get(i)) {
                 Some((span, false))
             } else {
@@ -411,7 +428,7 @@ pub struct MatchScan<'a> {
     /// ([`find_match_from_cache`], O(log M)); an empty slice means "cache
     /// warm, zero matches", not "cache cold". `None` scans `regex` directly
     /// ([`find_next_match`], O(buffer)): the cold-cache fallback.
-    pub cached: Option<&'a [InclusiveRange<CharOffset>]>,
+    pub cached: Option<&'a [ClusterRange]>,
     pub direction: SearchDirection,
     pub mode: MotionMode,
     pub seed: MatchSeed,
@@ -423,102 +440,69 @@ impl MatchScan<'_> {
     /// matching a count prefix's usual all-or-nothing semantics elsewhere in
     /// the editor. `wrapped` is true iff the last hop in the chain wrapped
     /// the buffer boundary.
-    pub fn advance(&self, sel: Selection, count: usize) -> Option<(Selection, bool)> {
-        let anchor = (self.mode == MotionMode::Extend).then(|| sel.anchor());
-        let mut from_char = match self.seed {
-            MatchSeed::AtSelection => match self.direction {
-                SearchDirection::Forward => sel.start(),
-                SearchDirection::Backward => sel.end_inclusive(self.text),
-            },
-            MatchSeed::PastSelection => match self.direction {
-                // Step past the current match so we don't re-find it.
-                SearchDirection::Forward => {
-                    next_grapheme_boundary(self.text, sel.end_inclusive(self.text))
-                }
-                SearchDirection::Backward => sel.start(),
-            },
+    pub fn advance(&self, sel: SelectionView<'_>, count: usize) -> Option<(Selection, bool)> {
+        let mut from: ClusterBound = match (self.seed, self.direction) {
+            (MatchSeed::AtSelection, SearchDirection::Forward) => sel.start().into(),
+            (MatchSeed::AtSelection, SearchDirection::Backward) => sel.last().into(),
+            // Step past the current match so we don't re-find it.
+            (MatchSeed::PastSelection, SearchDirection::Forward) => sel.covered().end(),
+            (MatchSeed::PastSelection, SearchDirection::Backward) => sel.start().into(),
         };
 
         let mut last_match = None;
         let mut any_wrapped = false;
         for _ in 0..count {
-            let hit = match self.cached {
-                Some(matches) => find_match_from_cache(matches, from_char, self.direction),
-                None => find_next_match(self.text, self.regex, from_char, self.direction),
+            let (span, wrapped) = match self.cached {
+                Some(matches) => find_match_from_cache(matches, from, self.direction),
+                None => find_next_match(self.text, self.regex, from, self.direction),
+            }?;
+            any_wrapped |= wrapped;
+            last_match = Some(span);
+            from = match self.direction {
+                SearchDirection::Forward => span.end(),
+                SearchDirection::Backward => span.start().into(),
             };
-            match hit {
-                Some((span, wrapped)) => {
-                    any_wrapped |= wrapped;
-                    last_match = Some(span);
-                    from_char = match self.direction {
-                        SearchDirection::Forward => next_grapheme_boundary(self.text, span.end),
-                        SearchDirection::Backward => span.start,
-                    };
-                }
-                None => return None,
-            }
         }
 
-        last_match.map(|span| {
-            (
-                search_sel(self.text, span, anchor, self.direction),
-                any_wrapped,
-            )
-        })
+        let span = last_match?;
+        let new_sel = match self.mode {
+            // Keep the anchor, move the head to the match edge that faces
+            // the search direction.
+            MotionMode::Extend => sel.selection().with_head(match self.direction {
+                SearchDirection::Forward => span.last(),
+                SearchDirection::Backward => span.start(),
+            }),
+            MotionMode::Move => Selection::covering(span, Facing::Forward),
+        };
+        Some((new_sel, any_wrapped))
     }
 
-    /// Advance every selection in `sels` independently, merging any that
-    /// converge on the same match ([`SelectionSet::map`]'s own canonicalize
-    /// pass). A selection with no match of its own keeps its prior position.
+    /// Advance every selection in `state` independently, merging any that
+    /// converge on the same match (the selection set's own merge). A
+    /// selection with no match of its own keeps its prior position.
     /// `None` when nothing matched at all; the returned `bool` is whether the
     /// *primary* selection's own hop wrapped (`false` when the primary itself
     /// had no match).
-    pub fn advance_all(&self, sels: SelectionSet, count: usize) -> Option<(SelectionSet, bool)> {
-        let primary_before = sels.primary();
+    pub fn advance_all(&self, state: EditState, count: usize) -> Option<(EditState, bool)> {
         let mut any_matched = false;
         let mut primary_wrapped = false;
-        let new_sels = sels.map(|sel| match self.advance(sel, count) {
+        let new_state = state.map(|sel| match self.advance(sel, count) {
             Some((new_sel, wrapped)) => {
                 any_matched = true;
-                if sel == primary_before {
+                if sel.is_primary() {
                     primary_wrapped = wrapped;
                 }
                 new_sel
             }
-            None => sel,
+            None => sel.selection(),
         });
-        any_matched.then_some((new_sels, primary_wrapped))
-    }
-}
-
-/// Build the primary selection after a search match.
-///
-/// `anchor = Some(a)`, extend mode: keep the caller's anchor, move head to
-/// the match edge that faces the search direction.
-/// `anchor = None`, move mode: cover the matched text exactly.
-fn search_sel(
-    text: &BufferText,
-    span: InclusiveRange<CharOffset>,
-    anchor: Option<CharOffset>,
-    direction: SearchDirection,
-) -> Selection {
-    match anchor {
-        Some(a) => Selection::new(
-            a,
-            match direction {
-                SearchDirection::Forward => span.end,
-                SearchDirection::Backward => span.start,
-            },
-        )
-        .snap_to_clusters(text),
-        None => Selection::from_span(span, true, text),
+        any_matched.then_some((new_state, primary_wrapped))
     }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Find a non-zero-width match in `byte_range`, returning its inclusive char
-/// range or `None`.
+/// Find a non-zero-width match in `byte_range`, or `None`.
 ///
 /// `take_last`: `false` takes the first match found (forward search);
 /// `true` scans every match in the range and takes the last one,
@@ -530,7 +514,7 @@ fn search_match_in(
     regex: &Regex,
     byte_range: std::ops::Range<usize>,
     take_last: bool,
-) -> Option<InclusiveRange<CharOffset>> {
+) -> Option<ClusterRange> {
     if byte_range.is_empty() {
         return None;
     }
@@ -545,9 +529,7 @@ fn search_match_in(
     } else {
         regex.find(input).filter(|m| m.start() < m.end())?
     };
-    let start = text.byte_to_char(m.start());
-    let end_incl = text.byte_to_char(m.end()).retreat(1);
-    Some(InclusiveRange::new(start, end_incl))
+    match_range(text, m.start()..m.end())
 }
 
 #[cfg(test)]

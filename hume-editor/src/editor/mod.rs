@@ -43,6 +43,7 @@ mod completion;
 mod cursor;
 mod dispatch;
 mod doc_ops;
+mod dot_chain;
 pub(crate) mod event;
 mod fuzzy;
 mod jump_list;
@@ -55,6 +56,7 @@ mod mouse;
 mod pane_state;
 mod picker_source;
 mod popup_syntax;
+pub(crate) mod position_stores;
 mod register_ops;
 mod registry;
 mod replay;
@@ -437,8 +439,9 @@ pub(crate) struct EditorState {
     /// after `input.truncate_to_base()` so a reload never fires a phantom
     /// transition for a mode the fresh hooks never observed.
     pub(super) last_observed_mode: Mode,
-    /// Anchor char offset set on mouse-left-down when `mouse_select` is enabled.
-    pub(super) mouse_drag_anchor: Option<hume_rope::offset::CharOffset>,
+    /// The pane a left-button drag started in, set on mouse-left-down. The
+    /// drag's anchor is that pane's primary selection anchor, read live.
+    pub(super) mouse_drag: Option<PaneId>,
     /// Current working directory. Set at startup; updated by `:cd`.
     pub(super) cwd: PathBuf,
     /// Every overlay view shared between the per-frame write side and the
@@ -529,7 +532,7 @@ impl Default for EditorState {
             message_logged_this_input: false,
             last_entered_buffer: None,
             last_observed_mode: Mode::Normal,
-            mouse_drag_anchor: None,
+            mouse_drag: None,
             cwd: PathBuf::new(),
             views: hume_ui::OverlayViews::default(),
             tabline_view: hume_engine::lock::SharedSlot::default(),
@@ -550,7 +553,7 @@ impl Default for EditorState {
 /// `PaneBufferState::last_layout_key` each frame and compares it against a
 /// fresh one every frame (resize, wrap-mode change, buffer switch,
 /// decoration generation, and any content edit to the buffer, since
-/// `buffer_tag` includes `text_gen`). A change reveals only a pane that
+/// `buffer_tag` includes `generation`). A change reveals only a pane that
 /// isn't [`PaneBufferState::parked`](pane_state::PaneBufferState::parked):
 /// a parked pane's own edit still reveals it, through `reveal_pending`
 /// instead, but a change from elsewhere (a sibling pane's edit, a
@@ -647,7 +650,7 @@ impl EditorState {
                 // (the two things that distinguish a reused slot from the
                 // buffer that held it before) into exactly that.
                 slotmap::Key::data(&pane.buffer_id).as_ffi(),
-                doc.text_gen,
+                doc.text().version().generation(),
                 self.config.decorations.generation(pane.buffer_id),
             ],
             wrap_mode: commands::effective_wrap_mode(doc, &self.settings, pane),
@@ -974,6 +977,12 @@ impl Editor {
     pub(super) fn current_selections(&self) -> &SelectionSet {
         let t = commands::FocusedPane::current(&self.state).pane();
         commands::pane_selections(&self.state, &self.view, t)
+    }
+
+    /// The focused pane's selections, bound to the current buffer's text.
+    pub(in crate::editor) fn current_view(&self) -> hume_editing::selection::EditView<'_> {
+        let t = commands::FocusedPane::current(&self.state).pane();
+        commands::pane_view(&self.state, &self.view, t)
     }
 
     /// Replace the focused pane's selections for the current buffer.

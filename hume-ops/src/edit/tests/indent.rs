@@ -11,7 +11,12 @@ fn indent_emits_insert_before_delete() {
     // reach the Insert before the Delete so an in-indent endpoint resolves
     // via Assoc rather than collapsing to the deletion point.
     let (text, sels) = test_fixtures::testing::parse_state("  -[f]>oo\n");
-    let (_, _, cs) = indent_lines(text, sels, TabStyle::Soft, 4, 1);
+    let (_, _, cs) = test_fixtures::testing::parts(indent_lines(
+        test_fixtures::testing::state(text, sels),
+        TabStyle::Soft,
+        4,
+        1,
+    ));
     assert_eq!(
         cs.ops(),
         &[
@@ -27,7 +32,12 @@ fn indent_soft_flush_line() {
     // Flush line, soft style, tab_width=4 → 4 spaces prepended.
     assert_state!(
         "-[f]>oo\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "    -[f]>oo\n"
     );
 }
@@ -37,7 +47,12 @@ fn indent_hard_flush_line() {
     // Flush line, hard style → one '\t' prepended.
     assert_state!(
         "-[f]>oo\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Hard, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Hard,
+            4,
+            1
+        ),
         "\t-[f]>oo\n"
     );
 }
@@ -49,7 +64,12 @@ fn indent_normalizes_existing_tab_to_soft() {
     // not "tab + 4 spaces": normalization, not append.
     assert_state!(
         "\t-[f]>oo\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "        -[f]>oo\n"
     );
 }
@@ -60,7 +80,12 @@ fn indent_normalizes_existing_spaces_to_hard() {
     // hard style re-renders the new width (6) as one tab + 2 spaces.
     assert_state!(
         "  -[f]>oo\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Hard, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Hard,
+            4,
+            1
+        ),
         "\t  -[f]>oo\n"
     );
 }
@@ -69,7 +94,12 @@ fn indent_normalizes_existing_spaces_to_hard() {
 fn indent_two_levels_at_once() {
     assert_state!(
         "-[f]>oo\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 2),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            2
+        ),
         "        -[f]>oo\n"
     );
 }
@@ -82,14 +112,24 @@ fn indent_two_levels_at_once() {
 #[test]
 fn indent_huge_levels_does_not_overflow() {
     let (text, sels) = test_fixtures::testing::parse_state("-[f]>oo\n");
-    let _ = indent_lines(text, sels, TabStyle::Soft, 4, usize::MAX);
+    let _ = indent_lines(
+        test_fixtures::testing::state(text, sels),
+        TabStyle::Soft,
+        4,
+        usize::MAX,
+    );
 }
 
 #[test]
 fn indent_tab_width_eight() {
     assert_state!(
         "-[f]>oo\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 8, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            8,
+            1
+        ),
         "        -[f]>oo\n"
     );
 }
@@ -103,7 +143,12 @@ fn indent_multiline_selection_indents_every_line() {
     // `indent_linewise_selection_stays_linewise`).
     assert_state!(
         "-[one\ntwo\nthree]>\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "    -[one\n    two\n    three]>\n"
     );
 }
@@ -115,7 +160,12 @@ fn indent_skips_blank_line_inside_selection() {
     // Middle line is empty: left untouched, no trailing whitespace added.
     assert_state!(
         "-[one\n\nthree]>\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "    -[one\n\n    three]>\n"
     );
 }
@@ -124,7 +174,12 @@ fn indent_skips_blank_line_inside_selection() {
 fn indent_skips_whitespace_only_line_inside_selection() {
     assert_state!(
         "-[one\n   \nthree]>\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "    -[one\n   \n    three]>\n"
     );
 }
@@ -135,7 +190,12 @@ fn indent_all_blank_selection_is_noop() {
     // take the identity fast path: buffer AND selection both unchanged.
     assert_state!(
         "-[\n\n]>\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "-[\n\n]>\n"
     );
 }
@@ -146,7 +206,12 @@ fn indent_all_blank_selection_returns_identity_changeset() {
     // property that test can't see: the identity fast path, not a full
     // retain-everything edit that happens to look like a no-op.
     let (text, sels) = test_fixtures::testing::parse_state("-[\n\n]>\n");
-    let (_, _, cs) = indent_lines(text, sels, TabStyle::Soft, 4, 1);
+    let (_, _, cs) = test_fixtures::testing::parts(indent_lines(
+        test_fixtures::testing::state(text, sels),
+        TabStyle::Soft,
+        4,
+        1,
+    ));
     assert!(cs.is_identity());
 }
 
@@ -159,7 +224,12 @@ fn indent_linewise_selection_stays_linewise() {
     // the selection still covers the whole (now-indented) line.
     assert_state!(
         "-[foo\n]>bar\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "-[    foo\n]>bar\n"
     );
 }
@@ -171,7 +241,12 @@ fn indent_cursor_inside_old_indent_clamps_to_new_indent_end() {
     // a uniform delta, which would land it back inside the whitespace).
     assert_state!(
         " -[ ]>foo\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "      -[f]>oo\n"
     );
 }
@@ -180,7 +255,12 @@ fn indent_cursor_inside_old_indent_clamps_to_new_indent_end() {
 fn indent_backward_selection_keeps_direction() {
     assert_state!(
         "<[foo]-\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "    <[foo]-\n"
     );
 }
@@ -189,7 +269,12 @@ fn indent_backward_selection_keeps_direction() {
 fn indent_two_cursors_same_line_indent_once() {
     assert_state!(
         "f-[o]>o -[b]>ar\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "    f-[o]>o -[b]>ar\n"
     );
 }
@@ -198,7 +283,12 @@ fn indent_two_cursors_same_line_indent_once() {
 fn indent_two_disjoint_selections_each_shift_own_lines() {
     assert_state!(
         "-[one]>\ntwo\n-[three]>\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "    -[one]>\ntwo\n    -[three]>\n"
     );
 }
@@ -209,7 +299,12 @@ fn indent_two_disjoint_selections_each_shift_own_lines() {
 fn unindent_one_level_off_whole_indent() {
     assert_state!(
         "    -[f]>oo\n",
-        |(text, sels)| unindent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| unindent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "-[f]>oo\n"
     );
 }
@@ -222,7 +317,12 @@ fn unindent_partial_width_preserving_not_level_snapping() {
     // boundary (which would be 0).
     assert_state!(
         "      -[f]>oo\n",
-        |(text, sels)| unindent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| unindent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "  -[f]>oo\n"
     );
 }
@@ -231,7 +331,12 @@ fn unindent_partial_width_preserving_not_level_snapping() {
 fn unindent_flush_line_is_noop() {
     assert_state!(
         "-[f]>oo\n",
-        |(text, sels)| unindent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| unindent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "-[f]>oo\n"
     );
 }
@@ -241,7 +346,12 @@ fn unindent_flush_line_returns_identity_changeset() {
     // Same input as `unindent_flush_line_is_noop`, pinning the identity fast
     // path rather than just its externally-indistinguishable no-op result.
     let (text, sels) = test_fixtures::testing::parse_state("-[f]>oo\n");
-    let (_, _, cs) = unindent_lines(text, sels, TabStyle::Soft, 4, 1);
+    let (_, _, cs) = test_fixtures::testing::parts(unindent_lines(
+        test_fixtures::testing::state(text, sels),
+        TabStyle::Soft,
+        4,
+        1,
+    ));
     assert!(cs.is_identity());
 }
 
@@ -249,7 +359,12 @@ fn unindent_flush_line_returns_identity_changeset() {
 fn unindent_hard_tab_by_one_level() {
     assert_state!(
         "\t-[f]>oo\n",
-        |(text, sels)| unindent_lines(text, sels, TabStyle::Hard, 4, 1),
+        |(text, sels)| unindent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Hard,
+            4,
+            1
+        ),
         "-[f]>oo\n"
     );
 }
@@ -262,8 +377,18 @@ fn indent_then_unindent_round_trips() {
     assert_state!(
         "  -[f]>oo\n",
         |(text, sels)| {
-            let (text, sels, _) = indent_lines(text, sels, TabStyle::Soft, 4, 1);
-            unindent_lines(text, sels, TabStyle::Soft, 4, 1)
+            let (text, sels, _) = test_fixtures::testing::parts(indent_lines(
+                test_fixtures::testing::state(text, sels),
+                TabStyle::Soft,
+                4,
+                1,
+            ));
+            unindent_lines(
+                test_fixtures::testing::state(text, sels),
+                TabStyle::Soft,
+                4,
+                1,
+            )
         },
         "  -[f]>oo\n"
     );
@@ -277,8 +402,18 @@ fn indent_then_unindent_round_trips_under_hard_style() {
     assert_state!(
         "  -[f]>oo\n",
         |(text, sels)| {
-            let (text, sels, _) = indent_lines(text, sels, TabStyle::Hard, 4, 1);
-            unindent_lines(text, sels, TabStyle::Hard, 4, 1)
+            let (text, sels, _) = test_fixtures::testing::parts(indent_lines(
+                test_fixtures::testing::state(text, sels),
+                TabStyle::Hard,
+                4,
+                1,
+            ));
+            unindent_lines(
+                test_fixtures::testing::state(text, sels),
+                TabStyle::Hard,
+                4,
+                1,
+            )
         },
         "  -[f]>oo\n"
     );
@@ -294,8 +429,18 @@ fn unindent_then_indent_does_not_round_trip_below_one_level() {
     assert_state!(
         "  -[f]>oo\n",
         |(text, sels)| {
-            let (text, sels, _) = unindent_lines(text, sels, TabStyle::Soft, 4, 1);
-            indent_lines(text, sels, TabStyle::Soft, 4, 1)
+            let (text, sels, _) = test_fixtures::testing::parts(unindent_lines(
+                test_fixtures::testing::state(text, sels),
+                TabStyle::Soft,
+                4,
+                1,
+            ));
+            indent_lines(
+                test_fixtures::testing::state(text, sels),
+                TabStyle::Soft,
+                4,
+                1,
+            )
         },
         "    -[f]>oo\n"
     );
@@ -306,7 +451,12 @@ fn indent_replaces_a_non_breaking_space_indent_by_its_display_width() {
     // Two NBSP are two columns; one more soft level of 4 makes six spaces.
     assert_state!(
         "\u{a0}\u{a0}-[f]>oo\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "      -[f]>oo\n"
     );
 }
@@ -315,7 +465,27 @@ fn indent_replaces_a_non_breaking_space_indent_by_its_display_width() {
 fn indent_treats_a_space_with_a_combining_mark_as_one_indent_column() {
     assert_state!(
         " \u{301}-[f]>oo\n",
-        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
         "     -[f]>oo\n"
+    );
+}
+
+#[test]
+fn indenting_before_a_line_initial_mark_lands_on_the_cluster_it_joins() {
+    // The inserted indent's last space and the mark form one cluster.
+    assert_state!(
+        "a\n-[\u{301}]>b\n",
+        |(text, sels)| indent_lines(
+            test_fixtures::testing::state(text, sels),
+            TabStyle::Soft,
+            4,
+            1
+        ),
+        "a\n   -[ \u{301}]>b\n"
     );
 }

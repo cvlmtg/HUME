@@ -1,10 +1,10 @@
-use hume_editing::grapheme::{
-    cluster_last_char, graphemes_at, prev_grapheme_boundary, snap_to_cluster_start,
-};
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::grapheme::{clusters_before, graphemes_at, next_cluster};
+use hume_editing::selection::{Facing, Selection};
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::blank_class;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::cluster::{ClusterRange, ClusterStart};
+use hume_rope::grapheme::Cluster;
 
 use crate::MotionMode;
 
@@ -39,69 +39,58 @@ pub use word::{
 ///
 /// Unlike motions, which map a single cursor position to a new position, a
 /// text object maps a cursor position to a *range*: the region to select.
-/// `text_object` returns `Some(range)` as an inclusive char-offset span,
-/// or `None` if no match exists (e.g., cursor not inside any bracket pair).
+/// `text_object` returns `Some(range)`, or `None` if no match exists (e.g.,
+/// cursor not inside any bracket pair).
 ///
 /// On `None`, the existing selection is preserved: `mi(` when not inside parens
-/// is a no-op. On `Some`, the selection is replaced with a
-/// forward selection anchored at `start` and with head at `end`.
+/// is a no-op. On `Some`, the selection is replaced with a forward selection
+/// covering the range.
 ///
 /// Uses `map` (which always merges) so that multiple cursors landing on the
 /// same range (e.g., both cursors inside the same bracket pair) are merged.
-pub(crate) fn apply_text_object(
-    text: &BufferText,
-    sels: SelectionSet,
-    text_object: impl Fn(&BufferText, CharOffset) -> Option<InclusiveRange<CharOffset>>,
-) -> SelectionSet {
-    let result = sels.map(|sel| match text_object(text, sel.head()) {
-        Some(range) => Selection::from_span(range, true, text),
-        None => sel,
-    });
-    result.debug_assert_valid(text);
-    result
+fn apply_text_object(
+    state: EditState,
+    text_object: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
+) -> EditState {
+    state.map(|sel| match text_object(sel.text(), sel.head()) {
+        Some(range) => Selection::covering(range, Facing::Forward),
+        None => sel.selection(),
+    })
 }
 
 /// Apply a text object in extend mode: union the matched range with the current selection.
 ///
-/// On match, the result spans `min(sel.start(), start)` to `max(sel.end(), end)`,
-/// preserving the direction of the original selection. On no-match, the selection
-/// is unchanged.
+/// On match, the result covers both the selection and the range, keeping the
+/// selection's facing. On no-match, the selection is unchanged.
 ///
 /// Two-pass strategy for outward growth:
 /// 1. Try `text_object(text, sel.head)`. If the result is *larger* than the current
 ///    selection, use it. This handles the initial extend-from-cursor case.
-/// 2. If the result is a subset (union doesn't grow), retry from the position just
-///    past `sel.end()`. For bracket/quote text objects this escapes the current pair
-///    and causes the search to find the next enclosing pair instead.
-pub(crate) fn apply_text_object_extend(
-    text: &BufferText,
-    sels: SelectionSet,
-    text_object: impl Fn(&BufferText, CharOffset) -> Option<InclusiveRange<CharOffset>>,
-) -> SelectionSet {
-    let result = sels.map(|sel| {
-        let forward = sel.anchor() <= sel.head();
+/// 2. If the result is a subset (union doesn't grow), retry from the cluster just
+///    past the selection. For bracket/quote text objects this escapes the current
+///    pair and causes the search to find the next enclosing pair instead.
+fn apply_text_object_extend(
+    state: EditState,
+    text_object: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
+) -> EditState {
+    state.map(|sel| {
+        let text = sel.text();
 
         // First try from head (correct for initial extend from a cursor).
         if let Some(found) = text_object(text, sel.head()) {
-            let grown = sel.union_span(found, forward, text);
-            if grown.span(text) != sel.span(text) {
+            let grown = sel.union(found, sel.facing());
+            if sel.with_selection(grown).covered() != sel.covered() {
                 return grown;
             }
         }
 
-        // Result was a subset (no growth). Retry from one past the selection end so
-        // bracket/quote searches find the enclosing pair rather than the current one.
-        let past_end = sel.end_exclusive(text);
-        if past_end < text.end()
-            && let Some(found) = text_object(text, past_end)
-        {
-            return sel.union_span(found, forward, text);
-        }
-
-        sel
-    });
-    result.debug_assert_valid(text);
-    result
+        // Result was a subset (no growth). Retry from the cluster past the
+        // selection so bracket/quote searches find the enclosing pair rather
+        // than the current one.
+        next_cluster(text, sel.last())
+            .and_then(|past| text_object(text, past))
+            .map_or(sel.selection(), |found| sel.union(found, sel.facing()))
+    })
 }
 
 /// Apply a text object to every selection in the set, honoring `mode`: `Move`
@@ -114,41 +103,35 @@ pub(crate) fn apply_text_object_extend(
 /// a lexical one.
 #[inline]
 pub fn apply_text_object_by_mode(
-    text: &BufferText,
-    sels: SelectionSet,
+    state: EditState,
     mode: MotionMode,
-    f: impl Fn(&BufferText, CharOffset) -> Option<InclusiveRange<CharOffset>>,
-) -> SelectionSet {
+    f: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
+) -> EditState {
     match mode {
-        MotionMode::Move => apply_text_object(text, sels, f),
-        MotionMode::Extend => apply_text_object_extend(text, sels, f),
+        MotionMode::Move => apply_text_object(state, f),
+        MotionMode::Extend => apply_text_object_extend(state, f),
     }
 }
 
 #[cfg(test)]
 mod tests;
 
-/// The last char before the cluster holding the closing delimiter at `close`.
-pub(super) fn before_delimiter(text: &BufferText, close: CharOffset) -> CharOffset {
-    snap_to_cluster_start(text, close).retreat(1)
+/// The clusters strictly between a delimiter pair's first and last cluster,
+/// or `None` when the delimiters are adjacent.
+pub(super) fn inner_of_pair(text: &BufferText, pair: ClusterRange) -> Option<ClusterRange> {
+    let start = next_cluster(text, pair.start())?;
+    ClusterRange::between(text.full_slice(), start, pair.last().into())
 }
 
-/// Shrinks `range` inward until both ends sit on non-blank chars (per
-/// [`blank_class`]). `None` if the whole range is blank. The result's end is
-/// the last char of its last cluster.
-pub(crate) fn trim_blank(
-    text: &BufferText,
-    range: InclusiveRange<CharOffset>,
-) -> Option<InclusiveRange<CharOffset>> {
-    let start = graphemes_at(text, range.start)
-        .find(|cluster| cluster.start > range.end || blank_class(cluster.first).is_none())
-        .map_or(text.end(), |cluster| cluster.start);
-    if start > range.end {
-        return None;
-    }
-    let mut last = snap_to_cluster_start(text, range.end);
-    while last > start && text.char_at(last).is_some_and(|c| blank_class(c).is_some()) {
-        last = prev_grapheme_boundary(text, last);
-    }
-    Some(InclusiveRange::new(start, cluster_last_char(text, last)))
+/// Shrinks `range` inward until both ends sit on non-blank clusters (per
+/// [`blank_class`]). `None` if the whole range is blank.
+pub(crate) fn trim_blank(text: &BufferText, range: ClusterRange) -> Option<ClusterRange> {
+    let is_content = |c: &Cluster| blank_class(c.first()).is_none();
+    let first = graphemes_at(text, range.start().into())
+        .take_while(|c| c.end() <= range.end())
+        .find(is_content)?;
+    let last = clusters_before(text, range.end())
+        .take_while(|c| c.start() >= first.start())
+        .find(is_content)?;
+    ClusterRange::through(text.full_slice(), first.start(), last.start())
 }

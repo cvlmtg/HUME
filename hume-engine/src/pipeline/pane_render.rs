@@ -60,7 +60,7 @@ pub(crate) fn render_pane(
     } = scratch;
 
     // Selections arrive pre-sorted from the editor; copy once, reuse every display line.
-    style.populate_sorted_sels(pane_ctx.selections, pane_ctx.primary_idx);
+    style.populate_sorted_sels(pane_ctx.selections);
 
     // Gutter lane widths: constant for the entire frame.
     lane_widths.clear();
@@ -103,11 +103,7 @@ pub(crate) fn render_pane(
         visible: &visible,
         horizontal_offset: pane_ctx.viewport.horizontal_offset,
         mode: pane_ctx.settings.mode,
-        primary_head_line: crate::pane::primary_head_line(
-            pane_ctx.selections,
-            pane_ctx.primary_idx,
-            pane_ctx.rope,
-        ),
+        primary_head_line: crate::pane::primary_head_line(pane_ctx.selections, pane_ctx.rope),
         tab_width: pane_ctx.settings.format.tab_width,
         tilde_style: pane_ctx.theme.ui.virtual_text,
         indent_guide_style: pane_ctx.theme.ui.indent_guide,
@@ -269,7 +265,7 @@ impl LineStyle {
         let is_head_line = style
             .primary_idx_in_sorted
             .and_then(|i| style.sorted_sels.get(i))
-            .is_some_and(|s| chars.contains(s.head));
+            .is_some_and(|s| chars.contains(s.cursor.offset()));
         Self {
             chars,
             is_head_line,

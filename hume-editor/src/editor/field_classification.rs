@@ -96,11 +96,11 @@ fn editor_state_fields_are_classified() {
             // doesn't fire a phantom OnModeChange for a mode the fresh
             // hooks never observed
             last_observed_mode: _,
-            mouse_drag_anchor: _, // preserved
-            cwd: _,               // preserved
-            views: _, // preserved: Arc views, self-healing per-frame regardless of config
+            mouse_drag: _,   // preserved
+            cwd: _,          // preserved
+            views: _,        // preserved: Arc views, self-healing per-frame regardless of config
             tabline_view: _, // preserved: self-healing per-frame regardless of config
-            wake: _,  // preserved: cross-thread waker infra, not config
+            wake: _,         // preserved: cross-thread waker infra, not config
         } = e;
     }
 }

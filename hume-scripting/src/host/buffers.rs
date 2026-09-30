@@ -75,7 +75,7 @@ pub trait BufferHost {
     /// no longer shows `pane`'s buffer.
     fn switch_to_buffer(&mut self, pane: PaneHandle, target: BufferId) -> Result<(), String>;
 
-    /// Steel-side staleness token for buffer `id` (its `text_gen`, bumped by
+    /// Steel-side staleness token for buffer `id` (its text version's generation, bumped by
     /// every mutation), or `None` if `id` is unknown. Not LSP-specific (any
     /// script can compare a saved value against a live read), but the LSP
     /// bridge's own `#:allow-stale` staleness check is what motivated it.

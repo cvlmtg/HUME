@@ -1,9 +1,11 @@
 //! `p`/`P`: paste register contents after/before each selection.
 
-use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::lines::{is_line_start, line_break_char, next_line_start};
-use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::BufferText;
+use hume_editing::edit::Edited;
+use hume_editing::edit::Landing;
+use hume_editing::lines::next_line_start;
+use hume_editing::selection::Facing;
+use hume_editing::state::EditState;
+use hume_rope::offset::ExclusiveRange;
 
 use super::apply_edit;
 use crate::register;
@@ -28,121 +30,103 @@ use crate::register;
 ///
 /// The replaced selection is discarded; it is never pushed to the kill ring or
 /// clipboard (rule: "when pasting over a selection the replaced text is not copied").
-fn paste_impl(
-    text: BufferText,
-    sels: SelectionSet,
-    values: &[String],
-    before: bool,
-) -> (BufferText, SelectionSet, ChangeSet) {
+fn paste_impl(state: EditState, values: &[String], before: bool) -> Edited {
     if values.is_empty() {
-        let mut b = ChangeSetBuilder::new(text.end());
-        b.retain_rest();
-        return (text, sels, b.finish());
+        return Edited::unchanged(state);
     }
 
-    let n_sels = sels.len();
+    let n_sels = state.view().len();
     let n_vals = values.len();
 
     // When counts mismatch, every selection gets the full joined content.
-    // Compute once up front so the closure can borrow it as `&str`.
+    // Computed once so the closure can borrow it as `&str`.
     let joined: String = if n_sels != n_vals {
         values.join("")
     } else {
         String::new()
     };
 
-    apply_edit(text, sels, |b, text, i, sel, new_sels| {
-        let content: &str = if n_sels == n_vals {
+    let content_of = |i: usize| -> &str {
+        if n_sels == n_vals {
             &values[i]
         } else {
             &joined
-        };
+        }
+    };
+    // Whether the text right before selection `i` is a linewise paste over
+    // the selection touching it: that paste already ended its line, so `i`
+    // needs no leading '\n' of its own.
+    let follows_pasted_line: Vec<bool> = {
+        let view = state.view();
+        let sels: Vec<_> = view.iter().collect();
+        (0..sels.len())
+            .map(|i| {
+                i > 0
+                    && !sels[i - 1].is_cursor()
+                    && register::is_register_linewise(content_of(i - 1))
+                    && sels[i - 1].covered().end().offset() == sels[i].start().offset()
+            })
+            .collect()
+    };
 
-        if sel.is_collapsed() {
+    apply_edit(state, |b, sel| {
+        let content = content_of(sel.index());
+        let text = b.text();
+
+        if sel.is_cursor() {
             if register::is_register_linewise(content) {
-                // Linewise cursor paste: insert as whole new line(s).
-                // `new_pos()` before the insert is where the pasted text
-                // starts; after it, one past where it ends.
-                let line = text.char_to_line(sel.head());
+                // Linewise cursor paste: whole new line(s) above or below.
+                let line = sel.head_line();
                 let insert_at = if before {
                     text.line_to_char(line.into())
                 } else {
                     next_line_start(text, line.into())
                 };
-                // Clamped to old_pos() to guard against same-line multi-cursor underflow.
-                b.retain(insert_at.max(b.old_pos()).chars_since(b.old_pos()));
-                let paste_start = b.new_pos();
-                b.insert(content);
-                new_sels.push(Selection::new(paste_start, b.new_pos().shift(-1)));
-            } else {
-                // Charwise cursor paste.
-                let insert_at = if before {
-                    sel.start()
-                } else {
-                    // "After the cursor" must not cross the line break: on an
-                    // empty line the cursor sits on the '\n' itself (there is
-                    // no other char to land on), so stepping one past it
-                    // would drop the text at the start of the next line.
-                    let end_incl = sel.end_inclusive(text);
-                    sel.end_exclusive(text)
-                        .min(line_break_char(text, text.char_to_line(end_incl)))
-                };
-                b.retain(insert_at.chars_since(b.old_pos()));
-                if content.is_empty() {
-                    new_sels.push(Selection::collapsed(sel.head()));
-                } else {
-                    let paste_start = b.new_pos();
-                    b.insert(content);
-                    new_sels.push(Selection::new(paste_start, b.new_pos().shift(-1)));
-                }
+                let mark = b.insert(insert_at, content);
+                return Landing::covering(mark, Facing::Forward);
             }
-        } else if register::is_register_linewise(content) {
-            // Linewise over a non-collapsed selection: replace the selected fragment
-            // with the pasted line(s). Unselected text before/after on the same line
-            // is retained and pushed onto its own line by the pasted '\n'.
-            let start = sel.start();
-            let end_incl = sel.end_inclusive(text);
-
-            // Prefix a '\n' only when retained text precedes the paste on this line
-            // and does not already end in '\n' (i.e. we're not at a line start). When
-            // the previous edit ended right at `start` (start == b.old_pos()), the
-            // prior paste already supplied the separating '\n'.
-            let needs_prefix = start > b.old_pos() && !is_line_start(text, sel);
-
-            // Consume the line's trailing '\n' when the selection ends right before it,
-            // so the pasted line's own '\n' doesn't create a blank line.
-            let last_line = text.char_to_line(end_incl);
-            let newline_pos = line_break_char(text, last_line);
-            let del_end = if sel.end_exclusive(text) == newline_pos {
-                newline_pos.shift(1)
-            } else {
-                sel.end_exclusive(text)
-            };
-
-            b.retain(start.chars_since(b.old_pos()));
-            b.delete(del_end.chars_since(start));
-            if needs_prefix {
-                b.insert("\n");
-            }
-            // Captured after the separating '\n' so the selection covers the
-            // pasted content alone, not the prefix.
-            let paste_start = b.new_pos();
-            b.insert(content);
-            new_sels.push(Selection::new(paste_start, b.new_pos().shift(-1)));
-        } else {
-            // Charwise over a non-collapsed selection: delete and inline-insert.
-            let start = sel.start();
-            let end_excl = sel.content_end_exclusive(text);
-            b.retain(start.chars_since(b.old_pos()));
-            b.delete(end_excl.chars_since(start));
-            let paste_start = b.new_pos();
-            b.insert(content);
             if content.is_empty() {
-                new_sels.push(Selection::collapsed(b.new_pos()));
-            } else {
-                new_sels.push(Selection::new(paste_start, b.new_pos().shift(-1)));
+                return Landing::kept(sel.selection());
             }
+            // Charwise: before the cursor, or after it without crossing its
+            // line break.
+            let insert_at = if before {
+                sel.start()
+            } else {
+                sel.append_point()
+            };
+            let mark = b.insert(insert_at, content);
+            return Landing::covering(mark, Facing::Forward);
         }
+
+        if register::is_register_linewise(content) {
+            // Linewise over a selection: the pasted lines replace the selected
+            // fragment. Text before it on its line keeps its own line through
+            // a leading '\n'; the pasted text's own '\n' pushes text after it
+            // onto the next line. A selection ending right before its line's
+            // '\n' takes that '\n' too, so no blank line is left.
+            let covered = sel.covered();
+            let last_line = sel.lines().end;
+            let line_break = hume_rope::lines::line_break(text.rope(), last_line);
+            let range = if covered.end() == line_break.into() {
+                ExclusiveRange::new(
+                    covered.start().offset(),
+                    hume_rope::grapheme::cluster_end(text.full_slice(), line_break).offset(),
+                )
+            } else {
+                covered.chars()
+            };
+            if !sel.starts_line() && !follows_pasted_line[sel.index()] {
+                b.insert(sel.start(), "\n");
+            }
+            let mark = b.replace(range, content);
+            return Landing::covering(mark, Facing::Forward);
+        }
+
+        // Charwise over a selection: delete it, insert in its place.
+        b.delete(sel.covered());
+        let mark = b.insert(sel.start(), content);
+        Landing::covering(mark, Facing::Forward)
     })
 }
 
@@ -153,22 +137,14 @@ fn paste_impl(
 /// **Multi-cursor:** `values.len() == sels.len()` → N-to-N (each selection
 /// gets its own slot); otherwise all values joined and applied at every
 /// selection. An empty `values` slice is a no-op.
-pub fn paste_after(
-    text: BufferText,
-    sels: SelectionSet,
-    values: &[String],
-) -> (BufferText, SelectionSet, ChangeSet) {
-    paste_impl(text, sels, values, false)
+pub fn paste_after(state: EditState, values: &[String]) -> Edited {
+    paste_impl(state, values, false)
 }
 
 /// Paste `values` before/onto each selection (normal-mode `P`). Mirrors
 /// [`paste_after`]; the before/after distinction only applies to cursor
 /// selections (see `paste_impl`'s matrix). An empty `values` slice is a
 /// no-op.
-pub fn paste_before(
-    text: BufferText,
-    sels: SelectionSet,
-    values: &[String],
-) -> (BufferText, SelectionSet, ChangeSet) {
-    paste_impl(text, sels, values, true)
+pub fn paste_before(state: EditState, values: &[String]) -> Edited {
+    paste_impl(state, values, true)
 }

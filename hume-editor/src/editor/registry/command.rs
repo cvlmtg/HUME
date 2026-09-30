@@ -2,9 +2,8 @@ use std::borrow::Cow;
 
 use crate::editor::commands::{CommandPane, FocusedPane, NativeBody};
 use crate::editor::error::CommandError;
-use hume_editing::changeset::ChangeSet;
-use hume_editing::selection::SelectionSet;
-use hume_editing::text::BufferText;
+use hume_editing::edit::Edited;
+use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_ops::{MotionMode, WordCtx};
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
@@ -216,15 +215,14 @@ impl CmdMeta {
 }
 
 /// Function pointer for an [`Edit`](MappableCommand::Edit) handler.
-pub(in crate::editor) type EditFn =
-    fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet);
+pub(in crate::editor) type EditFn = fn(EditState) -> Edited;
 
 // ── MappableCommand ───────────────────────────────────────────────────────────
 
 /// Body shape for `Motion`/`Selection`'s `fun` field.
 ///
-/// Every native motion/selection command takes `(&BufferText, SelectionSet,
-/// usize, MotionMode)`, except the word family (`w`/`W`/`b`/`B`, `mm`/`MM`,
+/// Every native motion/selection command takes `(EditState, usize,
+/// MotionMode)`, except the word family (`w`/`W`/`b`/`B`, `mm`/`MM`,
 /// `miw`/`maw`), which additionally needs this buffer's configured
 /// `word-chars` and effective `word-selects-whitespace`, resolved from
 /// settings the same way `tab_width`/`TabStyle` are for `align_selections`/
@@ -239,8 +237,8 @@ pub(in crate::editor) type EditFn =
 /// that flag.
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum SelectionBody {
-    Plain(fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet),
-    Word(fn(&BufferText, SelectionSet, usize, WordCtx<'_>) -> SelectionSet),
+    Plain(fn(EditState, usize, MotionMode) -> EditState),
+    Word(fn(EditState, usize, WordCtx<'_>) -> EditState),
     Structural(StructuralBody),
 }
 
@@ -287,8 +285,8 @@ pub(in crate::editor) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
     /// `fun` is a [`SelectionBody`] wrapped in
-    /// [`NativeBody`](crate::editor::commands::NativeBody): `Plain(fn(&BufferText,
-    /// SelectionSet, usize, MotionMode) -> SelectionSet)` for almost every
+    /// [`NativeBody`](crate::editor::commands::NativeBody): `Plain(fn(EditState,
+    /// usize, MotionMode) -> EditState)` for almost every
     /// motion, `Word` for the word family.
     ///
     /// Motions are always extendable. The `mode` parameter selects Move or Extend
@@ -332,7 +330,7 @@ pub(in crate::editor) enum MappableCommand {
     },
     /// BufferText-modifying edit with no extra arguments.
     ///
-    /// Signature: `fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet)`
+    /// Signature: `fn(EditState) -> Edited`
     ///
     /// Edits are never extendable: they don't carry `MotionMode`.
     Edit {

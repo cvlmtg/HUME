@@ -116,7 +116,7 @@ fn next_from_before_a_jumps_to_a() {
     run(&mut ed, "goto-next-diagnostic");
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(3),
         "must land on diagnostic A's start"
     );
@@ -136,7 +136,7 @@ fn next_from_as_start_of_a_jumps_to_b_not_a() {
     run(&mut ed, "goto-next-diagnostic");
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(9),
         "sitting on A must advance to B, not stay on A (next = strictly-after start)"
     );
@@ -156,7 +156,7 @@ fn next_from_after_b_wraps_to_a() {
     run(&mut ed, "goto-next-diagnostic");
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(3),
         "must wrap around to A"
     );
@@ -176,7 +176,7 @@ fn prev_from_after_b_jumps_to_b() {
     run(&mut ed, "goto-prev-diagnostic");
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(9),
         "must land on diagnostic B's start"
     );
@@ -196,7 +196,7 @@ fn prev_from_before_a_wraps_to_b() {
     run(&mut ed, "goto-prev-diagnostic");
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(9),
         "must wrap around to B (the last entry)"
     );
@@ -253,7 +253,7 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
     ed.handle_key(key_enter());
     ed.settle();
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(9),
         "selecting row 2 (B) in the drawer must jump to B's start"
     );
@@ -302,7 +302,7 @@ fn enter_jumps_into_the_drawer_s_buffer_even_after_switching_away() {
         "Enter must jump back into the drawer's own buffer"
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(3),
         "selecting row 1 (A, still selected) must jump to A's start inside main.rs"
     );

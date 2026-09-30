@@ -8,7 +8,11 @@ fn inner_line_middle() {
     // Selection covers `world`, head=d (last char before \n).
     assert_state!(
         "hello\n-[w]>orld\nfoo\n",
-        |(text, sels)| cmd_inner_line(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_line(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "hello\n-[world]>\nfoo\n"
     );
 }
@@ -17,7 +21,11 @@ fn inner_line_middle() {
 fn inner_line_start_of_line() {
     assert_state!(
         "-[h]>ello world\n",
-        |(text, sels)| cmd_inner_line(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_line(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[hello world]>\n"
     );
 }
@@ -26,7 +34,11 @@ fn inner_line_start_of_line() {
 fn inner_line_end_of_content() {
     assert_state!(
         "hello worl-[d]>\n",
-        |(text, sels)| cmd_inner_line(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_line(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[hello world]>\n"
     );
 }
@@ -37,7 +49,11 @@ fn inner_line_empty_line_is_noop() {
     // and the selection is preserved.
     assert_state!(
         "hello\n-[\n]>world\n",
-        |(text, sels)| cmd_inner_line(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_line(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "hello\n-[\n]>world\n"
     );
 }
@@ -50,7 +66,11 @@ fn inner_line_combining_grapheme_before_newline() {
     // Naive `last - 1` arithmetic would produce a broken mid-cluster end position.
     assert_state!(
         "-[c]>afe\u{0301}\n",
-        |(text, sels)| cmd_inner_line(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_line(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[cafe\u{0301}]>\n"
     );
 }
@@ -60,7 +80,11 @@ fn around_line_includes_newline() {
     // Selection covers `world\n`; head is the newline char.
     assert_state!(
         "hello\n-[w]>orld\nfoo\n",
-        |(text, sels)| cmd_around_line(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_line(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "hello\n-[world\n]>foo\n"
     );
 }
@@ -71,7 +95,11 @@ fn around_line_empty_line() {
     // anchor == head, so serialises as a cursor (|).
     assert_state!(
         "hello\n-[\n]>world\n",
-        |(text, sels)| cmd_around_line(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_line(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "hello\n-[\n]>world\n"
     );
 }
@@ -81,7 +109,11 @@ fn inner_line_multi_cursor_same_line_merges() {
     // Two cursors on the same line both select that line's content, then merge.
     assert_state!(
         "-[h]>el-[l]>o\n",
-        |(text, sels)| cmd_inner_line(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_line(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[hello]>\n"
     );
 }
@@ -90,7 +122,11 @@ fn inner_line_multi_cursor_same_line_merges() {
 fn inner_line_multi_cursor_different_lines() {
     assert_state!(
         "-[h]>ello\n-[w]>orld\n",
-        |(text, sels)| cmd_inner_line(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_line(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[hello]>\n-[world]>\n"
     );
 }
@@ -99,7 +135,11 @@ fn inner_line_multi_cursor_different_lines() {
 fn around_line_multi_cursor_different_lines() {
     assert_state!(
         "-[h]>ello\n-[w]>orld\n",
-        |(text, sels)| cmd_around_line(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_line(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[hello\n]>-[world\n]>"
     );
 }

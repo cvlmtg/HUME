@@ -80,49 +80,60 @@ grapheme boundary** as a char offset.
 | Unit | Granularity | Role in HUME |
 |------|-------------|--------------|
 | Byte offset | Raw memory | Internal to the text storage library — never exposed |
-| Char offset | Unicode scalar value (`char`) | Storage, selection positions, buffer API |
-| Grapheme cluster | User-perceived character | Cursor movement, motions, and what a selection covers |
+| Char offset | Unicode scalar value (`char`) | Storage, and positions from outside (a language server, a regex match) |
+| Cluster position | User-perceived character | Selections, cursor movement, motions, text objects |
 
-The boundary between layers is strict: the grapheme layer **consumes** char
-offsets and **produces** char offsets that happen to land on grapheme
-boundaries. Everything above it works purely in char offsets and never needs
-to know about bytes or grapheme internals.
+A char offset can point anywhere, including between a letter and its accent.
+A **cluster position** cannot: it is a separate type, and only the grapheme
+layer can make one, by walking the text's clusters. Everything that decides
+where a selection starts or ends takes and returns cluster positions, so a
+position inside a cluster is not a bug to look for; it cannot be written down.
+A char offset from outside becomes a cluster position in one step that snaps
+it onto the cluster holding it.
+
+A run of whole clusters is its own type too. It knows its first cluster, its
+last cluster and where it ends (the start of the next one), so there is no
+question of whether "the end" means the last thing covered or the first thing
+not covered.
 
 ## Selections address clusters
 
-A selection's anchor and head are char offsets, but they are always the
-*start* of a grapheme cluster. A cursor on `é` (`e` + combining accent) sits at
-the offset of the `e`; it covers both chars, because the cluster is the
-smallest thing a cursor can be on.
+A selection's anchor and head are cluster positions: a cursor on `é` (`e` +
+combining accent) sits on the cluster, which covers both chars, because the
+cluster is the smallest thing a cursor can be on.
 
 ```
 "café" with a decomposed é
  c  a  f  e  ◌́
  0  1  2  3  4
-              cursor on é: anchor = head = 3, covers offsets 3 and 4
+              cursor on é: one cluster, starting at offset 3, covering 3 and 4
 ```
 
-So a selection has two ways to describe where it ends, and they answer
-different questions:
+A selection answers two different questions:
 
 - the **head** is where the cursor is drawn and where the next motion starts;
-- the **extent** is the chars it covers, which runs to the end of the last
-  cluster.
+- the **extent** is the clusters it covers.
 
-A command that deletes, yanks, or replaces a selection needs the extent. If it
-used the head as the end of the range it would delete the `e` and leave the
-accent behind on whatever comes next. Keeping the head as a raw offset that
-callers must remember to extend is a convention, and conventions get forgotten.
-HUME instead hides the raw head-of-the-far-end from other crates and hands
-out the extent through methods that always cover the whole last cluster, and
-a char range (say, a text object's result) becomes a selection through one
-conversion that snaps both ends onto cluster starts.
+A command that deletes, yanks, or replaces a selection needs the extent, and
+it asks the selection for it rather than working it out from the head. Doing
+the arithmetic in each command is a convention, and conventions get
+forgotten; with the extent read from the model, `d` and `y` cannot leave half
+a character behind.
 
-An edit is the one place a position can land inside a cluster: it produces
-positions for text that does not exist yet, and the text it leaves behind can
-re-form clusters (deleting the base letter leaves its accent joining the
-previous character; deleting one half of a flag re-pairs the rest). The result
-of every edit is snapped onto the clusters of the new text.
+A selection is only meaningful for the text it was made on. Each set of
+selections remembers which version of the text it belongs to, and reading it
+means pairing it with that text: pairing it with any other version is
+reported as a bug.
+
+An edit is the one place positions for a text that does not exist yet are
+needed: the text it leaves behind can re-form clusters (deleting the base
+letter leaves its accent joining the previous character; deleting one half of
+a flag re-pairs the rest). So an edit describes its resulting selections
+relative to what it changed, and they are resolved onto the clusters of the
+new text in one place. Every position the editor keeps between commands —
+other windows' selections, the jump history, a search prompt's starting
+point — is carried through the same change at the same moment, so none of
+them is ever read against a text it does not belong to.
 
 The grapheme layer also answers a related family of questions for vertical and
 horizontal layout: the display column of a position once tab stops are

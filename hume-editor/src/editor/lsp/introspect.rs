@@ -183,13 +183,13 @@ pub(in crate::editor) fn position_params(
 ) -> Option<serde_json::Value> {
     let id = t.bid(view);
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
-    let pbs = t.state(&state.panes.state, view);
-    let rope = state.buffers.get(id).text().rope();
-    let pos = hume_rope::position_encoding::char_to_wire(
-        rope,
-        pbs.selections().primary().head(),
-        encoding,
-    );
+    let text = state.buffers.get(id).text();
+    let head = t
+        .state(&state.panes.state, view)
+        .view(text)
+        .primary()
+        .head();
+    let pos = hume_rope::position_encoding::char_to_wire(text.rope(), head.offset(), encoding);
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
         "position": hume_lsp::position::to_json_position(pos),
@@ -477,21 +477,16 @@ pub(in crate::editor) fn location_display_parts(
         .collect()
 }
 
-/// Char range → wire `{"start" "end"}`. HUME selections are inclusive
-/// (`range.end` names the last included char); LSP ranges are half-open, so
-/// `end` is one grapheme cluster past: `next_grapheme_boundary`, not
-/// `to_exclusive`/a raw `+ 1`, since `range.end` may be the first char of a
-/// multi-char cluster (`é` = e + U+0301, a ZWJ emoji sequence): stepping by
-/// one raw char would land the wire range mid-cluster.
-fn char_range_to_wire(
+/// Clusters → wire `{"start" "end"}`, half-open like the clusters' own
+/// chars.
+fn clusters_to_wire(
     text: &hume_editing::text::BufferText,
     encoding: hume_rope::position_encoding::PositionEncoding,
-    range: hume_rope::offset::InclusiveRange<hume_rope::offset::CharOffset>,
+    range: hume_rope::cluster::ClusterRange,
 ) -> serde_json::Value {
-    let end_exclusive = hume_editing::grapheme::next_grapheme_boundary(text, range.end);
     let wire_range = hume_rope::position_encoding::char_range_to_wire_range(
         text.rope(),
-        hume_rope::offset::ExclusiveRange::new(range.start, end_exclusive),
+        range.chars(),
         encoding,
     );
     hume_lsp::position::to_json_range(wire_range)
@@ -508,24 +503,29 @@ pub(in crate::editor) fn primary_range_params(
 ) -> Option<serde_json::Value> {
     let id = t.bid(view);
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
-    let sel = t.state(&state.panes.state, view).selections().primary();
     let text = state.buffers.get(id).text();
+    let covered = t
+        .state(&state.panes.state, view)
+        .view(text)
+        .primary()
+        .covered();
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
-        "range": char_range_to_wire(text, encoding, sel.span(text)),
+        "range": clusters_to_wire(text, encoding, covered),
     }))
 }
 
 /// Ready-made `{"textDocument" {"uri"} "ranges" [...]}` params covering
 /// every *linewise* selection in `id`'s buffer, run-length-coalesced: a run
-/// of selections that touch end-to-end (`next.start() == prev.end() + 1`)
+/// of selections that touch end-to-end (the next starts where the previous
+/// ends)
 /// collapses into one range, since an LSP range is naturally contiguous and
 /// splitting a touching run into separate ranges would buy nothing. A
 /// non-linewise selection is simply skipped: the caller decides what an
 /// all-linewise, all-partial, or mixed selection set means
 /// (`(selections-linewise? id)` is the "all of them" read; `ranges` empty
 /// here is the "none of them" read). An ambiguous selection (see
-/// `hume_editing::selection::linewise_classification`) is skipped the same
+/// `SelectionView::linewise_classification`) is skipped the same
 /// way, including from the touch check, so a stray cursor can't bridge two
 /// real linewise neighbors into one coalesced range that silently reformats
 /// the blank line between them too. `None` only when `t`'s buffer has no
@@ -540,24 +540,16 @@ pub(in crate::editor) fn linewise_ranges_params(
     let id = t.bid(view);
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let text = state.buffers.get(id).text();
-    let selections = t.state(&state.panes.state, view).selections();
+    let selections = t.state(&state.panes.state, view).view(text);
 
     let linewise: Vec<_> = selections
-        .iter_sorted()
-        .filter(|sel| hume_editing::selection::linewise_classification(text, sel) == Some(true))
+        .iter()
+        .filter(|sel| sel.linewise_classification() == Some(true))
+        .map(|sel| sel.covered())
         .collect();
     let ranges: Vec<_> = linewise
-        .chunk_by(|a, b| b.start() == a.end_exclusive(text))
-        .map(|run| {
-            char_range_to_wire(
-                text,
-                encoding,
-                hume_rope::offset::InclusiveRange::new(
-                    run[0].start(),
-                    run[run.len() - 1].end_inclusive(text),
-                ),
-            )
-        })
+        .chunk_by(|a, b| hume_rope::cluster::ClusterBound::from(b.start()) == a.end())
+        .map(|run| clusters_to_wire(text, encoding, run[0].hull(run[run.len() - 1])))
         .collect();
 
     Some(serde_json::json!({

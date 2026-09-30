@@ -285,57 +285,14 @@ pub(in crate::editor) fn close_buffer_and_notify(
     }
 }
 
-/// Reseed every per-pane store keyed to `id` after its content was reset
-/// wholesale (`set_view_content`'s history-resetting in-place replace
-/// (`Editor::open_read_only_view`)), as opposed to an edit, which has a
-/// `ChangeSet` to remap positions through instead of discarding them.
-///
-/// Resets `pane_state` (selections, search cursor, scroll) to
-/// [`pane_state::fresh_from_buf`] for every pane currently viewing `id`,
-/// drops `id`'s entries from every pane's jump list (cross-buffer, so not
-/// limited to viewers), and, via `Pane::forget_buffer`, drops every pane's
-/// saved scroll *and* wrap-mode pin for `id` (also not limited to viewers:
-/// a background pane's *saved* scroll or pin for `id` is just as stale as a
-/// live one's; a regenerated view buffer starts unpinned again, same as a
-/// freshly opened one would).
-///
-/// Does *not* touch `EditorState::active_session`: a session belongs to
-/// the editor, not `PaneBufferState`, so it's outside this function's
-/// reach. Not a gap in practice: every caller resets a read-only view
-/// buffer (`:messages`, `:ls`), which never accepts the Insert/paste
-/// sessions this would need to guard against.
-pub(in crate::editor::buffer) fn reseed_panes_after_content_reset(
-    ev: &mut EngineView,
-    buffers: &BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut JumpLists,
-    id: BufferId,
-) {
-    // Drop every pane's cached state for `id`, not just current viewers':
-    // a pane that viewed `id` and switched away still holds a `pane_state`
-    // entry for it, and that entry is exactly as stale as a live viewer's
-    // (see this function's own doc). Leaving it in place would surface the
-    // old, possibly out-of-bounds selection the moment that pane switches
-    // back; `pane_state::ensure`'s `or_insert_with` only seeds a *missing*
-    // entry, so removal is what makes that reseed happen.
-    for buf_state in pane_state.values_mut() {
-        buf_state.remove(id);
-    }
-    // Collect before mutating (borrow checker); n≈1 in the single-pane case.
-    // Every pane that shows `id`, active tab or not.
-    let pane_ids: Vec<PaneId> = ev
-        .panes
-        .every_pane_across_all_tabs()
-        .filter(|(_, p)| p.buffer_id == id)
-        .map(|(pid, _)| pid)
-        .collect();
-    for pid in pane_ids {
-        // Current viewers need their entry seeded immediately, not lazily on
-        // next switch: a live viewer is rendered this frame.
-        pane_state[pid].insert(id, pane_state::fresh_from_buf(buffers.get(id)));
-    }
-    pane_jumps.prune_buffer(id);
-    // Every pane must forget `id`, active tab or not.
+/// Drop every pane's saved scroll *and* wrap-mode pin for `id`, whose content
+/// was reset wholesale (`set_view_content`'s history-resetting in-place
+/// replace (`Editor::open_read_only_view`)): not limited to viewers, since a
+/// background pane's *saved* scroll or pin for `id` is just as stale as a
+/// live one's, and a regenerated view buffer starts unpinned again, same as a
+/// freshly opened one would. Its stored positions were already reset by
+/// `PositionStores::reset`.
+pub(in crate::editor::buffer) fn forget_saved_views(ev: &mut EngineView, id: BufferId) {
     for (_, pane) in ev.panes.every_pane_across_all_tabs_mut() {
         pane.forget_buffer(id);
     }

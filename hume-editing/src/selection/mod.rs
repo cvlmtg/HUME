@@ -1,366 +1,133 @@
+mod fit;
+mod recorded;
 mod single;
-#[cfg(test)]
-pub mod testing;
+mod unbound;
+mod view;
 
-pub use single::{Selection, StickyDisplayCol, is_selection_linewise, linewise_classification};
+pub(crate) use fit::{assert_fits, check_positions};
+pub use recorded::RecordedSelections;
+pub use single::{Facing, Selection, StickyDisplayCol};
+pub(crate) use unbound::Resolver;
+pub use unbound::UnboundSelection;
+pub use view::{EditView, LineSpan, SelectionView};
 
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-use crate::changeset::{Assoc, ChangeSet, PosMapCursor};
-use crate::error::ValidationError;
-use crate::grapheme::is_cluster_boundary;
-use crate::text::BufferText;
+use crate::text::{BufferText, TextVersion};
 
-/// The complete selection state for one buffer.
+/// The selections of one pane on one buffer, tagged with the version of the
+/// text they were computed for.
 ///
 /// # Invariants
-/// 1. Never empty: always at least one `Selection`.
-/// 2. Selections are sorted in ascending order of `start()`.
-/// 3. No two selections overlap. Adjacent selections (where one ends exactly
-///    where the next begins) are merged.
-/// 4. Every `anchor` and `head` is the start of a grapheme cluster.
+/// 1. Never empty, and `primary` indexes into it.
+/// 2. Sorted by first cluster.
+/// 3. No two selections share a cluster.
+/// 4. Every anchor and head is a cluster start of the tagged text.
 ///
-/// Invariants 2 and 3 are enforced by [`SelectionSet::merge_overlapping_in_place`],
-/// which must be called after any operation that might violate them.
-/// Invariant 4 is restored by [`SelectionSet::snap_to_clusters`] and checked
-/// by [`SelectionSet::debug_assert_valid`].
+/// A set on its own has no reads. Pairing it with its text
+/// ([`crate::state::EditState`], [`EditView::bind`]) checks the tag and is
+/// the way to read it, so a set cannot be read against the wrong text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectionSet {
-    /// The sorted, non-overlapping selections.
-    ///
-    /// `Vec` is the right choice here: in practice editors have at most dozens
-    /// of selections; linear scan and sort are faster than a tree for that
-    /// cardinality due to cache locality.
     selections: Vec<Selection>,
-
-    /// Index of the "primary" selection: the one displayed in the statusline
-    /// and used for operations that act on a single selection (e.g.,
-    /// `cmd_keep_primary_selection`).
     primary: usize,
-}
-
-impl Default for SelectionSet {
-    /// Minimal-valid state: a single collapsed cursor at offset 0.
-    ///
-    /// Required so `std::mem::take` produces a structurally valid `SelectionSet`
-    /// (an empty vec + `primary: 0` would violate the "primary indexes into
-    /// selections" invariant). Matches the stdlib pattern: `Default` is always
-    /// a valid state.
-    fn default() -> Self {
-        Self {
-            selections: vec![Selection::collapsed(CharOffset::new(0))],
-            primary: 0,
-        }
-    }
+    version: TextVersion,
 }
 
 impl SelectionSet {
-    /// Create a set with a single selection. This is the normal starting state.
-    pub fn single(sel: Selection) -> Self {
+    /// The version of the text these selections were computed for.
+    pub fn version(&self) -> TextVersion {
+        self.version
+    }
+
+    /// A normalized set: sorted, with selections sharing a cluster merged and
+    /// the primary relocated to the selection holding it.
+    ///
+    /// # Panics
+    /// Panics if `selections` is empty or `primary` is out of range.
+    pub(crate) fn from_parts(
+        selections: Vec<Selection>,
+        primary: usize,
+        version: TextVersion,
+    ) -> Self {
+        assert!(!selections.is_empty(), "SelectionSet must not be empty");
+        assert!(primary < selections.len(), "primary index out of bounds");
+        let mut set = Self {
+            selections,
+            primary,
+            version,
+        };
+        set.merge_overlapping();
+        set
+    }
+
+    /// `from_parts` without sorting or merging, for tests that need an
+    /// unnormalized set.
+    #[cfg(test)]
+    pub(crate) fn from_parts_unchecked(
+        selections: Vec<Selection>,
+        primary: usize,
+        version: TextVersion,
+    ) -> Self {
+        assert!(!selections.is_empty(), "SelectionSet must not be empty");
+        assert!(primary < selections.len(), "primary index out of bounds");
         Self {
-            selections: vec![sel],
-            primary: 0,
+            selections,
+            primary,
+            version,
         }
     }
 
-    /// The primary (focused) selection.
-    pub fn primary(&self) -> Selection {
-        self.selections[self.primary]
+    pub(crate) fn selections(&self) -> &[Selection] {
+        &self.selections
     }
 
-    /// The index of the primary selection within the sorted selections Vec.
-    ///
-    /// Useful when rebuilding a `SelectionSet` after transforming all selections
-    /// and you need to preserve which one is primary.
-    pub fn primary_index(&self) -> usize {
+    pub(crate) fn primary_pos(&self) -> usize {
         self.primary
     }
 
-    /// Number of selections.
-    ///
-    /// A `SelectionSet` is non-empty by invariant (day-one: at least one
-    /// selection always exists), so `is_empty()` is intentionally absent.
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
-        self.selections.len()
+    pub(crate) fn primary_selection(&self) -> Selection {
+        self.selections[self.primary]
     }
 
-    /// Iterate over all selections in ascending `start()` order.
-    pub fn iter_sorted(&self) -> impl Iterator<Item = &Selection> {
-        self.selections.iter()
+    pub(crate) fn into_parts(self) -> (Vec<Selection>, usize) {
+        (self.selections, self.primary)
     }
 
-    /// `true` if every selection is collapsed (a bare cursor, no extent):
-    /// the guard a caller that treats each cursor as "typed at" rather than
-    /// "replacing a real selection" must check first (completion accept,
-    /// dot-repeat's own recorded-result replay): typing over a real
-    /// selection is a different edit than completing/replaying at it, and
-    /// the replace-at-cursor commands this guards force-collapse every
-    /// selection they touch, which would otherwise silently discard one.
-    pub fn all_collapsed(&self) -> bool {
-        self.iter_sorted().all(Selection::is_collapsed)
-    }
-
-    /// Apply `f` to every selection and return a canonicalized `SelectionSet`.
-    ///
-    /// After applying `f` the result is sorted by `start()`, overlapping or
-    /// adjacent selections are merged, and the primary is relocated by content
-    /// (the mapped selection that was previously primary stays primary after
-    /// the merge). The returned set always satisfies all `SelectionSet`
-    /// invariants.
-    ///
-    /// **Iteration order:** `f` is called in ascending-`start()` order
-    /// (same as [`iter_sorted`](Self::iter_sorted)).
-    #[must_use]
-    pub fn map<F>(self, mut f: F) -> Self
-    where
-        F: FnMut(Selection) -> Selection,
-    {
-        // Capture the primary index before consuming self so that
-        // merge_overlapping_in_place picks up the right `primary_before`
-        // (the mapped primary selection at that index, before sorting).
-        let primary = self.primary;
-        let selections = self.selections.into_iter().map(&mut f).collect();
-        let mut result = Self {
-            selections,
-            primary,
-        };
-        result.merge_overlapping_in_place();
-        result
-    }
-
-    /// Replace the selection at `idx` with `new_sel` and return the updated
-    /// set, canonicalized (sorted, overlapping/adjacent selections merged) so
-    /// the `SelectionSet` invariants always hold. Panics if `idx >= len()`.
-    pub fn replace(mut self, idx: usize, new_sel: Selection) -> Self {
-        self.selections[idx] = new_sel;
-        self.merge_overlapping_in_place();
-        self
-    }
-
-    /// Build a `SelectionSet` from a non-empty `Vec<Selection>`, with
-    /// `primary` pointing at the given index.
-    ///
-    /// The input is automatically sorted and merged so the output always
-    /// satisfies the `SelectionSet` invariants (sorted, non-overlapping,
-    /// non-empty). The `primary` is interpreted as an index into the
-    /// *input* vec; after sort+merge, the primary is relocated to the
-    /// compacted slot that contains that selection's range.
-    ///
-    /// # Panics
-    /// Panics if `selections` is empty or `primary >= selections.len()`.
-    pub fn from_vec(selections: Vec<Selection>, primary: usize) -> Self {
-        assert!(!selections.is_empty(), "SelectionSet must not be empty");
-        assert!(primary < selections.len(), "primary index out of bounds");
-        let mut result = Self {
-            selections,
-            primary,
-        };
-        result.merge_overlapping_in_place();
-        result
-    }
-
-    /// Build a `SelectionSet` for `text` from selections whose positions may
-    /// sit inside a cluster of `text`: each is floored to its cluster start,
-    /// then the set is sorted and merged. For results computed before `text`
-    /// existed, such as the selections of an edit's output.
-    pub fn from_vec_snapped(selections: Vec<Selection>, primary: usize, text: &BufferText) -> Self {
-        let mut result = Self::from_vec_unchecked(selections, primary);
-        result.snap_to_clusters(text);
-        result
-    }
-
-    /// Build a `SelectionSet` from a raw `Vec<Selection>` **without**
-    /// sorting or merging.
-    ///
-    /// **For tests only.** Use this when a test deliberately needs to construct
-    /// an out-of-order or overlapping set to exercise downstream merge /
-    /// propagation logic. Production code must use [`from_vec`](Self::from_vec).
-    ///
-    /// `#[cfg(test)]` cannot be used here because the function is called from
-    /// cross-crate tests (the `editor` test suite); making it conditionally
-    /// compiled would hide it from those callers. The name makes the intent clear.
-    ///
-    /// # Panics
-    /// Panics if `selections` is empty or `primary >= selections.len()`.
-    pub fn from_vec_unchecked(selections: Vec<Selection>, primary: usize) -> Self {
-        assert!(!selections.is_empty(), "SelectionSet must not be empty");
-        assert!(primary < selections.len(), "primary index out of bounds");
-        Self {
-            selections,
-            primary,
-        }
-    }
-
-    // ── Selection-set manipulation ────────────────────────────────────────────
-
-    /// Return a new set containing only the primary selection.
-    ///
-    /// All other selections are dropped. The primary index resets to 0.
-    pub fn keep_primary(self) -> Self {
-        let primary = self.selections[self.primary];
-        Self {
-            selections: vec![primary],
-            primary: 0,
-        }
-    }
-
-    /// Remove the selection at `idx` and return the updated set.
-    ///
-    /// If `idx` is the primary, the new primary becomes the next selection
-    /// in document order, wrapping around to the first if the removed
-    /// selection was the last. If `len() == 1`, returns `self` unchanged, since you cannot
-    /// remove the only selection. Panics if `idx >= len()`.
-    pub fn remove(mut self, idx: usize) -> Self {
-        assert!(idx < self.selections.len(), "remove index out of bounds");
+    /// Sort by first cluster and merge selections that share a cluster,
+    /// keeping the primary on the merged selection that holds it. A merged
+    /// selection's head is a new position, so its sticky column is cleared.
+    fn merge_overlapping(&mut self) {
         if self.selections.len() <= 1 {
-            return self; // can't remove the only selection, so no-op
-        }
-        self.selections.remove(idx);
-        let new_len = self.selections.len();
-        self.primary = if idx < self.primary {
-            self.primary - 1
-        } else if idx == self.primary {
-            idx % new_len
-        } else {
-            self.primary
-        };
-        self
-    }
-
-    /// Shift the primary index by `delta`, wrapping around.
-    ///
-    /// `delta = 1` moves to the next selection (forward), `-1` moves to the
-    /// previous (backward). Works correctly for `|delta| >= len()` too.
-    pub fn cycle_primary(mut self, delta: isize) -> Self {
-        let len = self.selections.len() as isize;
-        // `rem_euclid` gives a non-negative result even for negative `delta`,
-        // so we never underflow into a huge `usize` value.
-        self.primary = ((self.primary as isize + delta).rem_euclid(len)) as usize;
-        self
-    }
-
-    /// Assert (in debug builds) that every selection's `head` and `anchor`
-    /// are within bounds for a buffer of `buf_len` chars.
-    ///
-    /// The invariant is `head < buf_len` and `anchor < buf_len`: selections
-    /// are zero-indexed and must not point past the last character (the
-    /// structural trailing `\n`).
-    ///
-    /// Call this at every chokepoint where a `(BufferText, SelectionSet)` pair is
-    /// produced: edit operations, motions, and `Transaction::apply`.
-    #[inline]
-    pub fn debug_assert_valid(&self, text: &BufferText) {
-        let buf_len = text.len_chars();
-        debug_assert!(
-            buf_len > 0,
-            "BufferText must have at least 1 char (the structural \\n)"
-        );
-        debug_assert!(
-            text.char_at(CharOffset::new(buf_len - 1)) == Some('\n'),
-            "BufferText must end with structural '\\n', but last char is {:?}",
-            text.char_at(CharOffset::new(buf_len - 1)),
-        );
-        for (i, sel) in self.selections.iter().enumerate() {
-            debug_assert!(
-                sel.head.index() < buf_len,
-                "Selection {i}: head {:?} >= buf_len {buf_len}: cursor is past the end of the buffer",
-                sel.head,
-            );
-            debug_assert!(
-                sel.anchor.index() < buf_len,
-                "Selection {i}: anchor {:?} >= buf_len {buf_len}: anchor is past the end of the buffer",
-                sel.anchor,
-            );
-            debug_assert!(
-                is_cluster_boundary(text, sel.head),
-                "Selection {i}: head {:?} splits a grapheme cluster",
-                sel.head,
-            );
-            debug_assert!(
-                is_cluster_boundary(text, sel.anchor),
-                "Selection {i}: anchor {:?} splits a grapheme cluster",
-                sel.anchor,
-            );
-        }
-    }
-
-    /// Validate that every selection's `head` and `anchor` are in bounds for
-    /// a buffer of `buf_len` chars. Returns `Err` with a descriptive error if
-    /// any position is out of range.
-    ///
-    /// Unlike [`debug_assert_valid`][Self::debug_assert_valid], this check
-    /// runs in all builds, including release. Call it at the trust boundary
-    /// where plugin-constructed [`Transaction`][crate::transaction::Transaction]s
-    /// enter the system.
-    pub fn validate(&self, buf_len: usize) -> Result<(), ValidationError> {
-        if buf_len == 0 {
-            return Err(ValidationError::EmptyBuffer);
-        }
-        for (index, sel) in self.selections.iter().enumerate() {
-            if sel.head.index() >= buf_len {
-                return Err(ValidationError::SelectionOutOfBounds {
-                    index,
-                    field: "head",
-                    value: sel.head.index(),
-                    buf_len,
-                });
-            }
-            if sel.anchor.index() >= buf_len {
-                return Err(ValidationError::SelectionOutOfBounds {
-                    index,
-                    field: "anchor",
-                    value: sel.anchor.index(),
-                    buf_len,
-                });
-            }
-        }
-        Ok(())
-    }
-
-    // ── In-place propagation ──────────────────────────────────────────────────
-
-    /// Merge overlapping or adjacent selections in place, updating `primary`.
-    ///
-    /// Merged selections get `sticky_display_col: None` regardless of their pre-merge values
-    /// because the merged `head` is semantically a new position; the column it
-    /// corresponds to was never latched by a vertical motion.
-    pub fn merge_overlapping_in_place(&mut self) {
-        if self.selections.len() <= 1 {
+            self.primary = 0;
             return;
         }
 
         let primary_before = self.selections[self.primary];
-        self.selections.sort_by_key(|s| s.start());
+        self.selections.sort_by_key(|s| s.first());
 
         let mut write = 0;
         let mut new_primary = 0;
+        let holds_primary = |sel: &Selection| {
+            sel.first() <= primary_before.first() && primary_before.last() <= sel.last()
+        };
 
         for read in 1..self.selections.len() {
             let sel = self.selections[read];
-            let last = &mut self.selections[write];
+            let kept = self.selections[write];
 
-            if sel.start() <= last.end() {
-                if sel.end() > last.end() {
-                    if sel.head <= sel.anchor {
-                        // sel is backward: the merged head goes to the union's
-                        // start, which is last.start() (sorted by start, so
-                        // last.start() <= sel.start() == sel.head).
-                        last.head = last.start();
-                        last.anchor = sel.end();
-                    } else {
-                        last.anchor = last.start();
-                        last.head = sel.end();
-                    }
-                    // Merged: reset sticky_display_col since neither side's column is valid.
-                    last.sticky_display_col = None;
+            if sel.first() <= kept.last() {
+                if sel.last() > kept.last() {
+                    self.selections[write] = match sel.facing() {
+                        Facing::Backward => Selection::new(sel.last(), kept.first()),
+                        Facing::Forward => Selection::new(kept.first(), sel.last()),
+                    };
                 }
-                if primary_before.start() >= last.start() && primary_before.end() <= last.end() {
+                if holds_primary(&self.selections[write]) {
                     new_primary = write;
                 }
             } else {
-                let done = &self.selections[write];
-                if done.start() >= primary_before.start() && done.end() <= primary_before.end() {
+                if holds_primary(&kept) {
                     new_primary = write;
                 }
                 write += 1;
@@ -368,8 +135,7 @@ impl SelectionSet {
             }
         }
 
-        let done = &self.selections[write];
-        if done.start() >= primary_before.start() && done.end() <= primary_before.end() {
+        if holds_primary(&self.selections[write]) {
             new_primary = write;
         }
 
@@ -377,118 +143,41 @@ impl SelectionSet {
         self.primary = new_primary;
     }
 
-    /// Floor every selection's `anchor` and `head` to their cluster starts,
-    /// then merge selections that now overlap.
-    pub fn snap_to_clusters(&mut self, text: &BufferText) {
-        for sel in &mut self.selections {
-            *sel = sel.snap_to_clusters(text);
-        }
-        self.merge_overlapping_in_place();
-    }
-
-    /// Propagate a `ChangeSet` through all selections in place.
-    ///
-    /// This is the non-acting-pane propagation primitive. For each selection:
-    /// - Maps `anchor` and `head` through the changeset.
-    /// - Resets `sticky_display_col` to `None` if the edit touched the head's
-    ///   pre-edit line (the display column is stale when the line's content
-    ///   changed).
-    /// - After all selections are mapped, calls [`Self::snap_to_clusters`]
-    ///   against `text_post`: an edit can leave a position inside a cluster
-    ///   (a deleted base char orphans its combining mark), and a deletion
-    ///   spanning multiple selections can collapse them.
-    ///
-    /// `text_pre` must be the buffer text **before** the edit: the pre-edit line
-    /// map is needed to identify which line each head resided on before mapping.
-    /// `text_post` is the text after applying `cs`.
-    ///
-    /// Runs in O(selections + ops) rather than O(selections × ops): selections
-    /// are sorted and non-overlapping, so both the line-touch check and the
-    /// position mapping walk their respective changeset data with a single
-    /// forward-only cursor shared across all selections, instead of
-    /// re-scanning the whole changeset per selection.
-    ///
-    /// Thin wrapper over [`Self::translate_in_place_with`] for a caller
-    /// translating a single `SelectionSet`; see that method for a caller
-    /// translating many.
-    pub fn translate_in_place(
-        &mut self,
-        cs: &ChangeSet,
-        text_pre: &BufferText,
-        text_post: &BufferText,
-    ) {
-        self.translate_in_place_with(&cs.edited_old_ranges(), cs, text_pre, text_post);
-    }
-
-    /// Same as [`Self::translate_in_place`], but takes `cs`'s edited ranges
-    /// precomputed by the caller, for translating many independent
-    /// `SelectionSet`s through the same `ChangeSet` (e.g. one jump-list entry
-    /// per pane), so [`ChangeSet::edited_old_ranges`]'s `Vec` build is paid
-    /// once rather than once per `SelectionSet`. `edits` must be
-    /// `cs.edited_old_ranges()`. Passing ranges from a different changeset
-    /// silently mis-maps every selection.
-    pub fn translate_in_place_with(
-        &mut self,
+    /// For each selection, whether none of `edits` (a change's edited ranges
+    /// of `before`) touches its head's line. Selections are sorted and
+    /// non-overlapping, so heads and their lines increase and one walk over
+    /// `edits` serves the whole set.
+    pub(crate) fn heads_untouched(
+        &self,
         edits: &[ExclusiveRange<CharOffset>],
-        cs: &ChangeSet,
-        text_pre: &BufferText,
-        text_post: &BufferText,
-    ) {
+        before: &BufferText,
+    ) -> Vec<bool> {
         let mut edit_idx = 0usize;
-        let mut mapper = PosMapCursor::new(cs.ops());
-
-        for sel in &mut self.selections {
-            // Ropey domain, not `char_to_line`: `sel.head` is a saved
-            // selection being replayed through an edit that may have shrunk
-            // the buffer since it was captured, so it can legitimately equal
-            // `text_pre.len_chars()` (the phantom line); `line_to_char` and
-            // `next_line_start` both already accept that domain directly.
-            let pre_line = text_pre.ropey_char_to_line(sel.head);
-            let line_start = text_pre.line_to_char(pre_line);
-            let line_end = crate::lines::next_line_start(text_pre, pre_line);
-
-            // Drop edits that end entirely before this line. Heads (and thus
-            // pre-edit lines) strictly increase across selections in a sorted,
-            // non-overlapping SelectionSet, so a dropped edit can never touch
-            // this or any later selection's line. A point range (Insert) at
-            // exactly `line_start` still counts as touching, so it uses a
-            // strict `<` rather than `<=`.
-            while edit_idx < edits.len() {
-                let edit = edits[edit_idx];
-                let fully_before = if edit.start == edit.end {
-                    edit.end < line_start
-                } else {
-                    edit.end <= line_start
-                };
-                if fully_before {
-                    edit_idx += 1;
-                } else {
-                    break;
+        self.selections
+            .iter()
+            .map(|sel| {
+                let head = sel.head().offset();
+                let pre_line = before.ropey_char_to_line(head);
+                let line_start = before.line_to_char(pre_line);
+                let line_end = crate::lines::next_line_start(before, pre_line);
+                // An edit ending before this line touches no later selection
+                // either. An insertion at `line_start` still touches this line.
+                while edit_idx < edits.len() {
+                    let edit = edits[edit_idx];
+                    let fully_before = if edit.start == edit.end {
+                        edit.end < line_start
+                    } else {
+                        edit.end <= line_start
+                    };
+                    if fully_before {
+                        edit_idx += 1;
+                    } else {
+                        break;
+                    }
                 }
-            }
-            // The first remaining edit (if any) touches this line iff it
-            // starts before `line_end`: anything surviving the skip above
-            // already ends at or after `line_start`, so `start < line_end`
-            // alone implies overlap (proof: for a range, that's exactly the
-            // half-open overlap test; for a point, `start == end` already
-            // means `line_start <= start` from the skip, so `start < line_end`
-            // gives `line_start <= start < line_end`).
-            if edit_idx < edits.len() && edits[edit_idx].start < line_end {
-                sel.sticky_display_col = None;
-            }
-
-            let forward = sel.anchor <= sel.head;
-            let lo = mapper.map(sel.start(), Assoc::After);
-            let hi = mapper.map(sel.end(), Assoc::After);
-            if forward {
-                sel.anchor = lo;
-                sel.head = hi;
-            } else {
-                sel.anchor = hi;
-                sel.head = lo;
-            }
-        }
-        self.snap_to_clusters(text_post);
+                !(edit_idx < edits.len() && edits[edit_idx].start < line_end)
+            })
+            .collect()
     }
 }
 

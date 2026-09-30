@@ -237,9 +237,10 @@ fn call_bang_count_arg_dispatches_synchronously() {
         .values()
         .next()
         .unwrap()
-        .selections()
+        .view(ed.doc().text())
         .primary()
-        .head();
+        .head()
+        .offset();
     assert_eq!(
         idx,
         co(5),
@@ -711,9 +712,8 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     use crate::editor::event::EditorEvent;
     use termina::event::Event as TerminalEvent;
 
-    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
+    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(
         hume_editing::text::BufferText::from("hello\n"),
-        hume_editing::selection::SelectionSet::default(),
     ));
 
     // Give the pane a viewport big enough that a click at row=0,col=0 lands in content.
@@ -791,9 +791,10 @@ fn steel_lambda_receives_bid_count_and_extend() {
         .values()
         .next()
         .unwrap()
-        .selections()
+        .view(ed.doc().text())
         .primary()
-        .head();
+        .head()
+        .offset();
     assert_eq!(
         idx,
         co(4),
@@ -812,9 +813,10 @@ fn steel_lambda_receives_bid_count_and_extend() {
         .values()
         .next()
         .unwrap()
-        .selections()
+        .view(ed.doc().text())
         .primary()
-        .head();
+        .head()
+        .offset();
     assert_eq!(
         idx2,
         co(5),
@@ -849,9 +851,10 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .values()
         .next()
         .unwrap()
-        .selections()
+        .view(ed.doc().text())
         .primary()
-        .head();
+        .head()
+        .offset();
     ed.execute_keymap_command("fixed-right".into(), Some(5), false);
     let after = ed
         .state
@@ -862,9 +865,10 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .values()
         .next()
         .unwrap()
-        .selections()
+        .view(ed.doc().text())
         .primary()
-        .head();
+        .head()
+        .offset();
     assert_eq!(
         after,
         before.shift(1),
@@ -909,9 +913,10 @@ fn steel_arity_1_lambda_receives_bid_only() {
         .values()
         .next()
         .unwrap()
-        .selections()
+        .view(ed.doc().text())
         .primary()
-        .head();
+        .head()
+        .offset();
     ed.execute_keymap_command("step-bid-only".into(), Some(5), false);
     let after = ed
         .state
@@ -922,9 +927,10 @@ fn steel_arity_1_lambda_receives_bid_only() {
         .values()
         .next()
         .unwrap()
-        .selections()
+        .view(ed.doc().text())
         .primary()
-        .head();
+        .head()
+        .offset();
     assert_eq!(
         after,
         before.shift(1),
@@ -965,9 +971,10 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
         .values()
         .next()
         .unwrap()
-        .selections()
+        .view(ed.doc().text())
         .primary()
-        .head();
+        .head()
+        .offset();
     assert_eq!(
         idx,
         co(3),
@@ -1897,13 +1904,8 @@ fn buffer_selections_preserves_backward_direction() {
 /// always the first (start-sorted) selection.
 #[test]
 fn buffer_selections_primary_flag_follows_primary_index() {
-    use hume_editing::selection::{Selection, SelectionSet};
-
     let mut ed = editor_from("-[a]>bcde\n");
-    ed.set_current_selections(SelectionSet::from_vec(
-        vec![Selection::collapsed(co(0)), Selection::collapsed(co(4))],
-        1,
-    ));
+    select(&mut ed, &[(0, 0), (4, 4)], 1);
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     let host = live_host!(ed);

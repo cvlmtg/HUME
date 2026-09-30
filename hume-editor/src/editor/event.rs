@@ -153,10 +153,10 @@ pub(in crate::editor) enum EditorEvent {
     },
     /// Fires when a buffer's text changes: user edits, undo, redo, `:e!`
     /// reload, and read-only view refreshes (`:messages`, `:ls`,
-    /// `:plugin-status`) alike, all of which bump `Buffer::text_gen`. Raised
-    /// by diffing `text_gen` against a per-buffer `announced_text_gen`
+    /// `:plugin-status`) alike, all of which bump the buffer text's version. Raised
+    /// by diffing the text version against a per-buffer `announced_version`
     /// baseline at a drain observation point (`Editor::detect_text_changed`,
-    /// `BufferStore::take_text_changed`), not from `Buffer::set_text` itself,
+    /// `BufferStore::take_text_changed`), not from `Buffer::install` itself,
     /// since `Buffer` has no path to the event queue, the same reason
     /// `OnBufferEnter` is raised via a diff rather than a raise site.
     /// Consequently this
@@ -175,7 +175,7 @@ pub(in crate::editor) enum EditorEvent {
     /// for every `:messages`/`:ls`/`:plugin-status` refresh of an
     /// already-open view buffer, even a byte-identical one; a handler that
     /// resolves the buffer's path must handle `#f` (these buffers have none).
-    /// See `Buffer::announced_text_gen`'s doc.
+    /// See `Buffer::announced_version`'s doc.
     OnTextChanged {
         buffer: BufferId,
     },

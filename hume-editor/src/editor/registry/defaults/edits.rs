@@ -3,8 +3,8 @@ use std::borrow::Cow;
 
 use crate::editor::registry::{CommandRegistry, MappableCommand};
 use hume_ops::edit::{
-    delete_char_backward, delete_char_forward, delete_selection, make_text_capitalized,
-    make_text_lowercase, make_text_uppercase,
+    delete_char_backward, delete_char_forward, make_text_capitalized, make_text_lowercase,
+    make_text_uppercase,
 };
 
 use super::builder::ecmd_pane;
@@ -28,7 +28,7 @@ impl CommandRegistry {
             self,
             "delete-selection",
             "Delete all selections.",
-            delete_selection
+            delete_char_forward
         );
         // `EditorCmd`, not `edit!`: needs to resolve this buffer's
         // `word-chars` (see `cmd_delete_word_backward`'s doc). No builder

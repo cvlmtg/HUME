@@ -37,19 +37,19 @@ impl fmt::Display for ApplyError {
     }
 }
 
-/// Errors returned by [`crate::transaction::Transaction::apply`], covering
-/// both changeset application and selection validation.
+/// Errors returned by [`crate::transaction::Transaction::apply`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransactionError {
     Apply(ApplyError),
-    Validation(ValidationError),
+    /// The recorded selections do not fit the text the changes produced.
+    Selections(InvariantViolation),
 }
 
 impl fmt::Display for TransactionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TransactionError::Apply(e) => write!(f, "changeset error: {e}"),
-            TransactionError::Validation(e) => write!(f, "selection error: {e}"),
+            TransactionError::Selections(e) => write!(f, "recorded selections: {e}"),
         }
     }
 }
@@ -62,71 +62,60 @@ impl From<ApplyError> for TransactionError {
     }
 }
 
-// `TransactionError` wraps one of two inner errors; `source()` exposes the
-// underlying cause so callers using `?` or `Box<dyn Error>` chains can
-// inspect the root error rather than only the wrapper's Display message.
+// `source()` exposes the underlying cause so callers using `?` or
+// `Box<dyn Error>` chains can inspect the root error rather than only the
+// wrapper's Display message.
 impl std::error::Error for TransactionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             TransactionError::Apply(e) => Some(e),
-            TransactionError::Validation(e) => Some(e),
+            TransactionError::Selections(e) => Some(e),
         }
     }
 }
 
-impl From<ValidationError> for TransactionError {
-    fn from(e: ValidationError) -> Self {
-        TransactionError::Validation(e)
-    }
+/// A broken invariant of a selection set, as reported by
+/// [`crate::selection::EditView::check`]. `index` names the offending
+/// selection in document order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvariantViolation {
+    /// The set holds no selection.
+    Empty,
+    /// The primary index is past the last selection.
+    PrimaryOutOfRange { primary: usize, len: usize },
+    /// The set is tagged with a different text than the one it is read with.
+    VersionMismatch,
+    /// An anchor or head is at or past the text's end.
+    OutOfBounds { index: usize },
+    /// An anchor or head is not the start of a grapheme cluster.
+    SplitsCluster { index: usize },
+    /// The selection shares a cluster with, or starts before, the one before it.
+    Overlapping { index: usize },
 }
 
-/// Errors that arise when validating plugin-constructed state before it
-/// touches the buffer.
-///
-/// These are returned from [`crate::selection::SelectionSet::validate`] and
-/// propagated through [`crate::transaction::Transaction::apply`] so that a
-/// plugin layer can surface a meaningful message instead of silently
-/// corrupting the editor state.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValidationError {
-    /// A selection's `head` or `anchor` is >= `buf_len`.
-    ///
-    /// Cursor positions are zero-indexed and must be strictly less than
-    /// `buf_len` (the last valid index is the structural trailing `\n`).
-    SelectionOutOfBounds {
-        /// Index of the offending selection in the set.
-        index: usize,
-        /// Which field was out of bounds: `"head"` or `"anchor"`.
-        field: &'static str,
-        /// The out-of-bounds value.
-        value: usize,
-        /// The buffer length the value was checked against.
-        buf_len: usize,
-    },
-    /// `buf_len` was 0, which violates the buffer invariant (every buffer has
-    /// at least one char: the structural `\n`).
-    EmptyBuffer,
-}
+impl std::error::Error for InvariantViolation {}
 
-impl std::error::Error for ValidationError {}
-
-impl fmt::Display for ValidationError {
+impl fmt::Display for InvariantViolation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ValidationError::SelectionOutOfBounds {
-                index,
-                field,
-                value,
-                buf_len,
-            } => write!(
-                f,
-                "selection {index}: {field} {value} is out of bounds for buffer of length {buf_len}"
-            ),
-            ValidationError::EmptyBuffer => {
+            Self::Empty => write!(f, "the selection set is empty"),
+            Self::PrimaryOutOfRange { primary, len } => {
                 write!(
                     f,
-                    "buffer length is 0: buffer must always have at least one char (the structural \\n)"
+                    "primary index {primary} is out of range for {len} selections"
                 )
+            }
+            Self::VersionMismatch => {
+                write!(f, "the selection set belongs to a different text")
+            }
+            Self::OutOfBounds { index } => {
+                write!(f, "selection {index} reaches past the end of the text")
+            }
+            Self::SplitsCluster { index } => {
+                write!(f, "selection {index} splits a grapheme cluster")
+            }
+            Self::Overlapping { index } => {
+                write!(f, "selection {index} overlaps the one before it")
             }
         }
     }

@@ -234,7 +234,7 @@ fn remap_insert_before_shifts_the_range() {
     store.replace(ServerId(0), bid, vec![diag(10, 15, DiagSeverity::Error)]);
 
     let mut b = ChangeSetBuilder::new(co(20));
-    b.retain(0).insert("XXX").retain_rest();
+    b.retain_to(co(0)).insert("XXX");
     store.remap_through(bid, &b.finish());
 
     let kept: Vec<_> = store
@@ -255,7 +255,7 @@ fn remap_insert_inside_grows_the_range() {
     store.replace(ServerId(0), bid, vec![diag(10, 15, DiagSeverity::Error)]);
 
     let mut b = ChangeSetBuilder::new(co(20));
-    b.retain(12).insert("XX").retain_rest();
+    b.retain_to(co(12)).insert("XX");
     store.remap_through(bid, &b.finish());
 
     let kept: Vec<_> = store
@@ -276,7 +276,7 @@ fn remap_insert_after_leaves_the_range_unchanged() {
     store.replace(ServerId(0), bid, vec![diag(10, 15, DiagSeverity::Error)]);
 
     let mut b = ChangeSetBuilder::new(co(20));
-    b.retain(18).insert("XX").retain_rest();
+    b.retain_to(co(18)).insert("XX");
     store.remap_through(bid, &b.finish());
 
     let kept: Vec<_> = store
@@ -297,7 +297,7 @@ fn remap_deletion_covering_the_range_drops_it() {
     store.replace(ServerId(0), bid, vec![diag(10, 15, DiagSeverity::Error)]);
 
     let mut b = ChangeSetBuilder::new(co(20));
-    b.retain(5).delete(15).retain_rest();
+    b.retain_to(co(5)).delete_to(co(20));
     store.remap_through(bid, &b.finish());
 
     let kept: Vec<_> = store
@@ -323,7 +323,7 @@ fn remap_through_drops_a_diagnostic_a_covering_deletion_collapses() {
 
     // Delete chars 0..8 of a 10-char document, fully covers [2, 5).
     let mut b = ChangeSetBuilder::new(co(10));
-    b.delete(8).retain_rest();
+    b.delete_to(co(8));
     let cs = b.finish();
     store.remap_through(bid, &cs);
 

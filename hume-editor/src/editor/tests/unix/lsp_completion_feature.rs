@@ -523,7 +523,7 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
     // `key_enter()`'s keybinding dispatch runs `accept_completion_selection`
     // synchronously: the main edit lands and the resolve request is *sent*
     // in this call, but its scripted response isn't drained until the next
-    // `drain_lsp`. Typing `X` right here, before any drain, bumps text_gen
+    // `drain_lsp`. Typing `X` right here, before any drain, changes the text version
     // past what the resolve request's `ResponseAnchor` was armed with.
     ed.feed_key(key_enter());
     ed.feed_key(key('X'));

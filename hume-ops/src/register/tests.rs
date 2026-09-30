@@ -1,4 +1,5 @@
 use super::*;
+use hume_editing::state::EditState;
 use test_fixtures::testing::parse_state;
 
 // ── RegisterSet ───────────────────────────────────────────────────────────
@@ -149,28 +150,28 @@ fn constants_have_expected_values() {
 fn yank_single_cursor() {
     // Cursor on 'h': yank captures just 'h'.
     let (text, sels) = parse_state("-[h]>ello\n");
-    assert_eq!(yank_selections(&text, &sels), vec!["h"]);
+    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec!["h"]);
 }
 
 #[test]
 fn yank_multi_char_selection() {
     // Selection covers "hell".
     let (text, sels) = parse_state("-[hell]>o\n");
-    assert_eq!(yank_selections(&text, &sels), vec!["hell"]);
+    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec!["hell"]);
 }
 
 #[test]
 fn yank_backward_selection_same_text() {
     // Direction doesn't change the yanked text: it's always start()..=end().
     let (text, sels) = parse_state("<[hell]-o\n");
-    assert_eq!(yank_selections(&text, &sels), vec!["hell"]);
+    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec!["hell"]);
 }
 
 #[test]
 fn yank_multi_cursor_document_order() {
     // Two cursors: one on 'h', one on 'o'. Returned in document order.
     let (text, sels) = parse_state("-[h]>ell-[o]>\n");
-    let yanked = yank_selections(&text, &sels);
+    let yanked = yank_selections(&EditState::bind(&text, sels));
     assert_eq!(yanked, vec!["h", "o"]);
 }
 
@@ -178,7 +179,10 @@ fn yank_multi_cursor_document_order() {
 fn yank_full_line_including_newline() {
     // Selection covers "hello\n": result ends with '\n' (linewise heuristic).
     let (text, sels) = parse_state("-[hello\n]>");
-    assert_eq!(yank_selections(&text, &sels), vec!["hello\n"]);
+    assert_eq!(
+        yank_selections(&EditState::bind(&text, sels)),
+        vec!["hello\n"]
+    );
 }
 
 #[test]
@@ -187,21 +191,30 @@ fn yank_grapheme_cluster() {
     // A cursor on the cluster covers it whole, so the yanked text is the
     // complete grapheme "é".
     let (text, sels) = parse_state("-[e\u{0301}]>x\n");
-    assert_eq!(yank_selections(&text, &sels), vec!["e\u{0301}"]);
+    assert_eq!(
+        yank_selections(&EditState::bind(&text, sels)),
+        vec!["e\u{0301}"]
+    );
 }
 
 #[test]
 fn yank_on_structural_newline() {
-    // Cursor on the trailing '\n': captures the newline itself.
+    // A cursor on the final '\n' of a line with text: `d` would remove
+    // nothing, so there is nothing to yank.
     let (text, sels) = parse_state("hello-[\n]>");
-    assert_eq!(yank_selections(&text, &sels), vec!["\n"]);
+    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec![""]);
 }
 
 #[test]
 fn yank_empty_buffer() {
-    // Empty buffer is just "\n". With the cursor on it, yank captures the newline.
     let (text, sels) = parse_state("-[\n]>");
-    assert_eq!(yank_selections(&text, &sels), vec!["\n"]);
+    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec![""]);
+}
+
+#[test]
+fn yank_of_a_selection_ending_on_the_final_newline_leaves_it_out() {
+    let (text, sels) = parse_state("hell-[o\n]>");
+    assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec!["o"]);
 }
 
 // ── KillRing ──────────────────────────────────────────────────────────────

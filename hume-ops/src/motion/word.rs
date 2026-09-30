@@ -4,71 +4,58 @@ use crate::word_unit::{
     IsBoundary, anchor_unit, class_at, expand_word_unit, find_word_end_from, find_word_start_from,
     is_blank_at, prev_nonblank, word_unit_at,
 };
-use hume_editing::grapheme::graphemes_at;
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::grapheme::{first_cluster, graphemes_at, last_cluster, prev_cluster};
+use hume_editing::selection::{Facing, Selection};
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars, is_uppercase_word_boundary, is_word_boundary};
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
 
 // ── Word motions (inner) ──────────────────────────────────────────────────────
 
-/// Move to the start of the next word.
+/// The start of the next word.
 ///
-/// Pair-scan forward: stop when the category changes AND the next char is
+/// Pair-scan forward: stop when the category changes AND the next cluster is
 /// either Eol or not Space. This skips the current word/punct, skips spaces
 /// (but not newlines), and lands on the next word/punct start or on a newline.
+/// With no next word it lands on the structural `\n`.
 ///
 /// The `is_boundary` parameter is `is_word_boundary` for `w` and
 /// `is_uppercase_word_boundary` for `W`. `chars` folds this buffer's extra
 /// word characters into every classification (see [`WordChars::classify`]).
 pub(super) fn next_word_start(
     text: &BufferText,
-    head: CharOffset,
+    head: ClusterStart,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
     chars: WordChars<'_>,
-) -> CharOffset {
-    let end = text.end();
-    if head >= end {
-        return head;
-    }
-
-    // Whole grapheme clusters, never single chars. This matters for
-    // combining sequences like e + U+0301 (combining acute): stepping by one
-    // char would land on the combining codepoint, which classify_char sees as
-    // Punctuation, creating a false word boundary inside the grapheme.
-    let mut clusters = graphemes_at(text, head);
-    let first = clusters.next().expect("head < end");
-    let mut prev_class = chars.classify(first.first);
-    let mut pos = first.end;
-    for cluster in clusters {
-        let cur_class = chars.classify(cluster.first);
+) -> ClusterStart {
+    let mut prev_class = class_at(text, head, chars);
+    for cluster in graphemes_at(text, head.into()).skip(1) {
+        let cur_class = chars.classify(cluster.first());
         if is_boundary(prev_class, cur_class)
             && (cur_class == CharClass::Eol || cur_class != CharClass::Space)
         {
-            return cluster.start;
+            return cluster.start();
         }
         prev_class = cur_class;
-        pos = cluster.end;
     }
-    // Clamp to last valid position (the trailing \n).
-    pos.min(text.last_char())
+    last_cluster(text)
 }
 
-/// Move to the start of the previous word.
+/// The start of the previous word.
 ///
 /// Two-phase backward scan: skip Space/Eol backward, then skip backward while
-/// in the same category, landing on the first char of that group.
+/// in the same category, landing on the first cluster of that group.
 pub(crate) fn prev_word_start(
     text: &BufferText,
-    head: CharOffset,
+    head: ClusterStart,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
     chars: WordChars<'_>,
-) -> CharOffset {
+) -> ClusterStart {
     // Skip whitespace and line ends backward; nothing but whitespace before
     // `head` lands at the buffer start.
-    let pos = prev_nonblank(text, head, CharOffset::new(0)).unwrap_or(CharOffset::new(0));
-
-    // Then skip backward while in the same category.
+    let pos = prev_nonblank(text, head.into(), ClusterBound::TEXT_START)
+        .unwrap_or_else(|| first_cluster(text));
     find_word_start_from(text, pos, is_boundary, chars)
 }
 
@@ -77,17 +64,13 @@ pub(crate) fn prev_word_start(
 /// Each cluster is classified by its first char, the same classification
 /// `w`/`b` step by, so a run found here is what `w`/`b` would select, the
 /// property `core:buffer-words`' Steel-side `split-words` builtin
-/// (`hume-scripting/src/builtins/words.rs`) depends on. A run ends on the
-/// last char of its last cluster, so a trailing combining mark stays in it.
-pub fn word_runs(text: &BufferText, chars: WordChars<'_>) -> Vec<InclusiveRange<CharOffset>> {
+/// (`hume-scripting/src/builtins/words.rs`) depends on.
+pub fn word_runs(text: &BufferText, chars: WordChars<'_>) -> Vec<ClusterRange> {
     let mut runs = Vec::new();
-    let mut open: Option<InclusiveRange<CharOffset>> = None;
-    for cluster in graphemes_at(text, CharOffset::new(0)) {
-        if chars.classify(cluster.first) == CharClass::Word {
-            open = Some(InclusiveRange::new(
-                open.map_or(cluster.start, |run| run.start),
-                cluster.last_char(),
-            ));
+    let mut open: Option<ClusterRange> = None;
+    for cluster in graphemes_at(text, ClusterBound::TEXT_START) {
+        if chars.classify(cluster.first()) == CharClass::Word {
+            open = Some(open.map_or(cluster.range(), |run| run.hull(cluster.range())));
         } else if let Some(run) = open.take() {
             runs.push(run);
         }
@@ -98,7 +81,7 @@ pub fn word_runs(text: &BufferText, chars: WordChars<'_>) -> Vec<InclusiveRange<
 
 // ── Word-select helpers ───────────────────────────────────────────────────────
 
-/// Find the next word (or WORD) from `pos` and return its span.
+/// Find the next word (or WORD) from `pos` and return it.
 ///
 /// Returns `None` when there is no next word: at the last word in the buffer
 /// (no-op) or on an empty buffer.
@@ -108,37 +91,29 @@ pub fn word_runs(text: &BufferText, chars: WordChars<'_>) -> Vec<InclusiveRange<
 /// time from the newline to reach the first word on the next line.
 pub(super) fn select_next_word(
     text: &BufferText,
-    pos: CharOffset,
+    pos: ClusterStart,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     chars: WordChars<'_>,
-) -> Option<InclusiveRange<CharOffset>> {
-    let last = text.last_char();
-
-    // Find the start of the next word.
+) -> Option<ClusterRange> {
+    let last = last_cluster(text);
     let mut word_start = next_word_start(text, pos, is_boundary, chars);
 
-    // If we landed on a newline that is NOT the trailing '\n', cross the line:
-    // call next_word_start again from that newline to get to the next line's word.
+    // Landed on a newline that is NOT the structural one: cross the line to
+    // the next line's word.
     if word_start < last && class_at(text, word_start, chars) == CharClass::Eol {
         word_start = next_word_start(text, word_start, is_boundary, chars);
     }
 
-    // If we've hit the trailing '\n' (last char in the buffer), there is no
-    // next word, so treat this as a no-op.
-    if word_start >= last {
-        return None;
-    }
-
-    // Guard: if we somehow landed on whitespace, also a no-op.
-    if is_blank_at(text, word_start) {
+    // The structural '\n': no next word.
+    if word_start >= last || is_blank_at(text, word_start) {
         return None;
     }
 
     let word_end = find_word_end_from(text, word_start, is_boundary, chars);
-    Some(InclusiveRange::new(word_start, word_end))
+    ClusterRange::through(text.full_slice(), word_start, word_end)
 }
 
-/// Find the previous word (or WORD) from `pos` and return its span.
+/// Find the previous word (or WORD) from `pos` and return it.
 ///
 /// Returns `None` when there is no previous word: already at or before the
 /// first word in the buffer (no-op).
@@ -148,95 +123,90 @@ pub(super) fn select_next_word(
 /// of a word, we jump to the preceding word.
 pub(super) fn select_prev_word(
     text: &BufferText,
-    pos: CharOffset,
+    pos: ClusterStart,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     chars: WordChars<'_>,
-) -> Option<InclusiveRange<CharOffset>> {
-    if pos == CharOffset::new(0) {
-        return None;
-    }
+) -> Option<ClusterRange> {
+    prev_cluster(text, pos.into())?;
 
-    // Find the start of the word `prev_word_start` would land on.
     let word_start = prev_word_start(text, pos, is_boundary, chars);
-
-    // If that position is whitespace (e.g. buffer starts with spaces), there
-    // is no actual word to jump to.
+    // Whitespace here means there is no word to jump to (e.g. the buffer
+    // starts with spaces).
     if is_blank_at(text, word_start) {
         return None;
     }
+    let word = ClusterRange::through(
+        text.full_slice(),
+        word_start,
+        find_word_end_from(text, word_start, is_boundary, chars),
+    )?;
 
-    let word_end = find_word_end_from(text, word_start, is_boundary, chars);
-
-    // If pos is within [word_start, word_end], prev_word_start landed on the
-    // CURRENT word, not the previous one. We need one more step backward.
-    if pos >= word_start && pos <= word_end {
-        if word_start == CharOffset::new(0) {
-            return None; // already at the first word, no-op
-        }
+    // `pos` inside the word means `prev_word_start` landed on the CURRENT
+    // word: one more step back.
+    if word.contains(pos) {
+        prev_cluster(text, word_start.into())?;
         let prev_start = prev_word_start(text, word_start, is_boundary, chars);
         if is_blank_at(text, prev_start) {
-            return None; // no word before this one
+            return None;
         }
         let prev_end = find_word_end_from(text, prev_start, is_boundary, chars);
-        return Some(InclusiveRange::new(prev_start, prev_end));
+        return ClusterRange::through(text.full_slice(), prev_start, prev_end);
     }
-
-    Some(InclusiveRange::new(word_start, word_end))
+    Some(word)
 }
 
-/// Apply a word-select motion to every selection in the set, repeated `count` times.
+/// Apply a word-select motion to every selection, repeated `count` times.
 ///
-/// `motion` returns the selected word's span, and each hop replaces the
-/// selection with a fresh forward `[word_start, word_end]`. `None` stops early
-/// and keeps the last selection. With `around`, the final span grows by its
-/// whitespace bookend ([`expand_word_unit`]), unless the loop never moved.
+/// `motion` returns the selected word, and each hop replaces the selection
+/// with it, facing forward. `None` stops early and keeps the last selection.
+/// With `around`, the final word grows by its whitespace bookend
+/// ([`expand_word_unit`]), unless the loop never moved.
 ///
-/// Forward motions search from `head()`. Backward motions search from
-/// `start()`: `select_prev_word` detects re-landing on the current word by
-/// checking whether the origin is inside it, and after a first-word-on-line
-/// `around` landing `head()` sits in trailing whitespace outside the word,
-/// which would re-select the same word on every press.
+/// Forward motions search from the head. Backward motions search from the
+/// selection's first cluster: `select_prev_word` detects re-landing on the
+/// current word by checking whether the origin is inside it, and after a
+/// first-word-on-line `around` landing the head sits in trailing whitespace
+/// outside the word, which would re-select the same word on every press.
 pub(super) fn apply_word_select(
-    text: &BufferText,
-    sels: SelectionSet,
+    state: EditState,
     count: usize,
     around: bool,
     backward: bool,
-    motion: impl Fn(&BufferText, CharOffset) -> Option<InclusiveRange<CharOffset>>,
-) -> SelectionSet {
-    let result = sels.map(|sel| {
-        let mut current = sel;
-        let mut moved = false;
+    motion: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
+) -> EditState {
+    let text = state.text().clone();
+    state.map(|sel| {
+        let mut current = sel.selection();
+        let mut word = None;
         for _ in 0..count {
             let origin = if backward {
-                current.start()
+                current.anchor().min(current.head())
             } else {
                 current.head()
             };
-            match motion(text, origin) {
+            match motion(&text, origin) {
                 Some(range) => {
-                    current = Selection::from_span(range, true, text);
-                    moved = true;
+                    current = Selection::covering(range, Facing::Forward);
+                    word = Some(range);
                 }
-                None => break, // no more words: stop early, keep last selection
+                None => break,
             }
         }
-        if around && moved {
-            let span = current.span(text);
-            let range = expand_word_unit(text, span.start, span.end, CharOffset::new(0));
-            current = Selection::from_span(range, true, text);
+        match word {
+            Some(range) if around => Selection::covering(
+                expand_word_unit(&text, range, ClusterBound::TEXT_START),
+                Facing::Forward,
+            ),
+            _ => current,
         }
-        current
-    });
-    result.debug_assert_valid(text);
-    result
+    })
 }
 
 /// Apply a word-select motion in extend mode: grow toward the target word if
 /// it lies beyond the anchor's unit, shrink toward it if it has crossed back
 /// onto or past that unit. Replaces the old selection rather than unioning.
 ///
-/// The origin is `sel.head()`, so repeated presses walk word by word. With
+/// The origin is the head, so repeated presses walk word by word. With
 /// `around`, the anchor's unit is [`word_unit_at`] (leading whitespace
 /// included) instead of [`anchor_unit`], and a backward-growing target's head
 /// is expanded the same way. Comparisons use the target's raw bounds against
@@ -247,64 +217,54 @@ pub(super) fn apply_word_select(
 /// is always kept whole: crossing it flips direction without truncating.
 /// `None` from `motion` stops early and keeps the last selection.
 pub(super) fn apply_word_select_extend(
-    text: &BufferText,
-    sels: SelectionSet,
+    state: EditState,
     count: usize,
     around: bool,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     chars: WordChars<'_>,
-    motion: impl Fn(&BufferText, CharOffset) -> Option<InclusiveRange<CharOffset>>,
-) -> SelectionSet {
-    let result = sels.map(|sel| {
-        let mut current = sel;
+    motion: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
+) -> EditState {
+    let text = state.text().clone();
+    state.map(|sel| {
+        let mut current = sel.selection();
         for _ in 0..count {
-            match motion(text, current.head()) {
-                Some(target) => {
-                    // `word_unit_at` returns `None` when the anchor sits on
-                    // whitespace with no adjacent word (e.g. indentation at
-                    // the very start of the buffer). Fall back to the bare
-                    // whitespace position, same as `anchor_unit` yields there.
-                    let unit = if around
-                        && let Some(unit) = word_unit_at(
-                            text,
-                            current.anchor(),
-                            is_boundary,
-                            CharOffset::new(0),
-                            chars,
-                        ) {
-                        unit
-                    } else {
-                        anchor_unit(text, current.anchor(), is_boundary, chars)
-                    };
-                    current = if target.start > unit.end {
-                        Selection::from_span(
-                            InclusiveRange::new(unit.start, target.end),
-                            true,
-                            text,
-                        ) // target beyond anchor: grow forward
-                    } else if target.end < unit.start {
-                        let head = if around {
-                            expand_word_unit(text, target.start, target.end, CharOffset::new(0))
-                                .start
-                        } else {
-                            target.start
-                        };
-                        Selection::from_span(InclusiveRange::new(head, unit.end), false, text) // target behind anchor: grow backward
-                    } else {
-                        Selection::from_span(unit, true, text) // target is the anchor's own unit
-                    };
-                }
-                None => break,
-            }
+            let Some(target) = motion(&text, current.head()) else {
+                break;
+            };
+            // `word_unit_at` returns `None` when the anchor sits on
+            // whitespace with no adjacent word (e.g. indentation at the very
+            // start of the buffer): the bare anchor cluster stands in, as
+            // `anchor_unit` yields there.
+            let unit = around
+                .then(|| {
+                    word_unit_at(
+                        &text,
+                        current.anchor(),
+                        is_boundary,
+                        ClusterBound::TEXT_START,
+                        chars,
+                    )
+                })
+                .flatten()
+                .unwrap_or_else(|| anchor_unit(&text, current.anchor(), is_boundary, chars));
+            current = if target.start() > unit.last() {
+                Selection::covering(unit.hull(target), Facing::Forward)
+            } else if target.last() < unit.start() {
+                let head = if around {
+                    expand_word_unit(&text, target, ClusterBound::TEXT_START)
+                } else {
+                    target
+                };
+                Selection::covering(head.hull(unit), Facing::Backward)
+            } else {
+                Selection::covering(unit, Facing::Forward)
+            };
         }
         current
-    });
-    result.debug_assert_valid(text);
-    result
+    })
 }
 
-type SelectWord =
-    fn(&BufferText, CharOffset, IsBoundary, WordChars<'_>) -> Option<InclusiveRange<CharOffset>>;
+type SelectWord = fn(&BufferText, ClusterStart, IsBoundary, WordChars<'_>) -> Option<ClusterRange>;
 
 /// Shared dispatch for the four word-select commands below: branches on
 /// `ctx.mode` (fresh re-anchor for `Move`, grow/shrink for `Extend`, see
@@ -314,25 +274,23 @@ type SelectWord =
 /// [`is_uppercase_word_boundary`]).
 ///
 /// `backward` only affects the `Move` arm's search origin (see
-/// [`apply_word_select`]'s doc); `Extend`'s chaining always uses `head()` and
+/// [`apply_word_select`]'s doc); `Extend`'s chaining always uses the head and
 /// has no analogous asymmetry. `ctx.around` affects both arms identically:
 /// a plain field read deciding whether whitespace is included in the unit.
 fn word_select_cmd(
-    text: &BufferText,
-    sels: SelectionSet,
+    state: EditState,
     count: usize,
     ctx: WordCtx<'_>,
     backward: bool,
     is_boundary: IsBoundary,
     select_word: SelectWord,
-) -> SelectionSet {
+) -> EditState {
     match ctx.mode {
-        MotionMode::Move => apply_word_select(text, sels, count, ctx.around, backward, |b, pos| {
+        MotionMode::Move => apply_word_select(state, count, ctx.around, backward, |b, pos| {
             select_word(b, pos, is_boundary, ctx.chars)
         }),
         MotionMode::Extend => apply_word_select_extend(
-            text,
-            sels,
+            state,
             count,
             ctx.around,
             is_boundary,
@@ -350,21 +308,8 @@ fn word_select_cmd(
 macro_rules! word_select_variant {
     ($name:ident, $doc:expr, $backward:expr, $is_boundary:expr, $select_word:expr) => {
         #[doc = $doc]
-        pub fn $name(
-            text: &BufferText,
-            sels: SelectionSet,
-            count: usize,
-            ctx: WordCtx<'_>,
-        ) -> SelectionSet {
-            word_select_cmd(
-                text,
-                sels,
-                count,
-                ctx,
-                $backward,
-                $is_boundary,
-                $select_word,
-            )
+        pub fn $name(state: EditState, count: usize, ctx: WordCtx<'_>) -> EditState {
+            word_select_cmd(state, count, ctx, $backward, $is_boundary, $select_word)
         }
     };
 }

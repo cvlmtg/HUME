@@ -32,7 +32,7 @@ pub(crate) struct BufferStore {
     mru: Vec<BufferId>,
     /// Monotonic counter bumped once per user edit/undo/redo, in any open
     /// buffer. The `doc_ops` five-function chokepoint is the sole writer.
-    /// Unlike `Buffer::text_gen` (per-buffer, bumped by system refreshes too:
+    /// Unlike a buffer text's version (per-buffer, and moved by system refreshes too:
     /// `set_view_content`, `reload_from_text`), this is deliberately global
     /// and edit-only: `PasteStamp` stamps it so a paste can tell "did
     /// anything change, anywhere" without caring which buffer, and a
@@ -139,11 +139,11 @@ impl BufferStore {
             .filter_map(|&id| self.buffers.get(id).map(|buf| (id, buf)))
     }
 
-    /// Every open buffer whose `text_gen` has moved since the last call:
+    /// Every open buffer whose text version has moved since the last call:
     /// the observation-point source for `on-text-changed`
     /// (`EditorEvent::OnTextChanged`'s doc has the full contract: what bumps
-    /// `text_gen`, what coalesces, what never fires). Advances each touched
-    /// buffer's `announced_text_gen` to match as it goes, so a buffer
+    /// text version, what coalesces, what never fires). Advances each touched
+    /// buffer's `announced_version` to match as it goes, so a buffer
     /// reported once stays quiet until it mutates again, so a burst of edits
     /// between two calls coalesces into one entry. Walks `order` (open-order)
     /// for deterministic event ordering.
@@ -151,17 +151,17 @@ impl BufferStore {
     /// Unlike `edit_seq` (global and edit-only by design: a `:messages`
     /// refresh or `:e!` must not look like an edit to paste-stamping, see its
     /// doc), this is per-buffer and fires for every text replacement
-    /// `set_text` performs.
+    /// `install` performs.
     pub(in crate::editor) fn take_text_changed(&mut self) -> Vec<BufferId> {
         let Self { order, buffers, .. } = self;
         order
             .iter()
             .filter_map(|&id| {
                 let buf = buffers.get_mut(id)?;
-                if buf.text_gen == buf.announced_text_gen {
+                if buf.text().version() == buf.announced_version {
                     return None;
                 }
-                buf.announced_text_gen = buf.text_gen;
+                buf.announced_version = buf.text().version();
                 Some(id)
             })
             .collect()

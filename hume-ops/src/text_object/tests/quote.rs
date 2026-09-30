@@ -7,7 +7,11 @@ use test_fixtures::assert_state;
 fn inner_double_quote_cursor_inside() {
     assert_state!(
         "\"hel-[l]>o\"\n",
-        |(text, sels)| cmd_inner_double_quote(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_double_quote(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "\"-[hello]>\"\n"
     );
 }
@@ -17,7 +21,11 @@ fn around_double_quote_cursor_inside() {
     // around includes both quote chars; head = closing `"`.
     assert_state!(
         "\"hel-[l]>o\"\n",
-        |(text, sels)| cmd_around_double_quote(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_double_quote(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[\"hello\"]>\n"
     );
 }
@@ -26,7 +34,11 @@ fn around_double_quote_cursor_inside() {
 fn inner_double_quote_cursor_on_open() {
     assert_state!(
         "-[\"]>hello\"\n",
-        |(text, sels)| cmd_inner_double_quote(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_double_quote(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "\"-[hello]>\"\n"
     );
 }
@@ -35,7 +47,11 @@ fn inner_double_quote_cursor_on_open() {
 fn inner_double_quote_cursor_on_close() {
     assert_state!(
         "\"hello-[\"]>\n",
-        |(text, sels)| cmd_inner_double_quote(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_double_quote(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "\"-[hello]>\"\n"
     );
 }
@@ -44,7 +60,11 @@ fn inner_double_quote_cursor_on_close() {
 fn inner_double_quote_empty_is_noop() {
     assert_state!(
         "-[\"]>\"foo\n",
-        |(text, sels)| cmd_inner_double_quote(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_double_quote(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[\"]>\"foo\n"
     );
 }
@@ -54,7 +74,11 @@ fn inner_double_quote_second_pair() {
     // Two pairs on the same line: cursor in second pair selects second.
     assert_state!(
         "\"a\" \"b-[c]>\"\n",
-        |(text, sels)| cmd_inner_double_quote(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_double_quote(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "\"a\" \"-[bc]>\"\n"
     );
 }
@@ -63,7 +87,11 @@ fn inner_double_quote_second_pair() {
 fn inner_single_quote_basic() {
     assert_state!(
         "'hel-[l]>o'\n",
-        |(text, sels)| cmd_inner_single_quote(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_single_quote(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "'-[hello]>'\n"
     );
 }
@@ -72,7 +100,11 @@ fn inner_single_quote_basic() {
 fn inner_backtick_basic() {
     assert_state!(
         "`hel-[l]>o`\n",
-        |(text, sels)| cmd_inner_backtick(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_backtick(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "`-[hello]>`\n"
     );
 }
@@ -81,7 +113,11 @@ fn inner_backtick_basic() {
 fn inner_double_quote_not_inside_is_noop() {
     assert_state!(
         "hel-[l]>o\n",
-        |(text, sels)| cmd_inner_double_quote(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_double_quote(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "hel-[l]>o\n"
     );
 }
@@ -92,7 +128,11 @@ fn inner_double_quote_not_inside_is_noop() {
 fn around_single_quote_basic() {
     assert_state!(
         "'hel-[l]>o'\n",
-        |(text, sels)| cmd_around_single_quote(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_single_quote(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-['hello']>\n"
     );
 }
@@ -101,7 +141,11 @@ fn around_single_quote_basic() {
 fn around_backtick_basic() {
     assert_state!(
         "`hel-[l]>o`\n",
-        |(text, sels)| cmd_around_backtick(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_around_backtick(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "-[`hello`]>\n"
     );
 }
@@ -110,7 +154,11 @@ fn around_backtick_basic() {
 fn inner_double_quote_starts_after_an_opening_quote_that_carries_a_combining_mark() {
     assert_state!(
         "\"\u{301}-[a]>b\"\n",
-        |(text, sels)| cmd_inner_double_quote(&text, sels, 0, MotionMode::Move),
+        |(text, sels)| cmd_inner_double_quote(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
         "\"\u{301}-[ab]>\"\n"
     );
 }

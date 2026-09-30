@@ -222,9 +222,9 @@ impl FromStr for SignColumnConfig {
 /// Where a forward object jump (`}`, `goto-next-<kind>`) leaves the viewport.
 ///
 /// Exists because those motions land the selection head at the *start* of
-/// the object just found (`hume_ops::motion::object::apply_object_motion`'s
-/// `Selection::new(end, start)`, deliberately, so a following `w` walks into
-/// the object's body), and the body then extends *below* that head. A
+/// the object just found (`hume_ops::motion::object::apply_object_motion`
+/// builds it facing backward, so a following `w` walks into the object's
+/// body), and the body then extends *below* that head. A
 /// forward jump scrolls downward, so the default per-frame scroll parks the
 /// head at `scroll-margin` rows from the *bottom*, hiding the very body the
 /// head-first convention was chosen to show. The backward motions (`{`)
@@ -974,7 +974,7 @@ define_settings! {
 ///
 /// Requires exactly three `|`-separated sections. Each section is a
 /// comma-separated list of `StatusElement` names; an empty section is
-/// allowed, an empty name inside a non-empty one (`Mode,,FileName`) is not.
+/// allowed, an empty name inside a non-empty one (`Mode,FileName`) is not.
 fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
     let parts: Vec<&str> = s.splitn(4, '|').collect();
     if parts.len() != 3 {

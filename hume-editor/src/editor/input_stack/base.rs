@@ -69,12 +69,14 @@ fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
     if let Err(e) = super::super::doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
         &ed.state.config.decorations,
-        &mut ed.state.panes.state,
-        &mut ed.state.panes.jumps,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut ed.state.panes,
+            &mut ed.state.input,
+        ),
         &mut ed.state.active_session,
         focused,
         buf,
-        |b, s| hume_ops::edit::insert_str(b, s, text),
+        |s| hume_ops::edit::insert_str(s, text),
     ) {
         ed.state.report(e.severity(), e.message().to_owned());
     }

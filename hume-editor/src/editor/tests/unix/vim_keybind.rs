@@ -207,9 +207,9 @@ fn shift_c_with_count_1_copies_instead_of_changing() {
         "buffer must be unchanged: a count prefix must not trigger the change-to-eol branch"
     );
     let heads: Vec<_> = ed
-        .current_selections()
-        .iter_sorted()
-        .map(|s| s.head())
+        .current_view()
+        .iter()
+        .map(|s| s.head().offset())
         .collect();
     assert_eq!(heads.len(), 2, "copy-selection-on-next-line adds a cursor");
     assert!(
@@ -235,9 +235,9 @@ fn shift_c_with_count_3_copies_onto_three_lines() {
         "buffer must be unchanged"
     );
     let heads: Vec<_> = ed
-        .current_selections()
-        .iter_sorted()
-        .map(|s| s.head())
+        .current_view()
+        .iter()
+        .map(|s| s.head().offset())
         .collect();
     assert_eq!(
         heads.len(),
@@ -270,9 +270,9 @@ fn vim_change_to_eol_or_copy_line_not_reachable_from_command_line() {
         "buffer must be unchanged"
     );
     let heads: Vec<_> = ed
-        .current_selections()
-        .iter_sorted()
-        .map(|s| s.head())
+        .current_view()
+        .iter()
+        .map(|s| s.head().offset())
         .collect();
     assert_eq!(
         heads.len(),
@@ -299,9 +299,9 @@ fn shift_c_with_count_and_selection_copies_with_count() {
         "buffer must be unchanged"
     );
     let heads: Vec<_> = ed
-        .current_selections()
-        .iter_sorted()
-        .map(|s| s.head())
+        .current_view()
+        .iter()
+        .map(|s| s.head().offset())
         .collect();
     assert_eq!(
         heads.len(),
@@ -352,9 +352,9 @@ fn shift_c_with_change_to_eol_off_restores_copy_selection() {
     assert_eq!(ed.state.mode(), Mode::Normal);
 
     let heads: Vec<_> = ed
-        .current_selections()
-        .iter_sorted()
-        .map(|s| s.head())
+        .current_view()
+        .iter()
+        .map(|s| s.head().offset())
         .collect();
     assert_eq!(
         heads.len(),

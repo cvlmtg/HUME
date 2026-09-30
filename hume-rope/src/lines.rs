@@ -6,7 +6,9 @@
 #![allow(clippy::disallowed_methods)]
 
 use ropey::{Rope, RopeSlice};
+use unicode_segmentation::UnicodeSegmentation;
 
+use crate::cluster::{ClusterBound, ClusterRange, ClusterStart};
 use crate::column::{BufferLineCol, ByteCol, CharCol, GraphemeCol};
 use crate::line::{ContentLine, ContentLineCount, RopeyLine, RopeyLineCount};
 use crate::offset::{CharOffset, ExclusiveRange};
@@ -151,8 +153,7 @@ pub fn line_token_content(token: RopeSlice<'_>) -> String {
 /// Char offset of the first char on the line *after* `line`, or
 /// `rope.len_chars()` when `line` is the last ropey line. Named for what it
 /// is, not for what it might look like a shorthand for: the trailing `\n` of
-/// `line` itself is the char just before this offset, not `- 1` of it. That
-/// subtraction is [`line_break_char`]'s job, not this function's.
+/// `line` itself is [`line_break`], not `- 1` of this offset.
 pub fn next_line_start(rope: &Rope, line: RopeyLine) -> CharOffset {
     let next = line.advance(1);
     if next.index() < ropey_line_count(rope).get() {
@@ -162,22 +163,62 @@ pub fn next_line_start(rope: &Rope, line: RopeyLine) -> CharOffset {
     }
 }
 
-/// Char offset of the `\n` that terminates `line`: the inclusive
-/// counterpart to [`next_line_start`], and the content-domain face of
-/// `line_terminator_start`.
-///
-/// Content domain: `line` must be a real content line, which is exactly the
-/// condition under which a terminator exists. The phantom trailing line has
-/// none, so that case is debug-asserted rather than silently answered with
-/// the line's own start.
-pub fn line_break_char(rope: &Rope, line: ContentLine) -> CharOffset {
+/// The first cluster of `line`. A line start is a cluster start in
+/// LF-normalized text: segmentation always breaks after a `\n`.
+pub fn line_start(rope: &Rope, line: ContentLine) -> ClusterStart {
     debug_assert!(
         line.index() < content_line_count(rope).get(),
-        "line_break_char: line {} is not a real content line (buffer has {} content lines)",
+        "line_start: line {} is not a real content line",
+        line.index()
+    );
+    ClusterStart::mint(CharOffset::new(rope.line_to_char(line.index())))
+}
+
+/// The boundary where `line` starts, up to and including the phantom line
+/// past the structural `\n`, whose start is the text end.
+pub fn ropey_line_start(rope: &Rope, line: RopeyLine) -> ClusterBound {
+    ClusterBound::mint(CharOffset::new(rope.line_to_char(line.index())))
+}
+
+/// The `\n` that ends `line`: one char, its own cluster.
+///
+/// Content domain: `line` must be a real content line, which is the
+/// condition under which a terminator exists. The phantom trailing line has
+/// none, so that case is debug-asserted rather than answered with the line's
+/// own start.
+pub fn line_break(rope: &Rope, line: ContentLine) -> ClusterStart {
+    debug_assert!(
+        line.index() < content_line_count(rope).get(),
+        "line_break: line {} is not a real content line (buffer has {} content lines)",
         line.index(),
         content_line_count(rope).get()
     );
-    line_terminator_start(rope, line.into())
+    ClusterStart::mint(line_terminator_start(rope, line.into()))
+}
+
+/// `line` with its `\n`.
+pub fn line_range(rope: &Rope, line: ContentLine) -> ClusterRange {
+    lines_range(rope, line, line)
+}
+
+/// The lines from `first` through `last`, each with its `\n`, in either
+/// order.
+pub fn lines_range(rope: &Rope, first: ContentLine, last: ContentLine) -> ClusterRange {
+    let (first, last) = (first.min(last), first.max(last));
+    ClusterRange::mint(
+        line_start(rope, first),
+        line_break(rope, last),
+        ropey_line_start(rope, RopeyLine::from(last).advance(1)),
+    )
+}
+
+/// `line` without its `\n`, or `None` when the line is empty.
+pub fn line_content_range(rope: &Rope, line: ContentLine) -> Option<ClusterRange> {
+    ClusterRange::between(
+        rope.slice(..),
+        line_start(rope, line),
+        line_break(rope, line).into(),
+    )
 }
 
 /// Byte offset of the start of the line after `line`, or the rope's byte
@@ -200,7 +241,7 @@ pub fn next_line_start_byte(rope: &Rope, line: RopeyLine) -> usize {
 /// editor's auto-indent-on-Enter and dedent-on-Backspace paths both consult
 /// it so they agree on the boundary. Thin wrapper over [`leading_indent`] for
 /// callers that don't also need the indent's display width.
-pub fn leading_whitespace_end(rope: &Rope, line: ContentLine) -> CharOffset {
+pub fn leading_whitespace_end(rope: &Rope, line: ContentLine) -> ClusterStart {
     leading_indent(rope, line, 1).0
 }
 
@@ -223,12 +264,11 @@ pub fn leading_indent(
     rope: &Rope,
     line: ContentLine,
     tab_width: u8,
-) -> (CharOffset, BufferLineCol) {
-    let line_start = CharOffset::new(rope.line_to_char(line.index()));
+) -> (ClusterStart, BufferLineCol) {
     let mut display_width = BufferLineCol::new(0);
-    for cluster in crate::grapheme::graphemes_at(rope.slice(..), line_start) {
+    for cluster in crate::grapheme::graphemes_at(rope.slice(..), line_start(rope, line).into()) {
         if !is_space_char(cluster.first) {
-            return (cluster.start, display_width);
+            return (cluster.start(), display_width);
         }
         // `width` is origin-agnostic (see its own doc), so this is the
         // sanctioned `.get()` crossing into it.
@@ -238,7 +278,8 @@ pub fn leading_indent(
             tab_width,
         ) as u32);
     }
-    (next_line_start(rope, line.into()), display_width)
+    // Every content line ends in a '\n', which the loop stops on.
+    (line_break(rope, line), display_width)
 }
 
 /// Snap `target` back to the nearest grapheme boundary at or before it,
@@ -254,7 +295,7 @@ pub(crate) fn snap_to_grapheme_boundary(
     target: CharOffset,
 ) -> CharOffset {
     let mut pos = line_start;
-    for cluster in crate::grapheme::graphemes_at(rope.slice(..), line_start) {
+    for cluster in crate::grapheme::graphemes_at(rope.slice(..), ClusterBound::mint(line_start)) {
         if cluster.end > target {
             break;
         }
@@ -329,31 +370,14 @@ pub fn is_empty_line(rope: &Rope, line: RopeyLine) -> bool {
 /// phantom line (a scripted `goto-location!` target) clamp to
 /// [`last_content_line`] before calling this, rather than this function
 /// silently answering with an illegal head.
-pub fn line_content_end(rope: &Rope, line: ContentLine) -> CharOffset {
-    let line_start = CharOffset::new(rope.line_to_char(line.index()));
-    let term_start = line_terminator_start(rope, line.into());
-    if term_start == line_start {
-        line_start // empty line: cursor on the `\n` itself
+pub fn line_content_end(rope: &Rope, line: ContentLine) -> ClusterStart {
+    let break_pos = line_break(rope, line);
+    if break_pos == line_start(rope, line) {
+        break_pos // empty line: cursor on the `\n` itself
     } else {
-        crate::grapheme::prev_grapheme_boundary(rope.slice(..), term_start)
+        crate::grapheme::prev_cluster(rope.slice(..), break_pos.into())
+            .expect("a line with content has a cluster before its break")
     }
-}
-
-/// The last char a selection may cover on `line`, in LF-normalized text: the
-/// last codepoint of its final grapheme cluster (so a trailing combining mark is never orphaned),
-/// or the line's own `\n` when the line is empty.
-///
-/// [`line_content_end`] answers with that cluster's *start* (where a cursor
-/// lands), so the round trip through `next_grapheme_boundary` converts to its
-/// last codepoint; an identity on the single-codepoint clusters most text is
-/// made of, the `\n` of an empty line included.
-pub fn line_last_char(rope: &Rope, line: ContentLine) -> CharOffset {
-    let content_end = line_content_end(rope, line);
-    debug_assert!(
-        rope.char(content_end.index()) != '\r',
-        "line_last_char: text must be LF-normalized, found a '\\r'"
-    );
-    crate::grapheme::cluster_last_char(rope.slice(..), content_end)
 }
 
 /// 0-based char column of `char_pos` within `line`: `char_pos` minus the
@@ -375,34 +399,28 @@ pub fn char_col_in_line(rope: &Rope, line: ContentLine, char_pos: CharOffset) ->
 /// `hume-editor`.
 ///
 /// `line` is ropey-domain because `goto-location!` can address the phantom
-/// line, which places at `rope.len_chars()`. That is not a legal head, so
-/// callers clamp to `len_chars() - 1`.
+/// line, which holds no cluster: it places on the text's last cluster, the
+/// structural `\n`.
 ///
 /// The clamp uses the line's content end, not [`next_line_start`], so the
 /// result is monotonic in `char_col` (the newline is never reachable except
 /// on an empty line, where it is the content end).
-pub fn place_char_column(rope: &Rope, line: RopeyLine, char_col: CharCol) -> CharOffset {
-    let line_start = CharOffset::new(rope.line_to_char(line.index()));
-    // The phantom line has no content to place within: its "content end"
-    // is its own start (`len_chars()`), the same value `line_content_end`
-    // would compute for it if it accepted a `RopeyLine` (empty line, cursor
-    // on the line's own terminator, here EOF instead of a `\n`). Falling
-    // back to the *last content line*'s end here would silently relocate
-    // the target to a different line than the one asked for.
-    let content_end = match line.to_content(rope) {
-        Some(content_line) => line_content_end(rope, content_line),
-        None => line_start,
+pub fn place_char_column(rope: &Rope, line: RopeyLine, char_col: CharCol) -> ClusterStart {
+    let Some(content_line) = line.to_content(rope) else {
+        return line_break(rope, last_content_line(rope));
     };
+    let line_start = line_start(rope, content_line).offset();
+    let content_end = line_content_end(rope, content_line);
     // `line_start + char_col`: `char_col` is a caller-supplied char count,
     // not yet grapheme-boundary-aligned. This deliberately may land
     // mid-cluster, which the `snap_to_grapheme_boundary` call below
     // corrects. Never treat this intermediate `target` as a cursor position.
     let target = CharOffset::new(line_start.index() + char_col.index());
 
-    if target >= content_end {
+    if target >= content_end.offset() {
         content_end
     } else {
-        snap_to_grapheme_boundary(rope, line_start, target)
+        ClusterStart::mint(snap_to_grapheme_boundary(rope, line_start, target))
     }
 }
 
@@ -417,29 +435,120 @@ pub fn place_char_column(rope: &Rope, line: RopeyLine, char_col: CharCol) -> Cha
 /// `place_char_column` counts each combining char as its own column, this
 /// counts the whole cluster as one, matching what the caller displayed.
 ///
-/// Same phantom-line clamp as [`place_char_column`]; see its doc.
+/// Same phantom-line placement as [`place_char_column`]; see its doc.
 pub fn place_grapheme_column(
     rope: &Rope,
     line: RopeyLine,
     grapheme_col: GraphemeCol,
-) -> CharOffset {
-    let line_start = CharOffset::new(rope.line_to_char(line.index()));
-    // See `place_char_column`'s comment: the phantom line's own start is its
-    // content end, not the last content line's.
-    let content_end = match line.to_content(rope) {
-        Some(content_line) => line_content_end(rope, content_line),
-        None => line_start,
+) -> ClusterStart {
+    let Some(content_line) = line.to_content(rope) else {
+        return line_break(rope, last_content_line(rope));
     };
-    let mut pos = line_start;
+    let content_end = line_content_end(rope, content_line);
+    let mut pos = line_start(rope, content_line);
     for cluster in
-        crate::grapheme::graphemes_at(rope.slice(..), line_start).take(grapheme_col.index())
+        crate::grapheme::graphemes_at(rope.slice(..), pos.into()).take(grapheme_col.index())
     {
-        if cluster.end > content_end {
+        if cluster.end > content_end.offset() {
             break;
         }
-        pos = cluster.end;
+        pos = ClusterStart::mint(cluster.end);
     }
     pos
+}
+
+/// One buffer line's text in a reusable buffer, its `\n` stripped, with the
+/// line's clusters yielded as typed positions. Segmenting a line alone gives
+/// the same clusters as segmenting the whole text, because segmentation
+/// always breaks around a `\n` and the text is LF-normalized.
+pub struct LineText {
+    buf: String,
+    start: ClusterBound,
+    had_break: bool,
+}
+
+/// One cluster of a [`LineText`]: its position in the text, its bytes within
+/// the line, and its text.
+#[derive(Clone, Copy, Debug)]
+pub struct LineCluster<'a> {
+    pub start: ClusterStart,
+    pub bytes: ExclusiveRange<ByteCol>,
+    pub text: &'a str,
+}
+
+impl LineText {
+    pub fn new() -> Self {
+        Self {
+            buf: String::new(),
+            start: ClusterBound::TEXT_START,
+            had_break: false,
+        }
+    }
+
+    /// Replace the held text with `line`'s.
+    pub fn load(&mut self, rope: &Rope, line: RopeyLine) {
+        self.buf.clear();
+        let slice = rope.line(line.index());
+        self.buf.reserve(slice.len_bytes());
+        for chunk in slice.chunks() {
+            self.buf.push_str(chunk);
+        }
+        self.had_break = truncate_line_break(&mut self.buf);
+        self.start = ropey_line_start(rope, line);
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.buf
+    }
+
+    /// Whether the loaded line ended in a `\n` (every line but the phantom
+    /// one past the structural `\n`).
+    pub fn had_break(&self) -> bool {
+        self.had_break
+    }
+
+    /// The loaded line's `\n`, when it has one.
+    pub fn break_pos(&self) -> Option<ClusterStart> {
+        self.had_break.then(|| {
+            let chars = self.buf.chars().count();
+            ClusterStart::mint(CharOffset::new(self.start.offset().index() + chars))
+        })
+    }
+
+    /// The loaded line's clusters, `\n` excluded, in order.
+    pub fn clusters(&self) -> impl Iterator<Item = LineCluster<'_>> {
+        let base = self.start.offset().index();
+        self.buf
+            .grapheme_indices(true)
+            .scan(0usize, move |chars, (byte, text)| {
+                let start = ClusterStart::mint(CharOffset::new(base + *chars));
+                *chars += text.chars().count();
+                let bytes =
+                    ExclusiveRange::new(ByteCol::new(byte), ByteCol::new(byte + text.len()));
+                Some(LineCluster { start, bytes, text })
+            })
+    }
+
+    pub fn clear(&mut self) {
+        self.buf.clear();
+        self.had_break = false;
+    }
+
+    /// Bytes the held buffer can grow to without reallocating.
+    pub fn capacity(&self) -> usize {
+        self.buf.capacity()
+    }
+
+    /// Release capacity beyond `cap` bytes.
+    pub fn shrink_to(&mut self, cap: usize) {
+        self.buf.shrink_to(cap);
+    }
+}
+
+impl Default for LineText {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Convert a char-offset position to a line-relative byte offset.
@@ -517,7 +626,7 @@ pub fn line_segments(
     let end_line = rope.char_to_line(last_char.index());
     (start_line..=end_line).filter_map(move |line_idx| {
         let line = ContentLine::new(line_idx);
-        let line_newline = line_break_char(rope, line);
+        let line_newline = line_break(rope, line).offset();
         let seg_start = range
             .start
             .max(CharOffset::new(rope.line_to_char(line_idx)));

@@ -310,11 +310,7 @@ fn remap_through_only_touches_a_buffer_that_has_decorations() {
 
     // An identity changeset: its content doesn't matter to this test, only
     // that `remap_through` is called with *something* to remap through.
-    let cs = {
-        let mut csb = ChangeSetBuilder::new(co(5));
-        csb.retain_rest();
-        csb.finish()
-    };
+    let cs = { ChangeSetBuilder::new(co(5)).finish() };
 
     store.remap_through(a, &cs);
     store.remap_through(b, &cs);
@@ -365,9 +361,8 @@ fn remap_points_drops_an_entry_whose_anchor_was_deleted() {
 
     // Retain(4) "foo\n", Delete(4) "bar\n", Retain(4) "baz\n".
     let mut b = ChangeSetBuilder::new(co(12));
-    b.retain(4);
-    b.delete(4);
-    b.retain_rest();
+    b.retain_to(CharOffset::new(4));
+    b.delete_to(CharOffset::new(8));
     let cs = b.finish();
 
     store.remap_through(a, &cs);

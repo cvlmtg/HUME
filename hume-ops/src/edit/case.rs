@@ -1,10 +1,9 @@
 //! `make-text-lowercase`/`-uppercase`/`-capitalized`: case transforms
 //! applied to each selection as a whole string.
 
-use hume_editing::changeset::ChangeSet;
-use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::BufferText;
-use hume_rope::offset::ExclusiveRange;
+use hume_editing::edit::Edited;
+use hume_editing::edit::Landing;
+use hume_editing::state::EditState;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_titlecase::TitleCase;
 
@@ -30,33 +29,16 @@ enum CaseTransform {
 /// check needs, so it silently falls back to the default (non-final) mapping
 /// `σ` even at a word's end. `insert` (not `insert_char`) is used since case
 /// mapping can also change the char count (e.g. `ß` → `SS`).
-fn transform_case(
-    text: BufferText,
-    sels: SelectionSet,
-    kind: CaseTransform,
-) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
-        let sel_start = sel.start();
-        let sel_end = sel.end_exclusive(text);
-
-        b.retain(sel_start.chars_since(b.old_pos()));
-        let new_sel_start = b.new_pos();
-
-        let selected = text
-            .slice(ExclusiveRange::new(sel_start, sel_end))
-            .to_string();
+fn transform_case(state: EditState, kind: CaseTransform) -> Edited {
+    apply_edit(state, |b, sel| {
+        let selected = sel.slice().to_string();
         let mapped = match kind {
             CaseTransform::Lower => selected.to_lowercase(),
             CaseTransform::Upper => selected.to_uppercase(),
             CaseTransform::Capitalize => capitalize_words(&selected),
         };
-        b.delete(sel_end.chars_since(sel_start));
-        b.insert(&mapped);
-
-        let new_sel_end = b.new_pos().shift(-1);
-
-        let forward = sel.anchor() <= sel.head();
-        new_sels.push(Selection::directed(new_sel_start, new_sel_end, forward));
+        let mark = b.replace(sel.covered(), &mapped);
+        Landing::covering(mark, sel.facing())
     })
 }
 
@@ -102,25 +84,16 @@ fn push_capitalized(out: &mut String, word: &str) {
 }
 
 /// Lowercase the text in each selection.
-pub fn make_text_lowercase(
-    text: BufferText,
-    sels: SelectionSet,
-) -> (BufferText, SelectionSet, ChangeSet) {
-    transform_case(text, sels, CaseTransform::Lower)
+pub fn make_text_lowercase(state: EditState) -> Edited {
+    transform_case(state, CaseTransform::Lower)
 }
 
 /// Uppercase the text in each selection.
-pub fn make_text_uppercase(
-    text: BufferText,
-    sels: SelectionSet,
-) -> (BufferText, SelectionSet, ChangeSet) {
-    transform_case(text, sels, CaseTransform::Upper)
+pub fn make_text_uppercase(state: EditState) -> Edited {
+    transform_case(state, CaseTransform::Upper)
 }
 
 /// Capitalize each word in each selection (Title Case).
-pub fn make_text_capitalized(
-    text: BufferText,
-    sels: SelectionSet,
-) -> (BufferText, SelectionSet, ChangeSet) {
-    transform_case(text, sels, CaseTransform::Capitalize)
+pub fn make_text_capitalized(state: EditState) -> Edited {
+    transform_case(state, CaseTransform::Capitalize)
 }

@@ -6,10 +6,9 @@ use crate::display_lines::DisplayLinePos;
 use crate::layout::gutter_width_for_line;
 use crate::pipeline::BufferId;
 use crate::providers::ProviderSet;
-use crate::types::Selection;
+use crate::types::PaintedSelection;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
-use hume_rope::offset::CharOffset;
 use ropey::Rope;
 
 // ---------------------------------------------------------------------------
@@ -449,11 +448,10 @@ pub struct Pane {
     /// Per-buffer scroll memory: where this pane was when it last viewed each buffer.
     /// Populated by `remember_scroll` on buffer switch; restored by `recall_scroll`.
     pub saved_scrolls: SecondaryMap<BufferId, ScrollPosition>,
-    /// All active selections, sorted by `head` position.
-    /// (`SelectionSet` is start-sorted; `populate_sorted_sels` asserts head order.)
-    pub selections: Vec<Selection>,
-    /// Index of the primary selection within `selections`.
-    pub primary_idx: usize,
+    /// All active selections as the renderer paints them, sorted by cursor
+    /// (`populate_sorted_sels` asserts the order), one of them
+    /// primary. Empty until the host writes the first frame's mirror.
+    pub selections: Vec<PaintedSelection>,
     /// Registered providers for this pane.
     pub providers: ProviderSet,
     /// This pane's wrap-mode override, per buffer it has shown. A view
@@ -490,11 +488,7 @@ impl Pane {
             buffer_id,
             viewport: Viewport::new(80, 24),
             saved_scrolls: SecondaryMap::new(),
-            selections: vec![Selection {
-                anchor: CharOffset::new(0),
-                head: CharOffset::new(0),
-            }],
-            primary_idx: 0,
+            selections: Vec::new(),
             providers: ProviderSet::new(),
             wraps: SecondaryMap::new(),
             line_store: crate::display_lines::line_store::PaneLineStore::new(),
@@ -511,9 +505,8 @@ impl Pane {
             buffer_id: _, // pane identity, set by the split itself
             viewport,
             saved_scrolls,
-            selections: _,  // engine render copy, repopulated every frame
-            primary_idx: _, // ditto
-            providers: _,   // allocated per pane in build_pane
+            selections: _, // engine render copy, repopulated every frame
+            providers: _,  // allocated per pane in build_pane
             wraps,
             line_store: _, // per-frame scratch; a new pane starts empty and
                            // `EngineView::begin_frame` rewinds it every frame anyway
@@ -584,7 +577,7 @@ impl Pane {
     /// See [`primary_head_line`]. This is the whole-pane spelling, for
     /// callers that hold a `&Pane` rather than its split-out fields.
     pub fn primary_head_line(&self, rope: &Rope) -> ContentLine {
-        primary_head_line(&self.selections, self.primary_idx, rope)
+        primary_head_line(&self.selections, rope)
     }
 }
 
@@ -594,27 +587,26 @@ impl Pane {
 /// render pass can call it while holding a `&mut` on a *different* field of
 /// the same pane (its line store).
 ///
-/// Panics (debug and release) if `selections` is empty or `primary_idx` is out
-/// of range. Both are violated invariants, not recoverable cases, so this
-/// fails loudly rather than defaulting to char 0 and hiding the bug.
-pub fn primary_head_line(selections: &[Selection], primary_idx: usize, rope: &Rope) -> ContentLine {
-    let head_char = selections
-        .get(primary_idx)
-        .expect("pane selections empty or primary_idx out of range")
-        .head;
+/// Panics (debug and release) if no selection is primary: the mirror was
+/// never written, a violated invariant rather than a recoverable case, so
+/// this fails loudly rather than defaulting to line 0 and hiding the bug.
+pub fn primary_head_line(selections: &[PaintedSelection], rope: &Rope) -> ContentLine {
+    let head = selections
+        .iter()
+        .find(|s| s.is_primary)
+        .expect("pane selection mirror has no primary selection")
+        .cursor;
     debug_assert!(
-        head_char.index() <= rope.len_chars(),
-        "stale selection mirror: head {head_char:?} beyond rope len {}: \
+        head.offset().index() < rope.len_chars(),
+        "stale selection mirror: head {head:?} beyond rope len {}: \
          pane.selections is out of sync with pane.buffer_id",
         rope.len_chars()
     );
-    // Trusted mint, not `RopeyLine::to_content`: a well-formed head is always
-    // < len_chars(), landing on a real content line, and the `<=` above only
-    // tolerates a stale mirror's head == len_chars() without crashing on it;
-    // it doesn't ask this function to repair that case, so this mints the
-    // line as-is rather than validating it against `rope`'s own invariant
-    // (which a bare `ropey::Rope` in a unit test may not even uphold).
-    ContentLine::new(hume_rope::lines::char_to_ropey_line(rope, head_char).index())
+    // Trusted mint, not `RopeyLine::to_content`: a cluster start lies below
+    // the text end, on a real content line, and this does not validate
+    // against `rope`'s own invariant (which a bare `ropey::Rope` in a unit
+    // test may not even uphold).
+    ContentLine::new(hume_rope::lines::char_to_ropey_line(rope, head.offset()).index())
 }
 
 // ---------------------------------------------------------------------------

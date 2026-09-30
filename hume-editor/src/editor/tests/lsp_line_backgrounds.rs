@@ -143,7 +143,7 @@ fn cursorline_wins_over_the_line_background_tint() {
             .buffers
             .get(bid)
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(1),
         "sanity: cursor on the tinted line"
     );
@@ -209,7 +209,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
             .buffers
             .get(bid)
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(1),
         "sanity: cursor on the tinted line"
     );
@@ -255,7 +255,7 @@ fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
             .buffers
             .get(bid)
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(9),
         "sanity: cursor lands on the last line, off-screen at the default top_line=0"
     );

@@ -11,7 +11,7 @@ fn auto_close_at_start() {
     // 'h', cursor lands on ')' (the close bracket).
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| insert_pair_close(text, sels, '(', ')'),
+        |(text, sels)| insert_pair_close(test_fixtures::testing::state(text, sels), '(', ')'),
         "(-[)]>hello\n"
     );
 }
@@ -20,7 +20,7 @@ fn auto_close_at_start() {
 fn auto_close_at_middle() {
     assert_state!(
         "hel-[l]>o\n",
-        |(text, sels)| insert_pair_close(text, sels, '(', ')'),
+        |(text, sels)| insert_pair_close(test_fixtures::testing::state(text, sels), '(', ')'),
         "hel(-[)]>lo\n"
     );
 }
@@ -30,7 +30,7 @@ fn auto_close_before_newline() {
     // Cursor on the structural '\n', a valid insert position.
     assert_state!(
         "hello-[\n]>",
-        |(text, sels)| insert_pair_close(text, sels, '(', ')'),
+        |(text, sels)| insert_pair_close(test_fixtures::testing::state(text, sels), '(', ')'),
         "hello(-[)]>\n"
     );
 }
@@ -39,7 +39,7 @@ fn auto_close_before_newline() {
 fn auto_close_square_bracket() {
     assert_state!(
         "-[x]>\n",
-        |(text, sels)| insert_pair_close(text, sels, '[', ']'),
+        |(text, sels)| insert_pair_close(test_fixtures::testing::state(text, sels), '[', ']'),
         "[-[]]>x\n"
     );
 }
@@ -48,7 +48,7 @@ fn auto_close_square_bracket() {
 fn auto_close_symmetric_quote() {
     assert_state!(
         "-[x]>\n",
-        |(text, sels)| insert_pair_close(text, sels, '"', '"'),
+        |(text, sels)| insert_pair_close(test_fixtures::testing::state(text, sels), '"', '"'),
         "\"-[\"]>x\n"
     );
 }
@@ -58,7 +58,7 @@ fn auto_close_multi_cursor() {
     // Two cursors both get auto-closed independently.
     assert_state!(
         "-[a]>b-[c]>d\n",
-        |(text, sels)| insert_pair_close(text, sels, '(', ')'),
+        |(text, sels)| insert_pair_close(test_fixtures::testing::state(text, sels), '(', ')'),
         "(-[)]>ab(-[)]>cd\n"
     );
 }
@@ -68,28 +68,45 @@ fn auto_close_multi_cursor() {
 #[test]
 fn delete_pair_parens() {
     // Text: `(|)` where cursor is on `)`. Both are deleted.
-    assert_state!("(-[)]>\n", |(text, sels)| delete_pair(text, sels), "-[\n]>");
+    assert_state!(
+        "(-[)]>\n",
+        |(text, sels)| delete_pair(test_fixtures::testing::state(text, sels)),
+        "-[\n]>"
+    );
+}
+
+#[test]
+fn delete_pair_of_two_cursors_sharing_a_quote_deletes_all_three_quotes() {
+    assert_state!(
+        "\"-[\"]>-[\"]>\n",
+        |(text, sels)| delete_pair(test_fixtures::testing::state(text, sels)),
+        "-[\n]>"
+    );
 }
 
 #[test]
 fn delete_pair_inside_word() {
     assert_state!(
         "foo(-[)]>bar\n",
-        |(text, sels)| delete_pair(text, sels),
+        |(text, sels)| delete_pair(test_fixtures::testing::state(text, sels)),
         "foo-[b]>ar\n"
     );
 }
 
 #[test]
 fn delete_pair_square() {
-    assert_state!("[-[]]>\n", |(text, sels)| delete_pair(text, sels), "-[\n]>");
+    assert_state!(
+        "[-[]]>\n",
+        |(text, sels)| delete_pair(test_fixtures::testing::state(text, sels)),
+        "-[\n]>"
+    );
 }
 
 #[test]
 fn delete_pair_quote() {
     assert_state!(
         "\"-[\"]>\n",
-        |(text, sels)| delete_pair(text, sels),
+        |(text, sels)| delete_pair(test_fixtures::testing::state(text, sels)),
         "-[\n]>"
     );
 }
@@ -98,7 +115,7 @@ fn delete_pair_quote() {
 fn delete_pair_multi_cursor() {
     assert_state!(
         "(-[)]>(-[)]>\n",
-        |(text, sels)| delete_pair(text, sels),
+        |(text, sels)| delete_pair(test_fixtures::testing::state(text, sels)),
         "-[\n]>"
     );
 }
@@ -355,7 +372,7 @@ fn auto_pair_paren_before_an_accented_letter_is_rejected() {
 fn delete_pair_removes_a_close_delimiter_that_carries_a_combining_mark() {
     assert_state!(
         "(-[)\u{301}]>\n",
-        |(text, sels)| delete_pair(text, sels),
+        |(text, sels)| delete_pair(test_fixtures::testing::state(text, sels)),
         "-[\n]>"
     );
 }

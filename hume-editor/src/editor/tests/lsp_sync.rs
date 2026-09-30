@@ -2,7 +2,7 @@
 // didSave / didClose. The load-bearing test is the version-sync invariant:
 // replaying the recorded protocol stream against an independent reference
 // (hume_lsp's string-mirror, reused via the `test-util` feature) must
-// reproduce the buffer's real final text and text_gen exactly.
+// reproduce the buffer's real final text and generation exactly.
 
 use std::path::Path;
 
@@ -145,7 +145,7 @@ fn did_changes(log: &[(String, serde_json::Value)]) -> Vec<(String, serde_json::
 }
 
 /// Replays `log` against the independent string mirror and asserts it
-/// reproduces the buffer's real text and the real `text_gen`: the invariant
+/// reproduces the buffer's real text and the real the text version: the invariant
 /// every LSP-sync test in this file ultimately checks. `context` names the
 /// scenario in the assertion message (e.g. "a 3-step composed undo").
 fn assert_mirror_matches(
@@ -155,7 +155,7 @@ fn assert_mirror_matches(
     context: &str,
 ) {
     let real_text = ed.state.buffers.get(bid).text().to_string();
-    let real_version = ed.state.buffers.get(bid).text_gen as i64;
+    let real_version = ed.state.buffers.get(bid).text().version().generation() as i64;
     let (mirrored, last_version) = replay(log);
     assert_eq!(
         mirrored, real_text,
@@ -164,7 +164,7 @@ fn assert_mirror_matches(
     assert_eq!(
         last_version,
         Some(real_version),
-        "{context}: the last didChange's version must equal the buffer's real text_gen"
+        "{context}: the last didChange's version must equal the buffer's real generation"
     );
 }
 
@@ -425,7 +425,7 @@ fn reload_flushes_pending_change_before_the_whole_document_didchange() {
 
 /// A byte-identical `:e!` reload (the file on disk hasn't actually changed)
 /// must send no `didChange` at all: `reload_from_text`'s identity branch
-/// never bumps `text_gen`, so there is no new version to announce, and
+/// never changes the text version, so there is no new version to announce, and
 /// `reload_buffer_in_place` must not fall back to sending one at the
 /// buffer's unchanged version (which would be a version regression from the
 /// server's point of view: a second notification carrying a version it
@@ -519,7 +519,7 @@ fn full_sync_server_gets_one_whole_document_didchange_per_flush() {
     assert_eq!(changes[0]["text"], buf.text().to_string());
     assert_eq!(
         params["textDocument"]["version"].as_i64(),
-        Some(buf.text_gen as i64)
+        Some(buf.text().version().generation() as i64)
     );
 }
 

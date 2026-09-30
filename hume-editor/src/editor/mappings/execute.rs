@@ -1,9 +1,7 @@
 use std::borrow::Cow;
 
 use super::super::Editor;
-use super::super::commands;
 use super::super::dispatch::CmdCtx;
-use hume_editing::selection::Selection;
 
 impl Editor {
     /// Resolve a named command and dispatch it through the unified pipeline.
@@ -23,16 +21,5 @@ impl Editor {
 
         let ctx = CmdCtx { count, extend };
         self.dispatch(reg_cmd, ctx);
-    }
-
-    // ── Selection helpers ─────────────────────────────────────────────────────
-
-    /// Replace the primary selection and merge any resulting overlaps.
-    ///
-    /// If the new selection overlaps an existing secondary, both are merged
-    /// into one, so the total selection count may decrease.
-    pub(in super::super) fn set_primary_selection(&mut self, new_sel: Selection) {
-        let t = commands::FocusedPane::current(&self.state).pane();
-        commands::set_primary_selection(&mut self.state, &self.view, t, new_sel);
     }
 }

@@ -4,7 +4,6 @@ use hume_grid::{Rect, Rgb};
 use crate::editor::buffer::Buffer;
 use crate::editor::message_log::Severity;
 use crate::editor::minibuf::history::HistoryKind;
-use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::RenderContext;
 
@@ -76,12 +75,12 @@ fn set_option_applies_jump_list_capacity() {
     let mut ed = editor_from("-[h]>ello\n");
     let pid = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
+    let text = ed.doc().text();
+    let at_start = test_fixtures::testing::single(text, test_fixtures::testing::cursor(text, 0));
     for i in 0..5 {
         ed.state.panes.jumps[pid].push(crate::editor::jump_list::JumpEntry {
             buffer_id: bid,
-            selections: hume_editing::selection::SelectionSet::single(
-                hume_editing::selection::Selection::collapsed(co(0)),
-            ),
+            selections: at_start.clone(),
             primary_line: hume_rope::line::ContentLine::new(i),
         });
     }
@@ -101,9 +100,7 @@ fn set_option_applies_jump_list_capacity() {
     // must still converge to the cap in this one call.
     ed.state.panes.jumps[pid].push(crate::editor::jump_list::JumpEntry {
         buffer_id: bid,
-        selections: hume_editing::selection::SelectionSet::single(
-            hume_editing::selection::Selection::collapsed(co(0)),
-        ),
+        selections: at_start.clone(),
         primary_line: hume_rope::line::ContentLine::new(5),
     });
     assert_eq!(
@@ -522,10 +519,7 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
         r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "tab-width" 8)))"#,
     );
     let focused_bid = ed.focused_buffer_id();
-    let bid2 = ed.open_buffer(Buffer::new(
-        BufferText::from("x\n"),
-        SelectionSet::default(),
-    ));
+    let bid2 = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
     assert_ne!(bid2, focused_bid, "second buffer must not be focused");
 
     let lang = ed.state.config.languages.intern("rust");
@@ -555,10 +549,7 @@ fn get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer() {
         r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "tab-width" 8)))"#,
     );
     let focused_bid = ed.focused_buffer_id();
-    let bid2 = ed.open_buffer(Buffer::new(
-        BufferText::from("x\n"),
-        SelectionSet::default(),
-    ));
+    let bid2 = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
     assert_ne!(bid2, focused_bid, "second buffer must not be focused");
 
     let lang = ed.state.config.languages.intern("rust");
@@ -591,10 +582,7 @@ fn get_buffer_option_closed_bid_errors() {
     use hume_scripting::host::EditorHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let bid2 = ed.open_buffer(Buffer::new(
-        BufferText::from("x\n"),
-        SelectionSet::default(),
-    ));
+    let bid2 = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
     ed.close_buffer(bid2);
 
     let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);

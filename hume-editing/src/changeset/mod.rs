@@ -346,6 +346,9 @@ impl ChangeSet {
                 expected: self.len_before,
             });
         }
+        if self.is_identity() {
+            return Ok(text.clone());
+        }
 
         // Clone the rope (O(1), since ropey uses Arc-based tree nodes). We mutate
         // the clone so that `text` remains valid on the error path.
@@ -390,7 +393,7 @@ impl ChangeSet {
         if !crate::text::is_valid_buffer_rope(&rope) {
             return Err(ApplyError::TrailingNewlineMissing);
         }
-        Ok(BufferText::from_rope(rope, text.line_ending()))
+        Ok(text.successor(rope))
     }
 
     /// Map a single char position from the old document to the new document.
@@ -401,7 +404,7 @@ impl ChangeSet {
     /// start of the deletion (the character is gone).
     ///
     /// One-shot convenience over [`PosMapCursor`]. Batch callers mapping
-    /// several sorted positions (e.g. `SelectionSet::translate_in_place`)
+    /// several sorted positions (e.g. a selection set translated through an edit)
     /// should use `PosMapCursor` directly instead, so the walk isn't
     /// restarted per position. Test-only: the tests use it as a reference
     /// implementation that pins `PosMapCursor`'s per-query semantics.
@@ -507,7 +510,7 @@ impl ChangeSet {
     /// selection. `pub` (not `pub(crate)`) so a caller translating many
     /// independent `SelectionSet`s through the same `ChangeSet` (HUME's
     /// per-pane jump lists) can compute this once and feed it to
-    /// [`crate::selection::SelectionSet::translate_in_place_with`] for each,
+    /// translating each selection set with the same ranges,
     /// rather than paying the O(ops) walk again per list.
     pub fn edited_old_ranges(&self) -> Vec<ExclusiveRange<CharOffset>> {
         self.edited_regions().into_iter().map(|r| r.old).collect()

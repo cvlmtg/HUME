@@ -29,7 +29,7 @@ impl<'a> DisplayLineMap<'a> {
                 RenderDisplayLine {
                     display_line: &format.display_lines[sub],
                     graphemes: &format.graphemes,
-                    line_text: &format.line_texts,
+                    line_text: format.line_text.as_str(),
                     virtual_texts: &format.virtual_texts,
                     base_scope: None,
                 }
@@ -77,7 +77,7 @@ impl<'a> DisplayLineMap<'a> {
             &crate::format::VirtualRun {
                 text: &vl.text,
                 byte_offset: 0, // no buffer position
-                char_offset: usize::MAX,
+                pos: None,
                 indent_depth: 0,
             },
             tab_width,

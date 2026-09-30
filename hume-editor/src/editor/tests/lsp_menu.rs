@@ -111,7 +111,7 @@ fn stray_key_dismisses_the_menu_and_still_executes() {
     arm_three_items(&mut ed, tmp.path());
 
     // 'l' (move-right) is not one of the keys `menu_input` handles.
-    let head_before = ed.current_selections().primary().head();
+    let head_before = ed.current_view().primary().head().offset();
     ed.feed_key(key('l'));
     ed.settle();
 
@@ -121,7 +121,7 @@ fn stray_key_dismisses_the_menu_and_still_executes() {
     );
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
     assert_ne!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         head_before,
         "the stray key must still execute its normal effect"
     );

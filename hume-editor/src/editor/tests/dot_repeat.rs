@@ -742,7 +742,7 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
     let text = state(&ed);
     // "bar" is independently known from the scenario itself (the `.` replays
     // a delete on the word we navigated to with `w`), not read back from
-    // `kill_ring.head()`, so a `.` that fails to push to the ring at all
+    // `kill_ring.head().offset()`, so a `.` that fails to push to the ring at all
     // can't make this pass by accident.
     assert!(
         text.contains("bar"),
@@ -937,7 +937,7 @@ fn dot_repeat_of_select_all_matches_deletes_content() {
 /// (new) primary, and deleting it too.
 ///
 /// If `keep-primary-selection` reset the recipe instead of
-/// composing, `.` would replay `[,, d]` from whatever selection happens to
+/// composing, `.` would replay `[, d]` from whatever selection happens to
 /// remain after the first delete. `,` on a single selection is a no-op, so
 /// `d` would just delete that leftover selection instead of re-running the
 /// search-driven `m/`.
@@ -1452,8 +1452,7 @@ fn dot_repeats_ctrl_w_inside_insert() {
 
     assert_eq!(ed.doc().text().to_string(), "(hi) (bar)\n");
 
-    let (_, sels) = parse_state("(hi) (-[bar]>)\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "(hi) (-[bar]>)\n");
     ed.feed_key(key('.')); // repeat: delete "bar", type "hello", Ctrl-w, type "hi"
 
     assert_eq!(ed.doc().text().to_string(), "(hi) (hi)\n");
@@ -1487,8 +1486,7 @@ fn steel_insert_binding_calling_native_command_is_recorded_for_dot_repeat() {
 
     assert_eq!(ed.doc().text().to_string(), "(hi) (bar)\n");
 
-    let (_, sels) = parse_state("(hi) (-[bar]>)\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "(hi) (-[bar]>)\n");
     ed.feed_key(key('.'));
 
     assert_eq!(ed.doc().text().to_string(), "(hi) (hi)\n");
@@ -1785,8 +1783,7 @@ fn assert_accepted_completion_is_dot_repeated(extra_script: &str, accept: KeyEve
         "got {inputs:?}"
     );
 
-    let (_, sels) = parse_state(&format!("(hello{then}) (-[bar]>)\n"));
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, &format!("(hello{then}) (-[bar]>)\n"));
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -1920,8 +1917,7 @@ fn insert_key_binding_register_prefix_reruns_on_replay() {
     assert_eq!(ed.doc().text().to_string(), "bc def\n");
     assert_eq!(reg(&ed, '3'), vec!["a".to_string()]);
 
-    let (_, sels) = parse_state("bc -[d]>ef\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "bc -[d]>ef\n");
     ed.feed_key(key('.'));
 
     assert_eq!(ed.doc().text().to_string(), "bc ef\n");
@@ -1968,8 +1964,7 @@ fn insert_key_binding_exiting_insert_mid_body_stays_off_the_repeat_slot() {
          not the inner `delete` dispatched after exit-insert"
     );
 
-    let (_, sels) = parse_state("yz -[a]>bc\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "yz -[a]>bc\n");
     ed.feed_key(key('.'));
 
     assert_eq!(
@@ -2012,8 +2007,7 @@ fn insert_key_binding_motion_via_call_is_replayed_before_the_fallback() {
 
     assert_eq!(ed.doc().text().to_string(), "ab;c\ndef\n");
 
-    let (_, sels) = parse_state("ab;c\nd-[e]>f\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "ab;c\nd-[e]>f\n");
     ed.feed_key(key('.'));
 
     assert_eq!(
@@ -2077,8 +2071,7 @@ fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
         "got {inputs:?}"
     );
 
-    let (_, sels) = parse_state("def\nuvw -[x]>yz\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "def\nuvw -[x]>yz\n");
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -2122,12 +2115,14 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
     crate::editor::doc_ops::apply_doc_edit_grouped(
         &mut ed.state.buffers,
         &ed.state.config.decorations,
-        &mut ed.state.panes.state,
-        &mut ed.state.panes.jumps,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut ed.state.panes,
+            &mut ed.state.input,
+        ),
         &mut ed.state.active_session,
         pid,
         bid,
-        |b, s| hume_ops::edit::insert_char(b, s, 'Z'),
+        |s| hume_ops::edit::insert_char(s, 'Z'),
     );
     assert_eq!(ed.doc().text().to_string(), "abc Zdef\nuvw xyz\n");
 
@@ -2162,12 +2157,11 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
 
 /// A binding that edits the buffer *before* opening a picker, with a foreign
 /// edit landing on the same buffer while that picker sits open: the
-/// capture's own `edits` already holds the binding's own edit (computed
-/// against the pre-foreign-edit document) by the time the pick's own edit
-/// arrives (computed against the post-foreign-edit document). `head_before`'s
-/// own doc names this as the one combination its refresh-when-empty check
-/// doesn't cover. Composing the two must not panic on the length mismatch;
-/// the pick is reported and dropped instead.
+/// capture's chain already holds the binding's own edit (computed against
+/// the pre-foreign-edit document) by the time the pick's own edit arrives
+/// (computed against the post-foreign-edit document). A non-empty chain
+/// cannot start over at the current head, so composing the two must not
+/// panic on the length mismatch; the pick is reported and dropped instead.
 #[test]
 fn dot_repeat_drops_a_pick_whose_capture_already_held_an_edit_when_a_foreign_edit_intervened() {
     let tmp = safe_tempdir();
@@ -2200,12 +2194,14 @@ fn dot_repeat_drops_a_pick_whose_capture_already_held_an_edit_when_a_foreign_edi
     crate::editor::doc_ops::apply_doc_edit_grouped(
         &mut ed.state.buffers,
         &ed.state.config.decorations,
-        &mut ed.state.panes.state,
-        &mut ed.state.panes.jumps,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut ed.state.panes,
+            &mut ed.state.input,
+        ),
         &mut ed.state.active_session,
         pid,
         bid,
-        |b, s| hume_ops::edit::insert_char(b, s, 'Z'),
+        |s| hume_ops::edit::insert_char(s, 'Z'),
     );
 
     ed.feed_key(key_enter()); // picks "alpha", runs delete-word-backward
@@ -2278,8 +2274,7 @@ fn dot_repeat_drops_a_dismissed_pickers_binding_entry() {
         "got {inputs:?}"
     );
 
-    let (_, sels) = parse_state("xyhello\n-[w]>orld\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "xyhello\n-[w]>orld\n");
     ed.feed_key(key('.'));
     assert_eq!(ed.doc().text().to_string(), "xyhello\nxyworld\n");
 }
@@ -2324,8 +2319,7 @@ fn dot_repeat_smart_accept_binding_fallback_branch() {
         "the fallback branch is non-interactive, recorded as a re-runnable Binding: {inputs:?}"
     );
 
-    let (_, sels) = parse_state("\thello\n-[w]>orld\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "\thello\n-[w]>orld\n");
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -2378,8 +2372,7 @@ fn dot_repeat_smart_accept_binding_accept_branch() {
         "got {inputs:?}"
     );
 
-    let (_, sels) = parse_state("(hello) (-[bar]>)\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "(hello) (-[bar]>)\n");
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -2412,8 +2405,7 @@ fn dot_repeat_continues_past_a_binding_that_fails_on_replay() {
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "abhello\nworld\n");
 
-    let (_, sels) = parse_state("abhello\n-[w]>orld\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "abhello\n-[w]>orld\n");
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -2448,8 +2440,7 @@ fn dot_repeat_binding_taking_the_interactive_branch_only_on_replay_errors_loudly
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "\thello\nworld\n");
 
-    let (_, sels) = parse_state("\thello\n-[w]>orld\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "\thello\n-[w]>orld\n");
     ed.feed_key(key('.'));
 
     assert!(
@@ -2510,8 +2501,7 @@ fn dot_after_macro_leaves_insert_open_repeats_the_macros_own_session() {
     ed.feed_key(key_ctrl('c')); // the real exit
     assert_eq!(ed.doc().text().to_string(), "foobaryz\nabc\n");
 
-    let (_, sels) = parse_state("foobaryz\n-[a]>bc\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "foobaryz\n-[a]>bc\n");
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -2546,8 +2536,7 @@ fn dot_repeat_completion_trigger_reached_only_on_replay_errors_loudly() {
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "\thello\nworld\n");
 
-    let (_, sels) = parse_state("\thello\n-[w]>orld\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "\thello\n-[w]>orld\n");
     ed.feed_key(key('.'));
 
     assert!(
@@ -2588,8 +2577,7 @@ fn dot_repeat_stops_when_a_binding_leaves_insert_and_then_fails_on_replay() {
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "\tqhello\nworld\n");
 
-    let (_, sels) = parse_state("\tqhello\n-[w]>orld\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "\tqhello\n-[w]>orld\n");
     ed.feed_key(key('.'));
 
     assert!(status(&ed).contains("boom"), "got: {}", status(&ed));
@@ -2637,8 +2625,7 @@ fn dot_repeat_of_an_accept_with_additional_text_edits_replays_only_the_cursor_ed
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "// (hello) (bar)\n");
 
-    let (_, sels) = parse_state("// (hello) (-[bar]>)\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "// (hello) (-[bar]>)\n");
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -2666,8 +2653,7 @@ fn dot_repeat_of_a_multi_cursor_accept_replays_at_every_cursor() {
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "std! std!\nfoo bar\n");
 
-    let (_, sels) = parse_state("std! std!\n-[foo]> -[bar]>\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "std! std!\n-[foo]> -[bar]>\n");
     ed.feed_key(key('.'));
     assert_eq!(ed.doc().text().to_string(), "std! std!\nstd! std!\n");
 }
@@ -2739,8 +2725,7 @@ fn dot_repeat_of_a_binding_that_accepts_then_exits_insert_in_one_body() {
     );
     assert_eq!(ed.doc().text().to_string(), "(hello) (bar)\n");
 
-    let (_, sels) = parse_state("(hello) (-[bar]>)\n");
-    ed.set_current_selections(sels);
+    select_marked(&mut ed, "(hello) (-[bar]>)\n");
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),

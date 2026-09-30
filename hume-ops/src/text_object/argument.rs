@@ -1,66 +1,75 @@
 //! Inner/around argument (comma-separated item) text objects: function
 //! arguments, array items, object fields, or any comma list inside brackets.
 
-use hume_editing::grapheme::{
-    graphemes_at, next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
-};
+use hume_editing::grapheme::{clusters_before, graphemes_at, next_cluster, prev_cluster};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, blank_class};
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 
-use super::{before_delimiter, trim_blank};
+use super::trim_blank;
 use crate::pair::{bracket_role, find_tightest_bracket_pair};
 
-/// One comma segment's inclusive char range, leading and trailing whitespace
-/// included.
-type Segment = InclusiveRange<CharOffset>;
+/// One comma segment, leading and trailing whitespace included: the clusters
+/// from `start` up to the delimiter cluster (comma or closing bracket) at
+/// `stop`. Empty when `start == stop`, as between the commas of `(a,,b)`.
+#[derive(Clone, Copy)]
+struct Segment {
+    start: ClusterStart,
+    stop: ClusterStart,
+}
 
-/// Collect all comma-separated segments at depth 0 between `open_pos` and `close_pos`.
-///
-/// Returns a vec of inclusive char-index ranges, one per segment, including
-/// leading/trailing whitespace. Commas inside a nested bracket pair (any
-/// `BRACKET_PAIRS` type, via [`bracket_role`], the same table
-/// [`find_tightest_bracket_pair`] resolves `open_pos`/`close_pos` against) are
-/// skipped. Returns an empty vec for adjacent brackets (`()`).
-fn find_comma_segments(
-    text: &BufferText,
-    open_pos: CharOffset,
-    close_pos: CharOffset,
-) -> Vec<Segment> {
-    // Content zone: the clusters between the delimiters' own clusters. Empty
-    // when the delimiters are adjacent.
-    let content_start = next_grapheme_boundary(text, open_pos);
-    if snap_to_cluster_start(text, close_pos) <= content_start {
-        return Vec::new();
+impl Segment {
+    fn contains(self, pos: ClusterStart) -> bool {
+        self.start <= pos && pos < self.stop
     }
-    let content_end = before_delimiter(text, close_pos); // inclusive
+
+    /// The segment's clusters, or `None` when it is empty.
+    fn range(self, text: &BufferText) -> Option<ClusterRange> {
+        ClusterRange::between(text.full_slice(), self.start, self.stop.into())
+    }
+}
+
+/// Collect all comma-separated segments at depth 0 inside the bracket pair
+/// `pair`.
+///
+/// Commas inside a nested bracket pair (any `BRACKET_PAIRS` type, via
+/// [`bracket_role`], the same table [`find_tightest_bracket_pair`] resolves
+/// `pair` against) are skipped. Returns an empty vec for adjacent brackets
+/// (`()`).
+fn find_comma_segments(text: &BufferText, pair: ClusterRange) -> Vec<Segment> {
+    let close = pair.last();
+    let Some(content_start) = next_cluster(text, pair.start()).filter(|&c| c < close) else {
+        return Vec::new();
+    };
 
     let mut segments = Vec::new();
     let mut seg_start = content_start;
     let mut depth = 0usize;
 
     for (i, ch) in text
-        .chars_at(content_start)
-        .take(content_end.chars_since(content_start) + 1)
+        .chars_at(content_start.offset())
+        .take(close.offset().chars_since(content_start.offset()))
     {
         match bracket_role(ch) {
             Some((_, true)) => depth += 1,
             Some((_, false)) => depth = depth.saturating_sub(1),
             None if ch == ',' && depth == 0 => {
-                // retreat(1) is safe: seg_start >= content_start >= 1, and this
-                // arm only fires once i has advanced past seg_start.
-                segments.push(InclusiveRange::new(
-                    seg_start,
-                    snap_to_cluster_start(text, i).retreat(1),
-                ));
-                seg_start = next_grapheme_boundary(text, i);
+                let comma = text.snap(i);
+                segments.push(Segment {
+                    start: seg_start,
+                    stop: comma,
+                });
+                seg_start = next_cluster(text, comma).expect("the closing bracket follows");
             }
             None => {}
         }
     }
 
     // Final segment: everything after the last comma, or the whole content if no commas.
-    segments.push(InclusiveRange::new(seg_start, content_end));
+    segments.push(Segment {
+        start: seg_start,
+        stop: close,
+    });
     segments
 }
 
@@ -68,22 +77,16 @@ fn find_comma_segments(
 ///
 /// If `pos` falls in a gap (e.g., on a comma between two segments), associate
 /// it with the following segment, matching Helix/Kakoune behaviour.
-fn which_segment(segments: &[Segment], pos: CharOffset) -> Option<usize> {
-    // Direct containment.
-    for (idx, seg) in segments.iter().enumerate() {
-        if seg.contains(pos) {
-            return Some(idx);
-        }
-    }
-    // pos is in a gap (on a comma). Return the next segment.
-    for idx in 0..segments.len().saturating_sub(1) {
-        let prev_end = segments[idx].end;
-        let next_start = segments[idx + 1].start;
-        if pos > prev_end && pos < next_start {
-            return Some(idx + 1);
-        }
-    }
-    None
+fn which_segment(segments: &[Segment], pos: ClusterStart) -> Option<usize> {
+    segments
+        .iter()
+        .position(|seg| seg.contains(pos))
+        .or_else(|| {
+            segments
+                .windows(2)
+                .position(|w| pos >= w[0].stop && pos < w[1].start)
+                .map(|idx| idx + 1)
+        })
 }
 
 /// Resolve `pos` to its enclosing bracket pair's comma segments and the
@@ -98,21 +101,20 @@ fn which_segment(segments: &[Segment], pos: CharOffset) -> Option<usize> {
 /// already resolved against the outer one.
 fn locate_argument(
     text: &BufferText,
-    pos: CharOffset,
-) -> Option<(Vec<Segment>, usize, CharOffset)> {
+    pos: ClusterStart,
+) -> Option<(Vec<Segment>, usize, ClusterStart)> {
     let pair = find_tightest_bracket_pair(text, pos)?;
-    let (open_pos, close_pos) = (pair.start, pair.end);
 
     // Nudge: if the cursor is on a bracket itself, step into the content zone.
-    let pos = if pos == open_pos {
-        next_grapheme_boundary(text, open_pos)
-    } else if pos == close_pos {
-        before_delimiter(text, close_pos)
+    let pos = if pos == pair.start() {
+        next_cluster(text, pos)?
+    } else if pos == pair.last() {
+        prev_cluster(text, pos.into())?
     } else {
         pos
     };
 
-    let segments = find_comma_segments(text, open_pos, close_pos);
+    let segments = find_comma_segments(text, pair);
     if segments.is_empty() {
         return None;
     }
@@ -139,39 +141,38 @@ fn is_inline_blank(ch: char) -> bool {
     blank_class(ch) == Some(CharClass::Space)
 }
 
-/// Extends `pos` forward while the char immediately after it is blank,
-/// returning the last position still covered by the run (`pos` itself if
-/// the very next char isn't blank).
+/// Extends `pos` forward while the cluster after it is blank, returning the
+/// last cluster still covered by the run (`pos` itself if the very next
+/// cluster isn't blank).
 fn extend_forward_while(
     text: &BufferText,
-    mut pos: CharOffset,
+    pos: ClusterStart,
     blank: impl Fn(char) -> bool,
-) -> CharOffset {
-    for cluster in graphemes_at(text, pos).skip(1) {
-        if !blank(cluster.first) {
-            break;
-        }
-        pos = cluster.start;
-    }
-    pos
+) -> ClusterStart {
+    graphemes_at(text, pos.into())
+        .skip(1)
+        .take_while(|c| blank(c.first()))
+        .last()
+        .map_or(pos, |c| c.start())
 }
 
-/// Extends `pos` backward while the char immediately before it is blank,
-/// returning the position at the start of the run (`pos` itself if the
-/// preceding char isn't blank).
+/// Extends `pos` backward while the cluster before it is blank, returning
+/// the first cluster of the run (`pos` itself if the preceding cluster isn't
+/// blank).
 fn extend_backward_while(
     text: &BufferText,
-    mut pos: CharOffset,
+    pos: ClusterStart,
     blank: impl Fn(char) -> bool,
-) -> CharOffset {
-    while pos > CharOffset::new(0) {
-        let prev = prev_grapheme_boundary(text, pos);
-        if !text.char_at(prev).is_some_and(&blank) {
-            break;
-        }
-        pos = prev;
-    }
-    pos
+) -> ClusterStart {
+    clusters_before(text, pos.into())
+        .take_while(|c| blank(c.first()))
+        .last()
+        .map_or(pos, |c| c.start())
+}
+
+/// Whether the cluster at `pos` is a comma.
+fn is_comma(text: &BufferText, pos: ClusterStart) -> bool {
+    text.char_at(pos.offset()) == Some(',')
 }
 
 /// Inner argument: the text of the comma-separated item at `pos`, with leading
@@ -179,11 +180,10 @@ fn extend_backward_while(
 ///
 /// Works for function arguments `foo(a, b)`, array items `[1, 2]`, object
 /// fields `{x: 1, y: 2}`, and any comma-separated list inside brackets.
-pub fn inner_argument(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
+pub fn inner_argument(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
     let (segments, idx, _) = locate_argument(text, pos)?;
-    trim_blank(text, segments[idx])
+    trim_blank(text, segments[idx].range(text)?)
 }
-
 /// Derives an argument's "around" span from its "inner" span by locating its
 /// separator comma: HUME's own rule, independent of how the inner span was
 /// found (the lexical scan below, or a tree-sitter `parameter.inside`
@@ -204,25 +204,22 @@ pub fn inner_argument(text: &BufferText, pos: CharOffset) -> Option<InclusiveRan
 /// `is_inline_blank`). A line break there belongs to the *next*
 /// argument's indentation. An only argument matches neither rule and is
 /// returned unchanged.
-pub fn around_from_inner(
-    text: &BufferText,
-    inner: InclusiveRange<CharOffset>,
-) -> InclusiveRange<CharOffset> {
-    let (start, end) = (inner.start, inner.end);
-    let before = extend_backward_while(text, start, is_blank);
-    if before > CharOffset::new(0) {
-        let comma = prev_grapheme_boundary(text, before);
-        if text.char_at(comma) == Some(',') {
-            let new_end = extend_forward_while(text, end, is_blank);
-            return InclusiveRange::new(comma, new_end);
-        }
+pub fn around_from_inner(text: &BufferText, inner: ClusterRange) -> ClusterRange {
+    let through = |first, last| {
+        ClusterRange::through(text.full_slice(), first, last).expect("first precedes last")
+    };
+    let before = extend_backward_while(text, inner.start(), is_blank);
+    if let Some(comma) = prev_cluster(text, before.into())
+        && is_comma(text, comma)
+    {
+        return through(comma, extend_forward_while(text, inner.last(), is_blank));
     }
 
-    let after = extend_forward_while(text, end, is_blank);
-    let comma = next_grapheme_boundary(text, after);
-    if text.char_at(comma) == Some(',') {
-        let new_end = extend_forward_while(text, comma, is_inline_blank);
-        return InclusiveRange::new(before, new_end);
+    let after = extend_forward_while(text, inner.last(), is_blank);
+    if let Some(comma) = next_cluster(text, after)
+        && is_comma(text, comma)
+    {
+        return through(before, extend_forward_while(text, comma, is_inline_blank));
     }
 
     inner
@@ -231,7 +228,7 @@ pub fn around_from_inner(
 /// Around argument: the item plus its separator comma, so that deleting
 /// around leaves a clean, properly-spaced list. See [`around_from_inner`]
 /// for the separator rule itself.
-pub fn around_argument(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
+pub fn around_argument(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
     let (segments, idx, nudged_pos) = locate_argument(text, pos)?;
 
     if segments.len() == 1 {
@@ -243,12 +240,12 @@ pub fn around_argument(text: &BufferText, pos: CharOffset) -> Option<InclusiveRa
         // inner_argument would just re-resolve the same pair and segments
         // this call already has, so trim directly instead.
         return if nudged_pos == pos {
-            trim_blank(text, segments[idx])
+            trim_blank(text, segments[idx].range(text)?)
         } else {
             inner_argument(text, nudged_pos)
         };
     }
 
-    let inner = trim_blank(text, segments[idx])?;
+    let inner = trim_blank(text, segments[idx].range(text)?)?;
     Some(around_from_inner(text, inner))
 }

@@ -7,12 +7,14 @@
 //! that makes N one-line selections an N-way no-op: there's nothing for a
 //! per-line shell invocation to reorder against.
 
-use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::lines::{char_col_in_line, line_break_char, line_last_char, next_line_start};
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::edit::Edited;
+use hume_editing::edit::{Landings, edit};
+use hume_editing::lines::{line_break, line_start};
+use hume_editing::selection::{EditView, UnboundSelection};
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::{ExclusiveRange, InclusiveRange};
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use unicode_normalization::UnicodeNormalization;
 
 /// Flags accepted by `:sort`.
@@ -45,18 +47,16 @@ struct SortEntry {
 /// Sort each maximal run of line-adjacent entries touched by a selection,
 /// keyed by the selected text on that line. Groups sort independently: text
 /// never moves between groups.
-pub fn sort_lines(
-    text: BufferText,
-    sels: SelectionSet,
-    opts: SortOpts,
-) -> Result<(BufferText, SelectionSet, ChangeSet), SortRefusal> {
-    let entries = collect_entries(&text, &sels);
+pub fn sort_lines(state: EditState, opts: SortOpts) -> Result<Edited, SortRefusal> {
+    let view = state.view();
+    let text = state.text();
+    let entries = collect_entries(&view);
     let groups = group_adjacent(&entries);
 
-    let mut b = ChangeSetBuilder::new(text.end());
     let mut any_group = false;
-    let mut any_edit = false;
-    // Old line -> new line, populated only for entries that actually move.
+    // Each moved slot's old content range, and the content that lands there.
+    let mut moves: Vec<(ExclusiveRange<CharOffset>, CharOffset, String)> = Vec::new();
+    // Old line -> new line, only for entries that move.
     let mut line_map = rustc_hash::FxHashMap::<ContentLine, ContentLine>::default();
 
     for group in &groups {
@@ -73,39 +73,63 @@ pub fn sort_lines(
             }
         }
 
-        let Some((lo, hi)) = trimmed_window(&order) else {
-            continue; // fully identity, nothing to write for this group
-        };
-        any_edit = true;
-
-        let edit_start = text.line_to_char(entries[group[lo]].line.into());
-        let edit_end = next_line_start(&text, entries[group[hi]].line.into());
-        b.retain(edit_start.chars_since(b.old_pos()));
-        b.delete(edit_end.chars_since(edit_start));
-        for &local in &order[lo..=hi] {
-            let line = entries[group[local]].line;
-            let start = text.line_to_char(line.into());
-            let end = next_line_start(&text, line.into());
-            b.insert(&text.slice(ExclusiveRange::new(start, end)).to_string());
+        // Each moved slot's content is replaced by the content of the line
+        // that lands there; every line keeps its own '\n'.
+        for (slot, &local) in order.iter().enumerate() {
+            if slot == local {
+                continue;
+            }
+            let target = entries[group[slot]].line;
+            let source = entries[group[local]].line;
+            let content = text.slice(line_content(text, source)).to_string();
+            moves.push((
+                line_content(text, target),
+                text.line_to_char(target.into()),
+                content,
+            ));
         }
     }
 
     if !any_group {
         return Err(SortRefusal::NoAdjacentLines);
     }
-    if !any_edit {
+    if moves.is_empty() {
         return Err(SortRefusal::AlreadySorted);
     }
 
-    b.retain_rest();
-    let cs = b.finish();
-    let new_text = cs
-        .apply(&text)
-        .expect("sort produced an invalid changeset: this is a bug");
+    let primary = view.primary().index();
+    Ok(edit(&state, |b| {
+        for (old_content, line_start, content) in &moves {
+            b.delete(*old_content);
+            b.insert(*line_start, content);
+        }
+        // A selection on one moved line follows the line to its new place. A
+        // selection over several lines keeps each end's line and column, over
+        // whatever content moved beneath it.
+        let landings = view
+            .iter()
+            .map(|sel| {
+                let lines = sel.lines();
+                let (first, last) = match line_map.get(&lines.start) {
+                    Some(&moved) if lines.start == lines.end => (moved, moved),
+                    _ => (lines.start, lines.end),
+                };
+                UnboundSelection::at_lines(sel, first, last).into()
+            })
+            .collect();
+        Landings::new(landings, primary)
+    }))
+}
 
-    let new_sels = remap_selections(&text, &new_text, &sels, &line_map);
-    new_sels.debug_assert_valid(&new_text);
-    Ok((new_text, new_sels, cs))
+/// `line` without its `\n`.
+fn line_content(
+    text: &BufferText,
+    line: ContentLine,
+) -> ExclusiveRange<hume_rope::offset::CharOffset> {
+    ExclusiveRange::new(
+        line_start(text, line).offset(),
+        line_break(text, line).offset(),
+    )
 }
 
 /// Walk every selection and build one [`SortEntry`] per distinct line it
@@ -113,42 +137,22 @@ pub fn sort_lines(
 /// `\n`). A line touched by two selections gets a compound key and never
 /// discards one.
 ///
-/// Entries come out sorted ascending and deduplicated by construction:
-/// selections are visited via `iter_sorted()` (ascending, non-overlapping),
-/// and each one walks its own lines in order.
-fn collect_entries(text: &BufferText, sels: &SelectionSet) -> Vec<SortEntry> {
+/// Entries come out sorted ascending and deduplicated: selections are
+/// visited in document order (ascending, non-overlapping), and each one
+/// walks its own lines in order.
+fn collect_entries(view: &EditView<'_>) -> Vec<SortEntry> {
+    let text = view.text();
     let mut entries: Vec<SortEntry> = Vec::new();
-    for sel in sels.iter_sorted() {
-        let start_line = text.char_to_line(sel.start());
-        let end_line = text.char_to_line(sel.end_inclusive(text));
-        // Bare-`usize` range, `ContentLine` re-minted each iteration:
-        // `ContentLine` has no `Step`/`Range` impl to loop over directly (see
-        // CLAUDE.md's "Line counts and ranges"). Sound here: both endpoints
-        // are already-valid `ContentLine`s.
-        for line_idx in start_line.index()..=end_line.index() {
-            let line = ContentLine::new(line_idx);
-            let line_start = text.line_to_char(line.into());
-            // This line's own trailing '\n'.
-            let nl = line_break_char(text, line);
-            let fragment = if nl > line_start {
-                // On the selection's own start/end line, clamp to the part of
-                // the line actually selected; on lines in between (a
-                // multi-line span), the whole line's content qualifies.
-                let seg_start = sel.start().max(line_start);
-                let seg_end_incl = sel.end_inclusive(text).min(line_last_char(text, line));
-                if seg_start <= seg_end_incl {
-                    text.slice(InclusiveRange::new(seg_start, seg_end_incl).to_exclusive())
-                        .to_string()
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new() // blank line: no content to key on
-            };
+    for sel in view.iter() {
+        for span in sel.line_spans() {
+            let fragment = span
+                .content
+                .map(|range| text.slice(range.chars()).to_string())
+                .unwrap_or_default();
             match entries.last_mut() {
-                Some(last) if last.line == line => last.key.push_str(&fragment),
+                Some(last) if last.line == span.line => last.key.push_str(&fragment),
                 _ => entries.push(SortEntry {
-                    line,
+                    line: span.line,
                     key: fragment,
                 }),
             }
@@ -237,60 +241,4 @@ fn invert(order: &[usize]) -> Vec<usize> {
         inv[local] = slot;
     }
     inv
-}
-
-/// The smallest `[lo, hi]` window covering every slot that actually moved
-/// (`order[slot] != slot`), or `None` if the group is already in order.
-///
-/// Because `order` is a bijection on `0..n` and everything outside `[lo, hi]`
-/// is a fixed point by construction, `order[lo..=hi]` is necessarily a
-/// permutation of `lo..=hi` itself, so the window never needs to reach outside
-/// itself for a value.
-fn trimmed_window(order: &[usize]) -> Option<(usize, usize)> {
-    let moved = |(slot, &local): (usize, &usize)| local != slot;
-    let lo = order.iter().enumerate().position(moved)?;
-    let hi = order.iter().enumerate().rposition(moved)?;
-    Some((lo, hi))
-}
-
-/// Selections follow their line: a selection confined to a single moved line
-/// is shifted by the same char column offset onto the line's new home. A
-/// selection spanning multiple lines keeps its char range unchanged: the
-/// group's total length is invariant under a line permutation (lines move
-/// verbatim), so the range still points at valid text, just reordered
-/// underneath it.
-///
-/// Adds the column to the new line start directly rather than going through
-/// `place_char_column`: that helper *clamps* a column past the line's content
-/// onto the last real character, which is right when moving between lines of
-/// different lengths but wrong here. A line lands intact at its new home, so
-/// every column on it is still valid, including a head sitting on the line's
-/// own `\n` (what `x` selects), which the clamp would silently pull back onto
-/// the last character.
-fn remap_selections(
-    old_text: &BufferText,
-    new_text: &BufferText,
-    sels: &SelectionSet,
-    line_map: &rustc_hash::FxHashMap<ContentLine, ContentLine>,
-) -> SelectionSet {
-    let mut new_sels = Vec::with_capacity(sels.len());
-    for sel in sels.iter_sorted() {
-        let start_line = old_text.char_to_line(sel.start());
-        let end_line = old_text.char_to_line(sel.end_inclusive(old_text));
-        let moved = if start_line == end_line {
-            line_map.get(&start_line).map(|&new_line| {
-                let anchor_char_col = char_col_in_line(old_text, start_line, sel.anchor());
-                let head_char_col = char_col_in_line(old_text, start_line, sel.head());
-                let new_line_start = new_text.line_to_char(new_line.into());
-                Selection::new(
-                    new_line_start.shift(anchor_char_col.index() as isize),
-                    new_line_start.shift(head_char_col.index() as isize),
-                )
-            })
-        } else {
-            None
-        };
-        new_sels.push(moved.unwrap_or(*sel));
-    }
-    SelectionSet::from_vec_snapped(new_sels, sels.primary_index(), new_text)
 }

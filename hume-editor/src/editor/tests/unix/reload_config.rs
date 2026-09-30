@@ -934,12 +934,8 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
     );
     // A second buffer so `bid`'s close below frees its slot outright instead
     // of hitting the last-buffer scratch-replacement branch.
-    use hume_editing::selection::SelectionSet;
     use hume_editing::text::BufferText;
-    ed.open_buffer(Buffer::new(
-        BufferText::from("x\n"),
-        SelectionSet::default(),
-    ));
+    ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
 
     let mut snapshot = ed.reset_config_state();
     ed.scripting = None;
@@ -1090,7 +1086,7 @@ fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
     // Jump list: jump-backward must still reach the pre-jump position.
     ed.feed_key(key_ctrl('o'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "jump-backward must still return to the position recorded before \
          the reload (start of the buffer, before the goto-last-line jump)"

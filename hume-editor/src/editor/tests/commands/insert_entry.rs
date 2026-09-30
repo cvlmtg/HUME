@@ -22,11 +22,11 @@ fn o_opens_line_below_and_enters_insert() {
 /// newline Enter inserted: a trailing `\n` is a line terminator, not typed
 /// content (see `PaneBufferState::run_ends`'s doc). Verified by yanking the
 /// auto-selected span and checking the register text doesn't end in `\n`:
-/// `is_register_linewise` (`hume-ops/src/register.rs`) reads exactly that,
+/// `is_register_linewise` (`hume-ops/src/register.rs`) reads that,
 /// and a register ending in `\n` is what makes a later `p` paste as a new
 /// line instead of inline, the same root cause that flips `:format-source`
-/// between whole-document and single-range formatting (`is_selection_linewise`,
-/// `hume-editing/src/selection/single.rs`).
+/// between whole-document and single-range formatting (`SelectionView::is_linewise`,
+/// `hume-editing/src/selection/view.rs`).
 #[test]
 fn o_type_enter_esc_selects_charwise_typed_text() {
     use hume_ops::register::CLIPBOARD_REGISTER;

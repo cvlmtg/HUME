@@ -3,7 +3,6 @@ use crate::editor::buffer::{DiskCheckTrigger, DiskState};
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{DrawerLayer, MenuLayer};
 use crate::editor::input_stack::{PickerItem, PickerSession};
-use hume_editing::selection::Selection;
 use hume_grid::Rect;
 use hume_scripting::host::PickerOpts;
 use pretty_assertions::assert_eq;
@@ -106,9 +105,13 @@ fn drag_extends_selection_from_click_anchor() {
     ed.handle_input(mouse_left_down(0, 0)); // anchor at char 0
     ed.handle_input(mouse_drag(4, 0)); // head at char 4 ('4')
 
-    let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor(), co(0));
-    assert_eq!(sel.head(), co(4), "drag head must resolve to content col 4");
+    let sel = ed.current_view().primary();
+    assert_eq!(sel.anchor().offset(), co(0));
+    assert_eq!(
+        sel.head().offset(),
+        co(4),
+        "drag head must resolve to content col 4"
+    );
 }
 
 /// A drag whose coordinates fall inside a *different* pane's rect (a fast
@@ -132,7 +135,7 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     // gutter(4) + content col 3 (see vsplit_click_... below for the geometry).
     ed.handle_input(mouse_left_down(57, 0));
     assert_eq!(ed.state.focus.id(), pid_b);
-    let head_after_click = ed.current_selections().primary().head();
+    let head_after_click = ed.current_view().primary().head().offset();
 
     // Drag to col 0, inside pane A's rect (x ∈ [0, 49)), left of pane B's
     // own rect.x (50). Without `rect_relative`'s `contains` guard, `x - rect.x`
@@ -140,7 +143,7 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     ed.handle_input(mouse_drag(0, 0));
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         head_after_click,
         "a drag that crosses into another pane's rect must be ignored"
     );
@@ -180,7 +183,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
         .doc()
         .text()
         .line_to_char(hume_rope::line::RopeyLine::new(15));
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(head)));
+    select(&mut ed, &[(head.index(), head.index())], 0);
 
     ed.handle_input(mouse_wheel(false));
 
@@ -192,7 +195,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(12),
         "cursor must move with the viewport so it stays at the same screen row (5)"
     );
@@ -212,7 +215,7 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
         ed.view.panes[pid].viewport.top().line,
         hume_rope::line::ContentLine::new(0)
     );
-    assert_eq!(ed.current_selections().primary().head(), co(0));
+    assert_eq!(ed.current_view().primary().head().offset(), co(0));
 }
 
 /// `scroll_view` always
@@ -237,7 +240,7 @@ fn scroll_down_moves_the_cursor_even_when_the_document_already_fits_on_screen() 
         "nothing to scroll: the 3-line document already fits"
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(2), // "b"'s start
         "top has no room to retreat further, so the band clamp leaves the \
          landing at row 1 rather than forcing it down to margin"
@@ -257,11 +260,11 @@ fn a_wheel_notch_that_can_move_nothing_keeps_the_selection() {
     ed.handle_input(mouse_wheel(true));
 
     assert_eq!(
-        ed.current_selections().primary().anchor(),
+        ed.current_view().primary().anchor().offset(),
         co(0),
         "the selection must survive a scroll notch that moves no head"
     );
-    assert_eq!(ed.current_selections().primary().head(), co(2));
+    assert_eq!(ed.current_view().primary().head().offset(), co(2));
 }
 
 /// A collapsed split (0 rows) has no bottom row to bound a scroll against:
@@ -324,7 +327,13 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let head = |ed: &Editor, pid| ed.state.panes.state[pid][bid].selections().primary().head();
+    let head = |ed: &Editor, pid| {
+        ed.state.panes.state[pid][bid]
+            .view(ed.state.buffers.get(bid).text())
+            .primary()
+            .head()
+            .offset()
+    };
     assert_eq!(
         head(&ed, pid_a),
         co(0),
@@ -423,14 +432,18 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         .text()
         .line_to_char(hume_rope::line::RopeyLine::new(15));
     ed.state.panes.state[pid_a][bid].set_selections(
-        SelectionSet::single(Selection::collapsed(head_a)),
+        test_fixtures::testing::single(
+            ed.state.buffers.get(bid).text(),
+            test_fixtures::testing::cursor(ed.state.buffers.get(bid).text(), head_a.index()),
+        ),
         ed.state.buffers.get(bid).text(),
     );
 
     let head_b_before = ed.state.panes.state[pid_b][bid]
-        .selections()
+        .view(ed.state.buffers.get(bid).text())
         .primary()
-        .head();
+        .head()
+        .offset();
 
     // Wheel at screen col 7 (inside pane A's rect, gutter width 0; see
     // `vsplit_click_...`'s doc for why pane A has no gutter).
@@ -448,9 +461,10 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
     );
     assert_eq!(
         ed.state.panes.state[pid_a][bid]
-            .selections()
+            .view(ed.state.buffers.get(bid).text())
             .primary()
-            .head(),
+            .head()
+            .offset(),
         ed.state
             .buffers
             .get(bid)
@@ -465,9 +479,10 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
     );
     assert_eq!(
         ed.state.panes.state[pid_b][bid]
-            .selections()
+            .view(ed.state.buffers.get(bid).text())
             .primary()
-            .head(),
+            .head()
+            .offset(),
         head_b_before,
         "pane B's selection must be untouched"
     );
@@ -498,7 +513,10 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
         .text()
         .line_to_char(hume_rope::line::RopeyLine::new(10));
     ed.state.panes.state[pid_b][bid].set_selections(
-        SelectionSet::single(Selection::collapsed(head_b)),
+        test_fixtures::testing::single(
+            ed.state.buffers.get(bid).text(),
+            test_fixtures::testing::cursor(ed.state.buffers.get(bid).text(), head_b.index()),
+        ),
         ed.state.buffers.get(bid).text(),
     );
 
@@ -543,9 +561,11 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
     // 0..3 lands on 'D': the whole line is the same character).
     ed.handle_input(mouse_left_down(6, 15));
 
-    let sel = ed.state.panes.state[pid_b][bid].selections().primary();
+    let sel = ed.state.panes.state[pid_b][bid]
+        .view(ed.state.buffers.get(bid).text())
+        .primary();
     assert_eq!(
-        ed.doc().text().char_to_line(sel.head()),
+        ed.doc().text().char_to_line(sel.head().offset()),
         hume_rope::line::ContentLine::new(3),
         "row 15 in pane B (rect.y=12) must resolve to buffer line 3, not \
          raw row 15 in the buffer (which would be past EOF) or be rejected \
@@ -771,20 +791,20 @@ fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
     // gutter columns (see `vsplit_click_focuses_and_resolves_against_the_clicked_pane`'s
     // own doc), so column 0 is content, not gutter.
     ed.handle_input(mouse_left_down(0, 1));
-    assert!(ed.state.mouse_drag_anchor.is_some(), "setup: anchor seeded");
+    assert!(ed.state.mouse_drag.is_some(), "setup: anchor seeded");
 
     let start_b = tab_start_x(&ed, tab_b);
     ed.handle_input(mouse_left_down(start_b, 0));
     assert_eq!(ed.state.tabs.current(), tab_b);
     assert!(
-        ed.state.mouse_drag_anchor.is_none(),
+        ed.state.mouse_drag.is_none(),
         "a tab click must clear the previous click's drag anchor"
     );
 
     ed.handle_input(mouse_drag(1, 1));
     // With no anchor, the drag is a no-op: the selection must stay
     // whatever the tab switch left it at, not extend from A's old anchor.
-    assert!(ed.state.mouse_drag_anchor.is_none());
+    assert!(ed.state.mouse_drag.is_none());
 }
 
 // ── Layer gating (input-layer stack) ────────────────────────────────────────
@@ -878,7 +898,7 @@ fn click_with_confirm_open_dismisses_it_without_answering() {
         "declining wasn't recorded; the click never answered the prompt"
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(3),
         "the click's own action still runs, same as a stray key falling through"
     );
@@ -930,7 +950,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
         vec![(&marker("menu-cb"), &vec![SteelVal::BoolV(false)])]
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(3),
         "the click still falls through to move the cursor"
     );
@@ -951,7 +971,7 @@ fn click_under_drawer_falls_through_leaving_it_open() {
 
     ed.handle_input(mouse_left_down(3, 0));
 
-    assert_eq!(ed.current_selections().primary().head(), co(3));
+    assert_eq!(ed.current_view().primary().head().offset(), co(3));
     assert!(ed.state.input.drawer().is_some(), "the drawer stays open");
     assert!(pending_calls(&ed).is_empty());
 }
@@ -1006,5 +1026,5 @@ fn click_in_insert_under_completion_ends_insert_and_drops_the_session() {
         ed.state.input.buffer_completion().is_none(),
         "the completion session must not survive Insert ending"
     );
-    assert_eq!(ed.current_selections().primary().head(), co(3));
+    assert_eq!(ed.current_view().primary().head().offset(), co(3));
 }

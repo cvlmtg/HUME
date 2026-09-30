@@ -1,18 +1,19 @@
 //! Word/WORD text objects (`iw`/`aw`, `iW`/`aW`) and the position-based
 //! `mm`/`MM`/nearest-word-on-line family they share with visual-move.
 
-use hume_editing::grapheme::graphemes_at;
-use hume_editing::lines::next_line_start;
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::grapheme::{first_cluster, graphemes_at};
+use hume_editing::lines::line_range;
+use hume_editing::selection::{Facing, Selection, SelectionView};
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::{WordChars, blank_class, is_uppercase_word_boundary, is_word_boundary};
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
 
 use super::apply_text_object_by_mode;
-use crate::word_unit::{IsBoundary, inner_word_impl, prev_nonblank, word_unit_at};
+use crate::word_unit::{IsBoundary, inner_word_impl, is_blank_at, prev_nonblank, word_unit_at};
 use crate::{MotionMode, WordCtx};
 
-/// Find the nearest word within `[line_start, line_end_excl)` from `head`.
+/// Find the nearest word within `[line_start, line_end)` from `head`.
 ///
 /// - If `head` is on a word or punctuation char, returns its inner-word range
 ///   (identical to `inner_word_impl`), or the word plus its whitespace
@@ -30,13 +31,13 @@ use crate::{MotionMode, WordCtx};
 /// `cmd_select_word_nearest_on_line` and `cmd_visual_select_word_nearest_on_line`).
 pub fn nearest_word_on_line(
     text: &BufferText,
-    head: CharOffset,
-    line_start: CharOffset,
-    line_end_excl: CharOffset,
+    head: ClusterStart,
+    line_start: ClusterBound,
+    line_end: ClusterBound,
     around: bool,
     chars: WordChars<'_>,
-) -> Option<InclusiveRange<CharOffset>> {
-    let unit = |pos: CharOffset| {
+) -> Option<ClusterRange> {
+    let unit = |pos: ClusterStart| {
         if around {
             word_unit_at(text, pos, is_word_boundary, line_start, chars)
         } else {
@@ -45,19 +46,19 @@ pub fn nearest_word_on_line(
     };
 
     // Fast path: head is already on a word/punct, so delegate to inner/around unit.
-    if blank_class(text.char_at(head)?).is_none() {
+    if !is_blank_at(text, head) {
         return unit(head);
     }
 
     // Scan LEFT within the given bounds for the first non-whitespace grapheme.
-    let prev_anchor = prev_nonblank(text, head, line_start);
+    let prev_anchor = prev_nonblank(text, head.into(), line_start);
 
     // Scan RIGHT within the given bounds for the first non-whitespace grapheme.
-    let next_anchor = graphemes_at(text, head)
+    let next_anchor = graphemes_at(text, head.into())
         .skip(1)
-        .take_while(|cluster| cluster.start < line_end_excl)
-        .find(|cluster| blank_class(cluster.first).is_none())
-        .map(|cluster| cluster.start);
+        .take_while(|cluster| cluster.end() <= line_end)
+        .find(|cluster| blank_class(cluster.first()).is_none())
+        .map(|cluster| cluster.start());
 
     match (prev_anchor, next_anchor) {
         (None, None) => None,
@@ -67,9 +68,9 @@ pub fn nearest_word_on_line(
             // Pick the word whose nearest edge is closer to `head`; tie → prev.
             // `p` is the last cluster of the prev word's run (nearest edge = p itself).
             // `n` is the first cluster of the next word's run (nearest edge = n itself).
-            let clusters_between = |from, to| {
-                graphemes_at(text, from)
-                    .take_while(|cluster| cluster.start < to)
+            let clusters_between = |from: ClusterStart, to: ClusterStart| {
+                graphemes_at(text, from.into())
+                    .take_while(|cluster| cluster.start() < to)
                     .count()
             };
             let dist_prev = clusters_between(p, head);
@@ -85,30 +86,20 @@ pub fn nearest_word_on_line(
 ///
 /// Returns `sel` unchanged when `found` is `None` (no candidate word in bounds).
 pub fn apply_nearest_word_result(
-    text: &BufferText,
-    sel: Selection,
-    found: Option<InclusiveRange<CharOffset>>,
+    sel: SelectionView<'_>,
+    found: Option<ClusterRange>,
     mode: MotionMode,
 ) -> Selection {
     let Some(range) = found else {
-        return sel;
+        return sel.selection();
     };
-    match mode {
-        MotionMode::Move => {
-            let s = Selection::from_span(range, true, text);
-            match sel.sticky_display_col() {
-                Some(sticky) => Selection::with_sticky_display_col(s.anchor(), s.head(), sticky),
-                None => s,
-            }
-        }
-        MotionMode::Extend => {
-            let forward = sel.anchor() <= sel.head();
-            let s = sel.union_span(range, forward, text);
-            match sel.sticky_display_col() {
-                Some(sticky) => Selection::with_sticky_display_col(s.anchor(), s.head(), sticky),
-                None => s,
-            }
-        }
+    let s = match mode {
+        MotionMode::Move => Selection::covering(range, Facing::Forward),
+        MotionMode::Extend => sel.union(range, sel.facing()),
+    };
+    match sel.selection().sticky_display_col() {
+        Some(sticky) => s.with_sticky(sticky),
+        None => s,
     }
 }
 
@@ -128,42 +119,37 @@ pub fn apply_nearest_word_result(
 /// In `Extend` mode the matched word range is unioned with the existing
 /// selection, matching the behaviour of `inner-word` in extend mode.
 pub fn cmd_select_word_nearest_on_line(
-    text: &BufferText,
-    sels: SelectionSet,
+    state: EditState,
     _count: usize,
     ctx: WordCtx<'_>,
-) -> SelectionSet {
-    let result = sels.map(|sel| {
-        let line = text.char_to_line(sel.anchor());
-        let line_start = text.line_to_char(line.into());
-        let line_end_excl = next_line_start(text, line.into());
+) -> EditState {
+    state.map(|sel| {
+        let text = sel.text();
+        let line = line_range(text, text.char_to_line(sel.anchor().offset()));
         let found = nearest_word_on_line(
             text,
             sel.anchor(),
-            line_start,
-            line_end_excl,
+            line.start().into(),
+            line.end(),
             ctx.around,
             ctx.chars,
         );
-        apply_nearest_word_result(text, sel, found, ctx.mode)
-    });
-    result.debug_assert_valid(text);
-    result
+        apply_nearest_word_result(sel, found, ctx.mode)
+    })
 }
 
-type WordUnitFn =
-    fn(&BufferText, CharOffset, IsBoundary, WordChars<'_>) -> Option<InclusiveRange<CharOffset>>;
+type WordUnitFn = fn(&BufferText, ClusterStart, IsBoundary, WordChars<'_>) -> Option<ClusterRange>;
 
-/// [`word_unit_at`] with `min_start` pinned to `0`: the shape every
-/// text-object command below needs, as opposed to the sticky-column motion
-/// path, which passes a nonzero visual-line floor.
+/// [`word_unit_at`] with `min_start` pinned to the text start: the shape
+/// every text-object command below needs, as opposed to the sticky-column
+/// motion path, which passes a visual-line floor.
 fn around_unit(
     text: &BufferText,
-    pos: CharOffset,
+    pos: ClusterStart,
     is_boundary: IsBoundary,
     chars: WordChars<'_>,
-) -> Option<InclusiveRange<CharOffset>> {
-    word_unit_at(text, pos, is_boundary, CharOffset::new(0), chars)
+) -> Option<ClusterRange> {
+    word_unit_at(text, pos, is_boundary, first_cluster(text).into(), chars)
 }
 
 /// Shared dispatch for the four word-object commands below: resolves the
@@ -171,14 +157,13 @@ fn around_unit(
 /// (`is_boundary`: [`is_word_boundary`] or [`is_uppercase_word_boundary`])
 /// and inner-vs-around (`word_unit`: [`inner_word_impl`] or [`around_unit`]).
 fn word_object_cmd(
-    text: &BufferText,
-    sels: SelectionSet,
+    state: EditState,
     ctx: WordCtx<'_>,
     is_boundary: IsBoundary,
     word_unit: WordUnitFn,
-) -> SelectionSet {
-    apply_text_object_by_mode(text, sels, ctx.mode, |b, pos| {
-        word_unit(b, pos, is_boundary, ctx.chars)
+) -> EditState {
+    apply_text_object_by_mode(state, ctx.mode, |t, pos| {
+        word_unit(t, pos, is_boundary, ctx.chars)
     })
 }
 
@@ -191,13 +176,8 @@ macro_rules! word_object_variant {
     ($(#[$meta:meta])* $name:ident, $doc:expr, $is_boundary:expr, $word_unit:expr) => {
         $(#[$meta])*
         #[doc = $doc]
-        pub fn $name(
-            text: &BufferText,
-            sels: SelectionSet,
-            _count: usize,
-            ctx: WordCtx<'_>,
-        ) -> SelectionSet {
-            word_object_cmd(text, sels, ctx, $is_boundary, $word_unit)
+        pub fn $name(state: EditState, _count: usize, ctx: WordCtx<'_>) -> EditState {
+            word_object_cmd(state, ctx, $is_boundary, $word_unit)
         }
     };
 }
@@ -237,30 +217,20 @@ word_object_variant!(
 /// whitespace per [`expand_word_unit`](crate::word_unit::expand_word_unit). Both modes use the same unit;
 /// `Extend` unions it with the current selection via
 /// `apply_text_object_extend`.
-pub fn cmd_select_word(
-    text: &BufferText,
-    sels: SelectionSet,
-    count: usize,
-    ctx: WordCtx<'_>,
-) -> SelectionSet {
+pub fn cmd_select_word(state: EditState, count: usize, ctx: WordCtx<'_>) -> EditState {
     if ctx.around {
-        cmd_around_word(text, sels, count, ctx)
+        cmd_around_word(state, count, ctx)
     } else {
-        cmd_inner_word(text, sels, count, ctx)
+        cmd_inner_word(state, count, ctx)
     }
 }
 
 /// Select the WORD under the cursor (`MM`); see [`cmd_select_word`].
 #[allow(non_snake_case)]
-pub fn cmd_select_uppercase_word(
-    text: &BufferText,
-    sels: SelectionSet,
-    count: usize,
-    ctx: WordCtx<'_>,
-) -> SelectionSet {
+pub fn cmd_select_uppercase_word(state: EditState, count: usize, ctx: WordCtx<'_>) -> EditState {
     if ctx.around {
-        cmd_around_uppercase_word(text, sels, count, ctx)
+        cmd_around_uppercase_word(state, count, ctx)
     } else {
-        cmd_inner_uppercase_word(text, sels, count, ctx)
+        cmd_inner_uppercase_word(state, count, ctx)
     }
 }

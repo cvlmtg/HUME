@@ -20,15 +20,20 @@ use super::commands::FocusedPane;
 use super::search::SearchCursor;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::changeset::Assoc;
+use hume_editing::edit::TextChange;
+use hume_editing::selection::{EditView, SelectionSet};
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
+use hume_editing::tracked::Tracked;
+use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// The span typed since an open insert session's entry command positioned the
 /// cursor: one (anchor, end) pair per selection, index-paired and always the
 /// same length (both `Vec`s are seeded together by `begin_typed_run` and
-/// remapped together by `apply_doc_edit_grouped`, which is the only writer
-/// after seeding).
+/// carried together by [`PaneBufferState::carry`], the only writer after
+/// seeding).
 pub(crate) struct TypedRun {
     /// Start of each selection's typed span, kept in post-edit coordinates
     /// with `Assoc::Before`: a keystroke exactly at the anchor is typed
@@ -45,27 +50,25 @@ pub(crate) struct TypedRun {
 /// All per-(pane, buffer) editor state bundled into one struct.
 ///
 /// Stored in `EditorState.panes.state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>`.
-/// Default initialisation is used at every seed site; callers override
-/// `selections` with `buffer.initial_sels()` when seeding for the first time.
-#[derive(Default)]
+/// Every seed site goes through [`fresh_from_buf`], which starts from the
+/// buffer's initial selections.
 pub(crate) struct PaneBufferState {
-    /// The focused pane's cursor / selection state for this buffer. Private:
-    /// every write goes through [`PaneBufferState::set_selections`] or the
-    /// [`PaneBufferState::take_selections`]/[`PaneBufferState::restore_selections`]
-    /// pair, which is what raises [`PaneBufferState::reveal_pending`]; see
-    /// that field's own doc.
+    /// This pane's selections for this buffer. Private: every write goes
+    /// through [`PaneBufferState::set_selections`], [`PaneBufferState::store`]
+    /// or [`PaneBufferState::carry`]; the first two raise
+    /// [`PaneBufferState::reveal_pending`] (see that field's own doc).
     selections: SelectionSet,
     /// Per-pane cursor through the buffer's shared match list.
     pub search_cursor: SearchCursor,
-    /// The open insert session's typed span, kept in post-edit coordinates by
-    /// `apply_doc_edit_grouped`. `Some` from the moment the session's entry
+    /// The open insert session's typed span, carried through every text
+    /// change by [`PaneBufferState::carry`]. `Some` from the moment the session's entry
     /// command positions the cursor (`begin_typed_run`) until
     /// `tear_down_insert` consumes it on exit, for every insert entry
     /// (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…).
-    pub typed_run: Option<TypedRun>,
+    pub typed_run: Option<Tracked<TypedRun>>,
     /// Per-selection range of leading whitespace *this* insert session
-    /// auto-inserted (`o`/`O`/Enter's auto-indent), kept in post-edit
-    /// coordinates by `apply_doc_edit_grouped` the same way `typed_run` is.
+    /// auto-inserted (`o`/`O`/Enter's auto-indent), carried the same way
+    /// `typed_run` is.
     /// `None` when nothing has armed a record yet this session (`i`/`I`/`c`
     /// entry, or before the first Enter/`o`/`O`).
     ///
@@ -78,7 +81,7 @@ pub(crate) struct PaneBufferState {
     /// handler remembering to invalidate a flag: a motion off this line
     /// leaves the record pointing at a line the cursor no longer occupies,
     /// which the containment check rejects on its own.
-    pub autoindent: Option<Vec<ExclusiveRange<CharOffset>>>,
+    pub autoindent: Option<Tracked<Vec<ExclusiveRange<CharOffset>>>>,
     /// Set by `begin_typed_run` from its `ExitCursor` parameter for `a`/`A`/
     /// `o`/`O` entry (never for `i`/`I`/`c`). Decides where an *empty* typed
     /// run's cursor lands on exit: step one grapheme back (so `a<Esc>` is a
@@ -100,13 +103,13 @@ pub(crate) struct PaneBufferState {
     /// frame handled one, raised at the source, not inferred from state.
     ///
     /// Two writers: the selection funnel [`PaneBufferState::set_selections`]/
-    /// `restore_selections` (set whenever a write actually moves *this
+    /// [`PaneBufferState::store`] (set whenever a write actually moves *this
     /// pane's own* primary head; a `commands::scroll_view` that couldn't
     /// carry a selection past a virtual block, say, leaves this `false` for
     /// that write), and `doc_ops::finish_edit`, set for every real edit this
     /// pane makes regardless of whether it moved the head (`r` replacing the
     /// character under an unmoved cursor still deserves a reveal). A sibling
-    /// pane's edit does *not* raise this: `translate_selections_in_place`
+    /// pane's edit does *not* raise this: [`PaneBufferState::carry`]
     /// only remaps the position, leaving the reveal decision for such
     /// external changes to `frame.rs`'s [`PaneBufferState::last_layout_key`]/
     /// [`PaneBufferState::parked`] comparison instead, which is gated on this
@@ -127,7 +130,7 @@ pub(crate) struct PaneBufferState {
     /// toggle, a buffer switch (the very first read for a `(pane, buffer)`
     /// pair is `None`, so it always differs), a decoration-generation
     /// change (inlay hints, EOL text, virtual lines, signs), and any edit to
-    /// the buffer at all (`text_gen`), including one made through a sibling
+    /// the buffer at all (its text version), including one made through a sibling
     /// pane. A changed key reveals only when [`PaneBufferState::parked`] is
     /// `false`: a pane parked behind an unfollowable scroll must not snap
     /// back onto its cursor just because something changed elsewhere in the
@@ -158,71 +161,71 @@ pub(crate) struct PaneBufferState {
 }
 
 impl PaneBufferState {
-    /// Read-only access to the current selections.
+    /// The stored selections, for a caller that keeps or hands them on
+    /// whole; reading them takes a text ([`Self::view`]).
     pub(crate) fn selections(&self) -> &SelectionSet {
         &self.selections
     }
 
-    /// Replace the selections outright, raising [`PaneBufferState::reveal_pending`]
-    /// iff the primary head actually moved. The ordinary write path for a
-    /// caller that already holds the new value (as opposed to
-    /// [`PaneBufferState::take_selections`]'s destructive-read pattern).
+    /// The selections bound to `text`, the buffer's current text.
+    pub(crate) fn view<'a>(&'a self, text: &'a BufferText) -> EditView<'a> {
+        EditView::bind(text, &self.selections)
+    }
+
+    /// The selections paired with `text`, the buffer's current text, as the
+    /// input to a command.
+    pub(in crate::editor) fn state(&self, text: &BufferText) -> EditState {
+        EditState::bind(text, self.selections.clone())
+    }
+
+    /// Store a command's resulting selections, raising
+    /// [`PaneBufferState::reveal_pending`] iff the primary head moved.
+    pub(in crate::editor) fn store(&mut self, state: EditState) {
+        let text = state.text().clone();
+        self.set_selections(state.into_selections(), &text);
+    }
+
+    /// Replace the selections outright with `new`, a set for `text`, the
+    /// buffer's current text, raising [`PaneBufferState::reveal_pending`] iff
+    /// the primary head actually moved.
     pub(in crate::editor) fn set_selections(&mut self, new: SelectionSet, text: &BufferText) {
-        let old_head = self.selections.primary().head();
-        self.restore_selections(new, old_head, text);
-    }
-
-    /// Take ownership of the current selections, replacing them with the
-    /// default (a single collapsed cursor at char 0), for a caller that
-    /// needs to destructively consume them (typically to feed a pure
-    /// `(&BufferText, SelectionSet) -> SelectionSet` motion/edit) without a
-    /// clone. The default is transient: a panic before
-    /// [`PaneBufferState::restore_selections`] runs leaves it in place
-    /// rather than corrupting a partially-applied result, the same
-    /// infallible-closure assumption `apply_doc_motion` already documented.
-    ///
-    /// Pairs with `restore_selections`, which must be called with the
-    /// primary head this returned before this state is next read.
-    pub(in crate::editor) fn take_selections(&mut self) -> SelectionSet {
-        std::mem::take(&mut self.selections)
-    }
-
-    /// Write `new` back after a [`PaneBufferState::take_selections`], raising
-    /// [`PaneBufferState::reveal_pending`] iff `new`'s primary head differs
-    /// from `old_head`, the head `take_selections` returned's own value,
-    /// captured by the caller before transforming it. Comparing against a
-    /// caller-supplied `old_head` rather than `self.selections.primary().head()`
-    /// is what makes this safe to call after `take_selections` already left
-    /// `self.selections` at its transient default.
-    pub(in crate::editor) fn restore_selections(
-        &mut self,
-        mut new: SelectionSet,
-        old_head: CharOffset,
-        text: &BufferText,
-    ) {
-        new.snap_to_clusters(text);
-        if new.primary().head() != old_head {
+        let new = EditState::bind(text, new);
+        if new.view().primary().head() != self.view(text).primary().head() {
             self.reveal_pending = true;
         }
-        self.selections = new;
+        self.selections = new.into_selections();
     }
 
-    /// In-place remap for a sibling pane's selections after an edit another
-    /// pane made to the same buffer. Raises no reveal of its own: a sibling
-    /// edit bumps `text_gen`, which `frame.rs`'s scroll step already reads
-    /// off `EditorState::layout_key` and reveals for, gated on
-    /// [`PaneBufferState::parked`] like every other external change (see
-    /// that field's own doc for why a parked pane must not snap back just
-    /// because the head it can't currently see also moved).
-    pub(in crate::editor) fn translate_selections_in_place(
-        &mut self,
-        edits: &[hume_rope::offset::ExclusiveRange<CharOffset>],
-        cs: &hume_editing::changeset::ChangeSet,
-        text_pre: &BufferText,
-        text_post: &BufferText,
-    ) {
-        self.selections
-            .translate_in_place_with(edits, cs, text_pre, text_post);
+    /// Carry this pane's positions for the buffer through `change`. Raises
+    /// no reveal of its own: a text change moves the text version, which
+    /// `frame.rs`'s scroll step already reads off `EditorState::layout_key`
+    /// and reveals for, gated on [`PaneBufferState::parked`] like every other
+    /// external change (see that field's own doc for why a parked pane must
+    /// not snap back just because the head it can't currently see also
+    /// moved). The pane that made an edit raises its own in `finish_edit`.
+    pub(in crate::editor) fn carry(&mut self, change: &TextChange<'_>) {
+        self.selections.translate(change);
+        // `ChangeSet::map_ranges` maps (start, end) pairs directly, but with
+        // `Assoc::After` on starts and `Assoc::Before` on ends: it shrinks a
+        // range around inserted text. A typed run needs the opposite: it must
+        // grow to include what was just typed, so anchors and ends are mapped
+        // separately with `Assoc` reversed from what `map_ranges` would use.
+        if let Some(run) = self.typed_run.as_mut() {
+            run.translate(change, |run, change| {
+                change
+                    .changes()
+                    .map_positions(&mut run.anchors, Assoc::Before);
+                change.changes().map_positions(&mut run.ends, Assoc::After);
+            });
+        }
+        // Shrinks each record around any edit landing at its
+        // start/end; see `map_ranges`' own doc. That is what makes ownership
+        // self-revoking: text typed past a record's end, or a line split
+        // before its start, falls outside the mapped range without any key
+        // handler needing to clear it.
+        if let Some(ranges) = self.autoindent.as_mut() {
+            ranges.translate(change, |ranges, change| change.changes().map_ranges(ranges));
+        }
     }
 }
 
@@ -233,11 +236,16 @@ impl PaneBufferState {
 /// directly, so that adding a new field with a non-default initialiser requires
 /// only one edit here.
 pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
-    let mut selections = buf.initial_sels();
-    selections.snap_to_clusters(buf.text());
     PaneBufferState {
-        selections,
-        ..PaneBufferState::default()
+        selections: buf.initial_sels(),
+        search_cursor: SearchCursor::default(),
+        typed_run: None,
+        autoindent: None,
+        step_back_on_exit: false,
+        kill_opened_session: false,
+        reveal_pending: false,
+        last_layout_key: None,
+        parked: false,
     }
 }
 
@@ -303,7 +311,7 @@ pub(in crate::editor) fn try_ensure<'a>(
         .or_insert_with(|| fresh_from_buf(buffers.get(bid))))
 }
 
-/// Collapse `pane_state[pid][bid]`'s selection onto `char_pos`, without
+/// Collapse `pane_state[pid][bid]`'s selection onto `pos`, without
 /// switching focus or recording a jump entry. The primitive every cursor
 /// placement outside the focused-buffer fast path (`set_current_selections`)
 /// reduces to: [`park_cursor_at`] is its line/grapheme-column convenience for
@@ -314,21 +322,19 @@ pub(in crate::editor) fn write_cursor(
     panes: &PanePool,
     pid: PaneId,
     bid: BufferId,
-    char_pos: CharOffset,
+    pos: ClusterStart,
 ) {
-    ensure(pane_state, buffers, panes, pid, bid).set_selections(
-        SelectionSet::single(Selection::collapsed(char_pos)),
-        buffers.get(bid).text(),
-    );
+    let text = buffers.get(bid).text();
+    ensure(pane_state, buffers, panes, pid, bid).store(EditState::with_cursor(text.clone(), pos));
 }
 
-/// Resolves a 0-based `(line, grapheme_col)` to a char offset, clamping the
+/// Resolves a 0-based `(line, grapheme_col)` to its cluster, clamping the
 /// line to `text`'s last content line.
-pub(in crate::editor) fn line_grapheme_to_char(
+pub(in crate::editor) fn line_grapheme_to_cluster(
     text: &hume_editing::text::BufferText,
     line0: hume_rope::line::ContentLine,
     grapheme_col0: hume_rope::column::GraphemeCol,
-) -> CharOffset {
+) -> ClusterStart {
     let line = line0.min(text.last_content_line());
     hume_editing::lines::place_grapheme_column(text, line.into(), grapheme_col0)
 }
@@ -346,8 +352,8 @@ pub(in crate::editor) fn park_cursor_at(
     line0: hume_rope::line::ContentLine,
     grapheme_col0: hume_rope::column::GraphemeCol,
 ) {
-    let char_pos = line_grapheme_to_char(buffers.get(bid).text(), line0, grapheme_col0);
-    write_cursor(pane_state, buffers, panes, pid, bid, char_pos);
+    let pos = line_grapheme_to_cluster(buffers.get(bid).text(), line0, grapheme_col0);
+    write_cursor(pane_state, buffers, panes, pid, bid, pos);
 }
 
 /// Groups the three per-pane maps that live on [`super::EditorState`].

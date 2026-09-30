@@ -11,3 +11,7 @@ cc bb7a2503f0843d31d5789a54bb50489d27cb42e5285323f74ca16faf2c0bcc4a # shrinks to
 cc 5435c28a1a82329dc61420903736c3c44e2f1c74526282d84e810edb29398040 # shrinks to mut ed = Editor(buf="hello world\n", mode=Normal), keys = [Char('%'), Char('d'), Char('m'), Char('w'), Char('a')]
 cc 822c8043be5ef63f2cdc12df2af66c78255ef6f2aeb28e8cab4a932e7b85aab1 # shrinks to mut ed = Editor(buf="x\n", mode=Normal), keys = [Char('o'), Esc, Char('y'), Char('p'), Char('{'), Char('u')]
 cc a46bd47d630093132102d7f73c7315779e256f6211f9d914fba8325bbea982d9 # shrinks to mut ed = Editor(buf="hello world\n", mode=Normal), keys = [Char('d'), Char('x'), Char('j'), Char('y'), Char('%'), Char('p'), Char('u')]
+cc 8866bc3f7fc97ef899b7599a473210c4a50afa6e4b8adb9669bbc84416b2411a # shrinks to mut ed = Editor(buf="hello world\n", mode=Normal), keys = [Char('i'), Char('a'), Char('\u{301}'), Char('a'), Backspace, Esc, Char('y'), Char('p')]
+cc 57aef01962309a5ac47cae714e8446a941f6f6b6a53ab3070ce3ab039085f88a # shrinks to mut ed = Editor(buf="e\u{301}x y\u{301}z\n", mode=Normal), keys = [Char('c'), Esc, Char('e'), Char('('), Char('p'), Char('*')]
+cc 7444bc98c98726978fc76b7e0e71d52604df8b98db5c1ae4bf80cb191d8328cb # shrinks to mut ed = Editor(buf="hello world\n", mode=Normal), keys = [Char('a'), Char('\u{301}'), Char('a'), Esc]
+cc d94e2e750c3475db578da529da92d345a83c5f60480bce4267aac88b81729176 # shrinks to mut ed = Editor(buf="hello world\n", mode=Normal), keys = [Char('l'), Char('c'), Char('\u{301}'), Char('a'), Esc]

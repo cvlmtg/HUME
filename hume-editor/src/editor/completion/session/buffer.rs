@@ -5,9 +5,11 @@
 use std::ops::Range;
 
 use hume_editing::changeset::{Assoc, ChangeSet, PosMapCursor};
-use hume_editing::text::BufferText;
+use hume_editing::text::{BufferText, TextVersion};
+use hume_editing::tracked::Tracked;
 use hume_editing::word::{CharClass, WordChars};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use super::super::item::CompletionItem;
@@ -143,10 +145,10 @@ pub(in crate::editor) struct BufferSession {
     /// and `PaneBufferState`'s own `ensure` would otherwise silently
     /// fabricate one (see `accept`'s pane precondition).
     pub(super) pane_id: PaneId,
-    /// Buffer generation as of the last edit this session observed via
+    /// Text version as of the last edit this session observed via
     /// [`Self::observe_edit`]. `accept` rejects if the buffer changed by
     /// any other path since.
-    pub(super) generation: u64,
+    pub(super) version: TextVersion,
     /// The buffer's length as of that same edit: what the next observed
     /// `ChangeSet`'s `len_before` must equal, or an edit reached the buffer
     /// through a path this session never saw.
@@ -161,8 +163,9 @@ pub(in crate::editor) struct BufferSession {
     /// The leftmost live token start among the slots [`Self::rank`] just
     /// gave at least one ranked candidate, folded into that same per-slot
     /// pass rather than recomputed by a second walk over the ranked list on
-    /// every render frame. `None` with nothing ranked.
-    menu_anchor: Option<CharOffset>,
+    /// every render frame, snapped to the cluster holding it. `None` with
+    /// nothing ranked; reads as absent once the text moves past the ranking.
+    menu_anchor: Option<Tracked<ClusterStart>>,
     /// `(slot, item)` pairs a lower-priority slot's plain item (see
     /// [`CompletionItem::is_plain`]) is hidden because a strictly-higher-
     /// priority slot already shows an item with the same `filter_text`,
@@ -175,18 +178,17 @@ pub(in crate::editor) struct BufferSession {
 
 impl BufferSession {
     /// A session on `bid`, shown in `pane_id`, whose text is `len` chars at
-    /// generation `generation`: the state the first [`Self::observe_edit`]
-    /// checks against.
+    /// `version`: the state the first [`Self::observe_edit`] checks against.
     pub(in crate::editor) fn open(
         bid: BufferId,
         pane_id: PaneId,
-        generation: u64,
+        version: TextVersion,
         len: usize,
     ) -> Self {
         Self {
             bid,
             pane_id,
-            generation,
+            version,
             len,
             explicit: false,
             menu_anchor: None,
@@ -212,7 +214,7 @@ impl BufferSession {
     pub(in crate::editor) fn still_valid(&self, state: &EditorState, view: &EngineView) -> bool {
         state.focus.id() == self.pane_id
             && view.panes.get(self.pane_id).map(|p| p.buffer_id) == Some(self.bid)
-            && state.buffers.try_get(self.bid).map(|b| b.text_gen) == Some(self.generation)
+            && state.buffers.try_get(self.bid).map(|b| b.text().version()) == Some(self.version)
     }
 
     /// Whether an explicit `Trigger::Explicit` (Ctrl-Space) has touched
@@ -324,8 +326,8 @@ impl BufferSession {
     /// the buffer through a path this session never observed, which
     /// `ChangeSet::compose` would otherwise turn into a hard panic (its
     /// `len_before`/`len_after` check is a release `assert_eq!`). The caller
-    /// must dismiss the session in that case. `text_gen` is the buffer's
-    /// generation *after* `cs` landed. `text`/`chars` are the live
+    /// must dismiss the session in that case. `version` is the buffer text's
+    /// version *after* `cs` landed. `text`/`chars` are the live
     /// (post-`cs`) document and this buffer's word-chars, threaded through
     /// to [`Invocation::observe`], which needs them only to classify a
     /// newly-included end-of-token slice.
@@ -333,7 +335,7 @@ impl BufferSession {
         &mut self,
         sources: &SourceRegistry,
         cs: &ChangeSet,
-        text_gen: u64,
+        version: TextVersion,
         head: CharOffset,
         text: &BufferText,
         chars: WordChars<'_>,
@@ -342,7 +344,7 @@ impl BufferSession {
             return false;
         }
         self.len = cs.len_after();
-        self.generation = text_gen;
+        self.version = version;
         // Whether any slot's `shown` answer was actually dropped below:
         // the one thing that can change which items dedup compares against,
         // so `recompute_dedup` runs only then, not on every edit.
@@ -428,7 +430,7 @@ impl BufferSession {
     /// ranked list empties, and `menu_anchor` becomes `None`, same as if
     /// every slot's token had fallen out of range.
     pub(in crate::editor) fn rank(&mut self, sources: &SourceRegistry, live: Option<LiveDoc<'_>>) {
-        self.menu_anchor = self
+        let anchor = self
             .core
             .rank_with(sources, Some(&self.dedup_hidden), |inv| {
                 let doc = live.as_ref()?;
@@ -439,6 +441,9 @@ impl BufferSession {
                 // the settle-time validity check dismisses the session.
                 (start <= doc.head).then(|| (token_text(doc.text, start, doc.head), start))
             });
+        self.menu_anchor = anchor
+            .zip(live)
+            .map(|(start, doc)| Tracked::new(doc.text.snap(start), doc.text));
     }
 
     // ── Reads ────────────────────────────────────────────────────────────────
@@ -462,9 +467,11 @@ impl BufferSession {
     /// sources with a ranked candidate. Stable while cycling; moves only
     /// when ranking changes which sources contribute. `None` with nothing
     /// ranked. Computed once per [`Self::rank`] call, not per call to this
-    /// accessor: both this and the per-frame render path need it.
-    pub(in crate::editor) fn menu_anchor_char(&self) -> Option<CharOffset> {
-        self.menu_anchor
+    /// accessor: both this and the per-frame render path need it. `None`
+    /// too when `text`, the buffer's current text, is not the one the
+    /// ranking read.
+    pub(in crate::editor) fn menu_anchor(&self, text: &BufferText) -> Option<ClusterStart> {
+        self.menu_anchor.as_ref()?.get(text).copied()
     }
 
     pub(in crate::editor) fn selected(&self) -> usize {

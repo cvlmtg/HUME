@@ -46,8 +46,8 @@ fn simple_display_line(graphemes: std::ops::Range<usize>) -> DisplayLine {
 fn simple_grapheme(display_col: u32, byte_start: usize, ch_len: usize) -> Grapheme {
     Grapheme {
         byte_range: crate::test_support::byte_range(byte_start, byte_start + ch_len),
-        // char_offset is not needed for render tests (selections handled in style stage).
-        char_offset: byte_start,
+        // No buffer position: the render stage never reads one (selections are styled earlier).
+        pos: None,
         display_col: dc(display_col),
         width: 1,
         content: CellContent::Grapheme,
@@ -117,7 +117,7 @@ fn grapheme_byte_range_past_line_str_asserts() {
     // `format.rs` constructors can't produce an inverted/out-of-range one.
     let graphemes = vec![Grapheme {
         byte_range: crate::test_support::byte_range(0, 5),
-        char_offset: 0,
+        pos: None,
         display_col: dc(0),
         width: 1,
         content: CellContent::Grapheme,
@@ -277,7 +277,7 @@ fn horizontal_scroll_clips_left_columns() {
     let graphemes: Vec<Grapheme> = (0..5u32)
         .map(|i| Grapheme {
             byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
-            char_offset: i as usize,
+            pos: None,
             display_col: dc(i),
             width: 1,
             content: CellContent::Grapheme,
@@ -317,7 +317,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
     let graphemes = vec![
         Grapheme {
             byte_range: crate::test_support::byte_range(0, 3),
-            char_offset: 0,
+            pos: None,
             display_col: dc(0),
             width: 2,
             content: CellContent::Grapheme,
@@ -326,7 +326,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
         },
         Grapheme {
             byte_range: crate::test_support::byte_range(0, 3),
-            char_offset: 0,
+            pos: None,
             display_col: dc(2),
             width: 0,
             content: CellContent::WidthContinuation,
@@ -335,7 +335,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
         },
         Grapheme {
             byte_range: crate::test_support::byte_range(3, 4),
-            char_offset: 1,
+            pos: None,
             display_col: dc(2),
             width: 1,
             content: CellContent::Grapheme,
@@ -377,7 +377,7 @@ fn wide_grapheme_at_the_right_edge_does_not_bleed_past_the_pane() {
     // straddle case above.
     let graphemes = vec![Grapheme {
         byte_range: crate::test_support::byte_range(0, 3),
-        char_offset: 0,
+        pos: None,
         display_col: dc(4),
         width: 2,
         content: CellContent::Grapheme,
@@ -420,7 +420,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
     let graphemes = vec![
         Grapheme {
             byte_range: crate::test_support::byte_range(0, 0),
-            char_offset: usize::MAX,
+            pos: None,
             display_col: dc(0),
             width: 2,
             content: CellContent::Virtual { start: 0, len: 3 },
@@ -429,7 +429,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
         },
         Grapheme {
             byte_range: crate::test_support::byte_range(0, 0),
-            char_offset: usize::MAX,
+            pos: None,
             display_col: dc(2),
             width: 0,
             content: CellContent::WidthContinuation,
@@ -463,7 +463,7 @@ fn indent_guide_drawn_at_inner_tab_stops() {
     let graphemes: Vec<Grapheme> = (0..11u32)
         .map(|i| Grapheme {
             byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
-            char_offset: i as usize,
+            pos: None,
             display_col: dc(i),
             width: 1,
             content: CellContent::Grapheme,
@@ -517,7 +517,7 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
     let mut graphemes: Vec<Grapheme> = (0..6u32)
         .map(|i| Grapheme {
             byte_range: crate::test_support::byte_range(0, 0), // virtual: no buffer bytes
-            char_offset: usize::MAX,
+            pos: None,
             display_col: dc(i),
             width: 1,
             content: CellContent::Virtual { start: i, len: 1 },
@@ -527,7 +527,7 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
         .collect();
     graphemes.extend((0..3u32).map(|i| Grapheme {
         byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
-        char_offset: i as usize,
+        pos: None,
         display_col: dc(6 + i),
         width: 1,
         content: CellContent::Grapheme,
@@ -578,7 +578,7 @@ fn indent_guide_hidden_when_indent_guides_is_false() {
     let graphemes: Vec<Grapheme> = (0..11u32)
         .map(|i| Grapheme {
             byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
-            char_offset: i as usize,
+            pos: None,
             display_col: dc(i),
             width: 1,
             content: CellContent::Grapheme,
@@ -656,7 +656,7 @@ fn indent_guide_not_drawn_on_wrap_display_lines() {
     let graphemes: Vec<Grapheme> = (0..8u32)
         .map(|i| Grapheme {
             byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
-            char_offset: i as usize,
+            pos: None,
             display_col: dc(i),
             width: 1,
             content: CellContent::Grapheme,
@@ -700,7 +700,7 @@ fn indent_guide_leaves_a_reversed_cursor_cell_visibly_distinct() {
     let graphemes: Vec<Grapheme> = (0..11u32)
         .map(|i| Grapheme {
             byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
-            char_offset: i as usize,
+            pos: None,
             display_col: dc(i),
             width: 1,
             content: CellContent::Grapheme,
@@ -794,7 +794,7 @@ fn indicator_content_fills_tab_width() {
     // and spaces at cols 1-3.
     let graphemes = vec![Grapheme {
         byte_range: crate::test_support::byte_range(0, 1),
-        char_offset: 0,
+        pos: None,
         display_col: dc(0),
         width: 4,
         content: CellContent::Whitespace { start: 0, len: 3 }, // "→" is 3 bytes
@@ -827,7 +827,7 @@ fn tab_fill_blanks_its_whole_width() {
     // front of it.
     let graphemes = vec![Grapheme {
         byte_range: crate::test_support::byte_range(0, 1),
-        char_offset: 0,
+        pos: None,
         display_col: dc(0),
         width: 4,
         content: CellContent::TabFill,
@@ -863,7 +863,7 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
     let graphemes = vec![
         Grapheme {
             byte_range: crate::test_support::byte_range(0, 0),
-            char_offset: usize::MAX,
+            pos: None,
             display_col: dc(0),
             width: 2,
             content: CellContent::Virtual { start: 0, len: 2 },

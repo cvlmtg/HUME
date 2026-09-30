@@ -18,30 +18,30 @@
 //! convention from.
 
 use hume_editing::text::BufferText;
+use hume_rope::cluster::ClusterStart;
 use hume_rope::cursor::CharCursor;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use unicode_normalization::char::is_combining_mark;
 
 /// One parsed `<name…>`, `<name…/>`, or `</name>` construct.
 struct Tag {
     closing: bool,
     self_closing: bool,
-    name: InclusiveRange<CharOffset>,
+    name: ExclusiveRange<CharOffset>,
     lt_pos: CharOffset,
     gt_pos: CharOffset,
 }
 
 fn same_name(
     text: &BufferText,
-    a: InclusiveRange<CharOffset>,
-    b: InclusiveRange<CharOffset>,
+    a: ExclusiveRange<CharOffset>,
+    b: ExclusiveRange<CharOffset>,
 ) -> bool {
     // Equal names have equal char counts: a zero-cost rejection that skips
     // two `RopeSlice` tree walks (`slice`'s `PartialEq` only short-circuits on
     // `len_bytes` *after* building both) for the common case of hunting one
     // tag name through many others.
-    a.end.chars_since(a.start) == b.end.chars_since(b.start)
-        && text.slice(a.to_exclusive()) == text.slice(b.to_exclusive())
+    a.end.chars_since(a.start) == b.end.chars_since(b.start) && text.slice(a) == text.slice(b)
 }
 
 /// True if `<!--` starts at `lt_pos`.
@@ -100,19 +100,16 @@ fn parse_tag(
         return None;
     }
     let name_start = i;
-    let mut name_end = i;
     let (mut i, mut ch) = loop {
         match cursor.next()? {
-            (j, c)
+            (_, c)
                 if c.is_alphanumeric()
                     || is_combining_mark(c)
-                    || matches!(c, '_' | ':' | '.' | '-') =>
-            {
-                name_end = j;
-            }
+                    || matches!(c, '_' | ':' | '.' | '-') => {}
             next => break next,
         }
     };
+    let name = ExclusiveRange::new(name_start, i);
 
     let mut last_significant = None;
     let mut brace_depth = 0u32;
@@ -141,7 +138,7 @@ fn parse_tag(
                 return Some(Tag {
                     closing,
                     self_closing: !closing && last_significant == Some('/'),
-                    name: InclusiveRange::new(name_start, name_end),
+                    name,
                     lt_pos,
                     gt_pos: i,
                 });
@@ -221,7 +218,7 @@ fn tag_at(text: &BufferText, pos: CharOffset) -> Option<Tag> {
             return None;
         }
         match parse_tag_at(text, lt_pos) {
-            Some(tag) if InclusiveRange::new(tag.lt_pos, tag.gt_pos).contains(pos) => {
+            Some(tag) if tag.lt_pos <= pos && pos <= tag.gt_pos => {
                 return Some(tag);
             }
             Some(_) => return None,
@@ -326,7 +323,7 @@ fn open_before(text: &BufferText, close: &Tag) -> Option<CharOffset> {
 
 /// Find the matching partner of the tag at `pos`: given the cursor anywhere
 /// inside a `<name…>` or `</name>` construct (its `<`, its `>`, the name, or
-/// an attribute), return the `<` of its partner. `None` when `pos` isn't
+/// an attribute), return the cluster holding its partner's `<`. `None` when `pos` isn't
 /// inside a tag's own markup, the tag is self-closing (no partner), or it's
 /// never closed or opened.
 ///
@@ -334,14 +331,15 @@ fn open_before(text: &BufferText, close: &Tag) -> Option<CharOffset> {
 /// enclosing tag of a *different* name. [`close_after`] and
 /// [`open_before`] each track only the one name they were asked about, so a
 /// stray `</span>` can't drain an unrelated `<div>` off some shared stack.
-pub(crate) fn matching_tag(text: &BufferText, pos: CharOffset) -> Option<CharOffset> {
-    let tag = tag_at(text, pos)?;
+pub(crate) fn matching_tag(text: &BufferText, pos: ClusterStart) -> Option<ClusterStart> {
+    let tag = tag_at(text, pos.offset())?;
     if tag.self_closing {
         return None;
     }
-    if tag.closing {
+    let partner = if tag.closing {
         open_before(text, &tag)
     } else {
         close_after(text, &tag)
-    }
+    }?;
+    Some(text.snap(partner))
 }

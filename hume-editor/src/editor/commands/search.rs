@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use super::super::search::SearchPattern;
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::selection::{Facing, Selection};
+use hume_editing::state::EditState;
 use hume_editing::word::{CharClass, is_word_boundary};
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
@@ -14,8 +15,8 @@ use hume_ops::text_object::inner_word_impl;
 use super::super::input_stack::{PaneSnapshot, SearchLayer, SiftLayer};
 use super::super::{EditorState, MiniBuffer};
 use super::{
-    CommandPane, FocusedPane, doc, effective_word_chars, pane_selections, search_pattern,
-    set_pane_selections, set_primary_selection,
+    CommandPane, FocusedPane, doc, effective_word_chars, pane_selections, pane_view,
+    search_pattern, set_pane_selections, set_primary_selection,
 };
 use crate::editor::error::CommandError;
 
@@ -114,30 +115,30 @@ fn search_jump(
     };
     let regex = Arc::clone(&sp.regex);
     let multi = sp.multi();
-    let matches = &state.buffers.get(bid).search_matches.matches;
+    let text = doc(state, view, t).text();
+    let matches = state.buffers.get(bid).search_matches.matches(text);
     let scan = MatchScan {
-        text: doc(state, view, t).text(),
+        text,
         regex: &regex,
-        cached: (!matches.is_empty()).then_some(matches.as_slice()),
+        cached: (!matches.is_empty()).then_some(matches),
         direction,
         mode,
         seed: MatchSeed::PastSelection,
     };
 
+    let current = EditState::bind(scan.text, pane_selections(state, view, t).clone());
     if multi {
-        let sels = pane_selections(state, view, t).clone();
-        let Some((new_sels, primary_wrapped)) = scan.advance_all(sels, count) else {
+        let Some((new_state, primary_wrapped)) = scan.advance_all(current, count) else {
             return Err(CommandError::transient("no match"));
         };
         t.state_mut(&mut state.panes.state, view)
             .search_cursor
             .wrapped = primary_wrapped;
-        set_pane_selections(state, view, t, new_sels);
+        set_pane_selections(state, view, t, new_state.into_selections());
         return Ok(());
     }
 
-    let primary = pane_selections(state, view, t).primary();
-    match scan.advance(primary, count) {
+    match scan.advance(current.view().primary(), count) {
         Some((new_sel, wrapped)) => {
             t.state_mut(&mut state.panes.state, view)
                 .search_cursor
@@ -199,16 +200,20 @@ pub(in crate::editor) fn cmd_select_all_matches(
         None => return Ok(()),
     };
 
-    let matches = find_all_matches(doc(state, view, t).text(), &regex);
+    let text = doc(state, view, t).text();
+    let matches = find_all_matches(text, &regex);
     if matches.is_empty() {
         return Err(CommandError::transient("no matches"));
     }
 
     let sels: Vec<Selection> = matches
         .into_iter()
-        .map(|span| Selection::new(span.start, span.end))
+        .map(|span| Selection::covering(span, Facing::Forward))
         .collect();
-    set_pane_selections(state, view, t, SelectionSet::from_vec(sels, 0));
+    let selected = EditState::bind(text, pane_selections(state, view, t).clone())
+        .with_selections(sels, 0)
+        .into_selections();
+    set_pane_selections(state, view, t, selected);
     Ok(())
 }
 
@@ -221,9 +226,9 @@ pub(in crate::editor) fn cmd_sift_within(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if pane_selections(state, view, fp.pane())
-        .iter_sorted()
-        .all(Selection::is_collapsed)
+    if pane_view(state, view, fp.pane())
+        .iter()
+        .all(|sel| sel.is_cursor())
     {
         return Ok(());
     }
@@ -252,7 +257,7 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
     let buf_id = t.bid(view);
     let chars = effective_word_chars(state.buffers.get(buf_id), &state.settings);
     let text = doc(state, view, t).text();
-    let primary = pane_selections(state, view, t).primary();
+    let primary = pane_view(state, view, t).primary();
 
     // Always search the word under the head, regardless of any existing selection
     // (matches Vim: `*` targets the word under the cursor, not the visual selection).
@@ -262,20 +267,19 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
     // newline regex; on whitespace, it would expand to the whitespace run itself
     // and set a bare-space pattern (Vim instead scans to the nearest word; HUME
     // deliberately no-ops rather than adding that scan).
-    match chars.classify(text.char_at(primary.head()).unwrap_or('\n')) {
+    match chars.classify(text.char_at(primary.head().offset()).unwrap_or('\n')) {
         CharClass::Eol | CharClass::Space => return Ok(()),
         _ => {}
     }
     let Some(range) = inner_word_impl(text, primary.head(), is_word_boundary, chars) else {
         return Ok(());
     };
-    let (start, end_incl) = (range.start, range.end);
     // Computed here (before set_primary_selection) so the immutable `text`/
     // `chars` borrows end before we mutably borrow state.
-    let word = text.slice(range.to_exclusive()).to_string();
+    let word = text.slice(range.chars()).to_string();
     let pattern = word_search_pattern(&word, chars);
 
-    set_primary_selection(state, view, t, Selection::new(start, end_incl));
+    set_primary_selection(state, view, t, Selection::covering(range, Facing::Forward));
 
     set_search_pattern(state, view, t, SearchFlags::default(), &pattern)
 }
@@ -293,9 +297,7 @@ pub(in crate::editor) fn cmd_search_selection(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let text = doc(state, view, t).text();
-    let primary = pane_selections(state, view, t).primary();
-    let selected = primary.slice(text).to_string();
+    let selected = pane_view(state, view, t).primary().slice().to_string();
 
     // No-op on a bare structural newline (a collapsed cursor sitting on one):
     // a raw `\n` pattern would match every line end, the same "useless

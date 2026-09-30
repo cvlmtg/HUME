@@ -10,8 +10,8 @@ use super::*;
 /// `update_highlight_providers`'s search-match refresh must not run for a
 /// handle-less pane: `super::search::ops::update_buffer_matches` mutates
 /// `Buffer.search_matches` regardless of whether anything can read the
-/// result, so a stale cache left there deliberately (to simulate the
-/// revision drifting since the last real sync) must stay stale.
+/// result, so a stale cache left there on purpose (to simulate the
+/// text drifting since the last real sync) must stay stale.
 #[test]
 fn highlight_bridge_skips_search_cache_refresh_for_handleless_pane() {
     let mut ed = editor_from("-[h]>ello world\n");
@@ -22,33 +22,34 @@ fn highlight_bridge_skips_search_cache_refresh_for_handleless_pane() {
 
     let bid = ed.focused_buffer_id();
     ed = ed.with_search_regex("world");
-    let stale_cache = ed.state.buffers.get(bid).search_matches.cache.clone();
+    let buf = ed.state.buffers.get(bid);
     assert!(
-        stale_cache.is_some(),
+        buf.search_matches.found(buf.text()).is_some(),
         "sanity: with_search_regex populates the cache"
     );
+    let version_before = buf.text().version();
 
-    // Bump the buffer's revision without going through `sync_search_cache`
+    // Change the buffer's text without going through `sync_search_cache`
     // (`handle_key` alone, unlike `feed_key`/`step`, never refreshes the
     // search cache), so the cache above is now stale relative to the live
-    // revision, the same drift `update_buffer_matches`'s doc says a
+    // text, the same drift `update_buffer_matches`'s doc says a
     // non-focused pane's buffer can carry.
     ed.handle_key(key('i'));
     ed.handle_key(key('!'));
     ed.handle_key(key_esc());
     assert_ne!(
-        ed.state.buffers.get(bid).revision_id(),
-        stale_cache.as_ref().unwrap().0,
-        "sanity: the edit bumped the revision"
+        ed.state.buffers.get(bid).text().version(),
+        version_before,
+        "sanity: the edit changed the text version"
     );
 
     let active = ed.view.active_pane_ids();
     let panes = ed.decorated_panes(&active);
     ed.update_highlight_providers(&panes);
 
-    assert_eq!(
-        ed.state.buffers.get(bid).search_matches.cache,
-        stale_cache,
+    let buf = ed.state.buffers.get(bid);
+    assert!(
+        buf.search_matches.found(buf.text()).is_none(),
         "no render entry means no handle to feed: the cache refresh must be \
          skipped, not just its write"
     );

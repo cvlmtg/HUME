@@ -9,7 +9,11 @@ fn goto_next_paragraph_basic() {
     // paragraph), so the span stops at its own text.
     assert_state!(
         "-[h]>ello\nworld\n\nfoo\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "hello\nworld\n\n<[foo]-\n"
     );
 }
@@ -18,7 +22,11 @@ fn goto_next_paragraph_basic() {
 fn goto_next_paragraph_multiline() {
     assert_state!(
         "-[a]>\n\nfoo\nbar\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "a\n\n<[foo\nbar]-\n"
     );
 }
@@ -29,7 +37,11 @@ fn goto_next_paragraph_includes_trailing_gap() {
     // part of the selection too.
     assert_state!(
         "-[a]>\n\nfoo\n\nbar\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "a\n\n<[foo\n\n]-bar\n"
     );
 }
@@ -43,7 +55,11 @@ fn goto_next_paragraph_gap_reaches_buffer_end() {
     // comment.
     assert_state!(
         "-[a]>\n\nb\n\n\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "a\n\n<[b\n\n\n]-"
     );
 }
@@ -54,7 +70,11 @@ fn goto_next_paragraph_multiple_empty_lines() {
     // swallowed reaching "foo", not just the nearer one.
     assert_state!(
         "-[a]>\n\n\nfoo\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "a\n\n\n<[foo]-\n"
     );
 }
@@ -63,7 +83,11 @@ fn goto_next_paragraph_multiple_empty_lines() {
 fn goto_next_paragraph_from_empty_line() {
     assert_state!(
         "-[\n]>\nfoo\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "\n\n<[foo]-\n"
     );
 }
@@ -72,7 +96,11 @@ fn goto_next_paragraph_from_empty_line() {
 fn goto_next_paragraph_no_paragraph_below_is_noop() {
     assert_state!(
         "-[h]>ello\nworld\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[h]>ello\nworld\n"
     );
 }
@@ -81,7 +109,11 @@ fn goto_next_paragraph_no_paragraph_below_is_noop() {
 fn goto_next_paragraph_at_eof_is_noop() {
     assert_state!(
         "hello-[\n]>",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "hello-[\n]>"
     );
 }
@@ -90,7 +122,11 @@ fn goto_next_paragraph_at_eof_is_noop() {
 fn goto_next_paragraph_empty_buffer_is_noop() {
     assert_state!(
         "-[\n]>",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[\n]>"
     );
 }
@@ -100,12 +136,20 @@ fn goto_next_paragraph_sequential() {
     // Two consecutive `}` presses walk through three paragraphs.
     assert_state!(
         "-[a]>\n\nb\n\nc\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "a\n\n<[b\n\n]-c\n"
     );
     assert_state!(
         "a\n\n<[b\n\n]-c\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "a\n\nb\n\n<[c]-\n"
     );
 }
@@ -114,7 +158,11 @@ fn goto_next_paragraph_sequential() {
 fn goto_next_paragraph_count_two_matches_two_presses() {
     assert_state!(
         "-[a]>\n\nb\n\nc\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 2, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            2,
+            MotionMode::Move
+        ),
         "a\n\nb\n\n<[c]-\n"
     );
 }
@@ -125,7 +173,11 @@ fn goto_next_paragraph_count_overshoot_stops_at_last() {
     // one) rather than erroring or wrapping past it.
     assert_state!(
         "-[a]>\n\nb\n\nc\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 5, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            5,
+            MotionMode::Move
+        ),
         "a\n\nb\n\n<[c]-\n"
     );
 }
@@ -136,7 +188,11 @@ fn goto_next_paragraph_count_overshoot_stops_at_last() {
 fn goto_prev_paragraph_basic() {
     assert_state!(
         "hello\n\nwor-[l]>d\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "<[hello\n\n]-world\n"
     );
 }
@@ -145,7 +201,11 @@ fn goto_prev_paragraph_basic() {
 fn goto_prev_paragraph_multiline() {
     assert_state!(
         "foo\nbar\n\nba-[z]>\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "<[foo\nbar\n\n]-baz\n"
     );
 }
@@ -154,7 +214,11 @@ fn goto_prev_paragraph_multiline() {
 fn goto_prev_paragraph_multiple_empty_lines() {
     assert_state!(
         "hello\n\n\nwor-[l]>d\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "<[hello\n\n\n]-world\n"
     );
 }
@@ -163,7 +227,11 @@ fn goto_prev_paragraph_multiple_empty_lines() {
 fn goto_prev_paragraph_no_paragraph_above_is_noop() {
     assert_state!(
         "-[h]>ello\nworld\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[h]>ello\nworld\n"
     );
 }
@@ -174,7 +242,11 @@ fn goto_prev_paragraph_from_gap_selects_nearest_paragraph() {
     // (plus the gap it's already in) is the target.
     assert_state!(
         "hello\n-[\n]>world\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "<[hello\n\n]-world\n"
     );
 }
@@ -186,7 +258,11 @@ fn goto_prev_paragraph_from_gap_selects_nearest_not_the_one_before_it() {
     // an extra paragraph here would land on "foo" instead.
     assert_state!(
         "foo\n\nhello\n-[\n]>world\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "foo\n\n<[hello\n\n]-world\n"
     );
 }
@@ -198,7 +274,11 @@ fn goto_prev_paragraph_from_gap_includes_blank_lines_below_the_cursor() {
     // the last blank line.
     assert_state!(
         "hello\n-[\n]>\nworld\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "<[hello\n\n\n]-world\n"
     );
 }
@@ -208,7 +288,11 @@ fn goto_prev_paragraph_from_leading_gap_is_noop() {
     // Nothing precedes the gap itself: no previous paragraph exists.
     assert_state!(
         "-[\n]>hello\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[\n]>hello\n"
     );
 }
@@ -219,7 +303,11 @@ fn goto_prev_paragraph_count_overshoot_stops_at_first() {
     // first one) rather than erroring or wrapping past it.
     assert_state!(
         "a\n\nb\n\n-[c]>\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 5, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            5,
+            MotionMode::Move
+        ),
         "<[a\n\n]-b\n\nc\n"
     );
 }
@@ -228,12 +316,20 @@ fn goto_prev_paragraph_count_overshoot_stops_at_first() {
 fn goto_prev_paragraph_sequential() {
     assert_state!(
         "a\n\nb\n\n-[c]>\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "a\n\n<[b\n\n]-c\n"
     );
     assert_state!(
         "a\n\n<[b\n\n]-c\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "<[a\n\n]-b\n\nc\n"
     );
 }
@@ -242,7 +338,11 @@ fn goto_prev_paragraph_sequential() {
 fn goto_prev_paragraph_empty_buffer_is_noop() {
     assert_state!(
         "-[\n]>",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "-[\n]>"
     );
 }
@@ -253,7 +353,11 @@ fn goto_prev_paragraph_empty_buffer_is_noop() {
 fn extend_goto_next_paragraph_creates_selection() {
     assert_state!(
         "-[h]>ello\n\nworld\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend
+        ),
         "-[hello\n\nworld]>\n"
     );
 }
@@ -262,7 +366,11 @@ fn extend_goto_next_paragraph_creates_selection() {
 fn extend_goto_next_paragraph_after_move_keeps_both_paragraphs() {
     assert_state!(
         "a\n\n<[b\n\n]-c\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend
+        ),
         "a\n\n-[b\n\nc]>\n"
     );
 }
@@ -271,7 +379,11 @@ fn extend_goto_next_paragraph_after_move_keeps_both_paragraphs() {
 fn extend_goto_prev_paragraph_creates_selection() {
     assert_state!(
         "hello\n\n-[w]>orld\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend
+        ),
         "<[hello\n\nw]-orld\n"
     );
 }
@@ -280,7 +392,11 @@ fn extend_goto_prev_paragraph_creates_selection() {
 fn extend_goto_prev_paragraph_after_move_keeps_both_paragraphs() {
     assert_state!(
         "a\n\n<[b\n\n]-c\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Extend),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend
+        ),
         "<[a\n\nb\n\n]-c\n"
     );
 }
@@ -293,7 +409,11 @@ fn goto_next_paragraph_multi_cursor_merges_when_target_overlaps() {
     // unchanged position (no paragraph below it), so the two merge.
     assert_state!(
         "hello\n\n-[w]>orld\n\n-[f]>oo\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "hello\n\nworld\n\n<[foo]-\n"
     );
 }
@@ -302,7 +422,11 @@ fn goto_next_paragraph_multi_cursor_merges_when_target_overlaps() {
 fn goto_prev_paragraph_multi_cursor() {
     assert_state!(
         "hello\n\n-[w]>orld\n\n-[f]>oo\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "<[hello\n\n]-<[world\n\n]-foo\n"
     );
 }
@@ -330,7 +454,11 @@ fn goto_next_paragraph_crosses_rope_chunk_boundaries() {
     let expected = format!("{padding}\n\n<[foo]-\n");
     assert_state!(
         initial.as_str(),
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         expected.as_str()
     );
 }
@@ -345,7 +473,11 @@ fn goto_prev_paragraph_crosses_rope_chunk_boundaries() {
     let expected = format!("<[{padding}\n\n]-foo\n");
     assert_state!(
         initial.as_str(),
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         expected.as_str()
     );
 }
@@ -354,7 +486,11 @@ fn goto_prev_paragraph_crosses_rope_chunk_boundaries() {
 fn goto_next_paragraph_ending_in_a_combining_mark_covers_the_whole_last_cluster() {
     assert_state!(
         "-[a]>\n\nfoo\nba\u{301}\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_next_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "a\n\n<[foo\nba\u{301}]-\n"
     );
 }
@@ -363,7 +499,11 @@ fn goto_next_paragraph_ending_in_a_combining_mark_covers_the_whole_last_cluster(
 fn goto_prev_paragraph_starting_with_a_wide_char_selects_it_whole() {
     assert_state!(
         "\u{6f22}a\n\nfoo\n-[b]>ar\n",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        |(text, sels)| cmd_goto_prev_paragraph(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
         "<[\u{6f22}a\n\n]-foo\nbar\n"
     );
 }

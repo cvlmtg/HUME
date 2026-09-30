@@ -1,22 +1,33 @@
 use super::*;
-use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::offset::CharOffset;
 use test_fixtures::assert_state;
 
-/// Helper: make a buffer + single-cursor SelectionSet and run a surround
+/// Helper: make a buffer + single-cursor state and run a surround
 /// command, returning the resulting selections as `(anchor, head)` pairs.
 fn run_surround(
     text: &str,
     cursor_pos: usize,
-    f: impl Fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet,
+    f: impl Fn(EditState, usize, MotionMode) -> EditState,
 ) -> Vec<(usize, usize)> {
     let text = BufferText::from(text);
-    let sels = SelectionSet::single(Selection::collapsed(CharOffset::new(cursor_pos)));
-    let result = f(&text, sels, 0, MotionMode::Move);
-    result
-        .iter_sorted()
-        .map(|s| (s.anchor().index(), s.head().index()))
+    let sels = test_fixtures::testing::single(
+        &text,
+        test_fixtures::testing::cursor(&text, (CharOffset::new(cursor_pos)).index()),
+    );
+    pairs(&f(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move,
+    ))
+}
+
+/// Every selection of `state` as `(anchor, head)` char offsets, in order.
+fn pairs(state: &EditState) -> Vec<(usize, usize)> {
+    state
+        .view()
+        .iter()
+        .map(|s| (s.anchor().offset().index(), s.head().offset().index()))
         .collect()
 }
 
@@ -63,6 +74,21 @@ fn surround_no_match_preserves_selection() {
     assert_eq!(sels, vec![(2, 2)]);
 }
 
+#[test]
+fn surround_paren_open_joined_to_a_prepend_mark() {
+    // U+0600 is a prepend mark, so `\u{600}(` is one cluster starting at 0.
+    // The first cursor lands on that cluster's start, not inside it.
+    assert_state!(
+        "\u{600}(-[x]>)\n",
+        |(text, sels)| cmd_surround_paren(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
+        "-[\u{600}(]>x-[)]>\n"
+    );
+}
+
 // ── Quote surround ───────────────────────────────────────────────────────
 
 #[test]
@@ -95,41 +121,43 @@ fn surround_quote_no_match() {
 fn surround_multi_cursor_different_pairs() {
     // (a) [b]: cursor on 'a' (pos 1) and 'b' (pos 5).
     let text = BufferText::from("(a) [b]\n");
-    let sels = SelectionSet::from_vec(
+    let sels = test_fixtures::testing::set(
+        &text,
         vec![
-            Selection::collapsed(CharOffset::new(1)),
-            Selection::collapsed(CharOffset::new(5)),
+            test_fixtures::testing::cursor(&text, 1),
+            test_fixtures::testing::cursor(&text, 5),
         ],
         0,
     );
-    let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
+    let result = cmd_surround_paren(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move,
+    );
     // Only the first cursor is inside parens; second is not.
     // First → cursors on ( and ), second preserved.
-    let pairs: Vec<_> = result
-        .iter_sorted()
-        .map(|s| (s.anchor().index(), s.head().index()))
-        .collect();
-    assert_eq!(pairs, vec![(0, 0), (2, 2), (5, 5)]);
+    assert_eq!(pairs(&result), vec![(0, 0), (2, 2), (5, 5)]);
 }
 
 #[test]
 fn surround_multi_cursor_same_pair_merges() {
     // (hello): two cursors both inside the same parens (pos 1 and 3).
     let text = BufferText::from("(hello)\n");
-    let sels = SelectionSet::from_vec(
+    let sels = test_fixtures::testing::set(
+        &text,
         vec![
-            Selection::collapsed(CharOffset::new(1)),
-            Selection::collapsed(CharOffset::new(3)),
+            test_fixtures::testing::cursor(&text, 1),
+            test_fixtures::testing::cursor(&text, 3),
         ],
         0,
     );
-    let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
+    let result = cmd_surround_paren(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move,
+    );
     // Both produce cursors on (0,0) and (6,6); merge_overlapping deduplicates.
-    let pairs: Vec<_> = result
-        .iter_sorted()
-        .map(|s| (s.anchor().index(), s.head().index()))
-        .collect();
-    assert_eq!(pairs, vec![(0, 0), (6, 6)]);
+    assert_eq!(pairs(&result), vec![(0, 0), (6, 6)]);
 }
 
 #[test]
@@ -137,13 +165,13 @@ fn surround_with_range_selection_uses_head() {
     // (hello): range selection spanning 'ell' (anchor=2, head=4).
     // find_bracket_pair searches from head (pos 4), finds the enclosing ().
     let text = BufferText::from("(hello)\n");
-    let sels = SelectionSet::single(Selection::new(CharOffset::new(2), CharOffset::new(4)));
-    let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
-    let pairs: Vec<_> = result
-        .iter_sorted()
-        .map(|s| (s.anchor().index(), s.head().index()))
-        .collect();
-    assert_eq!(pairs, vec![(0, 0), (6, 6)]);
+    let sels = test_fixtures::testing::single(&text, test_fixtures::testing::sel(&text, 2, 4));
+    let result = cmd_surround_paren(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move,
+    );
+    assert_eq!(pairs(&result), vec![(0, 0), (6, 6)]);
 }
 
 #[test]
@@ -151,13 +179,13 @@ fn surround_with_backward_range_selection() {
     // (hello): backward selection (anchor=4, head=2).
     // head is at pos 2, still inside the parens.
     let text = BufferText::from("(hello)\n");
-    let sels = SelectionSet::single(Selection::new(CharOffset::new(4), CharOffset::new(2)));
-    let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
-    let pairs: Vec<_> = result
-        .iter_sorted()
-        .map(|s| (s.anchor().index(), s.head().index()))
-        .collect();
-    assert_eq!(pairs, vec![(0, 0), (6, 6)]);
+    let sels = test_fixtures::testing::single(&text, test_fixtures::testing::sel(&text, 4, 2));
+    let result = cmd_surround_paren(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move,
+    );
+    assert_eq!(pairs(&result), vec![(0, 0), (6, 6)]);
 }
 
 // ── Pair lookup helpers ──────────────────────────────────────────────────
@@ -236,7 +264,7 @@ fn smart_replace_non_pair_replacement_literal() {
 fn wrap_cursor_selection() {
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| wrap_each_selection(text, sels, '[', ']'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '[', ']'),
         "[h-[]]>ello\n"
     );
 }
@@ -245,7 +273,7 @@ fn wrap_cursor_selection() {
 fn wrap_forward_selection() {
     assert_state!(
         "-[hello]>\n",
-        |(text, sels)| wrap_each_selection(text, sels, '(', ')'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
         "(hello-[)]>\n"
     );
 }
@@ -254,7 +282,7 @@ fn wrap_forward_selection() {
 fn wrap_backward_selection() {
     assert_state!(
         "<[hello]-\n",
-        |(text, sels)| wrap_each_selection(text, sels, '(', ')'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
         "(hello-[)]>\n"
     );
 }
@@ -263,7 +291,7 @@ fn wrap_backward_selection() {
 fn wrap_partial_word() {
     assert_state!(
         "foo -[bar]> baz\n",
-        |(text, sels)| wrap_each_selection(text, sels, '[', ']'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '[', ']'),
         "foo [bar-[]]> baz\n"
     );
 }
@@ -272,7 +300,7 @@ fn wrap_partial_word() {
 fn wrap_multi_cursor_selections() {
     assert_state!(
         "-[ab]>c-[de]>f\n",
-        |(text, sels)| wrap_each_selection(text, sels, '(', ')'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
         "(ab-[)]>c(de-[)]>f\n"
     );
 }
@@ -280,10 +308,10 @@ fn wrap_multi_cursor_selections() {
 #[test]
 fn wrap_multi_line_selection() {
     // Selection spans a newline; the structural trailing `\n` must not be
-    // included in the wrap. end_inclusive clamping to len_chars()-2 guards this.
+    // included in the wrap.
     assert_state!(
         "-[foo\nbar]> baz\n",
-        |(text, sels)| wrap_each_selection(text, sels, '"', '"'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '"', '"'),
         "\"foo\nbar-[\"]> baz\n"
     );
 }
@@ -298,7 +326,11 @@ fn surround_paren_selects_both_parens_around_every_corpus_sample() {
     {
         assert_state!(
             &format!("x\n(-[{s}]>)\n"),
-            |(text, sels)| cmd_surround_paren(&text, sels, 0, MotionMode::Move),
+            |(text, sels)| cmd_surround_paren(
+                test_fixtures::testing::state(text, sels),
+                0,
+                MotionMode::Move
+            ),
             &format!("x\n-[(]>{s}-[)]>\n")
         );
     }
@@ -308,7 +340,7 @@ fn surround_paren_selects_both_parens_around_every_corpus_sample() {
 fn wrap_each_selection_wraps_a_multi_cluster_selection_whole() {
     assert_state!(
         "-[e\u{301}\u{1f468}\u{200d}\u{1f469}]>x\n",
-        |(text, sels)| wrap_each_selection(text, sels, '[', ']'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '[', ']'),
         "[e\u{301}\u{1f468}\u{200d}\u{1f469}-[]]>x\n"
     );
 }

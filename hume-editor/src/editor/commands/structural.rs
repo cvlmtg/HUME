@@ -7,13 +7,14 @@
 
 use std::sync::Arc;
 
-use hume_editing::selection::SelectionSet;
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_ops::MotionMode;
 use hume_ops::motion::apply_object_motion;
 use hume_ops::text_object::{
     apply_text_object_by_mode, around_argument, around_from_inner, inner_argument,
 };
+use hume_rope::cluster::ClusterStart;
 use hume_treesitter::syntax::Syntax;
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan, ObjectSpans, SpanSelector};
 
@@ -52,7 +53,7 @@ pub(super) fn object_spans(buf: &Buffer, body: StructuralBody) -> Arc<ObjectSpan
 
 impl StructuralBody {
     /// Interpret this body against `spans`: the one place `Select`, `Goto`,
-    /// and `Argument` become an actual `SelectionSet` transform, replacing
+    /// and `Argument` become an actual selection transform, replacing
     /// the 22 near-identical thin command functions a per-command
     /// implementation would otherwise need.
     ///
@@ -66,30 +67,27 @@ impl StructuralBody {
     /// exposed as the `value` text object (`m i v`).
     pub(in crate::editor) fn apply(
         self,
-        text: &BufferText,
-        sels: SelectionSet,
+        state: EditState,
         count: usize,
         mode: MotionMode,
         spans: &ObjectSpans,
-    ) -> SelectionSet {
+    ) -> EditState {
+        let enclosing = |_: &BufferText, p: ClusterStart| spans.enclosing(p);
         match self {
-            StructuralBody::Select { .. } => {
-                apply_text_object_by_mode(text, sels, mode, |_, p| spans.enclosing(p))
-            }
+            StructuralBody::Select { .. } => apply_text_object_by_mode(state, mode, enclosing),
             StructuralBody::Goto { dir, .. } => {
-                apply_object_motion(text, sels, mode, count, dir == Direction::Backward, |p| {
+                apply_object_motion(state, mode, count, dir == Direction::Backward, |p| {
                     spans.adjacent(p, dir)
                 })
             }
             StructuralBody::Argument { around: false } => {
-                apply_text_object_by_mode(text, sels, mode, |t, p| {
-                    spans.enclosing(p).or_else(|| inner_argument(t, p))
+                apply_text_object_by_mode(state, mode, |t, p| {
+                    enclosing(t, p).or_else(|| inner_argument(t, p))
                 })
             }
             StructuralBody::Argument { around: true } => {
-                apply_text_object_by_mode(text, sels, mode, |t, p| {
-                    spans
-                        .enclosing(p)
+                apply_text_object_by_mode(state, mode, |t, p| {
+                    enclosing(t, p)
                         .map(|s| around_from_inner(t, s))
                         .or_else(|| around_argument(t, p))
                 })

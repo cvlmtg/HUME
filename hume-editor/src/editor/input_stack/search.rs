@@ -1,5 +1,6 @@
 //! The `Search` layer: the `/`/`?`-prompt minibuffer mode.
 
+use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
@@ -46,14 +47,17 @@ impl Layer for SearchLayer {
     fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
         self.snap.capture(state, view);
     }
-    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView, _why: Removal) {
+    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         if let Some(bid) = self
             .snap
-            .take_restore(&mut state.panes.state, &state.buffers, view)
+            .take_restore(&mut state.panes.state, &state.buffers)
         {
             search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
         }
         state.history.begin_session_all();
+    }
+    fn snapshot_mut(&mut self) -> Option<&mut PaneSnapshot> {
+        Some(&mut self.snap)
     }
     fn minibuf(&self) -> Option<&MiniBuffer> {
         Some(&self.minibuf)
@@ -98,9 +102,8 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
                 .input
                 .at_mut::<SearchLayer>(r)
                 .and_then(|s| s.snap.take_selections());
-            if let Some(sels) = pre_sels {
-                let bid = ed.focused_buffer_id();
-                let entry = JumpEntry::new(sels, ed.doc().text(), bid);
+            if let Some((bid, sels)) = pre_sels {
+                let entry = JumpEntry::new(sels, ed.state.buffers.get(bid).text(), bid);
                 let t = commands::FocusedPane::current(&ed.state).pane();
                 commands::record_jump_if_moved(&mut ed.state, &ed.view, t, entry);
             }
@@ -117,7 +120,9 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
                 return;
             };
-            let bid = search.snap.buffer_id(&ed.view);
+            let Some((bid, _)) = search.snap.selections() else {
+                return;
+            };
             search::ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.panes.state, bid);
         }
         MiniBufferEvent::BackspaceOnEmpty => {
@@ -167,10 +172,10 @@ fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
 /// with the `AtSelection` seed; `search_jump` (`commands/search.rs`) is the
 /// same scan with `PastSelection`, for `n`/`N`.
 ///
-/// Called on every keystroke while in Search mode. Targets the *focused*
-/// pane/buffer, since a live preview while typing follows focus.
-/// Cancel-restore/clear below must target the session's own originating pane
-/// instead (see [`PaneSnapshot`]'s own doc).
+/// Called on every keystroke while in Search mode. Targets the session's own
+/// pane and the buffer its snapshot was read from, the only text the
+/// snapshot's selections belong to, as cancel-restore/clear below do (see
+/// [`PaneSnapshot`]'s own doc).
 ///
 /// Warms the match cache ([`search::ops::update_buffer_matches`]) before
 /// scanning so every selection's hop binary-searches it instead of running
@@ -185,8 +190,14 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
 
     let Some(sp) = SearchPattern::compile(&pattern) else {
         // Invalid regex in progress: clear pattern so highlights disappear.
-        let bid = ed.focused_buffer_id();
-        search::ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.panes.state, bid);
+        if let Some((bid, _)) = ed
+            .state
+            .input
+            .at::<SearchLayer>(r)
+            .and_then(|s| s.snap.selections())
+        {
+            search::ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.panes.state, bid);
+        }
         return;
     };
 
@@ -199,38 +210,41 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
     } else {
         MotionMode::Move
     };
-    let Some(sels) = search.snap.selections().cloned() else {
+    let Some((bid, sels)) = search.snap.selections().map(|(bid, s)| (bid, s.clone())) else {
         return;
     };
-
-    let bid = ed.focused_buffer_id();
+    let pane = search.snap.pane();
     let multi = sp.multi();
     ed.state.buffers.get_mut(bid).search_pattern = Some(sp);
     search::ops::update_buffer_matches(&mut ed.state.buffers, bid);
 
     let buf = ed.state.buffers.get(bid);
-    let cached = &buf.search_matches.matches;
+    let cached = buf.search_matches.matches(buf.text());
     let scan = MatchScan {
         text: buf.text(),
         regex: &buf.search_pattern.as_ref().expect("just set above").regex,
-        cached: (!cached.is_empty()).then_some(cached.as_slice()),
+        cached: (!cached.is_empty()).then_some(cached),
         direction,
         mode,
         seed: MatchSeed::AtSelection,
     };
 
+    let state = EditState::bind(buf.text(), sels);
     let matched = if multi {
-        match scan.advance_all(sels, 1) {
-            Some((new_sels, _wrapped)) => {
-                ed.set_current_selections(new_sels);
+        match scan.advance_all(state, 1) {
+            Some((new_state, _wrapped)) => {
+                let text = new_state.text().clone();
+                ed.state.panes.state[pane][bid].set_selections(new_state.into_selections(), &text);
                 true
             }
             None => false,
         }
     } else {
-        match scan.advance(sels.primary(), 1) {
+        match scan.advance(state.view().primary(), 1) {
             Some((new_sel, _wrapped)) => {
-                ed.set_primary_selection(new_sel);
+                let text = state.text().clone();
+                let moved = state.replace_primary(new_sel).into_selections();
+                ed.state.panes.state[pane][bid].set_selections(moved, &text);
                 true
             }
             None => false,
@@ -253,5 +267,5 @@ fn restore_search_snapshot(ed: &mut Editor, r: LayerRef) {
     };
     search
         .snap
-        .restore(&mut ed.state.panes.state, &ed.state.buffers, &ed.view);
+        .restore(&mut ed.state.panes.state, &ed.state.buffers);
 }

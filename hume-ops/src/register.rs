@@ -4,8 +4,8 @@ use std::collections::VecDeque;
 use rustc_hash::FxHashMap;
 use termina::event::KeyEvent;
 
-use hume_editing::selection::SelectionSet;
-use hume_editing::text::{BufferText, normalize_line_endings};
+use hume_editing::state::EditState;
+use hume_editing::text::normalize_line_endings;
 
 // ── Register name constants ────────────────────────────────────────────────────
 //
@@ -355,23 +355,12 @@ fn entry_is_whitespace(entry: &[String]) -> bool {
     entry.iter().all(|s| s.chars().all(char::is_whitespace))
 }
 
-/// Extract the text of each selection from the buffer, in document order.
-///
-/// Returns one `String` per selection. This is the content that gets stored in
-/// a register on yank or captured before a delete:
-///
-/// ```text
-/// let yanked = yank_selections(&text, &sels);
-/// let (new_text, new_sels, _cs) = delete_selection(text, sels);
-/// kill_ring.push(yanked);
-/// ```
-///
-/// Selections are always inclusive, so the text spans `start()..=end()`,
-/// internally `text.slice()` over the selection's exclusive span.
-pub fn yank_selections(text: &BufferText, sels: &SelectionSet) -> Vec<String> {
-    sels.iter_sorted()
-        .map(|sel| sel.slice(text).to_string())
-        .collect()
+/// What `d` would put in the register for each selection, in document order,
+/// without changing the text: the one rule for what a selection's text is in
+/// a register. An entry is empty for a selection `d` would remove nothing
+/// from.
+pub fn yank_selections(state: &EditState) -> Vec<String> {
+    crate::edit::delete_selection(state.clone()).yanked
 }
 
 /// Returns `true` if `text` represents linewise register content.
@@ -382,7 +371,7 @@ pub fn yank_selections(text: &BufferText, sels: &SelectionSet) -> Vec<String> {
 ///
 /// This operates on *register/clipboard text* (paste time), not on a
 /// selection. For the selection-geometry predicate see
-/// `hume_editing::selection::is_selection_linewise`.
+/// `hume_editing::selection::SelectionView::is_linewise`.
 pub fn is_register_linewise(text: &str) -> bool {
     text.ends_with('\n')
 }

@@ -46,14 +46,11 @@ fn require_fixtures() {
 /// fixture directory, no renaming needed), and rust, then attach markdown as
 /// the buffer's language and drain the initial parse.
 ///
-/// Builds the buffer directly (cursor at 0 via `SelectionSet::default()`)
+/// Builds the buffer directly (cursor at 0 via `Buffer::at_start`)
 /// rather than through the `editor_from` marker DSL: this file's tests
 /// mostly care about byte-offset edits at position 0, not cursor placement.
 fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
-    let buf = crate::editor::buffer::Buffer::new(
-        hume_editing::text::BufferText::from(source),
-        hume_editing::selection::SelectionSet::default(),
-    );
+    let buf = crate::editor::buffer::Buffer::at_start(hume_editing::text::BufferText::from(source));
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
 
@@ -226,7 +223,7 @@ fn bake_pending_edits_refreshes_injected_layer_ranges() {
 fn stale_gen_discards_whole_layer_set() {
     require_fixtures();
     let (mut ed, bid) = markdown_editor("```rust\nfn f() {}\n```\n");
-    let gen0 = ed.state.buffers.get(bid).text_gen;
+    let gen0 = ed.state.buffers.get(bid).text().version().generation();
 
     // Construct a genuinely stale result: edit, let one reparse call post the
     // request (InlineParseBackend executes it and queues the result without
@@ -236,13 +233,13 @@ fn stale_gen_discards_whole_layer_set() {
     ed.feed_key(key('i'));
     ed.feed_key(key('z'));
     ed.feed_key(key_esc());
-    let gen1 = ed.state.buffers.get(bid).text_gen;
+    let gen1 = ed.state.buffers.get(bid).text().version().generation();
     ed.reparse_stale_buffers(); // bakes, posts request for gen1; result queued
 
     ed.feed_key(key('i'));
     ed.feed_key(key('y'));
     ed.feed_key(key_esc());
-    let gen2 = ed.state.buffers.get(bid).text_gen;
+    let gen2 = ed.state.buffers.get(bid).text().version().generation();
     assert!(
         gen2 > gen1,
         "premise: second edit must supersede the request"

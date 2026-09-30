@@ -360,8 +360,6 @@ fn mii_extend_mode_default_setting_merges_identical_current_selection() {
 /// mode actually reaches `SelectionSet`'s merge path, not just an append.
 #[test]
 fn mii_extend_mode_merges_overlapping_current_selection() {
-    use hume_editing::selection::Selection;
-
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('i'));
     ed.handle_key(key('h'));
@@ -369,7 +367,7 @@ fn mii_extend_mode_merges_overlapping_current_selection() {
     ed.handle_key(key_esc());
     // buffer is now "hihello"; the insertion span covers indices [0,1] ("hi").
     // Set the current selection to genuinely overlap it: indices [1,3] ("ihe").
-    ed.set_current_selections(SelectionSet::single(Selection::new(co(1), co(3))));
+    select(&mut ed, &[(1, 3)], 0);
     assert_eq!(state(&ed), "h-[ihe]>llo\n");
 
     ed.state.input.set_extend(true);
@@ -383,8 +381,6 @@ fn mii_extend_mode_merges_overlapping_current_selection() {
 /// other `mi*` object in Extend mode.
 #[test]
 fn mii_extend_mode_adds_disjoint_selection_and_keeps_current_primary() {
-    use hume_editing::selection::Selection;
-
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key('a'));
     ed.handle_key(key('X'));
@@ -394,7 +390,7 @@ fn mii_extend_mode_adds_disjoint_selection_and_keeps_current_primary() {
     // Move the current selection onto a disjoint word ("world"), independent
     // of the stashed insertion span. Set directly rather than via a motion
     // command, so this test doesn't couple to unrelated motion mechanics.
-    ed.set_current_selections(SelectionSet::single(Selection::new(co(8), co(12))));
+    select(&mut ed, &[(8, 12)], 0);
     assert_eq!(state(&ed), "hXYello -[world]>\n");
 
     ed.state.input.set_extend(true);
@@ -428,7 +424,7 @@ fn mii_reports_info_when_fully_backspaced_away() {
 }
 
 /// Any mutation after the session (including one that has nothing to do
-/// with inserting) bumps `text_gen` past the stash's stamp.
+/// with inserting) changes the text version past the stash's stamp.
 #[test]
 fn mii_stash_goes_stale_after_a_later_edit() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -438,7 +434,7 @@ fn mii_stash_goes_stale_after_a_later_edit() {
     assert_eq!(state(&ed), "-[x]>hello\n");
     // Reposition off the just-typed "x" before the "unrelated" edit: Esc
     // left it selected (`select-inserted-text`), so deleting it in place
-    // wouldn't distinguish "text_gen bumped" (the thing under test) from
+    // wouldn't distinguish "generation bumped" (the thing under test) from
     // "the stashed text is simply gone" (a different, weaker guarantee).
     set_cursor(&mut ed, 2); // "e" of "ello"
     ed.handle_key(key('d')); // unrelated edit, never touches the stashed "x"

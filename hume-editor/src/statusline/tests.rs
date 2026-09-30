@@ -1,6 +1,5 @@
 use super::elements::file_path::{shorten_path_to_width, statusline_display_path};
 use super::*;
-use crate::editor::tests::co;
 use hume_engine::types::ResolvedStyle;
 use hume_grid::Rgb;
 
@@ -67,13 +66,9 @@ fn pad_right_empty_is_noop() {
 
 fn test_editor() -> crate::editor::Editor {
     use crate::editor::buffer::Buffer;
-    use hume_editing::{
-        selection::{Selection, SelectionSet},
-        text::BufferText,
-    };
+    use hume_editing::text::BufferText;
     let text = BufferText::from("hello\n");
-    let sels = SelectionSet::single(Selection::collapsed(co(0)));
-    crate::editor::Editor::for_testing(Buffer::new(text, sels))
+    crate::editor::Editor::for_testing(Buffer::at_start(text))
 }
 
 #[test]
@@ -221,13 +216,9 @@ fn macro_recording_uses_row_style() {
 
 fn test_editor_with_text(s: &str) -> crate::editor::Editor {
     use crate::editor::buffer::Buffer;
-    use hume_editing::{
-        selection::{Selection, SelectionSet},
-        text::BufferText,
-    };
+    use hume_editing::text::BufferText;
     let text = BufferText::from(s);
-    let sels = SelectionSet::single(Selection::collapsed(co(0)));
-    crate::editor::Editor::for_testing(Buffer::new(text, sels))
+    crate::editor::Editor::for_testing(Buffer::at_start(text))
 }
 
 #[test]
@@ -250,13 +241,10 @@ fn line_ending_element_crlf() {
 
 fn test_editor_with_text_and_cursor(s: &str, head: usize) -> crate::editor::Editor {
     use crate::editor::buffer::Buffer;
-    use hume_editing::{
-        selection::{Selection, SelectionSet},
-        text::BufferText,
-    };
+    use hume_editing::text::BufferText;
     let text = BufferText::from(s);
-    let sels = SelectionSet::single(Selection::collapsed(co(head)));
-    crate::editor::Editor::for_testing(Buffer::new(text, sels))
+    let sels = test_fixtures::testing::single(&text, test_fixtures::testing::cursor(&text, head));
+    crate::editor::Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)))
 }
 
 #[test]

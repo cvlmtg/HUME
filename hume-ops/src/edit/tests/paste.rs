@@ -1,26 +1,16 @@
 use super::super::*;
 use crate::register::yank_selections;
-use hume_editing::selection::Selection;
-use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
 
 // ── paste_after ───────────────────────────────────────────────────────────
 
-fn pa(
-    text: BufferText,
-    sels: SelectionSet,
-    values: &[String],
-) -> (BufferText, SelectionSet, ChangeSet) {
-    paste_after(text, sels, values)
+fn pa(text: BufferText, sels: SelectionSet, values: &[String]) -> Edited {
+    paste_after(test_fixtures::testing::state(text, sels), values)
 }
 
-fn pb(
-    text: BufferText,
-    sels: SelectionSet,
-    values: &[String],
-) -> (BufferText, SelectionSet, ChangeSet) {
-    paste_before(text, sels, values)
+fn pb(text: BufferText, sels: SelectionSet, values: &[String]) -> Edited {
+    paste_before(test_fixtures::testing::state(text, sels), values)
 }
 
 #[test]
@@ -160,6 +150,31 @@ fn paste_after_mixed_cursor_and_selection() {
 }
 
 #[test]
+fn paste_after_lines_on_the_last_line_then_over_a_range_reaching_its_break() {
+    let state = hume_editing::marked::parse("-[a]>b -[cd]>\n");
+    let edited = paste_after(state, &["x\n".to_string(), "x\n".to_string()]);
+    assert_eq!(edited.state().text().rope().to_string(), "ab \nx\nx\n");
+}
+
+#[test]
+fn paste_after_a_charwise_cursor_then_a_linewise_range_touching_it() {
+    assert_state!(
+        "-[a]>-[bc]>\n",
+        |(text, sels)| pa(text, sels, &["Y".to_string(), "X\n".to_string()]),
+        "a-[Y]>\n-[X\n]>"
+    );
+}
+
+#[test]
+fn paste_after_linewise_over_two_touching_ranges_adds_no_blank_line() {
+    assert_state!(
+        "-[he]>-[llo]>\n",
+        |(text, sels)| pa(text, sels, &["X\n".to_string()]),
+        "-[X\n]>-[X\n]>"
+    );
+}
+
+#[test]
 fn paste_after_empty_string_cursor_is_noop() {
     assert_state!(
         "-[h]>ello\n",
@@ -238,7 +253,10 @@ fn paste_before_replaces_selection() {
 fn paste_after_empty_values_is_noop() {
     let (text, sels) = test_fixtures::testing::parse_state("-[h]>ello\n");
     let buf_str = text.to_string();
-    let (new_text, new_sels, _cs) = paste_after(text, sels.clone(), &[]);
+    let (new_text, new_sels, _cs) = test_fixtures::testing::parts(paste_after(
+        test_fixtures::testing::state(text, sels.clone()),
+        &[],
+    ));
     assert_eq!(new_text.to_string(), buf_str);
     assert_eq!(new_sels, sels);
 }
@@ -247,7 +265,10 @@ fn paste_after_empty_values_is_noop() {
 fn paste_before_empty_values_is_noop() {
     let (text, sels) = test_fixtures::testing::parse_state("-[h]>ello\n");
     let buf_str = text.to_string();
-    let (new_text, new_sels, _cs) = paste_before(text, sels.clone(), &[]);
+    let (new_text, new_sels, _cs) = test_fixtures::testing::parts(paste_before(
+        test_fixtures::testing::state(text, sels.clone()),
+        &[],
+    ));
     assert_eq!(new_text.to_string(), buf_str);
     assert_eq!(new_sels, sels);
 }
@@ -502,14 +523,16 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
     // retaining "oo". Both pasted "X\n" ranges are selected.
     // parse_state requires at least one selection marker; we ignore the returned sels.
     let (text, _) = test_fixtures::testing::parse_state("-[a]>bc\nxyz\nfoo\n");
-    let sels = SelectionSet::from_vec(
+    let sels = test_fixtures::testing::set(
+        &text,
         vec![
-            Selection::new(CharOffset::new(2), CharOffset::new(4)), // "c\nx": first_line=0, last_line=1
-            Selection::new(CharOffset::new(6), CharOffset::new(8)), // "z\nf": first_line=1, last_line=2
+            test_fixtures::testing::sel(&text, 2, 4), // "c\nx": first_line=0, last_line=1
+            test_fixtures::testing::sel(&text, 6, 8), // "z\nf": first_line=1, last_line=2
         ],
         0,
     );
-    let (new_text, _new_sels, _cs) = pa(text, sels, &["X\n".to_string()]);
+    let (new_text, _new_sels, _cs) =
+        test_fixtures::testing::parts(pa(text, sels, &["X\n".to_string()]));
     let result = new_text.to_string();
     assert_eq!(
         result, "ab\nX\ny\nX\noo\n",
@@ -527,13 +550,14 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
 #[test]
 fn yank_then_paste_after_round_trip() {
     let (text, sels) = test_fixtures::testing::parse_state("-[h]>ello\n");
-    let yanked = yank_selections(&text, &sels);
+    let yanked = yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
     assert_eq!(yanked, vec!["h"], "yank captures the cursor char");
 
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| {
-            let values = yank_selections(&text, &sels);
+        |(text, sels): (BufferText, SelectionSet)| {
+            let values =
+                yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
             pa(text, sels, &values)
         },
         "h-[h]>ello\n"
@@ -543,13 +567,14 @@ fn yank_then_paste_after_round_trip() {
 #[test]
 fn yank_multi_cursor_then_paste_after_n_to_n() {
     let (text, sels) = test_fixtures::testing::parse_state("-[h]>ell-[o]>\n");
-    let yanked = yank_selections(&text, &sels);
+    let yanked = yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
     assert_eq!(yanked, vec!["h", "o"]);
 
     assert_state!(
         "-[h]>ell-[o]>\n",
-        |(text, sels)| {
-            let values = yank_selections(&text, &sels);
+        |(text, sels): (BufferText, SelectionSet)| {
+            let values =
+                yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
             pa(text, sels, &values)
         },
         "h-[h]>ello-[o]>\n"
@@ -571,5 +596,17 @@ fn paste_before_selects_the_pasted_cluster() {
         "-[x]>\n",
         |(text, sels)| pb(text, sels, &["e\u{301}".to_string()]),
         "-[e\u{301}]>x\n"
+    );
+}
+
+#[test]
+fn an_empty_value_leaves_its_cursor_on_the_same_char_after_an_earlier_paste() {
+    assert_state!(
+        "-[a]>b-[c]>d\n",
+        |(text, sels)| paste_after(
+            test_fixtures::testing::state(text, sels),
+            &["XX".to_owned(), String::new()]
+        ),
+        "a-[XX]>b-[c]>d\n"
     );
 }

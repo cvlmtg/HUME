@@ -56,7 +56,7 @@ fn half_page_down_moves_half_viewport() {
     ed.handle_key(key_ctrl('d'));
     // half = 24/2 = 12 lines → line 12 → char 24
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(24),
         "half-page-down from line 0: cursor at line 12"
     );
@@ -72,10 +72,10 @@ fn half_page_up_moves_half_viewport() {
     let mut ed = page_test_editor();
     // Place cursor at line 12 first.
     ed.handle_key(key_ctrl('d'));
-    assert_eq!(ed.current_selections().primary().head(), co(24));
+    assert_eq!(ed.current_view().primary().head().offset(), co(24));
     ed.handle_key(key_ctrl('u'));
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "half-page-up returns to line 0"
     );
@@ -88,7 +88,7 @@ fn page_down_moves_full_viewport() {
     ed.handle_key(key_page_down());
     // page = 24 lines → line 24 → char 48
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(48),
         "page-down from line 0: cursor at line 24"
     );
@@ -103,10 +103,10 @@ fn page_up_moves_full_viewport() {
     let mut ed = page_test_editor();
     // Place cursor at line 24 first.
     ed.handle_key(key_page_down());
-    assert_eq!(ed.current_selections().primary().head(), co(48));
+    assert_eq!(ed.current_view().primary().head().offset(), co(48));
     ed.handle_key(key_page_up());
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "page-up returns to line 0"
     );
@@ -139,7 +139,7 @@ fn half_page_down_moves_the_view() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(15),
         "cursor lands scroll-margin (3) rows below the new top, not pinned to row 0"
     );
@@ -189,8 +189,8 @@ fn wheel_and_half_page_down_agree() {
     );
     assert_eq!(wheel_ed.viewport().top().slot, key_ed.viewport().top().slot);
     assert_eq!(
-        wheel_ed.current_selections().primary().head(),
-        key_ed.current_selections().primary().head(),
+        wheel_ed.current_view().primary().head().offset(),
+        key_ed.current_view().primary().head().offset(),
         "wheel and Ctrl-d must carry the cursor the same distance"
     );
 }
@@ -227,11 +227,11 @@ fn page_down_in_a_zero_height_pane_moves_neither_cursor_nor_view() {
     let mut ed = page_test_editor();
     let pid = ed.state.focus.id();
     ed.view.panes[pid].viewport.height = 0;
-    let head_before = ed.current_selections().primary().head();
+    let head_before = ed.current_view().primary().head().offset();
 
     ed.handle_key(key_page_down());
 
-    assert_eq!(ed.current_selections().primary().head(), head_before);
+    assert_eq!(ed.current_view().primary().head().offset(), head_before);
     assert_eq!(
         ed.view.panes[pid].viewport.top().line,
         hume_rope::line::ContentLine::new(0)
@@ -359,7 +359,7 @@ fn half_page_down_overshoots_a_virtual_line_block_taller_than_the_budget() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(2),
         "half-page-down over a 4-line virtual block (budget 3) must overshoot to line 2, not stall on line 1"
     );

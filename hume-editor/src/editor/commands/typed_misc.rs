@@ -591,12 +591,14 @@ pub(in crate::editor) fn typed_sort(
     // (`SortRefusal`) leave the buffer untouched: an identity edit would
     // still record an undo revision and mark the buffer dirty.
     let result = sort_lines(
-        super::doc(&ed.state, &ed.view, t).text().clone(),
-        super::pane_selections(&ed.state, &ed.view, t).clone(),
+        hume_editing::state::EditState::bind(
+            super::doc(&ed.state, &ed.view, t).text(),
+            super::pane_selections(&ed.state, &ed.view, t).clone(),
+        ),
         opts,
     );
-    let triple = match result {
-        Ok(triple) => triple,
+    let edited = match result {
+        Ok(edited) => edited,
         Err(SortRefusal::NoAdjacentLines) => {
             ed.report(
                 Severity::Info,
@@ -610,19 +612,13 @@ pub(in crate::editor) fn typed_sort(
         }
     };
 
-    let pre_len = super::doc(&ed.state, &ed.view, t).text().len_chars();
-    let pre_sels = super::pane_selections(&ed.state, &ed.view, t).clone();
-    super::apply_pane_edit(&mut ed.state, &ed.view, t, move |text, sels| {
+    super::apply_pane_edit(&mut ed.state, &ed.view, t, move |s| {
         debug_assert_eq!(
-            text.len_chars(),
-            pre_len,
+            s.text().version(),
+            edited.base(),
             "sort_lines must run against the same buffer just read"
         );
-        debug_assert_eq!(
-            sels, pre_sels,
-            "sort_lines must run against the same selections just read"
-        );
-        triple
+        edited
     })?;
     Ok(())
 }

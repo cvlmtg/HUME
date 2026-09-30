@@ -12,7 +12,7 @@ use crate::editor::commands::FocusedPane;
 use crate::editor::pane_state::{PaneBufferState, PaneView};
 use crate::editor::search::SearchPattern;
 use crate::editor::settings::EditorSettings;
-use hume_editing::selection::SelectionSet;
+use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId};
@@ -33,7 +33,7 @@ use super::{Editor, Mode, Severity};
 /// Build an Editor pre-loaded with the given state string (same DSL as other tests).
 fn editor_from(input: &str) -> Editor {
     let (text, sels) = parse_state(input);
-    Editor::for_testing(Buffer::new(text, sels))
+    Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)))
 }
 
 /// Build a kitty-protocol-enabled editor for testing Ctrl-motion bindings.
@@ -68,8 +68,8 @@ fn pin_no_wrap(ed: &mut Editor) {
 /// offset rather than the marker DSL, with wrapping pinned off.
 fn unwrapped_editor(content: &str, head: usize) -> Editor {
     let text = BufferText::from(content);
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(head)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(head, head)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     pin_no_wrap(&mut ed);
     ed
 }
@@ -88,6 +88,60 @@ pub(crate) fn co(n: usize) -> hume_rope::offset::CharOffset {
     hume_rope::offset::CharOffset::new(n)
 }
 
+/// The cluster that starts at char `n` of `rope`. Panics when `n` is not a
+/// cluster start, so a test's literal position stays the one it names.
+pub(in crate::editor) fn cluster_at(
+    rope: &ropey::Rope,
+    n: usize,
+) -> hume_rope::cluster::ClusterStart {
+    let cluster = hume_rope::grapheme::snap_to_cluster(rope.slice(..), co(n))
+        .expect("the char lies in the text");
+    assert_eq!(
+        cluster.start().offset(),
+        co(n),
+        "char {n} is not a cluster start"
+    );
+    cluster.start()
+}
+
+/// Selections of `text` from `(anchor, head)` char offsets, each a cluster
+/// start, the one at `primary` primary.
+pub(in crate::editor) fn sels_at(
+    text: &BufferText,
+    pairs: &[(usize, usize)],
+    primary: usize,
+) -> SelectionSet {
+    let sels = pairs
+        .iter()
+        .map(|&(anchor, head)| test_fixtures::testing::sel(text, anchor, head))
+        .collect();
+    test_fixtures::testing::set(text, sels, primary)
+}
+
+/// Replace the focused pane's selections with `(anchor, head)` char offsets
+/// of its buffer's text.
+pub(in crate::editor) fn select(ed: &mut Editor, pairs: &[(usize, usize)], primary: usize) {
+    let sels = sels_at(ed.doc().text(), pairs, primary);
+    ed.set_current_selections(sels);
+}
+
+/// Replace the focused pane's selections with the ones `marked` shows. Its
+/// text must be the focused buffer's.
+pub(in crate::editor) fn select_marked(ed: &mut Editor, marked: &str) {
+    let (text, sels) = parse_state(marked);
+    assert_eq!(
+        text.to_string(),
+        ed.doc().text().to_string(),
+        "marked text is not the buffer's"
+    );
+    let view = EditView::bind(&text, &sels);
+    let pairs: Vec<_> = view
+        .iter()
+        .map(|s| (s.anchor().offset().index(), s.head().offset().index()))
+        .collect();
+    select(ed, &pairs, view.primary().index());
+}
+
 /// See [`co`]: the same convenience, for a line-relative byte offset.
 pub(in crate::editor) fn bc(n: usize) -> hume_rope::column::ByteCol {
     hume_rope::column::ByteCol::new(n)
@@ -100,8 +154,8 @@ pub(in crate::editor) fn bc(n: usize) -> hume_rope::column::ByteCol {
 /// only thing `statusline::tests` imports across the subtree boundary.
 pub(crate) fn editor_with_language(content: &str, lang_name: &str) -> Editor {
     let text = BufferText::from(content);
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     let lang = ed.state.config.languages.intern(lang_name);
     ed.doc_mut().language = Some(lang);
     ed
@@ -120,8 +174,8 @@ pub(crate) fn editor_with_read_only_view(content: &str, label: &str) -> Editor {
 /// explicit path, without handing that suite `Buffer::set_path` itself.
 pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor {
     let text = BufferText::from(content);
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     ed.doc_mut().set_path(Some(path.to_owned()));
     ed
 }
@@ -518,8 +572,7 @@ fn cell(buf: &hume_grid::Grid, x: u16, y: u16) -> String {
 
 /// Move the focused pane's primary cursor to char offset `head`.
 fn set_cursor(ed: &mut Editor, head: usize) {
-    use hume_editing::selection::Selection;
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(head))));
+    select(ed, &[(head, head)], 0);
 }
 
 /// Move the focused pane's primary cursor to the start of buffer line `line`.
@@ -563,8 +616,8 @@ fn jump_editor(cursor_line: usize) -> Editor {
     let content: String = (0..20).map(|i| format!("line {i}\n")).collect();
     let text = BufferText::from(content.as_str());
     let pos = text.line_to_char(hume_rope::line::RopeyLine::new(cursor_line));
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(pos));
-    let doc = Buffer::new(text, sels);
+    let sels = sels_at(&text, &[(pos.index(), pos.index())], 0);
+    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
     Editor::for_testing(doc)
 }
 
@@ -1110,7 +1163,7 @@ fn temp_file(content: &str) -> (std::path::PathBuf, tempfile::TempPath) {
 fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
     let (path, tmp_path) = temp_file(content);
     let (_, meta) = hume_platform::io::read_file(&path).unwrap();
-    let mut buf = Buffer::new(BufferText::from(content), SelectionSet::default());
+    let mut buf = Buffer::at_start(BufferText::from(content));
     buf.set_path(Some(path));
     buf.file_meta = Some(meta);
     (buf, tmp_path)
@@ -1383,6 +1436,7 @@ mod picker;
 mod picker_source_steel;
 mod picker_steel;
 mod plugins;
+mod position_stores;
 mod registers;
 mod registers_steel;
 mod reload_config;

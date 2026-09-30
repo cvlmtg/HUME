@@ -41,7 +41,7 @@ pub(crate) fn split_words(line: SteelVal, word_chars: SteelVal) -> SteelResult {
     let chars = WordChars::new(&word_chars);
     let words = word_runs(&text, chars)
         .into_iter()
-        .map(|range| text.slice(range.to_exclusive()).to_string());
+        .map(|range| text.slice(range.chars()).to_string());
     Ok(string_list(words))
 }
 

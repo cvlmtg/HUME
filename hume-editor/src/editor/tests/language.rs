@@ -328,17 +328,13 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
 /// `SetBufferLanguage` arm, this panics with `BufferStore: unseeded BufferId`.
 #[test]
 fn set_buffer_language_then_close_in_one_eval_does_not_panic() {
-    use hume_editing::selection::SelectionSet;
     use hume_editing::text::BufferText;
 
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
     // A second buffer so closing `bid` frees its slot outright rather than
     // hitting the unrelated last-buffer scratch-replacement branch.
-    ed.open_buffer(Buffer::new(
-        BufferText::from("x\n"),
-        SelectionSet::default(),
-    ));
+    ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
     run(
         &mut ed,
         tmp.path(),

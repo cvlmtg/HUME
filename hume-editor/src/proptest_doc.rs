@@ -15,11 +15,14 @@ mod tests {
     use proptest::prelude::*;
 
     use crate::editor::buffer::Buffer;
+    use crate::editor::position_stores::DetachedStores;
     use crate::editor::tests::co;
-    use hume_editing::changeset::ChangeSet;
-    use hume_editing::grapheme::{graphemes_at, is_cluster_boundary};
-    use hume_editing::selection::{Selection, SelectionSet};
+    use hume_editing::edit::Edited;
+    use hume_editing::grapheme::{first_cluster, graphemes_at};
+    use hume_editing::selection::{EditView, Selection, SelectionSet};
+    use hume_editing::state::EditState;
     use hume_editing::text::BufferText;
+    use hume_engine::pipeline::BufferId;
     use hume_ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
     };
@@ -37,6 +40,7 @@ mod tests {
         cmd_around_word, cmd_inner_line, cmd_inner_word, cmd_select_uppercase_word,
     };
     use hume_ops::{MotionMode, WordCtx};
+    use test_fixtures::testing::{sel, set};
 
     // ── DocHelper — thin wrapper keeping sels alongside Buffer ────────────────
 
@@ -47,26 +51,36 @@ mod tests {
 
     impl DocHelper {
         fn new(text: BufferText, sels: SelectionSet) -> Self {
-            let buf = Buffer::new(text, sels.clone());
+            let buf = Buffer::new(test_fixtures::testing::state(text, sels.clone()));
             Self { buf, sels }
         }
         fn text(&self) -> &BufferText {
             self.buf.text()
         }
-        fn apply_edit(
-            &mut self,
-            cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
-        ) {
-            let (new_sels, _cs) = self.buf.apply_edit(self.sels.clone(), cmd);
+        fn apply_edit(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
+            let (new_sels, _cs) = self.buf.apply_edit(
+                BufferId::default(),
+                &mut DetachedStores::default().stores(),
+                self.sels.clone(),
+                cmd,
+            );
             self.sels = new_sels;
         }
         fn undo(&mut self) {
-            if let Some((sels, _cs, _steps)) = self.buf.undo_n(1) {
+            if let Some((sels, _cs, _steps)) = self.buf.undo_n(
+                BufferId::default(),
+                &mut DetachedStores::default().stores(),
+                1,
+            ) {
                 self.sels = sels;
             }
         }
         fn redo(&mut self) {
-            if let Some((sels, _cs, _steps)) = self.buf.redo_n(1) {
+            if let Some((sels, _cs, _steps)) = self.buf.redo_n(
+                BufferId::default(),
+                &mut DetachedStores::default().stores(),
+                1,
+            ) {
                 self.sels = sels;
             }
         }
@@ -90,38 +104,42 @@ mod tests {
         let len = text.end();
         assert!(len > co(0), "buffer must have at least 1 char");
 
+        let view = EditView::bind(text, sels);
+        view.check().expect("the selections fit the text");
+
         // SelectionSet invariant 1: never empty.
-        assert!(sels.len() > 0, "selection set must not be empty");
+        assert!(view.len() > 0, "selection set must not be empty");
 
         // SelectionSet invariant 2: all positions strictly within the buffer.
-        for sel in sels.iter_sorted() {
+        for sel in view.iter() {
             assert!(
-                sel.head() < len,
+                sel.head().offset() < len,
                 "selection head {:?} out of bounds (text len {:?})",
-                sel.head(),
+                sel.head().offset(),
                 len
             );
             assert!(
-                sel.anchor() < len,
+                sel.anchor().offset() < len,
                 "selection anchor {:?} out of bounds (text len {:?})",
-                sel.anchor(),
+                sel.anchor().offset(),
                 len
             );
         }
 
         // SelectionSet invariant 3: every anchor and head is a cluster start.
-        for sel in sels.iter_sorted() {
+        for sel in view.iter() {
             assert!(
-                is_cluster_boundary(text, sel.anchor()) && is_cluster_boundary(text, sel.head()),
+                text.snap(sel.anchor().offset()) == sel.anchor()
+                    && text.snap(sel.head().offset()) == sel.head(),
                 "selection ({:?}, {:?}) splits a grapheme cluster of {:?}",
-                sel.anchor(),
-                sel.head(),
+                sel.anchor().offset(),
+                sel.head().offset(),
                 text.to_string()
             );
         }
 
         // SelectionSet invariant 4: sorted ascending by start().
-        let starts: Vec<_> = sels.iter_sorted().map(|s| s.start()).collect();
+        let starts: Vec<_> = view.iter().map(|s| s.start()).collect();
         for w in starts.windows(2) {
             assert!(
                 w[0] <= w[1],
@@ -134,16 +152,16 @@ mod tests {
         // SelectionSet invariant 5: no overlapping or adjacent selections.
         // Adjacent means one ends where the next begins; both are merged.
         let mut prev_end: Option<hume_rope::offset::CharOffset> = None;
-        for sel in sels.iter_sorted() {
+        for sel in view.iter() {
             if let Some(pe) = prev_end {
                 assert!(
-                    sel.start() > pe,
+                    sel.start().offset() >= pe,
                     "overlapping/adjacent selections: previous end {:?}, next start {:?}",
                     pe,
                     sel.start()
                 );
             }
-            prev_end = Some(sel.end_inclusive(text));
+            prev_end = Some(sel.covered().end().offset());
         }
     }
 
@@ -175,28 +193,27 @@ mod tests {
 
     /// The char offset of every grapheme cluster start in `text`.
     fn cluster_starts(text: &BufferText) -> Vec<usize> {
-        graphemes_at(text, co(0))
-            .map(|cluster| cluster.start.index())
+        graphemes_at(text, first_cluster(text).into())
+            .map(|cluster| cluster.start().offset().index())
             .collect()
     }
 
-    /// Generate a `SelectionSet` with 1..=`max_sels` selections whose anchors
-    /// and heads are drawn from `starts` (every one a cluster start),
-    /// merged into a valid set.
-    fn arb_selection_set(
-        starts: Vec<usize>,
-        max_sels: usize,
-    ) -> impl Strategy<Value = SelectionSet> {
+    /// Generate a `SelectionSet` for `text` with 1..=`max_sels` selections
+    /// whose anchors and heads are drawn from its cluster starts, merged into
+    /// a valid set.
+    fn arb_selection_set(text: BufferText, max_sels: usize) -> impl Strategy<Value = SelectionSet> {
+        let starts = cluster_starts(&text);
         let n_starts = starts.len();
         (1..=max_sels)
             .prop_flat_map(move |n| {
                 let starts = starts.clone();
+                let text = text.clone();
                 proptest::collection::vec((0..n_starts, 0..n_starts), n).prop_map(move |picks| {
                     let sels: Vec<Selection> = picks
                         .into_iter()
-                        .map(|(a, b)| Selection::new(co(starts[a]), co(starts[b])))
+                        .map(|(a, b)| sel(&text, starts[a], starts[b]))
                         .collect();
-                    SelectionSet::from_vec(sels, 0)
+                    set(&text, sels, 0)
                 })
             })
             .boxed()
@@ -205,7 +222,7 @@ mod tests {
     /// Generate a random `(BufferText, SelectionSet)` pair.
     fn arb_initial_state(max_buf_len: usize) -> impl Strategy<Value = (BufferText, SelectionSet)> {
         arb_buffer(max_buf_len).prop_flat_map(|text| {
-            arb_selection_set(cluster_starts(&text), 3).prop_map(move |sels| (text.clone(), sels))
+            arb_selection_set(text.clone(), 3).prop_map(move |sels| (text.clone(), sels))
         })
     }
 
@@ -254,7 +271,7 @@ mod tests {
         match op {
             EditOp::InsertChar(ch) => {
                 let ch = *ch;
-                doc.apply_edit(move |b, s| insert_char(b, s, ch));
+                doc.apply_edit(move |s| insert_char(s, ch));
             }
             EditOp::DeleteCharForward => {
                 doc.apply_edit(delete_char_forward);
@@ -263,7 +280,7 @@ mod tests {
                 doc.apply_edit(delete_char_backward);
             }
             EditOp::DeleteSelection => {
-                doc.apply_edit(delete_selection);
+                doc.apply_edit(|s| delete_selection(s).edited);
             }
             EditOp::Undo => doc.undo(),
             EditOp::Redo => doc.redo(),
@@ -340,46 +357,44 @@ mod tests {
         op: &PureOp,
         mode: MotionMode,
     ) -> SelectionSet {
-        match op {
-            PureOp::MoveRight => cmd_move_right(text, sels, 1, mode),
-            PureOp::MoveLeft => cmd_move_left(text, sels, 1, mode),
-            PureOp::GotoLineStart => cmd_goto_line_start(text, sels, 1, mode),
-            PureOp::GotoLineEnd => cmd_goto_line_end(text, sels, 1, mode),
-            PureOp::SelectNextWord => cmd_select_next_word(text, sels, 1, WordCtx::bare(mode)),
-            PureOp::SelectPrevWord => cmd_select_prev_word(text, sels, 1, WordCtx::bare(mode)),
+        let st = EditState::bind(text, sels);
+        let result = match op {
+            PureOp::MoveRight => cmd_move_right(st, 1, mode),
+            PureOp::MoveLeft => cmd_move_left(st, 1, mode),
+            PureOp::GotoLineStart => cmd_goto_line_start(st, 1, mode),
+            PureOp::GotoLineEnd => cmd_goto_line_end(st, 1, mode),
+            PureOp::SelectNextWord => cmd_select_next_word(st, 1, WordCtx::bare(mode)),
+            PureOp::SelectPrevWord => cmd_select_prev_word(st, 1, WordCtx::bare(mode)),
             PureOp::SelectNextUppercaseWord => {
-                cmd_select_next_uppercase_word(text, sels, 1, WordCtx::bare(mode))
+                cmd_select_next_uppercase_word(st, 1, WordCtx::bare(mode))
             }
             PureOp::SelectPrevUppercaseWord => {
-                cmd_select_prev_uppercase_word(text, sels, 1, WordCtx::bare(mode))
+                cmd_select_prev_uppercase_word(st, 1, WordCtx::bare(mode))
             }
             // "Around" variants exercise the same command with `around: true`
             // (effective `word-selects-whitespace`).
-            PureOp::SelectNextWordAround => {
-                cmd_select_next_word(text, sels, 1, WordCtx::around(mode))
-            }
-            PureOp::SelectPrevWordAround => {
-                cmd_select_prev_word(text, sels, 1, WordCtx::around(mode))
-            }
+            PureOp::SelectNextWordAround => cmd_select_next_word(st, 1, WordCtx::around(mode)),
+            PureOp::SelectPrevWordAround => cmd_select_prev_word(st, 1, WordCtx::around(mode)),
             PureOp::SelectNextUppercaseWordAround => {
-                cmd_select_next_uppercase_word(text, sels, 1, WordCtx::around(mode))
+                cmd_select_next_uppercase_word(st, 1, WordCtx::around(mode))
             }
             PureOp::SelectPrevUppercaseWordAround => {
-                cmd_select_prev_uppercase_word(text, sels, 1, WordCtx::around(mode))
+                cmd_select_prev_uppercase_word(st, 1, WordCtx::around(mode))
             }
-            PureOp::InnerWord => cmd_inner_word(text, sels, 0, WordCtx::bare(mode)),
-            PureOp::AroundWord => cmd_around_word(text, sels, 0, WordCtx::bare(mode)),
+            PureOp::InnerWord => cmd_inner_word(st, 0, WordCtx::bare(mode)),
+            PureOp::AroundWord => cmd_around_word(st, 0, WordCtx::bare(mode)),
             PureOp::SelectUppercaseWordAround => {
-                cmd_select_uppercase_word(text, sels, 0, WordCtx::around(mode))
+                cmd_select_uppercase_word(st, 0, WordCtx::around(mode))
             }
-            PureOp::InnerLine => cmd_inner_line(text, sels, 0, mode),
+            PureOp::InnerLine => cmd_inner_line(st, 0, mode),
             // Selection-manipulation commands don't use mode; pass it anyway for API uniformity.
-            PureOp::CollapseSelection => cmd_collapse_selection_to_head(text, sels, 0, mode),
-            PureOp::FlipSelections => cmd_flip_selections(text, sels, 0, mode),
-            PureOp::KeepPrimarySelection => cmd_keep_primary_selection(text, sels, 0, mode),
-            PureOp::CyclePrimaryForward => cmd_cycle_primary_forward(text, sels, 0, mode),
-            PureOp::CyclePrimaryBackward => cmd_cycle_primary_backward(text, sels, 0, mode),
-        }
+            PureOp::CollapseSelection => cmd_collapse_selection_to_head(st, 0, mode),
+            PureOp::FlipSelections => cmd_flip_selections(st, 0, mode),
+            PureOp::KeepPrimarySelection => cmd_keep_primary_selection(st, 0, mode),
+            PureOp::CyclePrimaryForward => cmd_cycle_primary_forward(st, 0, mode),
+            PureOp::CyclePrimaryBackward => cmd_cycle_primary_backward(st, 0, mode),
+        };
+        result.into_selections()
     }
 
     // ── Property tests ────────────────────────────────────────────────────────
@@ -434,15 +449,13 @@ mod tests {
                 Just(EditOp::DeleteSelection),
             ],
         ) {
-            let original_content = text.to_string();
-            let original_sels = sels.clone();
+            let original = test_fixtures::testing::serialize_state(&text, &sels);
 
             let mut doc = DocHelper::new(text, sels);
             apply_edit_op(&mut doc, &op);
             doc.undo();
 
-            prop_assert_eq!(doc.text().to_string(), original_content);
-            prop_assert_eq!(doc.sels.clone(), original_sels);
+            prop_assert_eq!(test_fixtures::testing::serialize_state(doc.text(), &doc.sels), original);
         }
 
         /// Applying an edit, undoing it, then redoing it must produce the same
@@ -460,14 +473,12 @@ mod tests {
             let mut doc = DocHelper::new(text, sels);
             apply_edit_op(&mut doc, &op);
 
-            let after_content = doc.text().to_string();
-            let after_sels = doc.sels.clone();
+            let after = test_fixtures::testing::serialize_state(doc.text(), &doc.sels);
 
             doc.undo();
             doc.redo();
 
-            prop_assert_eq!(doc.text().to_string(), after_content);
-            prop_assert_eq!(doc.sels.clone(), after_sels);
+            prop_assert_eq!(test_fixtures::testing::serialize_state(doc.text(), &doc.sels), after);
         }
 
         /// Applying N edits then undoing N times must restore the exact
@@ -486,8 +497,7 @@ mod tests {
                 1..=10,
             ),
         ) {
-            let original_content = text.to_string();
-            let original_sels = sels.clone();
+            let original = test_fixtures::testing::serialize_state(&text, &sels);
 
             let mut doc = DocHelper::new(text, sels);
             let n = ops.len();
@@ -499,50 +509,43 @@ mod tests {
                 doc.undo();
             }
 
-            prop_assert_eq!(doc.text().to_string(), original_content);
-            prop_assert_eq!(doc.sels.clone(), original_sels);
+            prop_assert_eq!(test_fixtures::testing::serialize_state(doc.text(), &doc.sels), original);
         }
 
-        /// Snapping arbitrary positions to clusters gives a valid,
-        /// cluster-aligned set, and snapping it again changes nothing.
-        #[test]
-        fn prop_snap_to_clusters_is_valid_and_idempotent(
-            text in arb_buffer(30),
-            picks in proptest::collection::vec((0usize..500, 0usize..500), 1..=3),
-        ) {
-            let len = text.len_chars();
-            let raw: Vec<Selection> = picks
-                .into_iter()
-                .map(|(a, b)| Selection::new(co(a % len), co(b % len)))
-                .collect();
-            let mut set = SelectionSet::from_vec_unchecked(raw, 0);
-            set.snap_to_clusters(&text);
-            assert_invariants(&text, &set);
-            let mut again = set.clone();
-            again.snap_to_clusters(&text);
-            prop_assert_eq!(again, set);
-        }
-
-        /// Yanking returns the grapheme clusters each selection
-        /// covers, in sorted order.
+        /// Yanking returns the grapheme clusters each selection covers, in
+        /// sorted order, without the structural final `\n` unless the
+        /// selection covers whole lines.
         #[test]
         fn prop_yank_returns_the_covered_clusters(
             (text, sels) in arb_initial_state(30),
         ) {
-            let clusters: Vec<_> = graphemes_at(&text, co(0)).collect();
+            let clusters: Vec<_> = graphemes_at(&text, first_cluster(&text).into()).collect();
             let chars: Vec<char> = text.to_string().chars().collect();
-            let expected: Vec<String> = sels
-                .iter_sorted()
+            let structural = chars.len() - 1;
+            let expected: Vec<String> = EditView::bind(&text, &sels)
+                .iter()
                 .map(|sel| {
-                    let last = sel.end_inclusive(&text);
+                    let first = sel.start().offset().index();
+                    let end = sel.covered().end().offset().index();
+                    let starts_line = first == 0 || chars[first - 1] == '\n';
+                    let linewise = starts_line && chars[end - 1] == '\n';
+                    if chars.len() == 1 {
+                        // The empty buffer: its one line has nothing to remove.
+                        return String::new();
+                    }
                     clusters
                         .iter()
-                        .filter(|c| c.start >= sel.start() && c.start <= last)
-                        .flat_map(|c| chars[c.start.index()..c.end.index()].iter())
+                        .filter(|c| {
+                            c.start().offset().index() >= first && c.start().offset().index() < end
+                        })
+                        .filter(|c| linewise || c.start().offset().index() != structural)
+                        .flat_map(|c| {
+                            chars[c.start().offset().index()..c.end().offset().index()].iter()
+                        })
                         .collect()
                 })
                 .collect();
-            prop_assert_eq!(yank_selections(&text, &sels), expected);
+            prop_assert_eq!(yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone())), expected);
         }
 
         /// Interleaved edits and undos must never violate invariants at any

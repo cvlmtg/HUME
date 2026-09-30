@@ -16,10 +16,10 @@ use std::collections::VecDeque;
 use hume_engine::pipeline::{BufferId, PaneId};
 use slotmap::SecondaryMap;
 
-use hume_editing::changeset::ChangeSet;
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::edit::TextChange;
+use hume_editing::selection::{EditView, SelectionSet};
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
-use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// Default capacity, used in tests to construct jump lists without importing `EditorSettings`.
 #[cfg(test)]
@@ -43,41 +43,21 @@ impl JumpEntry {
         selections: &SelectionSet,
         text: &BufferText,
     ) -> hume_rope::line::ContentLine {
-        // `char_to_line` clamps a stale head (e.g. an undo that shrank the
-        // buffer leaving the saved head at exactly the new `len_chars()`)
-        // back onto the last real line: dedup only needs *a* line number,
-        // and "the last line" is the line this head is about to be
-        // re-clamped onto anyway.
-        text.char_to_line(selections.primary().head())
+        EditView::bind(text, selections).primary().head_line()
     }
 
-    /// Build a jump entry from the current selection state, deriving
-    /// `primary_line` from the buffer so callers don't have to.
+    /// Build a jump entry from selections of `text`, the buffer's current
+    /// text, deriving `primary_line` from it so callers don't have to.
     pub(in crate::editor) fn new(
         selections: SelectionSet,
         text: &BufferText,
         buffer_id: BufferId,
     ) -> Self {
+        let selections = EditState::bind(text, selections).into_selections();
         let primary_line = Self::primary_line_of(&selections, text);
         Self {
             buffer_id,
             selections,
-            primary_line,
-        }
-    }
-
-    /// Build a jump entry from a pre-motion snapshot.
-    ///
-    /// Used at call sites that capture the cursor *before* a motion runs, so
-    /// `primary_line` is already known and no buffer reference is needed.
-    pub(in crate::editor) fn from_pre_motion(
-        pre_primary: Selection,
-        primary_line: hume_rope::line::ContentLine,
-        buffer_id: BufferId,
-    ) -> Self {
-        Self {
-            buffer_id,
-            selections: SelectionSet::single(pre_primary),
             primary_line,
         }
     }
@@ -179,10 +159,7 @@ impl JumpList {
     /// `O(entries × ops)` for large changesets (`:%s`, multi-cursor, format).
     /// Selections within an entry are sorted and do share one cursor.
     ///
-    /// `edits` must be `cs.edited_old_ranges()`, computed once by the caller.
-    /// `text_pre`/`text_post` are the text before and after the edit:
-    /// `text_pre` for sticky-column invalidation, `text_post` to recompute the
-    /// cached `primary_line`.
+    /// The change's new text recomputes each entry's cached `primary_line`.
     ///
     /// Merging is write-index compaction in the same pass (swaps, no
     /// allocation). Only a pair whose lines differed before the edit and match
@@ -193,10 +170,7 @@ impl JumpList {
     pub(in crate::editor) fn translate_in_place(
         &mut self,
         buf_id: BufferId,
-        edits: &[ExclusiveRange<CharOffset>],
-        cs: &ChangeSet,
-        text_pre: &BufferText,
-        text_post: &BufferText,
+        change: &TextChange<'_>,
     ) {
         let mut write = 0usize;
         let mut removed_before_cursor = 0usize;
@@ -214,10 +188,8 @@ impl JumpList {
             let pre_line = self.entries[read].primary_line;
             if bid == buf_id {
                 let entry = &mut self.entries[read];
-                entry
-                    .selections
-                    .translate_in_place_with(edits, cs, text_pre, text_post);
-                entry.primary_line = JumpEntry::primary_line_of(&entry.selections, text_post);
+                entry.selections.translate(change);
+                entry.primary_line = JumpEntry::primary_line_of(&entry.selections, change.after());
             }
             let post_line = self.entries[read].primary_line;
 
@@ -325,9 +297,8 @@ impl JumpLists {
         self.0.contains_key(pid)
     }
 
-    /// Remap every pane's jump-list entries for `buf_id` through `cs`: the
-    /// per-edit propagation step `doc_ops::finish_edit` and
-    /// `reload_buffer_in_place` both call.
+    /// Remap every pane's jump-list entries for `buf_id` through `change`:
+    /// one of the stores `PositionStores::carry` carries.
     ///
     /// Unlike sibling-pane selection propagation, this does **not** filter by
     /// which panes currently view `buf_id`: a pane's jump list holds entries
@@ -335,20 +306,9 @@ impl JumpLists {
     /// cross-buffer Ctrl-o work), so every pane's list must be checked,
     /// including the focused one (its own live cursor isn't a jump-list
     /// entry, so nothing is mapped twice).
-    ///
-    /// `edits` must be `cs.edited_old_ranges()`, computed once by the
-    /// caller and shared across every pane's list; see
-    /// [`JumpList::translate_in_place`].
-    pub(in crate::editor) fn translate(
-        &mut self,
-        buf_id: BufferId,
-        edits: &[ExclusiveRange<CharOffset>],
-        cs: &ChangeSet,
-        text_pre: &BufferText,
-        text_post: &BufferText,
-    ) {
+    pub(in crate::editor) fn translate(&mut self, buf_id: BufferId, change: &TextChange<'_>) {
         for jumps in self.0.values_mut() {
-            jumps.translate_in_place(buf_id, edits, cs, text_pre, text_post);
+            jumps.translate_in_place(buf_id, change);
         }
     }
 

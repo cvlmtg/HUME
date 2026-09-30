@@ -152,12 +152,14 @@ impl Editor {
         doc_ops::apply_doc_edit_grouped(
             &mut self.state.buffers,
             &self.state.config.decorations,
-            &mut self.state.panes.state,
-            &mut self.state.panes.jumps,
+            &mut crate::editor::position_stores::PositionStores::new(
+                &mut self.state.panes,
+                &mut self.state.input,
+            ),
             &mut self.state.active_session,
             focused,
             buf,
-            |b, s| hume_ops::edit::insert_str(b, s, text),
+            |s| hume_ops::edit::insert_str(s, text),
         );
         self.state.dismiss_completion(&self.view);
     }

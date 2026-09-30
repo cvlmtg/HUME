@@ -1,5 +1,4 @@
 use super::*;
-use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_engine::theme::Theme;
@@ -9,7 +8,7 @@ fn make_id(ev: &mut EngineView) -> BufferId {
 }
 
 fn make_buf() -> Buffer {
-    Buffer::new(BufferText::from("hello\n"), SelectionSet::default())
+    Buffer::at_start(BufferText::from("hello\n"))
 }
 
 fn store_with_engine() -> (BufferStore, EngineView) {
@@ -111,9 +110,11 @@ fn view_content_refresh_does_not_bump_edit_seq() {
     let id = make_id(&mut ev);
     store.open(id, make_buf());
     let before = store.edit_seq();
-    store
-        .get_mut(id)
-        .set_view_content(BufferText::from("refreshed\n"));
+    store.get_mut(id).set_view_content(
+        BufferId::default(),
+        &mut crate::editor::position_stores::DetachedStores::default().stores(),
+        "refreshed\n",
+    );
     assert_eq!(
         store.edit_seq(),
         before,
@@ -129,11 +130,14 @@ fn reload_from_text_does_not_bump_edit_seq() {
     let id = make_id(&mut ev);
     store.open(id, make_buf());
     let before = store.edit_seq();
+    let pre_sels = store.get(id).initial_sels();
     // This test asserts on `edit_seq`, not the returned ChangeSet.
     let _ = store.get_mut(id).reload_from_text(
+        BufferId::default(),
+        &mut crate::editor::position_stores::DetachedStores::default().stores(),
         BufferText::from("reloaded\n"),
-        SelectionSet::default(),
-        SelectionSet::default(),
+        pre_sels,
+        |text| hume_editing::state::EditState::at_text_start(text.clone()).into_selections(),
     );
     assert_eq!(
         store.edit_seq(),
@@ -156,16 +160,18 @@ fn take_text_changed_reports_nothing_for_an_untouched_store() {
 /// second immediate call reports nothing, since the baseline already caught
 /// up.
 ///
-/// Without the `announced_text_gen` write in `take_text_changed`, the second
+/// Without the `announced_version` write in `take_text_changed`, the second
 /// call would still return `[id]`.
 #[test]
 fn take_text_changed_reports_a_touched_buffer_once() {
     let (mut store, mut ev) = store_with_engine();
     let id = make_id(&mut ev);
     store.open(id, make_buf());
-    store
-        .get_mut(id)
-        .set_view_content(BufferText::from("edited\n"));
+    store.get_mut(id).set_view_content(
+        BufferId::default(),
+        &mut crate::editor::position_stores::DetachedStores::default().stores(),
+        "edited\n",
+    );
 
     assert_eq!(store.take_text_changed(), vec![id]);
     assert_eq!(
@@ -182,15 +188,21 @@ fn take_text_changed_coalesces_multiple_mutations_into_one_report() {
     let (mut store, mut ev) = store_with_engine();
     let id = make_id(&mut ev);
     store.open(id, make_buf());
-    store
-        .get_mut(id)
-        .set_view_content(BufferText::from("first\n"));
-    store
-        .get_mut(id)
-        .set_view_content(BufferText::from("second\n"));
-    store
-        .get_mut(id)
-        .set_view_content(BufferText::from("third\n"));
+    store.get_mut(id).set_view_content(
+        BufferId::default(),
+        &mut crate::editor::position_stores::DetachedStores::default().stores(),
+        "first\n",
+    );
+    store.get_mut(id).set_view_content(
+        BufferId::default(),
+        &mut crate::editor::position_stores::DetachedStores::default().stores(),
+        "second\n",
+    );
+    store.get_mut(id).set_view_content(
+        BufferId::default(),
+        &mut crate::editor::position_stores::DetachedStores::default().stores(),
+        "third\n",
+    );
 
     assert_eq!(store.take_text_changed(), vec![id]);
 }
@@ -204,9 +216,11 @@ fn take_text_changed_ignores_untouched_siblings() {
     let b = make_id(&mut ev);
     store.open(a, make_buf());
     store.open(b, make_buf());
-    store
-        .get_mut(b)
-        .set_view_content(BufferText::from("only b\n"));
+    store.get_mut(b).set_view_content(
+        BufferId::default(),
+        &mut crate::editor::position_stores::DetachedStores::default().stores(),
+        "only b\n",
+    );
 
     assert_eq!(store.take_text_changed(), vec![b]);
 }

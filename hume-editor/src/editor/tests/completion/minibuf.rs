@@ -5,7 +5,6 @@
 
 use super::*;
 use crate::editor::buffer::Buffer;
-use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use pretty_assertions::assert_eq;
 
@@ -378,7 +377,7 @@ fn tab_on_buffer_arg_completes_buffer_names() {
 
     let mut ed = editor_from("-[h]>ello\n");
     for path in [path_a, path_b] {
-        let mut buf = Buffer::new(BufferText::from("a\n"), SelectionSet::default());
+        let mut buf = Buffer::at_start(BufferText::from("a\n"));
         buf.set_path(Some(path));
         ed.open_buffer(buf);
     }
@@ -408,7 +407,7 @@ fn tab_mid_alias_with_no_space_completes_the_declared_arg_not_the_command_name()
     std::fs::write(&path, "a\n").unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
-    let mut buf = Buffer::new(BufferText::from("a\n"), SelectionSet::default());
+    let mut buf = Buffer::at_start(BufferText::from("a\n"));
     buf.set_path(Some(path));
     ed.open_buffer(buf);
 

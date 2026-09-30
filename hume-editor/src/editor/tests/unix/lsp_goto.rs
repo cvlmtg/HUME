@@ -147,7 +147,7 @@ fn single_location_hashmap_jumps_directly() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(1),
         "a single Location must jump directly to line 1 (0-indexed)"
     );
@@ -178,7 +178,7 @@ fn wire_target_inside_a_combining_sequence_snaps_to_the_clusters_start() {
     run_goto(&mut ed, ":lsp-goto-definition");
 
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "a wire position between a base char and its combining mark must snap to the cluster's start"
     );
@@ -201,7 +201,7 @@ fn single_element_array_jumps_directly() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(1),
         "a length-1 Location[] must jump directly, not open the drawer"
     );
@@ -234,7 +234,7 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(1),
         "selecting row 2 in the drawer must jump to that entry's line"
     );
@@ -314,7 +314,7 @@ fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(1),
         "selecting a LocationLink drawer row must jump to targetSelectionRange's line"
     );
@@ -337,7 +337,7 @@ fn location_link_array_prefers_target_selection_range() {
     assert_eq!(
         ed.doc()
             .text()
-            .char_to_line(ed.current_selections().primary().head()),
+            .char_to_line(ed.current_view().primary().head().offset()),
         hume_rope::line::ContentLine::new(1),
         "a single-entry LocationLink[] must jump using targetSelectionRange"
     );
@@ -516,7 +516,7 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
         ed.doc().text().rope(),
         hume_rope::line::RopeyLine::new(1),
     );
-    let head = ed.current_selections().primary().head();
+    let head = ed.current_view().primary().head().offset();
     assert_eq!(
         ed.focused_buffer_id(),
         bid_a,
@@ -645,7 +645,7 @@ fn each_command_sends_its_own_method() {
         assert_eq!(
             ed.doc()
                 .text()
-                .char_to_line(ed.current_selections().primary().head()),
+                .char_to_line(ed.current_view().primary().head().offset()),
             hume_rope::line::ContentLine::new(1),
             "{cmd} must send {method} and jump on its response"
         );

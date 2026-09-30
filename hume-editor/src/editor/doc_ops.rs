@@ -1,12 +1,11 @@
 //! Free functions for document-editing operations.
 //!
 //! Extracted from `impl Editor` so command bodies can hold disjoint borrows
-//! from other `Editor` fields while editing, avoiding per-keystroke
-//! `SelectionSet` clones.
+//! from other `Editor` fields while editing.
 //!
-//! Uses `std::mem::take` in place of `SelectionSet::clone()` wherever the set
-//! is immediately overwritten by the edit result. `SelectionSet::default()` is
-//! a minimal-valid cursor-at-0 state specifically designed for this use.
+//! The acting pane's selections are cloned into the command's `EditState`
+//! and written back afterwards: the stored set stays valid for the whole
+//! edit, so the text change carries it like every other stored position.
 
 use slotmap::SecondaryMap;
 
@@ -16,13 +15,13 @@ use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{Buffer, HistoryWalkResult};
 use crate::editor::edit_session::{self, EditSession, EditSessionKind};
 use crate::editor::error::CommandError;
-use crate::editor::jump_list::JumpLists;
 use crate::editor::pane_state::PaneBufferState;
+use crate::editor::position_stores::PositionStores;
 use hume_decorations::DecorationStores;
 use hume_editing::changeset::ChangeSet;
+use hume_editing::edit::{Edited, TextChange};
 use hume_editing::selection::SelectionSet;
-use hume_editing::text::BufferText;
-use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_editing::state::EditState;
 
 /// [`apply_doc_history_walk`]'s result: keeps a read-only refusal
 /// distinguishable from genuine root/leaf exhaustion. Collapsing both to
@@ -46,12 +45,12 @@ pub(in crate::editor) enum HistoryWalk {
 fn record_syntax_edits(
     buffers: &mut BufferStore,
     buf_id: BufferId,
-    text_gen: u64,
+    generation: u64,
     cs: &ChangeSet,
     rope_pre: &ropey::Rope,
 ) {
     if let Some(syn) = buffers.get_mut(buf_id).syntax.as_mut() {
-        syn.record_edit(text_gen, cs, rope_pre);
+        syn.record_edit(generation, cs, rope_pre);
     }
 }
 
@@ -68,7 +67,7 @@ fn record_lsp_edits(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     buf_id: BufferId,
-    text_gen: u64,
+    generation: u64,
     cs: &ChangeSet,
     rope_pre: &ropey::Rope,
 ) {
@@ -78,49 +77,38 @@ fn record_lsp_edits(
             .push(crate::editor::lsp::sync::LspPendingChange {
                 cs: cs.clone(),
                 before: rope_pre.clone(),
-                version: text_gen,
+                version: generation,
             });
     }
 }
 
-/// Shared post-mutation bookkeeping for every text-mutating path: bump the
-/// edit seq, write `new_sels` back, propagate `cs` to sibling panes and every
-/// pane's jump list, and feed both the syntax and LSP/decoration remap
-/// streams. A path that forgets one of these steps would silently drift
-/// decorations or leave a stale syntax tree, with no compile error, so this
-/// is the one place that sequence is spelled out.
+/// Shared post-mutation bookkeeping for every text-mutating path: write
+/// `new_sels` back to the acting pane, bump the edit seq, and feed both the
+/// syntax and LSP/decoration remap streams. A path that forgets one of these
+/// steps would drift decorations or leave a stale syntax tree, with
+/// no compile error, so this is the one place that sequence is spelled out.
+/// Stored positions (other panes, jump lists, prompt snapshots) are not
+/// here: the `Buffer` mutator already carried them through the change.
 ///
-/// The first six parameters are the same threading sextet every function in
-/// this file already receives. Four of them (`buffers`, `decorations`,
-/// `pane_state`, `pane_jumps`) are fields reachable from a single
-/// `&EditorState`/`&mut EditorState`: `decorations` through `state.config`,
-/// the rest directly. `pane_id` and `buf_id` are not: `buf_id` in
-/// particular is derived from `EngineView` (`view.panes[pane_id]
-/// .buffer_id`), which this function doesn't receive, so collapsing the
-/// other four alone wouldn't shrink this list. Every caller would still
-/// need to pass `buf_id` (and thus keep `view` in scope to compute it). The
-/// last four genuinely can't collapse the same way: none is an `EditorState`
-/// field, and `text_pre`/`rope_pre` are pre-mutation snapshots this function
-/// couldn't re-derive from `state.buffers` even if it wanted to, since it
-/// runs after the mutation.
+/// `rope_pre` is the pre-mutation rope, which the syntax and LSP streams map
+/// their positions from; this runs after the mutation, so it cannot re-derive
+/// it from `buffers`.
 #[allow(clippy::too_many_arguments)]
 fn finish_edit(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut JumpLists,
     pane_id: PaneId,
     buf_id: BufferId,
     new_sels: SelectionSet,
     cs: &ChangeSet,
-    text_pre: &BufferText,
     rope_pre: &ropey::Rope,
 ) {
     pane_state[pane_id][buf_id].set_selections(new_sels, buffers.get(buf_id).text());
     // An identity `cs` moved no bytes: `Buffer::apply_edit*` skipped
-    // `set_text` for it directly, and `commit_edit_group` never records it as
-    // a revision for `undo`/`redo` to later replay, so `text_gen` did not
-    // move either way. Feeding the syntax and LSP streams an edit tagged with
+    // `install` for it directly, and `commit_edit_group` never records it as
+    // a revision for `undo`/`redo` to later replay, so the text version did
+    // not move either way. Feeding the syntax and LSP streams an edit tagged with
     // an already-parsed generation would be actively wrong, and paste-stamping
     // must not count a no-op as an edit. Selections are still written above:
     // a no-op edit can still move cursors.
@@ -133,24 +121,9 @@ fn finish_edit(
     // buffer under this pane just changed regardless.
     pane_state[pane_id][buf_id].reveal_pending = true;
     buffers.bump_edit_seq();
-    // Computed once and shared by both propagation steps below. Each would
-    // otherwise rebuild the same `Vec` from `cs` (once per sibling pane here,
-    // once per pane per jump-list entry there).
-    let edits = cs.edited_old_ranges();
-    let buf = buffers.get(buf_id);
-    propagate_cs_to_panes(
-        pane_state,
-        pane_id,
-        buf_id,
-        &edits,
-        cs,
-        text_pre,
-        buf.text(),
-    );
-    let text_gen = buf.text_gen;
-    pane_jumps.translate(buf_id, &edits, cs, text_pre, buf.text());
-    record_syntax_edits(buffers, buf_id, text_gen, cs, rope_pre);
-    record_lsp_edits(buffers, decorations, buf_id, text_gen, cs, rope_pre);
+    let generation = buffers.get(buf_id).text().version().generation();
+    record_syntax_edits(buffers, buf_id, generation, cs, rope_pre);
+    record_lsp_edits(buffers, decorations, buf_id, generation, cs, rope_pre);
 }
 
 /// `Err` when [`EditorState::active_session`](crate::editor::EditorState::active_session)
@@ -161,7 +134,7 @@ fn finish_edit(
 /// Remote dispatch (`(call! "cmd" pane)` targeting a pane other than the
 /// focused one) means a *different* pane's own in-progress insert/paste
 /// session can otherwise be mutated out from under it: its eventual commit
-/// inverts the composed `ChangeSet` against a `text_snapshot` a concurrent
+/// inverts the composed `ChangeSet` against a `snapshot` a concurrent
 /// edit from another pane would make stale, and its next grouped edit panics
 /// in `ChangeSet::compose`'s length assert. Scoped to "some *other* pane"
 /// (not any open session at all) because the focused/target pane's own open
@@ -198,7 +171,7 @@ pub(in crate::editor) fn check_no_conflicting_session(
 ///   [`apply_doc_edit_grouped`]. A standalone revision would desync the group
 ///   and make the next `ChangeSet::compose` panic on a length mismatch.
 /// - A Paste session open on this (pane, buffer) is committed first via
-///   [`commit_paste_group`]. Otherwise its `text_snapshot` goes stale and the
+///   [`commit_paste_group`]. Otherwise its `snapshot` goes stale and the
 ///   next `[`/`]` re-paste discards this edit. Callers that bypass key
 ///   dispatch (and so `step_paste_commit`) rely on this.
 ///
@@ -209,12 +182,11 @@ pub(in crate::editor) fn check_no_conflicting_session(
 pub(in crate::editor) fn apply_doc_edit(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut JumpLists,
+    stores: &mut PositionStores<'_>,
     active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
-    cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
+    cmd: impl FnOnce(EditState) -> Edited,
 ) -> Result<(), CommandError> {
     if buffers.get(buf_id).is_read_only() {
         return Ok(());
@@ -227,8 +199,7 @@ pub(in crate::editor) fn apply_doc_edit(
         apply_doc_edit_grouped(
             buffers,
             decorations,
-            pane_state,
-            pane_jumps,
+            stores,
             active_session,
             pane_id,
             buf_id,
@@ -246,23 +217,22 @@ pub(in crate::editor) fn apply_doc_edit(
         .as_ref()
         .is_some_and(|s| s.owned_by(pane_id, buf_id))
     {
-        commit_paste_group(buffers, pane_state, active_session);
+        commit_paste_group(buffers, stores.panes, active_session);
     }
-    // O(1) clones: ropey uses structural sharing (reference-counted tree nodes).
-    let text_pre = buffers.get(buf_id).text().clone();
-    let rope_pre = text_pre.rope().clone();
-    let sels = pane_state[pane_id][buf_id].take_selections();
-    let (new_sels, cs) = buffers.get_mut(buf_id).apply_edit(sels, cmd);
+    // O(1) clone: ropey uses structural sharing (reference-counted tree nodes).
+    let rope_pre = buffers.get(buf_id).text().rope().clone();
+    let sels = stores.panes[pane_id][buf_id].selections().clone();
+    let (new_sels, cs) = buffers
+        .get_mut(buf_id)
+        .apply_edit(buf_id, stores, sels, cmd);
     finish_edit(
         buffers,
         decorations,
-        pane_state,
-        pane_jumps,
+        stores.panes,
         pane_id,
         buf_id,
         new_sels,
         &cs,
-        &text_pre,
         &rope_pre,
     );
     Ok(())
@@ -270,11 +240,8 @@ pub(in crate::editor) fn apply_doc_edit(
 
 /// Apply a grouped edit (inside an Insert session) to `buf_id` through `pane_id`.
 ///
-/// Reads and writes selections via `pane_state`, propagates `cs` to other panes.
-///
-/// Uses `std::mem::take` on the active `SelectionSet` instead of `clone()`.
-/// `apply_edit_grouped` is infallible, so no panic can leave the set in its
-/// default state.
+/// Reads and writes the acting pane's selections via `stores`; the buffer
+/// carries every other stored position through the change.
 ///
 /// Returns the applied `ChangeSet`. `input_stack/insert.rs`'s `apply_insert_edit`
 /// uses it to remap an open LSP completion session's anchor through every
@@ -288,12 +255,11 @@ pub(in crate::editor) fn apply_doc_edit(
 pub(in crate::editor) fn apply_doc_edit_grouped(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut JumpLists,
+    stores: &mut PositionStores<'_>,
     active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
-    cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
+    cmd: impl FnOnce(EditState) -> Edited,
 ) -> ChangeSet {
     if buffers.get(buf_id).is_read_only() {
         // Identity changeset: a read-only buffer means nothing happened, so a
@@ -302,8 +268,7 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
         return ChangeSet::identity(buffers.get(buf_id).text().len_chars());
     }
     let text_pre = buffers.get(buf_id).text().clone();
-    let rope_pre = text_pre.rope().clone();
-    let sels = pane_state[pane_id][buf_id].take_selections();
+    let sels = stores.panes[pane_id][buf_id].selections().clone();
     let doc = buffers.get_mut(buf_id);
     // Bound once, reused below for the capture-feed push too: both need
     // the same `is_insert_at`-filtered session.
@@ -313,45 +278,23 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
         .expect(
             "apply_doc_edit_grouped called without an open Insert session on this (pane, buffer)",
         );
-    let (new_sels, cs) = doc.apply_edit_grouped(sels, session.group_mut(), cmd);
-    let pbs = &mut pane_state[pane_id][buf_id];
-    // `ChangeSet::map_ranges` maps (start, end) pairs directly, but with
-    // `Assoc::After` on starts and `Assoc::Before` on ends: it shrinks a
-    // range around inserted text. A typed run needs the opposite: it must
-    // grow to include what was just typed, so anchors and ends are mapped
-    // separately with `Assoc` reversed from what `map_ranges` would use.
-    if let Some(run) = pbs.typed_run.as_mut() {
-        cs.map_positions(&mut run.anchors, hume_editing::changeset::Assoc::Before);
-        cs.map_positions(&mut run.ends, hume_editing::changeset::Assoc::After);
-    }
-    // Shrinks each record around any edit landing exactly at its start/end;
-    // see `map_ranges`' own doc. That is what makes ownership self-revoking:
-    // text typed past a record's end, or a line split before its start, falls
-    // outside the mapped range without any key handler needing to clear it.
-    if let Some(ranges) = pbs.autoindent.as_mut() {
-        cs.map_ranges(ranges);
-    }
+    let (new_sels, cs) = doc.apply_edit_grouped(buf_id, stores, sels, session.group_mut(), cmd);
     finish_edit(
         buffers,
         decorations,
-        pane_state,
-        pane_jumps,
+        stores.panes,
         pane_id,
         buf_id,
         new_sels,
         &cs,
-        &text_pre,
-        &rope_pre,
+        text_pre.rope(),
     );
     // This is the one funnel every grouped edit goes through, so it's the
-    // one place `DotCapture::edits` (`edit_session.rs`) can be fed without
+    // one place `DotCapture::chain` (`edit_session.rs`) can be fed without
     // every caller remembering to do it itself; see that type's own doc.
     if let Some(cap) = session.dot_capture_mut() {
-        cap.edits.push(cs.clone());
-        // `session.group_mut()`'s own `apply_edit_grouped` call above
-        // already bumped this via `Buffer::set_text`; see `DotCapture::
-        // text_gen`'s own doc for what this guards.
-        cap.text_gen = buffers.get(buf_id).text_gen;
+        cap.chain
+            .push(&TextChange::new(&text_pre, buffers.get(buf_id).text(), &cs));
     }
     cs
 }
@@ -368,18 +311,16 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
 pub(in crate::editor) fn apply_doc_edit_regrouped(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut JumpLists,
+    stores: &mut PositionStores<'_>,
     active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
-    cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
+    cmd: impl FnOnce(EditState) -> Edited,
 ) {
     if buffers.get(buf_id).is_read_only() {
         return;
     }
-    let text_pre = buffers.get(buf_id).text().clone();
-    let rope_pre = text_pre.rope().clone();
+    let rope_pre = buffers.get(buf_id).text().rope().clone();
     let group = active_session
         .as_mut()
         .filter(|s| s.is_paste_at(pane_id, buf_id))
@@ -387,24 +328,24 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
             "apply_doc_edit_regrouped called without an open paste session on this (pane, buffer)",
         )
         .group_mut();
-    let (new_sels, propagation_cs) = buffers.get_mut(buf_id).apply_edit_regrouped(group, cmd);
+    let (new_sels, propagation_cs) = buffers
+        .get_mut(buf_id)
+        .apply_edit_regrouped(buf_id, stores, group, cmd);
     finish_edit(
         buffers,
         decorations,
-        pane_state,
-        pane_jumps,
+        stores.panes,
         pane_id,
         buf_id,
         new_sels,
         &propagation_cs,
-        &text_pre,
         &rope_pre,
     );
 }
 
 /// Run one history walk on `buf_id` through `pane_id` (`walk`, typically
-/// `|b| b.undo_n(count)` or `|b| b.redo_n(count)`) and propagate the net
-/// `ChangeSet` to all other panes viewing the same buffer.
+/// `|b, id, stores| b.undo_n(id, stores, count)`), which carries every stored
+/// position through the net `ChangeSet`.
 ///
 /// `walk` already composes every revision it crosses into one transform (see
 /// `Buffer::apply_transactions`), so there is a single `finish_edit` call and
@@ -420,12 +361,11 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
 pub(in crate::editor) fn apply_doc_history_walk(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut JumpLists,
+    stores: &mut PositionStores<'_>,
     active_session: &Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
-    walk: impl FnOnce(&mut Buffer) -> HistoryWalkResult,
+    walk: impl FnOnce(&mut Buffer, BufferId, &mut PositionStores<'_>) -> HistoryWalkResult,
 ) -> Result<HistoryWalk, CommandError> {
     if buffers.get(buf_id).is_read_only() {
         return Ok(HistoryWalk::RefusedReadOnly);
@@ -437,24 +377,19 @@ pub(in crate::editor) fn apply_doc_history_walk(
             .is_some_and(|s| s.owned_by(pane_id, buf_id)),
         "apply_doc_history_walk called while a session is open on this (pane, buffer)"
     );
-    // text_pre is the current (pre-walk) text: undo's CS maps post-edit
-    // positions back to pre-edit, so non-acting panes' heads must be
-    // translated through that CS.
-    let text_pre = buffers.get(buf_id).text().clone();
-    let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id)) else {
+    let rope_pre = buffers.get(buf_id).text().rope().clone();
+    let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), buf_id, stores) else {
         return Ok(HistoryWalk::Took(0));
     };
     finish_edit(
         buffers,
         decorations,
-        pane_state,
-        pane_jumps,
+        stores.panes,
         pane_id,
         buf_id,
         new_sels,
         &cs,
-        &text_pre,
-        text_pre.rope(),
+        &rope_pre,
     );
     // `finish_edit` skips `bump_edit_seq` for an identity `cs` (correctly:
     // a normal edit that cancels to identity records no revision at all, so
@@ -470,25 +405,17 @@ pub(in crate::editor) fn apply_doc_history_walk(
 }
 
 /// Apply a motion function and store the resulting selection in `pane_state`.
-///
-/// Uses `std::mem::take` on the active `SelectionSet` instead of `clone()`;
-/// the default state is transient and overwritten before this fn returns.
-/// The closure `f` is assumed infallible; a panic mid-motion leaves
-/// `selections` as `Default` (cursor at 0).
 pub(in crate::editor) fn apply_doc_motion(
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pane_id: PaneId,
     buf_id: BufferId,
-    f: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
+    f: impl FnOnce(EditState) -> EditState,
 ) {
-    let old_head = pane_state[pane_id][buf_id].selections().primary().head();
-    let new_sels = {
-        let text = buffers.get(buf_id).text();
-        let sels = pane_state[pane_id][buf_id].take_selections();
-        f(text, sels)
-    };
-    pane_state[pane_id][buf_id].restore_selections(new_sels, old_head, buffers.get(buf_id).text());
+    let text = buffers.get(buf_id).text();
+    let sels = pane_state[pane_id][buf_id].selections().clone();
+    let new_sels = f(EditState::bind(text, sels)).into_selections();
+    pane_state[pane_id][buf_id].set_selections(new_sels, text);
 }
 
 /// Open an Insert-kind session on `(pane_id, buf_id)`, always the focused
@@ -524,9 +451,10 @@ pub(in crate::editor) fn begin_edit_group(
         // solely for a fresh open. A refusal or a placeholder retarget
         // never needs it.
         || {
+            let sels = pane_state[pane_id][buf_id].selections();
             buffers
                 .get(buf_id)
-                .begin_edit_group(pane_state[pane_id][buf_id].selections().clone())
+                .begin_edit_group(sels.clone(), sels.clone())
         },
     )?;
     // A fresh group never inherits a typed run, an autoindent record, or exit
@@ -569,7 +497,7 @@ pub(in crate::editor) fn commit_open_session(
         .get(pane)
         .and_then(|m| m.get(buffer))
         .map(|pbs| pbs.selections().clone())
-        .unwrap_or_else(|| group.pre_sels.clone());
+        .unwrap_or_else(|| group.snapshot.clone().into_selections());
     buffers.get_mut(buffer).commit_edit_group(group, post_sels);
 }
 
@@ -611,40 +539,4 @@ pub(in crate::editor) fn commit_edit_group(
         ),
     }
     commit_open_session(buffers, pane_state, active_session);
-}
-
-/// Propagate `cs` to every pane except `pane_id` that views `buf_id`,
-/// keeping their selections valid after an edit `pane_id` performed.
-///
-/// `text_pre` must be the buffer text **before** the edit. `translate_in_place_with`
-/// uses it to identify which line each head was on pre-edit, which governs
-/// whether `Selection.sticky_display_col` is reset after the translation.
-/// `text_post` is the text after the edit, which the mapped selections are
-/// snapped against.
-/// `edits` must be `cs.edited_old_ranges()`; see `finish_edit` for why it's
-/// computed there instead of here.
-///
-/// Engine pane mirrors are **not** updated here; `sync_all_pane_mirrors` in
-/// the next `prepare_frame` handles that. Only the authoritative `SelectionSet`
-/// in `pane_state` must be kept valid between edits, because other
-/// mid-event code (e.g. `update_pane_cursor`) reads it.
-pub(in crate::editor::doc_ops) fn propagate_cs_to_panes(
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_id: PaneId,
-    buf_id: BufferId,
-    edits: &[ExclusiveRange<CharOffset>],
-    cs: &ChangeSet,
-    text_pre: &hume_editing::text::BufferText,
-    text_post: &hume_editing::text::BufferText,
-) {
-    // Collect IDs first; can't iterate and mutate the same SecondaryMap.
-    let affected: Vec<PaneId> = pane_state
-        .iter()
-        .filter_map(|(pid, buf_map)| {
-            (pid != pane_id && buf_map.contains_key(buf_id)).then_some(pid)
-        })
-        .collect();
-    for pid in affected {
-        pane_state[pid][buf_id].translate_selections_in_place(edits, cs, text_pre, text_post);
-    }
 }

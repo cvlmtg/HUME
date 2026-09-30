@@ -14,8 +14,6 @@ use pretty_assertions::assert_eq;
 /// `switch_focused_pane` restores each pane's cursor exactly.
 #[test]
 fn d1_selections_are_pane_owned() {
-    use hume_editing::selection::{Selection, SelectionSet};
-
     let mut ed = editor_from("-[h]>ello world\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
@@ -31,16 +29,16 @@ fn d1_selections_are_pane_owned() {
 
     // Pane A → position 2 ('l').
     ed.switch_focused_pane(pid_a);
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(2))));
+    select(&mut ed, &[(2, 2)], 0);
 
     // Pane B → position 6 ('w').
     ed.switch_focused_pane(pid_b);
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(6))));
+    select(&mut ed, &[(6, 6)], 0);
 
     // Back to pane A: head must be 2, not 6.
     ed.switch_focused_pane(pid_a);
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(2),
         "pane A head after switch"
     );
@@ -48,7 +46,7 @@ fn d1_selections_are_pane_owned() {
     // Back to pane B: head must be 6, not 2.
     ed.switch_focused_pane(pid_b);
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(6),
         "pane B head after switch"
     );
@@ -100,12 +98,13 @@ fn d4a_search_pattern_is_per_buffer() {
 }
 
 /// D4b: `Selection.sticky_display_col` travels with the selection; resets
-/// when its line is touched by an edit; survives translate_in_place on
+/// when its line is touched by an edit; survives `translate` on
 /// untouched lines.
 #[test]
 fn d4b_sticky_display_col_is_per_selection() {
     use hume_editing::changeset::ChangeSetBuilder;
-    use hume_editing::selection::{Selection, SelectionSet, StickyDisplayCol};
+    use hume_editing::edit::TextChange;
+    use hume_editing::selection::{EditView, StickyDisplayCol};
     use hume_editing::text::BufferText;
     use hume_rope::column::BufferLineCol;
 
@@ -113,66 +112,60 @@ fn d4b_sticky_display_col_is_per_selection() {
     let text = BufferText::from("abc\ndef\n");
 
     // Selection on line 1 (char offset 4 = 'd'), sticky_display_col = 0.
-    // Variant is incidental to this test (translate_in_place invalidation
+    // Variant is incidental to this test (`translate`'s invalidation
     // doesn't look at it); `BufferLine` is as good as `DisplayLine` here.
-    let sel = Selection::with_sticky_display_col(
-        co(4),
-        co(4),
-        StickyDisplayCol::BufferLine {
-            display_col: BufferLineCol::new(0),
-        },
-    );
-    let mut sels = SelectionSet::single(sel);
+    let sticky = StickyDisplayCol::BufferLine {
+        display_col: BufferLineCol::new(0),
+    };
+    let sel = test_fixtures::testing::cursor(&text, 4).with_sticky(sticky);
+    let mut sels = test_fixtures::testing::single(&text, sel);
 
     // CS that inserts at the start of line 0 only: "abc\n" → "Xabc\n"
     // This touches line 0 but not line 1, so sticky_display_col on line-1
     // head should survive.
     let mut b = ChangeSetBuilder::new(text.end());
     b.insert("X"); // insert at start
-    b.retain_rest();
     let cs = b.finish();
 
     let text_post = cs.apply(&text).expect("cs built for text");
-    sels.translate_in_place(&cs, &text, &text_post);
+    sels.translate(&TextChange::new(&text, &text_post, &cs));
     // Head moved from 4 to 5 (past the inserted 'X'), sticky_display_col
     // preserved.
-    assert_eq!(sels.primary().head(), co(5), "head mapped past insert");
+    let view = EditView::bind(&text_post, &sels);
     assert_eq!(
-        sels.primary().sticky_display_col(),
-        Some(StickyDisplayCol::BufferLine {
-            display_col: BufferLineCol::new(0),
-        }),
+        view.primary().head().offset(),
+        co(5),
+        "head mapped past insert"
+    );
+    assert_eq!(
+        view.primary().selection().sticky_display_col(),
+        Some(sticky),
         "sticky_display_col preserved on untouched line"
     );
 
     // Now a CS that touches line 1 (inserts at position of 'd'):
     // sticky_display_col should reset. Re-build sels with the updated head
     // but set sticky_display_col back to show it was latched.
-    let sel2 = Selection::with_sticky_display_col(
-        co(5),
-        co(5),
-        StickyDisplayCol::BufferLine {
-            display_col: BufferLineCol::new(0),
-        },
-    );
-    let mut sels2 = SelectionSet::single(sel2);
-
     // "Xabc\ndef\n" (after first edit): "d" is now at char 5 (line 1).
-    // Insert at char 5 (start of "def" in new rope); use the pre-edit BufferText for
-    // translate_in_place (text_pre = before-this-edit text).
     let text2 = BufferText::from("Xabc\ndef\n");
+    let sel2 = test_fixtures::testing::cursor(&text2, 5).with_sticky(sticky);
+    let mut sels2 = test_fixtures::testing::single(&text2, sel2);
+
+    // Insert at char 5 (start of "def").
     let mut b2 = ChangeSetBuilder::new(text2.end());
-    b2.retain(5); // skip "Xabc\n"
+    b2.retain_to(co(5)); // skip "Xabc\n"
     b2.insert("Y"); // insert at line 1
-    b2.retain_rest();
     let cs2 = b2.finish();
 
     let text2_post = cs2.apply(&text2).expect("cs2 built for text2");
-    sels2.translate_in_place(&cs2, &text2, &text2_post);
+    sels2.translate(&TextChange::new(&text2, &text2_post, &cs2));
     // Head moved past insert; sticky_display_col must be reset because line
     // 1 was touched.
     assert_eq!(
-        sels2.primary().sticky_display_col(),
+        EditView::bind(&text2_post, &sels2)
+            .primary()
+            .selection()
+            .sticky_display_col(),
         None,
         "sticky_display_col reset when head's line is touched"
     );
@@ -301,9 +294,10 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
         "sanity: live search armed on A"
     );
     let head_during_preview = ed.state.panes.state[pid_a][bid_a]
-        .selections()
+        .view(ed.state.buffers.get(bid_a).text())
         .primary()
-        .head();
+        .head()
+        .offset();
     assert_ne!(
         head_during_preview,
         co(0),
@@ -330,9 +324,10 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
 
     assert_eq!(
         ed.state.panes.state[pid_a][bid_a]
-            .selections()
+            .view(ed.state.buffers.get(bid_a).text())
             .primary()
-            .head(),
+            .head()
+            .offset(),
         co(0),
         "pane A's pre-search position must be restored"
     );
@@ -347,8 +342,6 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
 /// Pane A deletes char 0; pane B's cursor at position 9 must slide to 8.
 #[test]
 fn d2_edit_in_pane_a_translates_pane_b_selections() {
-    use hume_editing::selection::{Selection, SelectionSet};
-
     // "abcdefghij\n" (11 chars including trailing \n); cursor on 'a'.
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
@@ -364,7 +357,7 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
 
     // Position pane B's cursor at char 9 ('j').
     ed.switch_focused_pane(pid_b);
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(9))));
+    select(&mut ed, &[(9, 9)], 0);
 
     // Switch to pane A and delete char 0 ('a').
     ed.switch_focused_pane(pid_a);
@@ -372,7 +365,13 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
 
     // Pane A's cursor is now at 0 (post-delete); pane B's should be at 8.
     assert_eq!(
-        ed.selections_for(pid_b, bid).unwrap().primary().head(),
+        EditView::bind(
+            ed.state.buffers.get(bid).text(),
+            ed.selections_for(pid_b, bid).unwrap(),
+        )
+        .primary()
+        .head()
+        .offset(),
         co(8),
         "pane B selection translated by forward CS"
     );
@@ -384,8 +383,6 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
 /// cursor at 8 must ride the inverse CS back to 9.
 #[test]
 fn d3_undo_restores_acting_pane_and_translates_others() {
-    use hume_editing::selection::{Selection, SelectionSet};
-
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
@@ -400,7 +397,7 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
 
     // Position pane B at char 9.
     ed.switch_focused_pane(pid_b);
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(9))));
+    select(&mut ed, &[(9, 9)], 0);
 
     // Pane A: delete 'a', then undo.
     ed.switch_focused_pane(pid_a);
@@ -410,13 +407,19 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
 
     // Pane A's cursor is restored to pre-delete position.
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(0),
         "pane A cursor restored by undo"
     );
     // Pane B's cursor is translated back to 9 by the inverse CS.
     assert_eq!(
-        ed.selections_for(pid_b, bid).unwrap().primary().head(),
+        EditView::bind(
+            ed.state.buffers.get(bid).text(),
+            ed.selections_for(pid_b, bid).unwrap(),
+        )
+        .primary()
+        .head()
+        .offset(),
         co(9),
         "pane B selection translated by inverse CS (undo)"
     );
@@ -424,7 +427,7 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
 
 /// A sibling pane's plain cursor at a rewritten line's column 0 clamps past
 /// the new indent, via the same `ChangeSet` `>` uses to remap the acting
-/// pane's own selections. `translate_in_place` (every command's sibling-pane
+/// pane's own selections. `SelectionSet::translate` (every command's sibling-pane
 /// path) always maps with `Assoc::After`, and `>`'s own remap uses that same
 /// association for anything but a linewise selection's start. Both paths only
 /// agree because the `ChangeSet` puts the new indent's `Insert` op before the
@@ -433,8 +436,6 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
 /// the *old* line start instead.
 #[test]
 fn indent_sibling_pane_cursor_at_line_start_clamps_past_new_indent() {
-    use hume_editing::selection::{Selection, SelectionSet};
-
     // "  foo\n": two spaces of existing indent.
     let mut ed = editor_from("  -[f]>oo\n");
     let bid = ed.focused_buffer_id();
@@ -451,7 +452,7 @@ fn indent_sibling_pane_cursor_at_line_start_clamps_past_new_indent() {
     // Pane B's cursor sits at column 0, an ordinary cursor that merely
     // happens to be at the line start, not a linewise selection.
     ed.switch_focused_pane(pid_b);
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(0))));
+    select(&mut ed, &[(0, 0)], 0);
 
     // Pane A indents the line. Default settings: tab-style=hard, tab-width=4;
     // the existing 2-space indent (width 2) shifts to width 6, rendered as
@@ -460,18 +461,22 @@ fn indent_sibling_pane_cursor_at_line_start_clamps_past_new_indent() {
     ed.handle_key(key('>'));
 
     assert_eq!(
-        ed.selections_for(pid_b, bid).unwrap().primary().head(),
+        EditView::bind(
+            ed.state.buffers.get(bid).text(),
+            ed.selections_for(pid_b, bid).unwrap(),
+        )
+        .primary()
+        .head()
+        .offset(),
         co(3),
         "pane B's cursor clamps past the new indent, not back to the old line start"
     );
 }
 
 /// Multi-cursor propagation: a deletion that spans two selections in pane B
-/// merges them into one (proves translate_in_place calls merge_overlapping_in_place).
+/// merges them into one (`SelectionSet::translate` merges what it folds together).
 #[test]
 fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
-    use hume_editing::selection::{Selection, SelectionSet};
-
     // "abcde\n": 6 chars.
     let mut ed = editor_from("-[a]>bcde\n");
     let bid = ed.focused_buffer_id();
@@ -487,29 +492,29 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
 
     // Pane B: two cursors at positions 2 ('c') and 4 ('e').
     ed.switch_focused_pane(pid_b);
-    ed.set_current_selections(SelectionSet::from_vec(
-        vec![Selection::collapsed(co(2)), Selection::collapsed(co(4))],
-        0,
-    ));
+    select(&mut ed, &[(2, 2), (4, 4)], 0);
 
     // Pane A: select chars 1–4 ("bcde") and delete.
     // First put pane A's selection on 'b'-'e'.
     ed.switch_focused_pane(pid_a);
     // Select 'a' then extend to 'e': use 'v' to enter Select then motion.
     // Simplest: directly set selections and do a delete.
-    ed.set_current_selections(SelectionSet::single(Selection::new(co(1), co(4))));
+    select(&mut ed, &[(1, 4)], 0);
     ed.handle_key(key('d'));
 
     // After deleting chars 1-4, pane B's two cursors at 2 and 4 both map to
     // the deletion point (1); they must merge into a single cursor at 1.
-    let pane_b_sels = ed.selections_for(pid_b, bid).unwrap();
+    let pane_b_sels = EditView::bind(
+        ed.state.buffers.get(bid).text(),
+        ed.selections_for(pid_b, bid).unwrap(),
+    );
     assert_eq!(
         pane_b_sels.len(),
         1,
         "collapsed selections must merge after propagation"
     );
     assert_eq!(
-        pane_b_sels.primary().head(),
+        pane_b_sels.primary().head().offset(),
         co(1),
         "merged cursor at deletion point"
     );
@@ -518,13 +523,11 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
 /// Non-focused pane engine mirror is updated by `sync_all_pane_mirrors` after
 /// an edit translates the pane's authoritative `SelectionSet`.
 ///
-/// Guards the removal of the immediate engine-mirror write from
-/// `propagate_cs_to_panes`: the mirror must stay consistent with `pane_state`
-/// when synced via the per-frame path.
+/// The edit carries pane B's selections but leaves its engine mirror to the
+/// per-frame sync: the mirror must stay consistent with `pane_state` when
+/// synced via that path.
 #[test]
 fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
-    use hume_editing::selection::{Selection, SelectionSet};
-
     // "abcdefghij\n", cursor on 'a'.
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
@@ -540,17 +543,22 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
 
     // Position pane B's cursor at char 5 ('f').
     ed.switch_focused_pane(pid_b);
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(5))));
+    select(&mut ed, &[(5, 5)], 0);
 
-    // Switch to pane A and delete char 0 ('a'); this calls propagate_cs_to_panes
-    // which translates pane B's authoritative SelectionSet but (post-fix) does NOT
-    // write the engine mirror directly.
+    // Switch to pane A and delete char 0 ('a'); the edit carries pane B's
+    // authoritative SelectionSet but does not write its engine mirror.
     ed.switch_focused_pane(pid_a);
     ed.handle_key(key('d'));
 
     // Authoritative selection in pane_state must be at 4 (translated by CS).
     assert_eq!(
-        ed.selections_for(pid_b, bid).unwrap().primary().head(),
+        EditView::bind(
+            ed.state.buffers.get(bid).text(),
+            ed.selections_for(pid_b, bid).unwrap(),
+        )
+        .primary()
+        .head()
+        .offset(),
         co(4),
         "pane B pane_state selection translated to 4"
     );
@@ -559,7 +567,7 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
     // Engine mirror for pane B must now reflect the translated position.
-    let mirror_head = ed.view.panes[pid_b].selections[0].head;
+    let mirror_head = ed.view.panes[pid_b].selections[0].cursor.offset();
     assert_eq!(
         mirror_head,
         co(4),
@@ -574,14 +582,13 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
 #[test]
 fn ensure_is_idempotent() {
     use crate::editor::pane_state;
-    use hume_editing::selection::{Selection, SelectionSet};
 
     let mut ed = editor_from("-[h]>ello\n");
     let pid = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
 
     // Move the cursor away from its initial position.
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(3))));
+    select(&mut ed, &[(3, 3)], 0);
 
     // ensure() on an already-seeded entry must not reset to initial_sels.
     pane_state::ensure(
@@ -592,7 +599,7 @@ fn ensure_is_idempotent() {
         bid,
     );
     assert_eq!(
-        ed.current_selections().primary().head(),
+        ed.current_view().primary().head().offset(),
         co(3),
         "ensure must not overwrite existing pane_state entry",
     );
@@ -642,9 +649,10 @@ fn ensure_seeds_new_entry_with_initial_sels() {
         pid,
         bid2,
     );
+    let text = ed.state.buffers.get(bid2).text();
     assert_eq!(
-        *state.selections(),
-        expected_sels,
+        test_fixtures::testing::serialize_state(text, state.selections()),
+        test_fixtures::testing::serialize_state(text, &expected_sels),
         "ensure must seed with buffer's initial_sels on first visit",
     );
 }
@@ -1678,12 +1686,10 @@ fn split_then_focus_left_without_reframe_reaches_new_pane() {
 /// cursor and scroll position, rather than jumping to the top of the file.
 #[test]
 fn split_inherits_focused_panes_selection_and_scroll() {
-    use hume_editing::selection::Selection;
-
     let content: String = (0..200).map(|i| format!("line {i}\n")).collect();
     let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(co(0)));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let sels = sels_at(&text, &[(0, 0)], 0);
+    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
 

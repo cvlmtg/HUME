@@ -1,11 +1,11 @@
 use std::iter::Peekable;
 
-use hume_editing::lines::line_last_char;
-use hume_editing::selection::SelectionSet;
+use hume_editing::lines::{line_content_end, line_start};
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::lines::is_empty_line_token;
-use hume_rope::offset::{CharOffset, InclusiveRange};
 use ropey::RopeSlice;
 
 use super::{MotionMode, apply_object_motion};
@@ -71,13 +71,15 @@ fn content_tokens_at(
         .peekable()
 }
 
-/// Inclusive char span from `first_line`'s start to `last_line`'s last
-/// content char.
-fn line_span(text: &BufferText, first_line: usize, last_line: usize) -> InclusiveRange<CharOffset> {
-    InclusiveRange::new(
-        text.line_to_char(RopeyLine::new(first_line)),
-        line_last_char(text, ContentLine::new(last_line)),
+/// The clusters from `first_line`'s start to `last_line`'s last content
+/// cluster (its `\n` when it is empty).
+fn line_span(text: &BufferText, first_line: usize, last_line: usize) -> ClusterRange {
+    ClusterRange::through(
+        text.full_slice(),
+        line_start(text, ContentLine::new(first_line)),
+        line_content_end(text, ContentLine::new(last_line)),
     )
+    .expect("a paragraph's first line is not after its last")
 }
 
 // ── Paragraph finders ────────────────────────────────────────────────────────
@@ -86,15 +88,15 @@ fn line_span(text: &BufferText, first_line: usize, last_line: usize) -> Inclusiv
 // one cursor is continued on that same cursor rather than re-opened at a
 // boundary an earlier phase already found.
 
-/// Paragraph enclosing `pos`, as an inclusive char span: its own lines, plus
-/// the trailing blank gap when `include_gap`. `None` on a blank line: there
-/// is no paragraph there to select.
+/// Paragraph enclosing `pos`: its own lines, plus the trailing blank gap
+/// when `include_gap`. `None` on a blank line: there is no paragraph there to
+/// select.
 pub(crate) fn paragraph_at(
     text: &BufferText,
-    pos: CharOffset,
+    pos: ClusterStart,
     include_gap: bool,
-) -> Option<InclusiveRange<CharOffset>> {
-    let line = text.char_to_line(pos).index();
+) -> Option<ClusterRange> {
+    let line = text.char_to_line(pos.offset()).index();
 
     // Climb backward from `line` itself (a run of 0 means `line` is blank,
     // the "no paragraph here" case) to the paragraph's first line.
@@ -121,37 +123,25 @@ pub(crate) fn paragraph_at(
 ///
 /// Not a `motion_cmd!`: the finder yields a span, not a head. It goes through the same
 /// `apply_object_motion` the structural `goto-next-<kind>` family uses.
-pub fn cmd_goto_next_paragraph(
-    text: &BufferText,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    apply_object_motion(text, sels, mode, count, false, |pos| {
-        next_paragraph(text, pos)
-    })
+pub fn cmd_goto_next_paragraph(state: EditState, count: usize, mode: MotionMode) -> EditState {
+    let text = state.text().clone();
+    apply_object_motion(state, mode, count, false, |pos| next_paragraph(&text, pos))
 }
 
 /// Select the previous paragraph, plus its trailing blank gap (`{`). No-op
 /// if there is no paragraph above.
-pub fn cmd_goto_prev_paragraph(
-    text: &BufferText,
-    sels: SelectionSet,
-    count: usize,
-    mode: MotionMode,
-) -> SelectionSet {
-    apply_object_motion(text, sels, mode, count, true, |pos| {
-        prev_paragraph(text, pos)
-    })
+pub fn cmd_goto_prev_paragraph(state: EditState, count: usize, mode: MotionMode) -> EditState {
+    let text = state.text().clone();
+    apply_object_motion(state, mode, count, true, |pos| prev_paragraph(&text, pos))
 }
 
 /// The paragraph strictly after `pos`'s own paragraph, plus its trailing gap,
 /// or `None` at EOF. One forward cursor: leave the enclosing paragraph, then
 /// its gap (landing past the buffer's last content line means there's
 /// nothing below), then the target paragraph's own content and gap.
-fn next_paragraph(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
+fn next_paragraph(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
     let total = text.content_line_count().get();
-    let line = text.char_to_line(pos).index();
+    let line = text.char_to_line(pos.offset()).index();
     let mut tokens = content_tokens_at(text, line);
 
     let mut target = line + content_run(&mut tokens);
@@ -176,8 +166,8 @@ fn next_paragraph(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<C
 /// walk can't answer: starting inside a gap that continues below `pos`, the
 /// backward count only sees the blanks at or above `pos`, never the ones
 /// below it.
-fn prev_paragraph(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
-    let line = text.char_to_line(pos).index();
+fn prev_paragraph(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
+    let line = text.char_to_line(pos.offset()).index();
     let mut back = text.line_tokens_back_from(RopeyLine::new(line)).peekable();
 
     let after_paragraph = line.checked_sub(content_run(&mut back))?;

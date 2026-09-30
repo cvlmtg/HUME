@@ -911,9 +911,9 @@ fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
 }
 
 /// The staleness counterpart of the test above: callback 1 edits `bid` (bumping its
-/// `text_gen`), callback 2 has no `#:allow-stale`. Both land in the same
+/// the text version), callback 2 has no `#:allow-stale`. Both land in the same
 /// drain, both admitted at drain time (neither has run, so `bid`'s
-/// `text_gen` still matches both anchors). Only a re-check at dequeue,
+/// the text version still matches both anchors). Only a re-check at dequeue,
 /// after callback 1's edit has actually landed, catches the staleness.
 #[test]
 fn queued_callback_restales_against_an_earlier_siblings_edit_in_the_same_batch() {
@@ -953,6 +953,6 @@ fn queued_callback_restales_against_an_earlier_siblings_edit_in_the_same_batch()
     let log = ed.state.message_log.format_for_display();
     assert!(
         !log.contains("b-fired"),
-        "callback 2 must be dropped once callback 1's edit bumps text_gen: {log:?}"
+        "callback 2 must be dropped once callback 1's edit changes the text version: {log:?}"
     );
 }

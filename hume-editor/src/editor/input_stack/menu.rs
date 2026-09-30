@@ -8,7 +8,7 @@ use hume_scripting::host::WidgetToken;
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::{Editor, EditorState, widget_token};
-use super::placement::{focused_cursor_char, popup_placement};
+use super::placement::{focused_cursor, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalScope};
 
 /// `(show-menu! items on-select)`'s raw content, held on `EditorState`
@@ -130,8 +130,8 @@ impl Editor {
         // Hoisted out of the `and_then` below: resolving the anchor takes
         // `&mut self` (it may walk the pane's display-line map), which cannot overlap
         // the `&self.state.input` that closure's receiver holds.
-        let anchor_char = focused_cursor_char(self);
-        let placement = popup_placement(self, ctx, anchor_char);
+        let anchor = focused_cursor(self);
+        let placement = popup_placement(self, ctx, anchor);
         let border = self.state.settings.popup_border;
 
         let resolved = placement.and_then(|placement| {

@@ -2,13 +2,18 @@ use hume_rope::offset::CharOffset;
 
 use super::*;
 use crate::changeset::ChangeSetBuilder;
-use crate::selection::{Selection, SelectionSet};
+use crate::selection::RecordedSelections;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-/// Build a collapsed SelectionSet at offset `pos`.
-fn sel_at(pos: usize) -> SelectionSet {
-    SelectionSet::single(Selection::collapsed(CharOffset::new(pos)))
+/// A recorded cursor at offset `pos` of a text wide enough that every char
+/// below it starts a cluster.
+fn sel_at(pos: usize) -> RecordedSelections {
+    let earlier = crate::text::BufferText::from(" ".repeat(pos + 1).as_str());
+    let at = earlier.snap(CharOffset::new(pos));
+    assert_eq!(at.offset(), CharOffset::new(pos));
+    let cursor = crate::selection::Selection::cursor(at);
+    RecordedSelections::new(vec![cursor], 0)
 }
 
 /// Build a simple ChangeSet that inserts `text` at offset 0 in a buffer

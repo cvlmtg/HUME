@@ -2,6 +2,7 @@
 //! and standalone provider virtual lines. See [`push_virtual_cells`]'s own
 //! doc for why one emitter serves both.
 
+use hume_rope::cluster::ClusterStart;
 use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::offset::ExclusiveRange;
 use unicode_segmentation::UnicodeSegmentation;
@@ -36,7 +37,7 @@ pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
 /// produces shares. The identity is what separates the two kinds of run:
 /// an inline insert decorates a real buffer grapheme and carries that
 /// grapheme's position, while a virtual display line has no buffer position
-/// at all (`char_offset: usize::MAX`, `indent_depth: 0`).
+/// at all (`pos: None`, `indent_depth: 0`).
 pub(crate) struct VirtualRun<'a> {
     pub text: &'a str,
     /// A virtual cell occupies no buffer bytes, so this is never a real span
@@ -47,15 +48,15 @@ pub(crate) struct VirtualRun<'a> {
     /// is real content from one that only decorates, and `style_display_line` reads
     /// it as the byte position highlighting layers against.
     pub byte_offset: usize,
-    /// For an inline insert, the char offset of the real grapheme it
-    /// precedes (not `usize::MAX`): keeps the display line non-decreasing in
-    /// `char_offset`, which `resolve_grapheme_display_col`'s partition_point
-    /// requires. Mid-line inserts are pushed before that grapheme, so ties
-    /// resolve to the insert first; `resolve_grapheme_display_col` skips
-    /// forward past `Virtual` cells to reach the real one. Trailing inserts
-    /// share the EOL sentinel's offset (the `\n` position) since there is no
-    /// later real grapheme on the display line to precede.
-    pub char_offset: usize,
+    /// For an inline insert, the cluster of the real grapheme it precedes:
+    /// keeps the display line non-decreasing in `pos`, which
+    /// `resolve_grapheme_display_col`'s partition_point requires. Mid-line
+    /// inserts are pushed before that grapheme, so ties resolve to the
+    /// insert first; `resolve_grapheme_display_col` skips forward past
+    /// `Virtual` cells to reach the real one. Trailing inserts share the EOL
+    /// sentinel's cluster (the `\n`) since there is no later real grapheme on
+    /// the display line to precede.
+    pub pos: Option<ClusterStart>,
     pub indent_depth: u8,
 }
 
@@ -127,7 +128,7 @@ pub(crate) fn push_virtual_cells(
 
         graphemes_out.push(Grapheme {
             byte_range,
-            char_offset: run.char_offset,
+            pos: run.pos,
             display_col: *display_col,
             width,
             content,
@@ -143,7 +144,7 @@ pub(crate) fn push_virtual_cells(
         if width == 2 {
             graphemes_out.push(Grapheme {
                 byte_range,
-                char_offset: run.char_offset,
+                pos: run.pos,
                 display_col: *display_col,
                 width: 0, // zero: does not consume columns
                 content: CellContent::WidthContinuation,

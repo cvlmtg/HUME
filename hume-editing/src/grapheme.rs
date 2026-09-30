@@ -2,6 +2,7 @@
 //! grapheme-cluster algorithms. See that module for the implementations and
 //! detailed doc comments.
 
+use hume_rope::cluster::{ClusterBound, ClusterStart};
 use hume_rope::column::{BufferLineCol, GraphemeCol};
 use hume_rope::line::ContentLine;
 use hume_rope::offset::CharOffset;
@@ -14,28 +15,46 @@ pub fn next_grapheme_boundary(text: &BufferText, char_offset: CharOffset) -> Cha
 }
 
 /// See [`hume_rope::grapheme::graphemes_at`].
-pub fn graphemes_at(text: &BufferText, pos: CharOffset) -> hume_rope::grapheme::Graphemes<'_> {
-    hume_rope::grapheme::graphemes_at(text.full_slice(), pos)
+pub fn graphemes_at(text: &BufferText, from: ClusterBound) -> hume_rope::grapheme::Graphemes<'_> {
+    hume_rope::grapheme::graphemes_at(text.full_slice(), from)
+}
+
+/// See [`hume_rope::grapheme::clusters_before`].
+pub fn clusters_before(
+    text: &BufferText,
+    bound: ClusterBound,
+) -> hume_rope::grapheme::ClustersBefore<'_> {
+    hume_rope::grapheme::clusters_before(text.full_slice(), bound)
+}
+
+/// See [`hume_rope::grapheme::cluster_end`].
+pub fn cluster_end(text: &BufferText, start: ClusterStart) -> ClusterBound {
+    hume_rope::grapheme::cluster_end(text.full_slice(), start)
+}
+
+/// See [`hume_rope::grapheme::next_cluster`].
+pub fn next_cluster(text: &BufferText, start: ClusterStart) -> Option<ClusterStart> {
+    hume_rope::grapheme::next_cluster(text.full_slice(), start)
+}
+
+/// The text's first cluster.
+pub fn first_cluster(text: &BufferText) -> ClusterStart {
+    hume_rope::grapheme::first_cluster(text.full_slice()).expect("a buffer is never empty")
+}
+
+/// The text's last cluster: its structural `\n`.
+pub fn last_cluster(text: &BufferText) -> ClusterStart {
+    hume_rope::grapheme::last_cluster(text.full_slice()).expect("a buffer is never empty")
+}
+
+/// See [`hume_rope::grapheme::prev_cluster`].
+pub fn prev_cluster(text: &BufferText, bound: ClusterBound) -> Option<ClusterStart> {
+    hume_rope::grapheme::prev_cluster(text.full_slice(), bound)
 }
 
 /// See [`hume_rope::grapheme::prev_grapheme_boundary`].
 pub fn prev_grapheme_boundary(text: &BufferText, char_offset: CharOffset) -> CharOffset {
     hume_rope::grapheme::prev_grapheme_boundary(text.full_slice(), char_offset)
-}
-
-/// See [`hume_rope::grapheme::snap_to_cluster_start`].
-pub fn snap_to_cluster_start(text: &BufferText, char_offset: CharOffset) -> CharOffset {
-    hume_rope::grapheme::snap_to_cluster_start(text.full_slice(), char_offset)
-}
-
-/// See [`hume_rope::grapheme::is_cluster_boundary`].
-pub fn is_cluster_boundary(text: &BufferText, char_offset: CharOffset) -> bool {
-    hume_rope::grapheme::is_cluster_boundary(text.full_slice(), char_offset)
-}
-
-/// See [`hume_rope::grapheme::cluster_last_char`].
-pub fn cluster_last_char(text: &BufferText, cluster_start: CharOffset) -> CharOffset {
-    hume_rope::grapheme::cluster_last_char(text.full_slice(), cluster_start)
 }
 
 /// See [`hume_rope::grapheme::grapheme_col_in_line`].
@@ -63,7 +82,7 @@ pub fn char_pos_at_display_col(
     line_idx: ContentLine,
     target_display_col: BufferLineCol,
     tab_width: u8,
-) -> CharOffset {
+) -> ClusterStart {
     hume_rope::grapheme::char_pos_at_display_col(
         text.full_slice(),
         line_idx,

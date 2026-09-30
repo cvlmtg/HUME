@@ -137,7 +137,7 @@ fn build_changesets(
     }
     fwd.retain_rest();
     inv.retain_rest();
-    (fwd.finish(), inv.finish())
+    (fwd.finish_consumed(), inv.finish_consumed())
 }
 
 /// [`BufferText::line_tokens`] plus the cumulative char offset of each token (with

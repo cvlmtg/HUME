@@ -7,16 +7,58 @@ fn co(n: usize) -> CharOffset {
 }
 
 #[test]
-fn from_rope_is_raw() {
-    // from_rope is the changeset algebra path: it has a debug_assert for
+fn successor_is_raw() {
+    // successor is the changeset algebra path: it has a debug_assert for
     // the trailing \n but does not add one if missing. The caller
     // (ChangeSet::apply) is responsible for ensuring the invariant holds.
-    // The invariant is upheld by From<&str> / empty (user entry points) and
-    // by the editing-operation guards (e.g. delete_char_forward is a no-op
-    // on the structural \n).
-    let rope = Rope::from_str("hello\n");
-    let text = BufferText::from_rope(rope, LineEnding::Lf);
+    let base = BufferText::from("x\n");
+    let text = base.successor(Rope::from_str("hello\n"));
     assert_eq!(text.to_string(), "hello\n");
+}
+
+#[test]
+fn a_successor_is_the_next_generation_of_the_same_lineage() {
+    let base = BufferText::from("x\n");
+    let next = base.successor(Rope::from_str("y\n"));
+    assert_eq!(next.version().generation(), base.version().generation() + 1);
+    assert!(next.version().is_later_than(base.version()));
+    assert!(!base.version().is_later_than(next.version()));
+    assert_eq!(base.clone().version(), base.version());
+}
+
+#[test]
+fn two_successors_of_one_snapshot_get_different_versions() {
+    let base = BufferText::from("x\n");
+    let a = base.successor(Rope::from_str("a\n"));
+    let b = base.successor(Rope::from_str("b\n"));
+    assert_ne!(a.version(), b.version());
+}
+
+#[test]
+fn separately_built_texts_never_share_a_version() {
+    let (a, b) = (BufferText::from("x\n"), BufferText::from("x\n"));
+    assert_ne!(a.version(), b.version());
+    let a_next = a.successor(Rope::from_str("y\n"));
+    assert!(!a_next.version().is_later_than(b.version()));
+    assert_ne!(BufferText::empty().version(), BufferText::empty().version());
+}
+
+#[test]
+fn replaced_with_continues_the_lineage_and_detects_line_endings() {
+    let base = BufferText::from("x\n");
+    let next = base.replaced_with("a\r\nb\r\n");
+    assert_eq!(next.to_string(), "a\nb\n");
+    assert_eq!(next.line_ending(), LineEnding::CrLf);
+    assert_eq!(next.version().generation(), base.version().generation() + 1);
+}
+
+#[test]
+fn with_line_ending_keeps_content_and_version() {
+    let base = BufferText::from("x\n");
+    let crlf = base.clone().with_line_ending(LineEnding::CrLf);
+    assert_eq!(crlf.line_ending(), LineEnding::CrLf);
+    assert_eq!(crlf.version(), base.version());
+    assert_eq!(crlf, base);
 }
 
 #[test]

@@ -2,27 +2,26 @@
 //! Nothing here is specific to any one of them.
 
 use hume_engine::pipeline::RenderContext;
-use hume_rope::offset::CharOffset;
+use hume_rope::cluster::ClusterStart;
 
 use super::super::Editor;
 
-/// The focused pane's primary cursor position: the anchor char
+/// The focused pane's primary cursor: the anchor
 /// [`super::popup::sync_popup_view`] and [`super::menu::sync_menu_view`]
 /// pass to [`popup_placement`] (unlike the LSP completion menu, which
-/// anchors at the session's token-start char instead, via a
-/// separately-computed `anchor_char`).
-pub(in crate::editor) fn focused_cursor_char(ed: &Editor) -> CharOffset {
-    ed.current_selections().primary().head()
+/// anchors at the session's token start instead).
+pub(in crate::editor) fn focused_cursor(ed: &Editor) -> ClusterStart {
+    ed.current_view().primary().head()
 }
 
 /// Screen anchor (absolute cell) + containing pane + text-column budget for
-/// the focused pane, given an arbitrary buffer char position (each caller
-/// passes a different `anchor_char`). `None`
-/// when the pane has no rect yet or `anchor_char` isn't currently visible.
+/// the focused pane, given an arbitrary buffer position (each caller
+/// passes a different `anchor`). `None`
+/// when the pane has no rect yet or `anchor` isn't currently visible.
 pub(in crate::editor) fn popup_placement(
     ed: &mut Editor,
     ctx: &mut RenderContext,
-    anchor_char: CharOffset,
+    anchor: ClusterStart,
 ) -> Option<hume_ui::popup::PopupPlacement> {
     let focused = ed.state.focus.id();
     let pane_rect = ed.view.pane_rect(focused)?;
@@ -35,7 +34,7 @@ pub(in crate::editor) fn popup_placement(
     // at the live cursor (`sync_popup_view`, `sync_menu_view`) can reuse it instead of
     // re-walking the display-line list (a full per-line format in wrap mode).
     let (content_x, row) = match ctx.cursor_content_pos {
-        Some(cell) if anchor_char == focused_cursor_char(ed) => cell,
+        Some(cell) if anchor == focused_cursor(ed) => cell,
         _ => {
             // Every read of `ed` the map needs resolves before the pane
             // is borrowed mutably; the viewport comes back out of
@@ -48,12 +47,12 @@ pub(in crate::editor) fn popup_placement(
                 &mut view.panes[focused],
                 key,
             );
-            super::super::cursor::content_pos(vp, &mut dlm, anchor_char)?
+            super::super::cursor::content_pos(vp, &mut dlm, anchor)?
         }
     };
-    let anchor = super::super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect);
+    let screen = super::super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect);
     Some(hume_ui::popup::PopupPlacement {
-        anchor,
+        anchor: screen,
         pane_rect,
         content_width,
     })

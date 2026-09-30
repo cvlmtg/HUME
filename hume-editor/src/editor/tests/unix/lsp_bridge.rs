@@ -164,7 +164,7 @@ fn stale_response_is_dropped_without_allow_stale() {
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":test-cmd");
-    // Move the buffer's text_gen past what the request was sent against
+    // Move the buffer's generation past what the request was sent against
     // (`:e` left focus on this buffer, so these keys land on it directly).
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));

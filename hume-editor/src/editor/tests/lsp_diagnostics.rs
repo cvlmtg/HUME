@@ -218,7 +218,7 @@ fn publish_with_matching_version_is_ingested() {
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let bid = open_with_client(&mut ed, &file, sid);
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
-    let current_gen = ed.state.buffers.get(bid).text_gen as i32;
+    let current_gen = ed.state.buffers.get(bid).text().version().generation() as i32;
 
     let params = params_of(publish_diagnostics_notification_versioned(
         uri.as_str(),
@@ -230,7 +230,7 @@ fn publish_with_matching_version_is_ingested() {
     assert_eq!(
         ed.lsp.diagnostic_counts_for_test(bid),
         (1, 0),
-        "a publish whose version matches the buffer's current text_gen must be ingested"
+        "a publish whose version matches the buffer's current generation must be ingested"
     );
 }
 
@@ -246,7 +246,7 @@ fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnosti
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let bid = open_with_client(&mut ed, &file, sid);
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
-    let current_gen = ed.state.buffers.get(bid).text_gen as i32;
+    let current_gen = ed.state.buffers.get(bid).text().version().generation() as i32;
 
     // Seed one real (current-version) diagnostic first.
     let seed = params_of(publish_diagnostics_notification_versioned(
@@ -307,7 +307,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
     let bid = open_with_client(&mut ed, &file, sid);
 
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
-    let current_gen = ed.state.buffers.get(bid).text_gen as i32;
+    let current_gen = ed.state.buffers.get(bid).text().version().generation() as i32;
     let params = params_of(publish_diagnostics_notification_versioned(
         uri.as_str(),
         &[((0, 0), (0, 3), 1)],
@@ -379,7 +379,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
     let bid = open_with_client(&mut ed, &file, sid);
 
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
-    let current_gen = ed.state.buffers.get(bid).text_gen as i32;
+    let current_gen = ed.state.buffers.get(bid).text().version().generation() as i32;
     let params = params_of(publish_diagnostics_notification_versioned(
         uri.as_str(),
         &[((0, 0), (0, 3), 1)],
@@ -477,7 +477,7 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
         sid,
     );
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
-    let current_gen = ed.state.buffers.get(bid).text_gen as i32;
+    let current_gen = ed.state.buffers.get(bid).text().version().generation() as i32;
     let params = params_of(publish_diagnostics_notification_versioned(
         uri.as_str(),
         &[((0, 0), (0, 3), 1)],

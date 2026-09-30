@@ -12,8 +12,9 @@ use hume_rope::offset::CharOffset;
 // it; asserting the pair directly closes that gap.
 
 fn resolve(text: &str, pos: usize) -> Option<(usize, usize)> {
-    find_tightest_bracket_pair(&BufferText::from(text), CharOffset::new(pos))
-        .map(|r| (r.start.index(), r.end.index()))
+    let text = BufferText::from(text);
+    find_tightest_bracket_pair(&text, text.snap(CharOffset::new(pos)))
+        .map(|r| (r.start().offset().index(), r.last().offset().index()))
 }
 
 #[test]
@@ -86,4 +87,24 @@ fn smallest_span_can_resolve_after_a_larger_candidate_already_did() {
 #[test]
 fn no_enclosing_bracket_of_any_type_is_none() {
     assert_eq!(resolve("abc\n", 1), None);
+}
+
+/// The partner the bracket nearest the head of `marked`'s primary selection
+/// resolves to, as a char offset.
+fn partner(marked: &str) -> Option<usize> {
+    let (text, sels) = test_fixtures::testing::parse_state(marked);
+    let state = test_fixtures::testing::state(text, sels);
+    super::matching_bracket(state.view().primary()).map(|pos| pos.offset().index())
+}
+
+#[test]
+fn matching_bracket_lands_on_the_cluster_holding_a_prepended_open() {
+    // U+0600 is a prepend mark: it joins the `(` after it into one cluster
+    // starting at 0. The partner of `)` is that cluster, not the `(` char.
+    assert_eq!(partner("\u{600}(x-[)]>\n"), Some(0));
+}
+
+#[test]
+fn matching_bracket_from_a_prepended_open_cluster_finds_the_close() {
+    assert_eq!(partner("-[\u{600}(]>x)\n"), Some(3));
 }

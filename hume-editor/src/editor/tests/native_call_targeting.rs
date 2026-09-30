@@ -17,7 +17,7 @@ use hume_scripting::host::CommandHost;
 fn split_two_buffers(ed: &mut Editor, b: &str) -> (PaneId, BufferId, PaneId, BufferId) {
     let bid_a = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
-    let bid_b = ed.open_buffer(Buffer::new(BufferText::from(b), SelectionSet::default()));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from(b)));
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
@@ -67,10 +67,7 @@ fn pane_category_remote_call_edits_target_pane_leaves_focus_untouched() {
 #[test]
 fn pane_category_paneless_handle_errors_no_pane() {
     let mut ed = editor_from("-[a]>bc\n");
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("bbb\n"),
-        SelectionSet::default(),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("bbb\n")));
 
     let err = live_host!(ed)
         .run_command_sync(
@@ -249,10 +246,7 @@ fn toggle_extend_runs_on_the_focused_pane() {
 #[test]
 fn closed_buffer_errors_for_every_command() {
     let mut ed = editor_from("-[a]>bc\n");
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("bbb\n"),
-        SelectionSet::default(),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("bbb\n")));
     ed.close_buffer(bid_b);
     assert!(ed.state.buffers.try_get(bid_b).is_none());
 

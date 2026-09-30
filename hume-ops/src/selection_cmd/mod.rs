@@ -5,9 +5,9 @@ pub use matching::{
 };
 
 use super::MotionMode;
-use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::BufferText;
-use hume_rope::offset::CharOffset;
+use hume_editing::grapheme::{first_cluster, last_cluster};
+use hume_editing::selection::Selection;
+use hume_editing::state::EditState;
 
 // ── Simple selection-set commands ─────────────────────────────────────────────
 
@@ -18,14 +18,11 @@ use hume_rope::offset::CharOffset;
 /// two overlapping selections with different heads might collapse to the same
 /// position and need to be merged.
 pub fn cmd_collapse_selection_to_head(
-    text: &BufferText,
-    sels: SelectionSet,
+    state: EditState,
     _count: usize,
     _mode: MotionMode,
-) -> SelectionSet {
-    let new_sels = sels.map(|s| Selection::collapsed(s.head()));
-    new_sels.debug_assert_valid(text);
-    new_sels
+) -> EditState {
+    state.map(|s| s.selection().to_head())
 }
 
 /// Collapse every selection to a cursor at its `anchor`.
@@ -36,14 +33,11 @@ pub fn cmd_collapse_selection_to_head(
 /// lands on the right end. Uses `map` (which always merges) for the same
 /// deduplication reason as the head variant.
 pub fn cmd_collapse_selection_to_anchor(
-    text: &BufferText,
-    sels: SelectionSet,
+    state: EditState,
     _count: usize,
     _mode: MotionMode,
-) -> SelectionSet {
-    let new_sels = sels.map(|s| Selection::collapsed(s.anchor()));
-    new_sels.debug_assert_valid(text);
-    new_sels
+) -> EditState {
+    state.map(|s| s.selection().to_anchor())
 }
 
 /// Swap `anchor` and `head` on every selection.
@@ -51,16 +45,8 @@ pub fn cmd_collapse_selection_to_anchor(
 /// A forward selection (anchor ≤ head) becomes backward, and vice versa.
 /// Does not change any range bounds, so overlaps cannot arise. Uses plain
 /// `map` (no merge needed).
-pub fn cmd_flip_selections(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    _mode: MotionMode,
-) -> SelectionSet {
-    // `flip` only swaps anchor/head: no range change → no new overlaps.
-    let new_sels = sels.map(|s| s.flip());
-    new_sels.debug_assert_valid(text);
-    new_sels
+pub fn cmd_flip_selections(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
+    state.map(|s| s.selection().flip())
 }
 
 /// Select the entire buffer.
@@ -68,30 +54,17 @@ pub fn cmd_flip_selections(
 /// Replaces all selections with a single selection spanning from the first
 /// character to the last (the structural trailing `\n`). Head is placed at
 /// the end so the cursor sits at the bottom, consistent with Helix `%`.
-pub fn cmd_select_all(
-    text: &BufferText,
-    _sels: SelectionSet,
-    _count: usize,
-    _mode: MotionMode,
-) -> SelectionSet {
-    let sels = SelectionSet::single(Selection::new(CharOffset::new(0), text.last_char()));
-    sels.debug_assert_valid(text);
-    sels
+pub fn cmd_select_all(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
+    let all = Selection::new(first_cluster(state.text()), last_cluster(state.text()));
+    state.with_selections(vec![all], 0)
 }
 
 /// Keep only the primary selection; drop all others.
 ///
 /// The result is a single-selection set. This is a destructive reduction:
 /// any non-primary cursors or ranges are lost.
-pub fn cmd_keep_primary_selection(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    _mode: MotionMode,
-) -> SelectionSet {
-    let new_sels = sels.keep_primary();
-    new_sels.debug_assert_valid(text);
-    new_sels
+pub fn cmd_keep_primary_selection(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
+    state.keep_primary()
 }
 
 /// Remove the primary selection and advance the primary to the next one.
@@ -100,45 +73,30 @@ pub fn cmd_keep_primary_selection(
 /// empty). After removal the primary wraps to the start if it was the last
 /// selection in document order.
 pub fn cmd_remove_primary_selection(
-    text: &BufferText,
-    sels: SelectionSet,
+    state: EditState,
     count: usize,
     _mode: MotionMode,
-) -> SelectionSet {
-    let mut sels = sels;
+) -> EditState {
+    let mut state = state;
     for _ in 0..count {
-        if sels.len() <= 1 {
+        let view = state.view();
+        if view.len() <= 1 {
             break;
         }
-        let idx = sels.primary_index();
-        sels = sels.remove(idx);
+        let idx = view.primary().index();
+        state = state.remove(idx);
     }
-    sels.debug_assert_valid(text);
-    sels
+    state
 }
 
 /// Move the primary selection to the next one in document order, wrapping.
-pub fn cmd_cycle_primary_forward(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    _mode: MotionMode,
-) -> SelectionSet {
-    let new_sels = sels.cycle_primary(1);
-    new_sels.debug_assert_valid(text);
-    new_sels
+pub fn cmd_cycle_primary_forward(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
+    state.cycle_primary(1)
 }
 
 /// Move the primary selection to the previous one in document order, wrapping.
-pub fn cmd_cycle_primary_backward(
-    text: &BufferText,
-    sels: SelectionSet,
-    _count: usize,
-    _mode: MotionMode,
-) -> SelectionSet {
-    let new_sels = sels.cycle_primary(-1);
-    new_sels.debug_assert_valid(text);
-    new_sels
+pub fn cmd_cycle_primary_backward(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
+    state.cycle_primary(-1)
 }
 
 #[cfg(test)]

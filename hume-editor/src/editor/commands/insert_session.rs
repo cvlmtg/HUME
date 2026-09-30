@@ -2,19 +2,21 @@
 //! action, with the undo group, typed run, and autoindent state that
 //! entails. What `.` replays is recorded elsewhere (`replay.rs`).
 
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::grapheme::prev_cluster;
+use hume_editing::selection::{EditView, Facing, Selection, SelectionView};
 use hume_editing::text::BufferText;
+use hume_editing::tracked::Tracked;
 use hume_engine::pipeline::EngineView;
-use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
+use hume_rope::cluster::ClusterRange;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::EditorState;
-use crate::editor::buffer::LastInsert;
 use crate::editor::doc_ops;
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::{PaneBufferState, TypedRun};
 use hume_ops::edit::clear_blank_line_indent;
 
-use super::{FocusedPane, doc, pane_selections, refuse_if_read_only};
+use super::{FocusedPane, doc, pane_view, refuse_if_read_only};
 
 /// `true` when `fp`'s (pane, buffer) has an open Insert-kind session.
 fn is_group_open_at(state: &EditorState, view: &EngineView, fp: FocusedPane) -> bool {
@@ -34,15 +36,15 @@ fn is_group_open_at(state: &EditorState, view: &EngineView, fp: FocusedPane) -> 
 /// the caller rather than re-deriving it via `autoindent_owned` itself, so
 /// [`tear_down_insert`] computes that `Vec` once and reuses it for both the
 /// gate check and the edit closure.
-fn has_blank_line_cursor(
-    text: &BufferText,
-    sels: &SelectionSet,
-    allowed: &[ExclusiveRange<CharOffset>],
-) -> bool {
-    sels.iter_sorted().enumerate().any(|(i, sel)| {
-        sel.is_collapsed()
-            && hume_ops::edit::owned_blank_indent(text, sel.head(), allowed.get(i).copied())
-                .is_some()
+fn has_blank_line_cursor(sels: EditView<'_>, allowed: &[ExclusiveRange<CharOffset>]) -> bool {
+    sels.iter().enumerate().any(|(i, sel)| {
+        sel.is_cursor()
+            && hume_ops::edit::owned_blank_indent(
+                sels.text(),
+                sel.head().offset(),
+                allowed.get(i).copied(),
+            )
+            .is_some()
     })
 }
 
@@ -55,12 +57,14 @@ fn has_blank_line_cursor(
 ///
 /// Owned rather than borrowed: every caller needs it cloned out of
 /// `PaneBufferState` before running the edit whose `ChangeSet` will remap
-/// (or, for Enter, replace) that same record.
+/// (or, for Enter, replace) that same record. `text` is the buffer's current
+/// text, which the record was carried to.
 pub(in crate::editor) fn autoindent_owned(
     pbs: &PaneBufferState,
+    text: &BufferText,
 ) -> Vec<ExclusiveRange<CharOffset>> {
-    match &pbs.autoindent {
-        Some(ranges) if ranges.len() == pbs.selections().len() => ranges.clone(),
+    match pbs.autoindent.as_ref().and_then(|record| record.get(text)) {
+        Some(ranges) if ranges.len() == pbs.view(text).len() => ranges.clone(),
         _ => Vec::new(),
     }
 }
@@ -82,16 +86,17 @@ pub(in crate::editor) fn arm_autoindent(
         return;
     }
     let text = doc(state, view, fp.pane()).text();
-    let ranges: Vec<ExclusiveRange<CharOffset>> = pane_selections(state, view, fp.pane())
-        .iter_sorted()
+    let ranges: Vec<ExclusiveRange<CharOffset>> = pane_view(state, view, fp.pane())
+        .iter()
         .map(|sel| {
             let head = sel.head();
-            let line_idx = text.char_to_line(head);
+            let line_idx = text.char_to_line(head.offset());
             let line_start = text.line_to_char(line_idx.into());
-            ExclusiveRange::new(line_start, head)
+            ExclusiveRange::new(line_start, head.offset())
         })
         .collect();
-    fp.pane().state_mut(&mut state.panes.state, view).autoindent = Some(ranges);
+    let record = Tracked::new(ranges, text);
+    fp.pane().state_mut(&mut state.panes.state, view).autoindent = Some(record);
 }
 
 /// Where an *empty* typed run's cursor lands on exit. See
@@ -120,8 +125,8 @@ pub(super) enum ExitCursor {
 /// newline has been inserted), so the anchor marks the start of typed text
 /// only, never the newline or the pre-edit selection.
 ///
-/// `apply_doc_edit_grouped` (doc_ops.rs) maps the pinned run through every
-/// subsequent grouped edit; a cursor-motion command during the session
+/// Every later text change carries the pinned run
+/// (`PaneBufferState::carry`); a cursor-motion command during the session
 /// clears it (`step_clear_typed_run`, `commands/pipeline.rs`); a fresh
 /// `begin_edit_group` clears it (and resets `step_back_on_exit`) too, so a
 /// later session never inherits a stale run or a stale step-back flag: the
@@ -137,17 +142,21 @@ pub(super) fn begin_typed_run(
     if !is_group_open_at(state, view, fp) {
         return;
     }
-    let heads: Vec<CharOffset> = pane_selections(state, view, fp.pane())
-        .iter_sorted()
-        .map(|s| s.head())
+    let heads: Vec<CharOffset> = pane_view(state, view, fp.pane())
+        .iter()
+        .map(|s| s.head().offset())
         .collect();
-    let pbs = fp.pane().state_mut(&mut state.panes.state, view);
     // `ends` starts equal to `anchors` (an empty run) and is pushed
     // forward only by actual insertions (see `TypedRun::ends`'s own doc).
-    pbs.typed_run = Some(TypedRun {
-        ends: heads.clone(),
-        anchors: heads,
-    });
+    let run = Tracked::new(
+        TypedRun {
+            ends: heads.clone(),
+            anchors: heads,
+        },
+        doc(state, view, fp.pane()).text(),
+    );
+    let pbs = fp.pane().state_mut(&mut state.panes.state, view);
+    pbs.typed_run = Some(run);
     pbs.step_back_on_exit = matches!(exit, ExitCursor::StepBack);
 }
 
@@ -287,17 +296,19 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     // (cursor not on a line this session owns) rather than running an
     // identity one on every Insert-mode exit.
     let pbs = &state.panes.state[pid][bid];
-    let allowed = autoindent_owned(pbs);
-    if has_blank_line_cursor(state.buffers.get(bid).text(), pbs.selections(), &allowed) {
+    let allowed = autoindent_owned(pbs, state.buffers.get(bid).text());
+    if has_blank_line_cursor(pbs.view(state.buffers.get(bid).text()), &allowed) {
         doc_ops::apply_doc_edit_grouped(
             &mut state.buffers,
             &state.config.decorations,
-            &mut state.panes.state,
-            &mut state.panes.jumps,
+            &mut crate::editor::position_stores::PositionStores::new(
+                &mut state.panes,
+                &mut state.input,
+            ),
             &mut state.active_session,
             pid,
             bid,
-            move |b, s| clear_blank_line_indent(b, s, &allowed),
+            move |s| clear_blank_line_indent(s, &allowed),
         );
     }
     doc_ops::commit_edit_group(
@@ -313,11 +324,12 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     // `exit_cursor`'s step-back handling below.
     let (typed_run, step_back, kill_opened, sel_count) = {
         let pbs = &mut state.panes.state[pid][bid];
+        let sel_count = pbs.view(state.buffers.get(bid).text()).len();
         (
             pbs.typed_run.take(),
             std::mem::take(&mut pbs.step_back_on_exit),
             std::mem::take(&mut pbs.kill_opened_session),
-            pbs.selections().len(),
+            sel_count,
         )
     };
     // `cmd_change` stamped `PasteStamp` right after the deletion, but every
@@ -327,8 +339,10 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     if kill_opened && let Some(stamp) = state.paste_stamp.as_mut() {
         stamp.seq = state.buffers.edit_seq();
     }
-    let valid_run = typed_run.filter(|r| r.anchors.len() == sel_count);
-    let spans: Option<Vec<Option<InclusiveRange<CharOffset>>>> = valid_run.map(|run| {
+    let valid_run = typed_run
+        .and_then(|run| run.into_inner(state.buffers.get(bid).text()))
+        .filter(|r| r.anchors.len() == sel_count);
+    let spans: Option<Vec<Option<ClusterRange>>> = valid_run.map(|run| {
         let text = state.buffers.get(bid).text();
         run.anchors
             .iter()
@@ -341,14 +355,10 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     // command, independent of `select-inserted-text` below, which only
     // decides whether Esc *also* selects it immediately.
     if let Some(spans) = &spans {
-        let stashed: Vec<InclusiveRange<CharOffset>> = spans.iter().flatten().copied().collect();
+        let stashed: Vec<ClusterRange> = spans.iter().flatten().copied().collect();
         if !stashed.is_empty() {
             let buf = state.buffers.get_mut(bid);
-            let text_gen = buf.text_gen;
-            buf.last_insert = Some(LastInsert {
-                spans: stashed,
-                text_gen,
-            });
+            buf.last_insert = Some(Tracked::new(stashed, buf.text()));
         }
     }
 
@@ -364,64 +374,44 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
             &mut state.panes.state,
             pid,
             bid,
-            move |b, sels| {
+            move |st| {
                 let mut spans = spans.into_iter().flatten();
-                sels.map(|sel| match spans.next().flatten() {
-                    Some(r) => Selection::new(r.start, r.end),
-                    None => exit_cursor(b, sel.head(), step_back),
+                st.map(|sel| match spans.next().flatten() {
+                    Some(r) => Selection::covering(r, Facing::Forward),
+                    None => exit_cursor(sel, step_back),
                 })
             },
         );
     }
 }
 
-/// The selected typed span `(anchor, end]` (inclusive of `end`) for one
-/// selection, or `None` if nothing typed survives. Walks back from `run_end`
-/// (not the live cursor head; see `TypedRun::ends`'s doc for why) over any
-/// trailing `\n` graphemes, which are line terminators, not typed content,
-/// to the grapheme immediately before whatever's left. Walking off the start
-/// of the run (nothing typed, or only newlines were) yields `None`, never a
-/// backwards or zero-width range.
-fn typed_span(
-    text: &BufferText,
-    anchor: CharOffset,
-    run_end: CharOffset,
-) -> Option<InclusiveRange<CharOffset>> {
-    let mut cursor = run_end;
-    loop {
-        if cursor <= anchor {
-            return None;
-        }
-        let prev = hume_editing::grapheme::prev_grapheme_boundary(text, cursor);
-        // A typed combining mark can merge with a PRE-EXISTING base char
-        // into one grapheme cluster, so the boundary before `cursor` can
-        // land behind `anchor` in a single step rather than landing on it.
-        // The loop guard above only catches `cursor <= anchor`, not a jump
-        // past it. Nothing wholly inside the run is left to select.
-        if prev < anchor {
-            return None;
-        }
-        if text.char_at(prev) != Some('\n') {
-            return Some(InclusiveRange::new(anchor, prev));
-        }
-        cursor = prev;
+/// The clusters typed in one selection's run, `[anchor, run_end)`, or
+/// `None` if nothing typed survives. Reads the run's end (not the live cursor
+/// head; see `TypedRun::ends`'s doc for why) and drops any trailing `\n`
+/// clusters, which are line terminators, not typed content. Only clusters
+/// wholly inside the run count: a typed combining mark that merged with a
+/// pre-existing base char leaves nothing of its own to select.
+fn typed_span(text: &BufferText, anchor: CharOffset, run_end: CharOffset) -> Option<ClusterRange> {
+    let mut span = text.within(ExclusiveRange::new(anchor, run_end))?;
+    while text.char_at(span.last().offset()) == Some('\n') {
+        span = ClusterRange::between(text.full_slice(), span.start(), span.last().into())?;
     }
+    Some(span)
 }
 
 /// Where a selection's cursor lands when its typed run is empty: the entry
-/// command's own exit position. `a`/`A`/`o`/`O` step one grapheme back so
+/// command's own exit position. `a`/`A`/`o`/`O` step one cluster back so
 /// `a<Esc>` is a round trip; the line-start guard keeps that from crossing
-/// onto the previous line. `i`/`I`/`c` never set `step_back`, so `head` is
-/// returned unchanged.
-fn exit_cursor(b: &BufferText, head: CharOffset, step_back: bool) -> Selection {
+/// onto the previous line. `i`/`I`/`c` never set `step_back`, so the head is
+/// kept.
+fn exit_cursor(sel: SelectionView<'_>, step_back: bool) -> Selection {
+    let head = sel.head();
     if !step_back {
-        return Selection::collapsed(head);
+        return Selection::cursor(head);
     }
-    let line_start = b.line_to_char(b.char_to_line(head).into());
-    let new_head = if head > line_start {
-        hume_editing::grapheme::prev_grapheme_boundary(b, head)
-    } else {
-        head
-    };
-    Selection::collapsed(new_head)
+    let at_line_start = head == hume_editing::lines::line_start(sel.text(), sel.head_line());
+    match prev_cluster(sel.text(), head.into()) {
+        Some(prev) if !at_line_start => Selection::cursor(prev),
+        _ => Selection::cursor(head),
+    }
 }

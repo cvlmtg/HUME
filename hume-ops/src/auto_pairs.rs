@@ -1,10 +1,11 @@
 use crate::edit::apply_edit;
-use hume_editing::changeset::ChangeSet;
-use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::edit::Edited;
+use hume_editing::edit::Landing;
+use hume_editing::grapheme::prev_grapheme_boundary;
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -64,20 +65,11 @@ pub const DEFAULT_PAIRS: &[Pair] = &[
 ///   displace, so typing pushes it right without an extra motion).
 ///
 /// Multi-cursor: every selection is processed independently by `apply_edit`.
-pub fn insert_pair_close(
-    text: BufferText,
-    sels: SelectionSet,
-    open: char,
-    close: char,
-) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, _buf, _i, sel, new_sels| {
-        let start = sel.start();
-        b.retain(start.chars_since(b.old_pos()));
-        // Simple auto-close: insert open + close.
-        b.insert_char(open);
-        b.insert_char(close);
-        // Cursor on `close`. retreat(1) is safe: we just inserted 2 chars.
-        new_sels.push(Selection::collapsed(b.new_pos().retreat(1)));
+pub fn insert_pair_close(state: EditState, open: char, close: char) -> Edited {
+    apply_edit(state, |b, sel| {
+        b.insert(sel.start(), open.encode_utf8(&mut [0; 4]));
+        let closer = b.insert(sel.start(), close.encode_utf8(&mut [0; 4]));
+        Landing::cursor(closer.start())
     })
 }
 
@@ -85,33 +77,18 @@ pub fn insert_pair_close(
 /// cursor and the character the cursor sits on), assuming the caller has
 /// already verified that they form a configured pair.
 ///
-/// Uses grapheme boundaries for correctness with multi-codepoint sequences,
-/// even though bracket and quote characters are always single codepoints.
-///
-/// Only meaningful for cursor (single-character) selections; for non-cursor
-/// selections the caller should fall back to `delete_char_backward`.
-pub fn delete_pair(text: BufferText, sels: SelectionSet) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
-        debug_assert!(
-            sel.is_collapsed(),
-            "delete_pair called on non-collapsed selection"
-        );
-
-        let p = sel.head();
-        let prev = prev_grapheme_boundary(text, p);
-        let next = next_grapheme_boundary(text, p);
-
-        if prev < b.old_pos() {
-            // A previous selection already consumed this region; treat as no-op.
-            new_sels.push(Selection::collapsed(b.new_pos()));
-            return;
-        }
-
-        // Delete from `prev` through `next` (exclusive), covering both the
-        // char before the cursor and the char the cursor sits on.
-        b.retain(prev.chars_since(b.old_pos()));
-        b.delete(next.chars_since(prev));
-        new_sels.push(Selection::collapsed(b.new_pos()));
+/// Only meaningful for cursors; for selections the caller falls back to
+/// `delete_char_backward`.
+pub fn delete_pair(state: EditState) -> Edited {
+    apply_edit(state, |b, sel| {
+        debug_assert!(sel.is_cursor(), "delete_pair called on a selection");
+        let head = sel.head();
+        let slice = b.text().full_slice();
+        let Some(prev) = hume_rope::grapheme::prev_cluster(slice, head.into()) else {
+            return Landing::kept(sel.selection());
+        };
+        let next = hume_rope::grapheme::cluster_end(slice, head);
+        Landing::cursor(b.delete(ExclusiveRange::new(prev.offset(), next.offset())))
     })
 }
 

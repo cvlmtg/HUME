@@ -26,10 +26,7 @@ use pretty_assertions::assert_eq;
 fn switch_to_buffer_ends_insert_session_on_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let old_bid = ed.focused_buffer_id();
-    let new_bid = ed.open_buffer(Buffer::new(
-        BufferText::from("xyz\n"),
-        SelectionSet::default(),
-    ));
+    let new_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
 
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Q");
@@ -66,10 +63,7 @@ fn switch_to_buffer_ends_insert_session_on_focused_pane() {
 fn goto_location_to_another_buffer_ends_insert_session_on_focused_pane() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let old_bid = ed.focused_buffer_id();
-    let new_bid = ed.open_buffer(Buffer::new(
-        BufferText::from("xyz\n"),
-        SelectionSet::default(),
-    ));
+    let new_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
 
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Q");
@@ -132,10 +126,7 @@ fn goto_location_within_the_focused_buffer_leaves_insert_session_open() {
 fn close_buffer_ends_insert_session_on_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let old_bid = ed.focused_buffer_id();
-    let other_bid = ed.open_buffer(Buffer::new(
-        BufferText::from("xyz\n"),
-        SelectionSet::default(),
-    ));
+    let other_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
 
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Q");
@@ -165,10 +156,7 @@ fn close_buffer_ends_insert_session_on_focused_pane() {
 fn goto_alternate_buffer_call_ends_insert_session_on_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let old_bid = ed.focused_buffer_id();
-    let other_bid = ed.open_buffer(Buffer::new(
-        BufferText::from("xyz\n"),
-        SelectionSet::default(),
-    ));
+    let other_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
     // `open_buffer` seeds `mru` at open time, making `other_bid` the most
     // recent entry; re-touch `old_bid` (the focused buffer) so it becomes
     // most recent again and `other_bid` is the alternate (second-most-recent).
@@ -246,7 +234,7 @@ fn reload_buffer_in_place_ends_insert_session_on_focused_pane() {
 
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        Buffer::new(BufferText::from("xyz\n"), SelectionSet::default()),
+        Buffer::at_start(BufferText::from("xyz\n")),
     );
 
     assert_eq!(
@@ -274,10 +262,7 @@ fn switch_to_buffer_commits_open_paste_session_on_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let old_bid = ed.focused_buffer_id();
     ed.feed_key(key('d')); // delete "a" → ring head = ["a"], buffer now "bc\n"
-    let new_bid = ed.open_buffer(Buffer::new(
-        BufferText::from("xyz\n"),
-        SelectionSet::default(),
-    ));
+    let new_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
 
     ed.feed_key(key('p')); // bare paste-after: ring head, opens a paste session
     assert!(
@@ -318,10 +303,7 @@ fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
     let mut ed = editor_from("-[a]>bc\n");
     let pid_a = ed.state.focus.id();
     let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("baz\n"),
-        SelectionSet::default(),
-    ));
+    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("baz\n")));
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
@@ -333,10 +315,7 @@ fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
     // `open_pane_in_layout` does not move focus itself; pin it back to A
     // explicitly so the premise below holds regardless.
     ed.state.focus.set_for_test(pid_a);
-    let bid_c = ed.open_buffer(Buffer::new(
-        BufferText::from("qux\n"),
-        SelectionSet::default(),
-    ));
+    let bid_c = ed.open_buffer(Buffer::at_start(BufferText::from("qux\n")));
 
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Q");
@@ -402,6 +381,7 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
     type_chars(&mut ed, "Q");
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open on A");
     let sels_a_at_commit = ed.selections_for(pid_a, bid).cloned().expect("A seeded");
+    let committed_text = ed.state.buffers.get(bid).text().clone();
     let sels_b = ed.selections_for(pid_b, bid).cloned().expect("B seeded");
     assert_ne!(
         sels_a_at_commit, sels_b,
@@ -422,18 +402,47 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
         "the exit-cursor tail must not run on the pane focus moved to"
     );
     assert_eq!(
-        ed.selections_for(pid_a, bid).map(|s| s.primary()),
-        Some(hume_editing::selection::Selection::new(co(3), co(3))),
+        ed.selections_for(pid_a, bid)
+            .map(|s| EditView::bind(ed.state.buffers.get(bid).text(), s)
+                .primary()
+                .selection()),
+        Some(test_fixtures::testing::cursor(
+            ed.state.buffers.get(bid).text(),
+            3
+        )),
         "A (the session's own pane) must select what was typed on exit"
     );
 
-    let buf = ed.state.buffers.get_mut(bid);
-    buf.undo_n(1)
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .undo_n(
+            bid,
+            &mut crate::editor::position_stores::PositionStores::new(
+                &mut ed.state.panes,
+                &mut ed.state.input,
+            ),
+            1,
+        )
         .expect("the session must have recorded one revision");
-    assert_eq!(buf.text().to_string(), "abc\n");
-    let (redo_sels, _, _) = buf.redo_n(1).expect("redo must replay the revision");
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "abc\n");
+    let (redo_sels, _, _) = ed
+        .state
+        .buffers
+        .get_mut(bid)
+        .redo_n(
+            bid,
+            &mut crate::editor::position_stores::PositionStores::new(
+                &mut ed.state.panes,
+                &mut ed.state.input,
+            ),
+            1,
+        )
+        .expect("redo must replay the revision");
+    let buf = ed.state.buffers.get(bid);
     assert_eq!(
-        redo_sels, sels_a_at_commit,
+        test_fixtures::testing::serialize_state(buf.text(), &redo_sels),
+        test_fixtures::testing::serialize_state(&committed_text, &sels_a_at_commit),
         "the revision's post-selections must be A's, not the focused pane's"
     );
 }

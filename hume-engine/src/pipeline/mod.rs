@@ -571,7 +571,6 @@ impl EngineView {
                 viewport,
                 providers,
                 selections,
-                primary_idx,
                 line_store,
                 ..
             } = pane;
@@ -580,7 +579,6 @@ impl EngineView {
                 viewport,
                 providers,
                 selections,
-                primary_idx: *primary_idx,
                 rope,
                 syntax: get_syntax(buffer_id),
                 theme: &self.theme,
@@ -737,9 +735,8 @@ pub(crate) struct PaneRenderCtx<'a> {
     /// method's doc for why a stale top must never reach the walk.
     pub viewport: &'a mut crate::pane::Viewport,
     pub providers: &'a crate::providers::ProviderSet,
-    /// Head-sorted, as `populate_sorted_sels` asserts.
-    pub selections: &'a [crate::types::Selection],
-    pub primary_idx: usize,
+    /// Cursor-sorted, as `populate_sorted_sels` asserts.
+    pub selections: &'a [crate::types::PaintedSelection],
     /// Rope borrowed from the caller's `Document` for this frame only.
     pub rope: &'a ropey::Rope,
     /// Syntax highlight span source borrowed from the caller via

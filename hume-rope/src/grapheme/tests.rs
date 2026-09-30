@@ -181,32 +181,39 @@ fn devanagari_vowel_sign() {
     assert_eq!(prev_grapheme_boundary(buf.slice(..), co(2)), co(0));
 }
 
-// ── cluster_last_char ───────────────────────────────────────────────────────
+// ── A cluster's last char ───────────────────────────────────────────────────
 
-#[test]
-fn cluster_last_char_single_codepoint_is_identity() {
-    // Every char in "hello" is its own 1-codepoint cluster.
-    let buf = rope("hello");
-    assert_eq!(cluster_last_char(buf.slice(..), co(0)), co(0));
-    assert_eq!(cluster_last_char(buf.slice(..), co(4)), co(4));
+/// The last codepoint of the cluster holding `pos`: one before its end.
+fn last_char_of(buf: &Rope, pos: usize) -> CharOffset {
+    snap_to_cluster(buf.slice(..), co(pos))
+        .expect("a non-empty text")
+        .end
+        .retreat(1)
 }
 
 #[test]
-fn cluster_last_char_combining_char_returns_the_combining_mark() {
+fn a_single_codepoint_cluster_ends_on_its_own_char() {
+    // Every char in "hello" is its own 1-codepoint cluster.
+    let buf = rope("hello");
+    assert_eq!(last_char_of(&buf, 0), co(0));
+    assert_eq!(last_char_of(&buf, 4), co(4));
+}
+
+#[test]
+fn a_combining_cluster_ends_on_its_combining_mark() {
     // "e\u{0301}x\n" (é = e + combining acute): the cluster starting at 0
     // spans chars 0-1, so its last codepoint is 1 (the mark), not 0 (the
     // base letter).
     let buf = rope("e\u{0301}x");
-    assert_eq!(cluster_last_char(buf.slice(..), co(0)), co(1));
+    assert_eq!(last_char_of(&buf, 0), co(1));
 }
 
 #[test]
-fn cluster_last_char_saturates_at_eof() {
-    // Single-char buffer: the structural '\n' is its own cluster, and
-    // next_grapheme_boundary(0) returns len_chars() (1). The saturating_sub
-    // must not underflow past it.
+fn the_last_cluster_of_a_one_char_text_ends_on_it() {
+    // Single-char buffer: the structural '\n' is its own cluster, ending at
+    // len_chars() (1).
     let buf = rope("");
-    assert_eq!(cluster_last_char(buf.slice(..), co(0)), co(0));
+    assert_eq!(last_char_of(&buf, 0), co(0));
 }
 
 // ── grapheme_count ────────────────────────────────────────────────────────
@@ -421,7 +428,7 @@ fn display_col_decomposed_e_acute_before_tab_counts_as_one_display_column() {
 fn char_pos_at_display_col_zero_is_line_start() {
     let buf = rope("\tfoo\n");
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(0), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(0), 4).offset(),
         co(0)
     );
 }
@@ -432,7 +439,7 @@ fn char_pos_at_tab_stop_after_tab() {
     // tab (char 1).
     let buf = rope("\tx\n");
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4).offset(),
         co(1)
     );
 }
@@ -447,15 +454,15 @@ fn char_pos_at_display_col_inside_a_wide_cluster_stays_on_its_start() {
     // start, where the overshoot branch never fires.
     let buf = rope("\u{6F22}bc\n");
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(0), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(0), 4).offset(),
         co(0)
     );
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(1), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(1), 4).offset(),
         co(0)
     );
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4).offset(),
         co(1)
     ); // 'b'
 }
@@ -465,7 +472,7 @@ fn char_pos_at_display_col_two_in_spaces() {
     // "    \n": 4 spaces. char at display col 2 is char 2 (third space).
     let buf = rope("    \n");
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4).offset(),
         co(2)
     );
 }
@@ -476,12 +483,12 @@ fn char_pos_at_display_col_eight_two_tabs() {
     // (char 2).
     let buf = rope("\t\t\n");
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(8), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(8), 4).offset(),
         co(2)
     );
     // Mid stop: display col 4 is past first tab (char 1).
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4).offset(),
         co(1)
     );
 }
@@ -492,11 +499,11 @@ fn char_pos_mixed_spaces_and_tab() {
     // display col 4 is char 3.
     let buf = rope("  \t\n");
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4).offset(),
         co(3)
     );
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4).offset(),
         co(2)
     );
 }
@@ -507,7 +514,7 @@ fn char_pos_overshoot_stops_short() {
     // 0→4, overshooting 2. Walk stops at line_start (display col 0).
     let buf = rope("\t\n");
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4).offset(),
         co(0)
     );
 }
@@ -518,7 +525,7 @@ fn char_pos_at_display_col_after_wide_cjk_and_tab() {
     // col 2→4, so the char at display col 4 is 'x' (char index 2).
     let buf = rope("\u{6F22}\tx\n");
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4).offset(),
         co(2)
     );
 }
@@ -529,19 +536,19 @@ fn char_pos_target_beyond_line_width_stops_at_newline() {
     // stop on line 0's '\n' (char 2), never walk onto line 1.
     let buf = rope("ab\ncd\n");
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4).offset(),
         co(2)
     );
     // Same guard on the last content line: stops at its structural '\n'.
     assert_eq!(
-        char_pos_at_display_col(buf.slice(..), ContentLine::new(1), dc(99), 4),
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(1), dc(99), 4).offset(),
         co(5)
     );
 }
 
 // ── graphemes_at ──────────────────────────────────────────────────────────
 
-/// The clusters `graphemes_at(text, pos)` must yield, derived from
+/// The clusters `walk_from(text, pos)` must yield, derived from
 /// `unicode-segmentation` over the whole text as one `&str`, not from the
 /// rope walker under test. A cluster that starts before `pos` and ends after
 /// it is cut at `pos`, matching a cursor dropped inside a cluster.
@@ -565,7 +572,7 @@ fn segmentation_clusters(text: &Rope, pos: usize) -> Vec<Cluster> {
 }
 
 fn walk(text: &Rope, pos: usize) -> Vec<Cluster> {
-    graphemes_at(text.slice(..), co(pos)).collect()
+    walk_from(text.slice(..), co(pos)).collect()
 }
 
 #[test]
@@ -653,7 +660,7 @@ fn graphemes_at_keeps_a_flag_pair_together_across_a_chunk_boundary() {
     );
 }
 
-// ── is_cluster_boundary / snap_to_cluster_start ───────────────────────────
+// ── Cluster boundaries and snapping ───────────────────────────────────────
 
 /// Char offsets of every cluster boundary in `text`, straight from
 /// `unicode-segmentation`.
@@ -677,25 +684,22 @@ fn corpus_texts(sample: &str) -> [String; 4] {
 }
 
 #[test]
-fn is_cluster_boundary_matches_segmentation_over_the_corpus() {
+fn cluster_walk_boundaries_match_segmentation_over_the_corpus() {
     for sample in test_fixtures::unicode::ALL {
         for text in corpus_texts(sample) {
             let r = rope(&text);
             let boundaries = segmentation_boundaries(&r.to_string());
-            for pos in 0..=r.len_chars() {
-                assert_eq!(
-                    is_cluster_boundary(r.slice(..), co(pos)),
-                    boundaries.contains(&pos),
-                    "{:?} at {pos}",
-                    r.to_string()
-                );
-            }
+            let walked: Vec<usize> = graphemes_at(r.slice(..), ClusterBound::TEXT_START)
+                .map(|c| c.start.index())
+                .chain(std::iter::once(text_end(r.slice(..)).offset().index()))
+                .collect();
+            assert_eq!(walked, boundaries, "{:?}", r.to_string());
         }
     }
 }
 
 #[test]
-fn snap_to_cluster_start_floors_to_the_segmentation_boundary_over_the_corpus() {
+fn snap_to_cluster_floors_to_the_segmentation_boundary_over_the_corpus() {
     for sample in test_fixtures::unicode::ALL {
         for text in corpus_texts(sample) {
             let r = rope(&text);
@@ -707,8 +711,8 @@ fn snap_to_cluster_start_floors_to_the_segmentation_boundary_over_the_corpus() {
                     .find(|&&b| b <= pos)
                     .expect("0 is a boundary");
                 assert_eq!(
-                    snap_to_cluster_start(r.slice(..), co(pos)),
-                    co(*floor),
+                    snap_to_cluster(r.slice(..), co(pos)).map(|c| c.start),
+                    Some(co(*floor)),
                     "{:?} at {pos}",
                     r.to_string()
                 );
@@ -717,18 +721,25 @@ fn snap_to_cluster_start_floors_to_the_segmentation_boundary_over_the_corpus() {
     }
 }
 
-#[test]
-fn is_cluster_boundary_keeps_crlf_together() {
-    let r = Rope::from_str("a\r\nb");
-    assert!(is_cluster_boundary(r.slice(..), co(1)));
-    assert!(!is_cluster_boundary(r.slice(..), co(2)));
-    assert!(is_cluster_boundary(r.slice(..), co(3)));
+/// The start of the cluster holding `pos`.
+fn cluster_start_of(r: &Rope, pos: usize) -> CharOffset {
+    snap_to_cluster(r.slice(..), co(pos))
+        .expect("a non-empty text")
+        .start
 }
 
 #[test]
-fn is_cluster_boundary_is_false_between_a_prepend_char_and_its_base() {
+fn snap_to_cluster_keeps_crlf_together() {
+    let r = Rope::from_str("a\r\nb");
+    assert_eq!(cluster_start_of(&r, 1), co(1));
+    assert_eq!(cluster_start_of(&r, 2), co(1));
+    assert_eq!(cluster_start_of(&r, 3), co(3));
+}
+
+#[test]
+fn snap_to_cluster_joins_a_prepend_char_and_its_base() {
     let r = rope("\u{600}x");
-    assert!(!is_cluster_boundary(r.slice(..), co(1)));
+    assert_eq!(cluster_start_of(&r, 1), co(0));
 }
 
 // ── LF-normalized text ────────────────────────────────────────────────────
@@ -857,7 +868,7 @@ fn char_pos_at_display_col_walks_combining_wide_and_astral_clusters() {
     use test_fixtures::unicode::{ASTRAL, CJK, COMBINING, ZWJ_FAMILY};
     let at = |text: &str, col: u32| {
         let r = rope(text);
-        char_pos_at_display_col(r.slice(..), ContentLine::new(0), dc(col), 4)
+        char_pos_at_display_col(r.slice(..), ContentLine::new(0), dc(col), 4).offset()
     };
     // `e◌́` is one cell wide.
     let t = format!("a{COMBINING}b");
