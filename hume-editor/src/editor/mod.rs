@@ -654,7 +654,7 @@ impl EditorState {
                 // (the two things that distinguish a reused slot from the
                 // buffer that held it before) into exactly that.
                 slotmap::Key::data(&pane.buffer_id).as_ffi(),
-                doc.text().version().generation(),
+                doc.text().generation(),
                 self.config.decorations.generation(pane.buffer_id),
             ],
             wrap_mode: commands::effective_wrap_mode(doc, &self.settings, pane),

@@ -33,7 +33,7 @@ use super::{Editor, Mode, Severity};
 /// Build an Editor pre-loaded with the given state string (same DSL as other tests).
 fn editor_from(input: &str) -> Editor {
     let (text, sels) = parse_state(input);
-    Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)))
+    Editor::for_testing_with(test_fixtures::testing::state(text, sels))
 }
 
 /// Build a kitty-protocol-enabled editor for testing Ctrl-motion bindings.
@@ -69,7 +69,7 @@ fn pin_no_wrap(ed: &mut Editor) {
 fn unwrapped_editor(content: &str, head: usize) -> Editor {
     let text = BufferText::from(content);
     let sels = sels_at(&text, &[(head, head)], 0);
-    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     pin_no_wrap(&mut ed);
     ed
 }
@@ -155,7 +155,7 @@ pub(in crate::editor) fn bc(n: usize) -> hume_rope::column::ByteCol {
 pub(crate) fn editor_with_language(content: &str, lang_name: &str) -> Editor {
     let text = BufferText::from(content);
     let sels = sels_at(&text, &[(0, 0)], 0);
-    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     let lang = ed.state.config.languages.intern(lang_name);
     ed.doc_mut().language = Some(lang);
     ed
@@ -175,7 +175,7 @@ pub(crate) fn editor_with_read_only_view(content: &str, label: &str) -> Editor {
 pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor {
     let text = BufferText::from(content);
     let sels = sels_at(&text, &[(0, 0)], 0);
-    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.doc_mut().set_path(Some(path.to_owned()));
     ed
 }
@@ -633,8 +633,8 @@ fn jump_editor(cursor_line: usize) -> Editor {
     let text = BufferText::from(content.as_str());
     let pos = text.line_to_char(hume_rope::line::RopeyLine::new(cursor_line));
     let sels = sels_at(&text, &[(pos.index(), pos.index())], 0);
-    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
-    Editor::for_testing(doc)
+    let doc = test_fixtures::testing::state(text, sels);
+    Editor::for_testing_with(doc)
 }
 
 /// Write `file_content` to a temp file, return an editor pointing at it.
@@ -750,6 +750,29 @@ impl std::fmt::Debug for Editor {
 }
 
 impl Editor {
+    /// [`Self::for_testing`] on `state`'s text, the pane starting on
+    /// `state`'s selections.
+    pub(crate) fn for_testing_with(state: hume_editing::state::EditState) -> Self {
+        let mut ed = Self::for_testing(Buffer::at_start(state.text().clone()));
+        let bid = ed.focused_buffer_id();
+        ed.seed_selections(bid, state.into_selections());
+        ed
+    }
+
+    /// Start the focused pane on `sels` for `bid`, as though it had first
+    /// shown `bid` on them.
+    pub(crate) fn seed_selections(&mut self, bid: BufferId, sels: SelectionSet) {
+        let pid = self.state.focus.id();
+        super::pane_state::ensure(
+            &mut self.state.panes.state,
+            &self.state.buffers,
+            &self.view.panes,
+            pid,
+            bid,
+        )
+        .seed_selections(sels);
+    }
+
     /// Construct a minimal `Editor` for renderer unit tests.
     ///
     /// Only `doc` and `view` are meaningful. All other fields are set to

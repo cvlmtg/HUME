@@ -1499,7 +1499,7 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
     ed.settle();
 
     let focused = ed.state.focus.id();
-    let before_gen = ed.state.buffers.get(bid).text().version().generation();
+    let before_gen = ed.state.buffers.get(bid).text().generation();
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
         &mut crate::editor::position_stores::PositionStores::new(
@@ -1517,7 +1517,7 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid).text().version().generation(),
+        ed.state.buffers.get(bid).text().generation(),
         before_gen,
         "read-only guard must block the edit before it reaches install"
     );
@@ -1533,7 +1533,7 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
 }
 
 /// Opening a buffer fires `on-buffer-open`, not `on-text-changed`. A fresh
-/// buffer's the text version starts at 0 and `announced_version` is seeded to
+/// buffer's text generation starts at 0 and `announced_generation` is seeded to
 /// match, so there is no diff to observe.
 #[test]
 fn opening_a_buffer_fires_on_buffer_open_not_on_text_changed() {
@@ -1775,7 +1775,7 @@ fn identity_edit_fires_no_on_text_changed() {
     ed.settle();
 
     let focused = ed.state.focus.id();
-    let before_gen = ed.state.buffers.get(bid).text().version().generation();
+    let before_gen = ed.state.buffers.get(bid).text().generation();
     let before_edit_seq = ed.state.buffers.edit_seq();
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
@@ -1794,7 +1794,7 @@ fn identity_edit_fires_no_on_text_changed() {
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid).text().version().generation(),
+        ed.state.buffers.get(bid).text().generation(),
         before_gen,
         "an identity edit must not change the text version"
     );
@@ -1979,13 +1979,13 @@ fn identity_reload_fires_no_on_text_changed() {
     ed.scripting = Some(host);
     ed.settle();
 
-    let before_gen = ed.state.buffers.get(bid).text().version().generation();
+    let before_gen = ed.state.buffers.get(bid).text().generation();
     let replacement = Buffer::at_start(text_before);
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid).text().version().generation(),
+        ed.state.buffers.get(bid).text().generation(),
         before_gen,
         "a byte-identical reload must not change the text version"
     );

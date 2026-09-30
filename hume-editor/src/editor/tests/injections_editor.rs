@@ -223,7 +223,7 @@ fn bake_pending_edits_refreshes_injected_layer_ranges() {
 fn stale_gen_discards_whole_layer_set() {
     require_fixtures();
     let (mut ed, bid) = markdown_editor("```rust\nfn f() {}\n```\n");
-    let gen0 = ed.state.buffers.get(bid).text().version().generation();
+    let gen0 = ed.state.buffers.get(bid).text().generation();
 
     // Construct a stale result: edit, let one reparse call post the
     // request (InlineParseBackend executes it and queues the result without
@@ -233,13 +233,13 @@ fn stale_gen_discards_whole_layer_set() {
     ed.feed_key(key('i'));
     ed.feed_key(key('z'));
     ed.feed_key(key_esc());
-    let gen1 = ed.state.buffers.get(bid).text().version().generation();
+    let gen1 = ed.state.buffers.get(bid).text().generation();
     ed.reparse_stale_buffers(); // bakes, posts request for gen1; result queued
 
     ed.feed_key(key('i'));
     ed.feed_key(key('y'));
     ed.feed_key(key_esc());
-    let gen2 = ed.state.buffers.get(bid).text().version().generation();
+    let gen2 = ed.state.buffers.get(bid).text().generation();
     assert!(
         gen2 > gen1,
         "premise: second edit must supersede the request"

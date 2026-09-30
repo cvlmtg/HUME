@@ -295,7 +295,7 @@ fn copy_next_line_preserves_display_column_across_a_wrapped_source_line() {
     let content = format!("{line0}\n{line1}\n");
     let text = BufferText::from(content.as_str());
     let sels = sels_at(&text, &[(79, 79)], 0); // last 'a', buffer-line col 79
-    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
         saved: None,

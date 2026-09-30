@@ -370,7 +370,7 @@ fn structural_command_after_a_failed_parse_reparses_instead_of_reading_stale_lay
     assert_eq!(ed.doc().text().to_string(), "fn target() {\n}\n");
 
     // That generation's parse fails: parsed_gen advances, layers do not.
-    let generation = ed.state.buffers.get(bid).text().version().generation();
+    let generation = ed.state.buffers.get(bid).text().generation();
     let bundle = {
         let syn = ed.state.buffers.get(bid).syntax.as_ref().expect("syntax");
         std::sync::Arc::clone(syn.bundle())

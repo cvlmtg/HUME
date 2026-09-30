@@ -50,7 +50,7 @@ mod tests {
 
     impl DocHelper {
         fn new(text: BufferText, sels: SelectionSet) -> Self {
-            let buf = Buffer::new(test_fixtures::testing::state(text, sels.clone()));
+            let buf = Buffer::at_start(text);
             Self { buf, sels }
         }
         fn text(&self) -> &BufferText {

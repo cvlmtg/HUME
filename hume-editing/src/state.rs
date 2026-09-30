@@ -3,8 +3,7 @@
 use hume_rope::cluster::ClusterStart;
 
 use crate::selection::{
-    EditView, RecordedSelections, Selection, SelectionSet, SelectionView, assert_fits,
-    assert_positions,
+    EditView, Selection, SelectionSet, SelectionView, assert_fits, assert_positions,
 };
 use crate::text::BufferText;
 
@@ -186,15 +185,6 @@ impl EditState {
     /// needs this text: see [`EditView::bind`].
     pub fn into_selections(self) -> SelectionSet {
         self.selections
-    }
-
-    /// The selections as they stand, sticky columns included, to record and
-    /// bind again to a text with this content (an undo step restores them).
-    pub fn recorded(&self) -> RecordedSelections {
-        RecordedSelections::new(
-            self.selections.selections().to_vec(),
-            self.selections.primary_pos(),
-        )
     }
 }
 

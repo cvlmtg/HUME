@@ -118,45 +118,35 @@ pub struct BufferText {
     /// this field records what to write back on save.
     line_ending: LineEnding,
     version: TextVersion,
-    /// The last generation issued in this text's lineage, shared by every
-    /// text derived from the same original, so two edits applied to one
-    /// snapshot never receive the same version.
+    /// This text's place in the order its lineage's texts were made in.
+    generation: u64,
+    /// The last number issued in this text's lineage, shared by every text
+    /// derived from the same original, so two edits applied to one snapshot
+    /// never receive the same version or generation.
     generations: Arc<AtomicU64>,
 }
 
 /// Which content a [`BufferText`] holds. Equal versions mean equal content.
 ///
-/// A text built from a string starts a new lineage at generation 0. Applying
-/// a non-identity [`crate::changeset::ChangeSet`] gives the next generation
-/// of the same lineage; a clone or an identity apply keeps the version.
-/// Every text of a lineage draws its generation from one counter, so
-/// generations strictly increase across a buffer's texts but may skip
-/// numbers: a text computed and then dropped still used one up.
+/// A text built from a string starts a new lineage. Applying a
+/// non-identity [`crate::changeset::ChangeSet`] gives a new version of the
+/// same lineage; a clone or an identity apply keeps the version. Versions
+/// say nothing about order: [`BufferText::generation`] does.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct TextVersion {
     lineage: u64,
-    generation: u64,
-}
-
-impl TextVersion {
-    pub fn generation(self) -> u64 {
-        self.generation
-    }
-
-    /// Whether `self` was made after `earlier` in the same lineage.
-    pub fn is_later_than(self, earlier: TextVersion) -> bool {
-        self.lineage == earlier.lineage && self.generation > earlier.generation
-    }
+    id: u64,
 }
 
 static NEXT_LINEAGE: AtomicU64 = AtomicU64::new(0);
 
-fn new_lineage() -> (TextVersion, Arc<AtomicU64>) {
+/// A new lineage's first version and generation, and its counter.
+fn new_lineage() -> (TextVersion, u64, Arc<AtomicU64>) {
     let version = TextVersion {
         lineage: NEXT_LINEAGE.fetch_add(1, Ordering::Relaxed),
-        generation: 0,
+        id: 0,
     };
-    (version, Arc::new(AtomicU64::new(0)))
+    (version, 0, Arc::new(AtomicU64::new(0)))
 }
 
 /// True if `rope` satisfies the invariant every `BufferText` upholds by
@@ -204,19 +194,55 @@ impl BufferText {
             is_cr_free(&rope),
             "BufferText invariant violated: rope must not contain '\\r'",
         );
+        let (version, generation) = self.next_version();
         Self {
             rope,
             line_ending: self.line_ending,
-            version: self.next_version(),
+            version,
+            generation,
             generations: Arc::clone(&self.generations),
         }
     }
 
-    fn next_version(&self) -> TextVersion {
-        TextVersion {
-            lineage: self.version.lineage,
-            generation: self.generations.fetch_add(1, Ordering::Relaxed) + 1,
+    /// `rope`, whose content is that of `version`, a version of this text's
+    /// lineage, as the next generation: undo returning to an earlier text.
+    pub(crate) fn restored(&self, rope: Rope, version: TextVersion) -> Self {
+        debug_assert_eq!(
+            version.lineage, self.version.lineage,
+            "restored: a version of another lineage"
+        );
+        let (_, generation) = self.next_version();
+        Self {
+            rope,
+            line_ending: self.line_ending,
+            version,
+            generation,
+            generations: Arc::clone(&self.generations),
         }
+    }
+
+    /// This text as `version`, a version of its lineage with the same
+    /// content. The generation does not move: nothing about the text changed.
+    pub(crate) fn relabeled(&self, version: TextVersion) -> Self {
+        debug_assert_eq!(
+            version.lineage, self.version.lineage,
+            "relabeled: a version of another lineage"
+        );
+        Self {
+            version,
+            ..self.clone()
+        }
+    }
+
+    /// A new version of this text's lineage and the generation it is made in,
+    /// one number serving as both.
+    fn next_version(&self) -> (TextVersion, u64) {
+        let n = self.generations.fetch_add(1, Ordering::Relaxed) + 1;
+        let version = TextVersion {
+            lineage: self.version.lineage,
+            id: n,
+        };
+        (version, n)
     }
 
     /// `content` as the next generation of this text's lineage: a wholesale
@@ -224,8 +250,10 @@ impl BufferText {
     /// The line ending is detected from `content`.
     pub fn replaced_with(&self, content: &str) -> Self {
         let fresh = Self::from(content);
+        let (version, generation) = self.next_version();
         Self {
-            version: self.next_version(),
+            version,
+            generation,
             generations: Arc::clone(&self.generations),
             ..fresh
         }
@@ -242,6 +270,14 @@ impl BufferText {
 
     pub fn version(&self) -> TextVersion {
         self.version
+    }
+
+    /// Where this text stands in the order its lineage's texts were made in.
+    /// Every text made from this one has a greater generation, so it orders
+    /// what a language server, the syntax tree and change announcements see.
+    /// It may skip numbers: a text computed and then dropped still used one.
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// Borrow the inner `Rope`.
@@ -261,11 +297,12 @@ impl BufferText {
 
     /// Create an empty buffer (contains only the structural trailing newline).
     pub fn empty() -> Self {
-        let (version, generations) = new_lineage();
+        let (version, generation, generations) = new_lineage();
         Self {
             rope: Rope::from_str("\n"),
             line_ending: LineEnding::Lf,
             version,
+            generation,
             generations,
         }
     }
@@ -550,11 +587,12 @@ impl From<&str> for BufferText {
             r.insert_char(r.len_chars(), '\n');
             r
         };
-        let (version, generations) = new_lineage();
+        let (version, generation, generations) = new_lineage();
         Self {
             rope,
             line_ending,
             version,
+            generation,
             generations,
         }
     }

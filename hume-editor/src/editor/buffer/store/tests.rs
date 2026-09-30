@@ -161,7 +161,7 @@ fn take_text_changed_reports_nothing_for_an_untouched_store() {
 /// second immediate call reports nothing, since the baseline already caught
 /// up.
 ///
-/// Without the `announced_version` write in `take_text_changed`, the second
+/// Without the `announced_generation` write in `take_text_changed`, the second
 /// call would still return `[id]`.
 #[test]
 fn take_text_changed_reports_a_touched_buffer_once() {

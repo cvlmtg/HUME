@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 use rustc_hash::FxHashMap;
 
 use crate::changeset::ChangeSet;
-use crate::selection::RecordedSelections;
+use crate::selection::SelectionSet;
 use crate::transaction::Transaction;
 
 // ── Arena index ───────────────────────────────────────────────────────────────
@@ -21,25 +21,18 @@ pub struct RevisionId(pub(crate) usize);
 
 /// A single node in the undo tree.
 ///
-/// Each revision stores both a forward Transaction (parent → this state, for
-/// redo) and an inverse Transaction (this state → parent, for undo). No buffer
-/// snapshot is stored: undo reconstructs the previous state by applying the
-/// inverse Transaction.
+/// Every revision but the root links to its parent with a forward
+/// Transaction (parent → this state, for redo) and an inverse Transaction
+/// (this state → parent, for undo). No buffer snapshot is stored: undo
+/// reconstructs the previous state by applying the inverse Transaction.
 ///
 /// The `children` vec records all revisions that branch from this one. The
 /// **last** child (highest index) is the most recently created branch and is
 /// the default redo target: after undoing and making a new edit, redo goes
 /// to the most recent edit.
 struct Revision {
-    /// Apply this to move from the current state back to the parent state (undo).
-    /// Its `selection` is the pre-edit selection, where cursors were before
-    /// this revision was created.
-    inverse: Transaction,
-    /// Apply this to move from the parent state forward to this state (redo).
-    /// Its `selection` is the post-edit selection.
-    forward: Transaction,
-    /// The parent revision. `None` only for the root.
-    parent: Option<RevisionId>,
+    /// `None` only for the root.
+    link: Option<Link>,
     /// Child revisions: branches created from this state.
     /// The last entry is the most recently created child (default redo target).
     children: Vec<RevisionId>,
@@ -53,11 +46,37 @@ struct Revision {
     timestamp: SystemTime,
 }
 
+/// A revision's edge to its parent.
+struct Link {
+    parent: RevisionId,
+    /// Apply this to move from the revision back to the parent state (undo).
+    /// Its `selection` is the pre-edit selection, where cursors were before
+    /// this revision was created.
+    inverse: Transaction,
+    /// Apply this to move from the parent state forward to the revision
+    /// (redo). Its `selection` is the post-edit selection.
+    forward: Transaction,
+}
+
+impl Revision {
+    fn parent(&self) -> Option<RevisionId> {
+        self.link.as_ref().map(|link| link.parent)
+    }
+
+    /// # Panics
+    /// Panics on the root, which has no parent to step to.
+    fn link(&self) -> &Link {
+        self.link
+            .as_ref()
+            .expect("a revision stepped through is never the root")
+    }
+}
+
 /// Tree-structured undo/redo history.
 ///
 /// Revisions live in an arena keyed by monotonically assigned IDs that are
-/// never reused. The root (id 0) is the initial document state with identity
-/// changesets; `current` is the revision matching the buffer and selections.
+/// never reused. The root (id 0) is the initial document state and has no
+/// transactions; `current` is the revision matching the buffer and selections.
 /// All ordering comes from the `parent`/`children` links, never from map
 /// iteration order.
 ///
@@ -77,22 +96,18 @@ pub struct History {
     undo_levels: usize,
 }
 
-impl History {
-    /// Create a new history rooted at the initial document state.
-    ///
-    /// The root revision has identity changesets (all Retain) and carries
-    /// `initial_sels` as its selection; this is the state before any edit.
-    /// `buf_len` is the character length of the initial buffer (needed to
-    /// build the identity ChangeSet).
-    pub fn new(initial_sels: RecordedSelections, buf_len: usize) -> Self {
-        let identity_cs = ChangeSet::identity(buf_len);
+impl Default for History {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-        // The root's forward and inverse are both identity transactions.
-        // The selection is the initial cursor state.
+impl History {
+    /// Create a new history rooted at the initial document state, the state
+    /// before any edit.
+    pub fn new() -> Self {
         let root = Revision {
-            inverse: Transaction::new(identity_cs.clone(), initial_sels.clone()),
-            forward: Transaction::new(identity_cs, initial_sels),
-            parent: None,
+            link: None,
             children: Vec::new(),
             timestamp: SystemTime::now(),
         };
@@ -152,19 +167,21 @@ impl History {
         &mut self,
         forward_cs: ChangeSet,
         inverse_cs: ChangeSet,
-        pre_edit_sels: RecordedSelections,
-        post_edit_sels: RecordedSelections,
+        pre_edit_sels: SelectionSet,
+        post_edit_sels: SelectionSet,
     ) -> Option<RevisionId> {
         let new_id = RevisionId(self.next_id);
         self.next_id += 1;
         let parent_id = self.current;
 
         let revision = Revision {
-            // inverse carries pre-edit sels: after undoing, cursors return there.
-            inverse: Transaction::new(inverse_cs, pre_edit_sels),
-            // forward carries post-edit sels: after redoing, cursors land there.
-            forward: Transaction::new(forward_cs, post_edit_sels),
-            parent: Some(parent_id),
+            link: Some(Link {
+                parent: parent_id,
+                // inverse carries pre-edit sels: after undoing, cursors return there.
+                inverse: Transaction::new(inverse_cs, pre_edit_sels),
+                // forward carries post-edit sels: after redoing, cursors land there.
+                forward: Transaction::new(forward_cs, post_edit_sels),
+            }),
             children: Vec::new(),
             timestamp: SystemTime::now(),
         };
@@ -196,12 +213,8 @@ impl History {
     ///   `current`, and `C != current`, see above): there is nothing to
     ///   discard without cutting into the live path, so `C` is *promoted*:
     ///   its children become the root's children, and `C` itself is
-    ///   removed. The root's `forward` transaction is left untouched: it
-    ///   is never applied (redo/goto always read a *child's* forward, never
-    ///   the root's), it exists solely to carry the buffer's open-time
-    ///   selection for `initial_sels`, and that selection must stay stable
-    ///   across promotions. This may still overshoot below the cap when a
-    ///   whole branch is discarded in one step, as Vim does.
+    ///   removed. This may still overshoot below the cap when a whole
+    ///   branch is discarded in one step, as Vim does.
     ///
     /// Returns the id of the last revision promoted into the root, if any.
     fn enforce_undo_levels(&mut self) -> Option<RevisionId> {
@@ -225,7 +238,13 @@ impl History {
                 let c_id = root_children[0];
                 let c = self.revisions.remove(&c_id).expect("child exists");
                 for child in &c.children {
-                    self.revisions.get_mut(child).expect("child exists").parent = Some(Self::ROOT);
+                    let link = self
+                        .revisions
+                        .get_mut(child)
+                        .expect("child exists")
+                        .link
+                        .as_mut();
+                    link.expect("a child has a parent").parent = Self::ROOT;
                 }
                 let root = self.revisions.get_mut(&Self::ROOT).expect("root exists");
                 root.children = c.children;
@@ -239,7 +258,7 @@ impl History {
     /// lies on the path to `current`.
     fn root_child_on_current_path(&self) -> RevisionId {
         let mut id = self.current;
-        while let Some(parent) = self.revisions[&id].parent {
+        while let Some(parent) = self.revisions[&id].parent() {
             if parent == Self::ROOT {
                 return id;
             }
@@ -251,7 +270,7 @@ impl History {
     /// Remove `id` and every revision in its subtree from the arena, and
     /// detach `id` from its parent's `children` list.
     fn remove_subtree(&mut self, id: RevisionId) {
-        if let Some(parent) = self.revisions[&id].parent {
+        if let Some(parent) = self.revisions[&id].parent() {
             self.revisions
                 .get_mut(&parent)
                 .expect("parent exists")
@@ -280,8 +299,8 @@ impl History {
         // One lookup, not two: `parent` and `inverse` both come off the same
         // arena entry, read before `self.current` moves past it.
         let rev = &self.revisions[&old_current];
-        let parent = rev.parent?;
-        let inverse = rev.inverse.clone();
+        let link = rev.link.as_ref()?;
+        let (parent, inverse) = (link.parent, link.inverse.clone());
         self.current = parent;
         Some(inverse)
     }
@@ -299,7 +318,7 @@ impl History {
         // Copy out child_id before mutating current.
         let child_id = *self.revisions[&self.current].children.last()?;
         self.current = child_id;
-        Some(self.revisions[&child_id].forward.clone())
+        Some(self.revisions[&child_id].link().forward.clone())
     }
 
     /// Walk up to `count` revisions toward the root, returning the inverse
@@ -335,7 +354,7 @@ impl History {
 
     /// True if there is at least one revision above the current position.
     pub fn can_undo(&self) -> bool {
-        self.revisions[&self.current].parent.is_some()
+        self.revisions[&self.current].link.is_some()
     }
 
     /// True if the current revision has at least one child.
@@ -379,7 +398,7 @@ impl History {
         let mut steps = 0;
         let mut id = self.current;
         while self.age(id, now) < age {
-            let Some(parent) = self.revisions[&id].parent else {
+            let Some(parent) = self.revisions[&id].parent() else {
                 return Err(steps);
             };
             steps += 1;
@@ -438,24 +457,13 @@ impl History {
         self.current
     }
 
-    /// The initial selections stored in the root revision.
-    ///
-    /// Returned to the caller so pane state can be seeded when a pane first
-    /// views a buffer, or when the buffer is reloaded from disk. Stable
-    /// across `undo-levels` promotion: `enforce_undo_levels` never touches
-    /// the root's `forward`, so this always reflects the buffer's true
-    /// open-time selection, not a later revision's post-edit cursor.
-    pub fn initial_sels(&self) -> &RecordedSelections {
-        self.revisions[&Self::ROOT].forward.selection()
-    }
-
     /// Parent of a revision. `None` for the root or for an id that is out of
     /// bounds or has been evicted by `undo-levels` trimming.
     ///
     /// Using `.get` instead of direct indexing lets callers safely query a
     /// stale (evicted) id without panicking.
     pub fn parent(&self, id: RevisionId) -> Option<RevisionId> {
-        self.revisions.get(&id)?.parent
+        self.revisions.get(&id)?.parent()
     }
 
     /// Ancestor chain from `id` up to and including the root.
@@ -463,7 +471,7 @@ impl History {
     /// Returns `[id, parent, grandparent, ..., root]`.
     fn ancestors(&self, mut id: RevisionId) -> Vec<RevisionId> {
         let mut chain = vec![id];
-        while let Some(parent) = self.revisions[&id].parent {
+        while let Some(parent) = self.revisions[&id].parent() {
             chain.push(parent);
             id = parent;
         }
@@ -541,10 +549,10 @@ impl History {
         // Build the transaction list.
         let mut txns = Vec::with_capacity(up_path.len() + down_path.len());
         for id in &up_path {
-            txns.push(self.revisions[id].inverse.clone());
+            txns.push(self.revisions[id].link().inverse.clone());
         }
         for id in &down_path {
-            txns.push(self.revisions[id].forward.clone());
+            txns.push(self.revisions[id].link().forward.clone());
         }
 
         self.current = target;

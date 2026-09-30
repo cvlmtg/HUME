@@ -1695,7 +1695,7 @@ fn split_inherits_focused_panes_selection_and_scroll() {
     let content: String = (0..200).map(|i| format!("line {i}\n")).collect();
     let text = BufferText::from(content.as_str());
     let sels = sels_at(&text, &[(0, 0)], 0);
-    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
 

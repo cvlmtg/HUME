@@ -82,7 +82,7 @@ fn record(syn: &mut Syntax, before: &BufferText, after: &BufferText, cs: &Change
 }
 
 fn generation(text: &BufferText) -> u64 {
-    text.version().generation()
+    text.generation()
 }
 
 // ── attach ────────────────────────────────────────────────────────────────

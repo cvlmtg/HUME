@@ -27,7 +27,7 @@ use hume_grid::Rect;
 fn editor_with_before_line() -> Editor {
     let text = BufferText::from("x\ny\n");
     let sels = sels_at(&text, &[(0, 0)], 0);
-    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(WrapMode::Soft { width: 0 }),
@@ -447,10 +447,8 @@ fn view_scroll_cursor_follow_counts_virtual_lines_toward_its_budget() {
     let sels = sels_at(&text, &[(0, 0)], 0);
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 0 }] {
-        let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(
-            text.clone(),
-            sels.clone(),
-        )));
+        let mut ed =
+            Editor::for_testing_with(test_fixtures::testing::state(text.clone(), sels.clone()));
         let pid = ed.state.focus.id();
         ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
             mode: Some(wrap),
@@ -497,7 +495,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     let text = BufferText::from("abcdef\ny\n");
     // Cursor on line 1 (char 7), below the wrap the hint causes.
     let sels = sels_at(&text, &[(7, 7)], 0);
-    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.state.settings.scroll_margin = 0;
     let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {

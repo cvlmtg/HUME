@@ -1562,8 +1562,5 @@ fn applying_an_edit_advances_the_generation_by_one() {
     b.insert("x");
     b.retain_rest();
     let applied = b.finish().apply(&text).expect("insert applies");
-    assert_eq!(
-        applied.version().generation(),
-        text.version().generation() + 1
-    );
+    assert_eq!(applied.generation(), text.generation() + 1);
 }

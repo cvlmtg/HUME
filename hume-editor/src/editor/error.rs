@@ -6,9 +6,8 @@ use super::message_log::Severity;
 ///
 /// Carries a human-readable message suitable for display in the status bar,
 /// plus the [`Severity`] its report site should use (see [`Self::new`] vs
-/// [`Self::transient`]). Distinct from [`hume_editing::error::ApplyError`] /
-/// [`hume_editing::error::TransactionError`] (internal buffer integrity
-/// errors): `CommandError` represents a user-level failure such as an I/O
+/// [`Self::transient`]). Distinct from [`hume_editing::error::ApplyError`]
+/// (an internal buffer integrity error): `CommandError` represents a user-level failure such as an I/O
 /// error during a file write, or a boundary condition like "no match".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::editor) struct CommandError {

@@ -51,7 +51,7 @@ fn first_parse_full_reparse_no_pending() {
     let syn = buf.syntax.as_ref().unwrap();
     assert_eq!(
         syn.parsed_gen(),
-        Some(buf.text().version().generation()),
+        Some(buf.text().generation()),
         "initial parse must be up-to-date"
     );
     assert!(
@@ -65,7 +65,7 @@ fn first_parse_full_reparse_no_pending() {
 fn edit_records_pending_edits() {
     require_grammars(&["json"]);
     let (mut ed, bid) = json_editor("{}\n");
-    let gen_before = ed.state.buffers.get(bid).text().version().generation();
+    let gen_before = ed.state.buffers.get(bid).text().generation();
 
     // Insert a char in insert mode.
     ed.feed_key(key('i'));
@@ -74,7 +74,7 @@ fn edit_records_pending_edits() {
 
     let buf = ed.state.buffers.get(bid);
     assert!(
-        buf.text().version().generation() > gen_before,
+        buf.text().generation() > gen_before,
         "edit must change the text version"
     );
     let syn = buf.syntax.as_ref().unwrap();
@@ -93,7 +93,7 @@ fn reparse_after_edit_drains_pending() {
     ed.feed_key(key(' '));
     ed.feed_key(key_esc());
 
-    let gen_after_edit = ed.state.buffers.get(bid).text().version().generation();
+    let gen_after_edit = ed.state.buffers.get(bid).text().generation();
 
     // InlineParseBackend: post request (first call) then drain+install (second call).
     reparse_edit(&mut ed);
@@ -121,12 +121,12 @@ fn two_edits_batched_chain_resolves() {
     ed.feed_key(key('i'));
     ed.feed_key(key('1'));
     ed.feed_key(key_esc());
-    let gen_1 = ed.state.buffers.get(bid).text().version().generation();
+    let gen_1 = ed.state.buffers.get(bid).text().generation();
 
     ed.feed_key(key('a'));
     ed.feed_key(key('2'));
     ed.feed_key(key_esc());
-    let gen_2 = ed.state.buffers.get(bid).text().version().generation();
+    let gen_2 = ed.state.buffers.get(bid).text().generation();
 
     assert!(gen_2 > gen_1, "two edits must produce two generation bumps");
 
@@ -222,7 +222,7 @@ fn bake_aligns_committed_tree_before_precise_install() {
     ed.feed_key(key(' '));
     ed.feed_key(key_esc());
 
-    let generation_after = ed.state.buffers.get(bid).text().version().generation();
+    let generation_after = ed.state.buffers.get(bid).text().generation();
     let new_byte_len = ed.state.buffers.get(bid).text().len_bytes();
     assert_eq!(new_byte_len, old_byte_len + 1, "insert added one byte");
 
@@ -277,7 +277,7 @@ fn bake_handles_multi_edit_chain_in_one_shot() {
     ed.feed_key(key('B'));
     ed.feed_key(key_esc());
 
-    let generation_after = ed.state.buffers.get(bid).text().version().generation();
+    let generation_after = ed.state.buffers.get(bid).text().generation();
     let new_byte_len = ed.state.buffers.get(bid).text().len_bytes();
 
     let pending_count = ed
@@ -381,13 +381,13 @@ fn multi_cursor_tab_keeps_the_pending_edit_chain_linked() {
     let (mut ed, bid) = json_editor("[1,\n2,\n3]\n");
     ed.state.settings.tab_style = TabStyle::Soft;
     select(&mut ed, &[(1, 1), (4, 4), (7, 7)], 0);
-    let gen_before = ed.state.buffers.get(bid).text().version().generation();
+    let gen_before = ed.state.buffers.get(bid).text().generation();
 
     ed.feed_key(key('i'));
     ed.feed_key(key_tab());
     ed.feed_key(key_esc());
 
-    let gen_after = ed.state.buffers.get(bid).text().version().generation();
+    let gen_after = ed.state.buffers.get(bid).text().generation();
     assert!(
         gen_after > gen_before + 1,
         "setup: the edit skips text versions"

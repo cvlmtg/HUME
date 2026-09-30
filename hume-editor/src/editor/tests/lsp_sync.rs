@@ -155,7 +155,7 @@ fn assert_mirror_matches(
     context: &str,
 ) {
     let real_text = ed.state.buffers.get(bid).text().to_string();
-    let real_version = ed.state.buffers.get(bid).text().version().generation() as i64;
+    let real_version = ed.state.buffers.get(bid).text().generation() as i64;
     let (mirrored, last_version) = replay(log);
     assert_eq!(
         mirrored, real_text,
@@ -519,7 +519,7 @@ fn full_sync_server_gets_one_whole_document_didchange_per_flush() {
     assert_eq!(changes[0]["text"], buf.text().to_string());
     assert_eq!(
         params["textDocument"]["version"].as_i64(),
-        Some(buf.text().version().generation() as i64)
+        Some(buf.text().generation() as i64)
     );
 }
 

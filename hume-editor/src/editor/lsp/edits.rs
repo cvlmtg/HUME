@@ -40,7 +40,7 @@ pub(in crate::editor) fn checked_buffer(
         return Err("buffer is read-only".to_string());
     }
     if let Some(expected_gen) = expect_gen
-        && buf.text().version().generation() != expected_gen
+        && buf.text().generation() != expected_gen
     {
         return Err("buffer changed since these edits were computed".to_string());
     }
@@ -386,12 +386,7 @@ pub(in crate::editor) fn apply_workspace_edit(
     // is checked separately, per entry, below.
     if let Some(expect_gen) = expect_gen {
         let requesting_bid = view.panes[pid].buffer_id;
-        let current_gen = state
-            .buffers
-            .get(requesting_bid)
-            .text()
-            .version()
-            .generation();
+        let current_gen = state.buffers.get(requesting_bid).text().generation();
         if current_gen != expect_gen {
             return Err(
                 "apply-workspace-edit!: buffer has changed since the request that produced \

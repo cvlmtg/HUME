@@ -127,6 +127,46 @@ fn undoing_a_repeated_smart_paste_restores_the_selection_it_was_made_from() {
     assert_eq!(state(&ed), "-[ae\u{301}]>\n");
 }
 
+/// An undo walk that nets to no change gives the text back the version its
+/// selections were saved for. A pane showing the buffer from elsewhere keeps
+/// selections that pair with it.
+#[test]
+fn a_net_identity_undo_walk_keeps_another_panes_selections_paired() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let bid = ed.focused_buffer_id();
+    let root = ed.doc().text().version();
+    ed.execute_typed("split", None).unwrap();
+    let away = ed.state.focus.id();
+    select(&mut ed, &[(3, 3)], 0);
+    ed.feed_event(key_ctrl('p'));
+    ed.feed_event(key('p'));
+    assert_ne!(ed.state.focus.id(), away, "setup: back on the editing pane");
+
+    for k in [
+        key('i'),
+        key('x'),
+        key_esc(),
+        key('a'),
+        key_backspace(),
+        key_esc(),
+    ] {
+        ed.feed_key(k);
+    }
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "hello\n",
+        "setup: the edits cancel out"
+    );
+    ed.feed_key(key('2'));
+    ed.feed_key(key('u'));
+
+    let text = ed.doc().text();
+    assert_eq!(text.to_string(), "hello\n");
+    assert_eq!(text.version(), root);
+    let away_head = ed.state.panes.state[away][bid].view(text).primary().head();
+    assert_eq!(away_head.offset().index(), 3);
+}
+
 // ── Tracked positions ───────────────────────────────────────────────────────
 
 /// A position a script asked the editor to remember follows the text.

@@ -253,10 +253,10 @@ impl Editor {
         // text: diagnostics/decorations char offsets, and sends a
         // whole-document didChange at a fresh version. A no-op
         // reload (`mutated == false`) never touched `self.text` or
-        // the text version, so that state is still valid against the
+        // the text generation, so that state is still valid against the
         // unchanged content and is kept.
         if mutated {
-            // `reload_from_text` changed the text version but produced no
+            // `reload_from_text` moved the text generation but produced no
             // *queued incremental* change the LSP pending-queue mechanism can
             // consume, so send the reload as a whole-document didChange instead.
             self.lsp_did_change_whole_document(id);

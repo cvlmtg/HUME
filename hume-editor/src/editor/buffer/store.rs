@@ -139,11 +139,11 @@ impl BufferStore {
             .filter_map(|&id| self.buffers.get(id).map(|buf| (id, buf)))
     }
 
-    /// Every open buffer whose text version has moved since the last call:
+    /// Every open buffer whose text generation has moved since the last call:
     /// the observation-point source for `on-text-changed`
     /// (`EditorEvent::OnTextChanged`'s doc has the full contract: what bumps
-    /// text version, what coalesces, what never fires). Advances each touched
-    /// buffer's `announced_version` to match as it goes, so a buffer
+    /// text generation, what coalesces, what never fires). Advances each touched
+    /// buffer's `announced_generation` to match as it goes, so a buffer
     /// reported once stays quiet until it mutates again, so a burst of edits
     /// between two calls coalesces into one entry. Walks `order` (open-order)
     /// for deterministic event ordering.
@@ -158,10 +158,10 @@ impl BufferStore {
             .iter()
             .filter_map(|&id| {
                 let buf = buffers.get_mut(id)?;
-                if buf.text().version() == buf.announced_version {
+                if buf.text().generation() == buf.announced_generation {
                     return None;
                 }
-                buf.announced_version = buf.text().version();
+                buf.announced_generation = buf.text().generation();
                 Some(id)
             })
             .collect()

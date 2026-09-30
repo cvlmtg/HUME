@@ -85,7 +85,7 @@ fn finish_edit(
     pane_state[pane_id][buf_id].set_selections(new_sels, buffers.get(buf_id).text());
     // An identity `cs` moved no bytes: `Buffer::apply_edit*` skipped
     // `install` for it directly, and `commit_edit_group` never records it as
-    // a revision for `undo`/`redo` to later replay, so the text version did
+    // a revision for `undo`/`redo` to later replay, so the text generation did
     // not move either way. Feeding the LSP stream an edit tagged with
     // an already-parsed generation would be actively wrong, and paste-stamping
     // must not count a no-op as an edit. Selections are still written above:
@@ -99,7 +99,7 @@ fn finish_edit(
     // buffer under this pane just changed regardless.
     pane_state[pane_id][buf_id].reveal_pending = true;
     buffers.bump_edit_seq();
-    let generation = buffers.get(buf_id).text().version().generation();
+    let generation = buffers.get(buf_id).text().generation();
     record_lsp_edits(buffers, buf_id, generation, cs, text_pre.rope());
 }
 

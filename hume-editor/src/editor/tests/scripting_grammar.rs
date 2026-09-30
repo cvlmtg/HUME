@@ -246,7 +246,7 @@ fn reparse_advances_parsed_gen_after_edit() {
     ed.reparse_stale_buffers(); // drain the initial parse result
 
     // setup_buffer_syntax sets parsed_gen = generation (after drain).
-    let gen0 = ed.state.buffers.get(bid).text().version().generation();
+    let gen0 = ed.state.buffers.get(bid).text().generation();
     assert_eq!(
         ed.state
             .buffers
@@ -263,7 +263,7 @@ fn reparse_advances_parsed_gen_after_edit() {
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
     ed.feed_key(key_esc());
-    let gen1 = ed.state.buffers.get(bid).text().version().generation();
+    let gen1 = ed.state.buffers.get(bid).text().generation();
     assert!(gen1 > gen0, "edit must change the text version");
     assert_eq!(
         ed.state
@@ -608,13 +608,13 @@ fn parse_worker_result_is_async_then_installed() {
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain initial parse result
 
-    let gen0 = ed.state.buffers.get(bid).text().version().generation();
+    let gen0 = ed.state.buffers.get(bid).text().generation();
 
     // Edit: changes the text version.
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
     ed.feed_key(key_esc());
-    let gen1 = ed.state.buffers.get(bid).text().version().generation();
+    let gen1 = ed.state.buffers.get(bid).text().generation();
     assert!(gen1 > gen0);
 
     // First call: drain (nothing) then post request.  Result stashed but not yet installed.

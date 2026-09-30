@@ -240,11 +240,10 @@ fn line_ending_element_crlf() {
 // ── Position element ──────────────────────────────────────────────────────
 
 fn test_editor_with_text_and_cursor(s: &str, head: usize) -> crate::editor::Editor {
-    use crate::editor::buffer::Buffer;
     use hume_editing::text::BufferText;
     let text = BufferText::from(s);
     let sels = test_fixtures::testing::single(&text, test_fixtures::testing::cursor(&text, head));
-    crate::editor::Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)))
+    crate::editor::Editor::for_testing_with(test_fixtures::testing::state(text, sels))
 }
 
 #[test]

@@ -1,12 +1,12 @@
 use crate::changeset::ChangeSet;
-use crate::error::TransactionError;
-use crate::selection::RecordedSelections;
+use crate::error::ApplyError;
+use crate::selection::SelectionSet;
 use crate::state::EditState;
 use crate::text::BufferText;
 
 /// A text change bundled with the resulting selections: the unit of editing
 /// and of undo. `selection` is always the post-apply selection, for forward
-/// and inverse transactions alike, recorded as positions of the text the
+/// and inverse transactions alike, tagged with the version of the text the
 /// transaction produces.
 ///
 /// For undo, build two transactions from one `ChangeSet`: `forward` from
@@ -17,36 +17,41 @@ use crate::text::BufferText;
 #[derive(Debug, Clone)]
 pub struct Transaction {
     changes: ChangeSet,
-    selection: RecordedSelections,
+    selection: SelectionSet,
 }
 
 impl Transaction {
-    /// Create a transaction from a changeset and the resulting selection.
-    pub fn new(changes: ChangeSet, selection: RecordedSelections) -> Self {
+    /// `changes`, which reproduce the content of the text `selection` is
+    /// tagged for, with that selection.
+    pub(crate) fn new(changes: ChangeSet, selection: SelectionSet) -> Self {
         Self { changes, selection }
     }
 
-    /// Apply this transaction to a buffer, returning the new text paired with
-    /// the recorded selections.
+    /// `txns`, each applying to the text the one before it produces, as one
+    /// transaction landing on the last one's selections. `None` when `txns`
+    /// is empty.
+    pub fn compose_all(txns: Vec<Transaction>) -> Option<Transaction> {
+        let selection = txns.last()?.selection.clone();
+        let changes = ChangeSet::compose_all(txns.into_iter().map(|txn| txn.changes))?;
+        Some(Self::new(changes, selection))
+    }
+
+    /// Apply this transaction to `text`: the text it produces, carrying the
+    /// version the selections were recorded for, paired with them.
     ///
     /// Takes `text` by reference so the original buffer remains available to
     /// the caller on the error path, with no undo needed.
     ///
     /// # Errors
-    /// - [`TransactionError::Apply`] if the changeset is invalid for `text`
-    ///   (length mismatch or deleted the structural trailing `\n`).
-    /// - [`TransactionError::Selections`] if the recorded selections do not
-    ///   fit the text the changes produce.
-    pub fn apply(&self, text: &BufferText) -> Result<EditState, TransactionError> {
-        let new_text = self.changes.apply(text)?;
-        self.selection
-            .clone()
-            .bind(new_text)
-            .map_err(TransactionError::Selections)
+    /// [`ApplyError`] if the changeset is invalid for `text` (length
+    /// mismatch, or it deletes the structural trailing `\n`).
+    pub fn apply(&self, text: &BufferText) -> Result<EditState, ApplyError> {
+        let new_text = self.changes.apply_as(text, self.selection.version())?;
+        Ok(EditState::bind(&new_text, self.selection.clone()))
     }
 
-    /// The selection state recorded in this transaction.
-    pub fn selection(&self) -> &RecordedSelections {
+    /// The selections this transaction lands on.
+    pub fn selection(&self) -> &SelectionSet {
         &self.selection
     }
 

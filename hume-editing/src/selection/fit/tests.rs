@@ -1,8 +1,8 @@
 use pretty_assertions::assert_eq;
 
 use super::*;
+use crate::marked::parse;
 use crate::marked::start_at;
-use crate::marked::{parse, render};
 use crate::selection::EditView;
 use crate::selection::Selection;
 use crate::text::BufferText;
@@ -24,35 +24,6 @@ fn a_set_tagged_for_its_text_fits() {
     let state = parse("a-[b]>c\n");
     let set = state.clone().into_selections();
     assert_eq!(check_fit(state.text(), &set), Ok(()));
-}
-
-#[test]
-fn refitting_floors_each_end_to_its_cluster_and_clamps_it_into_the_text() {
-    let state = parse("-[a]>e\u{301}b\n");
-    let raw = set_of(|t| vec![Selection::new(start_at(t, 2), start_at(t, 40))], 0);
-    let fitted = refit_parts(state.text(), raw.selections(), raw.primary_pos());
-    let view = EditView::bind(state.text(), &fitted);
-    assert_eq!(view.check(), Ok(()));
-    assert_eq!(render(view), "a-[e\u{301}b\n]>");
-}
-
-#[test]
-fn refitting_merges_selections_that_land_on_one_cluster() {
-    let state = parse("-[a]>e\u{301}b\n");
-    let raw = set_of(
-        |t| {
-            vec![
-                Selection::cursor(start_at(t, 1)),
-                Selection::cursor(start_at(t, 2)),
-            ]
-        },
-        1,
-    );
-    let fitted = refit_parts(state.text(), raw.selections(), raw.primary_pos());
-    assert_eq!(
-        render(EditView::bind(state.text(), &fitted)),
-        "a-[e\u{301}]>b\n"
-    );
 }
 
 #[test]

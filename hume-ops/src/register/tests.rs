@@ -621,10 +621,7 @@ fn yank_leaves_the_text_version_for_the_next_edit() {
     let state = EditState::bind(&text, sels);
     yank_selections(&state);
     let (after, _) = crate::edit::insert_str(state, "x").into_parts();
-    assert_eq!(
-        after.text().version().generation(),
-        text.version().generation() + 1
-    );
+    assert_eq!(after.text().generation(), text.generation() + 1);
 }
 
 #[test]

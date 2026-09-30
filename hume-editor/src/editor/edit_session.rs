@@ -17,7 +17,7 @@
 //! keyed by a per-pane map).
 
 use hume_editing::changeset::ChangeSet;
-use hume_editing::selection::RecordedSelections;
+use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
 use hume_engine::pipeline::{BufferId, PaneId};
 
@@ -301,7 +301,7 @@ pub(in crate::editor) struct EditGroup {
     /// The selections undo restores: the ones the command that opened the
     /// group was made from. Usually `snapshot`'s own; a smart paste repeat
     /// applies to collapsed cursors but undoes to the selection it saw.
-    pub(in crate::editor) undo_sels: RecordedSelections,
+    pub(in crate::editor) undo_sels: SelectionSet,
     /// Running composition of all forward ChangeSets applied since the group
     /// opened. `None` until the first keystroke (empty session = no revision
     /// recorded on commit).

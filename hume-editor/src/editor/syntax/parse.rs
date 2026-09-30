@@ -77,7 +77,7 @@ impl Editor {
         let Some(buf) = self.state.buffers.try_get_mut(done.bid) else {
             return;
         };
-        let generation = buf.text().version().generation();
+        let generation = buf.text().generation();
         if let Some(syn) = buf.syntax.as_mut() {
             syn.install(done, generation);
         }
@@ -160,7 +160,7 @@ impl Editor {
         for bid in visible {
             let size_ok = self.state.syntax_size_ok(bid);
             let buf = self.state.buffers.get(bid);
-            let generation = buf.text().version().generation();
+            let generation = buf.text().generation();
 
             // Detach if grown past cap.
             if buf.syntax.is_some() && !size_ok {
@@ -248,7 +248,7 @@ impl Editor {
 pub(in crate::editor) fn ensure_syntax_current(state: &mut EditorState, bid: BufferId) {
     let size_ok = state.syntax_size_ok(bid);
     let buf = state.buffers.get(bid);
-    let generation = buf.text().version().generation();
+    let generation = buf.text().generation();
     let Some(syn) = buf.syntax.as_ref() else {
         return;
     };

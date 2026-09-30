@@ -53,26 +53,6 @@ pub(crate) fn check_fit(
     check_positions(text, selections)
 }
 
-/// `selections`, each end clamped into `text` and floored to the start of the
-/// cluster holding it, merged where they then share a cluster and tagged with
-/// `text`'s version.
-pub(crate) fn refit_parts(
-    text: &BufferText,
-    selections: &[Selection],
-    primary: usize,
-) -> SelectionSet {
-    let fitted = selections
-        .iter()
-        .map(|sel| {
-            sel.with_ends(
-                text.snap(sel.start().offset()),
-                text.snap(sel.last().offset()),
-            )
-        })
-        .collect();
-    SelectionSet::from_parts(fitted, primary, text.version())
-}
-
 /// Every invariant of `selections` against `text` except its version tag.
 pub(crate) fn check_positions(
     text: &BufferText,

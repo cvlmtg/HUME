@@ -239,7 +239,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     // `content_pos_counts_an_inline_hints_extra_wrap_row`'s fixture.
     let text = BufferText::from("abcdef\ny\n");
     let sels = sels_at(&text, &[(7, 7)], 0);
-    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.state.settings.scroll_margin = 0;
     let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {

@@ -63,8 +63,8 @@ fn jump_backward_then_forward() {
 fn goto_matching_pair_records_jump() {
     let text = BufferText::from("foo(bar)\n");
     let sels = sels_at(&text, &[(3, 3)], 0); // on '('
-    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
-    let mut ed = Editor::for_testing(doc);
+    let doc = test_fixtures::testing::state(text, sels);
+    let mut ed = Editor::for_testing_with(doc);
     let before = state(&ed);
 
     ed.handle_key(key('#'));
@@ -149,8 +149,8 @@ fn search_confirm_noop_does_not_clobber_forward_history() {
     // nothing, not just "landed near where it started".
     let text = BufferText::from("foo\n");
     let sels = sels_at(&text, &[(0, 2)], 0);
-    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
-    let mut ed = Editor::for_testing(doc);
+    let doc = test_fixtures::testing::state(text, sels);
+    let mut ed = Editor::for_testing_with(doc);
 
     // `%`: jump-flagged, moves elsewhere, records a jump.
     ed.handle_key(key('%'));
@@ -234,8 +234,8 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     // Two "editor" matches on the same line.
     let text = hume_editing::text::BufferText::from("the editor and the editor\nother line\n");
     let sels = sels_at(&text, &[(0, 0)], 0);
-    let doc = crate::editor::buffer::Buffer::new(test_fixtures::testing::state(text, sels));
-    let mut ed = Editor::for_testing(doc);
+    let doc = test_fixtures::testing::state(text, sels);
+    let mut ed = Editor::for_testing_with(doc);
     ed.kitty_enabled = true;
 
     // Search "editor": lands on first match.
@@ -309,8 +309,8 @@ fn select_all_from_last_char_still_records_jump() {
     let text = BufferText::from("foo\nbar\n");
     let last = text.last_char();
     let sels = sels_at(&text, &[(last.index(), last.index())], 0);
-    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
-    let mut ed = Editor::for_testing(doc);
+    let doc = test_fixtures::testing::state(text, sels);
+    let mut ed = Editor::for_testing_with(doc);
 
     ed.handle_key(key('%'));
     let after = ed.current_view().primary();
@@ -371,8 +371,8 @@ fn goto_matching_pair_noop_does_not_clobber_forward_history() {
 fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
     let text = BufferText::from("hello\n\nworld\n");
     let sels = sels_at(&text, &[(0, 0)], 0);
-    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
-    let mut ed = Editor::for_testing(doc);
+    let doc = test_fixtures::testing::state(text, sels);
+    let mut ed = Editor::for_testing_with(doc);
     let before = state(&ed);
 
     ed.handle_key(key('}'));
@@ -393,8 +393,8 @@ fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
 fn goto_prev_paragraph_records_jump_even_for_a_short_hop() {
     let text = BufferText::from("hello\n\nworld\n");
     let sels = sels_at(&text, &[(7, 7)], 0); // on 'w'
-    let doc = Buffer::new(test_fixtures::testing::state(text, sels));
-    let mut ed = Editor::for_testing(doc);
+    let doc = test_fixtures::testing::state(text, sels);
+    let mut ed = Editor::for_testing_with(doc);
     let before = state(&ed);
 
     ed.handle_key(key('{'));

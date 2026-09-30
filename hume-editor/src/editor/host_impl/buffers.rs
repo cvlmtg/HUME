@@ -106,7 +106,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
 
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
-        Some(self.buffer(id)?.text().version().generation())
+        Some(self.buffer(id)?.text().generation())
     }
 
     fn buffer_text(&self, id: BufferId) -> Option<String> {

@@ -9,9 +9,9 @@ use crate::editor::settings::BufferOverrides;
 use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
 use hume_editing::edit::{Edited, TextChange};
 use hume_editing::history::{History, RevisionId};
-use hume_editing::selection::{RecordedSelections, SelectionSet};
+use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
-use hume_editing::text::{BufferText, TextVersion};
+use hume_editing::text::BufferText;
 use hume_editing::transaction::Transaction;
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_platform::io::FileMeta;
@@ -103,12 +103,12 @@ pub(crate) struct Buffer {
     /// assertion across the reload instead of letting re-detection silently
     /// pick something else. See `clear_languages_all`.
     pub(in crate::editor) language_explicit: bool,
-    /// The text version most recently announced as an `on-text-changed`
+    /// The text generation most recently announced as an `on-text-changed`
     /// event. `Buffer` cannot reach the event queue (it holds no
     /// `EditorState`), so the hook is raised by diffing this against the
-    /// text's version at a drain observation point (see
+    /// text's generation at a drain observation point (see
     /// `BufferStore::take_text_changed`) rather than at `install` itself.
-    pub(in crate::editor) announced_version: TextVersion,
+    pub(in crate::editor) announced_generation: u64,
     /// Per-buffer tree-sitter syntax attachment: grammar identity, committed
     /// parse layers, generation bookkeeping, and in-flight state, all in one
     /// place. `None` when no grammar is attached or the buffer exceeds
@@ -162,20 +162,12 @@ impl Buffer {
     /// Display name used for buffers that have no backing file.
     pub(in crate::editor) const SCRATCH_BUFFER_NAME: &'static str = "*scratch*";
 
-    /// Create a new buffer holding `text` with a cursor on its first cluster.
+    /// Create a new buffer holding `text`. A pane showing it starts with a
+    /// cursor on its first cluster.
     pub(crate) fn at_start(text: BufferText) -> Self {
-        Self::new(EditState::at_text_start(text))
-    }
-
-    /// Create a new buffer from its text and initial selections.
-    ///
-    /// The selections are stored in the history root so `initial_sels()` can
-    /// recover them for seeding `PaneBufferState` on first open or `:e!` reload.
-    pub(crate) fn new(initial: EditState) -> Self {
-        let history = History::new(initial.recorded(), initial.text().len_chars());
-        let text = initial.text().clone();
+        let history = History::new();
         let saved_revision = Some(history.current_id());
-        let announced_version = text.version();
+        let announced_generation = text.generation();
         Self {
             text,
             history,
@@ -188,7 +180,7 @@ impl Buffer {
             overrides: BufferOverrides::default(),
             language: None,
             language_explicit: false,
-            announced_version,
+            announced_generation,
             syntax: None,
             read_only: false,
             label: None,
@@ -292,9 +284,8 @@ impl Buffer {
         content: &str,
     ) {
         let text = self.text.replaced_with(content);
-        let text_len = text.len_chars();
         let undo_levels = self.history.undo_levels();
-        self.history = History::new(EditState::at_text_start(text.clone()).recorded(), text_len);
+        self.history = History::new();
         self.history.set_undo_levels(undo_levels);
         self.saved_revision = Some(self.history.current_id());
         self.search_pattern = None;
@@ -319,9 +310,12 @@ impl Buffer {
     /// Replace the buffer text and carry every stored position with it:
     /// through the edit's `ChangeSet`, or, for a replacement no change
     /// describes, by resetting them to the buffer's initial state. All text-mutating paths go through here,
-    /// each with a text of a new version, which is how
+    /// each with a text of a later generation, which is how
     /// `reparse_stale_buffers` and the `on-text-changed` announcer see that
-    /// the text moved.
+    /// the text moved. The one exception is an undo walk that nets to no
+    /// change: the same text under the version its selections were recorded
+    /// for, at the same generation, carried through an identity change so
+    /// every store is retagged while nothing that orders texts sees a change.
     fn install(
         &mut self,
         id: BufferId,
@@ -329,15 +323,20 @@ impl Buffer {
         text: BufferText,
         change: Change<'_>,
     ) {
+        let relabel = text.generation() == self.text.generation();
         debug_assert!(
-            text.version().is_later_than(self.text.version()),
-            "install: a replacement text must be a later version of the buffer's text"
+            text.generation() > self.text.generation()
+                || (relabel
+                    && matches!(change, Change::Edit(changes) if changes.is_identity())
+                    && text == self.text),
+            "install: a replacement text must be a later generation of the buffer's text, \
+             or the same text relabeled through an identity change"
         );
         let before = std::mem::replace(&mut self.text, text);
         match change {
             Change::Edit(changes) => {
                 let change = TextChange::new(&before, &self.text, changes);
-                if let Some(syn) = self.syntax.as_mut() {
+                if !relabel && let Some(syn) = self.syntax.as_mut() {
                     syn.record_edit(&change);
                 }
                 stores.carry(id, &change);
@@ -405,16 +404,10 @@ impl Buffer {
         if out.is_empty() { None } else { Some(out) }
     }
 
-    /// The initial selections stored at the history root.
-    ///
-    /// Used to seed `PaneBufferState.selections` when a pane first views this
-    /// buffer or when `:e!` reloads it from disk.
+    /// The selections a pane starts with when it first views this buffer: a
+    /// cursor on the first cluster.
     pub(in crate::editor) fn initial_sels(&self) -> SelectionSet {
-        self.history
-            .initial_sels()
-            .clone()
-            .refit(self.text.clone())
-            .into_selections()
+        EditState::at_text_start(self.text.clone()).into_selections()
     }
 
     /// The name shown in the UI: label for view buffers, basename for named
@@ -491,17 +484,15 @@ impl Buffer {
             reloaded, new_text,
             "reload: the line diff must reproduce the file"
         );
-        let recorded = |text: &BufferText, stores: &PositionStores<'_>| {
-            EditState::bind(text, stores.panes[focused][id].selections().clone()).recorded()
-        };
-        let pre_sels = recorded(&self.text, stores);
+        let recorded = |stores: &PositionStores<'_>| stores.panes[focused][id].selections().clone();
+        let pre_sels = recorded(stores);
         self.install(
             id,
             stores,
             reloaded.with_line_ending(new_text.line_ending()),
             Change::Edit(&forward),
         );
-        let post_sels = recorded(&self.text, stores);
+        let post_sels = recorded(stores);
         self.record_revision(forward, inverse, pre_sels, post_sels);
         self.saved_revision = Some(self.history.current_id());
         true
@@ -567,8 +558,8 @@ impl Buffer {
         &mut self,
         forward: ChangeSet,
         inverse: ChangeSet,
-        pre_sels: RecordedSelections,
-        post_sels: RecordedSelections,
+        pre_sels: SelectionSet,
+        post_sels: SelectionSet,
     ) {
         if let Some(promoted) = self.history.record(forward, inverse, pre_sels, post_sels) {
             if self.saved_revision == Some(promoted) {
@@ -606,12 +597,12 @@ impl Buffer {
         sels: SelectionSet,
         cmd: impl FnOnce(EditState) -> Edited,
     ) -> (SelectionSet, ChangeSet) {
+        let pre_sels = sels.clone();
         let pre = EditState::bind(&self.text, sels);
-        let pre_sels = pre.recorded();
         let (post, cs) = self.run_edit(pre, cmd).into_parts();
 
         // An identity `cs` moved no bytes: recording it would litter the undo
-        // tree with a no-op revision, and a new text version would fire
+        // tree with a no-op revision, and a new text generation would fire
         // `on-text-changed` for a mutation that never happened.
         if cs.is_identity() {
             return (post.into_selections(), cs);
@@ -619,9 +610,11 @@ impl Buffer {
 
         // self.text is still pre-edit here, so it's safe to call invert.
         let inverse_cs = cs.invert(&self.text);
-        self.record_revision(cs.clone(), inverse_cs, pre_sels, post.recorded());
-        self.install(id, stores, post.text().clone(), Change::Edit(&cs));
-        (post.into_selections(), cs)
+        let post_text = post.text().clone();
+        let post_sels = post.into_selections();
+        self.record_revision(cs.clone(), inverse_cs, pre_sels, post_sels.clone());
+        self.install(id, stores, post_text, Change::Edit(&cs));
+        (post_sels, cs)
     }
 
     /// Apply an edit within the current open group, composing its CS into the
@@ -645,7 +638,7 @@ impl Buffer {
         let new_sels = post.into_selections();
 
         // An identity `cs` moved no bytes: composing it into the group
-        // accumulator would still be a no-op, but a new text version would
+        // accumulator would still be a no-op, but a new text generation would
         // fire `on-text-changed` for one. Leave the accumulator untouched:
         // a group whose every edit was identity commits nothing.
         if cs.is_identity() {
@@ -678,35 +671,31 @@ impl Buffer {
         group: &mut EditGroup,
         cmd: impl FnOnce(EditState) -> Edited,
     ) -> (SelectionSet, ChangeSet) {
-        let snapshot = group.snapshot.clone();
-        let (post, new_cs) = cmd(snapshot).into_parts();
-        let new_text = post.text().clone();
-        let mut new_sels = post.into_selections();
+        let edited = cmd(group.snapshot.clone());
+        let new_cs = edited.changes().clone();
 
-        // Build the propagation CS: maps current buffer text → new_text.
-        // On the first paste group.cs is None, meaning current == snapshot,
-        // so propagation CS == new_cs.
+        // Build the propagation CS: maps current buffer text → the edit's
+        // result. On the first paste group.cs is None, meaning current ==
+        // snapshot, so propagation CS == new_cs.
         let propagation_cs = match &group.cs {
             None => new_cs.clone(),
             Some(prev_cs) => prev_cs
                 .invert(group.snapshot.text())
                 .compose(new_cs.clone()),
         };
-
         group.cs = Some(new_cs);
-        // `propagation_cs` maps the live text onto content equal to
-        // `new_text`, so the result stays in the live text's lineage and the
-        // selections, tagged for `new_text`, are carried across to it. An
-        // identity `propagation_cs` returns the live text itself, which
-        // needs no install.
-        let landed = propagation_cs
-            .apply(&self.text)
-            .expect("the propagation changeset maps the live text");
-        rebind_to_same_content(&mut new_sels, &new_text, &landed);
-        if !propagation_cs.is_identity() {
-            self.install(id, stores, landed, Change::Edit(&propagation_cs));
+
+        // An identity `propagation_cs` relabels the live text without
+        // changing it, so `install` retags the stores and nothing else sees
+        // a change.
+        let (post, cs) = edited
+            .rebased(&self.text, propagation_cs)
+            .expect("the propagation changeset maps the live text")
+            .into_parts();
+        if post.text().version() != self.text.version() {
+            self.install(id, stores, post.text().clone(), Change::Edit(&cs));
         }
-        (new_sels, propagation_cs)
+        (post.into_selections(), cs)
     }
 
     /// Open an edit group. Snapshots the current text with `base`, the
@@ -726,7 +715,7 @@ impl Buffer {
     ) -> EditGroup {
         EditGroup {
             snapshot: EditState::bind(&self.text, base),
-            undo_sels: EditState::bind(&self.text, undo).recorded(),
+            undo_sels: EditState::bind(&self.text, undo).into_selections(),
             cs: None,
         }
     }
@@ -756,14 +745,14 @@ impl Buffer {
             }
             let inverse_cs = cs.invert(group.snapshot.text());
             let pre_sels = group.undo_sels;
-            let post_sels = EditState::bind(&self.text, post_sels).recorded();
+            let post_sels = EditState::bind(&self.text, post_sels).into_selections();
             self.record_revision(cs, inverse_cs, pre_sels, post_sels);
         }
     }
 
     /// Apply an ordered Transaction list (from `History::undo_n`/`redo_n`/
-    /// `goto_revision`) as one composed transform: fold every ChangeSet
-    /// together with `ChangeSet::compose_all` (sound because each Transaction
+    /// `goto_revision`) as one composed transform: fold them together with
+    /// `Transaction::compose_all` (sound because each Transaction
     /// in the list maps the state the previous one produced, see
     /// `History::goto_revision`'s doc) and apply the result once. Returns a
     /// [`HistoryWalkResult`]: the restored selections, the net ChangeSet,
@@ -772,16 +761,15 @@ impl Buffer {
     /// exhaustion apart from a full walk. `None` when `txns` is empty
     /// (nothing to do, already at the target).
     ///
-    /// Always validates the landing selections via `Transaction::apply`
-    /// (length + bounds check, `merge_overlapping_in_place`), but skips
-    /// `install` when the composed ChangeSet is identity: a walk that
-    /// undoes an insert and its own later delete nets to no text change, so
-    /// the version doesn't move for a mutation that never happened. A
-    /// different guard from `apply_edit`/`commit_edit_group`'s, not the same
-    /// one: those two skip recording a revision at all, so a no-op edit
-    /// never enters history; this walk's revision move already happened in
-    /// `History::undo_n`/`redo_n`/`goto_revision` before this is even
-    /// called, so all that's left to guard here is the text mutation.
+    /// The landed text carries the version the landing selections were
+    /// recorded for. A walk that undoes an insert and its own later delete
+    /// nets to no text change: the text is relabeled at the same generation,
+    /// so nothing that orders texts sees a mutation that never happened, and
+    /// `install` runs only when the version moved. A different guard from
+    /// `apply_edit`/`commit_edit_group`'s, not the same one: those two skip
+    /// recording a revision at all, so a no-op edit never enters history;
+    /// this walk's revision move already happened in
+    /// `History::undo_n`/`redo_n`/`goto_revision` before this is even called.
     fn apply_transactions(
         &mut self,
         id: BufferId,
@@ -789,19 +777,14 @@ impl Buffer {
         txns: Vec<Transaction>,
     ) -> HistoryWalkResult {
         let steps = txns.len();
-        let landing_sels = txns.last()?.selection().clone();
-        let css = txns.into_iter().map(Transaction::into_changes);
-        let txn = Transaction::new(
-            ChangeSet::compose_all(css).expect("txns non-empty: the `?` above already returned"),
-            landing_sels,
-        );
+        let txn = Transaction::compose_all(txns)?;
         let landed = txn
             .apply(&self.text)
             .expect("composed history transaction failed: history is corrupt");
         let new_text = landed.text().clone();
         let new_sels = landed.into_selections();
         let cs = txn.into_changes();
-        if !cs.is_identity() {
+        if new_text.version() != self.text.version() {
             self.install(id, stores, new_text, Change::Edit(&cs));
         }
         Some((new_sels, cs, steps))
@@ -879,20 +862,6 @@ impl Buffer {
             *sels = new_sels;
         }
     }
-}
-
-/// Retag `sels`, computed for `from`, as selections of `to`, another version
-/// of the same content.
-fn rebind_to_same_content(sels: &mut SelectionSet, from: &BufferText, to: &BufferText) {
-    debug_assert!(
-        from.rope() == to.rope(),
-        "rebind: the two texts must hold the same content"
-    );
-    sels.translate(&TextChange::new(
-        from,
-        to,
-        &ChangeSet::identity(to.len_chars()),
-    ));
 }
 
 #[cfg(test)]

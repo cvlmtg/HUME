@@ -146,7 +146,7 @@ fn state(d: &DocHelper) -> String {
 
 fn doc(input: &str) -> DocHelper {
     let (text, sels) = parse_state(input);
-    let buf = Buffer::new(test_fixtures::testing::state(text, sels.clone()));
+    let buf = Buffer::at_start(text);
     DocHelper {
         buf,
         sels,
@@ -385,29 +385,32 @@ fn redo_n_clamps_at_tip_and_reports_short_count() {
 fn undo_n_zero_count_is_noop() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'a'));
-    let before_gen = d.buf.text().version().generation();
+    let before_gen = d.buf.text().generation();
     let steps = d.undo_n(0);
     assert_eq!(steps, 0);
-    assert_eq!(d.buf.text().version().generation(), before_gen);
+    assert_eq!(d.buf.text().generation(), before_gen);
     assert_eq!(state(&d), "a-[h]>ello\n");
 }
 
 /// Undoing an insert and its own later backspace in one composed walk nets
-/// to no text change: the text version must not move, matching `apply_edit`'s own
-/// identity guard for a single edit.
+/// to no text change: the text takes back the root's version, and its
+/// generation does not move, matching `apply_edit`'s own identity guard for a
+/// single edit.
 #[test]
-fn undo_n_net_identity_walk_keeps_the_text_version() {
+fn undo_n_net_identity_walk_restores_the_version_and_keeps_the_generation() {
     let mut d = doc("-[h]>ello\n");
+    let root = d.buf.text().version();
     d.apply_edit(|s| insert_char(s, 'x')); // "x-[h]>ello\n"
     d.apply_edit(delete_char_backward); // removes the 'x', back to "-[h]>ello\n"
-    let before_gen = d.buf.text().version().generation();
+    let before_gen = d.buf.text().generation();
     let steps = d.undo_n(2);
     assert_eq!(steps, 2);
     assert_eq!(
-        d.buf.text().version().generation(),
+        d.buf.text().generation(),
         before_gen,
-        "net-identity composed walk must not change the text version"
+        "net-identity composed walk must not change the text generation"
     );
+    assert_eq!(d.buf.text().version(), root);
     assert_eq!(
         state(&d),
         "-[h]>ello\n",
@@ -824,25 +827,25 @@ fn set_path_rejects_dotdot() {
 #[test]
 fn text_generation_starts_at_zero() {
     let b = Buffer::at_start(BufferText::empty());
-    assert_eq!(b.text().version().generation(), 0);
+    assert_eq!(b.text().generation(), 0);
 }
 
 #[test]
 fn text_generation_advances_on_apply_edit() {
     let mut d = doc("-[h]>ello\n");
-    let before = d.buf.text().version().generation();
+    let before = d.buf.text().generation();
     d.apply_edit(|s| insert_char(s, 'x'));
-    assert_eq!(d.buf.text().version().generation(), before + 1);
+    assert_eq!(d.buf.text().generation(), before + 1);
 }
 
 #[test]
 fn text_generation_advances_on_apply_edit_grouped() {
     let mut d = doc("-[h]>ello\n");
     d.begin_edit_group();
-    let before = d.buf.text().version().generation();
+    let before = d.buf.text().generation();
     d.apply_edit_grouped(|s| insert_char(s, 'x'));
     assert_eq!(
-        d.buf.text().version().generation(),
+        d.buf.text().generation(),
         before + 1,
         "each grouped edit bumps gen"
     );
@@ -852,9 +855,9 @@ fn text_generation_advances_on_apply_edit_grouped() {
 fn text_generation_advances_on_undo() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'x'));
-    let before = d.buf.text().version().generation();
+    let before = d.buf.text().generation();
     d.undo();
-    assert_eq!(d.buf.text().version().generation(), before + 1);
+    assert_eq!(d.buf.text().generation(), before + 1);
 }
 
 #[test]
@@ -862,18 +865,43 @@ fn text_generation_advances_on_redo() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'x'));
     d.undo();
-    let before = d.buf.text().version().generation();
+    let before = d.buf.text().generation();
     d.redo();
-    assert_eq!(d.buf.text().version().generation(), before + 1);
+    assert_eq!(d.buf.text().generation(), before + 1);
+}
+
+#[test]
+fn undo_restores_the_version_of_the_text_it_returns_to() {
+    let mut d = doc("-[h]>ello\n");
+    let before = d.buf.text().version();
+    d.apply_edit(|s| insert_char(s, 'x'));
+    let edited = d.buf.text().generation();
+    d.undo();
+    assert_eq!(d.buf.text().version(), before);
+    assert!(d.buf.text().generation() > edited);
+}
+
+#[test]
+fn a_value_tracked_before_an_edit_reads_again_after_undoing_it() {
+    let mut d = doc("-[h]>ello\n");
+    let tracked = hume_editing::tracked::Tracked::new(7, d.buf.text());
+    d.apply_edit(|s| insert_char(s, 'x'));
+    assert_eq!(
+        tracked.get(d.buf.text()),
+        None,
+        "setup: the edit moved the text"
+    );
+    d.undo();
+    assert_eq!(tracked.get(d.buf.text()), Some(&7));
 }
 
 #[test]
 fn text_generation_unchanged_when_undo_at_root() {
     let mut d = doc("-[h]>ello\n");
-    let before = d.buf.text().version().generation();
+    let before = d.buf.text().generation();
     d.undo(); // nothing to undo, no-op
     assert_eq!(
-        d.buf.text().version().generation(),
+        d.buf.text().generation(),
         before,
         "no-op undo must not bump gen"
     );

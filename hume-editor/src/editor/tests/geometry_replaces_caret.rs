@@ -165,10 +165,8 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
         &[(shared_head.index(), shared_head.index())],
         0,
     );
-    let second_bid = ed.open_buffer(Buffer::new(test_fixtures::testing::state(
-        second_text,
-        second_sels,
-    )));
+    let second_bid = ed.open_buffer(Buffer::at_start(second_text));
+    ed.seed_selections(second_bid, second_sels);
 
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), second_bid);
 
@@ -306,7 +304,7 @@ fn a_tab_width_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     }
     let text = BufferText::from(content.as_str());
     let sels = sels_at(&text, &[(0, 0)], 0);
-    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.state.settings.scroll_margin = 0;
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 10 }),

@@ -60,9 +60,7 @@ fn message_log_summary_ttl() {
     let noop = KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE);
 
     let (text, sels) = test_fixtures::testing::parse_state("-[a]>\n");
-    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::new(
-        test_fixtures::testing::state(text, sels),
-    ));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
 
     // report() sets status_msg AND logs to message_log.
     ed.report(Severity::Error, "boom".to_string());

@@ -14,7 +14,6 @@ mod tests {
     use termina::event::{Event as TerminalEvent, KeyCode, KeyEvent, Modifiers};
 
     use crate::editor::Editor;
-    use crate::editor::buffer::Buffer;
     use test_fixtures::testing::parse_state;
 
     // ── Invariant checker ─────────────────────────────────────────────────────
@@ -154,7 +153,7 @@ mod tests {
         ]
         .prop_map(|s| {
             let (text, sels) = parse_state(s);
-            Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)))
+            Editor::for_testing_with(test_fixtures::testing::state(text, sels))
         })
     }
 

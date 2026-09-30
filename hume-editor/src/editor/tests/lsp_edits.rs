@@ -306,7 +306,7 @@ fn apply_text_edits_is_one_undo_step() {
 fn apply_text_edits_version_mismatch_rejected() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let stale_gen = ed.doc().text().version().generation();
+    let stale_gen = ed.doc().text().generation();
     // Make an unrelated edit first so the buffer's generation moves past
     // what the (fictional) LSP response was computed against.
     ed.handle_key(key('i'));
@@ -849,7 +849,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     let content: String = (0..30).map(|_| format!("{}\n", "x".repeat(25))).collect();
     let text = hume_editing::text::BufferText::from(content.as_str());
     let sels = sels_at(&text, &[(0, 0)], 0);
-    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     let pid = ed.state.focus.id();
     ed.execute_typed("set", Some("pane wrap-mode=soft:10"))
         .unwrap();

@@ -124,7 +124,7 @@ impl Syntax {
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> (Self, Option<ParseRequest>) {
-        let generation = text.version().generation();
+        let generation = text.generation();
         let mut syn = Self::detached(Arc::clone(&bundle));
 
         if text.len_bytes() == 0 {
@@ -174,8 +174,8 @@ impl Syntax {
     /// Must be recorded after every text mutation.
     pub fn record_edit(&mut self, change: &TextChange<'_>) {
         self.pending_edits.push(PendingEdit {
-            from: change.before().version().generation(),
-            to: change.after().version().generation(),
+            from: change.before().generation(),
+            to: change.after().generation(),
             edits: input_edits_from_changeset(change.changes(), change.before().rope()),
         });
     }
@@ -191,7 +191,7 @@ impl Syntax {
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> FrameTickOutcome {
-        let generation = text.version().generation();
+        let generation = text.generation();
         if self.parsed_gen == Some(generation) {
             return FrameTickOutcome {
                 request: None,
@@ -281,7 +281,7 @@ impl Syntax {
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> Option<ChainBreak> {
-        let generation = text.version().generation();
+        let generation = text.generation();
         // See `is_current` for why `parsed_gen` alone is the wrong gate here.
         if self.is_current(generation) {
             return None;

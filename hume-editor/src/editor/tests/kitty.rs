@@ -377,7 +377,7 @@ fn scroll_test_editor_kitty() -> Editor {
     let content = "a\n".repeat(30);
     let text = BufferText::from(content.as_str());
     let sels = sels_at(&text, &[(0, 0)], 0);
-    let mut ed = Editor::for_testing(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.kitty_enabled = true;
     ed
 }

@@ -18,7 +18,7 @@ fn an_edit_records_the_version_it_started_from() {
     let base = state.text().version();
     let edited = insert_x(state, 0);
     assert_eq!(edited.base(), base);
-    assert!(edited.state().text().version().is_later_than(base));
+    assert_ne!(edited.state().text().version(), base);
 }
 
 #[test]
@@ -84,4 +84,26 @@ fn a_text_change_refuses_texts_its_changes_do_not_map() {
     let after = BufferText::from("abc");
     let changes = ChangeSet::identity(before.len_chars());
     TextChange::new(&before, &after, &changes);
+}
+
+#[test]
+fn rebasing_lands_the_result_on_the_live_text_under_its_version() {
+    let snapshot = parse("-[a]>b\n");
+    let previous = insert_x(snapshot.clone(), 0);
+    let live = previous.state().text().clone();
+    let edited = insert_x(snapshot.clone(), 2);
+    let expected = render(edited.state().view());
+    let version = edited.state().text().version();
+    let live_to_result = previous
+        .changes()
+        .invert(snapshot.text())
+        .compose(edited.changes().clone());
+
+    let rebased = edited
+        .rebased(&live, live_to_result)
+        .expect("the changeset maps the live text");
+    assert_eq!(rebased.base(), live.version());
+    assert_eq!(rebased.state().text().version(), version);
+    assert!(rebased.state().text().generation() > live.generation());
+    assert_eq!(render(rebased.state().view()), expected);
 }

@@ -68,7 +68,7 @@ impl Editor {
                 "textDocument": {
                     "uri": uri.as_str(),
                     "languageId": language_id,
-                    "version": wire_version(buf.text().version().generation()),
+                    "version": wire_version(buf.text().generation()),
                     "text": buf.text().to_string(),
                 }
             })
@@ -101,7 +101,7 @@ impl Editor {
         }
         self.send_doc_notification(bid, DidChangeTextDocument::METHOD, |buf, uri| {
             serde_json::json!({
-                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text().version().generation()) },
+                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text().generation()) },
                 "contentChanges": [{ "text": buf.text().to_string() }],
             })
         });
@@ -205,7 +205,7 @@ pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp:
         {
             let buf = state.buffers.get(bid);
             let params = serde_json::json!({
-                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text().version().generation()) },
+                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text().generation()) },
                 "contentChanges": [{ "text": buf.text().to_string() }],
             });
             client.send_or_queue(

@@ -130,7 +130,7 @@ pub(crate) struct PaneBufferState {
     /// toggle, a buffer switch (the very first read for a `(pane, buffer)`
     /// pair is `None`, so it always differs), a decoration-generation
     /// change (inlay hints, EOL text, virtual lines, signs), and any edit to
-    /// the buffer at all (its text version), including one made through a sibling
+    /// the buffer at all (its text generation), including one made through a sibling
     /// pane. A changed key reveals only when [`PaneBufferState::parked`] is
     /// `false`: a pane parked behind an unfollowable scroll must not snap
     /// back onto its cursor just because something changed elsewhere in the
@@ -196,7 +196,7 @@ impl PaneBufferState {
     }
 
     /// Carry this pane's positions for the buffer through `change`. Raises
-    /// no reveal of its own: a text change moves the text version, which
+    /// no reveal of its own: a text change moves the text generation, which
     /// `frame.rs`'s scroll step already reads off `EditorState::layout_key`
     /// and reveals for, gated on [`PaneBufferState::parked`] like every other
     /// external change (see that field's own doc for why a parked pane must
@@ -225,6 +225,15 @@ impl PaneBufferState {
         if let Some(ranges) = self.autoindent.as_mut() {
             ranges.translate(change, |ranges, change| change.changes().map_ranges(ranges));
         }
+    }
+}
+
+impl PaneBufferState {
+    /// Start this pane on `sels` instead of the buffer's initial selections,
+    /// as though it had first shown the buffer on them.
+    #[cfg(test)]
+    pub(in crate::editor) fn seed_selections(&mut self, sels: SelectionSet) {
+        self.selections = sels;
     }
 }
 

@@ -23,7 +23,7 @@ use crate::cli::ConfigSource;
 /// A backstop against a plugin gone off the rails, not a state boundary: it
 /// should never fire against correct scripts, so the abort path (below) does
 /// not try to preserve fidelity across it, e.g. an observation baseline like
-/// `Buffer::announced_version` that already advanced past a dropped event is
+/// `Buffer::announced_generation` that already advanced past a dropped event is
 /// left advanced, not rolled back. By the time this cap trips, the editor is
 /// already reporting a bug; losing one further notification on top of that is
 /// not worth the bookkeeping to prevent.

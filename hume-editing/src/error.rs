@@ -37,42 +37,7 @@ impl fmt::Display for ApplyError {
     }
 }
 
-/// Errors returned by [`crate::transaction::Transaction::apply`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TransactionError {
-    Apply(ApplyError),
-    /// The recorded selections do not fit the text the changes produced.
-    Selections(InvariantViolation),
-}
-
-impl fmt::Display for TransactionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TransactionError::Apply(e) => write!(f, "changeset error: {e}"),
-            TransactionError::Selections(e) => write!(f, "recorded selections: {e}"),
-        }
-    }
-}
-
 impl std::error::Error for ApplyError {}
-
-impl From<ApplyError> for TransactionError {
-    fn from(e: ApplyError) -> Self {
-        TransactionError::Apply(e)
-    }
-}
-
-// `source()` exposes the underlying cause so callers using `?` or
-// `Box<dyn Error>` chains can inspect the root error rather than only the
-// wrapper's Display message.
-impl std::error::Error for TransactionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            TransactionError::Apply(e) => Some(e),
-            TransactionError::Selections(e) => Some(e),
-        }
-    }
-}
 
 /// A broken invariant of a selection set, as reported by
 /// [`crate::selection::EditView::check`]. `index` names the offending

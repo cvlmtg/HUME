@@ -35,7 +35,7 @@ branch point.
 
 ## What each node stores
 
-Every node in the tree stores:
+Every node except the root, which is the state before any edit, stores:
 
 - **A forward transaction**: the changeset and cursor positions that get you
   from the parent state to this state.

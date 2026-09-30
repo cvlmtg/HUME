@@ -20,9 +20,8 @@ fn successor_is_raw() {
 fn a_successor_is_the_next_generation_of_the_same_lineage() {
     let base = BufferText::from("x\n");
     let next = base.successor(Rope::from_str("y\n"));
-    assert_eq!(next.version().generation(), base.version().generation() + 1);
-    assert!(next.version().is_later_than(base.version()));
-    assert!(!base.version().is_later_than(next.version()));
+    assert_eq!(next.generation(), base.generation() + 1);
+    assert_ne!(next.version(), base.version());
     assert_eq!(base.clone().version(), base.version());
 }
 
@@ -39,7 +38,7 @@ fn separately_built_texts_never_share_a_version() {
     let (a, b) = (BufferText::from("x\n"), BufferText::from("x\n"));
     assert_ne!(a.version(), b.version());
     let a_next = a.successor(Rope::from_str("y\n"));
-    assert!(!a_next.version().is_later_than(b.version()));
+    assert_ne!(a_next.version(), b.version());
     assert_ne!(BufferText::empty().version(), BufferText::empty().version());
 }
 
@@ -49,7 +48,7 @@ fn replaced_with_continues_the_lineage_and_detects_line_endings() {
     let next = base.replaced_with("a\r\nb\r\n");
     assert_eq!(next.to_string(), "a\nb\n");
     assert_eq!(next.line_ending(), LineEnding::CrLf);
-    assert_eq!(next.version().generation(), base.version().generation() + 1);
+    assert_eq!(next.generation(), base.generation() + 1);
 }
 
 #[test]

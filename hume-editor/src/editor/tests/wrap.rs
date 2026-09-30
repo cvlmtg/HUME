@@ -594,8 +594,7 @@ fn resolve_pane_settings_honours_the_buffer_rung() {
 
 fn open_second_buffer(ed: &mut Editor) -> BufferId {
     let text = BufferText::from("other buffer\n");
-    let sels = sels_at(&text, &[(0, 0)], 0);
-    let bid = ed.open_buffer(Buffer::new(test_fixtures::testing::state(text, sels)));
+    let bid = ed.open_buffer(Buffer::at_start(text));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid);
     bid
 }

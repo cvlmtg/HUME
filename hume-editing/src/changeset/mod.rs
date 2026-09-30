@@ -2,8 +2,10 @@ use std::borrow::Cow;
 
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
+use ropey::Rope;
+
 use crate::error::ApplyError;
-use crate::text::BufferText;
+use crate::text::{BufferText, TextVersion};
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -340,6 +342,32 @@ impl ChangeSet {
     ///
     /// On error the original `text` is untouched, and the caller still owns it.
     pub fn apply(&self, text: &BufferText) -> Result<BufferText, ApplyError> {
+        Ok(match self.applied_rope(text)? {
+            Some(rope) => text.successor(rope),
+            None => text.clone(),
+        })
+    }
+
+    /// [`Self::apply`], the result tagged `version`: a version whose content
+    /// this changeset reproduces, as undo's does. A changeset that changes
+    /// nothing relabels `text` without moving its generation.
+    ///
+    /// # Errors
+    /// As [`Self::apply`].
+    pub(crate) fn apply_as(
+        &self,
+        text: &BufferText,
+        version: TextVersion,
+    ) -> Result<BufferText, ApplyError> {
+        Ok(match self.applied_rope(text)? {
+            Some(rope) => text.restored(rope, version),
+            None => text.relabeled(version),
+        })
+    }
+
+    /// The rope this changeset makes of `text`'s, `None` for a changeset
+    /// that changes nothing.
+    fn applied_rope(&self, text: &BufferText) -> Result<Option<Rope>, ApplyError> {
         if text.len_chars() != self.len_before {
             return Err(ApplyError::LengthMismatch {
                 buf_len: text.len_chars(),
@@ -347,7 +375,7 @@ impl ChangeSet {
             });
         }
         if self.is_identity() {
-            return Ok(text.clone());
+            return Ok(None);
         }
 
         // Clone the rope (O(1), since ropey uses Arc-based tree nodes). We mutate
@@ -393,7 +421,7 @@ impl ChangeSet {
         if !crate::text::is_valid_buffer_rope(&rope) {
             return Err(ApplyError::TrailingNewlineMissing);
         }
-        Ok(text.successor(rope))
+        Ok(Some(rope))
     }
 
     /// Map a single char position from the old document to the new document.

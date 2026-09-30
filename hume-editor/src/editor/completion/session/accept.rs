@@ -70,7 +70,12 @@ impl BufferSession {
         // registry borrow (or `source`) alive across the `&mut state` uses
         // below just to read it again at the bottom.
         let may_resolve = state.config.completion_sources.buffer_get(source).resolve;
-        edits::checked_buffer(state, bid, Some(self.version.generation()))?;
+        let buf = edits::checked_buffer(state, bid, None)?;
+        if buf.text().version() != self.version {
+            return Err(
+                "completion-accept!: buffer changed since the completion was computed".to_string(),
+            );
+        }
         let encoding = item.wire_encoding(may_resolve, "completion-accept!")?;
 
         // The session's pane may no longer be live: the Steel
