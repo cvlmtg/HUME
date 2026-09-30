@@ -39,7 +39,7 @@ fn publish_msg(file: &Path, diags: &[DiagFixture]) -> hume_lsp::codec::Message {
 /// Fixture buffer: "aa\nbb\ncc\ndd\n". Char offsets: line0 'aa' = 0..2,
 /// line1 'bb' = 3..5, line2 'cc' = 6..8, line3 'dd' = 9..11. Diagnostic A
 /// covers 'bb' (char start 3); diagnostic B covers 'dd' (char start 9) —
-/// leaves line0 genuinely "before A" and line2 genuinely "between A and B".
+/// leaves line0 "before A" and line2 "between A and B".
 fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> NavSetup {
     let guard = RealRuntimeGuard::new();
     std::fs::write(file, "aa\nbb\ncc\ndd\n").unwrap();

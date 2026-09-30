@@ -200,7 +200,7 @@ fn mii_after_capital_a_selects_full_typed_run_despite_step_back() {
 }
 
 /// With `select-inserted-text` off, `A`'s own step-back-on-exit still leaves
-/// a genuinely collapsed cursor; `mii` must still recover the full typed
+/// a collapsed cursor; `mii` must still recover the full typed
 /// run despite that, not just reflect whatever Esc left selected.
 #[test]
 fn mii_after_capital_a_selects_full_typed_run_despite_step_back_setting_off() {
@@ -321,7 +321,7 @@ fn mii_multi_cursor_selects_each_span_primary_is_last() {
 /// genuine overlap, not mere touching) both survive as separate selections
 /// rather than being discarded or force-merged. `select-inserted-text` off:
 /// this test is about `mii`'s Extend-mode merge logic, which needs a plain
-/// collapsed cursor left over from `i` to set up a genuinely adjacent (not
+/// collapsed cursor left over from `i` to set up an adjacent (not
 /// identical) current selection.
 #[test]
 fn mii_extend_mode_keeps_adjacent_current_selection_as_separate() {
@@ -355,7 +355,7 @@ fn mii_extend_mode_default_setting_merges_identical_current_selection() {
     assert_eq!(state(&ed), "-[hi]>hello\n");
 }
 
-/// When the current selection genuinely overlaps the insertion span, the
+/// When the current selection overlaps the insertion span, the
 /// union collapses into a single merged selection, proving `mii` in Extend
 /// mode actually reaches `SelectionSet`'s merge path, not just an append.
 #[test]
@@ -366,7 +366,7 @@ fn mii_extend_mode_merges_overlapping_current_selection() {
     ed.handle_key(key('i'));
     ed.handle_key(key_esc());
     // buffer is now "hihello"; the insertion span covers indices [0,1] ("hi").
-    // Set the current selection to genuinely overlap it: indices [1,3] ("ihe").
+    // Set the current selection to overlap it: indices [1,3] ("ihe").
     select(&mut ed, &[(1, 3)], 0);
     assert_eq!(state(&ed), "h-[ihe]>llo\n");
 

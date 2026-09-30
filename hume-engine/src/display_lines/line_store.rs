@@ -41,7 +41,7 @@ pub type BufferTag = [u64; 3];
 
 /// Everything a line's block shape depends on besides the line's own text.
 ///
-/// Deliberately excludes the horizontal clip (`h_window`) a `WrapMode::None`
+/// Excludes the horizontal clip (`h_window`) a `WrapMode::None`
 /// render applies: block shape doesn't depend on it, only the formatted
 /// display lines do, so that lives on `LineFormat` instead (see the module
 /// doc's "Scope key" section).
@@ -120,7 +120,7 @@ impl LineEntry {
     /// `format` needs no resetting here: the only way an entry becomes a
     /// spare is through [`PaneLineStore::rewind`], which already reset (and,
     /// past its ceiling, shrank) it. `virtual_lines` is different:
-    /// `rewind` deliberately leaves it alone (nothing there needs shrinking,
+    /// `rewind` leaves it alone (nothing there needs shrinking,
     /// so touching it would only cost a pass over every spare for no
     /// reason), so a slot can still be holding the *previous* line's
     /// display lines from the last time it was live. [`super::DisplayLineMap::block_entry`]'s

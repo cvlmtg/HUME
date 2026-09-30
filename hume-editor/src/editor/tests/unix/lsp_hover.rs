@@ -356,8 +356,8 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
 }
 
 /// `lsp/visible-lines` is `viewport-range`'s exclusive width with no `+ 1`:
-/// `viewport-range` is already end-exclusive, so re-adding the old
-/// inclusive-range `+ 1` workaround would overcount by one line and shift
+/// `viewport-range` is already end-exclusive, so adding an
+/// inclusive-range `+ 1` would overcount by one line and shift
 /// the ⅓ popup/drawer threshold (`lsp/show-hover`) by one. The default
 /// 24-row pane can't tell the two formulas apart (`⌊24/3⌋ == ⌊25/3⌋ == 8`,
 /// see `tall_content_docks_instead_of_using_the_drawer` below); a 23-row
@@ -534,7 +534,7 @@ fn stale_response_after_a_buffer_switch_shows_no_popup() {
         },
     );
 
-    // Sends the request synchronously; deliberately no settle() before the
+    // Sends the request synchronously; no settle() before the
     // switch below: settle() unconditionally drains LSP, which would
     // deliver the response (and close the race window) before the switch
     // ever happens.

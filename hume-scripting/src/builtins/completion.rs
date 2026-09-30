@@ -89,8 +89,8 @@ pub(crate) fn set_hook_triggers(
 /// buffer's attached LSP server (`accept.rs`'s `maybe_send_resolve`, the
 /// only reader of this flag, is itself `Buffer`-target only), so a
 /// `'minibuf` source claiming it is a caller error, not a silently-ignored
-/// no-op. `#:token-chars` is refused there for the same reason: a
-/// `'minibuf` source's token is its own argument span.
+/// no-op. `#:token-chars` is refused there too: a `'minibuf` source's token
+/// is its own argument span.
 // Each param is a positional arg the `builtins!` table maps 1:1 from the
 // `%register-completion-source!` wrapper call.
 #[allow(clippy::too_many_arguments)]

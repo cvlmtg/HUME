@@ -4,8 +4,9 @@
 //! validated ("Fail oracle:", "Flip:", "red run"), how a bug was fixed
 //! ("before the fix"), or which internal lesson a rule came from belong in
 //! commit messages, where they stay attached to the change that made them
-//! true. This lint rejects those phrases in any `//` comment in the
-//! workspace, tests included.
+//! true. Emphasis words ("deliberately", "load-bearing") add no fact a
+//! plain sentence lacks. This lint rejects those phrases in any `//`
+//! comment in the workspace, tests included.
 //!
 //! Only unambiguous phrases are listed. History wording such as "no longer"
 //! or "used to" also has legitimate present-tense uses, so it is left to
@@ -25,6 +26,14 @@ const FORBIDDEN: &[&str] = &[
     "Without the fix",
     "LESSONS.md",
     "⚠️",
+];
+
+/// Matched in any case, so a sentence may not open with one either.
+const EMPHASIS: &[&str] = &[
+    "load-bearing",
+    "deliberately",
+    "genuinely",
+    "by construction",
 ];
 
 #[test]
@@ -48,7 +57,12 @@ fn comments_carry_no_workflow_vocabulary() {
             let Some(comment) = line.find("//").map(|at| &line[at..]) else {
                 continue;
             };
-            if let Some(hit) = FORBIDDEN.iter().find(|p| comment.contains(**p)) {
+            let lower = comment.to_lowercase();
+            let hit = FORBIDDEN
+                .iter()
+                .find(|p| comment.contains(**p))
+                .or_else(|| EMPHASIS.iter().find(|p| lower.contains(**p)));
+            if let Some(hit) = hit {
                 let file = path.strip_prefix(&root).unwrap_or(path).display();
                 violations.push(format!("{file}:{}: {hit:?}", i + 1));
             }
@@ -57,8 +71,8 @@ fn comments_carry_no_workflow_vocabulary() {
 
     assert!(
         violations.is_empty(),
-        "\nWorkflow vocabulary in comments. State the behaviour instead, and\n\
-         put validation notes or fix history in the commit message.\n{}\n",
+        "\nWorkflow or emphasis vocabulary in comments. State the behaviour\n\
+         instead, and put validation notes or fix history in the commit message.\n{}\n",
         violations.join("\n")
     );
 }

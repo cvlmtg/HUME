@@ -23,7 +23,7 @@ fn is_alive(pid: i32) -> bool {
 
 /// SIGKILLs and reaps a child this test spawned but never routed through a
 /// `Child` the test still holds. `kill_tracked_children`'s own reap path
-/// deliberately never waits (see `kill_slot`'s doc), so a child it kills is
+/// never waits (see `kill_slot`'s doc), so a child it kills is
 /// left a zombie until *something* calls `waitpid` on it; in production
 /// that's the OS once the whole process exits, but this test process keeps
 /// running afterward, so it must reap explicitly or leak a zombie into the
@@ -139,12 +139,12 @@ fn kill_all_kills_the_whole_process_group() {
 
     registry.kill_all();
 
-    // `kill_all` deliberately never waits (force-exit must never block), so
+    // `kill_all` never waits (force-exit must never block), so
     // the direct child (parented to *this* test process) is confirmed and
     // reaped the same way `kill_and_reap` does. The grandchild's parent is
     // the direct child, not us, so `waitpid` isn't ours to call on it; once
     // its parent exits it's reparented to launchd/init, which reaps it;
-    // `wait_until_dead`'s `kill(pid, 0)` poll genuinely observes that.
+    // `wait_until_dead`'s `kill(pid, 0)` poll observes that.
     let status = waitpid(Pid::from_raw(direct_pid), None).expect("reap direct child");
     assert!(
         matches!(
@@ -272,7 +272,7 @@ fn kill_all_waits_for_a_contended_table_lock() {
     drop(table_guard);
     killer.join().expect("kill_all thread must not panic");
 
-    // `kill_all` deliberately never waits (force-exit must never block), so
+    // `kill_all` never waits (force-exit must never block), so
     // the child (parented to *this* test process) is a zombie until
     // reaped here, the same way `kill_and_reap`/`kill_all_kills_the_whole_process_group`
     // do; a plain `kill(pid, 0)` liveness poll would see the zombie as still
@@ -349,7 +349,7 @@ fn kill_all_retries_a_slot_contended_by_a_non_killing_reader() {
     kill_slot_with(&tracked.0, 200, Duration::from_millis(5));
     holder.join().expect("holder thread must not panic");
 
-    // `kill_all` deliberately never `wait()`s its victims (see its own doc),
+    // `kill_all` never `wait()`s its victims (see its own doc),
     // so a killed-but-unreaped child is still a zombie, and `is_alive`'s
     // signal-0 probe would report it "alive" either way, telling a retried
     // kill apart from an abandoned child requires reaping it ourselves, same

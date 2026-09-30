@@ -473,17 +473,13 @@ fn session_for_token_finds_the_open_session_by_matching_token() {
 fn session_for_token_rejects_a_stale_token() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_picker(&mut ed, &["a"]);
-    assert!(
-        picker::session_for_token(&mut ed.state, crate::editor::widget_token::mint()).is_none()
-    );
+    assert!(picker::session_for_token(&mut ed.state, crate::editor::host_token::mint()).is_none());
 }
 
 #[test]
 fn session_for_token_is_none_with_no_picker_open() {
     let mut ed = editor_from("-[a]>bc\n");
-    assert!(
-        picker::session_for_token(&mut ed.state, crate::editor::widget_token::mint()).is_none()
-    );
+    assert!(picker::session_for_token(&mut ed.state, crate::editor::host_token::mint()).is_none());
 }
 
 #[test]
@@ -508,7 +504,7 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert!(!host.picker_feed(
-        crate::editor::widget_token::mint(),
+        crate::editor::host_token::mint(),
         vec![("x".to_string(), SteelVal::StringV("p".into()))],
         PickerFeedMode::Append,
     ));
@@ -543,7 +539,7 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert!(!host.picker_feed(
-        crate::editor::widget_token::mint(),
+        crate::editor::host_token::mint(),
         vec![("z".to_string(), SteelVal::StringV("z".into()))],
         PickerFeedMode::Replace,
     ));

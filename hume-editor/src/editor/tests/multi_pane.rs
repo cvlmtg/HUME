@@ -1533,7 +1533,7 @@ fn same_buffer_split_inherits_source_panes_wrap_override() {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 40 }),
         saved: None,
     });
-    // Global default deliberately differs, to prove it is NOT the source.
+    // Global default differs, to prove it is NOT the source.
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
 
     ed.execute_typed("split", None).unwrap();
@@ -1798,7 +1798,7 @@ fn split_pane_onto_refuses_when_focused_pane_missing_from_layout() {
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed.focused_buffer_id();
 
-    // Fabricate the desync directly, but through a genuinely real pane: open
+    // Fabricate the desync directly, but through a real pane: open
     // a second tab (a real, properly-attached pane, just attached to *that*
     // tab's own layout, not the active one), then reuse its id as the active
     // tab's `focus`. That reproduces the same condition

@@ -21,6 +21,7 @@ mod output;
 mod registers;
 mod settings;
 mod timers;
+mod token;
 mod ui;
 
 pub use async_process::AsyncProcessHost;
@@ -38,9 +39,8 @@ pub use output::OutputHost;
 pub use registers::RegisterHost;
 pub use settings::{LANGUAGE_OPTION, OptionValue, SettingsHost, language_option_value};
 pub use timers::TimerHost;
-pub use ui::{
-    LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost, WidgetToken,
-};
+pub use token::HostToken;
+pub use ui::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost};
 
 /// Key-binding mode, as recognised by `bind-key!`/`unbind-key!`.
 ///

@@ -1,6 +1,7 @@
 use super::super::*;
 use crate::edit::yank_selections;
 use crate::register::{Piece, Shape};
+use hume_editing::{selection::SelectionSet, text::BufferText};
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
 

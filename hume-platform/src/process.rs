@@ -86,8 +86,8 @@ fn base_command(cmd: &str, args: &[String], cwd: Option<&Path>) -> Command {
 /// safety property calls the `run-inline-output!` builtin (backed by this
 /// function) instead of Steel's stdlib directly.
 ///
-/// See `base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is set. A
-/// genuinely interactive child (an editor, a pager) still can't be run this
+/// See `base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is set. An
+/// interactive child (an editor, a pager) still can't be run this
 /// way regardless: it would hit the same background-process-group
 /// `SIGTTIN`/`SIGTTOU` wall on its own reads/writes the moment it touched
 /// the terminal.

@@ -223,7 +223,7 @@ impl Editor {
     /// which a reload, by itself, causes. Firing those hooks here is the
     /// other half of ":reload-config behaves like closing and reopening
     /// every already-open buffer": running LSP servers and their published
-    /// diagnostics survive the reload (`LspState::reset_config` deliberately
+    /// diagnostics survive the reload (`LspState::reset_config`
     /// keeps `servers` and `diagnostics`), so this re-fires the attach and
     /// diagnostics hooks from that surviving state rather than re-opening
     /// documents over the wire: a real close+reopen would round-trip
@@ -235,7 +235,7 @@ impl Editor {
     /// reset ran) filters every loop below to buffers that (a) predate this
     /// reload and (b) are still live. Without (a): the ordinary open path
     /// (`detect_pending_languages`, run inside `init_scripting` before this
-    /// function is called) already fires hooks once for a genuinely new
+    /// function is called) already fires hooks once for a newly opened
     /// buffer, and by the time this function runs its `open_hook_pending` is
     /// already `false` again, same as every pre-reload buffer, so a buffer
     /// `init.scm` itself opens while re-running (a session-restore plugin, a
@@ -299,7 +299,7 @@ impl Editor {
 
         // Inlay hints (and anything else `on-viewport-change`-gated, e.g.
         // `core:lsp`'s inlay.scm) are otherwise only repopulated the next
-        // time the pane's viewport genuinely moves (which a reload alone
+        // time the pane's viewport moves (which a reload alone
         // never causes), so a clean buffer would show no inlay hints until
         // the user scrolls. Active-tab panes only: a background-tab pane's
         // *size* stays current (`sync_viewport_dims` resizes every tab, not
@@ -368,7 +368,7 @@ pub(in crate::editor) fn typed_reload_config(
     // than reset to compiled-in defaults with no way back.
     //
     // `--no-config` refuses outright: it's a session-wide posture the user
-    // chose (a clean-debugging run, or a headless script that deliberately
+    // chose (a clean-debugging run, or a headless script that
     // wants no plugins), not a startup-only skip. Silently loading the real
     // config on reload would end that posture with no way back either.
     match ed.config_path() {

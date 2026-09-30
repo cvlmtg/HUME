@@ -113,7 +113,7 @@ pub(in crate::editor) struct ResponseAnchor {
     /// `#:tracked`: a tracked position the request holds, released once its
     /// callback has run or will never run (`Editor::release_request_position`),
     /// unless the callback kept it.
-    pub(in crate::editor) tracked: Option<hume_scripting::host::WidgetToken>,
+    pub(in crate::editor) tracked: Option<hume_scripting::host::HostToken>,
 }
 
 struct CallbackEntry {
@@ -206,7 +206,7 @@ impl LspState {
     /// that no longer exists, meaningless once it's gone; the completion
     /// session itself lives on `EditorState.input` now and is dropped by
     /// `input.truncate_to_base()` alongside every other layer, not here.
-    /// Deliberately *not* touching `servers`/`diagnostics`: an
+    /// Leaves `servers`/`diagnostics` alone: an
     /// already-spawned process keeps running on its old config until
     /// `:lsp-restart`, and its last-known diagnostics are what
     /// `resync_config_state` replays.

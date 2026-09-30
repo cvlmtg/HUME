@@ -414,7 +414,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
 }
 
 /// Nested inline activation reached from a plugin's own top-level body (not
-/// a command a keypress later dispatches), with both plugins genuinely
+/// a command a keypress later dispatches), with both plugins
 /// multi-file: B's `plugin.scm` `require`s a sibling file, then top-level
 /// `(call! "a-cmd")`s a second, also multi-file, plugin A, re-entering
 /// `hm.eval-string` while B's own `require` chain is still on the Steel call

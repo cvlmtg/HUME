@@ -451,7 +451,7 @@ fn find_by_path_matches_verbatim_prefixed_stored_path_against_a_plain_query() {
 #[test]
 fn find_by_path_leaves_verbatim_unc_paths_alone() {
     // `\\?\UNC\…` (verbatim network share) must NOT be treated as equivalent
-    // to a plain `\\server\share\…` form; strip_unc_prefix deliberately
+    // to a plain `\\server\share\…` form; strip_unc_prefix
     // leaves it untouched, so these two remain distinct buffers.
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("hello\n")));
     let bid = ed.focused_buffer_id();

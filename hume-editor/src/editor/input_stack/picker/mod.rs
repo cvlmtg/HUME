@@ -11,7 +11,7 @@ use termina::event::{KeyCode, Modifiers};
 
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
-use hume_scripting::host::WidgetToken;
+use hume_scripting::host::HostToken;
 use steel::rvals::SteelVal;
 
 use super::super::commands::half_page;
@@ -159,7 +159,7 @@ impl super::stack::InputStack {
 /// themselves once a caller has reached one through here.
 pub(in crate::editor) fn session_for_token(
     state: &mut super::super::EditorState,
-    token: WidgetToken,
+    token: HostToken,
 ) -> Option<&mut PickerSession> {
     state
         .input

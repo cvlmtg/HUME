@@ -78,7 +78,7 @@ impl Editor {
     /// Thin wrapper over [`lifecycle::open_or_dedup_and_notify`]; the actual
     /// dedup-and-missing-file logic lives there so Steel's `open-buffer!` and
     /// LSP goto/workspace-edit share it too; this only adds the
-    /// `&Editor`-only language detection a genuinely new buffer needs.
+    /// `&Editor`-only language detection a new, non-deduplicated buffer needs.
     pub(in crate::editor) fn open_or_dedup(
         &mut self,
         resolved: &std::path::Path,
@@ -94,7 +94,7 @@ impl Editor {
     }
 
     /// `{name} [new file]`, the message reported when a newly opened `buf`
-    /// has nothing on disk yet. `None` for a genuinely read file.
+    /// has nothing on disk yet. `None` for a file read from disk.
     pub(in crate::editor) fn new_file_open_msg(buf: &Buffer) -> Option<String> {
         buf.is_new_file()
             .then(|| format!("{} [new file]", buf.display_name()))
@@ -320,7 +320,7 @@ impl Editor {
     /// re-fire for re-entering the buffer you're already viewing.
     ///
     /// Accepted cost of that parity: `:e`/`:b` re-targeting the
-    /// already-focused buffer runs no disk stat at all: it's genuinely a
+    /// already-focused buffer runs no disk stat at all: it's a
     /// no-op, not a deferred one. An external change to that file still
     /// surfaces the moment any of terminal `FocusIn`, a genuine buffer-enter
     /// (switch away and back), or `:checktime` runs; see

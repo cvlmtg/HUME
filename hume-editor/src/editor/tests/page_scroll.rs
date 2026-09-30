@@ -17,8 +17,8 @@ use pretty_assertions::assert_eq;
 // Text: 30 single-char lines "a\n" (60 chars total). No wrap needed.
 // Line N starts at char 2*N. 30 lines is close enough to the 24-row viewport
 // that `max_scroll_top` caps a full page at line 9 (default scroll-margin 3).
-// See `page_scroll_stops_at_max_scroll_top` below, which exercises that cap
-// deliberately; the other tests here stay under it.
+// See `page_scroll_stops_at_max_scroll_top` below, which exercises that cap;
+// the other tests here stay under it.
 
 fn page_test_editor() -> Editor {
     let content = "a\n".repeat(30);
@@ -303,7 +303,7 @@ fn a_stalled_scroll_survives_repeated_idle_frames() {
 }
 
 /// `z k` (`top-view-on-cursor`) only writes the viewport: the cursor is
-/// unmoved by construction, and writes no selection, so it raises no
+/// unmoved, and it writes no selection, so it raises no
 /// `reveal_pending` of its own; `scroll_cursor_to_display_line` must apply
 /// the scroll-margin clamp itself, since no follow-up `Viewport::reveal` will.
 #[test]

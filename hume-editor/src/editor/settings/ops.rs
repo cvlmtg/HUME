@@ -91,7 +91,7 @@ pub(crate) fn write_global_for_test(
 /// `state.settings = EditorSettings::default()` alone would leave
 /// `view.theme` still baked with the old theme: `theme`'s default is the
 /// empty string, and `resync_derived_state`'s `ResyncKey::theme` arm
-/// deliberately no-ops on empty (nothing to load), so the view's theme is
+/// no-ops on empty (nothing to load), so the view's theme is
 /// set directly to the same compiled-in default `Editor::open` uses instead
 /// of relying on that arm.
 pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {

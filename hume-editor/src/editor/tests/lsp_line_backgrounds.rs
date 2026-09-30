@@ -232,7 +232,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
 /// `update_line_bg_providers` runs in `prepare_frame`'s post-scroll highlight sync, *after* the
 /// scroll step, and must read that step's viewport, not the snapshot step 3
 /// takes before scrolling (which the sign/inlay-hint/virtual-line/EOL-text
-/// bridges deliberately do read; see `decoration_providers.rs`'s
+/// bridges do read; see `decoration_providers.rs`'s
 /// `decorated_panes` doc). A ten-line buffer with the cursor on the last
 /// line, `scroll-margin` 0, and a viewport four content rows tall forces a real
 /// scroll during this frame: cursor line 9 minus the scroll target's 3 rows

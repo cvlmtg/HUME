@@ -61,7 +61,7 @@ pub(in crate::editor) struct CompletionCtx<'a> {
 ///
 /// If there is no space (command-only input), returns `(0, input[..cursor])`.
 /// Correct only for a *single*-argument command, where "everything after
-/// the command name" genuinely is the one argument (`path.rs`'s own
+/// the command name" is the one argument (`path.rs`'s own
 /// `:e`/`:w`/`:cd` callers). A multi-argument command's own argument span
 /// is [`arg_span`], which finds the *last* stop char before the cursor
 /// instead.

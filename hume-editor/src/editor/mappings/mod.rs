@@ -88,7 +88,7 @@ impl Editor {
     /// Hand `ev` to the layer directly below `r`. The caller never inspects
     /// what is there: every index below `r.depth` is stable for the whole
     /// duration of the handler running at `r` (the index invariant), so the
-    /// target is live by construction whether `r` itself is still on the
+    /// target is live whether `r` itself is still on the
     /// stack or was just truncated by the caller (self-removal is always
     /// `truncate(r)`, never "pop the top", so `below(r)` works either way).
     /// `LayerRef`'s fields are private to `InputStack`'s own module, so the

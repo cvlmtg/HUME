@@ -265,8 +265,8 @@ fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
 }
 
 /// An out-of-range `line` must error loudly at the boundary shared by
-/// signs/virtual-lines/EOL-text/line-backgrounds, instead of the old
-/// silently-never-renders behavior.
+/// signs/virtual-lines/EOL-text/line-backgrounds, rather than leaving the
+/// entry to never render.
 #[test]
 fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudly_on_an_out_of_range_line()
  {
@@ -392,7 +392,7 @@ fn inlay_hints_remap_through_an_edit() {
 #[test]
 fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
     let tmp = safe_tempdir();
-    // Deliberately no attach_running_server call: this buffer has no LSP
+    // No attach_running_server call: this buffer has no LSP
     // server and no path, nothing but the decoration itself.
     let mut ed = editor_from("-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
@@ -444,7 +444,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
 /// `signs`/`virtual_lines`/`eol_text` remap through edits like every other
 /// kind. A line-indexed sign that never remapped would silently drift onto
 /// the wrong line the moment a line was inserted or deleted above it.
-/// Deliberately no `attach_running_server` call: `has_any`
+/// No `attach_running_server` call: `has_any`
 /// covers every kind, so a signs-only buffer with no LSP server still
 /// gets its edits queued for the remap chokepoint.
 #[test]

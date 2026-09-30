@@ -70,7 +70,7 @@ impl Editor {
                 self.apply_pending_lsp_server_reg(reg);
             }
             hume_scripting::PendingLspServerOp::Unregister { language } => {
-                // Idempotent by construction: removing an absent key and
+                // Idempotent: removing an absent key and
                 // stopping a language with no running clients are both
                 // no-ops: `:lsp-uninstall` of an orphan or never-spawned
                 // server must succeed silently.

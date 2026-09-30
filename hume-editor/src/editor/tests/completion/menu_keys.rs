@@ -433,9 +433,9 @@ fn mode_change_outside_key_dispatch_dismisses_the_session_synchronously() {
 
 // ── Bound keys dismiss (motions, edit commands) ─────────────────────────────
 
-/// A motion resolves through the insert trie, not `apply_insert_edit`, so
-/// the session can't track it. It dismisses outright rather than leaving a
-/// stale token a later Enter would accept against.
+/// A bound command dismisses; the session isn't reconciled against a
+/// motion, so it never leaves a stale token a later Enter would accept
+/// against.
 #[test]
 fn left_arrow_dismisses_the_session_immediately() {
     let mut ed = editor_from("-[\n]>");
@@ -469,7 +469,7 @@ fn right_arrow_then_enter_dismisses_instead_of_swallowing_the_passed_over_char()
 }
 
 /// `Ctrl-w` (delete-word-backward) is an edit command bound in the insert
-/// trie that never goes through `apply_insert_edit`, so it dismisses.
+/// trie, and a bound command dismisses.
 #[test]
 fn ctrl_w_dismisses_the_session_instead_of_leaving_a_stale_token() {
     let mut ed = editor_from("-[\n]>");

@@ -185,7 +185,7 @@ impl LayoutTree {
     ///
     /// Always reserves the seam: callers only invoke this when dividers are
     /// being drawn, which is also when `collect_rects_into` is called with
-    /// `reserve_seam: true`, so the two stay aligned by construction.
+    /// `reserve_seam: true`, so the two stay aligned.
     pub fn collect_seams_into(&self, area: Rect, out: &mut Vec<Seam>) {
         if let LayoutTree::Split {
             direction,

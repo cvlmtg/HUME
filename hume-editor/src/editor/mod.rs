@@ -46,6 +46,7 @@ mod doc_ops;
 mod dot_chain;
 pub(crate) mod event;
 mod fuzzy;
+mod host_token;
 mod jump_list;
 mod keymap;
 pub(crate) mod lsp;
@@ -69,7 +70,6 @@ mod timer_bridge;
 mod timers;
 mod tracked_positions;
 mod visual_move;
-mod widget_token;
 
 pub(in crate::editor) use search::SearchState;
 
@@ -155,7 +155,7 @@ pub(crate) struct ConfigState {
     /// allocation per element per frame just to look one up.
     ///
     /// Cleared per-buffer at `close_buffer_and_notify`, alongside
-    /// `decorations.remove_buffer`, but deliberately *not* at the other
+    /// `decorations.remove_buffer`, but *not* at the other
     /// `decorations.remove_buffer` call site, `:e!`'s reload path: that one
     /// clears decorations because their char offsets are invalidated by the
     /// reload, and pushed statusline text carries no offsets to invalidate.
@@ -256,7 +256,7 @@ pub(crate) struct EditorState {
     /// Not reset by `ConfigState`'s wholesale rebuild: `Base` must survive
     /// a `:reload-config`, and a still-open mode layer or overlay's Steel
     /// callback must be dropped, not fired, the same as everything
-    /// `ConfigState::new` resets by construction. `Editor::
+    /// `ConfigState::new` resets. `Editor::
     /// reset_config_state` calls `input.truncate_to_base()` explicitly,
     /// right where `ConfigState` itself is rebuilt.
     pub(in crate::editor) input: input_stack::InputStack,
@@ -644,7 +644,7 @@ impl EditorState {
     /// (`format_key`) or its reveal signal (`layout_key`) depends entirely
     /// on every caller resolving a bit-identical value. One function
     /// rather than several independently-maintained call sites is what
-    /// makes that true by construction instead of by convention.
+    /// makes that true.
     pub(in crate::editor) fn layout_key(&self, pane: &hume_engine::pane::Pane) -> LayoutKey {
         let doc = self.buffers.get(pane.buffer_id);
         LayoutKey {
@@ -683,7 +683,7 @@ impl EditorState {
     /// current state, and their sharing that pane's line store depends
     /// entirely on the two resolving a bit-identical key. One function
     /// rather than two independently-maintained call sites is what makes
-    /// that true by construction instead of by convention.
+    /// that true.
     pub(in crate::editor) fn format_key(
         &self,
         pane: &hume_engine::pane::Pane,

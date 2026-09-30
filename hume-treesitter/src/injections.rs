@@ -212,7 +212,7 @@ pub(crate) fn resolve_and_parse_injections(
 
         // Unknown injection language: skip silently. No lazy install: the
         // user opts into grammars explicitly via PLUM. Every entry in `langs`
-        // is grammared by construction (it's built from the grammar table).
+        // is grammared, since it's built from the grammar table.
         // Resolved here, before `combined` insertion, so its FxHashMap only
         // ever keys on the trusted installed-grammar names. A dynamic
         // `@injection.language` capture is raw buffer text, and unfiltered

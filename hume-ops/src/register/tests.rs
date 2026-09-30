@@ -28,7 +28,7 @@ fn overwrite_replaces_previous() {
 
 #[test]
 fn write_text_normalizes_line_endings() {
-    // Register text is `\r`-free by construction, same as buffer content.
+    // `write_text` keeps register text `\r`-free, same as buffer content.
     // A plugin or the OS clipboard can write either convention.
     let mut regs = RegisterSet::new();
     regs.write_text('"', vec!["a\r\nb".to_string(), "c\rd".to_string()]);

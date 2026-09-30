@@ -164,7 +164,7 @@ impl Editor {
                 }
                 // Fire on-lsp-attach for every buffer already attached to
                 // this server: it was Starting until now, so `lsp_attach_buffer`
-                // deliberately skipped firing it for them.
+                // skipped firing it for them.
                 if let Some(lang) = introspect::server_language(&self.lsp, server_id) {
                     let bids: Vec<BufferId> = self
                         .state

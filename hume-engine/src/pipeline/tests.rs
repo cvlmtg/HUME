@@ -467,7 +467,7 @@ fn virtual_before_block_taller_than_viewport_exposes_every_display_line() {
 
 // ── Provider id stamping ─────────────────────────────────────────────
 
-/// Reports a deliberately wrong `provider_id`; the pipeline must not
+/// Reports a wrong `provider_id`; the pipeline must not
 /// trust it.
 struct SpoofingVirtualLineSource {
     anchor: VirtualLineAnchor,

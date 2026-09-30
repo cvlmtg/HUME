@@ -153,7 +153,7 @@ pub fn cursor_ladder_ids(
 /// The two ladder roots: not a ladder rung themselves (`cursor_ladder_ids`
 /// resolves them as fallback parents, never as a leading rung), but still a
 /// "Cursor"-category scope name, so they live beside `CURSOR_MODES` rather
-/// than in `ui_scopes`, whose own doc deliberately excludes Cursor names.
+/// than in `ui_scopes`, whose own doc excludes Cursor names.
 pub const CURSOR: &str = "ui.cursor";
 pub const CURSOR_PRIMARY: &str = "ui.cursor.primary";
 
@@ -161,7 +161,7 @@ pub const CURSOR_PRIMARY: &str = "ui.cursor.primary";
 /// (`cursor_ladder_ids` doesn't cover it, it's resolved directly wherever a
 /// bracket/search match is found), but still a "Cursor"-category scope name,
 /// so it lives beside `CURSOR_MODES` rather than in `ui_scopes`, whose own
-/// doc deliberately excludes Cursor names.
+/// doc excludes Cursor names.
 pub const CURSOR_MATCH: &str = "ui.cursor.match";
 pub const CURSOR_MATCH_SEARCH: &str = "ui.cursor.match.search";
 

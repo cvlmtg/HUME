@@ -106,7 +106,7 @@ rather than replacing it (see "Repeat vs. swap" below), so the copies stack.
 
 ## Repeat vs. swap: smart-paste's one rule, not two mechanisms
 
-Two things used to feel like separate smart-paste behaviors — "paste over a
+Two things can look like separate smart-paste behaviors — "paste over a
 selection replaces it" and "pasting again after a paste appends another
 copy" — but they're the same rule seen from different starting points: **if
 what you're about to paste is already exactly what's selected, collapse the

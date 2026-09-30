@@ -54,8 +54,6 @@ pub fn format_buffer_line(
     inline_inserts: &[InlineInsert],
     out: &mut LineFormat,
 ) {
-    // The caller (`display_lines::DisplayLineMap::ensure_formatted`) resets
-    // `out` right before this call; `load` replaces the held text anyway.
     out.line_text.load(rope, line_idx);
     let had_newline = out.line_text.break_pos().is_some();
     let line_str = out.line_text.as_str();

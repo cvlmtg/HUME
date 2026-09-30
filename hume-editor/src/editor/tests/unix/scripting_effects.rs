@@ -22,7 +22,7 @@ fn write_efx_plugin(
 
 /// One eval (a lazy plugin's activation body) emits, in this exact order:
 /// `register-lsp-server!` → `set-buffer-option!`'s `"language"` → `define-language!`,
-/// deliberately not grouped by kind (language regs, then LSP ops, then
+/// not grouped by kind (language regs, then LSP ops, then
 /// buffer-language sets). The returned log must reflect the exact push
 /// order (proving builtins share one `Vec<Effect>`, not per-kind queues
 /// that `apply_script_effects` would have to regroup), and applying that

@@ -480,7 +480,7 @@ pub(in crate::editor) enum GotoTarget {
 /// char_col clamp and grapheme snap are `place_char_column`'s, which lands a
 /// past-the-end column on the line's last content character rather than on
 /// its `\n`.
-fn char_indexed_to_char_pos(
+fn char_indexed_to_cluster(
     state: &EditorState,
     bid: BufferId,
     line: hume_rope::line::RopeyLine,
@@ -533,7 +533,7 @@ fn resolve_goto_target(
             char_col,
         } => {
             let bid = resolve_path_or_uri(state, view, &path_or_uri)?;
-            Ok((bid, char_indexed_to_char_pos(state, bid, line, char_col)))
+            Ok((bid, char_indexed_to_cluster(state, bid, line, char_col)))
         }
         GotoTarget::Buffer {
             bid,
@@ -543,7 +543,7 @@ fn resolve_goto_target(
             if state.buffers.try_get(bid).is_none() {
                 return Err("no such buffer".to_string());
             }
-            Ok((bid, char_indexed_to_char_pos(state, bid, line, char_col)))
+            Ok((bid, char_indexed_to_cluster(state, bid, line, char_col)))
         }
     }
 }
@@ -569,7 +569,7 @@ impl Editor {
     /// applying it. Per spec this never fails at the JSON-RPC level: a rejected or
     /// malformed edit still gets a 200 response, just with `applied: false`.
     ///
-    /// `server_id` is the requesting server, known by construction (this
+    /// `server_id` is the requesting server (this
     /// answers a message that arrived *from* it): its own negotiated
     /// encoding is what every position in `params` is counted in, same as
     /// any other response it sends.

@@ -515,7 +515,7 @@ fn apply_workspace_edit_mixed_open_and_unopened_files() {
 
 /// The invalid entry is a directory, not a missing path: `resolve_or_open`
 /// tolerates a missing path (opens a new-file buffer, same as `:e`), so only
-/// a target that genuinely can't be opened (`Buffer::from_file_or_new` only
+/// a target that can't be opened (`Buffer::from_file_or_new` only
 /// tolerates `NotFound`) still triggers this abort.
 #[test]
 fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
@@ -881,7 +881,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     );
 }
 
-/// A directory target genuinely can't be opened (`Buffer::from_file_or_new`
+/// A directory target can't be opened (`Buffer::from_file_or_new`
 /// only tolerates `NotFound`, not `IsADirectory`). A plain missing path
 /// would not do here: `resolve_or_open` shares `:e`'s tolerance for those
 /// (see `goto_missing_path_opens_new_file_buffer` below).

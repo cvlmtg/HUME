@@ -42,7 +42,7 @@ pub(crate) const STDERR_CAPTURE_CAP: usize = 8 * 1024;
 /// without bound. Unlike [`STDERR_CAPTURE_CAP`], exceeding this fails the
 /// job outright ([`read_bounded`]) rather than silently keeping a prefix:
 /// stdout is the caller's data, and a truncated batch would be
-/// indistinguishable from a genuinely short one.
+/// indistinguishable from an untruncated short one.
 pub(crate) const JOB_STDOUT_CAP: usize = 64 * 1024 * 1024;
 
 /// Spawns `cmd` with `args` (direct argv, no shell) in its own process
@@ -104,7 +104,7 @@ pub(crate) fn read_capped(mut r: impl Read, cap: usize) -> Vec<u8> {
 /// Reads `r` to EOF, erroring instead of truncating: a real read error
 /// propagates (`read_capped` would silently stop and keep the prefix), and
 /// exceeding `limit` bytes fails the whole read rather than returning a
-/// prefix indistinguishable from genuinely short output. Keeps draining
+/// prefix indistinguishable from untruncated short output. Keeps draining
 /// past `limit` (discarding the bytes) so the child's write doesn't block
 /// on a full pipe while it finishes. The point is to bound this reader's
 /// memory, not to stop the child from writing what it's going to write.
@@ -195,7 +195,7 @@ mod tests {
             prefix: b"partial",
             served: false,
         };
-        // Deliberately lenient: stderr is diagnostic-only, so a truncated
+        // Lenient: stderr is diagnostic-only, so a truncated
         // prefix beats losing the whole capture over a transient read
         // error. `read_bounded` is the counterpart that does not accept
         // this tradeoff for stdout.

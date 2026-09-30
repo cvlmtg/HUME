@@ -841,7 +841,7 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
 
 #[test]
 fn a_mouse_wheel_closes_a_scrollable_popup_and_still_scrolls() {
-    // Buffer taller than the viewport, so the wheel tick genuinely has
+    // Buffer taller than the viewport, so the wheel tick has
     // somewhere to scroll, which distinguishes "dismissed" from "dismissed and
     // the event's own effect was swallowed along with it".
     let tmp = safe_tempdir();

@@ -192,8 +192,8 @@ fn required_module_write_family_reaches_the_gate() {
 }
 
 /// A `displayln` call at the top level (no `(require …)` involved) must
-/// also reach the gate. This is the load-bearing BOOTSTRAP-shim path,
-/// since steel never re-imports the print names into top-level programs.
+/// also reach the gate. This path reaches it only through the BOOTSTRAP
+/// shim, since steel never re-imports the print names into top-level programs.
 #[test]
 fn top_level_displayln_call_reaches_the_gate() {
     use crate::ScriptingHost;
@@ -278,7 +278,7 @@ fn explicit_port_form_still_enforces_arity() {
     assert!(result.is_err(), "extra positional arg must still error");
 }
 
-/// An explicit-port call where the supplied port genuinely IS the real
+/// An explicit-port call where the supplied port IS the real
 /// stdout port (`(display obj (current-output-port))`, unparameterized)
 /// must still reach the gate. A shim that forwards every 2+-arg call
 /// unconditionally would let this exact call bypass the gate and write raw

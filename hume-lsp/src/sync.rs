@@ -88,7 +88,8 @@ pub fn apply_events_to_string_mirror(
     text
 }
 
-/// A buffer text's generation (a `u64` that grows by one per edit) -> the
+/// A buffer text's generation (a `u64` that strictly increases with each
+/// edit) -> the
 /// wire's `i32` document version. It would need over two billion edits to a
 /// single buffer to overflow this (effectively unreachable), but a silent
 /// wraparound would desync diagnostics/didChange version correlation in a
@@ -99,7 +100,7 @@ pub fn wire_version(generation: u64) -> i32 {
 }
 
 /// `(line, character)` → byte offset in `text`, via plain string scanning,
-/// deliberately re-implemented rather than delegating to
+/// re-implemented rather than delegating to
 /// `hume_rope::position_encoding` so the test mirror shares no code with it.
 /// Splits on `\n` alone, matching `hume_rope`'s "LF is the only line break"
 /// crate doc: no other character terminates a line, in a rope or in this

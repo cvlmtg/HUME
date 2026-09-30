@@ -46,7 +46,7 @@ impl UnattachedPane {
 /// specific pane by id (`Index`/`get`/`get_mut`, the common case),
 /// or every pane regardless of tab visibility
 /// ([`Self::every_pane_across_all_tabs`], named so a call site states that
-/// scope in prose). There is deliberately no `iter`/`values`/`values_mut`/`keys`/
+/// scope in prose). There is no `iter`/`values`/`values_mut`/`keys`/
 /// `drain`/`IntoIterator`: the frame's own working set is
 /// `EngineView::active_pane_ids()` (the active tab's leaves only); a bare
 /// walk of the whole pool is right for buffer-lifecycle cleanup and wrong

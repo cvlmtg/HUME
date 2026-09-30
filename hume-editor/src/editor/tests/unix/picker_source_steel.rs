@@ -211,7 +211,7 @@ fn respawn_reports_an_already_exited_outgoing_source() {
 
     // Poll the child's own OS exit status directly, never `ed.settle()`
     // here, which would drain and report it through the ordinary disconnect
-    // path this test is deliberately racing ahead of with a respawn.
+    // path this test races ahead of with a respawn.
     let deadline = Instant::now() + Duration::from_secs(2);
     while !ed
         .state

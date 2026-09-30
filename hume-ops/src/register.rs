@@ -215,7 +215,7 @@ pub struct RegisterSet {
     /// Snapshot of the blob last written to the OS clipboard.
     /// Compared on read to detect external modifications: when the clipboard
     /// content matches this blob the in-memory `'c'` register is in sync and
-    /// its structured `Vec<String>` (preserving multi-selection boundaries) is
+    /// its pieces (preserving multi-selection boundaries and shapes) are
     /// preferred over the flattened single-string OS clipboard representation.
     clipboard_blob: Option<String>,
 }

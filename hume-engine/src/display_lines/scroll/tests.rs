@@ -34,12 +34,12 @@ fn viewport(top: usize, height: u16, width: u16) -> Viewport {
 fn local_content_pos(
     v: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
-    cursor_char: ClusterStart,
+    cursor: ClusterStart,
 ) -> Option<(u16, u16)> {
     if v.height == 0 {
         return None;
     }
-    let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
+    let (cursor_pos, cursor_display_col) = dlm.locate(cursor);
     if cursor_display_col < v.horizontal_offset {
         return None;
     }
@@ -207,11 +207,11 @@ fn wrap_cursor_within_top_margin_scrolls_up() {
     let r = Rope::from_str(&"ab\n".repeat(10));
     let mut v = Viewport::new(3, 8);
     v.seed_top_for_test(DisplayLinePos::new(ContentLine::new(3), 0));
-    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(3));
+    let cursor = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(3));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
-    let cursor_pos = dlm.locate_display_line(cursor_char);
+    let cursor_pos = dlm.locate_display_line(cursor);
     let geo = v.geometry(2).unwrap();
     v.reveal(&mut dlm, geo, cursor_pos);
     assert_eq!(v.top(), DisplayLinePos::new(ContentLine::new(1), 0));
@@ -222,11 +222,11 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
     let r = Rope::from_str(&"ab\n".repeat(10));
     let mut v = Viewport::new(3, 8);
     v.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 0));
-    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(7));
+    let cursor = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(7));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
-    let cursor_pos = dlm.locate_display_line(cursor_char);
+    let cursor_pos = dlm.locate_display_line(cursor);
     let geo = v.geometry(2).unwrap();
     v.reveal(&mut dlm, geo, cursor_pos);
     assert_eq!(v.top(), DisplayLinePos::new(ContentLine::new(2), 0));
@@ -340,12 +340,12 @@ fn settled_row_is_some_at_the_documents_start_saturation() {
 fn view_top_then_scroll_margin_trims_cursor_inward() {
     let r = Rope::from_str(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
-    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(25));
+    let cursor = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(25));
     let providers = no_providers();
 
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
-    let cursor_pos = dlm.locate_display_line(cursor_char);
+    let cursor_pos = dlm.locate_display_line(cursor);
     let geo = v.geometry(3).unwrap();
     v.align(&mut dlm, geo, cursor_pos, 0);
     assert_eq!(
@@ -359,12 +359,12 @@ fn view_top_then_scroll_margin_trims_cursor_inward() {
 fn view_bottom_then_scroll_margin_trims_cursor_inward() {
     let r = Rope::from_str(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
-    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(25));
+    let cursor = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(25));
     let providers = no_providers();
 
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
-    let cursor_pos = dlm.locate_display_line(cursor_char);
+    let cursor_pos = dlm.locate_display_line(cursor);
     let geo = v.geometry(3).unwrap();
     v.align(&mut dlm, geo, cursor_pos, 23);
     assert_eq!(
@@ -382,20 +382,16 @@ fn reveal_accounts_for_a_stolen_virtual_display_line() {
     let mut v = viewport(0, 2, 80);
     let wrap = WrapMode::Soft { width: 80 };
     let providers = providers_with_before_line(2);
-    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(3));
+    let cursor = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(3));
 
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, wrap, &providers, 80, &mut s);
-    let cursor_pos = dlm.locate_display_line(cursor_char);
+    let cursor_pos = dlm.locate_display_line(cursor);
     let geo = v.geometry(0).unwrap();
     v.reveal(&mut dlm, geo, cursor_pos);
 
     let mut s = PaneLineStore::new();
-    let pos = local_content_pos(
-        &mut v,
-        &mut map(&r, wrap, &providers, 80, &mut s),
-        cursor_char,
-    );
+    let pos = local_content_pos(&mut v, &mut map(&r, wrap, &providers, 80, &mut s), cursor);
     let (_, row) = pos.expect("cursor must be visible after reveal");
     assert!(
         (row as usize) < v.height as usize,
@@ -410,20 +406,16 @@ fn reveal_accounts_for_a_stolen_virtual_display_line_no_wrap() {
     let mut v = viewport(0, 2, 80);
     let wrap = WrapMode::None;
     let providers = providers_with_before_line(2);
-    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(3));
+    let cursor = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(3));
 
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, wrap, &providers, 80, &mut s);
-    let cursor_pos = dlm.locate_display_line(cursor_char);
+    let cursor_pos = dlm.locate_display_line(cursor);
     let geo = v.geometry(0).unwrap();
     v.reveal(&mut dlm, geo, cursor_pos);
 
     let mut s = PaneLineStore::new();
-    let pos = local_content_pos(
-        &mut v,
-        &mut map(&r, wrap, &providers, 80, &mut s),
-        cursor_char,
-    );
+    let pos = local_content_pos(&mut v, &mut map(&r, wrap, &providers, 80, &mut s), cursor);
     let (_, row) = pos.expect("cursor must be visible after reveal");
     assert!(
         (row as usize) < v.height as usize,
@@ -440,13 +432,13 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
         VirtualLineAnchor::Before(ContentLine::new(0)),
         3,
     )));
-    let cursor_char = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(2));
+    let cursor = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(2));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut v = viewport(2, 20, 80);
         let mut s = PaneLineStore::new();
         let mut dlm = map(&r, wrap, &providers, 80, &mut s);
-        let cursor_pos = dlm.locate_display_line(cursor_char);
+        let cursor_pos = dlm.locate_display_line(cursor);
         let geo = v.geometry(20).unwrap();
         v.reveal(&mut dlm, geo, cursor_pos);
         assert_eq!(
@@ -505,13 +497,13 @@ fn top_at_is_a_noop_when_already_valid() {
 fn reveal_is_safe_to_call_directly_on_a_stale_top() {
     let r = Rope::from_str("a\nb\n");
     let providers = ProviderSet::new(); // no virtual lines: every line's block is exactly 1 slot
-    let cursor_char = at(&r, 0); // line 0's own first char, so the cursor never has to move
+    let cursor = at(&r, 0); // line 0's own first char, so the cursor never has to move
 
     let mut stale = viewport(0, 5, 80);
     stale.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 200)); // wildly stale
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
-    let cursor_pos = dlm.locate_display_line(cursor_char);
+    let cursor_pos = dlm.locate_display_line(cursor);
     let geo = stale.geometry(0).unwrap();
     let stale_row = stale.reveal(&mut dlm, geo, cursor_pos);
 
@@ -520,7 +512,7 @@ fn reveal_is_safe_to_call_directly_on_a_stale_top() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     resolved.top_at(&mut dlm); // pre-resolve before reveal sees it
-    let cursor_pos = dlm.locate_display_line(cursor_char);
+    let cursor_pos = dlm.locate_display_line(cursor);
     let geo = resolved.geometry(0).unwrap();
     let resolved_row = resolved.reveal(&mut dlm, geo, cursor_pos);
 
@@ -543,10 +535,10 @@ fn horizontal_scroll_margin_uses_content_width_not_viewport_width() {
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
-    let cursor_char = at(&r, 70);
+    let cursor = at(&r, 70);
 
     let mut dlm = map(&r, WrapMode::None, &providers, 72, &mut s);
-    let cursor_display_col = dlm.locate(cursor_char).1;
+    let cursor_display_col = dlm.locate(cursor).1;
     v.reveal_horizontal(&mut dlm, cursor_display_col);
 
     assert_eq!(
@@ -562,10 +554,10 @@ fn horizontal_scroll_margin_no_scroll_when_within_content_width() {
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
-    let cursor_char = at(&r, 70);
+    let cursor = at(&r, 70);
 
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
-    let cursor_display_col = dlm.locate(cursor_char).1;
+    let cursor_display_col = dlm.locate(cursor).1;
     v.reveal_horizontal(&mut dlm, cursor_display_col);
 
     assert_eq!(
@@ -583,10 +575,10 @@ fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
-    let cursor_char = at(&r, 69_999);
+    let cursor = at(&r, 69_999);
 
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
-    let cursor_display_col = dlm.locate(cursor_char).1;
+    let cursor_display_col = dlm.locate(cursor).1;
     v.reveal_horizontal(&mut dlm, cursor_display_col);
 
     assert_eq!(
@@ -617,13 +609,13 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
                 for line in
                     (0..hume_rope::lines::content_line_count(&r).get()).map(ContentLine::new)
                 {
-                    let cursor_char = hume_rope::lines::line_start(&r, line);
+                    let cursor = hume_rope::lines::line_start(&r, line);
                     let mut v = viewport(top, height, 80);
 
                     let mut s = PaneLineStore::new();
                     let mut dlm = map(&r, wrap, &providers, 80, &mut s);
                     v.top_at(&mut dlm);
-                    let cursor_pos = dlm.locate_display_line(cursor_char);
+                    let cursor_pos = dlm.locate_display_line(cursor);
                     let geo = v.geometry(2).unwrap();
                     let reported = v.reveal(&mut dlm, geo, cursor_pos);
 
@@ -631,7 +623,7 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
                     let walked = local_content_pos(
                         &mut v,
                         &mut map(&r, wrap, &providers, 80, &mut s),
-                        cursor_char,
+                        cursor,
                     );
                     assert_eq!(
                         Some(reported as u16),
@@ -652,12 +644,12 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FormatProbe::new(0, Rc::clone(&formats))));
     let mut v = viewport(0, 10, 80);
-    let cursor_char = at(&r, 4_000);
+    let cursor = at(&r, 4_000);
 
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     v.top_at(&mut dlm);
-    let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
+    let (cursor_pos, cursor_display_col) = dlm.locate(cursor);
     let geo = v.geometry(3).unwrap();
     let row = v.reveal(&mut dlm, geo, cursor_pos);
     v.reveal_horizontal(&mut dlm, cursor_display_col);
@@ -673,7 +665,7 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
     let walked = local_content_pos(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        cursor_char,
+        cursor,
     );
     assert_eq!(
         Some(placed),
@@ -810,7 +802,7 @@ fn down_no_wrap_advances_by_count() {
 
 #[test]
 fn down_never_moves_the_top_backwards_from_past_max_scroll_top() {
-    // `align` (z z / z k / z j) deliberately does not clamp at the bottom
+    // `align` (z z / z k / z j) does not clamp at the bottom
     // (see its own doc), so it, and an LSP goto near EOF, can leave the top
     // past max_scroll_top. 10 content lines, height 5, margin 0: the bound
     // is line 5. Seed the top at line 8, well past it.

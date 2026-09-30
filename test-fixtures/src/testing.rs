@@ -1,38 +1,10 @@
+//! Helpers for state-triple tests over the marker notation that
+//! [`hume_editing::marked`] defines and documents.
+
 use hume_editing::changeset::ChangeSet;
 use hume_editing::edit::Edited;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::state::EditState;
-/// Test DSL for HUME editing operations.
-///
-/// A compact, human-readable string format for editor state (buffer content
-/// + selections) inline in test source.
-///
-/// # Marker format
-///
-/// | Marker | Meaning |
-/// |--------|---------|
-/// | `-[`   | Anchor side of a selection bracket. |
-/// | `]>`   | Head (cursor) side — forward direction. |
-/// | `<[`   | Head (cursor) side — backward direction. |
-/// | `]-`   | Anchor side closing a backward selection. |
-///
-/// ## Selection syntax
-///
-/// ```text
-/// -[hell]>o\n      — forward selection:  anchor=0, head=3 (cursor on 'l', selects "hell")
-/// <[hell]-o\n      — backward selection: head=0, anchor=3 (cursor on 'h', selects "hell")
-/// hel-[l]>o\n      — cursor on 'l' (anchor == head == 3, same as 1-char forward selection)
-/// ```
-///
-/// The cursor is *inclusive* — it sits on the head character, not between
-/// characters. The text between `[` and `]` is exactly the selected text
-/// (anchor and head both included); `-` always marks anchor, `>`/`<` always
-/// marks head, and the arrow direction shows which way the selection faces.
-/// Multiple selections in one string: `-[he]>llo -[wor]>ld\n`
-///
-/// Markers sit on grapheme-cluster boundaries and the head and anchor are the
-/// starts of the clusters they wrap: `a-[e\u{301}]>b\n` is a cursor on the
-/// whole accented letter. A marker inside a cluster panics.
 use hume_editing::text::BufferText;
 
 // ── IntoTestResult ────────────────────────────────────────────────────────────
@@ -130,8 +102,6 @@ pub fn serialize_state(text: &BufferText, sels: &SelectionSet) -> String {
 /// docs for the format). `$op` is a closure that takes `(BufferText, SelectionSet)`
 /// and returns anything [`IntoTestResult`] accepts: `Edited` for an edit,
 /// `EditState` for a motion or selection command.
-///
-/// Both return types are handled automatically via [`IntoTestResult`].
 ///
 /// # Example
 ///

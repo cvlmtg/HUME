@@ -28,7 +28,6 @@ pub struct Removal {
 /// `\n`: removing the last line leaves no empty line, and a cursor on the
 /// structural `\n` of a line with text removes nothing. The register gets
 /// whole lines as lines and anything else short of the structural `\n`.
-/// See [`remove`].
 pub fn delete_selection(state: EditState) -> Removal {
     let mut yanked = Vec::new();
     let edited = remove_each(state, remove, |sel, removed| {

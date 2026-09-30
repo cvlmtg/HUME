@@ -15,7 +15,7 @@
 //!
 //! Positions of the text being produced come back as [`NewPos`] and [`Mark`]
 //! handles. Only a [`Landing`] consumes one, and the `'id` brand ties each
-//! handle to the plan that made it, so a position of one edit can never be
+//! handle to the builder that made it, so a position of one edit can never be
 //! resolved against another.
 
 use std::marker::PhantomData;
@@ -30,7 +30,7 @@ use crate::selection::{Facing, Resolver, Selection, SelectionSet, UnboundSelecti
 use crate::state::EditState;
 use crate::text::{BufferText, LfText};
 
-/// Ties a handle to the one plan that made it: the lifetime is invariant, and
+/// Ties a handle to the one builder that made it: the lifetime is invariant, and
 /// [`edit`] instantiates it afresh for each call.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Brand<'id>(PhantomData<fn(&'id ()) -> &'id ()>);
@@ -44,7 +44,7 @@ pub struct NewPos<'id> {
     brand: Brand<'id>,
 }
 
-/// The new text between two plan positions: what an insertion produced.
+/// The new text between two builder positions: what an insertion produced.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Mark<'id> {
     start: NewPos<'id>,
@@ -106,13 +106,13 @@ pub fn edit<'a>(
     state: &'a EditState,
     build: impl for<'id> FnOnce(&mut EditBuilder<'a, 'id>) -> Landings<'id>,
 ) -> Edited {
-    let mut plan = EditBuilder {
+    let mut builder = EditBuilder {
         text: state.text(),
         items: Vec::new(),
         brand: Brand(PhantomData),
     };
-    let landings = build(&mut plan);
-    plan.finish(landings)
+    let landings = build(&mut builder);
+    builder.finish(landings)
 }
 
 impl<'a, 'id> EditBuilder<'a, 'id> {
@@ -311,7 +311,7 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
     }
 }
 
-/// One selection an edit leaves behind, described by positions its plan
+/// One selection an edit leaves behind, described by positions its builder
 /// handed out or by a selection of the old text to carry through the edit.
 pub struct Landing<'id>(Kind<'id>);
 

@@ -2,12 +2,11 @@
 //! display lines or columns the buffer text alone doesn't account for.
 //!
 //! Two of them decorate: one emits whole virtual display lines, the other
-//! inline inserts. Both are deliberately general (parameterised on
-//! everything any caller varies and on nothing else) because the
-//! alternative is what this module replaced: eight near-identical `struct
-//! Foo; impl DecorationSource for Foo` blocks whose differences (a text
-//! string, an anchor side, a display-line count) were invisible next to
-//! twenty lines of identical `VirtualLine { .. }` construction.
+//! inline inserts. Both are general (parameterised on everything any
+//! caller varies and on nothing else), so a test states only what sets it
+//! apart (a text string, an anchor side, a display-line count) instead of
+//! a `struct Foo; impl DecorationSource for Foo` block that buries it in
+//! identical `VirtualLine { .. }` construction.
 //!
 //! The third, [`FormatProbe`], decorates nothing. It registers as an INLINE
 //! source purely to be *asked*, because being asked is the observable

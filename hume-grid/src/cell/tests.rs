@@ -41,7 +41,7 @@ fn continuation_has_no_text_and_no_advance() {
 
 #[test]
 fn continuation_carries_the_heads_style() {
-    // Load-bearing for the diff: a continuation differs between frames
+    // The frame diff relies on this: a continuation differs between frames
     // exactly when its head does.
     assert_eq!(Cell::continuation(styled()).style(), styled());
 }

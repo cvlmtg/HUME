@@ -426,7 +426,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
     // in the Steel source.
     type_cmd(&mut ed, ":go");
     // Hooks queued during dispatch fire on an explicit drain, not automatically
-    // (`Editor::step`, which `type_cmd` rides, deliberately doesn't drain).
+    // (`Editor::step`, which `type_cmd` rides, doesn't drain).
     ed.settle();
 
     assert_eq!(
@@ -533,7 +533,7 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
     );
 
     // Insert a new first line, shifting "cc" one line down, to a line-start
-    // char offset of 8. Deliberately no `ed.settle()`/`drain_lsp()` here:
+    // char offset of 8. No `ed.settle()`/`drain_lsp()` here:
     // the edit's ChangeSet sits unflushed in `buf.lsp_pending` until
     // `lsp_stop` runs, exactly the race this regression covers.
     ed.feed_key(key('i'));

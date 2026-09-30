@@ -26,7 +26,7 @@ use hume_rope::cluster::{ClusterRange, ClusterStart};
 ///
 /// `Arc<Regex>` makes the clone needed by `update_buffer_matches` a refcount bump:
 /// no deep clone, no take/put-back dance. A present `SearchPattern` is always
-/// fully-valid by construction (invalid regexes are rejected at compile time and
+/// fully-valid (invalid regexes are rejected at compile time and
 /// leave `Buffer.search_pattern = None`). [`SearchPattern::compile`] is the one
 /// way to build one, so every producer gets this for free.
 pub(in crate::editor) struct SearchPattern {

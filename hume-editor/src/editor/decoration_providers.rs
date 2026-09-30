@@ -46,7 +46,7 @@ impl Editor {
     ///
     /// `prepare_frame` calls this **twice** (once before the scroll step,
     /// once after) rather than sharing one snapshot across both groups: the
-    /// sign/inlay-hint/virtual-line/EOL-text bridges deliberately read the
+    /// sign/inlay-hint/virtual-line/EOL-text bridges read the
     /// *previous* frame's viewport (their output decides display-line counts/columns
     /// the scroll step's `DisplayLineMap` resolves against, so it must already be
     /// visible before that math runs), while the highlight/line-background
@@ -632,7 +632,7 @@ impl Editor {
 /// Folds per-source, line-anchored decoration entries into one winner per
 /// line: within one source, a later entry beats an earlier
 /// one that a remap collapsed onto the same line (ties resolve by store
-/// order: `SourceStore::set` sorts by position, so "later" means originally
+/// order: `SourceStore::set` sorts by position, so "later" means, before the remap,
 /// further along the buffer); across sources, tie-break by source name:
 /// the alphabetically first source wins, same convention `SourceStore::set`
 /// itself keeps sources ascending by name. Signs use a different mechanism:

@@ -297,7 +297,7 @@ fn mark_written_and_synced(
 /// `file_meta` is a `Buffer::new_file` (`:e` on a path that didn't exist yet)
 /// and takes the create branch below instead of `write_file_atomic`, which
 /// needs an existing baseline to atomically replace. `path` with no
-/// `file_meta` at all is `"no file name"` only for genuinely pathless scratch
+/// `file_meta` at all is `"no file name"` only for pathless scratch
 /// buffers.
 fn write_buffer_by_id(
     ed: &mut Editor,
@@ -490,7 +490,7 @@ pub(in crate::editor) fn typed_write_all(
         // (`:e` on a missing path, not yet written) has a path but no
         // `file_meta`. `write_buffer_by_id`'s create branch handles it, so
         // excluding it here would make `:wa` silently skip a buffer it's
-        // fully capable of writing. Only genuinely pathless buffers (scratch,
+        // fully capable of writing. Only pathless buffers (scratch,
         // synthetic views) are excluded.
         .filter(|(_, buf)| buf.is_dirty() && buf.path().is_some() && !buf.is_read_only())
         .map(|(id, _)| id)

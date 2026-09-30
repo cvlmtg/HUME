@@ -27,7 +27,7 @@ fn covered_runs_to_the_end_of_the_last_cluster() {
 }
 
 #[test]
-fn the_slice_is_exactly_the_covered_text() {
+fn the_slice_is_the_covered_text() {
     let state = parse("x-{a\u{308}\u{301}}>y-[\u{1f468}\u{200d}\u{1f469}]>z\n");
     let slices: Vec<String> = state.view().iter().map(|v| v.slice().to_string()).collect();
     assert_eq!(

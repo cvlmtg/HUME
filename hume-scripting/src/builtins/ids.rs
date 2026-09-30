@@ -6,7 +6,7 @@
 //! these between builtins but cannot construct or inspect them
 //! arithmetically; they are purely opaque handles. [`SteelBufferKey`] is
 //! `(buffer-key pane)`'s own return type: a per-buffer hash/comparison key,
-//! deliberately undecodable by [`super::args::ArgPane`]/[`super::args::LivePane`]
+//! undecodable by [`super::args::ArgPane`]/[`super::args::LivePane`]
 //! so a key can't be passed back into a builtin expecting a pane. A pane
 //! value and a plain per-buffer key must stay two distinct kinds of thing,
 //! not the same value with its pane field cleared. Collapsing them would

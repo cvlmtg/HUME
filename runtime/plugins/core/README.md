@@ -66,7 +66,7 @@ for the full mechanism, including the stronger `(loaded-plugins)` check.
 dependent needs, there is no activation stub for that command. `call!` then logs an error
 and returns `#f` instead of raising, so a dependent's config validation or runtime call
 silently resolves to `#f` instead of failing loudly. The `(declared-plugins)` check can't
-catch this, since the dependency genuinely is declared.
+catch this, since the dependency is declared.
 
 ## Patterns shared across core plugins
 
@@ -106,7 +106,7 @@ after the state it was scheduled against has moved on:
 - **The entry may be gone.** A buffer can close while a fetch or a walk is in flight.
   A write path serving a live read (a toggle command, an explicit user action) should
   *resurrect* a missing entry rather than no-op; a write path serving an async callback
-  should no-op, since resurrecting state for a buffer that's genuinely gone would leak it
+  should no-op, since resurrecting state for a buffer that's gone would leak it
   forever.
 - **`cancel-timer!`/canceling a job can't stop a callback that's already been dequeued
   onto the run queue.** For anything more than a single in-flight timer, an entry needs
@@ -137,7 +137,7 @@ menu and `git-diff`'s fetch/diff pipeline both follow this.
 `log!` supports `'error`/`'warn`/`'info`/`'trace`. Route by how actionable the failure is
 to the *user*, not by how verbose the plugin author wants to be:
 
-- `'error`: the operation genuinely couldn't run (a required tool is missing, a process
+- `'error`: the operation couldn't run (a required tool is missing, a process
   failed to start at all).
 - `'warn`: a real failure that's a direct answer to something the user just typed (a
   bad ref, an invalid name), or a security-relevant refusal (a path-traversal attempt)

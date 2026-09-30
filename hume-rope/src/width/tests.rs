@@ -120,7 +120,7 @@ fn grapheme_width_of_an_unrenderable_cluster_is_its_placeholder() {
 
 #[test]
 fn no_grapheme_cluster_exceeds_the_upper_cap() {
-    // `grapheme_width`'s upper cap is defensive, not load-bearing: the
+    // `grapheme_width`'s upper cap is defensive: the
     // pinned `unicode-width` already measures every one of these multi-code-
     // point clusters as 2, so nothing reaches the cap to be cut down. This
     // test exists to notice if that ever stops being true: a `unicode-width`

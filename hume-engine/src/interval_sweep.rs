@@ -2,7 +2,7 @@
 //! [`flatten_overlapping_spans`]'s doc for why the wrapper.
 
 /// Which span wins when two spans have exactly equal `rank` and overlap;
-/// see [`flatten_overlapping_spans`]. The two current callers genuinely
+/// see [`flatten_overlapping_spans`]. The two current callers
 /// disagree, so this is a real two-case distinction, not a speculative
 /// flag: `hume-treesitter` wants the most-recently-collected (nested)
 /// layer to win a tie; `hume-editor` wants the alphabetically-first source

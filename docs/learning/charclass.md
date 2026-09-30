@@ -21,9 +21,9 @@ HUME classifies every character into one of four classes:
 
 The Word class follows Unicode's notion of "alphanumeric", so accented letters
 like `é` and Han characters like `文` classify as Word just as `a` does. Space
-covers the characters that genuinely act as spacing — including the two
+covers the characters that act as spacing — including the two
 invisible Unicode spaces — while every other exotic whitespace character
-(form feed, thin space, …) is deliberately classed as Punctuation, so the
+(form feed, thin space, …) is classed as Punctuation, so the
 cursor stops on it rather than silently skipping something invisible.
 
 For `word` boundaries, any adjacent class change is a boundary — `Word`→`Punctuation`,
@@ -49,7 +49,7 @@ model still applies — only the boundary a hyphen draws changes.
 `\n` could be treated as `Space` — it is whitespace, after all. But
 collapsing the two would erase information the layers above want. With `Eol`
 distinct, the low-level boundary scan always pauses at a newline, and the
-*motion* layer decides deliberately what happens there. For `w` that decision
+*motion* layer decides what happens there. For `w` that decision
 is to cross: it takes a second internal step over a non-final newline so you
 land on the next line's first word (see the
 [word motions doc](word-motions.md)). At the buffer's end there is nothing

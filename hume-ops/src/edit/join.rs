@@ -55,9 +55,8 @@ pub fn join_lines_select_spaces(state: EditState) -> Edited {
 
             let mut last_deletion = None;
             // Bare-`usize` range, `ContentLine` re-minted each iteration:
-            // `ContentLine` has no `Step`/`Range` impl to loop over directly
-            // (see CLAUDE.md's "Line counts and ranges"). Sound here: both
-            // endpoints are already-valid `ContentLine`s.
+            // `ContentLine` has no `Step`/`Range` impl to loop over directly.
+            // Sound here: both endpoints are already-valid `ContentLine`s.
             for line_idx in lines.start.index().max(next_unjoined)..end_line.index() {
                 let line = ContentLine::new(line_idx);
                 let nl_pos = line_break(text, line);

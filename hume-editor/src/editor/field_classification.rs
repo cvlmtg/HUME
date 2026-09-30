@@ -3,7 +3,7 @@
 //! two tests' own doc for how.
 
 // `Editor::reset_config_state` resets `EditorState.config: ConfigState`
-// wholesale (a field added there is reset by construction; see
+// wholesale (a field added there is reset with it; see
 // `ConfigState`'s own doc), but every *other* field on `EditorState` (and
 // on `Editor` itself, which `reset_config_state` also reaches directly for
 // `lsp`/`timer_wheel`/`timer_payloads`) needs a human decision: does

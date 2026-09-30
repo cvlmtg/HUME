@@ -106,7 +106,7 @@ impl CommandPane {
     }
 }
 
-/// A [`CommandPane`] proven, by construction, to be the focused pane at the
+/// A [`CommandPane`] proven to be the focused pane at the
 /// moment it was minted. The single admission point for focus-bound state
 /// (the open Insert/paste session, the sticky Extend flag, dot-repeat), so a
 /// body that only received a `CommandPane` has no way to reach any of it: it
@@ -176,7 +176,7 @@ impl FocusedPane {
 /// get one is bound to a body that needs exactly that variant, inside
 /// [`Bound`]; nothing outside this file ever names `Target` at all, so a
 /// caller cannot pair a `Target::Pane` with a body that requires focus (see
-/// [`Bound`]'s own doc for why that pairing is ruled out by construction).
+/// [`Bound`]'s own doc for why that pairing is ruled out).
 ///
 /// A `FocusedPane`-only body ([`Bound::FocusedCmd`]) never holds a `Target`
 /// at all. It carries a bare [`FocusedPane`] directly, since it has no
@@ -283,7 +283,7 @@ impl std::fmt::Display for TargetError {
 /// touches. A private field is enforced by the compiler everywhere, tests
 /// included, where a source-scanning lint checking for the destructuring
 /// pattern by hand would miss one `rustfmt` wraps across lines, and would
-/// skip `tests/` directories by construction.
+/// never scan `tests/` directories.
 #[derive(Clone, Copy)]
 pub(in crate::editor) struct NativeBody<F>(F);
 

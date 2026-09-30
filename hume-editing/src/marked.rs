@@ -207,9 +207,6 @@ pub fn render(view: EditView<'_>) -> String {
     out
 }
 
-#[cfg(test)]
-mod tests;
-
 /// The cluster starting at char `n` of `text`, so a test's literal offset
 /// names the position it means.
 ///
@@ -244,3 +241,6 @@ pub fn clusters(text: &BufferText, a: usize, b: usize) -> ClusterRange {
     text.covering(ExclusiveRange::new(CharOffset::new(a), CharOffset::new(b)))
         .expect("marked::clusters: the range covers no cluster")
 }
+
+#[cfg(test)]
+mod tests;

@@ -59,7 +59,7 @@ users.
 When the same plugin is mentioned more than once, the two verbs resolve differently:
 duplicate `declare-plugin!` calls keep the *first* config, while `load-plugin!` always
 overwrites whatever was recorded. So a bare `(load-plugin! "x")` after a configured
-declare deliberately runs the body with the empty default — the most recent explicit
+declare runs the body with the empty default — the most recent explicit
 load wins.
 
 ---

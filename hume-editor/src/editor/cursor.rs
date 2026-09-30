@@ -27,7 +27,7 @@ use hume_rope::column::DisplayLineCol;
 /// only occupy content display lines, so a pure view scroll (mouse wheel,
 /// `Ctrl-d`/`Ctrl-u`, `PageDown`/`PageUp`) into a virtual-line block (an
 /// inline diff's ghost lines) can carry the viewport further than the
-/// cursor can follow, and the cursor-follow gate deliberately skips
+/// cursor can follow, and the cursor-follow gate skips
 /// re-centering for that case (see `frame.rs`'s `scroll_into_view`). The
 /// terminal caret is simply hidden for as long as this returns `None`; it
 /// reappears once an ordinary cursor motion resyncs the view.
@@ -106,7 +106,7 @@ pub(in crate::editor) fn place(
 ///
 /// Used to offset the terminal cursor column past line numbers and other
 /// gutter providers. `last_line_idx` is the buffer's last ropey line index
-/// (`hume_rope::lines::last_ropey_line`): deliberately the phantom trailing line,
+/// (`hume_rope::lines::last_ropey_line`): the phantom trailing line,
 /// not the last content line, so the gutter is sized one digit wider than
 /// content strictly requires.
 pub(in crate::editor) fn gutter_width<'a>(

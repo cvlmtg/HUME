@@ -152,7 +152,7 @@ pub(in crate::editor) struct LiveDoc<'a> {
 
 /// What [`BufferSession::reconcile`] found.
 pub(in crate::editor) enum Reconciled {
-    /// The session cannot survive: its text was replaced.
+    /// The session cannot survive: its text was replaced or its buffer closed.
     Dismiss,
     /// The text and cursor are the ones the session last saw and no answer
     /// was dropped.
@@ -176,8 +176,9 @@ pub(in crate::editor) struct BufferSession {
     /// `accept` rejects if the buffer changed since.
     pub(super) version: TextVersion,
     head: CharOffset,
-    /// The buffer's text was replaced with no change to carry
-    /// ([`Self::forget`]): no position in the session means anything now.
+    /// The buffer's text was replaced with no change to carry, or the buffer
+    /// closed ([`Self::forget`]): no position in the session means anything
+    /// now.
     replaced: bool,
     /// Whether an explicit `Trigger::Explicit` (Ctrl-Space) has touched
     /// this session, as opposed to only ever a trigger char. Gates the
@@ -318,7 +319,7 @@ impl BufferSession {
     /// Safe regardless of *why* the batch failed, or whether it even
     /// touched completion at all: a source that was merely slow gets asked
     /// again through the ordinary edit-driven reinvocation path, or a
-    /// fresh trigger; one that's genuinely broken simply stops being asked
+    /// fresh trigger; one that's broken simply stops being asked
     /// until then, rather than erroring forever.
     pub(in crate::editor) fn drop_stalled_invocations(&mut self) -> bool {
         self.core.drop_stalled()
@@ -352,7 +353,7 @@ impl BufferSession {
     }
 
     /// Marks the session dead: `buffer`'s text was replaced with no change
-    /// to carry the session's positions through.
+    /// to carry the session's positions through, or `buffer` closed.
     pub(in crate::editor) fn forget(&mut self, buffer: BufferId) {
         if buffer == self.bid {
             self.replaced = true;

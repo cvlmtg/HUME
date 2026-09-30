@@ -256,7 +256,7 @@ fn typed_pwd_long_alias_works() {
 /// into the sandbox's tempdir, confirm cwd matches it, then drop and confirm
 /// the tempdir is actually gone from disk.
 ///
-/// Deliberately does NOT re-read `std::env::current_dir()` after `cwd` drops
+/// Does NOT re-read `std::env::current_dir()` after `cwd` drops
 /// and releases its claim. cwd is process-global, so any other CWD-mutating
 /// test could legitimately acquire the claim and change it before the next
 /// line ran, making such a check racy against unrelated tests, not a signal

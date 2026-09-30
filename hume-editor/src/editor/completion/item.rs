@@ -44,7 +44,7 @@ pub(in crate::editor) struct CompletionItem {
     /// original response's root `Arc`, handed to `on-completion-accept` so
     /// Steel can read `data` or any other field this store doesn't parse,
     /// without Rust needing to grow a reader for every LSP field a feature
-    /// might eventually want. Deliberately the *pristine* item (snippet
+    /// might eventually want. The *pristine* item (snippet
     /// syntax included). Steel/resolve should see exactly what the server
     /// sent, not this store's stripped/narrowed projection.
     pub(super) raw: Option<JsonHandle>,
@@ -201,7 +201,7 @@ impl CompletionItem {
     /// `typed` in place. `rank` drops these before scoring, so no source
     /// has to filter its own already-typed token back out by hand.
     ///
-    /// An LSP item survives this by construction, not by exemption: HUME
+    /// An LSP item needs no exemption from this: HUME
     /// advertises no `completionItem.resolveSupport`
     /// (`hume-lsp/src/client.rs`), so a server must send whatever
     /// `additionalTextEdits` it has *with* the item, not lazily via

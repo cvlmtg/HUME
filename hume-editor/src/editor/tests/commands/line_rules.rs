@@ -101,7 +101,7 @@ fn change_after_select_line_keeps_line() {
 #[test]
 fn change_multi_line_collapses_to_one_empty_line() {
     // Selection covers "bar\nbaz\n" (anchor=4, head=11 on the last '\n').
-    // change_span: sel.end()=11, char_at(11)='\n' → stop=11.
+    // `c` keeps the `\n` the selection ends on (char 11).
     // Deletes chars 4..11 = "bar\nbaz". Buffer → "foo\n\n".
     let mut ed = editor_from("foo\n-[bar\nbaz\n]>");
     ed.handle_key(key('c'));
@@ -165,10 +165,9 @@ fn d_after_select_line_removes_entire_line() {
 
 /// `d` on a blank last line must delete it, not silently no-op.
 ///
-/// A blank last line is a collapsed cursor on the structural trailing `\n`.
-/// `delete_one_grapheme` alone would no-op there, since the cursor already
-/// sits on the structural `\n`. The delete goes through `delete_sel_region`'s
-/// merge path instead, consuming the preceding `\n`.
+/// A blank last line is a collapsed cursor on the structural trailing `\n`,
+/// which covers that whole line: `d` deletes it, and the `\n` before it
+/// becomes the structural one.
 #[test]
 fn d_on_blank_last_line_removes_it() {
     let mut ed = editor_from("foo\n-[\n]>");

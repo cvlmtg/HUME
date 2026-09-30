@@ -162,7 +162,8 @@ use crate::layers::{SyntaxLayer, SyntaxLayers};
 
 /// A structural object's captured region, hull-collected from a
 /// `textobjects.scm` match and merged with every other match across a
-/// buffer's syntax layers: a sorted, deduplicated list of cluster ranges. Owned rather than an iterator over the tree: `hume-editor` needs
+/// buffer's syntax layers: a sorted, deduplicated list of cluster ranges.
+/// Owned rather than an iterator over the tree: `hume-editor` needs
 /// `&state.buffers` and `&mut state.panes.state` at once when it applies the
 /// resulting selection, so the tree borrow this collects from must end
 /// before that, and N cursors × `count` navigation steps then probe a
@@ -397,7 +398,7 @@ fn capture_hull(m: &tree_sitter::QueryMatch, capture_idx: u32) -> Option<(usize,
 /// cluster (a grammar that makes a combining mark its own token) widens to
 /// the whole cluster.
 ///
-/// `set_byte_range` is deliberately never used here, unlike the highlighter:
+/// `set_byte_range` is never used here, unlike the highlighter:
 /// the cursor prunes children outside its range, which truncates a grouped
 /// hull (the trailing comma a `parameter.around` pattern captures after
 /// the argument, the leading attributes a `function.around` pattern

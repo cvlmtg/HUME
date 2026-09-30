@@ -58,7 +58,7 @@ fn last_writer_per_line_keeps_the_later_entry_within_one_source() {
 #[test]
 fn last_writer_per_line_breaks_cross_source_ties_alphabetically_first() {
     // Across sources, ties break by source name: the alphabetically
-    // *first* source wins. Input order deliberately does not match sort
+    // *first* source wins. Input order does not match sort
     // order, so a fix that just returned "whichever came last in the
     // input" would pass by accident.
     let entries = vec![

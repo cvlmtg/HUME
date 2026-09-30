@@ -311,7 +311,7 @@ fn highlight_later_pattern_wins_on_same_node() {
 // Companion to `highlight_later_pattern_wins_on_same_node`, with pattern
 // order reversed: the catch-all `@variable` now comes last, so it must win.
 // Guards against a fix that hardcodes "more specific pattern wins" instead
-// of genuinely respecting query order.
+// of respecting query order.
 #[test]
 fn highlight_pattern_order_controls_winner_not_specificity() {
     require_grammars(&["rust"]);

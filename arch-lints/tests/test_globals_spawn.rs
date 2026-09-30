@@ -22,11 +22,11 @@
 //! hold, again with no `RealRuntimeGuard`/`TEST_GLOBALS` text in the test
 //! body itself. A scan that only recognized literal `Command::new`/claim text
 //! would either flag every one of these tests as unguarded (wrong: they are
-//! guarded, just through a helper) or, worse, silently pass a genuinely
+//! guarded, just through a helper) or, worse, silently pass an
 //! unguarded one that happened to call some other helper by coincidence.
 //!
 //! [`collect_helper_fns`] gathers every plain (non-`#[test]`) *free*
-//! function's body anywhere in the tree, deliberately skipping `impl`
+//! function's body anywhere in the tree, skipping `impl`
 //! blocks entirely, not just their `#[test]` methods. Every actual
 //! spawn/claim helper this lint cares about (`git`, `git_init`,
 //! `commit_file`, `setup`, …) is a bare free function; an `impl` method

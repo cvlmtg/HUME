@@ -129,7 +129,7 @@ pub trait CommandHost {
     /// reach a mappable command (`command_table`), so a typed-only name
     /// reported here would trigger a plugin load for an activation that can
     /// never succeed. [`Self::lazy_command_owner`] stays kind-agnostic for
-    /// the callers that genuinely want either kind.
+    /// the callers that want either kind.
     fn lazy_mappable_command_owner(&self, name: &str) -> Option<PluginId>;
 
     /// Remove every remaining `Lazy` stub owned by `plugin`, mappable and

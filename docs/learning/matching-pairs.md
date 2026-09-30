@@ -29,14 +29,13 @@ algorithm entirely.) The same technique matches a `<tag>` against its
 Depth tracking has a property worth naming: it's *direction-symmetric*.
 Scanning outward from the cursor toward a bracket's partner gives the same
 answer as scanning the same pair from the start of the buffer forward, just
-by starting the depth count somewhere other than zero. Matching didn't
-always take advantage of this — tag matching originally reparsed the entire
-buffer from the top on every `#` press, discarding all of that work as soon
-as the answer was found. Scanning outward from the cursor instead touches
-only the handful of tags actually between the cursor and its partner, with
-no loss of correctness.
+by starting the depth count somewhere other than zero. Tag matching takes
+advantage of this: rather than parsing the buffer from the top on every `#`
+press, it scans outward from the cursor, which touches only the handful of
+tags actually between the cursor and its partner, with no loss of
+correctness.
 
-## `<>` is deliberately not a bracket pair
+## `<>` is not a bracket pair
 
 The set of bracket pairs `#` matches is `()`, `[]`, and `{}` — `<>` is
 conspicuously absent. That isn't an oversight: in real code, `<` is a
@@ -50,20 +49,17 @@ the generic bracket table.
 ## One resolver, two consumers
 
 The bracket highlighted under the cursor and the bracket `#` actually jumps
-to come from the same resolver. That wasn't always true: the highlight used
-to have its own inline copy of the bracket-matching logic, including its own
-copy of the pair table — one that, unlike the real one, included `<>`. The
-result was an editor that highlighted a `<>` pair as a matched bracket while
-`#` refused to jump to it, because the two copies had quietly drifted apart.
-Collapsing both consumers onto one shared resolver doesn't just remove
-duplication — it makes that class of drift structurally impossible, since
-there's only one place left for the pair table to be read from.
+to come from the same resolver. Two copies of the bracket-matching logic,
+each with its own pair table, can drift apart: a highlight whose table
+included `<>` would mark a `<>` pair as matched while `#` refused to jump to
+it. With one shared resolver, both consumers read the one pair table, so the
+highlight and the jump always agree.
 
 ## Resolving against the whole selection
 
 `#` doesn't just look at the character under the cursor — it looks at the
 whole current selection. This matters because HUME's word motions
-deliberately select trailing whitespace: a `w` motion landing on `") "`
+select trailing whitespace: a `w` motion landing on `") "`
 places the cursor on the space *after* the closing paren, not on the paren
 itself. A resolver that only checked the character under the cursor would
 find nothing there and treat `#` as a no-op, even though a bracket is
@@ -72,9 +68,9 @@ sitting right at the edge of the selection.
 The fix is to search the selection itself. The cursor (the selection's
 *head*) is always at one end of the selection, never in the middle, so
 "nearest bracket, from the head" is just "scan the selection from the head's
-end inward" — the first bracket found is, by construction, the nearest one.
+end inward" — the first bracket found is the nearest one.
 This search is bounded by the selection: a bracket sitting just past the
-selection's edge is deliberately not found, even if it would otherwise be
+selection's edge is not found, even if it would otherwise be
 the nearest one in the buffer.
 
 ## Accepted limitation: the search is capped at one line

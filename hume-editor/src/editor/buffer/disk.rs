@@ -1,6 +1,6 @@
 //! External file-change detection: stat-on-trigger, mtime+size comparison.
 //!
-//! Deliberately not a filesystem watcher.
+//! Not a filesystem watcher.
 //! inotify/FSEvents/kqueue/ReadDirectoryChangesW disagree on rename
 //! semantics and coalescing, and a watcher needs a thread + handle per
 //! watched directory; stating on a handful of trigger points (terminal
@@ -19,14 +19,14 @@ use super::Buffer;
 /// `Changed` carries the freshly-read signature so the caller can store it
 /// back without a second stat.
 pub(in crate::editor::buffer::disk) enum DiskChange {
-    /// The fresh stat genuinely matches the stored signature: the buffer is
+    /// The fresh stat matches the stored signature: the buffer is
     /// caught up with disk, whatever its prior `DiskState` was.
     Unchanged,
     Changed(hume_platform::io::FileSignature),
     Vanished,
     /// Nothing to compare (no backing file) or the stat itself failed for a
     /// reason other than `NotFound` (a momentary permission hiccup, say).
-    /// Deliberately distinct from `Unchanged`: a previously reported
+    /// Distinct from `Unchanged`: a previously reported
     /// `Changed`/`Vanished` state must survive this, since it says nothing
     /// about whether the file is actually back in sync.
     Indeterminate,
@@ -41,13 +41,13 @@ pub(in crate::editor::buffer::disk) enum DiskChange {
 /// from both since there is no signature to recreate-and-compare for a
 /// deleted file.
 ///
-/// Deliberately never written by [`Editor::check_buffer_disk_state`] into
+/// Never written by [`Editor::check_buffer_disk_state`] into
 /// `FileMeta::signature`. That field stays the write baseline
 /// (`disk_change_for`'s point of comparison) for as long as the change goes
 /// un-actioned, so a *further* external change is still detected as one.
 /// This enum answers a different question: "have I already reported the
 /// disk state I'm looking at right now?" Reset to `InSync` whenever a fresh
-/// stat genuinely matches the baseline again (a change followed by an
+/// stat matches the baseline again (a change followed by an
 /// external revert); see `check_buffer_disk_state`'s `Unchanged` arm.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) enum DiskState {
@@ -288,7 +288,7 @@ impl Editor {
     /// `switch-to-buffer!`) reaches this the same way, with no per-command
     /// wiring.
     ///
-    /// Deliberately excluded: `:e`/`:b`/`:bn`/`:bp` re-targeting the buffer
+    /// Excluded: `:e`/`:b`/`:bn`/`:bp` re-targeting the buffer
     /// already focused. `Editor::enter_buffer` no-ops for that case (no
     /// switch, no diff, nothing for `detect_buffer_enter` to observe), matching
     /// Vim's `BufEnter`, which doesn't re-fire for re-entering the buffer

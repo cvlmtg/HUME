@@ -132,8 +132,8 @@ pub(crate) fn style_display_line(
     // (it has no per-grapheme fg/modifiers to paint), so a `LineBg`-scoped fg
     // or modifier applied here would only ever show up on content cells,
     // never on the gutter or the row's trailing fill past end-of-line.
-    // Constraining both paint sites to `bg` is what keeps them in agreement
-    // "by construction" instead of by convention. Layered below cursorline so
+    // Constraining both paint sites to `bg` is what keeps them in agreement.
+    // Layered below cursorline so
     // the cursor's own line always reads clearly even inside a tinted block;
     // a theme whose cursorline has no `bg` falls through to the tint
     // automatically (`ResolvedStyle::layer` only overrides on `Some(bg)`).
@@ -276,7 +276,7 @@ fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> Resol
 /// Collect (start_display_col, end_display_col_exclusive) spans for the given line within `grapheme_range`.
 ///
 /// `line_chars` is the half-open absolute-char range of the buffer line
-/// being rendered (from `rope.line_to_char`).
+/// being rendered (the line's start through the next line's start).
 ///
 /// Also sets `primary_sel_span` when the primary selection has a visible span
 /// on this display line.

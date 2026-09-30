@@ -139,7 +139,7 @@ fn indent_tab_width_eight() {
 fn indent_multiline_selection_indents_every_line() {
     // Anchor sits at column 0 but this selection is NOT linewise (it doesn't
     // reach the last line's trailing '\n'), so it clamps forward past the new
-    // indent like any other in-indent position. Only a genuinely linewise
+    // indent like any other in-indent position. Only a linewise
     // selection stays pinned at absolute column 0 (see
     // `indent_linewise_selection_stays_linewise`).
     assert_state!(

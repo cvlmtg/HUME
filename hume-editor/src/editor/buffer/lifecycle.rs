@@ -45,7 +45,7 @@ pub(in crate::editor) fn open_buffer(
 /// Marks `bid` `open_hook_pending` and queues it for language detection:
 /// every fresh `BufferId` must go through this exactly once, or
 /// `Editor::detect_pending_languages` never announces its `OnBufferOpen`
-/// (see that function's doc). Deliberately does **not** run detection
+/// (see that function's doc). Does **not** run detection
 /// inline: that needs `set_buffer_language`, which can activate lazy
 /// language plugins via `self.scripting`, a full `&mut Editor`/Steel-eval
 /// capability neither of this function's callers hold. Also leaves
@@ -83,7 +83,7 @@ pub(in crate::editor::buffer) fn open_buffer_and_notify(
 /// [`open_buffer_and_notify`] (which seeds the `undo-levels` cap from
 /// `state.settings`), returning `(new_id, true)`. Dedup-opening an
 /// already-open path enqueues no hook and detects no language, matching
-/// `Editor::open_buffer`'s "every call is a genuinely new buffer" contract.
+/// `Editor::open_buffer`'s "every call opens a new buffer" contract.
 /// The caller is responsible for any other post-open work (pane switching).
 pub(in crate::editor) fn open_or_dedup_and_notify(
     ev: &mut EngineView,
@@ -253,7 +253,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
     let opened = close_buffer(state, ev, id);
     // The last-buffer branch fired: a fresh scratch buffer was allocated in
     // `id`'s place and must announce its own `OnBufferOpen` like any other
-    // open: it is a genuinely new `BufferId`, not `id` reused.
+    // open: it is a fresh `BufferId`, not `id` reused.
     if let Some(bid) = opened {
         queue_open_announcement(state, bid);
     }
@@ -263,13 +263,11 @@ pub(in crate::editor) fn close_buffer_and_notify(
     }
 }
 
-/// Drop every pane's saved scroll *and* wrap-mode pin for `id`, whose content
-/// was reset wholesale (`set_view_content`'s history-resetting in-place
-/// replace (`Editor::open_read_only_view`)): not limited to viewers, since a
-/// background pane's *saved* scroll or pin for `id` is just as stale as a
-/// live one's, and a regenerated view buffer starts unpinned again, same as a
-/// freshly opened one would. Its stored positions were already reset by
-/// `PositionStores::reset`.
+/// Drop every pane's saved scroll *and* wrap-mode pin for `id`, once they no
+/// longer describe its content: it was replaced wholesale, reloaded, or
+/// closed. Not limited to viewers, since a background pane's *saved* scroll
+/// or pin for `id` is just as stale as a live one's, and a regenerated view
+/// buffer starts unpinned again, same as a freshly opened one would.
 pub(in crate::editor::buffer) fn forget_saved_views(ev: &mut EngineView, id: BufferId) {
     for (_, pane) in ev.panes.every_pane_across_all_tabs_mut() {
         pane.forget_buffer(id);

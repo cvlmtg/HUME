@@ -629,7 +629,7 @@ fn word_wrap_space_ends_previous_display_line_not_starts_continuation() {
     // fits exactly at col1 (current_display_col becomes 2); 'b' then overflows
     // (2+1>2), backtracking to the space. The space (char offset 1) must
     // end line0 ("a "), not become line1's leading cell: the new display
-    // line starts after the space. char_offset is the input's own char index,
+    // line starts after the space. the position is the input's own char index,
     // computed by hand from "a b" (a=0, space=1, b=2), not derived from
     // any wrap-logic internals.
     let (lines, graphemes) = do_format("a b", WrapMode::Word { width: 2 });
@@ -1208,7 +1208,7 @@ fn wrapping_modes_unaffected_by_h_window_none() {
 /// pathological string) must not pin its capacity in the pane's scratch for
 /// the rest of the session. The frame boundary is where that is given back;
 /// `clear` alone (run before laying out *each* display line, and followed immediately
-/// by filling it again) deliberately does not shrink.
+/// by filling it again) does not shrink.
 #[test]
 fn clear_and_shrink_reclaims_an_oversized_virtual_display_line() {
     let mut vline = VirtualLineScratch::new();

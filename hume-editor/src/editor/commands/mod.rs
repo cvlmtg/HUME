@@ -230,10 +230,9 @@ pub(super) fn tab_format(doc: &Buffer, settings: &EditorSettings) -> (TabStyle, 
     )
 }
 
-/// `doc`'s effective `word-chars`: buffer override → global default. The one
-/// place this precedence is applied: every word-family dispatch site reads
-/// through this or [`word_chars_owned`] instead of re-resolving the setting
-/// by hand.
+/// `doc`'s effective `word-chars`: buffer override → global default, as
+/// `BufferOverrides::word_chars`, the one resolver, applies it. Every
+/// word-family dispatch site reads through this or [`word_chars_owned`].
 pub(super) fn effective_word_chars<'a>(
     doc: &'a Buffer,
     settings: &'a EditorSettings,

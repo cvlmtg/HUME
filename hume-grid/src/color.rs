@@ -1,6 +1,6 @@
 /// A 24-bit true colour.
 ///
-/// There is deliberately no palette-index or named-colour variant. HUME
+/// There is no palette-index or named-colour variant. HUME
 /// requires true-colour terminals (see the project's terminal-compatibility
 /// rule), and its theme loader resolves a Helix-style ANSI colour name
 /// (`"red"`, `"light-gray"`) to a fixed `Rgb` at load time rather than

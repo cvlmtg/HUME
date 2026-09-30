@@ -185,7 +185,7 @@ pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor 
 ///
 /// The shape ~15 grammar tests need; [`attach_fixture_grammar_with`] covers
 /// the rest. Neither interns the language or sets it on a buffer, and neither
-/// drains the parse worker: which of those a test wants genuinely differs
+/// drains the parse worker: which of those a test wants differs
 /// (some assert on the undrained state, some register an identity first), so
 /// folding them in here would flatten distinctions the tests are making.
 ///
@@ -290,7 +290,7 @@ fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsPara
 /// token contract. Returns the live token; panics if `show-drawer-list!` refused the
 /// items or the stack read the request as stale. Neither is under test at
 /// any of this helper's callers.
-fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_scripting::host::WidgetToken {
+fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_scripting::host::HostToken {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 
@@ -760,7 +760,7 @@ impl Editor {
         let theme = crate::editor::theme::build_default_theme();
         let mut engine_view = EngineView::new(theme);
         // Unlike `bottom_bands` (which needs real Steel-callback wiring
-        // `for_testing` deliberately skips, see `tests/lsp_popup.rs`), the
+        // `for_testing` skips, see `tests/lsp_popup.rs`), the
         // tab bar's view state is a plain struct with no such dependency,
         // so it's cheap to register here too: a test rendering multiple
         // tabs (`editor_from` + `execute_typed("tabnew", ...)`) needs
@@ -1284,7 +1284,7 @@ impl Editor {
     }
 
     /// Feed one key through `handle_input`, the interactive input boundary
-    /// (unlike `feed_key`/`step`, which deliberately bypass it; see
+    /// (unlike `feed_key`/`step`, which bypass it; see
     /// `Editor::handle_input`'s doc), then `settle()`, mirroring
     /// `Editor::run`'s loop (dispatch at the bottom of one iteration, settle
     /// at the top of the next). Needed by tests covering the buffer-enter

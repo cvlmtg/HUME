@@ -610,7 +610,7 @@ fn lsp_request_with_no_attached_server_reports_an_error_and_fires_callback_with_
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |_b, _sid| {});
     // `setup_with` attaches the server to the focused buffer unconditionally.
-    // Detach it again so `bid` genuinely resolves to no server,
+    // Detach it again so `bid` resolves to no server,
     // reproducing the resolution-failure path this test targets.
     let focused = ed.focused_buffer_id();
     ed.state.buffers.get_mut(focused).lsp_server = None;

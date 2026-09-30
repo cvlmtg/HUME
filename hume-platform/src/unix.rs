@@ -72,10 +72,9 @@ impl super::ProbeChannel for TtyChannel {
 /// trading away the default core dump; nothing here relies on one.
 const SIGNALS: [i32; 4] = [SIGINT, SIGTERM, SIGHUP, SIGQUIT];
 
-/// This crate's exit code before any of the exit-fidelity tracking here
-/// existed: a fixed 130 (`SIGINT`'s own `128 + signo`), used today as the
-/// fallback when there's no real signal number to derive one from: the
-/// zero/unknown-signal case in [`exit_code_for_signal`].
+/// Fallback exit code when there's no real signal number to derive one
+/// from: the zero/unknown-signal case in [`exit_code_for_signal`]. 130 is
+/// `SIGINT`'s own `128 + signo`.
 const CONVENTIONAL_EXIT_CODE: i32 = 130;
 
 /// Maps a signal number to the conventional "killed by signal" exit code
@@ -202,7 +201,7 @@ pub(super) fn spawn_terminator(
         // code the normal path would have used, once this thread is
         // confirmed gone. `register_conditional_default` (re-raise with
         // `SIG_DFL`) is the wrong tool here: it would restore SIGQUIT's
-        // core dump, which `SIGNALS`' own doc comment deliberately trades
+        // core dump, which `SIGNALS`' own doc comment trades
         // away.
         register_conditional_shutdown(
             signal,

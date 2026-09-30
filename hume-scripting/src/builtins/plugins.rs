@@ -72,7 +72,7 @@ fn already_declared(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str) -> boo
         Some(PluginState::Loaded) => {
             // Stays Error, not Info: `hume-editor/tests/unix/scripting.rs`'s
             // `load_then_declare_ignored_with_soft_error` pins this as a
-            // deliberately-logged contradiction (load-then-declare), not an
+            // logged contradiction (load-then-declare), not an
             // ordinary idempotent no-op, and that test fails if the log
             // entry goes away.
             ctx.log(
@@ -450,7 +450,7 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
     ) {
         // Stays Error, not Info: `hume-editor/tests/unix/scripting.rs`'s
         // `declare_then_load_activates_and_logs_soft_error` pins this as a
-        // deliberately-logged contradiction, same reasoning as
+        // logged contradiction, same reasoning as
         // `already_declared` above.
         ctx.log(
             crate::log::LogLevel::Error,
@@ -638,7 +638,7 @@ pub(crate) fn finish_lazy_activation(
 /// `%dispatch-command!` to decide whether a `command_table` miss should trigger
 /// inline activation.
 ///
-/// Mappable-only deliberately: `%dispatch-command!` backs `call!`, which can
+/// Mappable-only: `%dispatch-command!` backs `call!`, which can
 /// never reach a typed command (`typed_command_table` is a separate table;
 /// see its own doc). Reporting a typed-only stub as activatable here would
 /// load the plugin for a lookup that misses again right after and errors:

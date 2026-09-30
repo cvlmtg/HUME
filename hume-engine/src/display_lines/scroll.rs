@@ -54,7 +54,7 @@ impl Viewport {
     /// A *downward* scroll is bounded by `DisplayLineMap::max_scroll_top`
     /// and additionally never moves `top` backwards past where it already
     /// sits: [`Viewport::align`] (`z z`/`z k`/`z j`) and an LSP
-    /// goto-definition jump both deliberately leave `top` past
+    /// goto-definition jump both leave `top` past
     /// `max_scroll_top` (see that function's own doc on not clamping at the
     /// bottom), so a plain `next.min(max_scroll_top)` would pick the
     /// *earlier* of the two (`DisplayLinePos: Ord` is document order),
@@ -249,7 +249,7 @@ impl<'a> DisplayLineMap<'a> {
     /// geometry [`Viewport::reveal`] resolves, so the two agree on
     /// `margin`/`target`.
     ///
-    /// The two bounds' *anchors* deliberately do not agree: this one
+    /// The two bounds' *anchors* do not agree: this one
     /// measures back from the document's last display line, while `reveal`
     /// measures from the cursor's own display line, which can never be a
     /// virtual one, since the cursor only ever occupies content display

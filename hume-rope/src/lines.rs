@@ -14,7 +14,7 @@ use crate::line::{ContentLine, ContentLineCount, RopeyLine, RopeyLineCount};
 use crate::offset::{CharOffset, ExclusiveRange};
 
 /// True if `rope` satisfies the trailing-newline invariant every HUME
-/// buffer upholds by construction: empty, or ending in `'\n'`. The single
+/// buffer upholds: empty, or ending in `'\n'`. The single
 /// source of truth for that check. [`content_line_count`] asserts it
 /// (a caller violating it is exactly the bug class this crate exists to
 /// surface), while callers that must reject a violation at runtime instead
@@ -68,7 +68,7 @@ pub fn last_ropey_line(rope: &Rope) -> RopeyLine {
 /// line indices.
 ///
 /// Assumes the trailing-newline invariant (debug-asserted), which every
-/// `hume_editing::BufferText` upholds it by construction. Callers that instead
+/// `hume_editing::BufferText` upholds. Callers that instead
 /// need the last valid *ropey* line, phantom line included, want
 /// [`last_ropey_line`].
 pub fn content_line_count(rope: &Rope) -> ContentLineCount {
@@ -243,9 +243,8 @@ pub fn next_line_start_byte(rope: &Rope, line: RopeyLine) -> usize {
     }
 }
 
-/// Char offset of the first non-whitespace char on `line`, or the line's
-/// exclusive end if the whole line is whitespace (including empty lines,
-/// where that end is `line_start`). Always within `[line_start, line_end]`.
+/// The first cluster on `line` that is not blank; the line's `\n` when
+/// every cluster is blank, an empty line included.
 ///
 /// Single source of truth for "where does leading whitespace end": the
 /// editor's auto-indent-on-Enter and dedent-on-Backspace paths both consult
@@ -267,8 +266,8 @@ pub fn is_space_char(ch: char) -> bool {
 /// `width::blank_advance`'s rule, the one indent guides use too.
 ///
 /// The width is a [`BufferLineCol`]: display cells from the buffer line's
-/// start, which is exactly where a leading run sits. So indent math uses
-/// `shift` instead of unwrapping to a bare count at the call site.
+/// start, which is where a leading run sits, so indent math shifts it
+/// instead of unwrapping to a bare count at the call site.
 pub fn leading_indent(
     rope: &Rope,
     line: ContentLine,
@@ -586,7 +585,7 @@ pub fn advance_byte_point(row: usize, byte_col: ByteCol, inserted: &str) -> (usi
 /// A single-line range yields one triple, byte-identical to converting
 /// `range.start`/`range.end` directly with [`char_to_line_byte`]. A
 /// multi-line range yields one triple per line it covers content on. The
-/// clip point is deliberately the `\n` char's own position, not
+/// clip point is the `\n` char's own position, not
 /// [`next_line_start`]. The latter is the *next* line's start, which
 /// `char_to_line_byte` would resolve to the wrong line (byte 0 of the line
 /// after).

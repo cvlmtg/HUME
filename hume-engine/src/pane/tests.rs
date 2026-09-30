@@ -300,7 +300,7 @@ fn whitespace_config_defaults() {
     assert_eq!(wc.nbsp_char, "⍽");
 }
 
-fn make_pane_at_char(rope: &ropey::Rope, head_char: usize) -> Pane {
+fn make_pane_at(rope: &ropey::Rope, head_char: usize) -> Pane {
     Pane {
         selections: Some(cursor_mirror(rope, head_char)),
         ..Pane::new(crate::pipeline::BufferId::default())

@@ -24,7 +24,7 @@ pub(super) const STYLE_KEYS: [&str; 4] = ["fg", "bg", "underline", "modifiers"];
 /// `[ui]` / `text = "blue"`); TOML sees two distinct keys, so this is legal
 /// input rather than a duplicate-key error it could reject. The flat key wins:
 /// `toml::Table` is a `BTreeMap` here (the crate's `preserve_order` feature is
-/// deliberately off; see hume-engine's `Cargo.toml`), so `"ui"` sorts before
+/// off; see hume-engine's `Cargo.toml`), so `"ui"` sorts before
 /// `"ui.text"` and the flat key's insert lands second. Pinned by test, since
 /// it would otherwise be an accident of a dependency's feature flags.
 pub(super) fn flatten_scopes(table: toml::Table, warnings: &mut Vec<ThemeError>) -> toml::Table {
@@ -43,7 +43,7 @@ pub(super) fn flatten_scopes(table: toml::Table, warnings: &mut Vec<ThemeError>)
 /// `path`. A table's entries split into style fields (kept as `path`'s own
 /// style table) and everything else (recursed as `"<path>.<key>"`). `path`
 /// is emitted as a scope in its own right whenever it carries a style field,
-/// or the table is empty: `"ui.cursor.insert" = {}` deliberately blocks the
+/// or the table is empty: `"ui.cursor.insert" = {}` blocks the
 /// dot-fallback chain and must not be dropped. A table holding *only*
 /// sub-tables (a pure container, e.g. `[ui.cursor]` with just
 /// `[ui.cursor.match]` beneath it) emits nothing for `path` itself. This is

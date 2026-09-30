@@ -58,7 +58,7 @@ impl CharOffset {
     /// on inversion. A raw `self - earlier` would silently wrap instead.
     ///
     /// The named form for "how many chars does this span cover".
-    /// `self` is the *later* offset deliberately: every call site today is a
+    /// `self` is the *later* offset because every call site today is a
     /// subtraction (`end - start`, `p - b.old_pos()`), and keeping `self` on
     /// the same side as the minuend preserves that written order. A
     /// receiver/argument swap is exactly the mistake a raw subtraction hides
@@ -110,17 +110,14 @@ impl CharOffset {
 
 /// A half-open range `[start, end)`: `end` is one past the last position
 /// covered. Matches `BufferText::slice`, `ChangeSet`'s position-mapping API,
-/// and LSP wire ranges (half-open by protocol).
+/// and LSP wire ranges (half-open by protocol). A range of whole clusters is
+/// a [`crate::cluster::ClusterRange`] instead.
 ///
-/// Exists alongside [`InclusiveRange`] so the two `(T, T)`-shaped
-/// conventions this codebase uses for a char range, inclusive
-/// (`Selection`, every text-object/bracket/quote/tag/search finder) and
-/// exclusive (everything above), are two distinct, named types instead of
-/// one bare tuple shape whose meaning depends on which function produced it.
 /// Fields are `pub`, unlike `CharOffset`: nothing here prevents arithmetic
-/// misuse the way `CharOffset`'s private field does. This type exists
-/// purely so "which convention" is a name, not a lookup, and public fields let
-/// it read as ergonomically as `std::ops::Range` does.
+/// misuse the way `CharOffset`'s private field does. This type exists so
+/// "half-open" is a name rather than a bare tuple whose meaning depends on
+/// which function produced it, and public fields let it read as
+/// ergonomically as `std::ops::Range` does.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ExclusiveRange<T> {
     pub start: T,
@@ -149,11 +146,10 @@ impl<T: PartialEq> ExclusiveRange<T> {
     }
 }
 
-/// An inclusive range `[start, end]`: both ends are covered. Matches
-/// `Selection::start()`/`end()`, every text-object/bracket/quote/tag/search
-/// finder, and `ObjectSpans`. Never empty: a single position is `start ==
-/// end`. See [`ExclusiveRange`]'s doc for why this is a named type rather
-/// than a bare tuple.
+/// An inclusive range `[start, end]`: both ends are covered. Used for line
+/// ranges (`InclusiveRange<ContentLine>`). Never empty: a single position is
+/// `start == end`. See [`ExclusiveRange`]'s doc for why this is a named type
+/// rather than a bare tuple.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct InclusiveRange<T> {
     pub start: T,

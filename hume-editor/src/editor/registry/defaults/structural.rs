@@ -38,7 +38,7 @@ pub(in crate::editor) struct StructuralObject {
 /// the `inner-argument`/`around-argument` names, with the lexical scan as
 /// fallback. See `Argument`'s doc on `StructuralBody`.
 ///
-/// `test` and `entry` deliberately diverge from Helix's own letters (`T` and
+/// `test` and `entry` diverge from Helix's own letters (`T` and
 /// `e`) to fit `keymap/defaults::build_goto_trie`'s `g <key>`/`g <KEY>`
 /// scheme, which derives the "previous" bind by uppercasing `key`. That
 /// requires every `key` here to be lowercase (enforced by a

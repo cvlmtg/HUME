@@ -125,7 +125,7 @@ pub(in crate::editor) fn cmd_select_last_insertion(
     let Some(spans) = fresh else {
         return Err(CommandError::transient("no last insertion"));
     };
-    // Non-empty by construction: `tear_down_insert` only ever stashes a
+    // Non-empty: `tear_down_insert` only ever stashes a
     // non-empty `spans` vec (see `begin_typed_run`'s caller). The last
     // span is spatially last (stashed in ascending-start order), so primary
     // there, matching the entry command's own cursor placement.

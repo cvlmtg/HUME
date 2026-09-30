@@ -283,7 +283,7 @@ fn crash_fails_in_flight_requests_immediately_instead_of_waiting_for_their_deadl
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     // No response scripted: this request would otherwise sit pending
-    // until its (deliberately far-future) deadline.
+    // until its (far-future) deadline.
     wire_client(&mut ed, backend, sid);
 
     let result: Rc<RefCell<Option<Outcome>>> = Rc::new(RefCell::new(None));

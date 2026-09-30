@@ -195,41 +195,6 @@ fn devanagari_vowel_sign() {
     assert_eq!(prev_grapheme_boundary(buf.slice(..), co(2)), co(0));
 }
 
-// ── A cluster's last char ───────────────────────────────────────────────────
-
-/// The last codepoint of the cluster holding `pos`: one before its end.
-fn last_char_of(buf: &Rope, pos: usize) -> CharOffset {
-    snap_to_cluster(buf.slice(..), co(pos))
-        .expect("a non-empty text")
-        .end
-        .retreat(1)
-}
-
-#[test]
-fn a_single_codepoint_cluster_ends_on_its_own_char() {
-    // Every char in "hello" is its own 1-codepoint cluster.
-    let buf = rope("hello");
-    assert_eq!(last_char_of(&buf, 0), co(0));
-    assert_eq!(last_char_of(&buf, 4), co(4));
-}
-
-#[test]
-fn a_combining_cluster_ends_on_its_combining_mark() {
-    // "e\u{0301}x\n" (é = e + combining acute): the cluster starting at 0
-    // spans chars 0-1, so its last codepoint is 1 (the mark), not 0 (the
-    // base letter).
-    let buf = rope("e\u{0301}x");
-    assert_eq!(last_char_of(&buf, 0), co(1));
-}
-
-#[test]
-fn the_last_cluster_of_a_one_char_text_ends_on_it() {
-    // Single-char buffer: the structural '\n' is its own cluster, ending at
-    // len_chars() (1).
-    let buf = rope("");
-    assert_eq!(last_char_of(&buf, 0), co(0));
-}
-
 // ── grapheme_count ────────────────────────────────────────────────────────
 
 #[test]
@@ -747,6 +712,7 @@ fn snap_to_cluster_joins_a_prepend_char_and_its_base() {
 // ── LF-normalized text ────────────────────────────────────────────────────
 
 #[test]
+#[cfg(debug_assertions)]
 #[should_panic(expected = "LF-normalized")]
 fn char_pos_at_display_col_rejects_a_carriage_return() {
     let r = Rope::from_str("ab\r\ncd\n");

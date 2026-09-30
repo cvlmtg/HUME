@@ -67,7 +67,7 @@ positions directly during construction, and undo/redo restore selections from
 the stored transaction (see below). Indent/unindent (shifting a line's
 leading whitespace by a level) is the one exception. Rewriting a line's
 indent is a replace — old whitespace out, new whitespace in — and a selection
-that happens to sit exactly at the line's start is genuinely ambiguous:
+that happens to sit exactly at the line's start is ambiguous:
 should it stay pinned to the start of the line, or land past the freshly
 written indent? Rather than hand-deriving an answer per selection, indent
 lets position mapping resolve it: it writes the new indent into the

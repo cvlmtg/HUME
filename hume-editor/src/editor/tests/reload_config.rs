@@ -272,7 +272,7 @@ fn reset_reverts_statusline_config_to_default() {
 }
 
 /// The loaded theme reverts to the compiled-in default (`sand.toml`), not
-/// via `resync_derived_state`'s ordinary "theme" arm (which deliberately
+/// via `resync_derived_state`'s ordinary "theme" arm (which
 /// no-ops when `settings.theme` is empty, the reset value), but via the
 /// explicit `view.theme = build_default_theme()` write `reset_globals` makes.
 ///
@@ -647,7 +647,7 @@ fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
 /// An open picker session must be gone after a reset, and, unlike `Esc`/
 /// `picker-close!`, its `on_select` callback must never fire: it belongs to
 /// the outgoing engine, which is seconds from being dropped (see
-/// `picker::close_picker`'s doc for why `reset_config_state` deliberately
+/// `picker::close_picker`'s doc for why `reset_config_state`
 /// bypasses that chokepoint). Checked via `pending_work` staying empty, not
 /// just `picker.is_none()`: the latter alone can't tell "dropped
 /// silently" apart from "closed normally", since `close_picker` also clears
@@ -798,10 +798,10 @@ fn resync_refires_lsp_attach_for_a_running_server() {
 /// Drained with `drain_pending_work()`, never `settle()`: `settle()` also
 /// runs `drain_async_sources` first, which would drive the mock backend's
 /// pre-queued `initialize` response to completion for real. This test
-/// deliberately never does that (unlike `complete_handshake`, which the
+/// never does that (unlike `complete_handshake`, which the
 /// "refires for a Running server" test above calls), firing `OnLspAttach`
 /// via the legitimate `BecameRunning` path and confounding "resync fired it"
-/// with "the handshake genuinely completed here." `drain_pending_work()`
+/// with "the handshake completed here." `drain_pending_work()`
 /// drains only `resync_config_state`'s own queued hooks, leaving the
 /// backend's response untouched.
 #[test]
@@ -969,7 +969,7 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
 }
 
 /// `on-diagnostics-changed` re-fires from the surviving `LspState::diagnostics`
-/// cache (`LspState::reset_config` deliberately never touches it), not from
+/// cache (`LspState::reset_config` never touches it), not from
 /// a fresh wire publish. Exactly the reported symptom: decorations empty
 /// after a reload while the underlying diagnostics data is still there.
 #[test]
@@ -1085,7 +1085,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
     // Crash the server via the same path a real transport failure takes
     // (`LspClient::on_event` transitions its internal state to `Crashed` and
     // returns the action). `dispatch_lsp_action`'s `Crashed` arm clears its
-    // progress/pending requests but deliberately never touches `diagnostics`
+    // progress/pending requests but never touches `diagnostics`
     // or `buf.lsp_server`.
     let actions =
         ed.lsp

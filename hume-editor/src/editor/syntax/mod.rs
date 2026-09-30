@@ -200,7 +200,7 @@ impl Editor {
                 // `language_explicit`, so detection must not clobber it with whatever plain
                 // detection finds for the path, the same reasoning as
                 // `init_scripting`'s post-reload sweep. `OnBufferOpen` still
-                // fires either way: the buffer was genuinely opened.
+                // fires either way: the buffer was still opened.
                 if !self.state.buffers.get(bid).language_explicit {
                     self.detect_and_set_language(bid);
                 }

@@ -107,7 +107,7 @@ impl<'a> PositionStores<'a> {
         self.drop_shared(buffer);
     }
 
-    /// Forget every position stored for `buffer`, which no longer exists:
+    /// Forget every position stored for `buffer`, which was closed:
     /// each pane's state for it is removed, and what `reset` drops beyond the
     /// panes goes with it.
     pub(in crate::editor) fn forget_buffer(&mut self, buffer: BufferId) {

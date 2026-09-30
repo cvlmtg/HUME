@@ -154,7 +154,7 @@ fn type_name(v: &SteelVal) -> &'static str {
 /// One step of a [`JsonHandle`]'s path from its root: an object key or an
 /// array index. Only ever appended to a handle's path after a navigation
 /// step has already proven it resolves (see [`JsonHandle::resolve`]), so a
-/// handle's path is always valid against its own root by construction.
+/// handle's path is always valid against its own root.
 /// `Arc<str>` (not `Box<str>`) so extending a path by one `Seg` is a
 /// refcount bump per existing segment, not a string copy.
 #[derive(Debug, Clone)]
@@ -503,7 +503,7 @@ fn hash_json_value<H: std::hash::Hasher>(v: &serde_json::Value, state: &mut H) {
             2u8.hash(state);
             // Number derives Hash directly (this workspace doesn't enable
             // its arbitrary_precision feature), so this stays consistent
-            // with equality by construction, including its float arm,
+            // with equality, including its float arm,
             // which hashes +0.0 and -0.0 alike to agree with their PartialEq.
             n.hash(state);
         }

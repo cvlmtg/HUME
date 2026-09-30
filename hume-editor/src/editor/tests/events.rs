@@ -11,7 +11,7 @@ use hume_grid::Rect;
 /// itself.
 ///
 /// The test installs an `on-mode-change` handler that logs a message, so a
-/// new log entry shows the hook fired. Deliberately not a cursor motion
+/// new log entry shows the hook fired. Not a cursor motion
 /// (as the sibling mouse-click test below uses): with `select-inserted-text`
 /// on, the entry hook's own `move-right` would land inside the pinned typed
 /// run and get folded into the Esc-time auto-select, then cancelled out by
@@ -75,8 +75,8 @@ fn exit_insert_via_esc_fires_on_mode_change() {
 /// drain itself: the `settle()` below is what
 /// fires the queued hook. The click itself also repositions the cursor, so
 /// the `state()` diff alone doesn't distinguish "hook fired" from "click
-/// moved the cursor". The mode assertion just above it is the load-bearing
-/// check for the hook actually having run at all.
+/// moved the cursor". The mode assertion just above it is what
+/// proves the hook actually ran.
 #[test]
 fn mouse_click_in_insert_fires_on_mode_change() {
     use crate::testing::MockHost;

@@ -560,7 +560,7 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
                 "textDocument/completion",
                 serde_json::json!([{"label": "bar", "insertText": "bar"}]),
             );
-            // Deliberately no scripted reply for completionItem/resolve:
+            // No scripted reply for completionItem/resolve:
             // :lsp-stop must sweep it before any reply would matter.
         },
     );

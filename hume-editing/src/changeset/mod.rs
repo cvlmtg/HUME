@@ -218,7 +218,7 @@ impl<'a> PosMapCursor<'a> {
     pub fn map_anchor(&mut self, pos: CharOffset, assoc: Assoc) -> MappedPos {
         // Bare usize from here down: `old`/`new` are running cursors advanced
         // by op *lengths* (`self.old += n`, `self.new + len`), arithmetic
-        // `CharOffset` deliberately has no `Add`/`Sub` for. This is that
+        // `CharOffset` has no `Add`/`Sub` for. This is that
         // type's own no-arithmetic design forcing an escape, not a
         // performance carve-out (`CharOffset` is a zero-cost `Copy` newtype).
         let pos = pos.index();
@@ -512,7 +512,7 @@ impl ChangeSet {
         self.edited_regions().into_iter().map(|r| r.old).collect()
     }
 
-    /// Like [`edited_old_ranges`](Self::edited_old_ranges), but also carries
+    /// Like `edited_old_ranges`, but also carries
     /// the text each region's edit inserted: the old-doc span plus its
     /// replacement, in one walk. `inserted` is `Cow::Borrowed` in the common
     /// case (a region touched by at most one `Insert` op); a region merging

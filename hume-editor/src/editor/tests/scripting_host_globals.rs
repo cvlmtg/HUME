@@ -158,7 +158,7 @@ fn hume_globals_scm_matches_generated_host_names() {
 /// `STEEL_LSP_HOME` at the real, existing `lsp-home/` directory this same
 /// module's drift test keeps in sync.
 ///
-/// PATH-independent by construction: `plugin.scm`'s own load-time tail may
+/// PATH-independent: `plugin.scm`'s own load-time tail may
 /// have already registered `"scheme"` if `steel-language-server` happens to
 /// be on this machine's `$PATH` (harmless no-op then, guarded by `unless
 /// (lsp-registered-for-language? "scheme")`), so this test explicitly

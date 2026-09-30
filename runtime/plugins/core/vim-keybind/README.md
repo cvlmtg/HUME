@@ -73,7 +73,7 @@ binding (falls back to `:e #` on those terminals).
 ### Why `G` isn't bound
 
 Vim's `G` (last line) is exactly the kind of key this plugin exists to restore, but it's
-deliberately left alone: `G` is a prefix in HUME's own keymap (`G L`/`G U`/`G C` case
+left alone: `G` is a prefix in HUME's own keymap (`G L`/`G U`/`G C` case
 transforms, plus `G R` rename from `core:lsp`), and binding a single bare key replaces
 the whole trie node it lands on. Rebinding `G` here would silently take those three (and
 `G R`) down with it for anyone who loads this plugin. `g e` reaches the last line and is

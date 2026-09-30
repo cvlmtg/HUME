@@ -48,7 +48,7 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
 
 /// A prompt's snapshot names the buffer it was taken from. Closing that
 /// buffer drops the snapshot, so the prompt keeps working on the buffer the
-/// pane moved to instead of indexing a pane state that no longer exists.
+/// pane moved to instead of indexing the pane state removed with the buffer.
 #[test]
 fn closing_the_buffer_a_search_prompt_snapshotted_leaves_the_prompt_usable() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -258,7 +258,7 @@ fn an_unknown_or_released_token_answers_absent() {
     );
     assert_eq!(
         ed.state.panes.tracked.position(
-            hume_scripting::host::WidgetToken::from_raw(u64::MAX),
+            hume_scripting::host::HostToken::from_raw(u64::MAX),
             &ed.state.buffers
         ),
         None

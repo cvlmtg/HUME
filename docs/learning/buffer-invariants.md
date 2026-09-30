@@ -65,7 +65,7 @@ buffer is untouched.
 There are two kinds of call sites:
 
 - **Internal commands** (character insertion and deletion, motion code): these
-  build changesets by construction and can never violate the invariants. They
+  build their own changesets and can never violate the invariants. They
   expect success and treat a failure as an engine bug — a hard crash with a
   diagnostic message is appropriate here.
 
@@ -106,7 +106,7 @@ During development, internal code uses lightweight assertions that only run in
 debug builds. These assertions catch engine bugs during testing without paying
 any cost in release builds.
 
-## A fourth strategy: unreachable by construction
+## A fourth strategy: make the violation unreachable
 
 The three options above — repair, crash, or reject-and-return-error — all
 assume the invariant is checked *after* a value already exists. The no-raw-
@@ -122,7 +122,7 @@ where text from outside the editor becomes buffer content, and both convert
 line endings to `\n` before the text goes anywhere else. Every piece of code
 downstream of those two points can simply assume the property holds, the
 same way it assumes the trailing newline holds — the difference is *how* the
-guarantee is produced: by construction at a narrow choke point, rather than
+guarantee is produced: at a narrow choke point where the text is built, rather than
 by checking a value that already exists. A lightweight debug-only assertion
 still confirms the invariant holds, purely to catch a bug in the editor
 itself — it plays no role in maintaining the guarantee for ordinary use.

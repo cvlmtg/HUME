@@ -949,7 +949,7 @@ fn word_search_pattern_over_matches_a_wider_word_chars_run() {
 // ── Corpus ────────────────────────────────────────────────────────────────
 
 #[test]
-fn find_next_match_spans_every_corpus_sample_exactly() {
+fn find_next_match_spans_every_corpus_sample() {
     for s in test_fixtures::unicode::ALL {
         let text = BufferText::from(format!("x\n{s}b\n").as_str());
         let regex = regex_cursor::engines::meta::Regex::new(&regex_syntax::escape(s)).unwrap();

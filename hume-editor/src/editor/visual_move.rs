@@ -282,12 +282,12 @@ fn copy_selection_vertically(
     // Index in `all_sels` for the furthest copy of the old primary, if one was added.
     let mut primary_copy_idx: Option<usize> = None;
 
-    // Line indices below are bare `isize`, deliberately: `direction` (+1/-1)
+    // Line indices below are bare `isize`: `direction` (+1/-1)
     // has to multiply uniformly into `anchor_line`/`head_line`/`outer_line`
     // regardless of copy direction, and `ContentLine::down`/`up` split that
     // one signed step into a per-direction branch at every use instead.
     // `available`'s own division is exactly the same shape one line down.
-    // Every value here stays `<= last_content_line()` by construction (each
+    // Every value here stays `<= last_content_line()` (each
     // is a real selection's line, or that line shifted by a `steps` already
     // bounded by `available`), so the later `as usize` cast back into
     // `ContentLine::new` below is never out of range.

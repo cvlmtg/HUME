@@ -73,7 +73,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         // `resolve_buffer_path`, not a hard `canonicalize`: a missing path is
         // openable here exactly like `:e` on one; see `Buffer::from_file_or_new`.
         let resolved = crate::editor::Editor::resolve_buffer_path(path, &self.state.cwd);
-        // Language detection is deliberately not done here; see
+        // Language detection is not done here; see
         // `Effect::DetectBufferLanguage`'s doc; the `open-buffer!` builtin
         // queues it once this returns.
         let (bid, _is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(

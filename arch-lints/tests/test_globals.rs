@@ -23,7 +23,7 @@
 //!
 //! **Opt-out**: annotate the violation line (or the line above it, so
 //! `cargo fmt` doesn't hoist a trailing comment) with
-//! `// test-global-safe: <reason>`, for a genuinely new site that legitimately
+//! `// test-global-safe: <reason>`, for a new site that legitimately
 //! needs a raw call (e.g. a fresh guard struct).
 
 use arch_lints::{editor_test_tree_paths, scan_forbidden, workspace_root};

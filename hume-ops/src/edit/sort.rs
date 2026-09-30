@@ -24,10 +24,10 @@ pub struct SortOpts {
 
 /// Why [`sort_lines`] declined to produce an edit.
 ///
-/// A distinct type (not an identity `ChangeSet`) is load-bearing: the caller
-/// (`:sort`'s typed-command handler) reports *why* nothing happened
-/// ("nothing to sort" vs. "already sorted"), which an identity `ChangeSet`
-/// alone can't distinguish.
+/// A distinct type rather than `Edited::unchanged`: the caller (`:sort`'s
+/// typed-command handler) reports *why* nothing happened ("nothing to
+/// sort" vs. "already sorted"), which an unchanged edit alone can't tell
+/// apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortRefusal {
     /// No selection spans two or more line-adjacent lines.

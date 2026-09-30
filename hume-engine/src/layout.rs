@@ -71,7 +71,7 @@ pub fn compute_viewport<'a>(
 ) -> PaneGeometry {
     // 0-based index of the last line: the single source of truth for
     // GutterColumn::width(). Using the whole-file last line (not just what is
-    // on screen) keeps gutter width stable as the user scrolls. Deliberately
+    // on screen) keeps gutter width stable as the user scrolls. It is
     // the phantom trailing line, not the last content line: the gutter is
     // sized one digit wider than content requires.
     let last_line_idx = hume_rope::lines::last_ropey_line(rope);

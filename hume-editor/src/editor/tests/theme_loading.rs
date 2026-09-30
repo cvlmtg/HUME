@@ -154,7 +154,7 @@ fn bundled_theme_diff_line_tints_are_pairwise_distinct() {
 /// a single style per mode and paints it across the entire statusline, so a
 /// scope that overrides only `fg` renders as illegible accent-on-base-bg text
 /// rather than a tinted row. `ui.statusline.normal` is exempt: it equals the
-/// base row in every bundled theme by construction.
+/// base row in every bundled theme.
 ///
 /// Overlaps with `bundled_theme_mode_scopes_are_pairwise_distinct` below for
 /// every scope but `normal` (which isn't checked here, and isn't in that
@@ -229,7 +229,7 @@ fn bundled_theme_mode_scopes_are_pairwise_distinct() {
 /// change, where `sand` is HUME's own theme and still gets retuned: a
 /// fixture that happens to rely on one of its rungs would drift out from
 /// under this test with no relation to what it actually checks. There is
-/// deliberately no assertion that a theme's cursor colors differ across
+/// no assertion that a theme's cursor colors differ across
 /// modes: which modes get a distinct cursor cue, if any, is the theme
 /// author's call, not a bundled-theme requirement.
 #[test]

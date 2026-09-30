@@ -86,6 +86,22 @@ numbers directly.
 - **L27** — An invariant about how a value is read or built is enforced by
   removing the raw accessor and providing the typed conversion, not by an
   audit or a comment. Propose the compile-time form in the plan.
+- **L29** — A defect the model permitted is fixed where the model is built,
+  and the caller patches that hid it are reverted. Before patching a caller,
+  name the type or funnel that made the bug possible and put it in the plan's
+  altitude line.
+- **L30** — A redesign that derives policy from a class of text (word
+  characters) must take that class from the source or server that owns the
+  token, not from the editor. Ask what else could define it before fixing the
+  rule in the model.
+- **L31** — When an edge case forces a special value (an empty range, a tag,
+  a deferred fix-up) at the point an operation is recorded, ask whether the
+  invariant it protects can be checked once on the result instead. One
+  result-level rule replaces the per-operation exceptions.
+- **L32** — When an approved design turns out costlier than expected, the
+  deviation report compares the options on correctness first: what each
+  lets go wrong, when, and how it would show. Churn is a separate line, never
+  the argument for the smaller option.
 
 ---
 
@@ -1393,3 +1409,80 @@ raw form unreachable (`pub(crate)` accessor) and add the typed conversion
 (`span`, `from_span`, `end_exclusive`). Then the compiler lists every
 outside site, and a new command cannot reintroduce the bug. Offer that
 form in the plan's altitude line before proposing a grep-based audit.
+
+---
+
+## L29 — Caller patches worked around what the model permitted (2026-09-30)
+
+**Root cause:** A review of the cluster-position selection model found
+defects the model itself allowed: an edit builder whose result depended on the
+order operations were recorded, a selection set that was silently re-fitted
+when paired with another text, registers that lost the shape of what was
+yanked, and stored positions (jump entries, the last insertion, the completion
+session) carried by hand at each write site. The first repairs patched each
+caller. The user rejected them: working around a model weakness in the caller
+is the wrong altitude and breaks separation of concerns. The same shape had
+already been documented for two-step calls (L2).
+
+**Prevention rule:** When a defect comes from what the model permits, change
+the model and revert the caller patches: make operations order-independent,
+refuse the wrong pairing loudly, record a fact where it is known (a register
+piece's shape), and carry every stored position from one chokepoint
+(`PositionStores`). Before patching a caller, ask which type or funnel made the
+bug possible, and state it in the plan's altitude line.
+
+---
+
+## L30 — The completion token was modeled as "all word characters" (2026-09-30)
+
+**Root cause:** The proposed completion redesign derived "did the cursor leave
+the token" from the buffer's word characters, the rule the old code already
+hardcoded for every source. A source or language server can define a token
+with other characters (`foo-bar`, `$var`, a path, a dotted member). The user
+asked what happens when one does.
+
+**Prevention rule:** When a redesign turns an existing hardcoded rule into
+derived policy, list who owns the definition of the thing the rule classifies.
+Here the source declares extra token characters (`#:token-chars`) and a server's
+own edit range says where an item's token starts; the editor supplies only the
+default.
+
+---
+
+## L31 — Three structural-newline exceptions hid one result-level rule (2026-09-30)
+
+**Root cause:** Typing the edit builder's inputs as `ClusterRange` stalled on
+`d` over an empty last line, which needed an empty range tagged with its
+lines so a finish-time pass could move the deletion back one break. The
+proposed fix kept that shape (`delete_lines(lines)`). It protected "the text
+ends with `\n`" through three per-operation rules: every deletion clamped
+short of the structural `\n`, whole-line runs to the last line moved back,
+and a replacement reaching the break dropping its own final `\n`. The user
+asked why not delete what the selections cover and fix the final `\n` once.
+
+**Prevention rule:** When an invariant is defended at each operation and an
+edge case needs a special value to survive until the end, test the invariant
+on the result instead: here, when the result would not end with `\n`, every
+deletion stops before the structural one. State it so the edit stays minimal
+(stop the deletion, don't delete and re-insert), and delete the per-operation
+rules it replaces.
+
+## L32 — A deviation report argued for the smaller option on cost (2026-09-30)
+
+**Root cause:** Routing LSP diagnostics and decorations through
+`PositionStores::carry` had been approved. Mid-implementation it turned out
+to need moving `DiagnosticsStore` out of `LspState` and changing borrows at
+fifteen sites. The deviation report recommended documenting the two
+exceptions instead, arguing from that cost and describing the flush-time
+remap as "paired with the didChange stream", with no word on what the
+exceptions let go wrong. The user asked for the options' pros and cons from
+a correctness point of view, stating churn was not a concern. That analysis
+found a reachable bug in the recommended option: a decoration set right
+after an edit was shifted a second time by the next flush. A red test then
+confirmed it.
+
+**Prevention rule:** A deviation report weighs the options on what each
+lets go wrong: stale windows, reachable misplacements, invariants left to
+convention. Name the failure each permits before naming its cost. If the
+smaller option has a correctness gap, it is not the recommendation, whatever
+the churn. Write the test for the gap before choosing.

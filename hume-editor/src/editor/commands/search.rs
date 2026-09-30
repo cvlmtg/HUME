@@ -266,7 +266,7 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
     // would otherwise expand the cursor to the adjacent \n run and set a useless
     // newline regex; on whitespace, it would expand to the whitespace run itself
     // and set a bare-space pattern (Vim instead scans to the nearest word; HUME
-    // deliberately no-ops rather than adding that scan).
+    // no-ops rather than adding that scan).
     match chars.classify(text.char_at(primary.head().offset()).unwrap_or('\n')) {
         CharClass::Eol | CharClass::Space => return Ok(()),
         _ => {}

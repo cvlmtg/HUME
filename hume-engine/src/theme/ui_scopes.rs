@@ -6,7 +6,7 @@
 //! module exists to close off. `hume-engine/src/theme/loader/vocabulary.rs`
 //! renders [`ALL`] into `tools/theme-editor/src/lib/vocabulary.generated.js`.
 //!
-//! `ui.cursorline` is deliberately absent: it is resolved only as a
+//! `ui.cursorline` is absent: it is resolved only as a
 //! dot-fallback parent for `ui.cursorline.primary`, never looked up by its
 //! own name (same rule `tools/theme-editor/tests/coverage.test.js`'s
 //! `FALLBACK_ONLY_CHROME` documents on the JS side), so it isn't a name any

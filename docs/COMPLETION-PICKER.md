@@ -55,7 +55,7 @@ Each concept below has one owner — everything under
 (Insert mode, the `:` line), and rather than one session type with a
 `Target` enum inside it, each target is its own concrete type
 (`BufferSession`/`MinibufSession`) over one generic core (`SlotSet`) that
-holds the bookkeeping genuinely shared by both — the slot list, the ranked
+holds the bookkeeping shared by both — the slot list, the ranked
 index, the matcher, the menu's selected row. What differs per target (the
 accept mechanism, cross-source dedup, further-typing behavior) lives only
 on that target's own type, so there is no arm for the other target that
@@ -64,10 +64,10 @@ can never run, and an outside caller's own type (`&BufferSession` vs.
 
 | Concept | Type | Where |
 |---|---|---|
-| **Source** — a named producer of candidates, with its static facts: how its items score, its priority, and its body (a native fn or a Steel proc). Two separate namespaces, one per target — a name in one has no bearing on the same name in the other | `BufferSourceEntry`/`MinibufSourceEntry` in `SourceRegistry` (`buffer`/`minibuf` fields, `BufferSourceId`/`MinibufSourceId` index them) | `registry.rs`; the registry lives on `ConfigState.completion_sources`, so `:reload-config` rebuilds it from the natives by construction |
+| **Source** — a named producer of candidates, with its static facts: how its items score, its priority, and its body (a native fn or a Steel proc). Two separate namespaces, one per target — a name in one has no bearing on the same name in the other | `BufferSourceEntry`/`MinibufSourceEntry` in `SourceRegistry` (`buffer`/`minibuf` fields, `BufferSourceId`/`MinibufSourceId` index them) | `registry.rs`; the registry lives on `ConfigState.completion_sources`, so `:reload-config`, which replaces the whole `ConfigState`, rebuilds it from the natives |
 | **Invocation** — one call of one source for one trigger: the id the source answers to, the document snapshot it saw (`rope` + every change carried since, composed, `Buffer`-target only), its token start in live coordinates, and its answer once it has one | `Invocation<S>` (generic over the span shape, `BufferSpan`/`MinibufSpan`) | `session/slots.rs` (the generic base), `session/buffer.rs`/`session/minibuf.rs` (each target's own constructor) |
 | **Slot core** — one `SourceSlot<Id, S>` per participating source (its latest `shown` invocation and, if re-invoked since, the newer `inflight` one), the ranked `(slot, item)` index, the matcher, the menu's selected row | `SlotSet<Id, S>` | `session/slots.rs` |
-| **Session** — one per target: the slot core plus whatever is genuinely that target's own (`BufferSession` adds the buffer/pane/generation it's tracking and the cross-source dedup mask; `MinibufSession` adds the `:` line input every source saw) | `BufferSession`, `MinibufSession` | `session/buffer.rs`, `session/minibuf.rs`; `session/accept.rs` applies `BufferSession`'s accepted item |
+| **Session** — one per target: the slot core plus whatever is that target's own (`BufferSession` adds the buffer/pane/generation it's tracking and the cross-source dedup mask; `MinibufSession` adds the `:` line input every source saw) | `BufferSession`, `MinibufSession` | `session/buffer.rs`, `session/minibuf.rs`; `session/accept.rs` applies `BufferSession`'s accepted item |
 | **Orchestrator** — the one driver for both targets: picks the sources a trigger applies to, mints invocations, runs them, lands answers, reacts to edits, applies the `:` line's eager policy | `impl EditorState` | `orchestrate.rs` |
 | **Layer** — keys, selection, render sync | `BufferCompletionLayer`, `MinibufCompletionLayer` | `input_stack/completion.rs` |
 
@@ -121,7 +121,7 @@ surface.
 
 ### Invocations and answers
 
-A trigger mints one `Invocation` per source (`widget_token::next()` for its
+A trigger mints one `Invocation` per source (`host_token::next()` for its
 id), its span already resolved (above) — a native source answers inline; a
 Steel one is *queued* via `EditorState::queue_steel_call` — `(proc id pane
 prefix)` for a buffer source, `(proc id input cursor)` for a `:`-line one —
@@ -299,9 +299,9 @@ empty answer when the buffer's server has no `completionProvider`;
 | Async identity | **Per-invocation id; an answer applies only to its slot's latest call** | Strictly stronger than a session token plus replace-per-source: a superseded call's late answer can never land at all. |
 | Snapshots | **Per invocation, never session-wide** | An `isIncomplete` re-request is computed against a later document than the first answer; each decodes its own `textEdit` ranges against its own snapshot. |
 | Filter text | **Derived per slot from its live span, never set** | Removes `completion-update-filter!` and the accept-time extension it forced. |
-| `:` line cycle-apply | **Restore the invoke-time input, then splice over the slot's span** | Idempotent in invoke-time coordinates; two sources with different spans coexist by construction. |
+| `:` line cycle-apply | **Restore the invoke-time input, then splice over the slot's span** | Idempotent in invoke-time coordinates; two sources with different spans coexist, since every span is in those same coordinates. |
 | Menu width | **`menu_window` from counts, `rows_in(range)`, `resolve_menu(&rows[window])`** | No full-list accessor exists, so width over the whole list is unwritable. |
-| Source registry namespaces | **Two, `SourceRegistry::{buffer,minibuf}`, distinct `BufferSourceId`/`MinibufSourceId` — not one `Vec` plus a runtime target tag** | A name taken in one namespace was refused as "the wrong target" for the other, at runtime, only once a second real `Buffer` source (buffer-words) existed to collide with `core:lsp`. Splitting the namespace makes the collision impossible by construction instead. |
+| Source registry namespaces | **Two, `SourceRegistry::{buffer,minibuf}`, distinct `BufferSourceId`/`MinibufSourceId` — not one `Vec` plus a runtime target tag** | With one namespace, a name taken for one target is refused as "the wrong target" for the other, at runtime, and two real `Buffer` sources (buffer-words and `core:lsp`) make that collision reachable. With two, a name in one registry cannot collide with the other, and the id types keep a lookup from reaching the wrong registry. |
 | Session slots | **Typed inside their own session type (`SourceSlot<BufferSourceId, BufferSpan>` inside `BufferSession`'s `SlotSet`, vs. `<MinibufSourceId, MinibufSpan>` inside `MinibufSession`'s) — not one flat span enum, nor one session type with a `Target` enum inside it, re-checked at every read** | A slot's target has never actually been able to vary independently of its own span shape, so a runtime tag to re-check was always redundant. An intermediate design kept one `CompletionSession { target: Target }` type with the two shapes as enum variants — cheaper to type initially, but every method still had to match on `target` and carry an arm for the other variant that could never run (`invoke_buffer` returning `None` on a `Minibuf` session, `mark_explicit_trigger` a no-op there, etc.), and 8+ outside callers had to probe `.buffer().is_some()` as a poor-man's type tag. Splitting into two concrete types removes both: `stack.rs`'s generic layer lookup (`find`/`at`/`ref_of`, all typed over `L: Layer`) becomes the type check for free. |
 | `completionItem/resolve` gating | **A source's own `#:resolve #t` claim (`BufferSourceEntry::resolve`), checked in `accept`, not just "the buffer has a server with `resolveProvider`"** | A second `Buffer` source sharing an LSP-attached buffer (buffer-words) would otherwise have a resolve request sent for an item the server never produced — a real gap the first source (`core:lsp`) never surfaced, since "an item in an LSP-attached buffer" and "an LSP item" were the same fact until a second source existed. |
 | Cross-source dedup | **Rank-time, priority-ordered, plain items only (`BufferSession::recompute_dedup`), `Buffer`-target only** | See Q-A1, below — the same identifier from two sources otherwise shows twice. `Minibuf` invokes exactly one source, so it carries no dedup mask at all rather than an always-empty one. |

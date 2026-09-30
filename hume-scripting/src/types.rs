@@ -258,7 +258,7 @@ pub struct PendingLspRequest {
     pub require_focus: Option<PaneId>,
     /// `#:tracked`: a tracked position this request holds, released once its
     /// callback has run or will never run, unless the callback kept it.
-    pub tracked: Option<crate::host::WidgetToken>,
+    pub tracked: Option<crate::host::HostToken>,
 }
 
 // Manual (not derived): `SteelVal` has no `Debug` impl. Placeholder the

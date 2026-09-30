@@ -998,7 +998,7 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
 /// The mechanism: `(call! "delete" bid)` routes through `run_command_sync` →
 /// `commands::run`, which runs `delete`'s own `step_clear_extend` with
 /// `clears_extend=true`.  Mode is still `Extend` when the inner pipeline fires,
-/// so it flips to Normal.  The outer Steel dispatch branch deliberately omits
+/// so it flips to Normal.  The outer Steel dispatch branch omits
 /// `step_clear_extend`: the inner command's meta drives the transition.
 #[test]
 fn steel_call_delete_in_extend_exits_extend_mode() {

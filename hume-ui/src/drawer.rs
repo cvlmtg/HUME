@@ -57,8 +57,8 @@ const DRAWER_PAD_ROWS: u16 = 1;
 /// ceiling `max` (35% of the last-rendered *terminal* height, mirroring
 /// `DrawerWidget::height`'s own `max`): the number `Editor::
 /// drawer_visible_rows` pages against, agreeing with what the engine will
-/// next paint by construction (both derive from
-/// `super::menu_box::band_capacity`).
+/// next paint since both derive from
+/// `super::menu_box::band_capacity`.
 pub fn visible_rows(items: usize, max: u16) -> usize {
     super::menu_box::band_visible_rows(items, DRAWER_PAD_ROWS, max)
 }

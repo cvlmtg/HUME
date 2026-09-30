@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
 use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
@@ -193,7 +194,7 @@ fn replace_around_cursors_forward_past_the_end_does_not_delete_the_structural_ne
 // ── replace_span_around_cursors ─────────────────────────────────────────────
 //
 // The general primitive `replace_around_cursors` wraps with a uniform-count
-// `start_of`. These pin the genuinely per-cursor case: a `start_of` that
+// `start_of`. These pin the per-cursor case: a `start_of` that
 // computes a *different* start at each cursor (LSP completion accept's own
 // `insertText`-fallback use, via `word_start_before`).
 

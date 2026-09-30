@@ -447,7 +447,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
 // `hume-editor/src/editor/tests/plugins.rs` as
 // `lazy_stub_collision_lazy_vs_lazy_first_writer_wins`; it needs real
 // `CommandRegistry` collision detection (a real `Editor` + `EditorHostImpl`),
-// which `MockHost` (this file's host) deliberately does not reimplement.
+// which `MockHost` (this file's host) does not reimplement.
 
 /// After a lazy declare, `cmd_owners["bar"]` maps to the plugin id (not to
 /// `"hume"`), even before the plugin body is evaluated.

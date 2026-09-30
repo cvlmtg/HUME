@@ -48,9 +48,8 @@ pub fn cmd_split_selection_on_newlines(
         )];
         // Middle lines: full lines. Bare-`usize` range, `ContentLine`
         // re-minted each iteration: `ContentLine` has no `Step`/`Range`
-        // impl to loop over directly (see CLAUDE.md's "Line counts and
-        // ranges"). Sound here: both endpoints are already-valid
-        // `ContentLine`s.
+        // impl to loop over directly. Sound here: both endpoints are
+        // already-valid `ContentLine`s.
         pieces.extend(
             (lines.start.advance(1).index()..lines.end.index())
                 .map(ContentLine::new)

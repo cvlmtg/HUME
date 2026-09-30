@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-# The marker-notation parser (`marked`) and unnormalized-set constructors for
-# other crates' tests. test-fixtures turns it on.
+# The marker-notation parser (`marked`) and `EditState::from_cluster_indices`
+# for other crates' tests. test-fixtures turns it on.
 test-util = []
 
 [dependencies]

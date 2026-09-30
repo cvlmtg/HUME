@@ -60,9 +60,9 @@ impl Editor {
     /// caller wants one or the other, never reliably both.
     ///
     /// `pid` must name a live, active-tab pane. Every caller reads it from
-    /// `active_pane_ids()`, which by construction (see `EngineView::layout`'s
-    /// privacy: no whole-tree write can install a leaf the pool doesn't
-    /// back) can never contain a stale id.
+    /// `active_pane_ids()`, which can never contain a stale id (see
+    /// `EngineView::layout`'s privacy: no whole-tree write can install a leaf
+    /// the pool doesn't back).
     pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> PaneRenderSettings {
         let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);
@@ -296,7 +296,7 @@ impl Editor {
     /// `display_name()` allocates a `String`, defeating the point of a
     /// cheap signature, and the two agree on every rename/attach that
     /// actually changes what's drawn (a buffer's dirty marker is covered
-    /// separately by `is_dirty()`). Deliberately excludes anything that
+    /// separately by `is_dirty()`). Excludes anything that
     /// doesn't change what a rebuild would produce: buffer *content*, for
     /// instance, since neither the label nor `scroll` reads it.
     fn tabline_signature(&self, visible: bool) -> u64 {
@@ -645,7 +645,7 @@ struct ScrollOutcome {
 ///
 /// Calls both the vertical (`reveal`) and horizontal (`reveal_horizontal`)
 /// verbs in one shot, over a single display-line map, so the two agree on
-/// the display-line list by construction, and a line's format is reused
+/// the same display-line list, and a line's format is reused
 /// across them. The cursor is resolved exactly once here, for both plus the
 /// terminal-cursor placement: scrolling only ever *writes* the viewport, and
 /// the display-line map holds no viewport, so no arm below can change what

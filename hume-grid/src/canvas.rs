@@ -133,7 +133,7 @@ impl<'a> Canvas<'a> {
     /// from `hume-engine`'s `format::grapheme_display`. `grapheme_width`
     /// already sized the run for that placeholder, so it spans exactly the
     /// columns reserved for it. The placeholder is drawn as the codepoint
-    /// rather than as a blank deliberately: a bidi override that renders like
+    /// rather than as a blank: a bidi override that renders like
     /// a space is the Trojan Source attack, so the cluster has to stay
     /// visibly present rather than disappear. That placeholder is drawn in
     /// this canvas's `invisible_style` rather than `style`, so it reads

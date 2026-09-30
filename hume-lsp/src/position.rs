@@ -8,7 +8,7 @@
 //! `location::decode_location` needs. That decoder reads the same JSON shape
 //! by hand instead of sharing these.
 //!
-//! `hume-rope` deliberately has no `lsp-types` dependency (see
+//! `hume-rope` has no `lsp-types` dependency (see
 //! `position_encoding`'s module doc), so the crossing lives here as free
 //! functions rather than `impl From<WirePos> for lsp_types::Position`; the
 //! orphan rule would refuse that impl in either direction anyway, since

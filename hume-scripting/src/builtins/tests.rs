@@ -73,6 +73,33 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
         ("buffer-line-count", "(buffer-line-count (focused-pane))"),
         ("buffer-lines", "(buffer-lines (focused-pane))"),
         ("buffer-generation", "(buffer-generation (focused-pane))"),
+        ("buffer-cursor-line", "(buffer-cursor-line (focused-pane))"),
+        ("buffer-selections", "(buffer-selections (focused-pane))"),
+        (
+            "symbol-under-cursor",
+            "(symbol-under-cursor (focused-pane))",
+        ),
+        (
+            "selections-linewise?",
+            "(selections-linewise? (focused-pane))",
+        ),
+        (
+            "selections-charwise?",
+            "(selections-charwise? (focused-pane))",
+        ),
+        ("viewport-range", "(viewport-range (focused-pane))"),
+        (
+            "lsp-position-params",
+            "(lsp-position-params (focused-pane))",
+        ),
+        (
+            "lsp-primary-range-params",
+            "(lsp-primary-range-params (focused-pane))",
+        ),
+        (
+            "lsp-linewise-ranges-params",
+            "(lsp-linewise-ranges-params (focused-pane))",
+        ),
         ("close-buffer!", "(close-buffer! (focused-pane))"),
         (
             "switch-to-buffer!",

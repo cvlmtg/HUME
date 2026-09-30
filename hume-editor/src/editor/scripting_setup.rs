@@ -170,9 +170,9 @@ impl Editor {
         // Every Steel entry point but `call_steel_command_body` (which
         // hand-rolls its own close for its `bool` return + `wait_char`
         // handling) returns through here, the one funnel that closes the
-        // `#:inline-output` bracket by construction rather than by each
-        // caller remembering to, for a hook, a queued-call batch, `init.scm`,
-        // and a runtime plugin activation alike.
+        // `#:inline-output` bracket, for a hook, a queued-call batch,
+        // `init.scm`, and a runtime plugin activation alike, so no caller has
+        // to remember to.
         self.close_inline_output_bracket();
         match result {
             Ok(effects) => self.apply_script_effects(effects),
@@ -281,7 +281,7 @@ impl Editor {
     /// Takes no arguments, so it's callable without a terminal.
     ///
     /// `drain_async_sources` runs once, *outside* [`Self::drain_pending_work`]'s
-    /// fixpoint, deliberately: a timer thunk that re-arms itself
+    /// fixpoint: a timer thunk that re-arms itself
     /// (`(after! 0 (lambda () (after! 0 …)))`) would otherwise never leave the
     /// loop: each firing converts straight back into a due timer the same
     /// pass would immediately redrain. Outside the fixpoint, a re-arm is
@@ -469,7 +469,7 @@ impl Editor {
                     // batch, and one of those can close the buffer first.
                     // Checked here, ahead of both `react_to_event` and
                     // `fire_one_event`, so neither ever sees a dead id.
-                    // `OnBufferClose` is deliberately exempt: it is raised
+                    // `OnBufferClose` is exempt: it is raised
                     // for an id that's already gone by design (see
                     // `lifecycle.rs`'s pairing check); checking it here
                     // would drop every `OnBufferClose` outright.
@@ -563,7 +563,7 @@ impl Editor {
     /// behaviour must not depend on whether a plugin happens to be
     /// installed.
     ///
-    /// No `_` catch-all, deliberately: this is the one match where forgetting
+    /// No `_` catch-all: this is the one match where forgetting
     /// a variant changes editor behaviour, not just a hook payload, so a new
     /// `EditorEvent` with no reaction wired must fail to compile here rather
     /// than silently doing nothing.

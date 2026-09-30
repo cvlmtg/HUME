@@ -278,8 +278,8 @@ fn position_element_three_digit_line_and_col() {
     insta::assert_snapshot!(text, @" 143:49");
 }
 
-/// Cross-surface column-agreement fixture, shared (by construction, not by
-/// import, since this crate has no path to the LSP-dependent
+/// Cross-surface column-agreement fixture, shared (restated here, not
+/// imported, since this crate has no path to the LSP-dependent
 /// `tests/unix/column_display_agreement.rs`) with that file's diagnostics/
 /// goto-references assertions: the line `"e\u{0301}\u{1D11E}x"` puts three
 /// different "column" units at three different values for the same

@@ -1,7 +1,7 @@
-//! The marker-annotated buffer/selection test DSL (`parse_state` /
-//! `serialize_state` / `assert_state!` / `IntoTestResult`) is portable (it
-//! depends only on `hume_editing`) and lives in `test-fixtures` so
-//! `hume-ops` can use it too without depending on `hume-editor`.
+//! The marker-annotated buffer/selection test DSL is `hume_editing::marked`,
+//! wrapped for tests by `test_fixtures::testing` (`parse_state` /
+//! `serialize_state` / `assert_state!` / `IntoTestResult`) so `hume-ops` can
+//! use it too without depending on `hume-editor`.
 //!
 //! [`MockHost`] depends on `hume_engine` + `hume_scripting` and stays here.
 

@@ -243,7 +243,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
 /// needs the offset, to test whether the cursor has moved past the name:
 /// the same name-shape rule this function applies, so completion never
 /// disagrees with what `execute_command` would actually run). Digits are
-/// deliberately excluded from the name (Vim convention) so `:b1` ends the
+/// excluded from the name (Vim convention) so `:b1` ends the
 /// name at `"b"`, `"1"` becoming the argument (see `:help :command-name`).
 pub(in crate::editor) fn scan_command_name(input: &str) -> (&str, bool, usize) {
     let name_end = input

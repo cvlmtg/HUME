@@ -129,7 +129,7 @@ pub(crate) struct SessionError {
 /// formatting it with `SteelErr::emit_result_to_string`, the same snippet
 /// renderer Steel's own top-level error reporting uses.
 ///
-/// Deliberately not `Engine::raise_error_to_string`: that also walks the
+/// Not `Engine::raise_error_to_string`: that also walks the
 /// live call stack and prepends a `note:` block per frame. That is useful for a
 /// script author debugging their own Steel code interactively, but here the
 /// frames are `bootstrap.scm`'s own activation plumbing (an empty file name,
@@ -154,7 +154,7 @@ fn describe_steel_error(steel: &Engine, err: &SteelErr) -> String {
 
 /// [`run_steel_session`] with a source-program body: parse + compile + run.
 ///
-/// Only for genuinely dynamic source (init.scm, test snippets).  Fixed-shape
+/// Only for dynamic source (init.scm, test snippets).  Fixed-shape
 /// invocations use [`run_steel_call`], which skips the compiler entirely.
 pub(crate) fn run_steel<'a>(
     steel: &mut Engine,

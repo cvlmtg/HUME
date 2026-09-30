@@ -154,7 +154,7 @@ pub(crate) enum MacroPending {
 impl EditorState {
     /// Appends `input` to the action whose command opened the live Insert
     /// session. Only the `InsertLayer`'s own handler calls this, so Insert
-    /// is open by construction. "The last action" is "the session's
+    /// is always open here. "The last action" is "the session's
     /// action" with no separate tracking: every entry into Insert is a
     /// repeatable native command that stamps before the first input
     /// arrives, and [`commands::repeat_slot_owned`] keeps anything
@@ -304,7 +304,7 @@ impl Editor {
     /// have closed the pane or buffer the pre-opened placeholder lived on:
     /// `focus::end_focus_sessions`, which every focus/buffer-switch path
     /// runs first, already commits a still-live session of any kind before
-    /// that happens, so by the time control returns here there is genuinely
+    /// that happens, so by the time control returns here there is
     /// nothing left to close.
     fn finish_replay_session(&mut self) {
         if self.state.active_session.is_none() {
@@ -514,7 +514,7 @@ impl Editor {
         // `InsertInput`). A failed or unregistered `Binding`, or a `Result`
         // that no longer applies, is reported and skipped rather than
         // stopping the loop: the live session kept going past it too, so
-        // replay does the same. Any `Binding` that leaves Insert genuinely
+        // replay does the same. Any `Binding` that leaves Insert
         // stops it, whether or not it also succeeded: a body that calls
         // `exit-insert` and then errors has still left, and nothing recorded
         // after it can apply outside the session it was typed into; `break`,

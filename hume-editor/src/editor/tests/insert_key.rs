@@ -114,7 +114,7 @@ fn insert_key_errors_when_not_dispatched_from_a_bound_key() {
         tmp.path(),
         r#"(define-command! "insert-key-probe" "" (lambda (pane) (insert-key! pane "tab")))"#,
     );
-    ed.feed_key(key('i')); // now genuinely in Insert mode
+    ed.feed_key(key('i')); // now in Insert mode
     ed.execute_keymap_command("insert-key-probe".into(), Some(1), false);
     assert_eq!(state(&ed), "-[h]>ello\n", "buffer must be unchanged");
     let msg = status(&ed);

@@ -68,7 +68,7 @@ pub struct SignEntry {
 /// type rather than reusing `hume_scripting::VirtualLineSpec` directly: that
 /// type's `segments` are unvalidated char offsets naming scopes, this one's
 /// are validated byte offsets naming already-interned `ScopeId`s:
-/// deliberately different shapes, not merely a field rename.
+/// different shapes, not merely a field rename.
 pub struct VirtualLineEntry {
     pub pos: CharOffset,
     pub text: String,
@@ -274,7 +274,7 @@ impl<K, T> SourceStore<K, T> {
     /// order (see `set`), paired with their source. Signs need the source to
     /// look up its registered slot (`DecorationStores::sign_slot`), not for a
     /// tie-break; two signs from different sources never contend for the
-    /// same slot by construction. Virtual lines and extra highlights (the
+    /// same slot, since each registered source owns its own. Virtual lines and extra highlights (the
     /// two kinds with no per-line collapse) rely on this ascending order
     /// directly, so two sources anchored to the same line render in a
     /// name-deterministic order rather than whichever call `set-*!` happened
@@ -391,7 +391,7 @@ impl<K: Ord, T: Positioned> SourceStore<K, T> {
     /// Replaces `source`'s entries for `bid` wholesale, sorted by `pos` (see
     /// `Positioned`'s doc). `slot` itself stays sorted ascending by `source`
     /// (a binary-search insert rather than find-or-push), so
-    /// `for_buffer`'s iteration order is deterministic by construction
+    /// `for_buffer`'s iteration order is deterministic
     /// instead of "whichever source called `set` first this session".
     pub fn set(&mut self, source: K, bid: BufferId, mut entries: Vec<T>) {
         entries.sort_by_key(Positioned::pos);

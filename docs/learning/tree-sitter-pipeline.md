@@ -148,7 +148,7 @@ request by picking two nodes that are nowhere near each other — the tag doesn'
 by itself. Read naively, that produces an "object" that's really two unrelated things stitched
 together by a shared name, stretching from wherever the first one happens to sit to wherever the
 second does — which can be nearly the whole file. The fix is to check adjacency before trusting a
-multi-node tag: if the tagged nodes genuinely sit side by side, hull them as one object as before; if
+multi-node tag: if the tagged nodes sit side by side, hull them as one object as before; if
 they don't, there's no real object there and the match is set aside entirely, rather than reporting a
 "whole file" object no query author ever meant to describe.
 

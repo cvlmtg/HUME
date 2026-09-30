@@ -329,7 +329,7 @@ impl CommandHost for MockHost {
         name: &str,
         plugin: &hume_scripting::attribution::PluginId,
     ) -> Result<(), String> {
-        // Deliberately permissive, like `register_command` above. Collision
+        // Permissive, like `register_command` above. Collision
         // detection is `CommandRegistry`'s decision; testing it here would be
         // a second copy of the same rules that can silently drift from the
         // real behavior it's meant to prove. Tests that need real collision

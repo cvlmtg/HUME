@@ -62,7 +62,7 @@ pub(crate) struct ConfirmLayer {
 impl ConfirmLayer {
     /// Whether answering this confirm would act on `id`, i.e. whether `id`
     /// disappearing leaves the question unanswerable. Read by
-    /// `buffer::lifecycle::close_buffer_and_notify`, which retires such a
+    /// `buffer::lifecycle::forget_closed_buffer`, which retires such a
     /// confirm rather than leaving one on screen whose only possible outcome
     /// is a silent no-op. A `match`, not a `matches!`, so the next `action`
     /// variant this module gains is forced to decide here rather than
@@ -100,7 +100,7 @@ impl Layer for ConfirmLayer {
     }
     // No `setup`/`popup_eviction` override: the trait's own default
     // (`PopupEviction::Both`, evicted automatically by `push_layer`) is
-    // exactly right here: `can_open_confirm` (`buffer/disk.rs`) deliberately
+    // exactly right here: `can_open_confirm` (`buffer/disk.rs`)
     // does *not* gate on a popup being open (a `Scrollable` one owns no keys
     // beyond Ctrl-u/d and dies on the next one anyway), so a confirm lands
     // directly above one and must evict it on the way in, same as every
@@ -141,7 +141,7 @@ impl EditorState {
     /// Retires the open confirm (if any) when `stale` says it no longer
     /// belongs: the shared body of `buffer::disk::enter_buffer_disk_check`
     /// (stale because focus moved off the buffer it targets) and
-    /// `buffer::lifecycle::close_buffer_and_notify` (stale because its
+    /// `buffer::lifecycle::forget_closed_buffer` (stale because its
     /// target buffer is being freed). Uses `excise_layer`, not
     /// `truncate_layers`: nothing guarantees the confirm is still `top()`:
     /// a `Prompt`/`Picker` opened above it since (which `push_mode_layer`'s

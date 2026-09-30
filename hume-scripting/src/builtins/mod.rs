@@ -56,7 +56,7 @@ pub(crate) type SteelResult = Result<SteelVal, SteelErr>;
 /// - `open`: ctx-taking, ungated (no legality gate, or a bespoke one the fn checks itself)
 /// - `plain`: no `&mut SteelCtx` param at all (context-free predicates)
 ///
-/// The declared arg types are load-bearing, not documentation: each entry
+/// The declared arg types are compiler-checked, not documentation: each entry
 /// expands to a closure with exactly that parameter list, so a mismatch
 /// against the real function's signature is a compile error, a
 /// compile-time link between a builtin's registered name and its gate.

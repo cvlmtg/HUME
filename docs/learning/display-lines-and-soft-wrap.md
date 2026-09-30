@@ -63,7 +63,7 @@ stop at the new column would give.
 When wrap is off, `j` and `k` move by one buffer line — straightforward. When
 wrap is on, the user expects `j`/`k` to move by one *display line*, which may
 stay on the same buffer line if that line spans multiple display lines. (A
-`j`/`k` with an explicit count — `9j` — deliberately moves by buffer lines
+`j`/`k` with an explicit count — `9j` — moves by buffer lines
 even in wrap mode, so it matches relative line numbers.)
 
 Visual-line movement needs to know the display column of the cursor, not just

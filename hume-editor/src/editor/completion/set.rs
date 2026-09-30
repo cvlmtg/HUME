@@ -118,7 +118,7 @@ fn complete_set_value(
 }
 
 /// Completes `:set <scope> <key>=<value>` arguments. `Delegated`: the
-/// candidate universe genuinely changes shape at each phase boundary
+/// candidate universe changes shape at each phase boundary
 /// (scope/key/value), so this takes the live input directly rather than
 /// enumerating a stable universe for the session to filter: same
 /// invocation contract as `complete_path`.

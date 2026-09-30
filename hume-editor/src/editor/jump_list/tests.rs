@@ -161,7 +161,7 @@ fn set_capacity_defers_trim_to_next_push() {
 #[test]
 fn set_capacity_shrink_converges_on_a_deduplicated_push() {
     // The dedup branch must still reach the trim loop. Otherwise a shrink
-    // would only converge on a push that landed a genuinely new entry, and
+    // would only converge on a push that appended a new entry, and
     // never on one that overwrote the last entry in place.
     let mut jl = JumpList::new(10);
     for i in 0..5 {
@@ -594,7 +594,7 @@ fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
     );
 }
 
-/// `backward()` deliberately appends the save-current entry without dedup:
+/// `backward()` appends the save-current entry without dedup:
 /// two Ctrl-o stops that legitimately share a line (e.g. two search matches
 /// on one line) must both survive a later edit that merely shifts lines
 /// uniformly. The merge pass must tell that pre-existing pair apart from one

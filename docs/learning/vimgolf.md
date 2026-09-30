@@ -80,7 +80,7 @@ gives a clear advantage here: once all lines share a single distributed
 selection, the insertion happens once and applies everywhere.
 
 This is the challenge where select-then-act is not just *different* — it is
-genuinely shorter.
+shorter.
 
 ---
 

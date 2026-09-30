@@ -225,7 +225,7 @@ fn stale_gen_discards_whole_layer_set() {
     let (mut ed, bid) = markdown_editor("```rust\nfn f() {}\n```\n");
     let gen0 = ed.state.buffers.get(bid).text().version().generation();
 
-    // Construct a genuinely stale result: edit, let one reparse call post the
+    // Construct a stale result: edit, let one reparse call post the
     // request (InlineParseBackend executes it and queues the result without
     // draining it), then edit *again* before the next drain. The queued
     // result now describes a superseded generation and must be discarded

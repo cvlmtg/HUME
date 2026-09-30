@@ -103,7 +103,7 @@ pub(in crate::editor) fn typed_edit(
         // Nothing on disk to reload from yet: a reload here would just be a
         // no-op, so short-circuit before the dirty check rather than making
         // the user add `!` to force a reload that would discard edits for no
-        // reason. Checked before the dirty gate deliberately.
+        // reason.
         if doc.is_new_file() {
             let name = doc.display_name();
             ed.report(

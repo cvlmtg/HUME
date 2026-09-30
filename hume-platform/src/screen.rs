@@ -6,7 +6,7 @@
 //! into [`Screen::frame`] and then [`Screen::present`]; nothing else in HUME
 //! writes cell content to the terminal.
 //!
-//! The emitter is deliberately a set of pure functions over a `&mut String`
+//! The emitter is a set of pure functions over a `&mut String`
 //! with the terminal nowhere in sight, so the exact bytes for a frame can be
 //! asserted in a unit test rather than inferred from behaviour.
 //!

@@ -445,7 +445,7 @@ fn a_scroll_margin_change_replaces_the_caret_even_when_the_cursor_has_not_moved(
 }
 
 /// A revisit to a previously-viewed buffer with nothing else changed must
-/// leave a genuinely parked view exactly where it was, rather than being
+/// leave a parked view exactly where it was, rather than being
 /// snapped back onto the cursor. `Viewport::seed_top_for_test`
 /// builds the park directly (a test-only escape hatch never reached in
 /// production; see its own doc) instead of via a scroll command: every

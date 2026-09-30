@@ -560,13 +560,13 @@ fn parse_sort_flags(arg: Option<&str>) -> Result<SortOpts, CommandError> {
 /// keyed by the selected text on that line. Flags: `-r`/`--reverse`,
 /// `-i`/`--insensitive`.
 ///
-/// Diverges deliberately from Helix's `:sort`, which permutes text *between*
+/// Diverges from Helix's `:sort`, which permutes text *between*
 /// selection slots and leaves line boundaries untouched. This permutes the
 /// lines themselves, closer to `sort -k`. See `hume_ops::edit::sort` for the
 /// full semantics (grouping, numeric auto-detection, selection remapping)
 /// and its rejection of Kakoune's `|sort` too. The error text below still
 /// says "rows": that's the user-facing vocabulary (see
-/// `user-manual/docs/command-mode.md`), deliberately left as-is even though
+/// `user-manual/docs/command-mode.md`), kept even though
 /// the internal type is `SortEntry`/lines.
 pub(in crate::editor) fn typed_sort(
     ed: &mut Editor,

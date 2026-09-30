@@ -140,7 +140,7 @@ impl ContentLine {
 
     /// Unsigned distance between `self` and `other`, direction discarded:
     /// the "how far apart are these two lines" metric a jump-distance
-    /// threshold needs (`hume-editor`'s `step_record_jump`), where
+    /// threshold needs (`hume-editor`'s `jump_list::with_jump`), where
     /// [`Self::lines_since`]'s ordering requirement would be the wrong tool.
     pub fn abs_diff(self, other: Self) -> usize {
         self.0.abs_diff(other.0)
@@ -183,7 +183,7 @@ impl ContentLineCount {
     /// half-open content-domain range (`viewport-range`, `buffer-lines`)
     /// ends at. The sanctioned way to name this index: unlike
     /// [`ContentLine::new`], which requires the value already be a real
-    /// line, this index is one past every real line by construction.
+    /// line, this index is one past every real line.
     pub fn end_exclusive(self) -> ContentLine {
         ContentLine(self.0)
     }

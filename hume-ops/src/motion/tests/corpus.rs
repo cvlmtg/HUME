@@ -6,7 +6,7 @@ use test_fixtures::assert_state;
 use test_fixtures::unicode::{LONE_MARK, single_clusters};
 
 #[test]
-fn move_right_steps_over_exactly_one_cluster() {
+fn move_right_steps_over_one_cluster() {
     for s in single_clusters() {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
@@ -21,7 +21,7 @@ fn move_right_steps_over_exactly_one_cluster() {
 }
 
 #[test]
-fn move_left_steps_over_exactly_one_cluster() {
+fn move_left_steps_over_one_cluster() {
     for s in single_clusters() {
         assert_state!(
             &format!("x\n{s}-[b]>\n"),

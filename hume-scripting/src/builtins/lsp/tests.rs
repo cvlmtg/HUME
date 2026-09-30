@@ -522,10 +522,7 @@ fn lsp_request_queues_the_supersede_key() {
 #[test]
 fn lsp_request_queues_the_tracked_token_and_none_for_false() {
     for (tracked, expected) in [
-        (
-            SteelVal::IntV(7),
-            Some(crate::host::WidgetToken::from_raw(7)),
-        ),
+        (SteelVal::IntV(7), Some(crate::host::HostToken::from_raw(7))),
         (SteelVal::BoolV(false), None),
     ] {
         let mut h = SteelCtxTestHarness::new();

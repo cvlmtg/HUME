@@ -10,14 +10,14 @@ use std::cmp::Reverse;
 
 use hume_engine::types::TruncateEnd;
 use hume_platform::process::line_source::SpawnedLineSource;
-use hume_scripting::host::{LivePickerOpts, PickerOpts, WidgetToken};
+use hume_scripting::host::{HostToken, LivePickerOpts, PickerOpts};
 use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
 use super::super::super::edit_session::DotCapture;
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
+use super::super::super::host_token;
 use super::super::super::keymap::CanonicalKey;
-use super::super::super::widget_token;
 
 /// One row in a picker: a display string shown to the user and an opaque
 /// payload handed back to `on_select` verbatim. Rust never interprets
@@ -140,7 +140,7 @@ pub(in crate::editor) struct PickerSession {
     /// Identifies this session to Steel and to [`super::session_for_token`],
     /// the shared guard every token-scoped picker mutation checks before
     /// reaching a `&mut PickerSession` at all.
-    token: WidgetToken,
+    token: HostToken,
     /// Whether results are still arriving, and how; see [`Population`].
     /// Owning a `Streaming` source here, rather than in some separate
     /// registry, is what makes kill-on-close/replace automatic:
@@ -238,7 +238,7 @@ impl PickerSession {
             on_select,
             prompt,
             truncate,
-            token: widget_token::mint(),
+            token: host_token::mint(),
             population,
             mode,
             requery_armed: false,
@@ -250,7 +250,7 @@ impl PickerSession {
         }
     }
 
-    pub(in crate::editor) fn token(&self) -> WidgetToken {
+    pub(in crate::editor) fn token(&self) -> HostToken {
         self.token
     }
 
@@ -336,7 +336,7 @@ impl PickerSession {
     /// again.
     ///
     /// The one place `requery_armed` clears; see its doc. `push`'s ordinary
-    /// append path deliberately does not: a batch queued from the *outgoing*
+    /// append path does not: a batch queued from the *outgoing*
     /// source can still land there after a keystroke has armed the next
     /// requery but before the queued `picker-source-stop!` callback runs
     /// (`drain_async_sources` precedes `drain_pending_work` in
@@ -465,7 +465,7 @@ impl PickerSession {
     /// non-live session). The caller, not this method, queues it via
     /// `queue_steel_call` (see `picker_input`, `input_stack/picker/mod.rs`),
     /// since firing a Steel callback needs `&mut EditorState`, which a pure
-    /// data store deliberately has no access to. Bundling the mutation with
+    /// data store has no access to. Bundling the mutation with
     /// the callback it produces, rather than a caller calling a separate
     /// `fire_query_change` afterward on its own, is what makes forgetting
     /// to fire it (or firing it after a mutator that shouldn't, like

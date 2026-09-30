@@ -23,7 +23,7 @@ use termina::event::KeyEvent;
 
 use hume_engine::pipeline::BufferId;
 
-use crate::host::WidgetToken;
+use crate::host::HostToken;
 use crate::keys::parse_key_sequence;
 use crate::types::PaneHandle;
 
@@ -171,19 +171,27 @@ pub(crate) fn optional_usize_arg(val: SteelVal, ctx_name: &str) -> Result<Option
 
 /// A widget opener's result: the new widget's token, or `#f` when the open
 /// was dropped.
-pub(crate) fn token_or_false(token: Option<WidgetToken>) -> SteelVal {
-    token.map_or(SteelVal::BoolV(false), WidgetToken::to_steel)
+pub(crate) fn token_or_false(token: Option<HostToken>) -> SteelVal {
+    token.map_or(SteelVal::BoolV(false), HostToken::to_steel)
 }
 
-/// `token_or_false`'s inverse: decodes a closer/updater's own `token`
-/// argument, which is `#f` either because the opener that produced it
-/// already returned `#f` (the open was dropped) or because the widget it
-/// named has since closed. Both are the same stale case, so `#f` decodes to
-/// [`WidgetToken::NONE`], which the host treats as any other stale token
+/// `token_or_false`'s inverse: decodes a `token` argument naming a widget
+/// or a tracked position, which is `#f` either because the call that
+/// produced it already returned `#f` (the open was dropped) or because what
+/// it named is gone. Both are the same stale case, so `#f` decodes to
+/// [`HostToken::NONE`], which the host treats as any other stale token
 /// rather than raising.
-pub(crate) fn token_arg(val: SteelVal, ctx_name: &str) -> Result<WidgetToken, SteelErr> {
+pub(crate) fn token_arg(val: SteelVal, ctx_name: &str) -> Result<HostToken, SteelErr> {
     Ok(optional_usize_arg(val, ctx_name)?
-        .map_or(WidgetToken::NONE, |n| WidgetToken::from_raw(n as u64)))
+        .map_or(HostToken::NONE, |n| HostToken::from_raw(n as u64)))
+}
+
+/// An optional token argument: `None` for `#f`, the token otherwise.
+pub(crate) fn optional_token_arg(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<HostToken>, SteelErr> {
+    Ok(optional_usize_arg(val, ctx_name)?.map(|n| HostToken::from_raw(n as u64)))
 }
 
 pub(crate) fn int_arg(val: SteelVal, ctx_name: &str) -> Result<i64, SteelErr> {
@@ -215,7 +223,7 @@ pub(crate) fn callable_arg(val: SteelVal, ctx_name: &str) -> Result<SteelVal, St
 /// `bootstrap.scm`), which must validate it in Scheme before composing the
 /// debounced-respawn wrapper around it: once wrapped, `%live-picker!`'s own
 /// `callable_arg` check on `on_query_change` sees only the wrapper closure,
-/// not the caller's value. Deliberately `callable_arg`'s `is_ok()`, not
+/// not the caller's value. Uses `callable_arg`'s `is_ok()`, not
 /// Steel's own `function?`/`procedure?`, which accept
 /// `BoxedFunction`/`ContinuationFunction`/`BuiltIn` too, wider than the
 /// three variants `callable_arg` (and `define-command!`'s `proc` check)
@@ -543,7 +551,7 @@ pub(crate) fn cons_pair(mut a: SteelVal, mut b: SteelVal) -> Result<SteelVal, St
 /// A decoded [`PaneHandle`] argument, tolerant of a since-closed buffer,
 /// for a builtin whose own contract is "answer `#f`/empty for a `pane`
 /// this host doesn't currently show anything for," where a closed buffer is
-/// just one more case of that, not a distinct error (`buffer-path`,
+/// just one more case of that, not a distinct error (`diagnostic-counts`,
 /// `lsp-capabilities`, …). [`LivePane`] is the counterpart for a builtin
 /// that must raise on a closed buffer instead. Neither checks the pane half
 /// live: a builtin that needs the pane itself (kind A/B, see

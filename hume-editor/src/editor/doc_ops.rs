@@ -139,8 +139,8 @@ pub(in crate::editor) fn check_no_conflicting_session(
     Ok(())
 }
 
-/// Apply an edit to `buf_id` through `pane_id` and propagate the resulting
-/// `ChangeSet` to all other panes viewing the same buffer.
+/// Apply an edit to `buf_id` through `pane_id`; the buffer carries every
+/// other stored position through the change.
 ///
 /// Every edit-applying caller goes through here, so session handling lives
 /// here rather than at each caller:
@@ -210,9 +210,8 @@ pub(in crate::editor) fn apply_doc_edit(
 /// Reads and writes the acting pane's selections via `stores`; the buffer
 /// carries every other stored position through the change.
 ///
-/// Returns the applied `ChangeSet`. `input_stack/insert.rs`'s `apply_insert_edit`
-/// uses it to remap an open LSP completion session's anchor through every
-/// keystroke, not just the primary cursor's own position.
+/// Returns the applied `ChangeSet`: completion accept maps positions a
+/// later resolve response computed against the pre-accept text through it.
 ///
 /// `active_session` must hold an Insert-kind session on `(pane_id,
 /// buf_id)`, a caller contract, same as `Buffer::apply_edit_grouped`'s own
@@ -386,9 +385,8 @@ pub(in crate::editor) fn apply_doc_motion(
 /// stores `before` in its `EditSessionKind::Paste`, which this function has
 /// no parameter for.
 ///
-/// Snapshots the current selections (via `.clone()`) for use as `pre_sels`
-/// in the recorded undo revision. The field must NOT be taken because the
-/// ongoing insert session continues to read it between keystrokes.
+/// Snapshots the current selections as the session's `undo_sels`, what undo
+/// restores: cloned, not taken, since the pane keeps editing with them.
 ///
 /// `Err` when a session is already open elsewhere, or a real `Insert`/`Paste`
 /// session is already open here; see [`edit_session::open_or_retarget`],
@@ -435,9 +433,8 @@ pub(in crate::editor) fn begin_edit_group(
 /// session's kind first (a no-op skip for the one that doesn't match, a
 /// panic for the one that must never mismatch) before delegating here.
 ///
-/// Snapshots the current selections as `post_sels` for the undo revision. It
-/// must `.clone()`, not `take`, since a still-open Insert session keeps
-/// reading `pre_sels` between keystrokes.
+/// Snapshots the current selections as `post_sels` for the undo revision:
+/// cloned, not taken, since the pane keeps them.
 ///
 /// # Panics
 /// Panics if `pane_state` has no entry for the session's `(pane, buffer)`:

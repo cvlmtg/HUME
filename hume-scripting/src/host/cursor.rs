@@ -9,7 +9,7 @@ use crate::types::PaneHandle;
 /// `anchor` and `head` are the cluster starts the selection is drawn between,
 /// direction preserved (`anchor > head` when backward). `start` is the first
 /// covered char and `end` the exclusive end of the last covered cluster, so
-/// `start..end` is exactly what the selection covers, whatever the length of
+/// `start..end` is what the selection covers, whatever the length of
 /// its clusters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SelectionInfo {
@@ -65,7 +65,7 @@ pub trait CursorHost {
     /// to `lsp-request!` verbatim or with a *protocol* key inserted, and a
     /// non-protocol verdict key would break that. `(false, false)` from the
     /// pair means *mixed*; an all-ambiguous set answers `(false, true)`,
-    /// deliberately indistinguishable from all-charwise, which is the
+    /// indistinguishable from all-charwise, which is the
     /// default it's meant to take.
     fn selections_linewise(&self, pane: PaneHandle) -> Result<bool, String>;
 

@@ -22,7 +22,7 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay ba
 | `(call! "stdlib/selection-head" sel)` | Head char offset of the selection `sel`, or `#f` |
 | `(call! "stdlib/selection-primary?" sel)` | `#t` if the selection `sel` is the primary selection, or `#f` |
 
-`sels` is whatever `(buffer-selections pane)` returns: a list of `(hash 'anchor a 'head h 'start s 'end e 'primary p)`, char offsets rather than grapheme ordinals. `'start` and `'end` bound exactly what the selection covers, `'end` exclusive, whatever the length of its characters. All seven pass a `#f` `sels`/`sel` straight through as `#f`, so a caller that got one from somewhere else with its own "nothing here" case doesn't need its own guard at every step. `(offset->line pane idx)` converts an offset to a line number when you need one.
+`sels` is whatever `(buffer-selections pane)` returns: a list of `(hash 'anchor a 'head h 'start s 'end e 'primary p)`, char offsets rather than grapheme ordinals. `'start` and `'end` bound what the selection covers, `'end` exclusive, whatever the length of its characters. All seven pass a `#f` `sels`/`sel` straight through as `#f`, so a caller that got one from somewhere else with its own "nothing here" case doesn't need its own guard at every step. `(offset->line pane idx)` converts an offset to a line number when you need one.
 
 ## Filesystem
 

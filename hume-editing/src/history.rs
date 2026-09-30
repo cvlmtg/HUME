@@ -13,7 +13,7 @@ use crate::transaction::Transaction;
 /// IDs are assigned once (monotonically increasing) and never reused, even
 /// after a revision is evicted by `undo-levels` trimming. This makes stale
 /// IDs held by other structs (e.g. `Buffer::saved_revision`, search caches)
-/// safe by construction: an evicted ID simply never matches again, rather
+/// safe: an evicted ID simply never matches again, rather
 /// than risking silently matching a *different* revision that reused the
 /// same slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

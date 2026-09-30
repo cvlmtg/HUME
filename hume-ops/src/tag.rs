@@ -1,6 +1,6 @@
 //! Lexical `<tag>` / `</tag>` matching for `%`-style navigation ([`matching_tag`]).
 //!
-//! Deliberately not tree-sitter-backed: `hume-ops` cannot depend on
+//! Not tree-sitter-backed: `hume-ops` cannot depend on
 //! `hume-treesitter` (a lower-level crate can't reach up to a higher one),
 //! so a grammar-based version would have to live as an `EditorCmd` in
 //! `hume-editor`, working only in a buffer with a parsed tree for a markup

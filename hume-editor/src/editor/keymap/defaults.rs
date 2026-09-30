@@ -267,7 +267,7 @@ fn build_pane_trie() -> KeyTrie {
 // Viewport repositioning; the cursor itself never moves. The three leaves are
 // laid out directionally rather than by Vim's initials: `z k` (up/top),
 // `z z` (centre), `z j` (down/bottom), reusing the j/k axis every motion in
-// the editor already trains. Vim's `zt`/`zb` are deliberately not aliased:
+// the editor already trains. Vim's `zt`/`zb` are not aliased:
 // `t` and `b` stay free under `z` for plugins (`core:pickers` claims `z b`).
 
 fn build_view_trie() -> KeyTrie {
@@ -433,7 +433,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Pane prefix (Ctrl-p) ─────────────────────────────────────────────────
     // `Ctrl-p` → second key (pane navigation). Works in both kitty and legacy.
-    // Ctrl-w is deliberately unbound here so that it falls through to the
+    // Ctrl-w is unbound here so that it falls through to the
     // kitty one-shot extend path (strip CONTROL → `w` → select-next-word).
     t.bind(key!(Ctrl + 'p'), KeyTrieNode::Node(build_pane_trie()));
 

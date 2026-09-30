@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
 use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;

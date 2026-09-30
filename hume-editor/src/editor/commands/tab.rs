@@ -8,7 +8,7 @@
 //! `view.panes: SlotMap<PaneId, Pane>` regardless of which tab is active:
 //! only `view.layout` (which panes are *reachable*) differs per tab.
 //!
-//! `goto-next-tab`/`goto-prev-tab` deliberately carry no `.jump()` meta,
+//! `goto-next-tab`/`goto-prev-tab` carry no `.jump()` meta,
 //! unlike `goto-next-buffer`/`goto-prev-buffer`: a tab switch changes
 //! `state.focus` itself (a different pane, possibly in a different tab), and
 //! the jump list is written to `state.panes.jumps[state.focus.id()]` read

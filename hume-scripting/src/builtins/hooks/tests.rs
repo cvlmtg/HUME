@@ -137,8 +137,8 @@ fn register_hook_valid_during_plugin_load() {
     );
 }
 
-/// Validation is genuinely host-driven, not a compiled-in table:
-/// `NullHost`'s known-names fixture deliberately diverges from the editor's
+/// Validation is host-driven, not a compiled-in table:
+/// `NullHost`'s known-names fixture diverges from the editor's
 /// real event set (see `NULL_HOST_EVENT_NAMES`'s doc comment): it includes
 /// a synthetic `on-stub-only` name the editor never defines, and omits real
 /// editor events like `on-lsp-attach`. `register-hook!` must follow the

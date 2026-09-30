@@ -9,7 +9,7 @@ use hume_editing::changeset::ChangeSet;
 /// pairs a `Delete`/`Insert` replacement in either op order (every
 /// `hume-ops` builder emits delete-then-insert, but `ChangeSet::invert`
 /// emits insert-then-delete for every undone replacement, `compose` can
-/// produce either, and `indent`/`unindent` deliberately emit
+/// produce either, and `indent`/`unindent` emit
 /// insert-then-delete; see `hume-ops/src/edit/indent.rs`) into one region,
 /// so this walk doesn't have to.
 pub(crate) fn input_edits_from_changeset(

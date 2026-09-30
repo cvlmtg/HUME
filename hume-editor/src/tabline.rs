@@ -101,8 +101,8 @@ impl TabBarProvider for TablineWidget {
             };
             let label = fit_label(&entry.label, end_x - start_x);
             // `end_x`, not `area.right()`: keeps a label inside its own
-            // extent by construction rather than by `fit_label`'s arithmetic
-            // alone: the forced single-tab fallback in `tab_extents` can
+            // extent even where `fit_label`'s arithmetic would not: the forced
+            // single-tab fallback in `tab_extents` can
             // clamp an extent to as little as 1 cell, narrower than
             // `fit_label`'s own 2-cell padding minimum.
             canvas.write_text_run(start_x, area.y, &label, style, end_x);
@@ -126,7 +126,7 @@ const OVERFLOW_RIGHT: &str = "›";
 /// when the padded form doesn't fit `extent_w` cells: a label `tab_extents`
 /// packed into an extent narrower than its own width (the forced single-tab
 /// fallback for a row too narrow to fit even one full label) or a
-/// genuinely long name at any width.
+/// long name at any width.
 fn fit_label(label: &str, extent_w: u16) -> String {
     let budget = extent_w.saturating_sub(2);
     format!(

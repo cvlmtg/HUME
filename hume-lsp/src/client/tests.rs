@@ -14,11 +14,11 @@ fn canned_result(encoding: Option<PositionEncodingKind>) -> serde_json::Value {
     .unwrap()
 }
 
-// Golden-field check on the load-bearing capability list:
-// capabilities are load-bearing config. Assert the exact advertised
+// Golden-field check on the capability list: a server decides which
+// features to offer from it. Assert the exact advertised
 // set rather than just "it builds".
 #[test]
-#[allow(deprecated)] // asserting on the deliberately-still-populated compat field
+#[allow(deprecated)] // asserting on the deprecated compat field
 fn initialize_params_advertise_the_v1_capability_set() {
     #[cfg(windows)]
     let root = PathBuf::from(r"C:\tmp\proj");
@@ -46,8 +46,7 @@ fn initialize_params_advertise_the_v1_capability_set() {
         completion.completion_item.unwrap().snippet_support,
         Some(false)
     );
-    // Without this no server sends a list-wide `editRange`, and every item
-    // then has to carry its own `textEdit`.
+    // Without this a conforming server never sends a list-wide `editRange`.
     assert_eq!(
         completion
             .completion_list

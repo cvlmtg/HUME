@@ -742,7 +742,7 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
     let text = state(&ed);
     // "bar" is independently known from the scenario itself (the `.` replays
     // a delete on the word we navigated to with `w`), not read back from
-    // `kill_ring.head().offset()`, so a `.` that fails to push to the ring at all
+    // `kill_ring.head()`, so a `.` that fails to push to the ring at all
     // can't make this pass by accident.
     assert!(
         text.contains("bar"),
@@ -937,7 +937,7 @@ fn dot_repeat_of_select_all_matches_deletes_content() {
 /// (new) primary, and deleting it too.
 ///
 /// If `keep-primary-selection` reset the recipe instead of
-/// composing, `.` would replay `[, d]` from whatever selection happens to
+/// composing, `.` would replay `[,, d]` from whatever selection happens to
 /// remain after the first delete. `,` on a single selection is a no-op, so
 /// `d` would just delete that leftover selection instead of re-running the
 /// search-driven `m/`.

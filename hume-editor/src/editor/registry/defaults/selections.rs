@@ -18,7 +18,7 @@ impl CommandRegistry {
         // already staged rather than building a fresh one replayable on its
         // own from a bare cursor; see `SelectionTracking::Composes`.
         // `select-all` is not among them: whole-buffer and
-        // position-independent, it genuinely establishes.
+        // position-independent, it establishes.
         super::selection!(
             self,
             "collapse-selection",

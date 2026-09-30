@@ -41,8 +41,7 @@ struct TabState {
 /// entry for `current` is stale (superseded by the live `EngineView::layout`)
 /// until the next switch overwrites it. Every method below either writes
 /// that entry immediately before changing `current` (so it's never stale
-/// for longer than one call), or documents that it reads the stale entry
-/// deliberately.
+/// for longer than one call), or documents that it reads the stale entry.
 pub(in crate::editor) struct TabStore {
     order: Vec<TabId>,
     current: TabId,

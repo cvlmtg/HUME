@@ -1,8 +1,8 @@
 // Document sync glue: didOpen / didChange /
-// didSave / didClose. The load-bearing test is the version-sync invariant:
+// didSave / didClose. The core test is the version-sync invariant:
 // replaying the recorded protocol stream against an independent reference
 // (hume_lsp's string-mirror, reused via the `test-util` feature) must
-// reproduce the buffer's real final text and generation exactly.
+// reproduce the buffer's real final text and generation.
 
 use std::path::Path;
 
@@ -313,7 +313,7 @@ fn version_sync_invariant_across_insert_delete_paste_undo_redo() {
     assert_mirror_matches(&ed, bid, &log.borrow(), "full session replay");
 }
 
-/// The load-bearing case for the composed walk: a counted `u` that
+/// The case that exercises the composed walk: a counted `u` that
 /// crosses several revisions must reach an INCREMENTAL-sync server as one
 /// `didChange` for the net change, not one per revision it walked. Queuing
 /// one `LspPendingChange` per revision would make this count 3.

@@ -264,9 +264,9 @@ mod next_wake_covers_client_state {
 
     #[test]
     fn running_idle_client_blocks_fully() {
-        // Pins the heartbeat's deletion: a Running client with nothing
-        // pending and no progress must not force any wake at all. Arrival
-        // is wake-driven now, so idle-Running is genuinely idle.
+        // A Running client with nothing pending and no progress must not
+        // force any wake at all: arrival is wake-driven, so an idle
+        // Running client has nothing to wake for.
         let (mut ed, sid) = wired_editor();
         let mut client = LspClient::new(sid, PathBuf::from("."));
         client.set_state_for_test(ServerState::Running);

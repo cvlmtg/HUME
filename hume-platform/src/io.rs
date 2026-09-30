@@ -22,7 +22,7 @@ use std::time::SystemTime;
 pub struct FileSignature {
     /// `None` on platforms/filesystems that don't report a modification
     /// time. Never conjured into a fake value, since that could compare
-    /// equal to a genuinely different unset case.
+    /// equal to a different unset case.
     mtime: Option<SystemTime>,
     size: u64,
 }
@@ -184,7 +184,7 @@ pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io:
     // Note: on POSIX, rename(2) ignores the target file's permission bits when
     // the containing directory is writable, so this PermissionDenied branch is
     // primarily reached on Windows (READONLY attribute) and on exotic POSIX
-    // filesystems / ACL setups. It is genuinely hard to exercise from a
+    // filesystems / ACL setups. It is hard to exercise from a
     // unit test on macOS/Linux without root or chflags.
     let result = match tmp.persist(target) {
         Ok(_) => Ok(false),

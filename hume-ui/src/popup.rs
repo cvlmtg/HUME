@@ -281,8 +281,8 @@ const POPUP_FRAME_ROWS: u16 = 2;
 /// band's row ceiling `max` (35% of the last-rendered *terminal* height,
 /// mirroring `PopupBandWidget::height`'s own `max`): the number
 /// `Editor::scroll_popup` pages against, agreeing with what the engine will
-/// next paint by construction (both derive from
-/// `super::menu_box::band_capacity`).
+/// next paint since both derive from
+/// `super::menu_box::band_capacity`.
 pub fn band_visible_rows(lines: usize, max: u16) -> usize {
     super::menu_box::band_visible_rows(lines, POPUP_FRAME_ROWS, max)
 }

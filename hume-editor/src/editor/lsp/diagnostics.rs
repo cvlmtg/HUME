@@ -173,7 +173,7 @@ impl DiagnosticsStore {
     /// Every buffer with at least one stored diagnostic, from any server,
     /// including one whose server has since crashed or stopped: `remove_server`
     /// drops a stopped server's own entries, but a crash leaves them here
-    /// deliberately (see `LspState::reset_config`'s doc), so `:reload-config`'s
+    /// (see `LspState::reset_config`'s doc), so `:reload-config`'s
     /// resync can still replay `OnDiagnosticsChanged` for them.
     pub(in crate::editor) fn buffers_with_diagnostics(
         &self,

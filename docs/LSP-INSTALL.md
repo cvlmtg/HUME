@@ -1,7 +1,7 @@
 # HUME — LSP Server Installation (core:lsp `servers.scm`)
 
 Design decisions for automatic language-server download, installation, and registration.
-Status: **shipped**. Deliberately kept out of `LSP.md` (client architecture) and
+Status: **shipped**. Kept apart from `LSP.md` (client architecture) and
 `ROADMAP.md`.
 
 ## Problem
@@ -47,7 +47,7 @@ No upstream format is ever parsed inside the editor.
 One generated file per pin: a helix-pin bump touches only registration data, a mason-pin
 bump only install sources — every diff traceable to one upstream. Join key = server name,
 **via an explicit Helix→Mason name-mapping table** maintained in the sync script: the two
-namespaces genuinely differ (Helix `pylsp` is Mason `python-lsp-server`; Helix
+namespaces differ (Helix `pylsp` is Mason `python-lsp-server`; Helix
 `vscode-json-language-server` lives in Mason's `json-lsp` package). The sync prints every
 Helix server left unmatched, so drops are visible, never silent.
 
@@ -102,7 +102,7 @@ list that the scan fans out into one `register-lsp-server!` call per language. K
 language would copy a multi-language server's `config` blob once per language
 (typescript-language-server serves four); normalized beats denormalized copies. Root
 markers are the one *per-language* field: in Helix, `roots` belongs to the language, not
-the server, and languages sharing a server genuinely differ (javascript/jsx root on
+the server, and languages sharing a server differ (javascript/jsx root on
 `jsconfig.json`, typescript/tsx on `tsconfig.json`) — so each `languages` entry is
 `(name marker…)` and the scan passes that entry's markers to its registration call.
 
@@ -282,7 +282,7 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   whose client is running (reinstall/upgrade) first shuts that client down — the same
   path `:lsp-uninstall` needs — then installs, registers, and re-attaches open buffers,
   spawning fresh.
-- **Binary resolution is managed-first by construction**: the scan registers the command as
+- **Binary resolution is managed-first**: the scan registers the command as
   an *absolute path* (server dir + receipt's `bin-path`), so a managed install always spawns
   the pinned binary — no lookup-order logic in the bridge. Bare command names (from manual
   `register-lsp-server!`) resolve via `$PATH` exactly as today; a user who prefers the
@@ -352,8 +352,8 @@ lists) stays in the plugin — Rust never reads them.
   strings — some are inline tables (`{ name = "typescript-language-server",
   except-features = [...] }`, e.g. gjs/gts); the sync unwraps `name` and ignores the
   feature filters, which are meaningless to a single-server client. Consequence: no two
-  seeded servers ever share a language, so scan-time registration conflicts are
-  impossible by construction. Multi-server support, when the client learns it, is a sync
+  seeded servers ever share a language, so scan-time registration conflicts
+  cannot occur. Multi-server support, when the client learns it, is a sync
   script + consumer change together.
 - **One server, many languages** is fully supported and cheap: an installed
   typescript-language-server registers for typescript, tsx, javascript, jsx — N entries in

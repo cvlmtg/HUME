@@ -63,14 +63,14 @@ pub struct LineFormat {
 /// Ceilings only, not starting sizes: a `LineFormat` begins empty and grows to
 /// whatever its line actually needs. These sit far above an ordinary source
 /// line (which vary by an order of magnitude among themselves) because they
-/// only need to catch the genuinely pathological case (a minified-JS file's
+/// only need to catch the pathological case (a minified-JS file's
 /// single line, megabytes wide) that would otherwise pin that much capacity
 /// for the pane's whole life, reversing the free list's own memory bound,
 /// since retained allocations are exactly what the free list keeps to avoid
 /// reallocating.
 const DISPLAY_LINES_CEILING: usize = 256;
 const GRAPHEMES_CEILING: usize = 8192;
-const LINE_TEXTS_CEILING: usize = 8192;
+const LINE_TEXT_CEILING: usize = 8192;
 const VIRTUAL_TEXTS_CEILING: usize = 4096;
 
 impl LineFormat {
@@ -140,7 +140,7 @@ impl LineFormat {
         }
         shrink!(self.display_lines, DISPLAY_LINES_CEILING);
         shrink!(self.graphemes, GRAPHEMES_CEILING);
-        shrink!(self.line_text, LINE_TEXTS_CEILING);
+        shrink!(self.line_text, LINE_TEXT_CEILING);
         shrink!(self.virtual_texts, VIRTUAL_TEXTS_CEILING);
     }
 

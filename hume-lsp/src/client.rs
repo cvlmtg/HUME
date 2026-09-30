@@ -194,7 +194,7 @@ pub enum Outcome {
 }
 
 /// How long `initialize` may go unanswered before the client gives up and
-/// transitions to `Crashed`, deliberately independent of
+/// transitions to `Crashed`, independent of
 /// `lsp.request-timeout-ms` (a per-request setting): a cold server's
 /// handshake legitimately outlasts the timeout an ordinary request would
 /// get.
@@ -891,7 +891,7 @@ fn build_client_capabilities() -> ClientCapabilities {
 
 /// Answers a server-initiated request. Exhaustive by design: every request
 /// gets exactly one response, even the ones this v1 doesn't otherwise
-/// support. `workspace/applyEdit` is deliberately absent: it's the one
+/// support. `workspace/applyEdit` is absent: it's the one
 /// server request that needs `&mut Editor` (the edit engine), so the editor
 /// glue answers it separately (`apply_edit_request_response`) rather than
 /// through this pure lookup table.

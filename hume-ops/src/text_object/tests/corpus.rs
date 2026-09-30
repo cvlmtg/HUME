@@ -6,7 +6,7 @@ use test_fixtures::assert_state;
 use test_fixtures::unicode::{ALL, standalone};
 
 #[test]
-fn inner_paren_selects_exactly_the_sample() {
+fn inner_paren_selects_the_sample() {
     for s in standalone() {
         assert_state!(
             &format!("x\n(-[{s}]>)\n"),
@@ -36,7 +36,7 @@ fn around_paren_selects_the_delimiters_and_the_sample() {
 }
 
 #[test]
-fn inner_double_quote_selects_exactly_the_sample() {
+fn inner_double_quote_selects_the_sample() {
     for s in standalone() {
         assert_state!(
             &format!("x\n\"-[{s}]>\"\n"),

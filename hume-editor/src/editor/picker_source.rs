@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use hume_platform::process::line_source::SpawnedLineSource;
-use hume_scripting::host::{PickerSourceOpts, WidgetToken};
+use hume_scripting::host::{HostToken, PickerSourceOpts};
 use steel::rvals::SteelVal;
 
 use super::input_stack::PickerItem;
@@ -33,7 +33,7 @@ use super::{Editor, EditorState};
 /// source in place rather than leaving the picker sourceless.
 pub(super) fn spawn_source(
     state: &mut EditorState,
-    token: WidgetToken,
+    token: HostToken,
     cmd: &str,
     args: Vec<String>,
     opts: PickerSourceOpts,
@@ -60,7 +60,7 @@ pub(super) fn spawn_source(
 /// `EditorHostImpl::picker_source_stop`'s body: detaches (and reports, if
 /// already exited) the picker's attached source, if any, without touching
 /// the item list. Same expected-normal-race contract as `spawn_source`.
-pub(super) fn stop_source(state: &mut EditorState, token: WidgetToken) -> bool {
+pub(super) fn stop_source(state: &mut EditorState, token: HostToken) -> bool {
     if session_for_token(state, token).is_none() {
         return false;
     }

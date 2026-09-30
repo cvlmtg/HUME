@@ -1,5 +1,5 @@
 //! The mechanism: [`InputStack`], [`LayerRef`], [`InputEvent`], and the
-//! [`Layer`] trait every concrete layer implements. Deliberately names no
+//! [`Layer`] trait every concrete layer implements. Names no
 //! layer in its own API; see this module's own doc for why.
 //!
 //! Storage is `Vec<(u64, Box<dyn Layer>)>` rather than `Vec<InputLayer>` for
@@ -211,7 +211,7 @@ pub(in crate::editor) trait FiresFalseOnReplace: Layer {
 /// What a `close-*!`/Rust-internal retirement of this layer does to whatever
 /// sits above it. Read by [`EditorState::retire`]. [`Stack`](Self::Stack)
 /// (the default) takes any collateral above the target with it, the right
-/// shape when what's above genuinely depends on the target being open.
+/// shape when what's above depends on the target being open.
 /// [`SelfOnly`](Self::SelfOnly) removes exactly the target, leaving anything
 /// above in place, for a widget something else is routinely stacked over by
 /// coincidence rather than by dependency: `DrawerLayer` (browse-while-editing
@@ -275,7 +275,7 @@ impl dyn Layer {
 /// [`EditorState::take_layer`] (below, in this same module), are what run
 /// it, and narrowing the raw ops keeps a caller elsewhere in `crate::editor`
 /// from reaching around them. `truncate_to_base` stays at the wider
-/// visibility: its one caller (`reload.rs`) deliberately drops every
+/// visibility: its one caller (`reload.rs`) drops every
 /// layer's callback rather than running teardown, a stated exception, not
 /// a hole a door could close. A payload is only ever reached through a
 /// typed lookup: `find` (topmost of a type), `at` (the layer at a specific
@@ -495,7 +495,7 @@ impl InputStack {
     /// [`EditorState::truncate_layers`]/[`EditorState::take_layer`]'s job,
     /// this method's only two callers (besides [`Self::clear_popups`],
     /// sound only because the one layer it ever removes has an empty
-    /// `tear_down` by construction; see its own doc).
+    /// `tear_down`; see its own doc).
     pub(in crate::editor::input_stack) fn truncate(&mut self, r: LayerRef) -> Vec<Box<dyn Layer>> {
         if r.depth == 0 || !self.is_live(r) {
             return Vec::new();
@@ -686,8 +686,7 @@ impl InputStack {
     /// to coexist with an open completion menu. Takes no `EditorState`/`view`
     /// (unlike `EditorState::truncate_layers`), so this truncates `self`
     /// directly rather than running `tear_down`, sound because the one
-    /// layer this ever removes is a `PopupLayer`, whose `tear_down` is empty
-    /// by construction.
+    /// layer this ever removes is a `PopupLayer`, whose `tear_down` is empty.
     pub(in crate::editor) fn clear_popup_layer(&mut self) {
         if let Some(r) = self.ref_of::<PopupLayer>() {
             debug_assert_eq!(
@@ -831,7 +830,7 @@ impl EditorState {
     /// [`Self::take_firing_false`], since they must fire the outgoing
     /// callback themselves. What happens to anything stacked above `L` is
     /// `L`'s own [`Layer::removal_scope`]: collateral
-    /// removal ([`Self::truncate_layers`]) when it genuinely depends on `L`
+    /// removal ([`Self::truncate_layers`]) when it depends on `L`
     /// being open, in-place removal ([`Self::excise_layer`]) when it's merely
     /// stacked over `L` by coincidence (`DrawerLayer`, `MenuLayer`).
     pub(in crate::editor) fn retire<L: Layer>(&mut self, view: &EngineView) {
@@ -872,7 +871,7 @@ impl EditorState {
     /// overlay it's about to push. (A completion source's answer has no
     /// such gate: it names the one invocation it answers, and an answer
     /// whose invocation is no longer the latest in an open session is
-    /// dropped by construction.) `true` when the request should be
+    /// dropped.) `true` when the request should be
     /// dropped, for either of two distinct reasons, reported at different
     /// severities:
     ///

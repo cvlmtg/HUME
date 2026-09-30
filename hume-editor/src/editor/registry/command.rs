@@ -22,8 +22,8 @@ pub(in crate::editor) type PaneCmdFn = fn(
 ) -> Result<(), CommandError>;
 
 /// Function pointer for an [`EditorCmdBody::FocusedPane`] handler: acts on
-/// `bid` through the *focused* pane, proven by construction; see
-/// [`FocusedPane`]'s own doc for what that licenses.
+/// `bid` through the *focused* pane, which the [`FocusedPane`] argument
+/// proves; see its doc for what that licenses.
 pub(in crate::editor) type FocusedCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
@@ -142,7 +142,7 @@ pub(in crate::editor) struct CmdMeta {
     /// Read only by `moves_cursor`, alongside `is_jump`/`is_motion`,
     /// to decide whether to snapshot the pre-move selection for the jump
     /// list. It does not gate the sticky display column, which a
-    /// `Selection` carries and clears by construction regardless of this
+    /// `Selection` carries and clears itself regardless of this
     /// flag (see `Selection::sticky_display_col`).
     pub is_visual_move: bool,
     /// Whether `.` should replay this command.
@@ -198,10 +198,9 @@ impl CmdMeta {
     /// Returns `true` if this command moved the cursor rather than editing:
     /// the disjunction of `is_motion`, `is_jump`, and `is_visual_move`.
     ///
-    /// The pipeline runs exactly these commands inside `with_jump`, which
+    /// The pipeline runs these commands, and only these, inside `with_jump`, which
     /// snapshots the pre-body position for the jump list and invalidates a
-    /// still-open Insert session's pinned typed run. Derived in one place so
-    /// the two can't drift apart on a future flag.
+    /// still-open Insert session's pinned typed run.
     ///
     /// **Blind spot**: [`MappableCommand::meta`] hardcodes all three flags
     /// `false` for `SteelBacked` and `Lazy`, since a Steel command has no way to
@@ -651,7 +650,7 @@ pub(in crate::editor) enum TypedBody {
     /// EditorState, &mut EngineView, …)` shape, for three reasons: the only
     /// callers are the `:` command line and tests, so `&mut Editor` here
     /// never runs while the Steel engine is borrowed; some handlers
-    /// genuinely need shell-level fields (`:e` and `:set buffer language=`
+    /// need shell-level fields (`:e` and `:set buffer language=`
     /// reach `scripting` for `activate_lazy_language_plugins` and
     /// `parse_worker` for `setup_buffer_syntax`, neither reachable from the
     /// coarse shape); and this is the Editor-orchestration layer, driving

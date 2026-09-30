@@ -26,7 +26,7 @@ new edit, a new branch grows from that point:
 
 `D` is still reachable — you can undo `C` and then redo to reach `D`. Undoing
 and redoing never throws an edit away; branches only disappear when the tree
-is deliberately bounded (see "Bounding the tree" below).
+is bounded (see "Bounding the tree" below).
 
 When you redo from a branch point, the most recent child is chosen — after
 undoing and making a new edit, subsequent redo takes you along the new branch,

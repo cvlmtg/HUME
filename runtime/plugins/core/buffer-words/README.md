@@ -228,7 +228,7 @@ classification isn't done in Steel at all: the scan hands each line to `core:std
 `stdlib/split-words`, which reads the buffer's own `word-chars` and runs the native
 `split-words` builtin. `split-words` tokenizes using the same word/character classifier
 `w`/`b` motions and text objects use (`hume-ops`'s word-motion scan primitives, built on
-grapheme-cluster-safe stepping). A word this plugin offers is, by construction, exactly
+grapheme-cluster-safe stepping), so a word this plugin offers is always
 what a `w` motion would select: `café` (with a combining accent) stays one candidate,
 `l'élément` splits at the curly apostrophe into `l` and `élément`, and `foo—bar` (em dash)
 splits into `foo` and `bar`, with no approximation left to apologize for. `word-chars` is

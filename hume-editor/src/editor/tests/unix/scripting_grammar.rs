@@ -859,7 +859,7 @@ fn define_language_override_in_init_keeps_startup_grammar() {
 
 /// Run `init_scripting` against a temp runtime holding the real `prelude.scm`
 /// and `grammars.scm` but a caller-supplied `grammar-sources.scm` and a
-/// deliberately tiny `languages.scm`, with `populate_data` free to lay out the
+/// tiny `languages.scm`, with `populate_data` free to lay out the
 /// data dir first. Returns the editor's error log. Caller must keep the
 /// returned `TempDir`s alive.
 fn init_errors_with_catalog(
@@ -1010,7 +1010,7 @@ fn known_grammar_missing_highlights_warns_and_is_not_registered() {
         let grammars = data.join("grammars");
         std::fs::create_dir_all(&grammars).unwrap();
         std::fs::write(grammars.join(format!("json.{ext}")), b"not a real library").unwrap();
-        // Deliberately no highlights.scm under sources/json/.
+        // No highlights.scm under sources/json/: the test covers its absence.
     });
 
     assert!(

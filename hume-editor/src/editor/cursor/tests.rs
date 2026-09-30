@@ -309,7 +309,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
 /// anchor-line mapping isn't implemented yet). See the `_no_wrap` sibling
 /// below; row math is wrap-mode-agnostic.
 #[test]
-fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line() {
+fn screen_to_cluster_accounts_for_a_stolen_virtual_display_line() {
     let rope = Rope::from_str("a\nb\nc\n");
     let mut v = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 80 };
@@ -411,9 +411,9 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     );
 }
 
-/// No-wrap mirror of `screen_to_char_offset_accounts_for_a_stolen_virtual_display_line`.
+/// No-wrap mirror of `screen_to_cluster_accounts_for_a_stolen_virtual_display_line`.
 #[test]
-fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line_no_wrap() {
+fn screen_to_cluster_accounts_for_a_stolen_virtual_display_line_no_wrap() {
     let rope = Rope::from_str("a\nb\nc\n");
     let mut v = vp(0, 80, 10);
     let wrap = WrapMode::None;
@@ -621,7 +621,7 @@ fn content_pos_cursor_below_viewport_returns_none() {
 /// horizontal axis, exactly as a row below the bottom is on the vertical
 /// axis. `content_pos`'s own doc already promises `None` for "outside the
 /// visible viewport" on either. The completion-menu anchor
-/// (`input_stack/completion.rs`'s `session.anchor().offset()`) is the one caller this
+/// (`input_stack/completion.rs`'s `BufferSession::menu_anchor`) is the one caller this
 /// matters for: it stays fixed at the token's start while the live cursor drives
 /// `horizontal_offset` rightward as the user types further into the token.
 #[test]

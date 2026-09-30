@@ -118,7 +118,7 @@ fn unknown_injection_language_is_skipped_silently() {
             r#"((string_content) @injection.content (#set! injection.language "no-such-language") (#set! injection.include-unnamed-children))"#,
         ),
     );
-    // Non-empty but irrelevant: proves the lookup is genuinely by-key,
+    // Non-empty but irrelevant: proves the lookup is by key,
     // not just "map happens to be empty".
     let mut langs = FxHashMap::default();
     langs.insert(

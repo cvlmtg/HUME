@@ -677,7 +677,7 @@ fn write_all_skips_stale_buffer_but_writes_the_rest_bang_overrides() {
 // ── `disk_state` resets when the file matches its baseline again ─────────────────
 
 /// A `disk_state` left at `Changed` must reset to `InSync` the moment a
-/// fresh stat genuinely matches the buffer's read/write baseline again.
+/// fresh stat matches the buffer's read/write baseline again.
 /// Otherwise a change that reverts and is later re-applied with the exact
 /// signature already reported would silently fail to re-fire (the
 /// `already_reported` comparison in the `Changed` arm would still find a

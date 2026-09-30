@@ -432,7 +432,7 @@ fn shift_d_is_dot_repeatable() {
 fn smart_change_to_eol_without_stdlib_errors_at_load() {
     let guard = HumeRuntimeGuard::new();
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
-    // Deliberately no `write_core_plugin(&guard, "stdlib", ...)`.
+    // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
 
     let init_dir = safe_tempdir();
     let init_path = init_dir.path().join("init.scm");
@@ -463,7 +463,7 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
 fn change_to_eol_off_also_requires_stdlib() {
     let guard = HumeRuntimeGuard::new();
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
-    // Deliberately no `write_core_plugin(&guard, "stdlib", ...)`.
+    // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
 
     let init_dir = safe_tempdir();
     let init_path = init_dir.path().join("init.scm");

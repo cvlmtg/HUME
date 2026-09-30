@@ -129,8 +129,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         MiniBufferEvent::BackspaceOnEmpty => {
             // Input already empty: user pressed Backspace a second time to
             // dismiss. Teardown restores the snapshot, clears the search, and
-            // begins a fresh history session, the same as this arm's own
-            // body used to.
+            // begins a fresh history session.
             ed.state.truncate_layers(&ed.view, r);
         }
         MiniBufferEvent::Edited => {

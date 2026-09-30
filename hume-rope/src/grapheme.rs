@@ -61,8 +61,8 @@ impl Cluster {
 /// Ropey stores the rope as a B-tree of `&str` chunks. Materializing the
 /// whole buffer into a single `String` just to walk it would be O(n) in
 /// space. `GraphemeCursor` takes the text a chunk at a time, and the walk
-/// keeps its place in the chunk sequence, so the rope is descended once,
-/// when the walk starts.
+/// keeps its place in the chunk sequence, so the rope is descended at most
+/// twice: once to open the walk, once on its first chunk crossing.
 pub fn graphemes_at(slice: RopeSlice<'_>, from: ClusterBound) -> Graphemes<'_> {
     walk_from(slice, from.offset())
 }
@@ -290,8 +290,8 @@ pub(crate) fn ceil_boundary(slice: RopeSlice<'_>, offset: CharOffset) -> Cluster
 }
 
 /// The clusters of `slice` before `bound`, nearest first: the backward
-/// counterpart of [`graphemes_at`], descending the rope once when the walk
-/// starts.
+/// counterpart of [`graphemes_at`], descending the rope at most twice, as
+/// it does.
 pub fn clusters_before(slice: RopeSlice<'_>, bound: ClusterBound) -> ClustersBefore<'_> {
     let (cur, byte) = ChunkCursor::at_char(slice, bound.offset().index());
     ClustersBefore {

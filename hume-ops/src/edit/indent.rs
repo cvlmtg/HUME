@@ -92,7 +92,7 @@ fn shift_indent(
     lines.dedup();
 
     let text = state.text();
-    // (line start, end of its indent, the indent it gets), for every line
+    // (line start, its old indent, the indent it gets), for every line
     // whose indent changes.
     let mut rewrites = Vec::new();
 

@@ -15,8 +15,8 @@ use crate::{PendingLspServerReg, SteelCtx};
 use super::SteelResult;
 use super::args::{
     ArgPane, bool_arg, callable_arg, json_arg, json_params, list_items, list_to_env_pairs,
-    list_to_strings, optional_json_arg, optional_string_arg, string_arg, symbol_hash, token_arg,
-    wire_position,
+    list_to_strings, optional_json_arg, optional_string_arg, optional_token_arg, string_arg,
+    symbol_hash, token_arg, wire_position,
 };
 use super::errors::generic_err;
 use super::hooks::{register_entry, require_known_event};
@@ -180,10 +180,7 @@ pub(crate) fn lsp_request(
             })
         })
         .transpose()?;
-    let tracked = match tracked {
-        SteelVal::BoolV(false) => None,
-        token => Some(token_arg(token, "lsp-request! #:tracked")?),
-    };
+    let tracked = optional_token_arg(tracked, "lsp-request! #:tracked")?;
     ctx.push_effect(Effect::LspRequest(PendingLspRequest {
         bid: pane.buffer(),
         method,
@@ -377,7 +374,8 @@ pub(crate) fn track_position(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResul
 
 /// `(tracked-position-params token)` → the `lsp-position-params` shape for
 /// where the tracked position is now, or `#f` for a released or unknown
-/// token, a closed or replaced buffer, or a buffer with no attached server.
+/// token, a closed or replaced buffer, or a buffer with no path or no
+/// attached server.
 /// A `#f` token is that same stale case; only a non-integer raises.
 pub(crate) fn tracked_position_params(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "tracked-position-params token")?;

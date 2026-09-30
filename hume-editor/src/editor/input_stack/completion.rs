@@ -112,13 +112,11 @@ impl Editor {
             return;
         }
 
-        // An edit that bypasses the session (an LSP applyEdit, a file
-        // reload) or a pane switch can leave the anchor behind the text, or
-        // the session on a buffer that isn't the one on screen, in the narrow
-        // window before the next settle-time `reconcile_completion` pass
-        // catches the mismatch (`scripting_setup.rs`). The
-        // anchor reads as absent against a text it was not ranked on, and the
-        // buffer check below covers the other case.
+        // The menu anchor is ranked against one text and reads as absent
+        // once the text moves, until the next settle-time
+        // `reconcile_completion` pass re-ranks (`scripting_setup.rs`). A pane
+        // switch can leave the session on a buffer that isn't the one on
+        // screen in that same window; the buffer check below covers it.
         //
         // Sequential borrows rather than one closure over
         // `self.state.input`: the session's shared borrow has to end

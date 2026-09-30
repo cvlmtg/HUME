@@ -46,8 +46,8 @@ display_col_tests!(DisplayLineCol, display_line_col);
 display_col_tests!(BufferLineCol, buffer_line_col);
 
 // Not shared with `BufferLineCol`'s macro-generated tests above: only
-// `DisplayLineCol` derives `Default`. It's load-bearing (`DisplayLinePos`,
-// `ScrollPosition`), `BufferLineCol`'s never was.
+// `DisplayLineCol` derives `Default`, which `DisplayLinePos` and
+// `ScrollPosition` rely on.
 #[test]
 fn display_line_col_default_is_column_zero() {
     assert_eq!(DisplayLineCol::default(), DisplayLineCol::new(0));

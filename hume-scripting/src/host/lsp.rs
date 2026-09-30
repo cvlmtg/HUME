@@ -5,7 +5,7 @@ use std::sync::Arc;
 use hume_engine::pipeline::BufferId;
 use hume_rope::position_encoding::PositionEncoding;
 
-use super::ui::WidgetToken;
+use super::token::HostToken;
 use crate::types::PaneHandle;
 
 /// LSP server introspection, accessed through [`EditorHost::lsp`](super::EditorHost::lsp).
@@ -45,23 +45,23 @@ pub trait LspHost {
     /// `pane`'s own pane, carried through every edit, and returns the token
     /// naming it. `Err` (kind-B fail-fast) when `pane` carries no pane, a
     /// closed one, or one that no longer shows `pane`'s buffer.
-    fn track_position(&mut self, pane: PaneHandle) -> Result<WidgetToken, String>;
+    fn track_position(&mut self, pane: PaneHandle) -> Result<HostToken, String>;
 
     /// `(tracked-position-params token)`: the
     /// [`lsp_position_params`](Self::lsp_position_params) shape for where the
     /// tracked position is now. `None` for a released or unknown token, a
     /// closed buffer or one whose text was replaced, or a buffer with no
     /// path or no attached server; never an error.
-    fn tracked_position_params(&self, token: WidgetToken) -> Option<serde_json::Value>;
+    fn tracked_position_params(&self, token: HostToken) -> Option<serde_json::Value>;
 
     /// `(untrack-position! token)`: releases the position. A released or
     /// unknown token is a no-op.
-    fn untrack_position(&mut self, token: WidgetToken);
+    fn untrack_position(&mut self, token: HostToken);
 
     /// `(keep-tracked-position! token)`: keeps a position an `lsp-request!`
     /// holds through `#:tracked` past its callback. A released or unknown
     /// token is a no-op.
-    fn keep_tracked_position(&mut self, token: WidgetToken);
+    fn keep_tracked_position(&mut self, token: HostToken);
 
     /// Same as [`lsp_position_params`](Self::lsp_position_params) but a
     /// `{"textDocument" {"uri"} "range" {"start" "end"}}` shape from the
@@ -160,7 +160,7 @@ pub trait LspHost {
     /// location whose shape can't be decoded at all (missing `uri`/`range`,
     /// unparseable URI, or untagged): such a location names no destination
     /// `goto-location!` could reach either, so a drawer row for it would be
-    /// unselectable by construction. Degrading only this builtin wouldn't
+    /// unselectable. Degrading only this builtin wouldn't
     /// help either: the same malformed location would still abort three
     /// lines later inside `lsp/location-display`, which is why both routes
     /// decode through the one shared `decode_location` instead of

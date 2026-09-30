@@ -38,7 +38,7 @@ fn keymap_lint_warns_on_unknown_command() {
 /// kind confusion keypress dispatch guards against, here caught at init time
 /// instead of silently waiting for the first press.
 ///
-/// A name genuinely absent from the registry (`bogus-unknown-cmd` in
+/// A name absent from the registry (`bogus-unknown-cmd` in
 /// `keymap_lint_warns_on_unknown_command` above) keeps the generic message,
 /// since there is no other kind to name.
 #[test]

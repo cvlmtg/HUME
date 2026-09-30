@@ -177,7 +177,7 @@ impl BufferSession {
         // the cursor, so it holds unless the cursor sits before the carried
         // start (`reconcile` drops such a slot). A cursor outside a server's
         // span breaks that assumption. Erroring here, buffer untouched, is
-        // safer than silently computing a span from a stale reference
+        // safer than quietly computing a span from a stale reference
         // point. This also keeps the `chars_since` calls below from
         // tripping their inversion assert.
         if !contains_cursor(&(start_now..end_now), head_now.offset()) {

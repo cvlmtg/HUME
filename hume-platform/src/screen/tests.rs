@@ -43,7 +43,7 @@ fn painted(next: &Grid, prev: Option<&Grid>, cursor: Option<Position>) -> String
 
 #[test]
 fn an_unchanged_style_needs_no_attributes() {
-    // Load-bearing: termina renders empty attributes as a full SGR reset, so
+    // termina renders empty attributes as a full SGR reset, so
     // the emitter must recognise "nothing changed" and write nothing at all.
     assert_eq!(sgr_delta(&red(), &red()), SgrAttributes::default());
 }

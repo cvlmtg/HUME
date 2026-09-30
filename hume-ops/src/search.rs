@@ -155,7 +155,7 @@ pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
     Some((flags, regex))
 }
 
-/// Find the next regex match in `text`, starting from char offset `from_char`.
+/// Find the next regex match in `text`, starting at `from`.
 ///
 /// # Direction
 ///

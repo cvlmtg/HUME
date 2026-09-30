@@ -320,7 +320,7 @@ pub(crate) fn buffer_cursor_line(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelR
 /// `(hash 'anchor a 'head h 'start s 'end e 'primary p)` per selection in
 /// `pane`'s own pane: raw 0-indexed char offsets, direction preserved
 /// (anchor > head when backward), sorted by selection start, exactly one
-/// `primary?` = `#t`. `start`..`end` is exactly what the selection covers,
+/// `primary?` = `#t`. `start`..`end` is what the selection covers,
 /// `end` exclusive.
 pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     let sels = ctx

@@ -52,7 +52,7 @@ fn ctrl_bindings_in_normal_keymap() {
         matches!(trie.walk(&[key!(Ctrl + 'e')]), WalkResult::Leaf(ref cmd) if cmd.name == "flip-selections"),
         "Ctrl-e should map to flip-selections"
     );
-    // Ctrl-w is deliberately unbound (kitty one-shot extend via strip-CONTROL).
+    // Ctrl-w is unbound (kitty one-shot extend via strip-CONTROL).
     assert!(
         matches!(trie.walk(&[key!(Ctrl + 'w')]), WalkResult::NoMatch),
         "Ctrl-w must be unbound: pane prefix is Ctrl-p"

@@ -3,7 +3,7 @@
 //! matcher, and the menu's selected row, bundled as [`SlotSet`], generic
 //! over a target's own id type (`BufferSourceId`/`MinibufSourceId`) and
 //! span shape (`BufferSpan`/`MinibufSpan`). [`super::BufferSession`]/
-//! [`super::MinibufSession`] each hold one, plus whatever is genuinely
+//! [`super::MinibufSession`] each hold one, plus whatever is
 //! their own (cross-source dedup is `Buffer`-only, since `Minibuf` invokes
 //! exactly one source).
 
@@ -11,7 +11,7 @@ use super::super::item::CompletionItem;
 use super::super::registry::{BufferSourceId, MinibufSourceId, SourceRegistry};
 use super::MatchKind;
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyPattern, FuzzyProfile};
-use crate::editor::widget_token;
+use crate::editor::host_token;
 
 enum InvocationState {
     Pending,
@@ -38,7 +38,7 @@ pub(in crate::editor) struct Invocation<S> {
 impl<S> Invocation<S> {
     pub(super) fn new(span: S) -> Self {
         Self {
-            id: widget_token::next(),
+            id: host_token::next(),
             span,
             state: InvocationState::Pending,
         }

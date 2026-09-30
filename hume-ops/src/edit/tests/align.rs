@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::text::BufferText;
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
 

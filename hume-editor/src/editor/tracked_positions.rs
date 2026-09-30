@@ -11,17 +11,17 @@ use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::CharOffset;
-use hume_scripting::host::WidgetToken;
+use hume_scripting::host::HostToken;
 
 use super::buffer::store::BufferStore;
-use super::widget_token;
+use super::host_token;
 
 /// The positions scripts are tracking, each a cursor in one buffer under a
 /// token the script holds. A token nobody minted, or one already released,
 /// answers absent, like every other widget token.
 #[derive(Default)]
 pub(in crate::editor) struct TrackedPositions {
-    entries: FxHashMap<WidgetToken, Tracked>,
+    entries: FxHashMap<HostToken, Tracked>,
 }
 
 struct Tracked {
@@ -38,8 +38,8 @@ impl TrackedPositions {
         bid: BufferId,
         text: &BufferText,
         at: ClusterStart,
-    ) -> WidgetToken {
-        let token = widget_token::mint();
+    ) -> HostToken {
+        let token = host_token::mint();
         let cursor = EditState::with_cursor(text.clone(), at).into_selections();
         self.entries.insert(
             token,
@@ -57,7 +57,7 @@ impl TrackedPositions {
     /// replaced.
     pub(in crate::editor) fn position(
         &self,
-        token: WidgetToken,
+        token: HostToken,
         buffers: &BufferStore,
     ) -> Option<(BufferId, CharOffset)> {
         let tracked = self.entries.get(&token)?;
@@ -71,12 +71,12 @@ impl TrackedPositions {
         ))
     }
 
-    pub(in crate::editor) fn untrack(&mut self, token: WidgetToken) {
+    pub(in crate::editor) fn untrack(&mut self, token: HostToken) {
         self.entries.remove(&token);
     }
 
     /// Keep `token` past the callback of the request that holds it.
-    pub(in crate::editor) fn keep(&mut self, token: WidgetToken) {
+    pub(in crate::editor) fn keep(&mut self, token: HostToken) {
         if let Some(tracked) = self.entries.get_mut(&token) {
             tracked.kept = true;
         }
@@ -84,7 +84,7 @@ impl TrackedPositions {
 
     /// Release `token` for a request that is done with it, unless its
     /// callback kept it.
-    pub(in crate::editor) fn release_unless_kept(&mut self, token: WidgetToken) {
+    pub(in crate::editor) fn release_unless_kept(&mut self, token: HostToken) {
         if self
             .entries
             .get(&token)

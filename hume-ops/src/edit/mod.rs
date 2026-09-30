@@ -1,8 +1,6 @@
 use hume_editing::edit::{EditBuilder, Edited, Landing, Landings, edit};
 use hume_editing::selection::SelectionView;
 use hume_editing::state::EditState;
-#[cfg(test)]
-use hume_editing::{selection::SelectionSet, text::BufferText};
 
 mod align;
 mod case;

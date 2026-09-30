@@ -194,7 +194,7 @@ fn stale_response_after_a_buffer_switch_opens_no_drawer() {
         );
     });
 
-    // Sends the request synchronously; deliberately no settle() before the
+    // Sends the request synchronously; no settle() before the
     // switch below, the same technique as `lsp_hover.rs`'s own
     // `stale_response_after_a_buffer_switch_shows_no_popup`.
     ed.execute_keymap_command("lsp-references".into(), Some(1), false);

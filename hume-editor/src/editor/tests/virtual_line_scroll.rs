@@ -90,7 +90,7 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     // Wheel scrolling (`Viewport::scroll_by`) must walk through the
     // 2-display-line block ([V, x]) one display line per notch, never skip
     // the whole block in a single notch. Viewport height 2 is shorter than
-    // the 3-display-line total content (V, x, y), so there's genuinely
+    // the 3-display-line total content (V, x, y), so there's
     // something to scroll, up to the point where `max_scroll_top` puts the
     // document's last display line (y) on the bottom row, which the first
     // notch alone already reaches.

@@ -656,7 +656,7 @@ fn for_selector_cache_does_not_survive_a_bake() {
     };
 
     // Insert a line above the function, then bake it in: `frame_tick` bakes
-    // and hands back a reparse request we deliberately drop, leaving the
+    // and hands back a reparse request we drop, leaving the
     // layers edited-in-place and *not* replaced by an install.
     let edited = format!("// lead\n{source}");
     let mut b = ChangeSetBuilder::new(text.end());

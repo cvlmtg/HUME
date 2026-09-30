@@ -149,7 +149,7 @@ fn line_to_offset_blocked_in_init_mode() {
 /// the same default on a fresh harness. The live read is guaranteed by the
 /// function body calling `ctx.host.buffers()`. See
 /// `wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus`
-/// (`hume-editor`) for a case where the two genuinely diverge.
+/// (`hume-editor`) for a case where the two diverge.
 #[test]
 fn focused_pane_command_mode_returns_steel_pane_id() {
     let mut h = SteelCtxTestHarness::new();

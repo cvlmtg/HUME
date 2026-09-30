@@ -62,7 +62,7 @@ pub enum ConfigSource {
 /// Parses one positional CLI argument into a [`FileArg`].
 ///
 /// A path that names a real file or symlink *as typed* always wins over
-/// splitting: a file genuinely called `weird:12` must stay openable from
+/// splitting: a real file named `weird:12` must stay openable from
 /// the CLI. Only when the literal path doesn't exist is a trailing
 /// `:<line>` or `:<line>:<col>` peeled off (a lone trailing `:` is
 /// tolerated: `foo.rs:12:` behaves like `foo.rs:12`). Both numbers are

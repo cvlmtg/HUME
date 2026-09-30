@@ -20,7 +20,7 @@ fn paths(dir: &Path) -> Vec<PathBuf> {
 /// for tests that assert on the inner variant regardless of which file it came
 /// from.
 ///
-/// Deliberately not recursive: attribution must happen exactly once, or the
+/// Not recursive: attribution must happen exactly once, or the
 /// message prints two paths for one error and the outer (less specific) one
 /// wins the reader's eye. Every test that reaches for the inner variant
 /// therefore also guards against a double wrap.
@@ -1471,7 +1471,7 @@ fn empty_nested_scope_table_blocks_fallback() {
         .unwrap()
         .theme;
 
-    // "ui.cursor.insert" = {} deliberately blocks the dot-fallback chain:
+    // "ui.cursor.insert" = {} blocks the dot-fallback chain:
     // it must resolve to an empty style, not to "ui.cursor"'s fg.
     let insert = theme.resolve_by_name(crate::types::Scope("ui.cursor.insert"));
     assert_eq!(insert.fg, None);

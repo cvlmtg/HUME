@@ -88,7 +88,7 @@ fn encode(key: &KeyEvent) -> u64 {
 const _: () = assert!(Modifiers::all().bits() as u64 <= 0xFF);
 
 /// [`encode`]'s output, wrapped so `Eq`/`Hash` agreement is a derive instead
-/// of two hand-written impls that agree only by construction. Case-normalized
+/// of two hand-written impls kept in agreement by hand. Case-normalized
 /// via [`canonical`] on the only path into one (`From<KeyEvent>`): termina's
 /// `KeyEvent` has no case-normalized equality of its own, which binding
 /// lookup needs, so this type is the sole place a raw `KeyEvent` becomes a

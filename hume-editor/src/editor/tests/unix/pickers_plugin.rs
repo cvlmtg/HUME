@@ -705,7 +705,7 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
 fn missing_stdlib_errors_at_load() {
     let guard = HumeRuntimeGuard::new();
     write_core_plugin(&guard, "pickers", PICKERS_PLUGIN);
-    // Deliberately no `write_core_plugin(&guard, "stdlib", ...)`.
+    // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
     let tmp = safe_tempdir();
     let init_path = tmp.path().join("init.scm");
     std::fs::write(&init_path, "(load-plugin! \"core:pickers\")").unwrap();

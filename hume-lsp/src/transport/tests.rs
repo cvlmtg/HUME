@@ -212,7 +212,7 @@ fn reader_loop_delivers_through_a_bounded_channel_in_order() {
     // two messages until the reader below drains. This exercises the
     // `SyncSender` blocking-when-full path (not just the non-blocking
     // `try_recv` used elsewhere), without a real flooding process (which
-    // would need timing assertions and be flaky by construction:
+    // would need timing assertions and be inherently flaky:
     // `Stdio::piped()`'s own pipe backpressure is what actually
     // engages in production; this test only pins that `reader_loop`
     // functions correctly against a bounded channel).

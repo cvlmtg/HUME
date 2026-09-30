@@ -12,7 +12,7 @@
 - hume-ui
 - hume-decorations
 - hume-scripting
-- test-fixtures *(dev-only)*
+- test-fixtures
 ## Description
 Rope-domain primitives: line counting and ranges, grapheme-cluster boundaries and the typed cluster positions only it can mint (`ClusterStart`, `ClusterBound`, `ClusterRange`), buffer char offsets, display-column width, and LSP wire-position conversion. The single source of truth every other crate defers to for "how many lines" and "how wide is this text" — a pure math layer with no knowledge of buffers, selections, or rendering.
 

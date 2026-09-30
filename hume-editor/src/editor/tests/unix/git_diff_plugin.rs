@@ -1218,7 +1218,7 @@ fn missing_stdlib_errors_at_load() {
     let tmp = safe_tempdir();
     let _guard = RealRuntimeGuard::new();
     let init_path = tmp.path().join("init.scm");
-    // Deliberately no `(load-plugin! "core:stdlib")`.
+    // No `(load-plugin! "core:stdlib")`: the test covers its absence.
     std::fs::write(&init_path, r#"(load-plugin! "core:git-diff")"#).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");

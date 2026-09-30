@@ -122,7 +122,7 @@ fn line_display_col_counts_a_preceding_inline_insert() {
 #[test]
 fn char_at_line_display_col_round_trips_with_line_display_col() {
     // Up to, not through, the line's own terminating '\n': `NearestContent`
-    // deliberately never lands there on a non-empty line (see
+    // never lands there on a non-empty line (see
     // `char_at_nearest_content_stays_off_the_eol_sentinel`), so round-tripping
     // *that* offset's column intentionally clamps back to 'd' rather than
     // returning 9, which makes it not a round trip to test.

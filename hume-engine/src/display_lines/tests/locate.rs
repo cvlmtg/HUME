@@ -60,7 +60,7 @@ fn locate_offsets_the_display_line_by_the_lines_before_block() {
 #[test]
 fn locate_skips_a_mid_line_inline_insert_sharing_the_real_graphemes_offset() {
     // "ab\n", no wrap: an inline insert "XY" (an inlay hint, say) spliced in
-    // right before 'b' shares 'b's char_offset (1). `locate` must resolve to
+    // right before 'b' shares 'b's position (1). `locate` must resolve to
     // the real grapheme's column ('a' at 0, the insert's own two cells at 1
     // and 2, 'b' at 3), not the insert's column, matching what
     // `style::resolve_grapheme_display_col` already guarantees for selection styling.
@@ -137,7 +137,7 @@ fn locate_resolves_the_eol_sentinel_of_an_exactly_full_wrapped_display_line() {
 fn char_at_nearest_content_stays_off_the_newline_indicator() {
     // Same scenario as the sibling test above, but with the newline
     // indicator (`whitespace-newline`) enabled: `format.rs` pushes it at the
-    // same column and char_offset as the EOL sentinel, so a sticky column
+    // same column and position as the EOL sentinel, so a sticky column
     // past the end of the text must still land on the last real character,
     // not the indicator cell, which `Whitespace`'s tab/space-glyph cases make
     // ineligible for a blanket exclusion.
@@ -245,7 +245,7 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
 fn char_at_cell_on_the_right_half_of_a_wide_grapheme_selects_the_grapheme() {
     // "中x\n": '中' spans display cols 0-1 (its own cell at col 0, width 2)
     // plus a separate WidthContinuation entry at col 1 (width 0, sharing
-    // '中's char_offset). A click at col 1 (the glyph's right half) must
+    // '中's position). A click at col 1 (the glyph's right half) must
     // resolve to '中' via its own cell's span (0..2), not skip past it to
     // the WidthContinuation entry or fall through to 'x'.
     let rope = Rope::from_str("中x\n");
@@ -290,10 +290,10 @@ fn char_at_cell_inside_a_placeholder_selects_the_placeholder() {
 #[test]
 fn char_at_nearest_content_prefers_real_content_over_a_width_continuation_tie() {
     // "中x\n": '中' is CJK (width 2, columns 0-1); its WidthContinuation cell
-    // sits at column 2, sharing '中's char_offset, and 'x' also starts at
+    // sits at column 2, sharing '中's position, and 'x' also starts at
     // column 2. A sticky column of 2 ties between the continuation cell and
     // 'x'. The continuation must not win the tie: it would silently answer
-    // '中's char_offset instead of 'x's, landing a vertical move one glyph
+    // '中's position instead of 'x's, landing a vertical move one glyph
     // too far left whenever the sticky column matches the cell right after a
     // wide grapheme.
     let rope = Rope::from_str("中x\n");
@@ -358,13 +358,13 @@ fn char_at_on_a_virtual_display_line_clamps_to_the_lines_own_content() {
 }
 
 // ---------------------------------------------------------------------------
-// content_display_line_char_bounds()
+// content_display_line_clusters()
 // ---------------------------------------------------------------------------
 
 #[test]
 fn content_display_line_clusters_scopes_to_one_wrap_display_line() {
     // "abcdefgh\n" at width 4: display line 0 covers chars 0..4, display line 1 covers 4..8.
-    // Row 1 ("efgh") exactly fills the wrap width, so the trailing '\n's own
+    // Display line 1 ("efgh") exactly fills the wrap width, so the trailing '\n's own
     // sentinel wraps onto a display line of its own (char 8, the '\n' itself) instead
     // of being folded into display line 1's bounds.
     let rope = Rope::from_str("abcdefgh\n");

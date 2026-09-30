@@ -1281,7 +1281,7 @@ fn word_no_truncation_shrink_back_after_cross() {
 //
 // Flipping a selection (`Ctrl-e` / `o`) swaps anchor and head, and the
 // anchor's word is re-derived from the new anchor on the next press, so
-// flip genuinely hands the "fixed" end to the other side of the selection.
+// flip hands the "fixed" end to the other side of the selection.
 
 #[test]
 fn word_extend_after_flip_shrinks_to_new_anchor_word() {
@@ -1337,8 +1337,8 @@ fn extend_select_next_uppercase_word_unit_spans_punctuation() {
 // `apply_word_select_extend`'s loop re-derives the anchor's unit and moves
 // from the *current* head on every iteration (not just once at entry), so a
 // count > 1 press must behave exactly like pressing the same key `count`
-// times in a row. This is genuinely new code (the loop body didn't exist
-// before bidirectional extend), so it needs its own coverage beyond count=1.
+// times in a row. The loop is a separate path from a single step, so it
+// needs its own coverage beyond count=1.
 
 #[test]
 fn extend_select_next_word_count_2_grows_two_words_forward() {

@@ -22,13 +22,13 @@ use super::{MotionMode, apply_object_motion};
 // Line indices below are bare `usize`, all content-domain: run lengths are
 // added to and subtracted from them repeatedly (`line + 1 - up`, `target +=
 // blank_run(...)`, `after_paragraph.checked_sub(...)`), which is exactly the
-// arithmetic `hume_rope::line`'s typed indices refuse to do (deliberately,
-// everywhere else in this workspace). Threading `ContentLine` through this
+// arithmetic `hume_rope::line`'s typed indices refuse to do everywhere
+// else in this workspace. Threading `ContentLine` through this
 // module's own scanning would add a conversion at every one of those
 // additions without checking anything a `debug_assert` doesn't already:
-// every value here stays `<= content_line_count()` by construction (each
+// every value here stays `<= content_line_count()`, since each
 // finder climbs/descends from a real cursor position and stops at a run
-// boundary `content_tokens_at`/`line_tokens_back_from` already bounds).
+// boundary `content_tokens_at`/`line_tokens_back_from` already bounds.
 // Values cross back into the typed domain only at the four points that
 // actually call into `hume_editing`/`hume_rope` (`content_tokens_at`,
 // `line_span`, and the two `line_tokens_back_from` calls below).

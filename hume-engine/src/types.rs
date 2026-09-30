@@ -111,7 +111,7 @@ pub enum CellContent {
     /// A tab rendered as plain spaces because its indicator is off. Always
     /// exactly one space per cell, so unlike every other arena-backed
     /// variant this one carries no `(start, len)`, since there is nothing to
-    /// look up. Deliberately unstyled: a theme's `ui.virtual.whitespace`
+    /// look up. Unstyled: a theme's `ui.virtual.whitespace`
     /// must not tint a tab expansion the user chose not to see indicators
     /// for.
     TabFill,

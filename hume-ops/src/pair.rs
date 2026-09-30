@@ -36,7 +36,7 @@ pub(crate) fn delimiter_at(
 // ---------------------------------------------------------------------------
 
 /// The bracket pairs `%`-style matching and the argument text object both
-/// scan for. `<>` is deliberately absent: in real code it's a comparison
+/// scan for. `<>` is absent: in real code it's a comparison
 /// operator (`a < b`) far more often than a delimiter, which is why vim's own
 /// `matchpairs` default excludes it too; `<div>`/`</div>` tag matching is a
 /// separate scan ([`crate::tag`]).
@@ -318,7 +318,7 @@ pub(crate) fn find_tightest_bracket_pair(
 /// `sel`'s head is always one extremity of the span (its first or last
 /// cluster; for a cursor the two coincide), never interior, so
 /// "nearest to head, within the selection" is just "scan the span from the
-/// head's end inward"; the first hit is, by construction, the nearest one.
+/// head's end inward"; the first hit is the nearest one.
 /// Uses `chars_at` rather than indexed `char_at` calls so the scan pays
 /// ropey's O(log n) tree descent once, not once per char (same reason
 /// `scan_left_for_open`/`scan_right_for_close` above use it).

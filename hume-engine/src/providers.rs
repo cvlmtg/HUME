@@ -364,7 +364,7 @@ pub trait BottomBandProvider {
 /// Complete set of providers for a pane. Allocated once at startup.
 ///
 /// Each list stores `(ProviderId, Box<dyn Trait>)` pairs. The id is still
-/// load-bearing even with no unregistration path: virtual display lines are stamped
+/// needed even with no unregistration path: virtual display lines are stamped
 /// with their producing provider's id (`display_lines::DisplayLineMap::block`) so
 /// `DisplayLineKind::Virtual { provider_id }` can be attributed back to it (e.g. by a
 /// gutter column rendering which provider owns a display line).

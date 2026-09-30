@@ -64,7 +64,7 @@ fn take_due_respects_the_deadline_boundary() {
     let id = wheel.schedule(Duration::from_millis(50));
     // `before` predates `schedule`'s own `Instant::now()` read, so the
     // real deadline is >= before + 50ms, but the two reads can tie on
-    // some clocks, and `take_due`'s `<=` is deliberately inclusive (a
+    // some clocks, and `take_due`'s `<=` is inclusive (a
     // deadline exactly at `now` must fire), so an exact `before + 50ms`
     // query isn't safely "not yet due". Query below the guaranteed
     // minimum deadline instead, with margin to absorb scheduling jitter

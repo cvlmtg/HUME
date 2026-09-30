@@ -138,7 +138,7 @@ pub(crate) struct PaneBufferState {
     /// `reveal_pending`'s own visibility: `frame.rs` is its only reader, and
     /// it is a pure memo with no invariant to funnel through a narrower API.
     ///
-    /// Deliberately not reset on a buffer switch: a pane revisiting a
+    /// Not reset on a buffer switch: a pane revisiting a
     /// buffer it showed before, with every layout input still identical to
     /// what it read last time, finds a matching key and stays quiet,
     /// coherent with the parked-view model this whole mechanism serves
@@ -254,7 +254,7 @@ pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
 /// Panics if `pid` or `bid` is not a live key; that is a caller-contract
 /// violation (the pane or buffer was never opened), not a recoverable error.
 /// Trusted mint for every synchronous caller that already knows `pid` is
-/// live by construction (it was just resolved, split, or opened in the same
+/// live (it was just resolved, split, or opened in the same
 /// call). See [`try_ensure`] for a caller crossing an async boundary, where
 /// that's no longer guaranteed.
 pub(in crate::editor) fn ensure<'a>(
@@ -355,18 +355,17 @@ pub(in crate::editor) fn park_cursor_at(
     write_cursor(pane_state, buffers, panes, pid, bid, pos);
 }
 
-/// Groups the three per-pane maps that live on [`super::EditorState`].
+/// The pane-keyed maps that live on [`super::EditorState`], plus the
+/// positions scripts track.
 ///
 /// Bundles `state` (per-(pane,buffer) selections/groups), `jumps` (cursor
 /// history), `tracked` (positions scripts asked the editor to remember,
-/// keyed by buffer rather than pane), and `render` (per-pane
+/// keyed by token rather than pane), and `render` (per-pane
 /// highlight/sign/inlay-hint/virtual-line handles, bundled in
 /// [`hume_decorations::PaneDecorationHandles`] since `build_pane` always
-/// allocates and `drop_pane_state` always drops them together) so
-/// `EditorState` exposes one field instead of four. The map
-/// types and keying are unchanged; NLL still allows simultaneous mutable
-/// borrows of different fields (e.g. `panes.state` and `panes.jumps` in
-/// `buffer::lifecycle::switch_to_buffer_with_jump`).
+/// allocates and `drop_pane_state` always drops them together). NLL allows
+/// simultaneous mutable borrows of different fields, as `PositionStores::new`
+/// takes `state`, `jumps` and `tracked` at once.
 #[derive(Default)]
 pub(crate) struct PaneView {
     pub(in crate::editor) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -527,7 +526,7 @@ impl Editor {
     /// buffer it switches to next; switching back to this buffer restores it.
     ///
     /// `WrapOverride::saved` (the `:wrap` toggle-on restore target) is synced
-    /// to this pin only when `mode` itself wraps. Pinning *off* deliberately
+    /// to this pin only when `mode` itself wraps. Pinning *off*
     /// leaves it alone, so whatever `saved` already pointed at (a prior
     /// wrapping pin, or "was inheriting") survives as the toggle-on target
     /// instead of being erased by this pin.

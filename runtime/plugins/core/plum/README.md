@@ -103,7 +103,7 @@ Helix project's `runtime/queries/` at a pinned commit (`runtime/scheme/helix-pin
 read once at PLUM's own load), so HUME rides Helix's query-file curation without
 vendoring it.
 
-`plum/fetch-raw-query` (the `curl` call behind every query fetch) deliberately does *not*
+`plum/fetch-raw-query` (the `curl` call behind every query fetch) does *not*
 wrap that call in a `with-handler`; only the temp-file cleanup after it succeeds is
 guarded. Re-raising a native-builtin error through a nested `with-handler` corrupts Steel
 0.8.3's VM continuation stack when it runs somewhere an outer handler also sits (see the

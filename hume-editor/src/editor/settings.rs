@@ -974,7 +974,7 @@ define_settings! {
 ///
 /// Requires exactly three `|`-separated sections. Each section is a
 /// comma-separated list of `StatusElement` names; an empty section is
-/// allowed, an empty name inside a non-empty one (`Mode,FileName`) is not.
+/// allowed, an empty name inside a non-empty one (`Mode,,FileName`) is not.
 fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
     let parts: Vec<&str> = s.splitn(4, '|').collect();
     if parts.len() != 3 {

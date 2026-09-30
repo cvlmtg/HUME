@@ -516,7 +516,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
 /// after.
 ///
 /// `:reload-config` is dispatched as the *first* `init_scripting()` call (no
-/// prior one) so the plugin's `open-buffer!` genuinely opens a new buffer
+/// prior one) so the plugin's `open-buffer!` opens a new buffer
 /// here rather than deduping against one from an earlier init.
 ///
 /// Counts via a `tab-width` override incremented once per fire: a plain
@@ -901,7 +901,7 @@ fn reload_config_twice_in_a_row_both_apply_cleanly() {
 /// A bid whose buffer closed between the snapshot and the resync sweep must
 /// not have its pre-reload explicit language restored. `ReloadSnapshot::
 /// survives` reads `bid`'s current liveness, not a stale stamp, so a closed
-/// bid (its slot genuinely freed; see `close_buffer`, which allocates a
+/// bid (its slot freed; see `close_buffer`, which allocates a
 /// fresh `BufferId` for its last-buffer scratch replacement rather than
 /// reusing the closed one) never passes.
 ///
@@ -941,7 +941,7 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
     ed.scripting = None;
 
     // The close lands between the snapshot and the sweep that would
-    // otherwise restore onto `bid`: `bid`'s slot is now genuinely freed.
+    // otherwise restore onto `bid`: `bid`'s slot is now freed.
     ed.close_buffer(bid);
     assert!(
         ed.state.buffers.try_get(bid).is_none(),

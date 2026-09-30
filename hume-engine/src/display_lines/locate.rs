@@ -189,7 +189,7 @@ impl<'a> DisplayLineMap<'a> {
                 // target landing on that boundary ties between the two, and
                 // `min_by_key` keeps the first tied element, which is the
                 // continuation (pushed immediately after its primary, ahead
-                // of whatever comes next). Left in, that tie silently wins
+                // of whatever comes next). Left in, that tie wins
                 // over the following cell's own, distinct `pos`.
                 // `Empty` (EOL sentinel) has a buffer position but isn't
                 // content, so it only answers when nothing else can (an empty

@@ -165,7 +165,7 @@ fn no_wrap_block_counts_without_running_the_formatter() {
     assert_eq!(calls.get(), 0, "no-wrap counting must not format");
 
     // The same query while wrapping has to format, because the display line count
-    // genuinely depends on the content.
+    // depends on the content.
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
     dlm.block(ContentLine::new(0));
@@ -200,7 +200,7 @@ fn mixed_block_providers() -> ProviderSet {
 fn slot_classifies_every_display_line_of_a_mixed_block() {
     // "abcdefgh\n" at width 4 supplies 3 content display lines, not 2: "efgh" exactly
     // fills the wrap width, so the trailing '\n's own sentinel wraps onto a
-    // display line of its own (see `content_display_line_char_bounds_scopes_to_one_wrap_display_line`).
+    // display line of its own (see `content_display_line_clusters_scopes_to_one_wrap_display_line`).
     let rope = Rope::from_str("abcdefgh\n");
     let providers = mixed_block_providers();
     let mut s = PaneLineStore::new();

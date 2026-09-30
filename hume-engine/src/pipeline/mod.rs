@@ -349,7 +349,7 @@ impl EngineView {
 
     /// Every pane `self.layout` (the active tab's) currently reaches. The
     /// working set every per-frame sync step operates on, in place of the
-    /// full `panes` pool: an inactive tab's pane is deliberately excluded,
+    /// full `panes` pool: an inactive tab's pane is excluded,
     /// since nothing sizes, decorates, mirrors, or scrolls it while its tab
     /// isn't active, so its state reflects whatever its own tab last left it
     /// at rather than this frame's. Decorating, mirroring, or scrolling it
@@ -480,7 +480,7 @@ impl EngineView {
         let pane_area = self.pane_area(area);
 
         // A degenerate area (e.g. a terminal reporting height 0 during early
-        // startup, or a genuinely tiny window) has no row to draw a chrome
+        // startup, or a tiny window) has no row to draw a chrome
         // line into. Providers write text via `write_text_run`, which
         // bounds-checks against the grid rather than panicking, but a chrome
         // row drawn at an out-of-bounds `y` is still
@@ -553,7 +553,7 @@ impl EngineView {
                 continue;
             };
             // Unlike the three skips above (a pane, buffer or rope that
-            // genuinely may be gone by the time the frame draws), a missing
+            // may be gone by the time the frame draws), a missing
             // entry here is the caller having resolved settings for a
             // different set of panes than it is now asking to draw. Drawing
             // the pane with stale settings, or skipping it and leaving its
@@ -703,7 +703,7 @@ impl EngineView {
 /// pane's own `content_width` resolves it, inside `DisplayLineMap::new`). `tab_width`
 /// and `whitespace` inside it are document facts, resolved from per-buffer
 /// overrides against global settings, identical for every pane viewing the
-/// same buffer, while `wrap_mode` is genuinely per-pane (two panes on the
+/// same buffer, while `wrap_mode` is per-pane (two panes on the
 /// same buffer may wrap differently, once `:wrap`/`:set pane wrap-mode=…`
 /// pins one); the editor resolves pane override → buffer override → global
 /// default (see `commands::effective_wrap_mode`) and folds the result into

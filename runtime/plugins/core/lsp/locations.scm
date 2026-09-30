@@ -69,7 +69,7 @@
                       'method method 'shape shape 'not-found not-found 'seq 0
                       'counts counts)))))))
 
-;; ── Refresh: ask the server again once a listed buffer's line count changes ──
+;; ── Refresh ──
 
 (define (lsp/swap-locations! session locs)
   (let* ((drawer (hash-ref session 'drawer))

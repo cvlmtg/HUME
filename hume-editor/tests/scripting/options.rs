@@ -52,7 +52,7 @@ fn set_option_unknown_key_errors() {
 /// `eval_source` runs top-level code as an init eval. `get-option` is
 /// registered `open` (no eval-mode gate), so it must be callable from
 /// `init.scm` too, not just from command bodies (unlike `focused-pane`
-/// or other genuinely command-mode-only reads).
+/// or other command-mode-only reads).
 #[test]
 fn get_option_works_during_init_eval() {
     let mut h = host();

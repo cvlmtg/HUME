@@ -22,7 +22,7 @@ fn o_opens_line_below_and_enters_insert() {
 /// newline Enter inserted: a trailing `\n` is a line terminator, not typed
 /// content (see `PaneBufferState::run_ends`'s doc). Verified by yanking the
 /// auto-selected span and checking the register text doesn't end in `\n`:
-/// `is_register_linewise` (`hume-ops/src/register.rs`) reads that,
+/// `Piece::is_linewise` (`hume-ops/src/register.rs`) reads that,
 /// and a register ending in `\n` is what makes a later `p` paste as a new
 /// line instead of inline, the same root cause that flips `:format-source`
 /// between whole-document and single-range formatting (`SelectionView::is_linewise`,
@@ -115,9 +115,7 @@ fn o_then_down_onto_pre_existing_blank_line_then_esc_preserves_it() {
 }
 
 /// A `Delete` keypress that deletes nothing (cursor already at the buffer's
-/// structural end) must not cancel the pending autoindent trim. The old
-/// bool-flag design cleared unconditionally on every `Delete`, regardless of
-/// whether it changed the buffer.
+/// structural end) must not cancel the pending autoindent trim.
 #[test]
 fn o_then_noop_delete_then_esc_still_trims_indent() {
     let mut ed = editor_from("\t-[f]>oo\n");

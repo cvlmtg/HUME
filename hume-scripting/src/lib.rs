@@ -834,7 +834,7 @@ pub enum PluginStatus {
     Failed,
 }
 
-/// Pins the full-trust plugin model's load-bearing assumption: Steel's
+/// Pins the assumption the full-trust plugin model rests on: Steel's
 /// `steel/process`/`steel/filesystem`/`steel/ports` globals are reachable
 /// from plugin code with no `require-builtin` (they ride in via `steel/base`,
 /// required by the auto-loaded prelude). PLUM depends on this directly; a

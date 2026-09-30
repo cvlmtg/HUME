@@ -436,7 +436,7 @@ impl Editor {
             self.state.force_full_redraw = true;
         }
         if ran {
-            // The editor genuinely regained the terminal: same trigger class
+            // The editor regained the terminal: same trigger class
             // as `TerminalEvent::FocusIn`, so it raises the same event rather
             // than sweeping directly; the reaction is `OnFocusGained`'s Rust
             // handler in `Editor::react_to_event`. That reaction runs inside

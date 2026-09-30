@@ -12,12 +12,12 @@ use crate::editor::registry::{MappableCommand, TypedBody};
 /// stamp dot-repeat/jump/paste bookkeeping identically.
 ///
 /// Not compared against a `call!`-from-another-command path: `call!`'s
-/// bookkeeping is deliberately outer-name-wins (see `dispatch.rs`'s
+/// bookkeeping is outer-name-wins (see `dispatch.rs`'s
 /// `run_steel_command`: "Outer-name-wins: stamp the outer command so `.`
 /// replays it, not any inner command the body dispatched via `call!`"), so a
 /// command reached via an outer wrapper stamps the WRAPPER's name, not the
 /// inner command's, so a 3-way keypress/`:`/`call!` identity claim would be
-/// asserting behavior the system deliberately does not have.
+/// asserting behavior the system does not have.
 ///
 /// If lazy activation's AFTER-stage bookkeeping (jump/paste/dot-repeat)
 /// diverged between the two entry points, for example by skipping the

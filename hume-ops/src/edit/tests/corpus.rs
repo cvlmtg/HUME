@@ -16,7 +16,7 @@ fn clusters(s: &str) -> usize {
 }
 
 #[test]
-fn delete_selection_removes_exactly_the_sample() {
+fn delete_selection_removes_the_sample() {
     for s in ALL {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
@@ -27,7 +27,7 @@ fn delete_selection_removes_exactly_the_sample() {
 }
 
 #[test]
-fn delete_char_forward_removes_exactly_one_cluster() {
+fn delete_char_forward_removes_one_cluster() {
     for s in single_clusters() {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
@@ -38,7 +38,7 @@ fn delete_char_forward_removes_exactly_one_cluster() {
 }
 
 #[test]
-fn delete_char_backward_removes_exactly_one_cluster() {
+fn delete_char_backward_removes_one_cluster() {
     for s in single_clusters() {
         assert_state!(
             &format!("x\n{s}-[b]>\n"),
@@ -49,7 +49,7 @@ fn delete_char_backward_removes_exactly_one_cluster() {
 }
 
 #[test]
-fn yank_returns_exactly_the_sample() {
+fn yank_returns_the_sample() {
     for s in ALL {
         let (text, sels) = parse_state(&format!("x\n-[{s}]>b\n"));
         assert_eq!(

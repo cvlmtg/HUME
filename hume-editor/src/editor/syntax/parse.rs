@@ -144,7 +144,7 @@ impl Editor {
         }
 
         // Deduplicated set of every buffer *any* pane is showing, not just
-        // the active tab's. Deliberately the full `view.panes` pool, not
+        // the active tab's. Built from the full `view.panes` pool, not
         // `Editor::active_pane_ids`: a buffer open in a background tab
         // should keep its grammar attached and stay reparsed, so switching
         // back to that tab doesn't land on stale highlighting.
@@ -188,7 +188,7 @@ impl Editor {
             // frame_tick is a no-op once parsed_gen == generation, so check that
             // before paying for the text clone and grammar-snapshot Arc bump.
             //
-            // Deliberately `parsed_gen`, not `Syntax::is_current`: this asks
+            // Checks `parsed_gen`, not `Syntax::is_current`: this asks
             // "should another request be posted for this generation?", and a
             // generation whose parse failed has already been attempted. The
             // stronger `is_current` here would re-post it every frame forever.

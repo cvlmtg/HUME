@@ -37,7 +37,7 @@ use crate::editor::error::CommandError;
 /// or `"k`-prefixed; see `EditorState::capture_to_ring`) and by every
 /// completed bare paste (plain or smart) and ring cycle (`[`/`]`), each
 /// re-stamping with the *post*-edit `seq` and whatever source it actually
-/// used. The re-stamp on completion is load-bearing, not cosmetic: a paste is
+/// used. The re-stamp on completion is required: a paste is
 /// itself an edit, so without it the stamp a capture wrote would go stale on
 /// the very first paste that reads it, and `d p p p` would paste the kill
 /// once and the clipboard twice. An explicit register read (`"5p`, `"cp`, …)

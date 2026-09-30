@@ -616,7 +616,7 @@ fn around_argument_after_a_comma_that_carries_a_combining_mark_starts_on_the_nex
 }
 
 #[test]
-fn inner_argument_selects_exactly_each_corpus_sample() {
+fn inner_argument_selects_each_corpus_sample() {
     for s in test_fixtures::unicode::non_blank() {
         assert_state!(
             &format!("f(a, -[{s}]>, c)\n"),

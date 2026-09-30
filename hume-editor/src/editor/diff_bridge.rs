@@ -45,7 +45,7 @@ pub(in crate::editor) fn line_hunks_against_buffer(
 /// `old.start`/`new.start` mint trusted `ContentLine`s from `LineHunk`'s bare
 /// `usize`s (ropey-domain token indices: `line_tokens()` includes the
 /// phantom trailing line, per the module doc's normalization). Sound: the
-/// phantom line is an empty token on both sides by construction (the module
+/// phantom line is an empty token on both sides (the module
 /// doc's normalization guarantee), so it can only ever match as an `Equal`
 /// run (already filtered out above), never surface as a hunk's own start.
 /// A hunk's start is therefore always a real content line, *or* the

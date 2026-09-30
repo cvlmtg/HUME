@@ -24,7 +24,7 @@ use super::super::registry::StructuralBody;
 /// The spans this body probes.
 ///
 /// `Argument` resolves to `parameter.inside`, not `.around`, which Helix
-/// hulls with the trailing comma `m i a`/`m a a` deliberately reject, and the
+/// hulls with the trailing comma `m i a`/`m a a` reject, and the
 /// same span the lexical `inner_argument` fallback produces.
 fn selector_for(body: StructuralBody) -> SpanSelector {
     match body {

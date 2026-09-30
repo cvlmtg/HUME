@@ -271,7 +271,7 @@ impl Syntax {
     /// layers this call's cost scales with their combined size, not just the
     /// edit.
     ///
-    /// Deliberately leaves `in_flight` untouched: an asynchronous request
+    /// Leaves `in_flight` untouched: an asynchronous request
     /// already posted for an earlier generation is left to arrive and be
     /// discarded by `install`'s own generation guard, rather than cancelled
     /// or raced here.
@@ -394,14 +394,14 @@ impl Syntax {
     ///   bumps `generation` past this generation entirely.
     /// - `layers.is_some()` resolves the generation-`0` ambiguity `tree_gen`
     ///   would otherwise have on its own: it starts at plain `0`, coinciding
-    ///   with a buffer's genuine first parse (also generation `0`, per
-    ///   `Buffer`'s own starting `generation`), the same ambiguity
+    ///   with a buffer's first parse (a new text lineage starts at
+    ///   generation `0`), the same ambiguity
     ///   `parsed_gen` is `Option` to avoid.
     ///
     /// Together: `parsed_gen == Some(generation)` means an `install` call has
     /// already *run* for this generation (either arm); `tree_gen ==
     /// generation && layers.is_some()` means the layers it left behind
-    /// genuinely reflect that generation, not just a bake pending a
+    /// reflect that generation, not just a bake pending a
     /// replacement. Only when both hold was this generation's `Ok` result
     /// already committed.
     pub fn install(&mut self, done: ParseDone, current_generation: u64) {
@@ -476,11 +476,11 @@ impl Syntax {
         self.parsed_gen
     }
 
-    /// Whether the committed layers describe `generation` exactly: the
+    /// Whether the committed layers describe `generation` itself: the
     /// freshness question every caller actually means, and the gate
     /// [`Self::ensure_current`] skips its reparse on.
     ///
-    /// Both halves are load-bearing, and `parsed_gen` alone is the tempting
+    /// Both halves are required, and `parsed_gen` alone is the tempting
     /// wrong answer: `install`'s `ParseFailed` arm advances `parsed_gen` to
     /// the failed generation while leaving `layers`/`tree_gen` exactly where
     /// they were. A caller gating on `parsed_gen` alone therefore reports

@@ -432,7 +432,7 @@ fn band_visible_rows_is_band_capacity_minus_chrome() {
 
 // ── clamp_scroll_to_window ───────────────────────────────────────────────
 //
-// A list shrinking out from under a stale, deep `scroll` is deliberately
+// A list shrinking out from under a stale, deep `scroll` is
 // *not* covered here: this function only keeps `selected` in view, and does
 // not know the list's own length (see its own doc). That case is
 // `EditorState::clamp_drawer_scroll_to_terminal`'s own test, in

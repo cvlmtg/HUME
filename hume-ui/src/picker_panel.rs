@@ -1,7 +1,7 @@
 //! Centered fuzzy-picker panel: bordered box with a query input line on
 //! top and a ranked, scrolling item list below.
 //!
-//! Deliberately a sibling of [`super::menu_box`], not built on it: this
+//! A sibling of [`super::menu_box`], not built on it: this
 //! panel is a *fixed-size* box (sized as a fraction of the panes region,
 //! independent of item count) with a two-zone layout (input row + list) and
 //! an edge-anchored scroll model owned by `PickerSession`. `menu_box`'s
@@ -45,7 +45,7 @@ const MIN_PANEL_HEIGHT: u16 = 4;
 /// once, in `panel_geometry`, to produce `PanelGeometry::list_rows`, so the
 /// row budget a keystroke pages against and the one a frame paints
 /// (`PickerViewState::list_rows`, carried from the same call) are the same
-/// number by construction rather than two derivations that have to agree.
+/// number rather than two derivations that have to agree.
 const CHROME_ROWS: u16 = 3;
 
 /// Fully-resolved panel content and position, computed once per frame by

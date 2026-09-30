@@ -496,8 +496,8 @@ impl JumpLists {
         }
     }
 
-    /// Drop every pane's entries for `id`, used when `id`'s content was
-    /// replaced wholesale (a full `Buffer` swap, or `set_view_content`'s
+    /// Drop every pane's entries for `id`, when `id` closed or its content
+    /// was replaced wholesale (a full `Buffer` swap, or `set_view_content`'s
     /// history-resetting in-place replace) rather than edited: there is no
     /// `ChangeSet` to remap through, and same-buffer-id survival alone isn't
     /// enough, since the new content shares nothing but its id with the old.

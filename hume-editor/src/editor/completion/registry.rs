@@ -7,8 +7,8 @@
 //! source and `"path"` as a `Minibuf` source are two unrelated
 //! registrations, not a collision, because there is no shared id space for
 //! them to collide in. Lives on `ConfigState`, so `:reload-config` rebuilds
-//! it from the natives by construction and a Steel entry never outlives the
-//! config that registered it.
+//! it from the natives along with the rest of that state, and a Steel entry
+//! never outlives the config that registered it.
 //!
 //! A source's *static* facts live here (its name, how its items are scored,
 //! its priority); everything about one particular invocation of it (the

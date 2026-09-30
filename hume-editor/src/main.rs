@@ -424,7 +424,7 @@ mod tests {
     // A relative `--config` path must be pinned to the startup cwd, not left
     // relative: HUME moves its own process cwd at runtime (`:cd`), so a
     // relative path re-resolved against a later cwd at `:reload-config` time
-    // would silently miss the file it originally pointed at (see
+    // would silently miss the file it named at startup (see
     // `Editor::config_path`'s doc and the `--config` flag's doc comment).
     #[cfg(unix)]
     #[test]

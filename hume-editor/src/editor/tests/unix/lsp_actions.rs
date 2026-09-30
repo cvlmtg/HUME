@@ -436,8 +436,8 @@ fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
 /// `codeAction/resolve` requests `#:allow-stale #t`, so an edit landing
 /// between picking the action and the response draining must not silently
 /// drop the resolve, but `apply-workspace-edit!`'s own `#:expect-generation`
-/// must then refuse to apply it, rather than silently doing nothing (the old
-/// request-side drop) or applying against text that has since moved.
+/// must then refuse to apply it, rather than doing nothing (a request-side
+/// drop) or applying against text that has since moved.
 #[test]
 fn selecting_an_unresolved_action_reports_a_stale_buffer_after_an_intervening_edit() {
     let tmp = safe_tempdir();
@@ -626,7 +626,7 @@ fn stale_response_after_a_buffer_switch_opens_no_menu() {
         );
     });
 
-    // Sends the request synchronously; deliberately no settle() before the
+    // Sends the request synchronously; no settle() before the
     // switch below. settle() unconditionally drains LSP, which would
     // deliver the response (and close the race window) before the switch
     // ever happens. Same technique as `lsp_hover.rs`'s own

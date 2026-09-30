@@ -6,7 +6,7 @@
 //! - `ms(` → `r[` replaces `()` with `[]` (via smart replace)
 //! - `ms(` → `c`  enters insert with two cursors on the delimiters
 //!
-//! Deliberately not Helix's `md`/`mr`, which bake the selection and the
+//! Not Helix's `md`/`mr`, which bake the selection and the
 //! action together as a single keystroke. That violates select-then-act.
 
 use crate::MotionMode;

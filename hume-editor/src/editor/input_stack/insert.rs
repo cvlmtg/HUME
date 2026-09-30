@@ -147,7 +147,7 @@ impl Editor {
     /// paste re-runs as one edit rather than as synthesized per-char keys
     /// (which would wrongly re-trigger auto-indent on an embedded newline).
     ///
-    /// Deliberately bypasses auto-pairs, trigger-char hooks, and per-char LSP
+    /// Bypasses auto-pairs, trigger-char hooks, and per-char LSP
     /// refiltering: auto-pairing pasted brackets would corrupt already-balanced
     /// text, and refiltering a completion against a pasted blob is meaningless.
     pub(in crate::editor) fn apply_insert_mode_paste(&mut self, text: &str) {

@@ -129,8 +129,9 @@ pub struct BufferText {
 /// A text built from a string starts a new lineage at generation 0. Applying
 /// a non-identity [`crate::changeset::ChangeSet`] gives the next generation
 /// of the same lineage; a clone or an identity apply keeps the version.
-/// Within one buffer generations increase by one per recorded edit, which is
-/// what an LSP document version and tree-sitter's incremental edit chain count.
+/// Every text of a lineage draws its generation from one counter, so
+/// generations strictly increase across a buffer's texts but may skip
+/// numbers: a text computed and then dropped still used one up.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct TextVersion {
     lineage: u64,
@@ -142,7 +143,7 @@ impl TextVersion {
         self.generation
     }
 
-    /// Whether `self` was derived from `earlier` by one or more edits.
+    /// Whether `self` was made after `earlier` in the same lineage.
     pub fn is_later_than(self, earlier: TextVersion) -> bool {
         self.lineage == earlier.lineage && self.generation > earlier.generation
     }
@@ -162,8 +163,8 @@ fn new_lineage() -> (TextVersion, Arc<AtomicU64>) {
 /// construction: non-empty, and ending with `'\n'`. Stricter than
 /// [`hume_rope::lines::ends_with_newline`]. That one (correctly, for its own
 /// generic-rope callers) treats a truly empty rope as vacuously fine; a HUME
-/// buffer never is, so this crate's own gates ([`BufferText::from_rope`],
-/// `ChangeSet::apply`) require it non-empty too.
+/// buffer never is, so `ChangeSet::apply`, the gate, requires it non-empty
+/// too, and `BufferText::successor` debug-checks it.
 pub(crate) fn is_valid_buffer_rope(rope: &Rope) -> bool {
     rope.len_chars() > 0 && hume_rope::lines::ends_with_newline(rope)
 }
@@ -285,15 +286,11 @@ impl BufferText {
     }
 
     /// Index of the last content character: the character just before the
-    /// structural trailing `\n`.
-    ///
-    /// Edit operations that must not consume the trailing `\n` stop their
-    /// deletions at this value.
+    /// structural trailing `\n`, for clamping a position onto content.
     ///
     /// Degenerate case: on an empty buffer (`"\n"`, one char) this returns 0,
     /// which is the structural `\n` itself; there is no content character to
-    /// point at. Callers deleting up to this index must handle the empty
-    /// buffer first, or the delete would consume the structural newline.
+    /// point at.
     pub fn last_content_char(&self) -> CharOffset {
         CharOffset::new(self.len_chars().saturating_sub(2))
     }

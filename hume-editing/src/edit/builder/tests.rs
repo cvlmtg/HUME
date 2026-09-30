@@ -4,7 +4,7 @@ use super::*;
 use crate::marked::{bound_at, clusters, parse, render};
 use crate::selection::{Facing, UnboundSelection};
 
-/// `f`'s plan over `input`, its one result selection covering `f`'s mark.
+/// `f`'s edit of `input`, its one result selection covering `f`'s mark.
 fn marked(
     input: &str,
     f: impl for<'a, 'id> FnOnce(&mut EditBuilder<'a, 'id>) -> Mark<'id>,
@@ -17,7 +17,7 @@ fn marked(
     render(edited.state().view())
 }
 
-/// `f`'s plan over `input`, its one result selection a cursor at `f`'s position.
+/// `f`'s edit of `input`, its one result selection a cursor at `f`'s position.
 fn cursor_at(
     input: &str,
     f: impl for<'a, 'id> FnOnce(&mut EditBuilder<'a, 'id>) -> NewPos<'id>,

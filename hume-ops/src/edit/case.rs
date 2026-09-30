@@ -27,7 +27,7 @@ enum CaseTransform {
 /// sigma lowercases to `ς` at a word's end, `σ` elsewhere). Mapping one
 /// grapheme at a time strips the surrounding context the "is this word-final"
 /// check needs, so it silently falls back to the default (non-final) mapping
-/// `σ` even at a word's end. `insert` (not `insert_char`) is used since case
+/// `σ` even at a word's end. Each selection is replaced whole, since case
 /// mapping can also change the char count (e.g. `ß` → `SS`).
 fn transform_case(state: EditState, kind: CaseTransform) -> Edited {
     apply_edit(state, |b, sel| {

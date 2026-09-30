@@ -489,7 +489,7 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
 
     // Send the request from `main.rs` (`bid_a`, UTF-8 server). Dispatches
     // synchronously, so the request has already left with `bid_a` captured
-    // by the time this returns. Deliberately no `settle()` here:
+    // by the time this returns. No `settle()` here:
     // `InlineLspBackend::send` queues the canned response for the *next*
     // drain rather than answering inline, but `settle()` itself drains LSP
     // (`drain_async_sources` → `drain_lsp`): calling it now would close the
@@ -557,7 +557,7 @@ fn multi_element_response_after_a_buffer_switch_opens_the_drawer() {
     assert_eq!(drawer_rows(&ed).len(), 3);
 }
 
-/// A target whose path genuinely can't be opened (here: it's a directory,
+/// A target whose path can't be opened (here: it's a directory,
 /// not a file; `Buffer::from_file_or_new` only tolerates `NotFound`) must
 /// still error and leave the cursor untouched.
 #[test]

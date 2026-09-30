@@ -10,6 +10,7 @@ mod replace;
 mod sort;
 
 use super::*;
+use hume_editing::{selection::SelectionSet, text::BufferText};
 use test_fixtures::assert_state;
 
 impl test_fixtures::testing::IntoTestResult for Removal {
@@ -69,7 +70,7 @@ fn repeat_delete_backward_count_2() {
 
 #[test]
 fn repeat_edit_count_zero_is_noop() {
-    // count=0 produces an identity ChangeSet and leaves text+sels unchanged.
+    // count=0 leaves the state unchanged.
     assert_state!(
         "-[h]>ello\n",
         |(text, sels)| repeat_edit(

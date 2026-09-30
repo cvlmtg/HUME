@@ -66,7 +66,7 @@ pub(crate) fn collect_source_rs(dir: &std::path::Path, out: &mut Vec<std::path::
 
 /// Collect all `.rs` files under `dir`, recursively, with no exclusions:
 /// `collect_source_rs`'s sibling for a lint whose whole job is scanning
-/// what that one deliberately skips (a `tests/` tree). Results are sorted
+/// what that one skips (a `tests/` tree). Results are sorted
 /// for deterministic test output, same as `collect_source_rs`.
 pub fn collect_all_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {

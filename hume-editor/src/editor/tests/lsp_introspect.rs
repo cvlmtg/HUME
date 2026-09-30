@@ -1118,11 +1118,11 @@ fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
 
 #[test]
 fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
-    // Deliberately the opposite of `lsp_position_to_offset_is_false_when_it_
+    // The opposite of `lsp_position_to_offset_is_false_when_it_
     // would_land_on_the_trailing_phantom_line`: a range's `end` legitimately
     // sits at the buffer's char length (`set-extra-highlights!`'s
     // `validate_range` accepts that boundary), so `lsp-range->offsets` must
-    // keep the clamping behavior `lsp-position->offset` deliberately
+    // keep the clamping behavior `lsp-position->offset`
     // refuses: a past-end wire `line` for `end` is not an error here.
     // "-[x]>abc\n" is "xabc\n" (the marked 'x' is real buffer content), 5
     // chars.

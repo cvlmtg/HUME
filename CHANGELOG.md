@@ -12,7 +12,7 @@
 - `diagnostics-for-buffer` entries, `lsp-server-status` entries, and `lsp-request!`'s `err` use symbol keys: `(hash-ref d 'message)`, not `(hash-ref d "message")`. A diagnostic's `'severity` is a symbol (`'error`), and a server status's `'state` is a lowercase symbol (`'running`).
 - Builtins that returned a positional list or pair now return a symbol-keyed hashmap, and `goto-location!` and `diagnostics-for-buffer #:range` take one:
   - `diagnostic-counts` returns `(hash 'errors n 'warnings n)`.
-  - `buffer-selections` returns a list of `(hash 'anchor a 'head h 'start s 'end e 'primary p)`, where `'start` and `'end` bound exactly what the selection covers and `'end` is exclusive.
+  - `buffer-selections` returns a list of `(hash 'anchor a 'head h 'start s 'end e 'primary p)`, where `'start` and `'end` bound what the selection covers and `'end` is exclusive.
   - `run-capture!` and `stdlib/run!` return `(hash 'stdout s 'stderr s 'exit code)`.
   - `viewport-range`, `lsp-range->offsets`, and the `#:range` of `diagnostics-for-buffer` use `(hash 'start s 'end e)`.
   - `diff-lines` and `diff-buffer-lines` hunks are `(hash 'old-start 'old-count 'new-start 'new-count 'old-lines 'new-lines)`. `diff-words` returns `(hash 'hunks … 'deadline-hit …)`, each hunk `(hash 'old-start 'old-end 'new-start 'new-end 'old-text 'new-text)`.
@@ -44,9 +44,18 @@
 - `G C` capitalizes with title case (`ǆ` becomes `ǅ`, `ﬁ` becomes `Fi`).
 - `#` matches tags whose names contain non-ASCII letters, and tags with a no-break space before the closing `>`.
 - No-break and ideographic spaces count as indentation for `g s`, `J`, auto-indent, and `>`/`<`, which rewrite such an indent with spaces or tabs.
-- `d` and `y` put in the register exactly the text `d` removes. A selection ending on the file's last line break leaves that line break out, unless it covers whole lines. A cursor on the last line break of a line with text removes and copies nothing, and leaves the register as it was.
+- `d` and `y` put in the register the text `d` removes. A selection ending on the file's last line break leaves that line break out, unless it covers whole lines. A cursor on the last line break of a line with text removes and copies nothing, and leaves the register as it was.
 - `>`/`<` in front of a line that starts with a combining mark, `J` after a line ending in a prepend character, and pasting an empty register entry beside another paste keep the cursor on whole characters in the right place.
 - Search highlights follow a paste while it can still be cycled with `[`/`]`.
+- A yank remembers whether it took whole lines. A selection of whole lines pastes as lines and any other selection pastes inline, so `bc` plus its line break yanked from mid-line pastes inline. Text from the system clipboard or a script counts as lines when it ends with a newline.
+- With several cursors, `d`, Backspace, `Ctrl-w` and pair deletion remove the union of what each cursor would remove when their ranges overlap, so two cursors in one word or sharing a quote leave nothing behind. `d` on the last two lines leaves no blank line. Two cursors on one blank auto-indented line each open their own indented line on Enter. `J` with several selections on one line joins it once.
+- Pasting lines over a selection adds a line break in front only when the selection does not start its line, and a paste of text followed by a paste of lines over the range next to it are separated by a line break.
+- Surrounding a selection that ends on a line break closes before the break. `Tab` with several cursors, after a selection that spans lines, moves each to its own tab stop. Copying a selection to the next or previous line keeps a copied whole line whole. `:sort` keeps a whole-line selection whole.
+- A `d` that removes nothing no longer leaves a `"<register>` prefix armed, and a `c` that removes nothing no longer adds an empty entry to the kill ring.
+- `mii` selects the last insertion after other edits to the buffer, including a format on save.
+- Confirming a search records the position it started from in the pane the search started in, even if a click moved focus while it was open.
+- Leaving Insert by a jump that trims auto-indent (`goto-location!`, `:bnext`, `:e path:line`) records the right position in the jump list, and any jump from Insert ends the typed-text selection Esc would otherwise make.
+- A selection that ends on a line break no longer covers virtual text at the end of that line.
 - A script or timer that closes a pane while a search or sift is open in it ends that search or sift, instead of crashing on the next key.
 - `X` on a cursor at the start of a line selects that line instead of the one above, and `x` on a cursor on a line break selects that line instead of the one below.
 - `t`/`T` with a count stop against the counted match (`2ta` lands before the second `a`), and `=`/`-` after `t`/`T` go on to the next match instead of staying against the one they stopped at.
