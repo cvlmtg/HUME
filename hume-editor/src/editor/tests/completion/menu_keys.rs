@@ -612,7 +612,10 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
     );
 
     let replacement = Buffer::at_start(BufferText::from("hi\n"));
-    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
+    ed.reload_buffer_in_place(
+        FocusedPane::current(&ed.state),
+        ReplaceSource::Disk(Box::new(replacement)),
+    );
 
     ed.settle();
     assert!(ed.state.input.buffer_completion().is_none());

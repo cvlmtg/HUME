@@ -13,7 +13,7 @@ use hume_engine::pipeline::BufferId;
 use crate::editor::input_stack::{BaseLayer, ConfirmAction, ConfirmChoice, ConfirmLayer};
 use crate::editor::{Editor, Severity};
 
-use super::Buffer;
+use super::{Buffer, ReplaceSource};
 
 /// Result of comparing a buffer's stored file signature against a fresh stat.
 /// `Changed` carries the freshly-read signature so the caller can store it
@@ -247,7 +247,7 @@ impl Editor {
     ///   `Ambient` is exempt because the inline-output command that set the
     ///   flag is what caused the change it checks. `Explicit` runs before the
     ///   flag is set.
-    fn can_open_confirm(&self, trigger: DiskCheckTrigger) -> bool {
+    pub(in crate::editor::buffer) fn can_open_confirm(&self, trigger: DiskCheckTrigger) -> bool {
         self.state
             .input
             .is::<BaseLayer>(self.state.input.mode_layer())
@@ -311,6 +311,7 @@ impl Editor {
         self.state
             .retire_stale_confirm(&self.view, |c| !c.targets_buffer(entered));
         self.check_buffer_disk_state(entered, DiskCheckTrigger::BufferEnter);
+        self.offer_dump_restore(entered);
     }
 
     /// Record that the user declined to reload `bid` for the disk change
@@ -423,7 +424,7 @@ impl Editor {
     ) -> std::io::Result<()> {
         let doc = Buffer::from_file(path)?;
         let bid = fp.bid(&self.view);
-        self.reload_buffer_in_place(fp, doc);
+        self.reload_buffer_in_place(fp, ReplaceSource::Disk(Box::new(doc)));
         let name = self.state.buffers.get(bid).display_name();
         self.report(Severity::Info, format!("Reloaded {name}"));
         Ok(())

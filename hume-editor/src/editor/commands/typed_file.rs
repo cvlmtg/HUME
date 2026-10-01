@@ -260,14 +260,7 @@ pub(in crate::editor) fn typed_set(
 /// Extract content and line count from a buffer by ID.
 fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, hume_rope::line::ContentLineCount) {
     let buf = ed.state.buffers.get(bid);
-    let text = buf.text();
-    let content = if text.line_ending() == hume_editing::text::LineEnding::CrLf {
-        text.to_string().replace('\n', "\r\n")
-    } else {
-        text.to_string()
-    };
-    let line_count = text.content_line_count();
-    (content, line_count)
+    (buf.serialized(), buf.text().content_line_count())
 }
 
 /// Post-write side effects for a buffer that just had its own content

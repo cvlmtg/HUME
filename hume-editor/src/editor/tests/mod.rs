@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
+use crate::editor::buffer::ReplaceSource;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::commands::FocusedPane;
 use crate::editor::pane_state::{PaneBufferState, PaneView};
@@ -1429,9 +1430,11 @@ mod commands;
 mod completion;
 mod copy_selection;
 mod count_prefix;
+mod crash_dump;
 mod decoration_providers;
 mod diff_steel;
 mod disk_change;
+mod dump_restore;
 // `pub(in crate::editor)`, unlike its siblings: the sibling `editor::{cursor,scroll,mouse}
 // ::tests` subtrees register the same doubles and reach them through here.
 mod dot_repeat;

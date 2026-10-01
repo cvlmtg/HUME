@@ -41,3 +41,17 @@ fn render_line_with_a_single_choice_has_no_trailing_separator() {
     };
     insta::assert_snapshot!(model.render_line(), @"proceed?  [y]yes");
 }
+
+#[test]
+fn a_restore_confirm_targets_only_its_own_buffer() {
+    let mut sm: slotmap::SlotMap<BufferId, ()> = slotmap::SlotMap::with_key();
+    let (own, other) = (sm.insert(()), sm.insert(()));
+    let model = ConfirmLayer {
+        prompt: String::new(),
+        choices: Vec::new(),
+        action: ConfirmAction::RestoreDump(own),
+    };
+
+    assert!(model.targets_buffer(own));
+    assert!(!model.targets_buffer(other));
+}

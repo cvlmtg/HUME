@@ -29,7 +29,10 @@ fn reload_shrinking_the_document_leaves_the_next_frames_top_inside_it() {
         ));
 
     let replacement = Buffer::at_start(BufferText::from("x\ny\n"));
-    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
+    ed.reload_buffer_in_place(
+        FocusedPane::current(&ed.state),
+        ReplaceSource::Disk(Box::new(replacement)),
+    );
 
     // Whatever pass resolves the top next (the render/scroll pipeline here),
     // it must land inside the shrunken 2-line document, not past its end.

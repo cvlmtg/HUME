@@ -11,12 +11,13 @@ use hume_editing::edit::{Edited, TextChange};
 use hume_editing::history::{History, RevisionId};
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
-use hume_editing::text::BufferText;
+use hume_editing::text::{BufferText, LineEnding};
 use hume_editing::transaction::Transaction;
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_platform::io::FileMeta;
 
 mod disk;
+mod dump;
 // Sibling buffer submodules (`file_open::enter_buffer`,
 // `Buffer::disk_state`'s field type) reach `disk::{DiskCheckTrigger,
 // DiskState}` via `super::disk::` instead, staying inside the `buffer`
@@ -30,6 +31,7 @@ mod disk;
 pub(in crate::editor) use disk::DiskCheckTrigger;
 #[cfg(test)]
 pub(in crate::editor) use disk::DiskState;
+pub(in crate::editor) use file_open::ReplaceSource;
 mod file_open;
 pub(in crate::editor) mod lifecycle;
 pub(in crate::editor) mod store;
@@ -148,6 +150,11 @@ pub(crate) struct Buffer {
     /// a successful write. Always `InSync` for scratch/synthetic buffers,
     /// which the check skips.
     pub(in crate::editor) disk_state: disk::DiskState,
+    /// `true` while a crash dump sits next to this buffer's file and the
+    /// user has not answered the restore prompt for it. Set when the buffer
+    /// is opened (`from_file_or_new`), not when it is reloaded; the dump's
+    /// own path is always re-derived from `path` (`dump_path_for`).
+    pub(in crate::editor) dump_pending: bool,
 }
 
 /// How a new text relates to the one it replaces, for [`Buffer::install`].
@@ -188,6 +195,7 @@ impl Buffer {
             lsp_pending: Vec::new(),
             open_hook_pending: false,
             disk_state: disk::DiskState::InSync,
+            dump_pending: false,
         }
     }
 
@@ -241,16 +249,18 @@ impl Buffer {
     /// A path with no basename (`/`, `..`) still errors: `Buffer::set_path`
     /// would panic on it in debug.
     pub(in crate::editor) fn from_file_or_new(path: &Path, cwd: &Path) -> io::Result<Self> {
-        match Self::from_file(path) {
+        let mut buf = match Self::from_file(path) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
                 let resolved = crate::editor::Editor::resolve_buffer_path(path, cwd);
                 if resolved.file_name().is_none() {
                     return Err(e);
                 }
-                Ok(Self::new_file(resolved))
+                Self::new_file(resolved)
             }
-            other => other,
-        }
+            other => other?,
+        };
+        buf.dump_pending = buf.path().is_some_and(|p| dump::dump_path_for(p).is_file());
+        Ok(buf)
     }
 
     /// Empty scratch buffer (single structural `\n`, no path, default overrides).
@@ -424,30 +434,71 @@ impl Buffer {
     }
 
     /// Replace `self.text` with `new_text`, recording the swap as a single
-    /// revision in the existing history so `u` reverts to the pre-reload state.
+    /// revision in the existing history so `u` reverts to the previous text.
     ///
-    /// This is the history-preserving reload path. Unlike
-    /// [`set_view_content`](Self::set_view_content), which resets history,
-    /// this treats the reload as an ordinary edit: `u` after `:e!` shows the
-    /// pre-reload buffer with its full undo tree intact beneath, and
-    /// `Ctrl-r` re-applies the reload.
-    ///
-    /// `pre_sels` (stored on the inverse transaction, restored by undo) and
-    /// `post_sels` (stored on the forward transaction, restored by redo) are
-    /// both caller-computed. `post_sels` is typically the grapheme-snapped,
-    /// clamped cursor the reload UI wants visible.
+    /// Unlike [`set_view_content`](Self::set_view_content), which resets
+    /// history, this treats the replacement as an ordinary edit: `u` shows the
+    /// previous text with the full undo tree intact beneath, and `Ctrl-r`
+    /// re-applies it. It leaves `saved_revision` and `disk_state` alone, so
+    /// the replacement reads as dirty unless it was a no-op.
     ///
     /// The `ChangeSet` pair is line-diff-derived ([`changesets_from_line_diff`])
     /// so the inverse carries only the changed lines, not a full-buffer
-    /// delete-all + insert-all. `saved_revision` is bumped after recording so
-    /// the reloaded buffer is `!is_dirty()`.
-    ///
-    /// The reload is an edit: `install` carries every stored position through
-    /// its line diff. The history revision records `focused`'s selections for
-    /// the buffer before and after.
+    /// delete-all + insert-all. `install` carries every stored position
+    /// through the diff. The history revision records `focused`'s selections
+    /// for the buffer before and after.
     ///
     /// Returns whether the text changed (`install` ran, the version moved),
-    /// `false` for an identical-to-disk no-op.
+    /// `false` when `new_text` equals the current text.
+    pub(in crate::editor::buffer) fn replace_text_recorded(
+        &mut self,
+        id: BufferId,
+        stores: &mut PositionStores<'_>,
+        new_text: BufferText,
+        focused: PaneId,
+    ) -> bool {
+        // Build the CS pair from immutable borrows of both texts, before
+        // `install` mutates `self.text`. The helper takes `&BufferText` on both
+        // sides; `new_text` is still owned by us here so the borrow is fine.
+        let (forward, inverse) = changesets_from_line_diff(&self.text, &new_text);
+
+        // Identical text: `self.text` already equals `new_text`, so skip
+        // `install` entirely rather than change the version (and fire
+        // `on-text-changed` plus a spurious tree-sitter reparse) for a no-op.
+        // Nothing is recorded, as there is nothing to undo to.
+        if forward.is_identity() {
+            return false;
+        }
+
+        // Applying the diff keeps the buffer's lineage, so the replacement is
+        // the next generation of the same document rather than a new one.
+        // `install` does NOT reset history (`set_view_content` is the only
+        // writer that resets history).
+        let replaced = forward
+            .apply(&self.text)
+            .expect("a line diff of the current text applies to it");
+        debug_assert_eq!(
+            replaced, new_text,
+            "replace: the line diff must reproduce the new text"
+        );
+        let recorded = |stores: &PositionStores<'_>| stores.panes[focused][id].selections().clone();
+        let pre_sels = recorded(stores);
+        self.install(
+            id,
+            stores,
+            replaced.with_line_ending(new_text.line_ending()),
+            Change::Edit(&forward),
+            None,
+        );
+        let post_sels = recorded(stores);
+        self.record_revision(forward, inverse, pre_sels, post_sels);
+        true
+    }
+
+    /// [`replace_text_recorded`](Self::replace_text_recorded) for a reload
+    /// from disk: the buffer now matches the file, so `disk_state` is
+    /// `InSync` and `saved_revision` is the current revision, whether or not
+    /// the text changed. `u` still reverts to the pre-reload text.
     pub(in crate::editor::buffer) fn reload_from_text(
         &mut self,
         id: BufferId,
@@ -455,49 +506,10 @@ impl Buffer {
         new_text: BufferText,
         focused: PaneId,
     ) -> bool {
-        // Reloading from disk is, by definition, catching up to whatever is
-        // there now, so clear regardless of which branch below runs.
         self.disk_state = disk::DiskState::InSync;
-
-        // Build the CS pair from immutable borrows of both texts, before
-        // `install` mutates `self.text`. The helper takes `&BufferText` on both
-        // sides; `new_text` is still owned by us here so the borrow is fine.
-        let (forward, inverse) = changesets_from_line_diff(&self.text, &new_text);
-
-        // Reload of identical-to-disk content: `self.text` already equals
-        // `new_text`, so skip `install` entirely rather than change the version
-        // (and fire `on-text-changed` plus a spurious tree-sitter reparse) for
-        // a no-op. Just re-anchor `saved_revision`: the buffer now matches
-        // disk. Nothing is recorded, as there is nothing to undo to.
-        if forward.is_identity() {
-            self.saved_revision = Some(self.history.current_id());
-            return false;
-        }
-
-        // Applying the diff keeps the buffer's lineage, so the reload is the
-        // next generation of the same document rather than a new one.
-        // `install` does NOT reset history (`set_view_content` is the only
-        // writer that resets history).
-        let reloaded = forward
-            .apply(&self.text)
-            .expect("a line diff of the current text applies to it");
-        debug_assert_eq!(
-            reloaded, new_text,
-            "reload: the line diff must reproduce the file"
-        );
-        let recorded = |stores: &PositionStores<'_>| stores.panes[focused][id].selections().clone();
-        let pre_sels = recorded(stores);
-        self.install(
-            id,
-            stores,
-            reloaded.with_line_ending(new_text.line_ending()),
-            Change::Edit(&forward),
-            None,
-        );
-        let post_sels = recorded(stores);
-        self.record_revision(forward, inverse, pre_sels, post_sels);
+        let changed = self.replace_text_recorded(id, stores, new_text, focused);
         self.saved_revision = Some(self.history.current_id());
-        true
+        changed
     }
 
     /// `true` if the buffer has unsaved changes.
@@ -833,6 +845,14 @@ impl Buffer {
     /// The current buffer contents.
     pub(crate) fn text(&self) -> &BufferText {
         &self.text
+    }
+
+    /// The bytes a save writes: the text with the buffer's own line endings.
+    pub(crate) fn serialized(&self) -> String {
+        match self.text.line_ending() {
+            LineEnding::CrLf => self.text.to_string().replace('\n', "\r\n"),
+            LineEnding::Lf => self.text.to_string(),
+        }
     }
 
     /// The current revision in the undo history.

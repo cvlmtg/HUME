@@ -520,7 +520,10 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     let new_byte_len = new_text.len();
     let mut replacement = Buffer::at_start(BufferText::from(new_text));
     replacement.set_path(Some(std::path::PathBuf::from("data.json")));
-    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
+    ed.reload_buffer_in_place(
+        FocusedPane::current(&ed.state),
+        ReplaceSource::Disk(Box::new(replacement)),
+    );
     assert!(
         ed.state
             .buffers
@@ -564,7 +567,10 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     // touching the text version, and the tree installed above stays.
     let mut identical = Buffer::at_start(BufferText::from(new_text));
     identical.set_path(Some(std::path::PathBuf::from("data.json")));
-    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), identical);
+    ed.reload_buffer_in_place(
+        FocusedPane::current(&ed.state),
+        ReplaceSource::Disk(Box::new(identical)),
+    );
     ed.reparse_stale_buffers();
     ed.reparse_stale_buffers();
 

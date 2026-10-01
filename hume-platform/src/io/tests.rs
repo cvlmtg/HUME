@@ -146,3 +146,37 @@ fn write_file_new_on_plain_missing_path_is_unaffected() {
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "hi\n");
     assert_eq!(meta.resolved_path(), std::fs::canonicalize(&path).unwrap());
 }
+
+#[test]
+fn write_dump_round_trips_content() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("f.txt.dump");
+
+    write_dump("a\r\nb\n", &path).unwrap();
+
+    assert_eq!(std::fs::read(&path).unwrap(), b"a\r\nb\n");
+}
+
+#[test]
+fn write_dump_replaces_an_existing_dump() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("f.txt.dump");
+    std::fs::write(&path, "older crash\n").unwrap();
+
+    write_dump("newer crash\n", &path).unwrap();
+
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "newer crash\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn write_dump_is_private_to_the_owner() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("f.txt.dump");
+
+    write_dump("secret\n", &path).unwrap();
+
+    let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600);
+}

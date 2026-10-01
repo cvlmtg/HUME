@@ -291,5 +291,21 @@ pub fn write_file_new(content: &str, path: &Path) -> io::Result<FileMeta> {
     read_file_meta(&target)
 }
 
+/// Write `content` to `path` as a crash dump, replacing any existing file.
+///
+/// Same temp-file-and-rename strategy as [`write_file_new`], plus an fsync
+/// before the rename. The temp file keeps `tempfile`'s owner-only mode: a
+/// dump holds a copy of a possibly private file, so it must not come out
+/// world-readable like a freshly created user file.
+pub fn write_dump(content: &str, path: &Path) -> io::Result<()> {
+    let dir = path.parent().unwrap_or(Path::new("."));
+
+    let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+    io::Write::write_all(&mut tmp, content.as_bytes())?;
+    tmp.as_file().sync_all()?;
+    tmp.persist(path).map_err(|e| e.error)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests;

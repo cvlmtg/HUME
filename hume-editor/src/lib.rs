@@ -1,5 +1,10 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
+// The dump on panic runs while unwinding. Under `panic = "abort"` it would
+// never run, so the build is refused.
+#[cfg(panic = "abort")]
+compile_error!("hume must build with panic = \"unwind\": dirty buffers are dumped while unwinding");
+
 pub mod cli;
 pub(crate) mod editor;
 // `pub`, not `pub(crate)`: `tests/scripting.rs` is a separate crate that
@@ -183,7 +188,10 @@ pub fn run(
         editor.state.settings.mouse_select,
         kitty_enabled,
     )?;
-    let result = editor.run(&shared, &mut term);
+    let scratch_dumps = hume_platform::dirs::data_dir().map(|dir| dir.join("dumps"));
+    let result = editor.run_dumping_on_panic(scratch_dumps.as_deref(), |editor| {
+        editor.run(&shared, &mut term)
+    });
     // Restore the terminal (cursor shape/colour, leave alt-screen, cooked
     // mode) before the LSP grace window below, not after: `lsp_shutdown_all`
     // can take up to `SHUTDOWN_GRACE` per server, and every millisecond of

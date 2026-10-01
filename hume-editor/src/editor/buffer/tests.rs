@@ -1060,3 +1060,68 @@ fn an_edit_carries_the_selections_of_every_other_pane() {
         "the other pane's cursor moves past the inserted char"
     );
 }
+
+// ── serialized ────────────────────────────────────────────────────────────
+
+#[test]
+fn serialized_writes_lf_text_unchanged() {
+    let buf = Buffer::at_start(BufferText::from("a\nb\n"));
+    assert_eq!(buf.serialized(), "a\nb\n");
+}
+
+#[test]
+fn serialized_restores_crlf_line_endings() {
+    let buf = Buffer::at_start(BufferText::from("a\r\nb\r\n"));
+    assert_eq!(buf.serialized(), "a\r\nb\r\n");
+}
+
+// ── dump_pending ──────────────────────────────────────────────────────────
+
+fn file_with_dump(dump: Option<&str>) -> (tempfile::TempDir, PathBuf) {
+    let dir = crate::editor::tests::safe_tempdir();
+    let path = dir.path().join("foo.txt");
+    std::fs::write(&path, "disk\n").unwrap();
+    if let Some(content) = dump {
+        std::fs::write(dir.path().join("foo.txt.dump"), content).unwrap();
+    }
+    (dir, path)
+}
+
+#[test]
+fn opening_a_file_with_a_dump_marks_the_buffer_dump_pending() {
+    let (dir, path) = file_with_dump(Some("crashed\n"));
+
+    let buf = Buffer::from_file_or_new(&path, dir.path()).unwrap();
+
+    assert!(buf.dump_pending);
+}
+
+#[test]
+fn opening_a_file_without_a_dump_is_not_dump_pending() {
+    let (dir, path) = file_with_dump(None);
+
+    let buf = Buffer::from_file_or_new(&path, dir.path()).unwrap();
+
+    assert!(!buf.dump_pending);
+}
+
+#[test]
+fn opening_a_missing_file_with_a_dump_marks_the_new_file_dump_pending() {
+    let dir = crate::editor::tests::safe_tempdir();
+    let path = dir.path().join("gone.txt");
+    std::fs::write(dir.path().join("gone.txt.dump"), "crashed\n").unwrap();
+
+    let buf = Buffer::from_file_or_new(&path, dir.path()).unwrap();
+
+    assert!(buf.is_new_file());
+    assert!(buf.dump_pending);
+}
+
+#[test]
+fn rereading_a_file_does_not_mark_it_dump_pending() {
+    let (_dir, path) = file_with_dump(Some("crashed\n"));
+
+    let buf = Buffer::from_file(&path).unwrap();
+
+    assert!(!buf.dump_pending);
+}

@@ -19,7 +19,8 @@ pub(in crate::editor) struct ConfirmChoice {
     pub(in crate::editor) label: &'static str,
 }
 
-/// What happens when the user accepts the confirm (presses `choices[0].key`).
+/// What the confirm is about; [`confirm_input`] maps each variant's choices
+/// to what they do.
 ///
 /// A plain enum, not a boxed closure: the handler is one `match` arm, and it
 /// can't accidentally capture stale editor state. Add a variant per new
@@ -29,6 +30,10 @@ pub(in crate::editor) enum ConfirmAction {
     /// Undoable: `reload_buffer_in_place` records the reload as a single
     /// revision on top of the existing undo tree.
     ReloadBuffer(BufferId),
+    /// Load this buffer's crash dump into it, delete the dump, or leave it,
+    /// per the choice pressed (`Editor::restore_dump` / `discard_dump` /
+    /// `keep_dump`).
+    RestoreDump(BufferId),
 }
 
 /// A reusable native yes/no confirmation overlay, rendered in the
@@ -38,15 +43,12 @@ pub(in crate::editor) enum ConfirmAction {
 /// primitive with a `SteelVal` callback), a confirm is Rust-native: its
 /// action is a plain enum matched inline, with no closure capturing `&mut
 /// Editor` and no round-trip through the scripting VM. It exists for
-/// editor-internal yes/no questions; disk-change reload is the first one.
+/// editor-internal questions: a disk-change reload and a crash-dump restore.
 ///
-/// `choices[0]` is the accept choice: pressing its key runs `action`.
-/// Every other listed choice dismisses without running `action`, doing
-/// whatever else its own key implies (`decline_disk_change` for "keep").
-/// There is currently never more than one non-accept outcome, so this
-/// intentionally doesn't model per-choice actions beyond the first. `Esc`
-/// and any listed choice's key are *consumed*; any other stray key also
-/// dismisses without answering but is left to fall through to normal
+/// Each `action` variant owns its choices: [`confirm_input`] maps the index of
+/// the pressed choice to that variant's outcome. `Esc` and any listed
+/// choice's key are *consumed*; any other stray key also dismisses without
+/// answering but is left to fall through to normal
 /// dispatch ([`confirm_input`]) rather than being swallowed. No separate
 /// view type: [`ConfirmLayer::render_line`] is painted directly by
 /// `hume-editor`'s statusline, so `pub(crate)`, not `pub(in crate::editor)`
@@ -69,7 +71,7 @@ impl ConfirmLayer {
     /// defaulting to "unaffected".
     pub(in crate::editor) fn targets_buffer(&self, id: BufferId) -> bool {
         match self.action {
-            ConfirmAction::ReloadBuffer(bid) => bid == id,
+            ConfirmAction::ReloadBuffer(bid) | ConfirmAction::RestoreDump(bid) => bid == id,
         }
     }
 
@@ -208,6 +210,13 @@ pub(in crate::editor) fn confirm_input(ed: &mut Editor, r: LayerRef, ev: InputEv
         ConfirmAction::ReloadBuffer(bid) => match matched {
             Some(0) => ed.reload_buffer_from_disk(bid),
             Some(1) => ed.decline_disk_change(bid),
+            _ => {}
+        },
+        ConfirmAction::RestoreDump(bid) => match matched {
+            Some(0) => ed.restore_dump(bid),
+            Some(1) => ed.discard_dump(bid),
+            Some(2) => ed.keep_dump(bid),
+            _ if key.code == KeyCode::Escape => ed.keep_dump(bid),
             _ => {}
         },
     }

@@ -1460,7 +1460,10 @@ fn e_bang_reload_fires_on_text_changed() {
     ed.settle();
 
     let replacement = Buffer::at_start(BufferText::from("reloaded\n"));
-    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
+    ed.reload_buffer_in_place(
+        FocusedPane::current(&ed.state),
+        ReplaceSource::Disk(Box::new(replacement)),
+    );
     ed.settle();
 
     let fires = ed
@@ -1981,7 +1984,10 @@ fn identity_reload_fires_no_on_text_changed() {
 
     let before_gen = ed.state.buffers.get(bid).text().generation();
     let replacement = Buffer::at_start(text_before);
-    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
+    ed.reload_buffer_in_place(
+        FocusedPane::current(&ed.state),
+        ReplaceSource::Disk(Box::new(replacement)),
+    );
     ed.settle();
 
     assert_eq!(

@@ -1,6 +1,7 @@
 use std::io;
 use std::path::PathBuf;
 
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 
 use crate::editor::buffer::Buffer;
@@ -9,6 +10,17 @@ use crate::editor::commands::FocusedPane;
 use super::lifecycle;
 use crate::editor::position_stores::PositionStores;
 use crate::editor::{Editor, Severity};
+
+/// Where the text that replaces a buffer's content comes from, for
+/// [`Editor::reload_buffer_in_place`].
+pub(in crate::editor) enum ReplaceSource {
+    /// A fresh read of the buffer's file. The buffer matches disk afterwards
+    /// and takes the read's file metadata.
+    Disk(Box<Buffer>),
+    /// The text of a crash dump. The buffer keeps its file metadata and disk
+    /// state and reads as dirty.
+    Dump(BufferText),
+}
 
 impl Editor {
     // ── Working directory ─────────────────────────────────────────────────────
@@ -189,58 +201,66 @@ impl Editor {
         self.detect_pending_languages();
     }
 
-    /// Reload `fp`'s buffer with `new_doc`'s content in place, preserving the
+    /// Replace `fp`'s buffer text with `source`'s in place, preserving the
     /// undo tree.
     ///
     /// Unlike `set_view_content` (which discards `History` on a full
-    /// `Buffer` swap), this delegates to [`Buffer::reload_from_text`]; see
-    /// its doc for the history/undo mechanics.
+    /// `Buffer` swap), this records the replacement as one revision; see
+    /// [`Buffer::replace_text_recorded`] for the history/undo mechanics.
+    /// [`ReplaceSource`] decides what else the swap touches: a disk read
+    /// leaves the buffer matching its file, a dump leaves it dirty.
     ///
-    /// The reload is an edit: `Buffer::reload_from_text` carries every stored
-    /// position (every pane's selections for the buffer, jump lists, prompt
-    /// snapshots) through its line-diff `ChangeSet`, so each follows its text.
-    /// Only `fp`'s pre/post selections are written into the history revision
+    /// The replacement is an edit: it carries every stored position (every
+    /// pane's selections for the buffer, jump lists, prompt snapshots)
+    /// through its line-diff `ChangeSet`, so each follows its text. Only
+    /// `fp`'s pre/post selections are written into the history revision
     /// (undo/redo restore its cursor).
     ///
-    /// Survives the reload: per-buffer search state (match cache rebuilds
-    /// lazily) and the syntax tree, which the reload's edit shifts like any
+    /// Survives the replacement: per-buffer search state (match cache
+    /// rebuilds lazily) and the syntax tree, which the edit shifts like any
     /// other. Dropped as stale: in-progress edit groups/paste sessions and
     /// saved scrolls.
     pub(in crate::editor) fn reload_buffer_in_place(
         &mut self,
         fp: FocusedPane,
-        mut new_doc: Buffer,
+        source: ReplaceSource,
     ) {
         let id = fp.bid(&self.view);
         // End any open Insert/paste session the same way every other
         // buffer/focus-invalidating path does (`switch_pane_to_buffer`,
-        // `reset_config_state`), before the reload invalidates the text it
-        // was snapshotted against. Leaving it open would keep
+        // `reset_config_state`), before the replacement invalidates the text
+        // it was snapshotted against. Leaving it open would keep
         // `state.active_session` and the `Insert` mode layer pointing at a
         // session whose group no longer matches the buffer.
         crate::editor::focus::end_focus_sessions(&mut self.state, &self.view);
 
-        // History-preserving reload.
-        // Refresh `file_meta` so save-time permission/ownership checks see
-        // the current on-disk metadata: `reload_from_text` only replaces
-        // the buffer's text, not its `file_meta`, so this must be set
-        // explicitly.
-        let new_text = new_doc.text().clone();
-        let new_file_meta = std::mem::take(&mut new_doc.file_meta);
-        drop(new_doc);
+        // A disk read also refreshes `file_meta`, so save-time
+        // permission/ownership checks see the current on-disk metadata:
+        // `reload_from_text` only replaces the buffer's text, not its
+        // `file_meta`, so it is set explicitly below.
+        let (new_text, disk_file_meta) = match source {
+            ReplaceSource::Disk(mut new_doc) => {
+                let text = new_doc.text().clone();
+                (text, Some(std::mem::take(&mut new_doc.file_meta)))
+            }
+            ReplaceSource::Dump(text) => (text, None),
+        };
 
-        let mutated = self.state.buffers.get_mut(id).reload_from_text(
-            id,
-            &mut PositionStores::new(
-                &mut self.state.panes,
-                &mut self.state.input,
-                &mut self.state.buffer_positions,
-                &mut self.state.config.decorations,
-            ),
-            new_text,
-            fp.pid(),
+        let buf = self.state.buffers.get_mut(id);
+        let mut stores = PositionStores::new(
+            &mut self.state.panes,
+            &mut self.state.input,
+            &mut self.state.buffer_positions,
+            &mut self.state.config.decorations,
         );
-        self.state.buffers.get_mut(id).file_meta = new_file_meta;
+        let mutated = match disk_file_meta {
+            Some(file_meta) => {
+                let mutated = buf.reload_from_text(id, &mut stores, new_text, fp.pid());
+                buf.file_meta = file_meta;
+                mutated
+            }
+            None => buf.replace_text_recorded(id, &mut stores, new_text, fp.pid()),
+        };
         // Flush any didChange already queued for this buffer *before* the
         // whole-document one below. Otherwise, under macro replay (an edit
         // followed by `:e!` in the same drain window), the server would see
