@@ -78,7 +78,6 @@ hazard). `lsp-fmt` and `:diagnostics` have no default key; they are typed-comman
 
 | Doc | Covers |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | Response conventions, `lib.scm`'s shared helpers |
-| [`docs/servers.md`](docs/servers.md) | Install pipeline, config delivery, install lock, catalog/sources, discovery hint, runtime management |
+| [`docs/architecture.md`](docs/architecture.md) | File layout, response conventions, `lib.scm`'s shared helpers, runtime management |
 | [`docs/features.md`](docs/features.md) | Goto/references, hover, signature help, completion, code actions, formatting, rename |
 | [`docs/decorations.md`](docs/decorations.md) | Diagnostics navigation, EOL summary, gutter signs, inlay hints |

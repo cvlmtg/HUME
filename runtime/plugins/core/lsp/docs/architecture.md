@@ -94,3 +94,10 @@ Every feature file shares these:
   a debounced refresh re-asks at `tracked-position-params`. A row callback carries its
   session's id, so the `#f` an outgoing drawer receives when another list replaces it
   cannot end the new session.
+
+## Runtime management (`status.scm`)
+
+`:lsp-status` shows every running server and its state, plus attached buffers' diagnostic
+counts. `:lsp-stop [lang]` and `:lsp-restart [lang]` stop, or stop and respawn, a running
+server, defaulting to the focused buffer's. All three are thin wrappers around Rust
+builtins; there is no Scheme-side state beyond the argument default.
