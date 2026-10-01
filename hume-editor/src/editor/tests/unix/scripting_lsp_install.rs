@@ -7,7 +7,7 @@
 //   rust-analyzer (language "rust"): github, plain .gz, installable
 //   svlangserver (language "systemverilog"): npm, settings contain a real
 //     JSON array (systemverilog.includeIndexing)
-//   gopls (language "go"): golang purl kind, a stub source: not installable
+//   gopls (language "go"): golang, installable through `go install`
 //   ada-language-server (language "ada"): github, but every platform target
 //     is .tar.gz, so it is never installable in v1 regardless of host OS
 //   pest-language-server (language "pest"): cargo, crates.io semver,
@@ -572,12 +572,12 @@ fn lsp_install_stub_kind_names_the_unsupported_kind() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
-    // gopls's Mason source is purl kind `golang`, a stub, never installable in v1.
-    type_cmd(&mut ed, ":lsp-install go");
+    // ocamllsp's Mason source is purl kind `opam`, a stub, never installable in v1.
+    type_cmd(&mut ed, ":lsp-install ocaml");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("golang"),
+        log.contains("opam"),
         "a stub-kind server must fail naming the unsupported purl kind: {log}"
     );
 }
@@ -1319,47 +1319,48 @@ fn discovery_hint_does_not_fire_when_already_registered() {
 // layout, receipt, registration, and the failure path) against a fake
 // `cargo` executable that does no real work.
 
-/// Write an executable fake `cargo` shim into a fresh tempdir and return that
+/// Write an executable fake `tool` shim into a fresh tempdir and return that
 /// dir. The shim records its argv (one token per line) to `args_file`, then
-/// (unless `create_binary` is false) locates the `--root <dir>` argument
-/// and creates `<dir>/bin/<bin_name>` as an executable file, exactly
-/// mirroring what a real `cargo install --root` would leave behind. It
-/// resets its own `$PATH` first so the `mkdir`/`chmod` it shells out to can
-/// still be found, even though the *test*'s `$PATH` is pinned to the shim
-/// directory alone.
-fn write_fake_cargo_shim(
-    args_file: &Path,
-    bin_name: &str,
-    create_binary: bool,
-) -> tempfile::TempDir {
+/// runs `layout`, a shell fragment that creates what the real tool would
+/// leave behind. It resets its own `$PATH` first so `mkdir`/`chmod` can still
+/// be found, even though the *test*'s `$PATH` is pinned to the shim directory
+/// alone.
+fn write_fake_tool_shim(tool: &str, args_file: &Path, layout: &str) -> tempfile::TempDir {
     let shim_dir = safe_tempdir();
-    let body = if create_binary {
-        format!(
-            "#!/bin/sh\n\
-             PATH=/usr/bin:/bin\n\
-             printf '%s\\n' \"$@\" > {args_file}\n\
-             root=\"\"; prev=\"\"\n\
-             for a in \"$@\"; do [ \"$prev\" = \"--root\" ] && root=\"$a\"; prev=\"$a\"; done\n\
-             mkdir -p \"$root/bin\"\n\
-             printf '#!/bin/sh\\n' > \"$root/bin/{bin_name}\"\n\
-             chmod +x \"$root/bin/{bin_name}\"\n",
-            args_file = args_file.display(),
-        )
-    } else {
-        format!(
-            "#!/bin/sh\n\
-             PATH=/usr/bin:/bin\n\
-             printf '%s\\n' \"$@\" > {args_file}\n",
-            args_file = args_file.display(),
-        )
-    };
-    let shim_path = shim_dir.path().join("cargo");
+    let body = format!(
+        "#!/bin/sh\n\
+         PATH=/usr/bin:/bin\n\
+         printf '%s\\n' \"$@\" > {args_file}\n\
+         {layout}\n",
+        args_file = args_file.display(),
+    );
+    let shim_path = shim_dir.path().join(tool);
     std::fs::write(&shim_path, body).unwrap();
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&shim_path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
     shim_dir
+}
+
+/// Layout of a real `cargo install --root <dir>`: `<dir>/bin/<bin_name>`.
+fn cargo_layout(bin_name: &str) -> String {
+    format!(
+        "root=\"\"; prev=\"\"\n\
+         for a in \"$@\"; do [ \"$prev\" = \"--root\" ] && root=\"$a\"; prev=\"$a\"; done\n\
+         mkdir -p \"$root/bin\"\n\
+         printf '#!/bin/sh\\n' > \"$root/bin/{bin_name}\"\n\
+         chmod +x \"$root/bin/{bin_name}\""
+    )
+}
+
+/// Layout of a real `go install` with `GOBIN` set: `$GOBIN/<bin_name>`.
+fn go_layout(bin_name: &str) -> String {
+    format!(
+        "mkdir -p \"$GOBIN\"\n\
+         printf '#!/bin/sh\\n' > \"$GOBIN/{bin_name}\"\n\
+         chmod +x \"$GOBIN/{bin_name}\""
+    )
 }
 
 #[test]
@@ -1371,7 +1372,7 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
 
     let args_tmp = safe_tempdir();
     let args_file = args_tmp.path().join("argv.txt");
-    let shim_dir = write_fake_cargo_shim(&args_file, "pest-language-server", true);
+    let shim_dir = write_fake_tool_shim("cargo", &args_file, &cargo_layout("pest-language-server"));
 
     {
         let _path = EnvVarGuard::set("PATH", shim_dir.path());
@@ -1430,9 +1431,9 @@ fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
 
     let args_tmp = safe_tempdir();
     let args_file = args_tmp.path().join("argv.txt");
-    // create_binary: false. Shim exits 0 but leaves no bin/ behind, exactly
-    // the failure this installer's own post-check must catch.
-    let shim_dir = write_fake_cargo_shim(&args_file, "pest-language-server", false);
+    // The shim exits 0 but leaves no bin/ behind: the failure the installer's
+    // own post-check must catch.
+    let shim_dir = write_fake_tool_shim("cargo", &args_file, "");
 
     {
         let _path = EnvVarGuard::set("PATH", shim_dir.path());
@@ -1711,4 +1712,94 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
         .config_command_for_test("hcl")
         .expect("hcl must be registered after a successful install");
     assert_eq!(Path::new(&cmd), bin);
+}
+
+// ── golang installer (fake shim) ────────────────────────────────────────────────
+
+#[test]
+fn lsp_install_golang_runs_go_install_into_gobin_and_registers() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let args_tmp = safe_tempdir();
+    let args_file = args_tmp.path().join("argv.txt");
+    let shim_dir = write_fake_tool_shim("go", &args_file, &go_layout("gopls"));
+
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install go");
+    }
+
+    let argv: Vec<String> = std::fs::read_to_string(&args_file)
+        .expect("shim must have run and recorded argv")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(argv[..2], ["install", "--"], "argv: {argv:?}");
+    assert!(
+        argv[2].starts_with("golang.org/x/tools/gopls@v"),
+        "final argv token must be the module@version spec: {argv:?}"
+    );
+
+    let server_dir = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("gopls");
+    let cmd = ed
+        .lsp
+        .config_command_for_test("go")
+        .expect("go must be registered after a successful go install");
+    assert_eq!(
+        Path::new(&cmd),
+        server_dir.join("bin").join("gopls"),
+        "GOBIN must point at the server dir's bin/"
+    );
+}
+
+#[test]
+fn lsp_install_golang_missing_binary_after_install_fails_loudly() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let args_tmp = safe_tempdir();
+    let args_file = args_tmp.path().join("argv.txt");
+    let shim_dir = write_fake_tool_shim("go", &args_file, "");
+
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install go");
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("expected binary not found after go install"),
+        "a go install that produces no binary must fail loudly: {log}"
+    );
+    assert!(
+        ed.lsp.config_command_for_test("go").is_none(),
+        "go must not be registered when the install failed"
+    );
+}
+
+#[test]
+fn lsp_install_golang_requires_go_on_path() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let empty_path_dir = safe_tempdir();
+    {
+        let _path = EnvVarGuard::set("PATH", empty_path_dir.path());
+        type_cmd(&mut ed, ":lsp-install go");
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("requires 'go' on $PATH"),
+        "a golang-kind install must name the missing toolchain: {log}"
+    );
 }

@@ -92,6 +92,13 @@ HELIX_TO_MASON = {
     "yls": "yls-yara",
 }
 
+# Mason packages that share a Helix server's name but run a different program
+# than the command Helix registers, so installing one would register the wrong
+# binary.
+MASON_NOT_HELIX_SERVER = {
+    "cuelsp": "Helix runs `cue lsp serve`; Mason's cuelsp is a different program",
+}
+
 # A generic package whose download lists several files names the one that is
 # the server; the others (e.g. jdtls's lombok.jar) are not fetched.
 GENERIC_PRIMARY_FILE = {"jdtls": "jdtls.tar.gz"}
@@ -461,6 +468,23 @@ def build_generic_record(
     return {"kind": "generic", "version": version, "targets": targets}
 
 
+def build_golang_record(name: str, package: dict, helix_command: str):
+    purl = package["source"]["id"]
+    _kind, subject, version = parse_purl(purl)
+    subpath = purl.partition("#")[2]
+    if "?" in purl.partition("#")[0]:
+        print(f"  skip '{name}': golang purl has unsupported qualifiers: {purl}", file=sys.stderr)
+        return None
+    bin_template = pick_bin_template(package.get("bin") or {}, helix_command, name)
+    if bin_template is None:
+        return None
+    if not bin_template.startswith("golang:"):
+        print(f"  skip '{name}': golang-kind bin template has no golang: prefix: {bin_template!r}", file=sys.stderr)
+        return None
+    module = f"{subject}/{subpath}" if subpath else subject
+    return {"kind": "golang", "version": version, "module": module, "bin": bin_template[len("golang:") :]}
+
+
 def build_npm_record(name: str, package: dict, helix_command: str):
     _kind, subject, version = parse_purl(package["source"]["id"])
     extra_packages = package["source"].get("extra_packages", [])
@@ -565,6 +589,13 @@ def emit_lsp_sources(records: dict) -> list[str]:
                 scheme_str_list(r["packages"]),
                 scheme_str(r["bin"]),
             )
+        elif r["kind"] == "golang":
+            row = " ({} (kind . golang) (version . {}) (module . {}) (bin . {}))".format(
+                scheme_str(name),
+                scheme_str(r["version"]),
+                scheme_str(r["module"]),
+                scheme_str(r["bin"]),
+            )
         elif r["kind"] == "cargo":
             row = " ({} (kind . cargo) (version . {}) (crate . {}) (bin . {}))".format(
                 scheme_str(name),
@@ -625,10 +656,14 @@ def main() -> None:
         "format_census": collections.Counter(),
         "no_usable_targets": [],
         "unsupported_format": [],
+        "excluded": [],
     }
 
     records = {}
     for helix_name in helix_names:
+        if helix_name in MASON_NOT_HELIX_SERVER:
+            reports["excluded"].append((helix_name, MASON_NOT_HELIX_SERVER[helix_name]))
+            continue
         mason_name = HELIX_TO_MASON.get(helix_name, helix_name)
         package = mason_lsp.get(mason_name)
         if package is None:
@@ -648,6 +683,8 @@ def main() -> None:
             record = build_npm_record(helix_name, package, helix_command)
         elif purl_kind == "cargo":
             record = build_cargo_record(helix_name, package, helix_command)
+        elif purl_kind == "golang":
+            record = build_golang_record(helix_name, package, helix_command)
         else:
             record = {"kind": purl_kind, "version": version}
 
@@ -660,6 +697,10 @@ def main() -> None:
         print(f"unmatched helix servers ({len(reports['unmatched'])}):", file=sys.stderr)
         for n in reports["unmatched"]:
             print(f"  {n}", file=sys.stderr)
+    if reports["excluded"]:
+        print(f"excluded helix servers ({len(reports['excluded'])}):", file=sys.stderr)
+        for n, why in reports["excluded"]:
+            print(f"  {n}: {why}", file=sys.stderr)
     if reports["deprecated"]:
         print(f"deprecated mason packages matched ({len(reports['deprecated'])}):", file=sys.stderr)
         for helix_name, mason_name, dep in reports["deprecated"]:

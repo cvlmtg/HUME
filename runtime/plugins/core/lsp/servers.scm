@@ -68,6 +68,13 @@
         ((equal? asset-file bin) 'raw)
         (else (error (string-append "lsp/asset-format: unsupported asset format: " asset-file)))))
 
+;; The package manager each toolchain-installed kind needs on $PATH.
+(define (lsp/toolchain-tool kind)
+  (cond ((equal? kind 'npm) "npm")
+        ((equal? kind 'cargo) "cargo")
+        ((equal? kind 'golang) "go")
+        (else #f)))
+
 ;; github and generic sources both download one file per platform target.
 (define (lsp/download-kind? kind)
   (or (equal? kind 'github) (equal? kind 'generic)))
@@ -99,10 +106,11 @@
      (let* ((fields (hash-ref *lsp-sources* name))
             (kind   (cdr (lsp/field fields 'kind))))
        (cond
-         ((equal? kind 'npm)
-          (if (which "npm") #f "requires 'npm' on $PATH, which was not found"))
-         ((equal? kind 'cargo)
-          (if (which "cargo") #f "requires 'cargo' on $PATH, which was not found"))
+         ((lsp/toolchain-tool kind)
+          (let ((tool (lsp/toolchain-tool kind)))
+            (if (which tool)
+                #f
+                (string-append "requires '" tool "' on $PATH, which was not found"))))
          ((not (lsp/download-kind? kind))
           (string-append "not installable (kind " (symbol->string kind) ") in v1"))
          ((not (lsp/resolve-download fields)) "no prebuilt asset for this platform")
@@ -121,8 +129,7 @@
   (let* ((fields (hash-ref *lsp-sources* name))
          (kind   (cdr (lsp/field fields 'kind))))
     (cond
-      ((equal? kind 'npm) '("npm"))
-      ((equal? kind 'cargo) '("cargo"))
+      ((lsp/toolchain-tool kind) (list (lsp/toolchain-tool kind)))
       (else
        (let* ((download (lsp/resolve-download fields))
               (asset    (list-ref download 1))
@@ -179,19 +186,30 @@
                             ": expected binary not found after npm install: " bin-rel)))
     bin-rel))
 
+;; Path of `bin` under a toolchain's `bin/` directory, relative to the server
+;; dir; errors when the toolchain left no such file.
+(define (lsp/managed-bin! who name dir bin)
+  (let ((bin-rel (string-append "bin/" bin (if (equal? (hume-target) "windows-x64") ".exe" ""))))
+    (unless (path-exists? (path-join dir bin-rel))
+      (error (string-append "lsp/install-" who "!: " name
+                            ": expected binary not found after " who " install: " bin-rel)))
+    bin-rel))
+
 (define (lsp/install-cargo! name fields dir)
-  (let* ((crate    (cdr (lsp/field fields 'crate)))
-         (version  (cdr (lsp/field fields 'version)))
-         (bin      (cdr (lsp/field fields 'bin)))
-         (windows? (equal? (hume-target) "windows-x64"))
-         (bin-rel  (string-append "bin/" bin (if windows? ".exe" ""))))
+  (let ((crate   (cdr (lsp/field fields 'crate)))
+        (version (cdr (lsp/field fields 'version))))
     (run-inline-output! "cargo"
                         (list "install" "--locked" "--root" dir "--"
                               (string-append crate "@" version)))
-    (unless (path-exists? (path-join dir bin-rel))
-      (error (string-append "lsp/install-cargo!: " name
-                            ": expected binary not found after cargo install: " bin-rel)))
-    bin-rel))
+    (lsp/managed-bin! "cargo" name dir (cdr (lsp/field fields 'bin)))))
+
+(define (lsp/install-golang! name fields dir)
+  (let ((module  (cdr (lsp/field fields 'module)))
+        (version (cdr (lsp/field fields 'version))))
+    (run-inline-output! "go"
+                        (list "install" "--" (string-append module "@" version))
+                        #:env (list (cons "GOBIN" (path-join dir "bin"))))
+    (lsp/managed-bin! "go" name dir (cdr (lsp/field fields 'bin)))))
 
 (define (lsp/install-server! name)
   (let ((blocker (lsp/install-blocker name)))
@@ -208,6 +226,7 @@
     (let ((bin-rel (cond
                      ((lsp/download-kind? kind) (lsp/install-download! name source-fields dir))
                      ((equal? kind 'cargo)  (lsp/install-cargo! name source-fields dir))
+                     ((equal? kind 'golang) (lsp/install-golang! name source-fields dir))
                      (else                  (lsp/install-npm! name source-fields dir)))))
       (lsp/write-receipt! name (cdr (lsp/field source-fields 'version)) bin-rel)
       (let ((cmd (cdr (lsp/field server-fields 'command))))
