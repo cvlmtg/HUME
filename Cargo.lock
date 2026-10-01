@@ -879,6 +879,7 @@ dependencies = [
 name = "hume-ops"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "hume-editing",
  "hume-rope",
  "pretty_assertions",

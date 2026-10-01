@@ -25,3 +25,8 @@ unicode_titlecase = "2.5.0"
 [dev-dependencies]
 test-fixtures = { path = "../test-fixtures" }
 pretty_assertions = "1.4.1"
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "typing"
+harness = false
