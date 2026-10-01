@@ -17,7 +17,7 @@ Two files in the plugin's directory, read once at load through `(plugin-dir)`:
 
 They stay apart because they come from different upstreams and different pins. Every entry
 in both is a tagged alist tail (`(key . value)` or `(key sub…)`, never a positional
-tuple), so one field lookup serves both. The accessors in `catalog.scm` are read-only:
+tuple), so one field lookup serves both. The hashes `catalog.scm` exposes are read-only:
 callers must not mutate what they return.
 
 A third hash, the language-to-server index, is derived from the servers catalog at load.

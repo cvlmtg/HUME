@@ -1,8 +1,9 @@
 ;;; core:lsp-install/catalog.scm — see README.md.
 
-(provide lsp-install/field
-         lsp-install/servers-catalog
-         lsp-install/sources-catalog
+(provide lsp-install/ref
+         lsp-install/servers
+         lsp-install/sources
+         lsp-install/source
          lsp-install/lang->server)
 
 (define lsp-install/dir (plugin-dir))
@@ -16,28 +17,26 @@
         index
         (loop (cdr entries) (hash-insert index (car (car entries)) (cdr (car entries)))))))
 
-(define *lsp-install-servers* (lsp-install/index-entries (lsp-install/read-data "servers.scm")))
-(define *lsp-install-sources* (lsp-install/index-entries (lsp-install/read-data "sources.scm")))
+(define lsp-install/servers (lsp-install/index-entries (lsp-install/read-data "servers.scm")))
+(define lsp-install/sources (lsp-install/index-entries (lsp-install/read-data "sources.scm")))
 
-(define (lsp-install/servers-catalog) *lsp-install-servers*)
-(define (lsp-install/sources-catalog) *lsp-install-sources*)
+(define (lsp-install/ref fields key)
+  (cdr (assoc key fields)))
 
-(define (lsp-install/field fields key)
-  (cond ((null? fields) #f)
-        ((equal? (car (car fields)) key) (car fields))
-        (else (lsp-install/field (cdr fields) key))))
+(define (lsp-install/source name)
+  (if (hash-contains? lsp-install/sources name)
+      (hash-ref lsp-install/sources name)
+      #f))
 
-(define *lsp-install-lang->server*
-  (let loop ((names (hash-keys->list *lsp-install-servers*)) (index (hash)))
+(define lsp-install/lang->server
+  (let loop ((names (hash-keys->list lsp-install/servers)) (index (hash)))
     (if (null? names)
         index
         (loop (cdr names)
-              (let ((langs (cdr (lsp-install/field (hash-ref *lsp-install-servers* (car names))
-                                                   'languages))))
-                (let inner ((langs langs) (index index))
-                  (if (null? langs)
-                      index
-                      (inner (cdr langs)
-                             (hash-insert index (car (car langs)) (car names))))))))))
-
-(define (lsp-install/lang->server) *lsp-install-lang->server*)
+              (let inner ((langs (lsp-install/ref (hash-ref lsp-install/servers (car names))
+                                                  'languages))
+                          (index index))
+                (if (null? langs)
+                    index
+                    (inner (cdr langs)
+                           (hash-insert index (car (car langs)) (car names)))))))))

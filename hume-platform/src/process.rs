@@ -8,9 +8,8 @@
 //! `run-capture!`): Steel reads stdout to EOF before stderr, so a child that
 //! fills its stderr pipe deadlocks, while `Command::output` drains both.
 //!
-//! Stdio is captured (`sha256_file`, [`run_capture`]), inherited so the user
-//! sees live progress (`run_inline_output`, `tree_sitter_build`,
-//! `unpack_zip`, `unpack_tar`), or piped to a file (`unpack_gz`).
+//! Stdio is captured ([`run_capture`]) or inherited so the user sees live
+//! progress (`run_inline_output`, `tree_sitter_build`).
 //!
 //! External tools reject Windows' `\\?\` prefix, so every path handed to a
 //! `Command` here goes through `strip_unc_prefix` first.

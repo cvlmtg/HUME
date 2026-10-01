@@ -14,11 +14,11 @@
   (with-handler (lambda (err) #f)
     (call-with-input-file (lsp-install/receipt-path name) read)))
 
-(define (lsp-install/receipt-bin receipt) (cdr (lsp-install/field receipt 'bin)))
-(define (lsp-install/receipt-version receipt) (cdr (lsp-install/field receipt 'version)))
+(define (lsp-install/receipt-bin receipt) (lsp-install/ref receipt 'bin))
+(define (lsp-install/receipt-version receipt) (lsp-install/ref receipt 'version))
 
 (define (lsp-install/receipt-env-dirs receipt)
-  (let ((field (lsp-install/field receipt 'env-dirs)))
+  (let ((field (assoc 'env-dirs receipt)))
     (if field (cdr field) '())))
 
 (define (lsp-install/scheme-quote s)

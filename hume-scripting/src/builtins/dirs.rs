@@ -1,10 +1,7 @@
 //! Directory state for HUME's scripting layer: raw + display-form data/runtime
-//! dirs, computed once and shared by every builtin that needs them.
-//!
-//! Full-trust plugin model (see `user-manual/docs/plugins.md`'s "Filesystem
-//! and processes"): this does not enforce a sandbox. What lives here is editor-
-//! integration state: the display-form data/runtime dirs (`data-dir`/
-//! `runtime-dir`).
+//! dirs (`data-dir`/`runtime-dir`), computed once and shared by every builtin
+//! that needs them. There is no sandbox here; see `user-manual/docs/plugins.md`'s
+//! "Filesystem and processes".
 //!
 //! One [`ScriptDirs`] is built once by [`crate::ScriptingHost::new`] and
 //! borrowed into every [`crate::context::SteelCtx`]: no thread-local, no

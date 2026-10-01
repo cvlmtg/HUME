@@ -3,14 +3,18 @@
 (require "catalog.scm")
 (require "receipts.scm")
 
-(provide lsp-install/register-installed-servers!)
+(provide lsp-install/register-installed-servers! lsp-install/unregister-server-languages!)
+
+(define (lsp-install/unregister-server-languages! name)
+  (for-each (lambda (lang-entry) (unregister-lsp-server! (car lang-entry)))
+            (lsp-install/ref (hash-ref lsp-install/servers name) 'languages)))
 
 (define (lsp-install/register-server-languages! name cmd env)
-  (let* ((fields (hash-ref (lsp-install/servers-catalog) name))
+  (let* ((fields (hash-ref lsp-install/servers name))
          (langs  (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
-                         (cdr (lsp-install/field fields 'languages))))
-         (args        (cdr (lsp-install/field fields 'args)))
-         (config-json (cdr (lsp-install/field fields 'config)))
+                         (lsp-install/ref fields 'languages)))
+         (args        (lsp-install/ref fields 'args))
+         (config-json (lsp-install/ref fields 'config))
          (config (if (null? config-json) #f (json-parse config-json))))
     (for-each
       (lambda (lang-entry)
@@ -33,7 +37,7 @@
               ((not receipt)
                (log! 'warn (string-append "LSP: interrupted install of " name
                                           " — run :lsp-install to redo, or delete the directory")))
-              ((not (hash-contains? (lsp-install/servers-catalog) name))
+              ((not (hash-contains? lsp-install/servers name))
                (log! 'warn (string-append "LSP: orphan server " name
                                           " — not in the seeded catalog, run :lsp-uninstall to remove")))
               (else

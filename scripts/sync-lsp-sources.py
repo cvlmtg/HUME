@@ -44,9 +44,10 @@ from sync_common import (  # noqa: E402
 )
 
 REPO = Path(__file__).resolve().parent.parent
-MASON_PIN_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "mason-pin.scm"
-LSP_SERVERS_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "servers.scm"
-LSP_SOURCES_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "sources.scm"
+LSP_INSTALL_DIR = REPO / "runtime" / "plugins" / "core" / "lsp-install"
+MASON_PIN_SCM = LSP_INSTALL_DIR / "mason-pin.scm"
+LSP_SERVERS_SCM = LSP_INSTALL_DIR / "servers.scm"
+LSP_SOURCES_SCM = LSP_INSTALL_DIR / "sources.scm"
 
 LSP_SOURCES_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/sources.scm — HUME bundled LSP server install catalog.

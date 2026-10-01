@@ -1260,7 +1260,7 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
 }
 
 #[test]
-fn discovery_hint_fires_for_cargo_kind_now_installable() {
+fn discovery_hint_fires_for_cargo_kind() {
     let _lock = lock();
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -1548,23 +1548,16 @@ fn github_source(name: &str, asset: &str, fixture: &Path, bin: &str) -> String {
 /// argv to `args_file`. The real `tar`/`gzip`/`unzip` stay reachable through
 /// the returned `$PATH` value.
 fn write_fake_curl_shim(fixture: &Path, args_file: &Path) -> (tempfile::TempDir, String) {
-    let shim_dir = safe_tempdir();
-    let body = format!(
-        "#!/bin/sh\n\
-         PATH=/usr/bin:/bin\n\
-         printf '%s\\n' \"$@\" > {args_file}\n\
-         out=\"\"; prev=\"\"\n\
-         for a in \"$@\"; do [ \"$prev\" = \"-o\" ] && out=\"$a\"; prev=\"$a\"; done\n\
-         cp {fixture} \"$out\"\n",
-        args_file = args_file.display(),
-        fixture = fixture.display(),
+    let shim_dir = write_fake_tool_shim(
+        "curl",
+        args_file,
+        &format!(
+            "out=\"\"; prev=\"\"\n\
+             for a in \"$@\"; do [ \"$prev\" = \"-o\" ] && out=\"$a\"; prev=\"$a\"; done\n\
+             cp {fixture} \"$out\"",
+            fixture = fixture.display(),
+        ),
     );
-    let shim_path = shim_dir.path().join("curl");
-    std::fs::write(&shim_path, body).unwrap();
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&shim_path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
     let path = format!("{}:/usr/bin:/bin", shim_dir.path().display());
     (shim_dir, path)
 }
@@ -1590,27 +1583,13 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
             .unwrap()
             .success()
     );
-    let runtime = runtime_with_sources(&github_source(
+    let sources = &github_source(
         "lua-language-server",
         "lls.tar.gz",
         &archive,
         "pkg/bin/lua-language-server",
-    ));
-    let args_file = work.path().join("curl-argv.txt");
-    let (_shim, path) = write_fake_curl_shim(&archive, &args_file);
-
-    let data_tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>\n");
-    load_with_init_in_runtime(
-        &mut ed,
-        runtime.path(),
-        data_tmp.path(),
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
     );
-    {
-        let _path = EnvVarGuard::set("PATH", &path);
-        type_cmd(&mut ed, ":lsp-install lua");
-    }
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
 
     let server_dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -1665,27 +1644,13 @@ fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
             .unwrap()
             .success()
     );
-    let runtime = runtime_with_sources(&github_source(
+    let sources = &github_source(
         "lua-language-server",
         "lls.tar.gz",
         &archive,
         "pkg/bin/server",
-    ));
-    let args_file = work.path().join("curl-argv.txt");
-    let (_shim, path) = write_fake_curl_shim(&archive, &args_file);
-
-    let data_tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>\n");
-    load_with_init_in_runtime(
-        &mut ed,
-        runtime.path(),
-        data_tmp.path(),
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
     );
-    {
-        let _path = EnvVarGuard::set("PATH", &path);
-        type_cmd(&mut ed, ":lsp-install lua");
-    }
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
 
     let server_dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -1708,27 +1673,8 @@ fn lsp_install_raw_binary_is_marked_executable_and_kept() {
     let asset = work.path().join("marksman-fake");
     std::fs::write(&asset, b"#!/bin/sh\n").unwrap();
     std::fs::set_permissions(&asset, std::fs::Permissions::from_mode(0o644)).unwrap();
-    let runtime = runtime_with_sources(&github_source(
-        "marksman",
-        "marksman-fake",
-        &asset,
-        "marksman-fake",
-    ));
-    let args_file = work.path().join("curl-argv.txt");
-    let (_shim, path) = write_fake_curl_shim(&asset, &args_file);
-
-    let data_tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>\n");
-    load_with_init_in_runtime(
-        &mut ed,
-        runtime.path(),
-        data_tmp.path(),
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
-    );
-    {
-        let _path = EnvVarGuard::set("PATH", &path);
-        type_cmd(&mut ed, ":lsp-install markdown");
-    }
+    let sources = &github_source("marksman", "marksman-fake", &asset, "marksman-fake");
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &asset, "markdown");
 
     let bin = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -1773,26 +1719,12 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
         .map(|t| format!("({t} \"tfls.zip\" \"{url}\" \"sha256:{sha}\" \"terraform-ls\")"))
         .collect::<Vec<_>>()
         .join(" ");
-    let runtime = runtime_with_sources(&format!(
-        "((\"terraform-ls\" (kind . generic) (version . \"9.9.9\") (targets {targets})))"
-    ));
-    let args_file = work.path().join("curl-argv.txt");
-    let (_shim, path) = write_fake_curl_shim(&archive, &args_file);
+    let sources =
+        &format!("((\"terraform-ls\" (kind . generic) (version . \"9.9.9\") (targets {targets})))");
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "hcl");
 
-    let data_tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>\n");
-    load_with_init_in_runtime(
-        &mut ed,
-        runtime.path(),
-        data_tmp.path(),
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
-    );
-    {
-        let _path = EnvVarGuard::set("PATH", &path);
-        type_cmd(&mut ed, ":lsp-install hcl");
-    }
-
-    let argv = std::fs::read_to_string(&args_file).expect("curl shim must have run");
+    let argv = std::fs::read_to_string(archive.with_extension("curl-argv"))
+        .expect("curl shim must have run");
     assert_eq!(
         argv.lines().last(),
         Some(url),
@@ -1817,17 +1749,11 @@ fn install_from_fixture(
     fixture: &Path,
     lang: &str,
 ) -> (tempfile::TempDir, Editor, tempfile::TempDir) {
-    let runtime = runtime_with_sources(sources);
     let args_file = fixture.with_extension("curl-argv");
     let (_shim, path) = write_fake_curl_shim(fixture, &args_file);
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
-    load_with_init_in_runtime(
-        &mut ed,
-        runtime.path(),
-        data_tmp.path(),
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
-    );
+    let runtime = load_lsp_with_sources(&mut ed, sources, data_tmp.path());
     {
         let _path = EnvVarGuard::set("PATH", &path);
         type_cmd(&mut ed, &format!(":lsp-install {lang}"));

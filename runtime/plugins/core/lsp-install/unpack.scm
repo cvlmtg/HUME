@@ -30,12 +30,12 @@
       (lsp-install/drop (cdr lst) (- n 1))))
 
 (define (lsp-install/mark-executable! files)
-  (unless (or (lsp-install/windows?) (null? files))
+  (unless (or lsp-install/windows? (null? files))
     (run-inline-output! "chmod" (cons "755" (lsp-install/take files lsp-install/chmod-batch)))
     (lsp-install/mark-executable! (lsp-install/drop files lsp-install/chmod-batch))))
 
 (define (lsp-install/unpack-tool fmt)
-  (if (and (equal? fmt 'zip) (not (lsp-install/windows?)))
+  (if (and (equal? fmt 'zip) (not lsp-install/windows?))
       "unzip"
       "tar"))
 
@@ -44,15 +44,11 @@
       (list "unzip" "-o" archive "-d" dir)
       (list "tar" "-xf" archive "-C" dir)))
 
-(define (lsp-install/unpack-archive! fmt archive dir bin)
+(define (lsp-install/unpack-archive! fmt archive dir)
   (create-directory! dir)
   (let ((argv (lsp-install/extract-argv fmt archive dir)))
     (run-inline-output! (car argv) (cdr argv)))
-  (let ((files (lsp-install/regular-files dir)))
-    (unless (or (lsp-install/windows?) (member (path-join dir bin) files))
-      (error (string-append "lsp-install/unpack-archive!: extracted archive is missing expected binary: "
-                            bin)))
-    (lsp-install/mark-executable! files)))
+  (lsp-install/mark-executable! (lsp-install/regular-files dir)))
 
 (define (lsp-install/unpack-gz! archive dest)
   (run-inline-output! "gzip" (list "-d" "-f" archive))

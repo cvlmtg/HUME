@@ -3,6 +3,7 @@
 (require "catalog.scm")
 (require "receipts.scm")
 (require "platform.scm")
+(require "register.scm")
 (require "sha256.scm")
 (require "unpack.scm")
 
@@ -29,7 +30,7 @@
 (define *lsp-install-tar-suffixes* '(".tar.gz" ".tgz" ".tar.xz" ".txz" ".tar.bz2"))
 
 (define (lsp-install/ends-with-any? s suffixes)
-  (if (call! "stdlib/find" (lambda (suffix) (ends-with? s suffix)) suffixes) #t #f))
+  (call! "stdlib/find" (lambda (suffix) (ends-with? s suffix)) suffixes))
 
 (define (lsp-install/asset-format asset-file bin)
   (cond ((lsp-install/ends-with-any? asset-file *lsp-install-tar-suffixes*) 'tar)
@@ -42,53 +43,49 @@
   (cond ((equal? kind 'npm) "npm")
         ((equal? kind 'cargo) "cargo")
         ((equal? kind 'golang) "go")
-        ((equal? kind 'pypi) (if (lsp-install/windows?) "python" "python3"))
+        ((equal? kind 'pypi) (if lsp-install/windows? "python" "python3"))
         ((equal? kind 'gem) "gem")
         ((equal? kind 'nuget) "dotnet")
         (else #f)))
 
 (define (lsp-install/platform-supported? fields)
-  (let ((platforms (lsp-install/field fields 'platforms)))
+  (let ((platforms (assoc 'platforms fields)))
     (or (not platforms)
-        (if (call! "stdlib/find"
-                   (lambda (p) (equal? p (string->symbol (lsp-install/target))))
-                   (cdr platforms))
-            #t
-            #f))))
+        (member (string->symbol lsp-install/target) (cdr platforms)))))
 
 (define (lsp-install/download-kind? kind)
   (or (equal? kind 'github) (equal? kind 'generic)))
 
 (define (lsp-install/find-target targets)
-  (let ((want (string->symbol (lsp-install/target))))
+  (let ((want (string->symbol lsp-install/target)))
     (call! "stdlib/find" (lambda (t) (equal? (list-ref t 0) want)) targets)))
 
 (define (lsp-install/resolve-download fields)
-  (let ((target (lsp-install/find-target (cdr (lsp-install/field fields 'targets)))))
+  (let ((target (lsp-install/find-target (lsp-install/ref fields 'targets))))
     (cond
       ((not target) #f)
-      ((equal? (cdr (lsp-install/field fields 'kind)) 'generic)
+      ((equal? (lsp-install/ref fields 'kind) 'generic)
        (list (list-ref target 2) (list-ref target 1) (list-ref target 3) (list-ref target 4)))
       (else
-       (list (string-append "https://github.com/" (cdr (lsp-install/field fields 'repo))
-                            "/releases/download/" (cdr (lsp-install/field fields 'version))
+       (list (string-append "https://github.com/" (lsp-install/ref fields 'repo)
+                            "/releases/download/" (lsp-install/ref fields 'version)
                             "/" (list-ref target 1))
              (list-ref target 1) (list-ref target 2) (list-ref target 3))))))
 
 (define (lsp-install/install-blocker name)
   (cond
-    ((not (lsp-install/target)) "unsupported platform")
-    ((not (hash-contains? (lsp-install/sources-catalog) name)) "no install source")
+    ((not lsp-install/target) "unsupported platform")
+    ((not (lsp-install/source name)) "no install source")
     (else
-     (let* ((fields (hash-ref (lsp-install/sources-catalog) name))
-            (kind   (cdr (lsp-install/field fields 'kind))))
+     (let* ((fields (lsp-install/source name))
+            (kind   (lsp-install/ref fields 'kind))
+            (tool   (lsp-install/toolchain-tool kind)))
        (cond
          ((not (lsp-install/platform-supported? fields)) "not supported on this platform")
-         ((lsp-install/toolchain-tool kind)
-          (let ((tool (lsp-install/toolchain-tool kind)))
-            (if (which tool)
-                #f
-                (string-append "requires '" tool "' on $PATH, which was not found"))))
+         (tool
+          (if (which tool)
+              #f
+              (string-append "requires '" tool "' on $PATH, which was not found")))
          ((not (lsp-install/download-kind? kind))
           (string-append "not installable (kind " (symbol->string kind) ") in v1"))
          ((not (lsp-install/resolve-download fields)) "no prebuilt asset for this platform")
@@ -97,16 +94,17 @@
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
 (define (lsp-install/tar-compressor-tools asset-file)
-  (cond ((not (equal? (lsp-install/target) "linux-x64")) '())
+  (cond ((not (equal? lsp-install/target "linux-x64")) '())
         ((lsp-install/ends-with-any? asset-file '(".tar.xz" ".txz")) '("xz"))
         ((ends-with? asset-file ".tar.bz2") '("bzip2"))
         (else '())))
 
 (define (lsp-install/required-tools name)
-  (let* ((fields (hash-ref (lsp-install/sources-catalog) name))
-         (kind   (cdr (lsp-install/field fields 'kind))))
+  (let* ((fields (lsp-install/source name))
+         (kind   (lsp-install/ref fields 'kind))
+         (tool   (lsp-install/toolchain-tool kind)))
     (cond
-      ((lsp-install/toolchain-tool kind) (list (lsp-install/toolchain-tool kind)))
+      (tool (list tool))
       (else
        (let* ((download (lsp-install/resolve-download fields))
               (asset    (list-ref download 1))
@@ -143,55 +141,49 @@
         (begin
           (cond
             ((equal? fmt 'gz) (lsp-install/unpack-gz! archive (path-join dir bin)))
-            ((equal? fmt 'zip) (lsp-install/unpack-archive! 'zip archive dir bin))
-            ((equal? fmt 'tar) (lsp-install/unpack-archive! 'tar archive dir bin)))
+            ((equal? fmt 'zip) (lsp-install/unpack-archive! 'zip archive dir))
+            ((equal? fmt 'tar) (lsp-install/unpack-archive! 'tar archive dir)))
           (call! "stdlib/delete-file!" archive)))
     (unless (path-exists? (path-join dir bin))
       (error (string-append "lsp-install/install-download!: " name
                             ": expected binary not found after unpack: " bin)))
     bin))
 
-(define (lsp-install/install-npm! name fields dir)
-  (let* ((packages (cdr (lsp-install/field fields 'packages)))
-         (bin      (cdr (lsp-install/field fields 'bin)))
-         (windows? (lsp-install/windows?))
-         (bin-rel  (string-append "node_modules/.bin/" bin (if windows? ".cmd" ""))))
-    (run-inline-output! (if windows? "npm.cmd" "npm")
-                        (append (list "install" "--ignore-scripts" "--prefix" dir "--") packages))
-    (unless (path-exists? (path-join dir bin-rel))
-      (error (string-append "lsp-install/install-npm!: " name
-                            ": expected binary not found after npm install: " bin-rel)))
-    bin-rel))
-
 (define (lsp-install/managed-bin! who name dir bin-dir bin windows-suffix)
   (let ((bin-rel (string-append bin-dir "/" bin
-                                (if (lsp-install/windows?) windows-suffix ""))))
+                                (if lsp-install/windows? windows-suffix ""))))
     (unless (path-exists? (path-join dir bin-rel))
       (error (string-append "lsp-install/install-" who "!: " name
                             ": expected binary not found after " who " install: " bin-rel)))
     bin-rel))
 
+(define (lsp-install/install-npm! name fields dir)
+  (run-inline-output! (if lsp-install/windows? "npm.cmd" "npm")
+                      (append (list "install" "--ignore-scripts" "--prefix" dir "--")
+                              (lsp-install/ref fields 'packages)))
+  (lsp-install/managed-bin! "npm" name dir "node_modules/.bin" (lsp-install/ref fields 'bin) ".cmd"))
+
 (define (lsp-install/install-cargo! name fields dir)
-  (let ((crate   (cdr (lsp-install/field fields 'crate)))
-        (version (cdr (lsp-install/field fields 'version))))
+  (let ((crate   (lsp-install/ref fields 'crate))
+        (version (lsp-install/ref fields 'version)))
     (run-inline-output! "cargo"
                         (list "install" "--locked" "--root" dir "--"
                               (string-append crate "@" version)))
-    (lsp-install/managed-bin! "cargo" name dir "bin" (cdr (lsp-install/field fields 'bin)) ".exe")))
+    (lsp-install/managed-bin! "cargo" name dir "bin" (lsp-install/ref fields 'bin) ".exe")))
 
 (define (lsp-install/install-golang! name fields dir)
-  (let ((module  (cdr (lsp-install/field fields 'module)))
-        (version (cdr (lsp-install/field fields 'version))))
+  (let ((module  (lsp-install/ref fields 'module))
+        (version (lsp-install/ref fields 'version)))
     (run-inline-output! "go"
                         (list "install" "--" (string-append module "@" version))
                         #:env (list (cons "GOBIN" (path-join dir "bin"))))
-    (lsp-install/managed-bin! "go" name dir "bin" (cdr (lsp-install/field fields 'bin)) ".exe")))
+    (lsp-install/managed-bin! "go" name dir "bin" (lsp-install/ref fields 'bin) ".exe")))
 
 (define (lsp-install/install-pypi! name fields dir)
-  (let* ((package     (cdr (lsp-install/field fields 'package)))
-         (extras      (cdr (lsp-install/field fields 'extras)))
-         (version     (cdr (lsp-install/field fields 'version)))
-         (windows?    (lsp-install/windows?))
+  (let* ((package     (lsp-install/ref fields 'package))
+         (extras      (lsp-install/ref fields 'extras))
+         (version     (lsp-install/ref fields 'version))
+         (windows?    lsp-install/windows?)
          (venv        (path-join dir "venv"))
          (venv-bin    (if windows? "venv/Scripts" "venv/bin"))
          (requirement (string-append package
@@ -203,33 +195,32 @@
     (run-inline-output! (path-join dir venv-bin (if windows? "python.exe" "python"))
                         (list "-m" "pip" "install" "--disable-pip-version-check"
                               "--" requirement))
-    (lsp-install/managed-bin! "pip" name dir venv-bin (cdr (lsp-install/field fields 'bin)) ".exe")))
+    (lsp-install/managed-bin! "pip" name dir venv-bin (lsp-install/ref fields 'bin) ".exe")))
 
 (define (lsp-install/install-nuget! name fields dir)
   (run-inline-output! "dotnet"
-                      (list "tool" "install" (cdr (lsp-install/field fields 'package))
+                      (list "tool" "install" (lsp-install/ref fields 'package)
                             "--tool-path" (path-join dir "bin")
-                            "--version" (cdr (lsp-install/field fields 'version))))
-  (lsp-install/managed-bin! "dotnet" name dir "bin" (cdr (lsp-install/field fields 'bin)) ".exe"))
+                            "--version" (lsp-install/ref fields 'version)))
+  (lsp-install/managed-bin! "dotnet" name dir "bin" (lsp-install/ref fields 'bin) ".exe"))
 
 (define (lsp-install/install-gem! name fields dir)
-  (run-inline-output! (if (lsp-install/windows?) "gem.cmd" "gem")
+  (run-inline-output! (if lsp-install/windows? "gem.cmd" "gem")
                       (append (list "install" "--no-document" "--install-dir" dir
                                     "--bindir" (path-join dir "bin"))
-                              (cdr (lsp-install/field fields 'packages))))
-  (lsp-install/managed-bin! "gem" name dir "bin" (cdr (lsp-install/field fields 'bin)) ".bat"))
+                              (lsp-install/ref fields 'packages)))
+  (lsp-install/managed-bin! "gem" name dir "bin" (lsp-install/ref fields 'bin) ".bat"))
 
 (define (lsp-install/install-server! name)
   (let ((blocker (lsp-install/install-blocker name)))
     (when blocker
       (error (string-append "lsp-install/install-server!: " name ": " blocker))))
   (lsp-install/preflight! name)
-  (let* ((server-fields (hash-ref (lsp-install/servers-catalog) name))
-         (source-fields (hash-ref (lsp-install/sources-catalog) name))
-         (kind          (cdr (lsp-install/field source-fields 'kind)))
+  (let* ((server-fields (hash-ref lsp-install/servers name))
+         (source-fields (lsp-install/source name))
+         (kind          (lsp-install/ref source-fields 'kind))
          (dir           (lsp-install/server-dir name)))
-    (for-each (lambda (lang-entry) (unregister-lsp-server! (car lang-entry)))
-              (cdr (lsp-install/field server-fields 'languages)))
+    (lsp-install/unregister-server-languages! name)
     (call! "stdlib/delete-dir!" dir)
     (let ((bin-rel (cond
                      ((lsp-install/download-kind? kind) (lsp-install/install-download! name source-fields dir))
@@ -239,9 +230,9 @@
                      ((equal? kind 'gem)    (lsp-install/install-gem! name source-fields dir))
                      ((equal? kind 'nuget)  (lsp-install/install-nuget! name source-fields dir))
                      (else                  (lsp-install/install-npm! name source-fields dir)))))
-      (lsp-install/write-receipt! name (cdr (lsp-install/field source-fields 'version)) bin-rel
+      (lsp-install/write-receipt! name (lsp-install/ref source-fields 'version) bin-rel
                           (lsp-install/kind-env-dirs kind))
-      (let ((cmd (cdr (lsp-install/field server-fields 'command))))
+      (let ((cmd (lsp-install/ref server-fields 'command)))
         (when (which cmd)
           (log! 'info (string-append "LSP: " cmd " is also on $PATH — the managed install at "
                                      (path-join dir bin-rel) " takes precedence")))))))

@@ -10,11 +10,9 @@
 
 (define (lsp-install/install-or-report! name)
   (let* ((receipt (lsp-install/read-receipt name))
-         (source  (if (hash-contains? (lsp-install/sources-catalog) name)
-                      (hash-ref (lsp-install/sources-catalog) name)
-                      #f)))
+         (source  (lsp-install/source name)))
     (if (and receipt source
-             (equal? (lsp-install/receipt-version receipt) (cdr (lsp-install/field source 'version))))
+             (equal? (lsp-install/receipt-version receipt) (lsp-install/ref source 'version)))
         (begin
           (log! 'info (string-append "LSP: " name " already installed (v"
                                      (lsp-install/receipt-version receipt) ") — up to date"))
@@ -30,7 +28,7 @@
 
 (register-completion-source! "lsp:languages"
   (lambda (id input cursor)
-    (completion-emit! id (hash-keys->list (lsp-install/lang->server))))
+    (completion-emit! id (hash-keys->list lsp-install/lang->server)))
   #:target 'minibuf #:match 'string)
 
 (define-typed-command! "lsp-install"
@@ -39,10 +37,10 @@
     (let ((lang (call! "stdlib/resolve-lang-arg" pane "lsp-install" arg)))
       (cond
         ((not lang) (begin))
-        ((not (hash-contains? (lsp-install/lang->server) lang))
+        ((not (hash-contains? lsp-install/lang->server lang))
          (log! 'info (string-append "lsp-install: no language server is seeded for \"" lang "\"")))
         (else
-         (lsp-install/install-or-report! (hash-ref (lsp-install/lang->server) lang))))))
+         (lsp-install/install-or-report! (hash-ref lsp-install/lang->server lang))))))
   #:inline-output #t #:complete "lsp:languages")
 
 (register-completion-source! "lsp:servers"
@@ -65,9 +63,8 @@
       (else
         (let* ((name arg)
                (dir  (lsp-install/server-dir name)))
-          (when (hash-contains? (lsp-install/servers-catalog) name)
-            (for-each (lambda (lang-entry) (unregister-lsp-server! (car lang-entry)))
-                      (cdr (lsp-install/field (hash-ref (lsp-install/servers-catalog) name) 'languages))))
+          (when (hash-contains? lsp-install/servers name)
+            (lsp-install/unregister-server-languages! name))
           (if (path-exists? dir)
               (begin
                 (log! 'info (string-append "LSP: shutting down and removing " name "..."))
@@ -84,15 +81,13 @@
     (for-each
       (lambda (name)
         (let* ((receipt (lsp-install/read-receipt name))
-               (source  (if (hash-contains? (lsp-install/sources-catalog) name)
-                            (hash-ref (lsp-install/sources-catalog) name)
-                            #f))
-               (langs   (map car (cdr (lsp-install/field (hash-ref (lsp-install/servers-catalog) name) 'languages))))
+               (source  (lsp-install/source name))
+               (langs   (map car (lsp-install/ref (hash-ref lsp-install/servers name) 'languages)))
                (status
                  (cond
                    (receipt
                     (let ((installed (lsp-install/receipt-version receipt))
-                          (seeded    (if source (cdr (lsp-install/field source 'version)) #f)))
+                          (seeded    (if source (lsp-install/ref source 'version) #f)))
                       (if (and seeded (not (equal? installed seeded)))
                           (string-append "installed v" installed " — update available (v" seeded ")")
                           (string-append "installed v" installed))))
@@ -100,8 +95,8 @@
                     (let ((blocker (lsp-install/install-blocker name)))
                       (if blocker blocker "not installed"))))))
           (displayln (string-append name " [" (string-join langs ", ") "]: " status))))
-      (hash-keys->list (lsp-install/servers-catalog)))
-    (log! 'info (string-append "LSP: " (number->string (length (hash-keys->list (lsp-install/servers-catalog))))
+      (hash-keys->list lsp-install/servers))
+    (log! 'info (string-append "LSP: " (number->string (length (hash-keys->list lsp-install/servers)))
                                " seeded servers")))
   #:inline-output #t)
 
@@ -111,12 +106,11 @@
   (lambda (pane lang)
     (when (and (not (equal? lang "")) (not (hash-contains? *lsp-install-hinted-languages* lang)))
       (set! *lsp-install-hinted-languages* (hash-insert *lsp-install-hinted-languages* lang #t))
-      (when (hash-contains? (lsp-install/lang->server) lang)
-        (let* ((name    (hash-ref (lsp-install/lang->server) lang))
-               (blocker (lsp-install/install-blocker name)))
-          (when (and (not blocker)
-                     (not (lsp-registered-for-language? lang))
-                     (not (lsp-install/read-receipt name)))
+      (when (hash-contains? lsp-install/lang->server lang)
+        (let ((name (hash-ref lsp-install/lang->server lang)))
+          (when (and (not (lsp-registered-for-language? lang))
+                     (not (lsp-install/read-receipt name))
+                     (not (lsp-install/install-blocker name)))
             (log! 'warn (string-append "LSP: language server '" name
                                        "' is available for " lang " — run :lsp-install"))))))))
 

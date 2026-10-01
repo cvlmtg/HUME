@@ -7,13 +7,7 @@ use tempfile::TempDir;
 // ── run_inline_output (%run-inline-output!) ─────────────────────────────
 
 fn list_val(items: &[&str]) -> SteelVal {
-    use steel::rvals::IntoSteelVal as _;
-    items
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>()
-        .into_steelval()
-        .unwrap()
+    crate::builtins::args::string_list(items.iter().map(|s| s.to_string()))
 }
 
 #[test]

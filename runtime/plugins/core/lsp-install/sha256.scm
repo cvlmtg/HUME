@@ -15,7 +15,7 @@
           (split-many text "\n")))
 
 (define (lsp-install/parse-sha256 stdout)
-  (if (lsp-install/windows?)
+  (if lsp-install/windows?
       (let ((lines (lsp-install/non-blank-lines stdout)))
         (and (> (length lines) 1)
              (apply string-append (split-whitespace (car (cdr lines))))))

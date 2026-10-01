@@ -29,7 +29,9 @@
         (error (string-append "lsp-install/acquire-lock!: cannot create lock at " path)))
       (unless (lsp-install/lock-stale? path)
         (error "lsp-install/acquire-lock!: another install/uninstall is already in progress"))
-      (log! 'warn "LSP: stale install lock (older than 1h), replacing")
+      (log! 'warn (string-append "LSP: stale install lock (older than "
+                               (number->string (quotient lsp-install/lock-stale-seconds 3600))
+                               "h), replacing"))
       (call! "stdlib/delete-file!" path)
       (unless (lsp-install/create-lock! path)
         (error (string-append "lsp-install/acquire-lock!: cannot create lock after removing stale one at "

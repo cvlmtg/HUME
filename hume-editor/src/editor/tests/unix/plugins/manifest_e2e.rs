@@ -19,10 +19,7 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
-    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("hume-editor/ must have a parent (the repo root)")
-        .join("runtime");
+    let runtime_dir = repo_runtime_dir();
     assert!(
         runtime_dir
             .join("plugins")
@@ -92,10 +89,7 @@ fn core_lsp_install_real_manifest_scm_resolves_via_zero_trigger_declare() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
-    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("hume-editor/ must have a parent (the repo root)")
-        .join("runtime");
+    let runtime_dir = repo_runtime_dir();
     assert!(
         runtime_dir
             .join("plugins")
@@ -167,10 +161,7 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
-    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("hume-editor/ must have a parent (the repo root)")
-        .join("runtime");
+    let runtime_dir = repo_runtime_dir();
     assert!(
         runtime_dir
             .join("plugins")
@@ -236,10 +227,7 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
-    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("hume-editor/ must have a parent (the repo root)")
-        .join("runtime");
+    let runtime_dir = repo_runtime_dir();
 
     let (ed, _dirs) = setup_editor_with_init_scripting(
         "(declare-plugin! \"core:stdlib\")\n(load-plugin! \"core:pickers\")",
@@ -291,10 +279,7 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
-    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("hume-editor/ must have a parent (the repo root)")
-        .join("runtime");
+    let runtime_dir = repo_runtime_dir();
     assert!(
         runtime_dir
             .join("plugins")
@@ -368,10 +353,7 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
 
     let config_tmp = safe_tempdir();
     let data_tmp = safe_tempdir();
-    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("hume-editor/ must have a parent (the repo root)")
-        .join("runtime");
+    let runtime_dir = repo_runtime_dir();
 
     let broken_plugin_dir = data_tmp
         .path()
@@ -454,10 +436,7 @@ fn core_git_diff_real_manifest_scm_resolves_via_zero_trigger_declare() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
-    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("hume-editor/ must have a parent (the repo root)")
-        .join("runtime");
+    let runtime_dir = repo_runtime_dir();
     assert!(
         runtime_dir
             .join("plugins")

@@ -2,7 +2,7 @@
 
 (provide lsp-install/target lsp-install/windows?)
 
-(define (lsp-install/target)
+(define lsp-install/target
   (let ((os   (current-os!))
         (arch (target-arch!)))
     (cond ((and (equal? os "macos") (equal? arch "aarch64")) "darwin-arm64")
@@ -11,5 +11,4 @@
           ((and (equal? os "windows") (equal? arch "x86_64")) "windows-x64")
           (else #f))))
 
-(define (lsp-install/windows?)
-  (equal? (lsp-install/target) "windows-x64"))
+(define lsp-install/windows? (equal? (current-os!) "windows"))
