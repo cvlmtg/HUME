@@ -58,9 +58,9 @@
   (path-join (grammar-source-dir name) "textobjects.scm"))
 
 (define (platform-grammar-ext)
-  (let ((target (hume-target)))
-    (cond ((and (string? target) (starts-with? target "darwin")) "dylib")
-          ((and (string? target) (starts-with? target "windows")) "dll")
+  (let ((os (current-os!)))
+    (cond ((equal? os "macos") "dylib")
+          ((equal? os "windows") "dll")
           (else "so"))))
 
 (define (grammar-output-path name)

@@ -66,6 +66,78 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
             ed.state
                 .config
                 .registry
+                .get_typed("lsp-status")
+                .map(|tc| &tc.body),
+            Some(TypedBody::Lazy(_))
+        ),
+        "manifest.scm's #:typed-commands entries must be registered as Lazy stubs, \
+         including \"lsp-status\""
+    );
+    assert!(
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .activation_language_plugins("some-made-up-language")
+            .is_empty(),
+        "manifest.scm's #:languages '(\"*\") must match any language, including an unregistered one"
+    );
+}
+
+/// The real `core:lsp-install` plugin's own shipped `manifest.scm` resolves and
+/// evaluates via a zero-trigger `(declare-plugin! "core:lsp-install")`, through
+/// the full production `init_scripting` path against the repo's actual
+/// `runtime/` tree.
+#[test]
+fn core_lsp_install_real_manifest_scm_resolves_via_zero_trigger_declare() {
+    use crate::editor::Severity;
+    use hume_scripting::attribution::PluginId;
+
+    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("hume-editor/ must have a parent (the repo root)")
+        .join("runtime");
+    assert!(
+        runtime_dir
+            .join("plugins")
+            .join("core")
+            .join("lsp-install")
+            .join("manifest.scm")
+            .exists(),
+        "sanity: the real manifest.scm must exist at the expected repo path"
+    );
+
+    let (ed, _dirs) = setup_editor_with_init_scripting(
+        r#"(load-plugin! "core:stdlib")
+           (declare-plugin! "core:lsp-install")"#,
+        Some(&runtime_dir),
+    );
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "init.scm with core:lsp-install's real manifest.scm must not log errors; got: {errors:?}"
+    );
+
+    let id = PluginId::Core("lsp-install".to_string());
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Declared)
+        ),
+        "core:lsp-install must be Declared (not yet activated) once the zero-trigger \
+         declare resolves its manifest.scm"
+    );
+    assert!(
+        matches!(
+            ed.state
+                .config
+                .registry
                 .get_typed("lsp-install")
                 .map(|tc| &tc.body),
             Some(TypedBody::Lazy(_))

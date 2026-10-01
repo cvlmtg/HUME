@@ -18,7 +18,6 @@ pub(crate) mod fs;
 pub(crate) mod grammar;
 pub(crate) mod hooks;
 pub(crate) mod ids;
-pub(crate) mod install;
 pub(crate) mod interrupt;
 pub(crate) mod io;
 pub(crate) mod json;
@@ -308,19 +307,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // grammar.rs's module doc); `grammar-output-path` is plain Scheme.
         open "compile-grammar!" grammar::compile_grammar(src: String, out: String);
 
-        // LSP server install pipeline: sha256 hashing, archive unpacking,
-        // platform id, cross-process install lock.
-        // Sandbox-free, full-trust plugin model. `verify-sha256!`/`exe-on-path?`
-        // /`git-clone`/`curl-fetch`/`npm-install!` are plain Scheme, atop Steel's
-        // own `steel/process` stdlib (`which`, `spawn-process`).
-        open  "sha256-file" install::sha256_file(path: String);
-        open  "unpack-gz!" install::unpack_gz(src: String, dest: String);
-        open  "unpack-zip!" install::unpack_zip(src: String, dest_dir: String, bin_path: String);
-        open  "unpack-tar!" install::unpack_tar(src: String, dest_dir: String, bin_path: String);
-        open  "mark-executable!" install::mark_executable(path: String);
-        open  "acquire-install-lock!" install::acquire_install_lock();
-        open  "release-install-lock!" install::release_install_lock();
-        open  "%run-inline-output!" install::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal, env_val: SteelVal);
+        // Inline-output subprocess: process-group-isolated spawn for
+        // `#:inline-output` commands, sandbox-free like Steel's own stdlib.
+        open  "%run-inline-output!" process::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal, env_val: SteelVal);
 
         // Logging: push messages to the editor message log
         open "log!" crate::log::log_msg(severity: SteelVal, message: String);
@@ -493,10 +482,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
     // Context-free builtins that don't fit the typed-arity table above: raw
     // `&[SteelVal]` FuncV, no SteelCtx. `path-join` is a pure string helper;
-    // `hume-target` and `hume-version` read platform info, not directory state; `json-ref`/
+    // `hume-version` reads build info, not directory state; `json-ref`/
     // `json-contains?`/`json-ref-or` take a variadic path (`j seg ...`),
     // which the typed-arity table's fixed parameter list can't express.
-    steel.register_value("hume-target", SteelVal::FuncV(install::hume_target));
     steel.register_value("hume-version", SteelVal::FuncV(version::hume_version));
     steel.register_value(
         "hume-version>=?",

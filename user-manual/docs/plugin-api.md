@@ -330,7 +330,6 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
 | `(path-join seg ...)` | Join path segments with the OS-native separator |
 | `(path->display path)` | Run an absolute `path` string through HUME's display-form pipeline (Windows `\\?\` stripping, `~`-collapse); no filesystem access |
-| `(hume-target)` | Install-target identifier for the current platform (one of `"darwin-arm64"`, `"darwin-x64"`, `"linux-x64"`, `"windows-x64"`), or `#f` on any other platform |
 
 The pattern for reading a plugin's own files is covered in [Filesystem and processes](plugins.md#filesystem-and-processes).
 
@@ -356,19 +355,11 @@ the `err`/`res` distinction in practice.
 | `(json-list j)` | `j`, a JSON array handle, as a Steel list of its elements (each one funneled through the same handle/native-value rule as `json-ref`). Errors if `j` isn't an array |
 | `(json-array? v)`, `(json-object? v)` | `#t` if `v` is a JSON handle onto an array/object, `#f` for anything else (including a non-handle value) |
 
-## Grammar & install pipeline
-
-These back `:plum-*` and `:lsp-install`/`:lsp-uninstall`: full-trust primitives most plugins won't call directly unless they're building an installer of their own.
+## Grammar compilation
 
 | Call | Effect |
 |------|--------|
 | `(compile-grammar! src out)` | Compile the tree-sitter grammar source at `src` to `out` |
-| `(sha256-file path)` | Lowercase hex sha256 digest of `path` |
-| `(unpack-gz! src dest)` | Decode a single-file gzip archive into `dest`; chmod's it executable on Unix |
-| `(unpack-zip! src dest-dir bin-path)` | Extract a zip archive into `dest-dir`, then verify `bin-path` exists and chmod it executable on Unix |
-| `(unpack-tar! src dest-dir bin-path)` | Same as `unpack-zip!` for a tar archive (gzip, xz or bzip2 compressed) |
-| `(mark-executable! path)` | Make a single downloaded binary executable on Unix; raises if `path` is not a regular file |
-| `(acquire-install-lock!)`, `(release-install-lock!)` | Cross-process install lock guarding concurrent `:lsp-install`/`:lsp-uninstall` runs |
 
 ## Standard Library
 

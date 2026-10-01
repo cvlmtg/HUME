@@ -31,7 +31,6 @@ pub mod io;
 pub mod path;
 pub mod process;
 pub mod screen;
-pub mod target;
 pub mod terminal;
 pub mod version;
 

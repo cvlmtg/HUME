@@ -14,8 +14,10 @@ use crate::SteelCtx;
 use crate::log::LogLevel;
 
 use super::SteelResult;
-use super::args::{list_to_strings, optional_path_arg, string_arg, symbol_hash, usize_arg};
-use super::errors::require_cap;
+use super::args::{
+    list_to_env_pairs, list_to_strings, optional_path_arg, string_arg, symbol_hash, usize_arg,
+};
+use super::errors::{generic_err, require_cap};
 
 /// `(%spawn-async! cmd args cwd callback)`, wrapped by `spawn-async!`'s
 /// `#:cwd` keyword in `bootstrap.scm`: runs `cmd` with `args` (direct
@@ -108,3 +110,47 @@ pub(crate) fn run_capture(
         ),
     ]))
 }
+
+/// `(%run-inline-output! cmd args cwd env)`: spawn `cmd` with `args` (a list of
+/// strings), inherited stdio, in its own process group; blocks until exit and
+/// returns the exit code as an int. `cwd` is a string or `#f`; `env` is a list
+/// of `("KEY" . "VALUE")` pairs added to the inherited environment.
+///
+/// The process-group isolation is the entire reason this is a Rust builtin
+/// rather than Steel's own `spawn-process`: `#:inline-output` commands run
+/// with terminal raw mode off (see `run_inline_output`'s doc comment in
+/// `hume-platform::process`), so an unisolated child would be killed by the
+/// same Ctrl-c that's meant to interrupt only it. No sandbox checks: plugins
+/// are trusted code (see `user-manual/docs/plugins.md`'s "Filesystem and processes").
+///
+/// # Errors
+/// The binary can't be spawned (e.g. not found on `PATH`).
+pub(crate) fn run_inline_output(
+    ctx: &mut SteelCtx,
+    cmd: String,
+    args_val: SteelVal,
+    cwd_val: SteelVal,
+    env_val: SteelVal,
+) -> SteelResult {
+    let args = list_to_strings(args_val, "%run-inline-output! args")?;
+    let cwd = optional_path_arg(cwd_val, "%run-inline-output! cwd")?;
+    let env = list_to_env_pairs(env_val, "%run-inline-output! env")?;
+
+    // The child inherits stdio, so this is a real terminal write: open the
+    // bracket before spawning it.
+    if let Some(output) = ctx.host.output() {
+        output
+            .ensure_inline_output_screen()
+            .map_err(|e| generic_err(format!("run-inline-output!: {e}")))?;
+    }
+
+    let status = hume_platform::process::run_inline_output(&cmd, &args, cwd.as_deref(), &env)
+        .map_err(|e| generic_err(format!("run-inline-output!: cannot run '{cmd}': {e}")))?;
+
+    // `-1` for a signal-killed child (no exit code); matches the sentinel a
+    // real exit code can never produce, since process exit codes are u8-wide.
+    Ok(SteelVal::IntV(status.code().unwrap_or(-1) as isize))
+}
+
+#[cfg(test)]
+mod tests;

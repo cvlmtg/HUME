@@ -70,7 +70,12 @@ fn lazy_plugin_command_exists_without_activating_the_plugin() {
 fn builtin_procedures_exist() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
-    let got = exists(&mut ed, tmp.path(), "", &["hume-target", "hume-version"]);
+    let got = exists(
+        &mut ed,
+        tmp.path(),
+        "",
+        &["hume-version", "hume-version>=?"],
+    );
     assert_eq!(got, [true, true]);
 }
 

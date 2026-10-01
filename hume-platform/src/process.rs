@@ -15,7 +15,6 @@
 //! External tools reject Windows' `\\?\` prefix, so every path handed to a
 //! `Command` here goes through `strip_unc_prefix` first.
 
-use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
@@ -111,9 +110,9 @@ pub fn run_inline_output(
 ///
 /// Built on `Command::output`, which drains both pipes concurrently rather
 /// than one after the other (see this module's doc for the deadlock that
-/// closes). No process-group isolation: the caller is always blocked inside
-/// this call with raw mode still on, so there is no live Ctrl-c to isolate
-/// the child from.
+/// closes). The child runs in its own process group so a Ctrl-c aimed at the
+/// foreground group, which reaches a caller running during an
+/// `#:inline-output` command with raw mode off, does not kill HUME with it.
 ///
 /// See `base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is set.
 pub fn run_capture(
@@ -121,7 +120,10 @@ pub fn run_capture(
     args: &[String],
     cwd: Option<&Path>,
 ) -> io::Result<std::process::Output> {
-    base_command(cmd, args, cwd).stdin(Stdio::null()).output()
+    base_command(cmd, args, cwd)
+        .stdin(Stdio::null())
+        .new_process_group()
+        .output()
 }
 
 /// Compile a tree-sitter grammar source at `src` to a shared library at `out`
@@ -282,267 +284,6 @@ pub fn exit_code_str(status: ExitStatus) -> String {
         Some(c) => format!("exit code {c}"),
         None => "killed by signal".to_string(),
     }
-}
-
-// ── LSP server install pipeline ──────────────────────────────────────────────
-//
-// sha256 verification and archive unpacking shell out to per-platform system
-// tools rather than pulling in hashing/archive crates: `shasum`/`sha256sum`/
-// `certutil` below for hashing, `gzip`/`unzip`/`tar` (in
-// `hume-scripting/src/builtins/install.rs`) for unpacking. One more
-// dependency HUME's own build doesn't need to vendor or keep current.
-
-/// Compute the sha256 digest of `path` as lowercase hex, by shelling out to
-/// the platform's canonical hashing tool (`shasum -a 256` on macOS,
-/// `sha256sum` on Linux, `certutil -hashfile … SHA256` on Windows).
-///
-/// Returns an error if the tool is missing, exits non-zero, or its output
-/// can't be parsed (the raw output is quoted in that case).
-pub fn sha256_file(path: &Path) -> io::Result<String> {
-    let path = strip_unc_prefix(path.to_path_buf());
-    let output = sha256_command(&path).output()?;
-    if !output.status.success() {
-        return Err(io::Error::other(format!(
-            "sha256 tool failed ({}): {}",
-            exit_code_str(output.status),
-            String::from_utf8_lossy(&output.stderr).trim()
-        )));
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    #[cfg(windows)]
-    let parsed = parse_certutil_sha256_output(&stdout);
-    #[cfg(not(windows))]
-    let parsed = parse_unix_sha256_output(&stdout);
-    parsed.ok_or_else(|| {
-        io::Error::other(format!(
-            "could not parse sha256 tool output: {}",
-            stdout.trim()
-        ))
-    })
-}
-
-#[cfg(target_os = "macos")]
-fn sha256_command(path: &Path) -> Command {
-    let mut cmd = Command::new("shasum");
-    cmd.args(["-a", "256"]).arg(path);
-    cmd
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-fn sha256_command(path: &Path) -> Command {
-    let mut cmd = Command::new("sha256sum");
-    cmd.arg(path);
-    cmd
-}
-
-#[cfg(windows)]
-fn sha256_command(path: &Path) -> Command {
-    let mut cmd = Command::new("certutil");
-    cmd.arg("-hashfile").arg(path).arg("SHA256");
-    cmd
-}
-
-/// Parse `shasum`/`sha256sum` output: the digest is the first
-/// whitespace-delimited token of stdout.
-///
-/// Dead on Windows builds (only `parse_certutil_sha256_output` is called
-/// there) but kept unconditional so both parsers are unit-testable on every
-/// platform.
-#[cfg_attr(windows, allow(dead_code))]
-fn parse_unix_sha256_output(stdout: &str) -> Option<String> {
-    let token = stdout.split_whitespace().next()?;
-    if token.is_empty() {
-        return None;
-    }
-    Some(token.to_ascii_lowercase())
-}
-
-/// Parse `certutil -hashfile … SHA256` output:
-///
-/// ```text
-/// SHA256 hash of file <path>:
-/// ab 12 cd 34 …
-/// CertUtil: -hashfile command completed successfully.
-/// ```
-///
-/// The digest is the second non-empty line, with internal whitespace
-/// stripped (certutil space-separates byte pairs).
-///
-/// Dead on non-Windows builds (only `parse_unix_sha256_output` is called
-/// there) but kept unconditional so both parsers are unit-testable on every
-/// platform.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn parse_certutil_sha256_output(stdout: &str) -> Option<String> {
-    let mut lines = stdout.lines().filter(|l| !l.trim().is_empty());
-    lines.next()?; // header line
-    let hex_line = lines.next()?;
-    let hex: String = hex_line.chars().filter(|c| !c.is_whitespace()).collect();
-    if hex.is_empty() {
-        None
-    } else {
-        Some(hex.to_ascii_lowercase())
-    }
-}
-
-/// Decode a single-file `.gz` at `src` into `dest`, by shelling out to
-/// `gzip -dc` with stdout redirected to `dest`.
-///
-/// On Unix, `dest` is chmod'd to `0o755` after a successful decode: gzip
-/// carries no file mode, and Mason's `.gz` assets are bare server
-/// executables. On error, the caller is responsible for removing any partial
-/// `dest` (mirroring `curl_fetch`'s cleanup contract at the Steel boundary).
-pub fn unpack_gz(src: &Path, dest: &Path) -> io::Result<()> {
-    let src = strip_unc_prefix(src.to_path_buf());
-    let dest = strip_unc_prefix(dest.to_path_buf());
-    let out_file = File::create(&dest)?;
-    let status = Command::new("gzip")
-        .arg("-dc")
-        .arg(&src)
-        .stdout(Stdio::from(out_file))
-        .new_process_group()
-        .status()?;
-    if !status.success() {
-        return Err(io::Error::other(format!(
-            "gzip -dc failed ({})",
-            exit_code_str(status)
-        )));
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))?;
-    }
-    Ok(())
-}
-
-/// Extract the zip archive at `src` into `dest_dir`, by shelling out to
-/// `unzip -o` (Unix) or `tar -xf` (Windows, via bsdtar). `dest_dir` must
-/// already exist. See [`unpack_tar`] for the post-extraction guarantees,
-/// which are identical.
-///
-/// Zip-slip and symlink-entry protection is delegated to the system tool
-/// (modern Info-ZIP strips `../` entries; bsdtar refuses them by default);
-/// the residual risk is bounded by the sync-time sha256 pin verified before
-/// unpacking, so only maintainer-vetted, hash-locked assets ever reach this
-/// function.
-#[cfg(unix)]
-pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()> {
-    let src = strip_unc_prefix(src.to_path_buf());
-    let dest_dir = strip_unc_prefix(dest_dir.to_path_buf());
-    let status = Command::new("unzip")
-        .arg("-o")
-        .arg(&src)
-        .arg("-d")
-        .arg(&dest_dir)
-        .new_process_group()
-        .status()?;
-    if !status.success() {
-        return Err(io::Error::other(format!(
-            "unzip failed ({})",
-            exit_code_str(status)
-        )));
-    }
-    finish_unpack(&dest_dir, bin_path)
-}
-
-/// See the Unix `unpack_zip` doc comment: same contract, via bsdtar, which
-/// is built into Windows 10+ and reads zip archives.
-#[cfg(windows)]
-pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()> {
-    unpack_tar(src, dest_dir, bin_path)
-}
-
-/// Extract the tar archive at `src` into `dest_dir` with `tar -xf`, which
-/// detects gzip, xz and bzip2 compression itself. `dest_dir` must already
-/// exist.
-///
-/// `bin_path` (relative to `dest_dir`) is the server binary the caller
-/// expects; verified to exist after extraction, mirroring `unpack_gz`'s
-/// guarantee. On Unix, every regular file in the extracted tree (not just
-/// `bin_path`) is chmod'd `0o755`: archive entries carry their stored
-/// permissions and CI-built release archives routinely strip the exec bit,
-/// so a layout with a wrapper script or sibling helpers needs all of them
-/// executable. Every check and chmod goes through `symlink_metadata`, so a
-/// symlink is never followed. Windows has no exec bit, so nothing is chmod'd
-/// there.
-///
-/// Path-traversal protection is delegated to the system tool, bounded by
-/// the sync-time sha256 pin as described on [`unpack_zip`].
-pub fn unpack_tar(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()> {
-    let src = strip_unc_prefix(src.to_path_buf());
-    let dest_dir = strip_unc_prefix(dest_dir.to_path_buf());
-    let status = Command::new("tar")
-        .arg("-xf")
-        .arg(&src)
-        .arg("-C")
-        .arg(&dest_dir)
-        .new_process_group()
-        .status()?;
-    if !status.success() {
-        return Err(io::Error::other(format!(
-            "tar -xf failed ({})",
-            exit_code_str(status)
-        )));
-    }
-    finish_unpack(&dest_dir, bin_path)
-}
-
-/// Verify `bin_path` exists under `dest_dir` as a regular file and, on Unix,
-/// chmod every regular file in the tree.
-fn finish_unpack(dest_dir: &Path, bin_path: &Path) -> io::Result<()> {
-    let missing_binary = || {
-        io::Error::other(format!(
-            "extracted archive is missing expected binary: {}",
-            bin_path.display()
-        ))
-    };
-    let is_file = std::fs::symlink_metadata(dest_dir.join(bin_path))
-        .map_err(|_| missing_binary())?
-        .is_file();
-    if !is_file {
-        return Err(missing_binary());
-    }
-    #[cfg(unix)]
-    chmod_all_regular_files(dest_dir)?;
-    Ok(())
-}
-
-/// Recursively chmod every regular file under `dir` to `0o755`, via
-/// `symlink_metadata` so a symlink (wherever it points, even at another
-/// directory) is never followed, neither recursed into nor chmod'd.
-#[cfg(unix)]
-fn chmod_all_regular_files(dir: &Path) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    for entry in std::fs::read_dir(dir)? {
-        let path = entry?.path();
-        let meta = std::fs::symlink_metadata(&path)?;
-        if meta.is_dir() {
-            chmod_all_regular_files(&path)?;
-        } else if meta.is_file() {
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
-        }
-    }
-    Ok(())
-}
-
-/// Mark the single downloaded binary at `path` executable (`0o755` on Unix,
-/// nothing on Windows). Errors if `path` is not a regular file; a symlink is
-/// refused rather than followed.
-pub fn mark_executable(path: &Path) -> io::Result<()> {
-    let path = strip_unc_prefix(path.to_path_buf());
-    if !std::fs::symlink_metadata(&path)?.is_file() {
-        return Err(io::Error::other(format!(
-            "not a regular file: {}",
-            path.display()
-        )));
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
-    }
-    Ok(())
 }
 
 /// Whether no C compiler at all was found on `PATH` (neither `cl` nor any of

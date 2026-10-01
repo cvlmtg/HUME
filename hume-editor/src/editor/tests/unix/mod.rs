@@ -544,6 +544,9 @@ fn load_with_init_in_runtime(ed: &mut Editor, runtime_dir: &Path, data_dir: &Pat
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), init_src).unwrap();
+    // `(data-dir)` is canonicalized only when the directory exists, and the
+    // tests compare against `canonical_data_dir`.
+    std::fs::create_dir_all(data_dir.join("hume")).unwrap();
 
     unsafe {
         std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());

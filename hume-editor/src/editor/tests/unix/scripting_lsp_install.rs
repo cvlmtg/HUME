@@ -1903,7 +1903,7 @@ fn lsp_install_missing_binary_after_unpack_fails_loudly() {
         "bin/lua-language-server",
     );
 
-    let (data_tmp, mut ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
