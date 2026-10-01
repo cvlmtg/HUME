@@ -1636,6 +1636,70 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
 }
 
 #[test]
+fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _lock = lock();
+    let work = safe_tempdir();
+    let payload = work.path().join("payload");
+    for empty in ["a", "b", "c", "d"] {
+        std::fs::create_dir_all(payload.join(format!("empty-{empty}"))).unwrap();
+    }
+    std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
+    let files: Vec<String> = ["server", "x1", "x2", "x3", "x4", "x5"]
+        .iter()
+        .map(|name| format!("pkg/bin/{name}"))
+        .collect();
+    for file in &files {
+        std::fs::write(payload.join(file), b"#!/bin/sh\n").unwrap();
+    }
+    let archive = work.path().join("lls.tar.gz");
+    assert!(
+        std::process::Command::new("tar")
+            .arg("-czf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(&payload)
+            .arg(".")
+            .status()
+            .unwrap()
+            .success()
+    );
+    let runtime = runtime_with_sources(&github_source(
+        "lua-language-server",
+        "lls.tar.gz",
+        &archive,
+        "pkg/bin/server",
+    ));
+    let args_file = work.path().join("curl-argv.txt");
+    let (_shim, path) = write_fake_curl_shim(&archive, &args_file);
+
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init_in_runtime(
+        &mut ed,
+        runtime.path(),
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
+    );
+    {
+        let _path = EnvVarGuard::set("PATH", &path);
+        type_cmd(&mut ed, ":lsp-install lua");
+    }
+
+    let server_dir = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("lua-language-server");
+    for file in &files {
+        let mode = std::fs::metadata(server_dir.join(file))
+            .unwrap_or_else(|e| panic!("{file} must be unpacked: {e}"))
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o755, "{file}");
+    }
+}
+
+#[test]
 fn lsp_install_raw_binary_is_marked_executable_and_kept() {
     use std::os::unix::fs::PermissionsExt;
 
