@@ -1613,7 +1613,7 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
         &archive,
         "pkg/bin/lua-language-server",
     );
-    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
+    let (data_tmp, ed, _runtime) = install_from_fixture(sources, &archive, "lua");
 
     let server_dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -1674,7 +1674,7 @@ fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
         &archive,
         "pkg/bin/server",
     );
-    let (data_tmp, _ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
+    let (data_tmp, _ed, _runtime) = install_from_fixture(sources, &archive, "lua");
 
     let server_dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -1698,7 +1698,7 @@ fn lsp_install_raw_binary_is_marked_executable_and_kept() {
     std::fs::write(&asset, b"#!/bin/sh\n").unwrap();
     std::fs::set_permissions(&asset, std::fs::Permissions::from_mode(0o644)).unwrap();
     let sources = &github_source("marksman", "marksman-fake", &asset, "marksman-fake");
-    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &asset, "markdown");
+    let (data_tmp, ed, _runtime) = install_from_fixture(sources, &asset, "markdown");
 
     let bin = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -1745,7 +1745,7 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
         .join(" ");
     let sources =
         &format!("((\"terraform-ls\" (kind . generic) (version . \"9.9.9\") (targets {targets})))");
-    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "hcl");
+    let (data_tmp, ed, _runtime) = install_from_fixture(sources, &archive, "hcl");
 
     let argv = std::fs::read_to_string(archive.with_extension("curl-argv"))
         .expect("curl shim must have run");
