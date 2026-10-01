@@ -540,6 +540,16 @@ fn frame(ed: &mut Editor, width: u16, height: u16) -> hume_engine::pipeline::Ren
     ctx
 }
 
+/// The `hide_on_insert_line` flag of every eol-text entry stored for `bid`.
+fn eol_hide_flags(ed: &Editor, bid: BufferId) -> Vec<bool> {
+    ed.state
+        .config
+        .decorations
+        .eol_text_for_buffer(bid)
+        .map(|(_, e)| e.hide_on_insert_line)
+        .collect()
+}
+
 /// `frame` at a fixed 80x25 default: every sign test's own frame-drive
 /// step.
 fn render(ed: &mut Editor) {

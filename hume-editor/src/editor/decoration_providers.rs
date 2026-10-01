@@ -297,10 +297,11 @@ impl Editor {
     /// pre-merged at write time, diagnostics included via `core:lsp`'s own
     /// `"lsp-diagnostics"` source) to every pane's own decoration handle,
     /// read by that pane's `SharedSignSource`. Stays visible in Insert mode:
-    /// the gutter doesn't crowd the text being typed. Called from `prepare_frame` before scrolling, against the
-    /// pre-scroll snapshot (see [`Self::decorated_panes`]), because the sign column's
-    /// width feeds `Pane::content_width`, which decides the wrap column the
-    /// scroll step's `DisplayLineMap` resolves against.
+    /// the gutter doesn't crowd the text being typed. Called from
+    /// `prepare_frame` before scrolling, against the pre-scroll snapshot (see
+    /// [`Self::decorated_panes`]), because the sign column's width feeds
+    /// `Pane::content_width`, which decides the wrap column the scroll step's
+    /// `DisplayLineMap` resolves against.
     pub(super) fn update_sign_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::builtins::sign_column::{Sign, SignColumn};
 

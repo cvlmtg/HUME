@@ -159,7 +159,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
     );
 }
 
-/// Two-line buffer, eol entries on both lines from `source`; returns the
+/// Two-line buffer with one eol entry per `entries` item; returns the
 /// editor in Normal mode with the cursor on line 0.
 fn two_line_editor_with_eol(
     entries: &[(&str, usize, &str, bool)],
@@ -191,10 +191,7 @@ fn two_line_editor_with_eol(
 }
 
 fn eol_lines(ed: &mut Editor, pid: hume_engine::pipeline::PaneId) -> Vec<usize> {
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(60, 8);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
+    frame(ed, 60, 8);
     let mut lines: Vec<usize> = ed
         .state
         .panes
@@ -241,10 +238,7 @@ fn a_hidden_entry_lets_another_source_show_on_that_line() {
         ("z-plain", 0, "shown", false),
     ]);
     ed.feed_key(key('i'));
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(60, 8);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
+    frame(&mut ed, 60, 8);
     let by_line = ed.state.panes.render.get(pid).unwrap().eol_text();
     let inserts = by_line
         .get(&hume_rope::line::ContentLine::new(0))

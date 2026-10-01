@@ -853,18 +853,10 @@ fn set_eol_text_hide_on_insert_line_defaults_off_and_round_trips() {
         tmp.path(),
     );
     ed.scripting = Some(host);
-    let hide_flags = |ed: &Editor| -> Vec<bool> {
-        ed.state
-            .config
-            .decorations
-            .eol_text_for_buffer(bid)
-            .map(|(_, e)| e.hide_on_insert_line)
-            .collect()
-    };
     type_cmd(&mut ed, ":arm-plain");
-    assert_eq!(hide_flags(&ed), vec![false]);
+    assert_eq!(eol_hide_flags(&ed, bid), vec![false]);
     type_cmd(&mut ed, ":arm-hidden");
-    assert_eq!(hide_flags(&ed), vec![true]);
+    assert_eq!(eol_hide_flags(&ed, bid), vec![true]);
 }
 
 #[test]

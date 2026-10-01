@@ -119,24 +119,16 @@ fn eol_summary_is_flagged_by_default_and_unflagged_when_the_option_is_set() {
         ..
     } = setup_diagnostics(FIXTURE, &[diag]);
     let bid = ed.focused_buffer_id();
-    let hide_flags = |ed: &Editor| -> Vec<bool> {
-        ed.state
-            .config
-            .decorations
-            .eol_text_for_buffer(bid)
-            .map(|(_, e)| e.hide_on_insert_line)
-            .collect()
-    };
 
     assert_eq!(
-        hide_flags(&ed),
+        eol_hide_flags(&ed, bid),
         vec![true],
         "hidden on the insert line by default"
     );
 
     run(&mut ed, ":set global lsp.diagnostics-on-insert-line=true");
     assert_eq!(
-        hide_flags(&ed),
+        eol_hide_flags(&ed, bid),
         vec![false],
         "the option change must refresh the already-published summary"
     );
