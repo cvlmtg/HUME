@@ -73,6 +73,7 @@
   (cond ((equal? kind 'npm) "npm")
         ((equal? kind 'cargo) "cargo")
         ((equal? kind 'golang) "go")
+        ((equal? kind 'pypi) (if (equal? (hume-target) "windows-x64") "python" "python3"))
         (else #f)))
 
 ;; github and generic sources both download one file per platform target.
@@ -186,10 +187,10 @@
                             ": expected binary not found after npm install: " bin-rel)))
     bin-rel))
 
-;; Path of `bin` under a toolchain's `bin/` directory, relative to the server
-;; dir; errors when the toolchain left no such file.
-(define (lsp/managed-bin! who name dir bin)
-  (let ((bin-rel (string-append "bin/" bin (if (equal? (hume-target) "windows-x64") ".exe" ""))))
+;; Path of `bin` under `bin-dir` (relative to the server dir); errors when the
+;; toolchain left no such file.
+(define (lsp/managed-bin! who name dir bin-dir bin)
+  (let ((bin-rel (string-append bin-dir "/" bin (if (equal? (hume-target) "windows-x64") ".exe" ""))))
     (unless (path-exists? (path-join dir bin-rel))
       (error (string-append "lsp/install-" who "!: " name
                             ": expected binary not found after " who " install: " bin-rel)))
@@ -201,7 +202,7 @@
     (run-inline-output! "cargo"
                         (list "install" "--locked" "--root" dir "--"
                               (string-append crate "@" version)))
-    (lsp/managed-bin! "cargo" name dir (cdr (lsp/field fields 'bin)))))
+    (lsp/managed-bin! "cargo" name dir "bin" (cdr (lsp/field fields 'bin)))))
 
 (define (lsp/install-golang! name fields dir)
   (let ((module  (cdr (lsp/field fields 'module)))
@@ -209,7 +210,25 @@
     (run-inline-output! "go"
                         (list "install" "--" (string-append module "@" version))
                         #:env (list (cons "GOBIN" (path-join dir "bin"))))
-    (lsp/managed-bin! "go" name dir (cdr (lsp/field fields 'bin)))))
+    (lsp/managed-bin! "go" name dir "bin" (cdr (lsp/field fields 'bin)))))
+
+(define (lsp/install-pypi! name fields dir)
+  (let* ((package     (cdr (lsp/field fields 'package)))
+         (extras      (cdr (lsp/field fields 'extras)))
+         (version     (cdr (lsp/field fields 'version)))
+         (windows?    (equal? (hume-target) "windows-x64"))
+         (venv        (path-join dir "venv"))
+         (venv-bin    (if windows? "venv/Scripts" "venv/bin"))
+         (requirement (string-append package
+                                     (if (null? extras)
+                                         ""
+                                         (string-append "[" (string-join extras ",") "]"))
+                                     "==" version)))
+    (run-inline-output! (lsp/toolchain-tool 'pypi) (list "-m" "venv" venv))
+    (run-inline-output! (path-join dir venv-bin (if windows? "python.exe" "python"))
+                        (list "-m" "pip" "install" "--disable-pip-version-check"
+                              "--" requirement))
+    (lsp/managed-bin! "pip" name dir venv-bin (cdr (lsp/field fields 'bin)))))
 
 (define (lsp/install-server! name)
   (let ((blocker (lsp/install-blocker name)))
@@ -227,6 +246,7 @@
                      ((lsp/download-kind? kind) (lsp/install-download! name source-fields dir))
                      ((equal? kind 'cargo)  (lsp/install-cargo! name source-fields dir))
                      ((equal? kind 'golang) (lsp/install-golang! name source-fields dir))
+                     ((equal? kind 'pypi)   (lsp/install-pypi! name source-fields dir))
                      (else                  (lsp/install-npm! name source-fields dir)))))
       (lsp/write-receipt! name (cdr (lsp/field source-fields 'version)) bin-rel)
       (let ((cmd (cdr (lsp/field server-fields 'command))))

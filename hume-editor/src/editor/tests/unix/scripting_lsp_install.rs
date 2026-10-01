@@ -1803,3 +1803,153 @@ fn lsp_install_golang_requires_go_on_path() {
         "a golang-kind install must name the missing toolchain: {log}"
     );
 }
+
+// ── pypi installer (fake python3, fake venv python) ─────────────────────────────
+
+/// Layout of `python3 -m venv <dir>`: a `<dir>/bin/python` that records its
+/// own argv to `pip_args_file` and, when `create_binary`, leaves
+/// `<dir>/bin/<bin_name>` behind like a real `pip install` would.
+fn venv_layout(pip_args_file: &Path, bin_name: &str, create_binary: bool) -> String {
+    let create = if create_binary {
+        format!(
+            "printf '#!/bin/sh\\n' > \"$(dirname \"$0\")/{bin_name}\"\n\
+             chmod +x \"$(dirname \"$0\")/{bin_name}\"\n"
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        "mkdir -p \"$3/bin\"\n\
+         cat > \"$3/bin/python\" <<'EOS'\n\
+         #!/bin/sh\n\
+         PATH=/usr/bin:/bin\n\
+         printf '%s\\n' \"$@\" > {pip_args_file}\n\
+         {create}EOS\n\
+         chmod +x \"$3/bin/python\"",
+        pip_args_file = pip_args_file.display(),
+    )
+}
+
+fn read_lines(path: &Path) -> Vec<String> {
+    std::fs::read_to_string(path)
+        .expect("shim must have run and recorded argv")
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn lsp_install_pypi_creates_a_venv_pip_installs_and_registers() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let args_tmp = safe_tempdir();
+    let venv_args = args_tmp.path().join("venv-argv.txt");
+    let pip_args = args_tmp.path().join("pip-argv.txt");
+    let shim_dir = write_fake_tool_shim("python3", &venv_args, &venv_layout(&pip_args, "ty", true));
+
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install python");
+    }
+
+    let server_dir = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("ty");
+    assert_eq!(
+        read_lines(&venv_args),
+        ["-m", "venv", server_dir.join("venv").to_str().unwrap()]
+    );
+    let pip = read_lines(&pip_args);
+    assert_eq!(
+        pip[..5],
+        ["-m", "pip", "install", "--disable-pip-version-check", "--"],
+        "pip argv: {pip:?}"
+    );
+    assert!(
+        pip[5].starts_with("ty=="),
+        "final token must be pkg==version: {pip:?}"
+    );
+
+    let cmd = ed
+        .lsp
+        .config_command_for_test("python")
+        .expect("python must be registered after a successful pip install");
+    assert_eq!(Path::new(&cmd), server_dir.join("venv/bin/ty"));
+}
+
+#[test]
+fn lsp_install_pypi_passes_extras_in_the_requirement() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let args_tmp = safe_tempdir();
+    let venv_args = args_tmp.path().join("venv-argv.txt");
+    let pip_args = args_tmp.path().join("pip-argv.txt");
+    let shim_dir = write_fake_tool_shim(
+        "python3",
+        &venv_args,
+        &venv_layout(&pip_args, "pylsp", true),
+    );
+
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install snakemake");
+    }
+
+    let pip = read_lines(&pip_args);
+    assert!(
+        pip[5].starts_with("python-lsp-server[all]=="),
+        "an `extra=all` purl qualifier must reach pip as [all]: {pip:?}"
+    );
+}
+
+#[test]
+fn lsp_install_pypi_missing_binary_after_install_fails_loudly() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let args_tmp = safe_tempdir();
+    let venv_args = args_tmp.path().join("venv-argv.txt");
+    let pip_args = args_tmp.path().join("pip-argv.txt");
+    let shim_dir =
+        write_fake_tool_shim("python3", &venv_args, &venv_layout(&pip_args, "ty", false));
+
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install python");
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("expected binary not found after pip install"),
+        "a pip install that produces no binary must fail loudly: {log}"
+    );
+    assert!(ed.lsp.config_command_for_test("python").is_none());
+}
+
+#[test]
+fn lsp_install_pypi_requires_python3_on_path() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let empty_path_dir = safe_tempdir();
+    {
+        let _path = EnvVarGuard::set("PATH", empty_path_dir.path());
+        type_cmd(&mut ed, ":lsp-install python");
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("requires 'python3' on $PATH"),
+        "a pypi-kind install must name the missing interpreter: {log}"
+    );
+}

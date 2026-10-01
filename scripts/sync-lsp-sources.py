@@ -485,6 +485,33 @@ def build_golang_record(name: str, package: dict, helix_command: str):
     return {"kind": "golang", "version": version, "module": module, "bin": bin_template[len("golang:") :]}
 
 
+def build_pypi_record(name: str, package: dict, helix_command: str):
+    purl = package["source"]["id"]
+    _kind, subject, version = parse_purl(purl)
+    _, _, qualifier_str = purl.partition("?")
+    qualifier_str = qualifier_str.partition("#")[0]
+    qualifiers = [q.partition("=") for q in qualifier_str.split("&") if q]
+    unknown = sorted({k for k, _, _ in qualifiers} - {"extra"})
+    if unknown:
+        print(f"  skip '{name}': pypi purl has unsupported qualifier(s) {unknown}", file=sys.stderr)
+        return None
+    extras = [v for k, _, v in qualifiers if k == "extra"]
+
+    bin_template = pick_bin_template(package.get("bin") or {}, helix_command, name)
+    if bin_template is None:
+        return None
+    if not bin_template.startswith("pypi:"):
+        print(f"  skip '{name}': pypi-kind bin template has no pypi: prefix: {bin_template!r}", file=sys.stderr)
+        return None
+    return {
+        "kind": "pypi",
+        "version": version,
+        "package": subject,
+        "extras": extras,
+        "bin": bin_template[len("pypi:") :],
+    }
+
+
 def build_npm_record(name: str, package: dict, helix_command: str):
     _kind, subject, version = parse_purl(package["source"]["id"])
     extra_packages = package["source"].get("extra_packages", [])
@@ -589,6 +616,14 @@ def emit_lsp_sources(records: dict) -> list[str]:
                 scheme_str_list(r["packages"]),
                 scheme_str(r["bin"]),
             )
+        elif r["kind"] == "pypi":
+            row = " ({} (kind . pypi) (version . {}) (package . {}) (extras{}) (bin . {}))".format(
+                scheme_str(name),
+                scheme_str(r["version"]),
+                scheme_str(r["package"]),
+                "".join(" " + scheme_str(e) for e in r["extras"]),
+                scheme_str(r["bin"]),
+            )
         elif r["kind"] == "golang":
             row = " ({} (kind . golang) (version . {}) (module . {}) (bin . {}))".format(
                 scheme_str(name),
@@ -685,6 +720,8 @@ def main() -> None:
             record = build_cargo_record(helix_name, package, helix_command)
         elif purl_kind == "golang":
             record = build_golang_record(helix_name, package, helix_command)
+        elif purl_kind == "pypi":
+            record = build_pypi_record(helix_name, package, helix_command)
         else:
             record = {"kind": purl_kind, "version": version}
 
