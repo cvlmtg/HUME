@@ -24,78 +24,78 @@ Every buffer in HUME must satisfy three invariants at all times:
    so saving can write it back the way it came. That flag describes the file
    on disk; it never describes what the buffer holds in memory.
 
-Every cursor position must also satisfy:
+Every selection must also satisfy:
 
-4. **In-bounds**: both ends of a selection must fall within the buffer's
-   length. A selection pointing past the end of the buffer is nonsense.
+4. **Whole characters, in bounds**: each end of a selection is the start of a
+   character cluster (a character as the user sees it, such as a letter with
+   its accent or an emoji sequence) that lies below the buffer's end. A
+   selection cannot point past the buffer or into the middle of a cluster.
+   Because the structural newline is always there, a cursor on the last line
+   always has a character to sit on.
 
-## When an invariant is about to break: three options
+5. **A well-formed set**: a set of selections is never empty, is sorted by
+   position, and no two selections share a cluster. Selections that would
+   share one are merged into one.
 
-Suppose a plugin submits a changeset that would delete the trailing newline.
-Three responses are possible:
+6. **A version tag**: a set of selections carries the version of the text it
+   was computed for, and can only be read against that text. Pairing a set
+   with another text is a bug in whoever paired them, and it panics instead of
+   acting on the wrong text.
 
-**Option 1 — silent repair.** Detect the violation and append the missing
-newline automatically before the caller sees the result.
+## One rule for the final newline
 
-This feels safe but is treacherous. A changeset carries a "resulting length"
-that the rest of the edit algebra depends on. If we silently append a character
-to fix the buffer, the resulting length is now off by one. Subsequent
-operations — composing two changesets, inverting an edit for undo — all
-silently use the wrong length. The bug doesn't surface where the repair
-happened; it surfaces as a wrong cursor position or a length mismatch later,
-in completely unrelated code. Silent repairs make bugs invisible at the source
-and visible far away.
+Suppose an edit would delete the trailing newline: a delete-to-end command, or
+a language server whose file has no final newline replacing the whole text.
+A changeset by itself would produce a buffer without its structural newline,
+and applying it directly is an error. Edits never reach that error, because
+every edit is built under one rule:
 
-**Option 2 — crash immediately.** Detect the violation and panic.
+- When the edit would leave the buffer without a final newline, text inserted
+  at the end of the buffer gets a newline of its own.
+- When nothing is inserted at the end, every deletion stops before the
+  structural newline.
 
-Loud failure is better than invisible corruption — at least the source is
-obvious. But crashing the editor because one plugin made a mistake is too
-drastic. A broken plugin should not take down every open buffer.
+The rule lives in one place and every source of edits goes through it,
+language-server edits included. A server's edits describe a file that may not
+end with a newline, and the buffer gets one back.
 
-**Option 3 — reject the operation and return an error.** Leave the buffer
-unchanged; hand the error back to the caller to decide what to do.
-
-This is the right choice at the *trust boundary* — the point where code from
-outside the editor core enters the system. The caller (either the editor layer
-or a plugin) can log the error, skip the bad command, and keep running. The
-buffer is untouched.
+The result is neither a repair after the fact nor a crash. A repair that appends a
+character after the changeset is built would leave the changeset's declared
+resulting length off by one, and composing changesets or inverting an edit for
+undo would then use the wrong length. The bug would surface far from where the
+repair happened. The rule avoids that by shaping the changeset itself, so the
+changeset describes the text the buffer really ends up with.
 
 ## Where to check
 
 There are two kinds of call sites:
 
 - **Internal commands** (character insertion and deletion, motion code): these
-  build their own changesets and can never violate the invariants. They
-  expect success and treat a failure as an engine bug — a hard crash with a
-  diagnostic message is appropriate here.
+  build their edits with the edit builder, which only accepts whole character
+  clusters and applies the final-newline rule, so they cannot violate the
+  invariants. A broken internal edit is an engine bug, and a hard crash with a
+  diagnostic message is appropriate.
 
-- **The trust boundary**: a *transaction* — a changeset paired with a
-  destination selection set — describes an edit from outside the editor core,
-  and that is where untrusted data could enter. Applying a transaction
-  validates the changeset first, then validates the resulting selection
-  against the new buffer, and returns an error on failure.
+- **The trust boundary**: a script can submit a raw edit directly, most
+  commonly for a language-server rename or formatting pass. That path is
+  validated up front: is the buffer writable? does it still match the buffer
+  generation the edit was computed against? are the ranges well-formed and
+  non-overlapping? Only then is a changeset built, under the final-newline
+  rule. The editor derives the resulting cursor positions itself by mapping the
+  existing selections through the edit, so no untrusted selection ever enters.
+  Most plugin code never touches even that path; it issues named editor
+  commands instead, each of which constructs its edit internally.
 
-  The transaction boundary is exercised by history replay today: every undo
-  and redo replays a transaction the editor itself authored, and the
-  validation means a corrupt revision halts loudly with a diagnostic instead
-  of silently miscomputing. A script *can* submit a raw edit directly — most
-  commonly for a language-server rename or formatting pass — but that path is
-  validated up front instead: is the buffer writable? does it still match the
-  buffer generation the edit was computed against? are the ranges well-formed
-  and non-overlapping? Only then is a changeset built, and because the editor
-  derives the resulting cursor positions itself (by mapping the existing
-  selections through the edit), there is no untrusted selection left to check
-  — the edit then runs through the same fast, expecting-success path as any
-  internal command. Most plugin code never touches even that path; it issues
-  named editor commands instead, each of which constructs its changeset
-  internally.
+History replay needs no validation of its own. Every undo and redo replays
+changesets the editor itself recorded, so a replay that fails means the history
+is corrupt, and the editor stops with a diagnostic instead of miscomputing.
 
 There is one other place untrusted text enters the buffer: reloading a file
 from disk (`:e!`). The contents come from outside the editor, but they enter
-through the changeset *builder* — a forward and inverse changeset are derived
-from a line-level diff against the current buffer — not through the transaction
-boundary. The algebra still applies: a reload whose net effect equals what's
-already on disk records no revision at all.
+as a forward and inverse changeset derived from a line-level diff against the
+current buffer, not as raw text replacing the buffer. The algebra still
+applies: a reload whose net effect equals what's already on disk records no
+revision at all.
 
 Adding validation to every internal function would be noise — forcing internal
 code to handle errors that provably cannot occur. The right design is:
@@ -106,15 +106,14 @@ During development, internal code uses lightweight assertions that only run in
 debug builds. These assertions catch engine bugs during testing without paying
 any cost in release builds.
 
-## A fourth strategy: make the violation unreachable
+## Making the violation unreachable
 
-The three options above — repair, crash, or reject-and-return-error — all
-assume the invariant is checked *after* a value already exists. The no-raw-
-carriage-return invariant takes a different approach, because checking it
-after the fact is expensive: the trailing-newline and in-bounds invariants
-can be checked in the time it takes to look at one position, but a stray `\r`
-could be anywhere in an arbitrarily large buffer, so confirming its absence
-means scanning every character.
+Repairing, crashing, and rejecting all assume the invariant is checked *after*
+a value already exists. The no-raw-carriage-return invariant takes a different
+approach, because checking it after the fact is expensive: the trailing-newline
+and in-bounds invariants can be checked in the time it takes to look at one
+position, but a stray `\r` could be anywhere in an arbitrarily large buffer,
+so confirming its absence means scanning every character.
 
 Instead of validating that expensive property on every edit, HUME makes it
 impossible to construct a violation at all. There are exactly two places
@@ -122,17 +121,16 @@ where text from outside the editor becomes buffer content, and both convert
 line endings to `\n` before the text goes anywhere else. Every piece of code
 downstream of those two points can simply assume the property holds, the
 same way it assumes the trailing newline holds — the difference is *how* the
-guarantee is produced: at a narrow choke point where the text is built, rather than
-by checking a value that already exists. A lightweight debug-only assertion
+guarantee is produced: at a narrow choke point where the text is built,
+rather than by checking a value that already exists. A lightweight debug-only assertion
 still confirms the invariant holds, purely to catch a bug in the editor
 itself — it plays no role in maintaining the guarantee for ordinary use.
 
 ## Reverting on failure without explicit cleanup
 
 Consider the sequence: build an inverse changeset (for undo), apply the
-forward changeset, check the invariants. If the invariant check fails, the
-forward changeset is rejected — but we already built the inverse. Do we need
-to clean it up?
+forward changeset, check the result. If applying fails, the forward changeset
+is rejected, but the inverse is already built. Does it need cleanup?
 
 No. The inverse is just a value on the stack. When the failure branch is taken
 and execution leaves that scope, the value is automatically freed. There is
@@ -143,51 +141,41 @@ into a mechanical property of the language rather than a manual obligation.
 Allocating a temporary, using it on the success path, and automatically
 discarding it on the failure path requires zero explicit cleanup code.
 
-```
-let inverse = build_inverse(changeset, original)  // build while original is intact
-match apply(changeset, original) {
-    ok(new_buf)  => { /* push inverse onto undo stack */ }
-    err(reason)  => { /* inverse is freed here — no cleanup needed */ }
+```rust
+let inverse = changeset.invert(&original);   // build while original is intact
+match changeset.apply(&original) {
+    Ok(new_text) => { /* push inverse onto the undo tree */ }
+    Err(reason)  => { /* inverse is freed here, no cleanup needed */ }
 }
 ```
 
-## Why applying an edit takes the buffer by reference
+## Why applying an edit takes the text by reference
 
-The original version consumed the buffer (taking it by value). That was an
-intentional optimization: the buffer's underlying rope could be mutated in
-place rather than cloned.
+Applying a changeset takes the text by reference, not by value. Taking it by
+value would let the underlying rope be mutated in place, but if the apply then
+failed, the text would be gone and the caller could not recover the original.
 
-The problem: if applying the edit failed, the buffer was gone. The caller had
-no way to recover the original.
-
-The fix: take the buffer by reference instead. Cloning the rope before mutating
-costs almost nothing because the rope uses arc-based structural sharing —
-cloning just bumps a reference count, sharing the whole tree. Applying then
-works on the clone, checks the post-conditions, and only wraps the clone in a
-new buffer if everything succeeded. On failure, the clone is dropped and the
-original is intact.
+By reference, applying clones the rope first. Cloning costs almost nothing
+because the rope uses arc-based structural sharing: cloning just bumps a
+reference count, sharing the whole tree. Applying then works on the clone,
+checks the post-conditions, and only wraps the clone in a new text if
+everything succeeded. On failure, the clone is dropped and the original is
+intact.
 
 The key insight is that "recoverable failure" and "mutation in place" are
-in tension. The optimization that worked when the operation always succeeded
-becomes a liability when it can fail. Taking a reference and cloning a
-reference-counted tree is the pragmatic middle ground.
+in tension. Taking a reference and cloning a reference-counted tree is the
+pragmatic middle ground.
 
-## A note on failure modes
+## Pairing a set of selections with its text
 
-Two distinct failure modes can occur:
+A set of selections is read only through a pairing with its text, and the
+pairing is the one place that checks the two belong together. A mismatch is not
+an error to recover from: it means some code kept a set across a text change
+without carrying it through, so the pairing panics. Release builds always check
+that no selection reaches past the end of the text, and debug builds check
+every other invariant of the set.
 
-- **Changeset failure**: the changeset's declared "length before" doesn't
-  match the actual buffer, or applying it would destroy the trailing newline.
-- **Selection failure**: after the changeset applies successfully, one of the
-  cursor positions falls out of bounds.
-
-These are separate errors. The plugin entry point checks both in sequence:
-apply the changeset first, then validate the selection against the resulting
-buffer. If either step fails, the entire operation is rejected and the original
-buffer is returned.
-
-Separating the two keeps each failure type narrow and diagnosable — a plugin
-author seeing "selection out of bounds" knows their cursor math is wrong, not
-their changeset. The error itself is more specific still: it identifies which
-selection in the set was bad and whether its anchor or its head was the offender,
-so the misbehaving call site is a quick diagnosis rather than a guess.
+The version tag on a set is the only guard against a set that outlived its
+text, which is why every stored position is either carried through each change
+or tagged so that it reads as absent once the text moves. See
+[Changesets](changesets.md).

@@ -76,10 +76,11 @@ steps, since dots and dashes are boundaries). Pressing ``W`` instead
 selects "config.toml" (plus its trailing space), then "log-file" (two
 steps, since only whitespace divides WORDs).
 
-By default ``w``/``W``/``b``/``B`` also pick up the whitespace
-*before* the destination word or token (except the first word of a
-line, which picks up its trailing space instead, since a leading run
-there would be indentation), which is why some of the steps above
+By default ``w``/``W``/``b``/``B`` also pick up the space *before* the
+destination word or token. When no space precedes it (the first word
+of a line, where a leading run would be indentation, or a token that
+directly follows punctuation, like "toml" after the dot), they pick up
+the space after it instead. That is why some of the steps above
 include an extra space alongside the word or token. Turn this off with
 ``:set global word-selects-whitespace=false`` for bare-word
 selections instead.
@@ -138,11 +139,12 @@ Opening a file, jumping to search results, or switching buffers all
 record an entry. Use ``Ctrl-o`` to retrace your steps, for instance
 to return from a tutor exercise to wherever you were before.
 
-Some Ctrl key combinations, including ``Ctrl-i``, require the Kitty
-keyboard protocol to work correctly. Without it, the terminal cannot
-distinguish ``Ctrl-i`` from Tab, so the forward-jump command will not
-fire. To check whether the protocol is active, look for the cat
-glyph (ᓚᘏᗢ) in the statusline.
+Some Ctrl key combinations, including ``Ctrl-i``, need the Kitty
+keyboard protocol to be told apart from other keys. Without it, the
+terminal sends the same key for ``Ctrl-i`` and Tab, and both jump
+forward. With it, Tab switches to the next pane instead. To check
+whether the protocol is active, look for the cat glyph (ᓚᘏᗢ) in the
+statusline.
 
 Exercise
 ~~~~~~~~
@@ -218,7 +220,9 @@ Prefix a motion with digits to repeat it:
 | 2{ | select paragraph 2 back  |
 +----+--------------------------+
 
-Counts apply to motions, not edits.
+Counts apply to motions and to a few commands: ``3>`` indents three
+levels, ``5u`` undoes five changes, ``3.`` repeats the last edit with a
+count of 3, and ``3C`` copies a cursor onto the next three lines.
 
 Exercise
 ~~~~~~~~
@@ -277,16 +281,21 @@ HUME can also handle multiple selections. They will be covered in Lesson 9.
 | Ctrl-x | like  x , but EXTENDS (accumulates) rather than replaces |
 +--------+----------------------------------------------------------+
 
-Repeated ``x`` walks the selection down through multiple lines.
+Repeated ``x`` walks the selection down through multiple lines, and
+repeated ``X`` walks it up.
 
 Exercise
 ~~~~~~~~
 
 Navigate onto the first line of the exercise, press ``x`` to select
 it, then press ``Ctrl-x`` twice to extend to all three lines.
-Observe the selection spans all three lines. Now press ``X`` twice:
-the selection shrinks back up one line at a time instead of growing
-further. The opposite key reverses direction.
+Observe the selection spans all three lines. Now shrink it back up
+one line at a time:
+(Kitty) press ``Ctrl-Shift-x`` twice.
+(Legacy) press ``e`` to enter Extend mode, then ``X`` twice, then
+``e`` again to leave it.
+Plain ``X`` in Normal mode does not shrink: on a whole-line selection
+it jumps to the line above.
 
 import os
 import sys
@@ -309,7 +318,8 @@ Extend mode automatically and return you to Normal. Yank (``y``) keeps
 you in Extend mode so you can extend further before acting.
 
 Motions run backward too: moving toward where you started shrinks the
-selection instead of growing it. ``w``/``b`` and ``x``/``X`` shrink one
+selection instead of growing it. In Extend mode, ``w``/``b`` and
+``x``/``X`` shrink one
 whole word or line at a time, and the word or line you started on
 always stays selected. Pressing past it flips the selection to grow
 in the other direction instead of cutting it off partway.
@@ -329,7 +339,7 @@ One-shot Extend with Ctrl
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can extend the selection for a single motion without entering
-Extend mode by holding Ctrl. Every motion supports it:
+Extend mode by holding Ctrl with a motion key. Common ones:
 
 +-----------------+--------------------------------------------------------+
 | Ctrl-w          | extend to the next word (parallel to ``e`` then ``w``) |
@@ -419,10 +429,11 @@ end instead.
 Exercise
 ~~~~~~~~
 
-Press ``w`` to select the word below, then press ``Ctrl-e`` to flip:
-the cursor jumps from the end of the word to the start. Press
-``;`` to collapse back to a single character. Notice how the cursor
-is now on the first letter of the word instead of the last:
+Press ``w`` to select the first word below (it comes with the space
+after it), then press ``Ctrl-e`` to flip: the cursor jumps from the
+end of the selection to its start. Press ``;`` to collapse back to a
+single character. Notice how the cursor is now on the first letter of
+the word instead of the space after it:
 
 rename this variable
 
@@ -474,7 +485,7 @@ Exercise
 ~~~~~~~~
 
 Now press ``w`` to select the duplicate word "file", then ``d`` to
-delete it. The trailing space goes with it, so there's no double
+delete it. The space before it goes with it, so there's no double
 space left behind:
 
 The configuration file file needs to be updated.
@@ -537,7 +548,7 @@ Exercise
 ~~~~~~~~
 
 Select the paragraph title using ``x``, then press ``y`` to copy it.
-Press ``r`` and then ``=`` to replace the while title. Then press
+Press ``r`` and then ``=`` to replace the whole title. Then press
 ``;`` to collapse the selection and then ``P`` to paste the title
 above the current line.
 
@@ -741,8 +752,9 @@ paste-and-cycle sequence collapses into one undo step: a single
 Exercise
 ~~~~~~~~
 
-Delete the word "stale" below with ``w d``, then delete "unused"
-with ``w d``. Now press ``P``: smart-paste gives you the last kill.
+Select the word "stale" below with ``w`` (repeat until it is
+selected) and delete it with ``d``. Select "unused" the same way and
+delete it. Now press ``P``: smart-paste gives you the last kill.
 Press ``[`` to cycle to the older kill-ring entry:
 
 Rename the stale and unused methods before the review.
@@ -755,21 +767,22 @@ want to cycle back to. The whitespace is still there to paste right
 after you cut it; it only disappears once the next kill arrives.
 
 The ring also never holds two identical entries. Deleting, changing,
-or yanking text that's already in the ring moves it back to the
-front instead of duplicating it, so cycling with ``[``/``]`` never
-repeats the same text twice.
+or yanking text that's already in the ring, taken the same way (whole
+lines or inline), moves it back to the front instead of duplicating it,
+so cycling with ``[``/``]`` never repeats the same entry twice.
 
 Exercise
 ~~~~~~~~
 
-Delete the duplicate word "form" with ``w d``, then press ``d``
-once more to remove the leftover space. That space is now the
-newest kill. Delete "draft" with ``w d``: it overwrites the space
-instead of stacking on top. Press ``P`` to paste "draft", then
-``[``: you cycle straight back to "form", with no throwaway space
-in between:
+Select the word "form" with ``w`` (repeat until it is selected) and
+delete it with ``d``. That leaves two spaces, with the cursor on one
+of them: press ``d`` once more to remove it. That space is now the
+newest kill. Select "draft" with ``w`` and delete it with
+``d``: it overwrites the space instead of stacking on top. Press
+``P`` to paste "draft" (with the space before it), then ``[``: you
+cycle straight back to "form", with no throwaway space in between:
 
-Submit the form form draft today.
+Submit the form  draft today.
 
 5.3 Smart Paste
 ---------------
@@ -831,8 +844,9 @@ a one-shot extend, or enter Extend mode first (see Lesson 2.2).
 
 Find and till search *only the current line*: they stop at the end
 of the line and never jump to another line. If the character isn't on
-this line, the selection stays put. To find across lines, use search
-(Lesson 7).
+this line, the cursor stays where it is, and a wider selection
+collapses to a single character at its head (in Extend mode the
+selection is kept). To find across lines, use search (Lesson 7).
 
 Exercise
 ~~~~~~~~
@@ -888,18 +902,18 @@ The idiomatic pattern for repeating an edit across several words:
 - ``.`` to repeat the change on the new selection
 - ...and so on.
 
-Since ``w`` picks up the word's trailing space by default, type a
-trailing space as part of your replacement too, so the spacing after
+Since ``w`` picks up the space before the word by default, type a
+leading space as part of your replacement too, so the spacing before
 it stays intact.
 
 Exercise
 ~~~~~~~~
 
-Change the first "migrate" to "update " (with a trailing space)
-below, then navigate to the next "migrate" with ``w`` and press ``.``
-to repeat the change:
+Select the first "migrate" with ``w``, change it to " update" (with
+a leading space), then navigate to the next "migrate" with ``w`` and
+press ``.`` to repeat the change:
 
-Migrate the schema, migrate the tests, migrate the docs.
+We migrate the schema, migrate the tests, migrate the docs.
 
 Summary
 -------
@@ -1285,7 +1299,8 @@ Exercise
 
 Select the three lines below with ``Ctrl-x`` three times, press ``S``
 to split into one cursor per line, then press ``_`` to trim the
-trailing whitespace from each line at once:
+whitespace at the edges of each selection. The selections shrink to
+the visible text of their lines; the text itself is unchanged:
 
 title = "My Application"   
 version = "1.0.0"  
@@ -1306,8 +1321,8 @@ After multi-cursor operations, you can walk through which cursor is
 Exercise
 ~~~~~~~~
 
-Select the following lines with ``x`` and then ``Ctrl-x``, then
-press ``s`` and type "FIXME". Use ``(`` and ``)`` to cycle the
+Select the following lines with ``x`` and then ``Ctrl-x`` twice,
+then press ``s`` and type "FIXME". Use ``(`` and ``)`` to cycle the
 primary selection. Press ``,`` when done.
 
 The first FIXME is in the handler,
@@ -1343,9 +1358,11 @@ old-server-3.example.com
 | & | align all cursors to the column of the primary's anchor |
 +---+---------------------------------------------------------+
 
-Spaces are inserted or removed at the left edge of each non-primary selection
-until it sits in the same column as the primary. Multi-line selections are
-left unchanged.
+Spaces are inserted or removed just before each selection until its left
+edge sits in the same column as the primary's, never removing the last
+space between a selection and the text before it. When another selection
+sits too far right to be reached, the primary moves right as well.
+Multi-line selections are left unchanged.
 
 Exercise
 ~~~~~~~~
@@ -1442,7 +1459,7 @@ not your runtime directory.
 +-----------+------------------------------------------------------+
 | :e <path> | open a file (creates a new buffer)                   |
 +-----------+------------------------------------------------------+
-| :e        | reload the current file from disk (prompts if dirty) |
+| :e        | reload the current file from disk (refuses if dirty) |
 +-----------+------------------------------------------------------+
 | :e!       | reload and DISCARD unsaved changes                   |
 +-----------+------------------------------------------------------+
@@ -1568,7 +1585,7 @@ Macros
 +---------+--------------------------------------------------------------+
 | Q<r>    | start recording into register <r>   (QQ uses the q register) |
 +---------+--------------------------------------------------------------+
-| Q<r>    | stop recording (same key ends the recording)                 |
+| Q       | stop recording (a bare Q while recording)                    |
 +---------+--------------------------------------------------------------+
 | q<r>    | replay register <r>                 (qq replays q)           |
 +---------+--------------------------------------------------------------+

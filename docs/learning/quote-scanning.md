@@ -17,17 +17,18 @@ The quote scanner walks the current line and uses parity to assign roles:
 ```
 Position:  0   1   2   3   4   5   6   7
            "   h   e   l   l   o   "   !
-           ↑                   ↑
-         odd (open)          even (close)
+           ↑                       ↑
+         odd (open)              even (close)
 ```
 
 Every quote character found on the line alternates between "opening" (odd
 occurrence) and "closing" (even occurrence). When a complete pair is found,
-the algorithm checks whether `pos` falls inside it (`open_pos <= pos <= close_pos`).
+the algorithm checks whether the cursor falls inside it, on either quote
+included.
 
 The algorithm scans left-to-right. Each time it finds the quote character, it
 alternates: the first occurrence becomes a candidate opener, the second becomes
-the closer. If the cursor position falls inside that pair (`opener ≤ pos ≤ closer`),
+the closer. If the cursor falls inside that pair, on either quote included,
 the pair is returned. If not, the pair is discarded and the search continues
 for the next pair.
 

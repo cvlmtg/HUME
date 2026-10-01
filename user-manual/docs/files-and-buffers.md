@@ -155,8 +155,6 @@ In `[messages]`, each entry's `[warning]`/`[error]`/`[trace]` tag and message te
 
 ## Persistence and safety
 
-A few details worth knowing about how HUME currently handles persistence:
-
 - **Undo history is in-memory only.** It's **lost when HUME exits**; there is no undo across restarts (not yet).
 - **No swap or backup files.** HUME does not write Vim-style `.swp` files. Saves write to a temporary file and rename it into place, so the file on disk holds either the old content or the new, never a half-written mix.
 - **UTF-8 only.** Files must be valid UTF-8: invalid bytes are rejected with an error (no lossy fallback). A byte-order mark isn't stripped; it will appear as a character at the top of the buffer.

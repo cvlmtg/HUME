@@ -54,10 +54,12 @@ language it is.
 
 ## The funnel
 
-Every change to a buffer's language — whether from automatic detection, the
-`:set buffer language=` command, or a plugin API call — goes through a single
-function. Nothing writes the language field directly; all callers go through
-the funnel.
+The language is an ordinary buffer option, readable and settable like any
+other. Every change to it, whether from automatic detection, the
+`:set buffer language=` command, or a script setting the `language` buffer
+option, goes through a single function. Nothing writes the language field
+directly; all callers go through the funnel. Clearing the option removes the
+language.
 
 The funnel does five things in sequence:
 
@@ -88,8 +90,8 @@ structural, not just conventional.
 
 The `on-language-set` hook fires every time a buffer's language changes — set
 to a new value, or cleared. Re-setting the same value fires nothing. It
-receives two arguments: the buffer id, and the language name as a string (or
-`#f` if the language was cleared).
+receives two arguments: a pane that shows the buffer, and the language name as
+a string (the empty string if the language was cleared).
 
 When a buffer is first opened, the hook fires *before* `on-buffer-open`. That
 ordering is deliberate: if a plugin registers an `on-buffer-open` handler that

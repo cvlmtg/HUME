@@ -197,9 +197,9 @@ Those three read the whole list. To work with a single selection (the primary on
 (call! "stdlib/selection-primary?" primary)
 ```
 
-`(offset->line pane idx)` converts a char offset to a line number when you need one. It's a separate call rather than a field on every selection, since deriving it needs rope access a selection doesn't have.
+`(offset->line pane idx)` converts a char offset to a line number when you need one. It's a separate call rather than a field on every selection, since a selection on its own has no line information.
 
-See [Plugin API → Standard Library](plugin-api.md#selections) for the full list of selection helpers.
+See [Standard Library](standard-library.md#selections) for the full list of selection helpers.
 
 ### Depending on another plugin
 
@@ -364,7 +364,7 @@ A plugin can read the `#:config` value its user passed to `load-plugin!` or `dec
   (bind-key! 'normal "C" "my-command"))
 ```
 
-`stdlib/config-string`, `stdlib/config-enum`, `stdlib/config-integer`, and `stdlib/config-list` cover the other common config shapes; see [Plugin API → Standard Library](plugin-api.md#plugin-configuration) for their signatures. Since this call happens in your plugin's own body, at load time, check `(declared-plugins)` for `"core:stdlib"` first (see "Depending on another plugin" above).
+`stdlib/config-string`, `stdlib/config-enum`, `stdlib/config-integer`, and `stdlib/config-list` cover the other common config shapes; see [Standard Library](standard-library.md#plugin-configuration) for their signatures. Since this call happens in your plugin's own body, at load time, check `(declared-plugins)` for `"core:stdlib"` first (see "Depending on another plugin" above).
 
 Document the keys your plugin understands so users know what to pass.
 
@@ -424,7 +424,7 @@ Returns a buffer's full live content as a string, including any unsaved edits, n
 (buffer-lines pane #:start start #:end end)
 ```
 
-Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines pane #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range pane)` to read only what's currently on screen: it returns the same 0-based, end-exclusive range shape, so its pair passes straight through as `#:start`/`#:end`:
+Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines pane #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range pane)` to read only what's currently on screen: it returns the same 0-based, end-exclusive range shape, so its `'start` and `'end` pass straight through as `#:start`/`#:end`:
 
 ```scheme
 (let ((vr (viewport-range pane)))
@@ -488,8 +488,8 @@ but this API.
 `pane` must still be the one you're looking at when the picker opens. Pass through whatever pane value the enclosing command or hook was itself given, or `(focused-pane)` if there's none in scope.
 
 `items` is a list of `(display . payload)` pairs: `display` is the string shown and
-matched against, `payload` is anything you like (a path, a buffer id, a hashmap); HUME
-never looks inside it. `on-select` fires exactly once: with the chosen item's `payload`
+matched against, `payload` is anything you like (a path, a number, a hashmap) except `#f`, which is
+reserved for the dismiss signal; HUME never looks inside it. `on-select` fires exactly once: with the chosen item's `payload`
 if the user presses `Enter`, or `#f` if they press `Esc`, call `picker-close!`, or open a
 second picker while this one is still open (which replaces it).
 

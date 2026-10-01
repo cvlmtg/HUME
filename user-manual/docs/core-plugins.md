@@ -1,6 +1,6 @@
 # Core Plugins
 
-HUME ships a some plugins under the `core:` namespace: a plugin and grammar manager, language server support, live git diff, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your [`init.scm`](configuration.md), so a default HUME is exactly what you see.
+HUME ships some plugins under the `core:` namespace: a plugin and grammar manager, language server support, live git diff, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your [`init.scm`](configuration.md), so a default HUME is exactly what you see.
 
 There are two ways to bring a plugin in:
 
@@ -154,8 +154,7 @@ Also keeps a `"steel:git-branch"` statusline element fresh for the focused buffe
 [Statusline → Custom elements](configuration.md#custom-elements)). Updates when you switch to
 a buffer and when you save it; empty for a buffer outside any repo.
 
-No default key bindings; bind them yourself, e.g. `(bind-key! 'normal "g Shift-d"
-"toggle-inline-diff")`.
+Both commands are typed commands, run from the `:` prompt; they have no key bindings.
 
 Configure with `#:config`:
 

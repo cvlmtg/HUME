@@ -14,28 +14,28 @@ the same mechanism, not two separate features.
 Buffer: `"hello world\n"`, cursor on `'h'` (position 0). The selection is a
 single-character selection on `'h'`: anchor = 0, head = 0.
 
-Pressing `l` invokes the motion framework in Move mode, with a count of 1,
-and a one-step move-right position function.
+Pressing `l` invokes the motion framework in move mode, with a count of 1,
+and a one-step move-right search.
 
-**Step 1 — inner position function.** Move-right computes the next grapheme
+**Step 1 — the search.** Move-right computes the next grapheme
 boundary from position 0, returning 1. It knows nothing about anchors or
 multi-cursor — just a coordinate calculation.
 
-**Step 2 — apply Move mode.** The framework collapses anchor and head
+**Step 2 — apply move mode.** The framework collapses anchor and head
 to the new position:
 
-```
-Move → anchor = 1, head = 1   (single-char selection on 'e')
+```text
+move → anchor = 1, head = 1   (single-char selection on 'e')
 ```
 
 Now suppose the cursor is at position 2 (on `'l'`) and the user presses `l` in
 extend mode:
 
-**Step 2 — apply Extend mode.** The framework keeps the old anchor
+**Step 2 — apply extend mode.** The framework keeps the old anchor
 and moves only the head:
 
-```
-Extend → anchor = 2 (unchanged), head = 3
+```text
+extend → anchor = 2 (unchanged), head = 3
 ```
 
 The selection grew from `'l'` to cover both `'l'` characters — the anchor
@@ -47,30 +47,35 @@ walked in the other direction.
 
 | Mode | Anchor | Head | Typical use |
 |------|--------|------|-------------|
-| `Move`   | `new_head`   | `new_head` | Plain cursor move — `h`, `j`, `k`, `l` |
-| `Extend` | `old_anchor` | `new_head` | Grow or shrink selection — sticky extend mode (toggled by `e`), one-shot Ctrl-letter on kitty-capable terminals |
+| move   | the new head   | the new head | Plain cursor move — `h`, `j`, `k`, `l` |
+| extend | the old anchor | the new head | Grow or shrink selection — sticky extend mode (toggled by `e`), one-shot Ctrl-letter on kitty-capable terminals |
 
-`Move` always produces a collapsed single-character selection (anchor == head).
-`Extend` keeps the existing anchor, only moving the head.
+Move mode always produces a collapsed single-character selection (anchor ==
+head). Extend mode keeps the existing anchor, only moving the head.
 
-## Why separate the inner function from the mode
+## Why separate the search from the mode
 
-The inner position function is a pure coordinate calculation — it knows
-nothing about anchors or multi-cursor. The move/extend mode is a concern of
-the dispatch layer, not of the motion itself. This means:
+The search is a pure coordinate calculation — it knows nothing about anchors
+or multi-cursor, though it is given the whole selection to look at. The
+move/extend mode is a concern of the dispatch layer, not of the motion itself.
+This means:
 
-- Adding a new motion (e.g. "go to line end") requires one position function;
-  Move and Extend variants come for free.
+- Adding a new motion (e.g. "go to line end") requires one search; move and
+  extend variants come for free.
 - Testing the motion is simple: just assert on the returned position.
-- The same move-right position function powers both `l` (Move) and `l` in
-  extend mode (Extend) — no separate command needed.
+- The same move-right search powers both `l` in move mode and `l` in
+  extend mode — no separate command needed.
 
 The framework branches on the mode when constructing the resulting selection:
 
+```text
+move   → anchor = new head, head = new head    (collapsed single-char)
+extend → anchor = old anchor, head = new head  (anchor stays, head moves)
 ```
-Move   → anchor = new_head, head = new_head   (collapsed single-char)
-Extend → anchor = old_anchor, head = new_head (anchor stays, head moves)
-```
+
+Every position in these rules is the start of a character cluster, and a
+selection end covers the whole cluster that starts there. A head moved onto an
+accented letter therefore covers the letter and its accent together.
 
 A few anchor-manipulation commands sit beside this framework without being a
 new mode. Overshooting a target can be corrected by simply walking the head

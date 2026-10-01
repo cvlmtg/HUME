@@ -37,7 +37,7 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay ba
 | `(call! "stdlib/list-subdirs" dir)` | Sorted basenames of `dir`'s subdirectories |
 | `(call! "stdlib/safe-path-segment?" name)` | `#t` iff `name` is safe to use as a single path component |
 
-`delete-dir` and `delete-file` are idempotent, unlike the Steel scripting engine's own `delete-directory!`/`delete-file!`: a missing target is not an error. `list-subdirs` skips stray non-directory entries that sit alongside a directory tree, like `.DS_Store`. `safe-path-segment?` rejects an empty name, `.`/`..`, and anything containing a path separator, `:`, `"`, or a NUL. Use it before joining a user-typed or downloaded name onto a path.
+`delete-dir!` and `delete-file!` are idempotent, unlike the Steel engine's own `delete-directory!`/`delete-file!`: a missing target is not an error. `list-subdirs` skips stray non-directory entries that sit alongside a directory tree, like `.DS_Store`. `safe-path-segment?` rejects an empty name, `.`/`..`, and anything containing a path separator, `:`, `"`, or a NUL. Use it before joining a user-typed or downloaded name onto a path.
 
 ## Subprocesses
 
@@ -60,9 +60,9 @@ Both answer for HUME's own working directory (`:pwd`), not necessarily the curre
 
 | Call | Effect |
 |------|--------|
-| `(call! "stdlib/resolve-lang-arg" pane cmd arg)` | A typed language-name argument, else `pane`'s buffer's language, else `#f` after a warning naming `cmd` |
+| `(call! "stdlib/resolve-lang-arg" pane cmd arg)` | A typed language-name argument, else `pane`'s buffer's language, else `#f` after an info message naming `cmd` |
 
-Use this for a `:` command that takes an optional language name: `arg` is whatever the user typed after the command, or `#f` if they typed nothing. Falling back to the invoking buffer's language covers the common case of acting on the language of the buffer the command was invoked for; when neither is available, it logs a warning naming `cmd` and returns `#f` so your command can bail out cleanly.
+Use this for a `:` command that takes an optional language name: `arg` is whatever the user typed after the command, or `#f` if they typed nothing. Falling back to the invoking buffer's language covers the common case of acting on the language of the buffer the command was invoked for; when neither is available, it logs an info message naming `cmd` and returns `#f` so your command can bail out cleanly.
 
 ## Word tokenization
 
@@ -82,6 +82,8 @@ Same classification `w`/`b` motions and text objects use, so a word here is exac
 | `(call! "stdlib/config-integer" plugin cfg key default minimum)` | Same, erroring if the resolved value isn't an integer, or is below `minimum` (`#f` for no minimum) |
 | `(call! "stdlib/config-list" plugin cfg key default)` | Same, erroring if the resolved value isn't a list of strings |
 
+`cfg` is whatever `(plugin-config)` returns. Every error names the calling plugin (`plugin`) and the offending key, so a bad `#:config` value fails at load time pointing at exactly what to fix. See [Configuring a plugin](plugins.md#configuring-a-plugin) for the full picture of reading `#:config`.
+
 ## Picker buffer-placement
 
 | Call | Effect |
@@ -92,5 +94,3 @@ Same classification `w`/`b` motions and text objects use, so a word here is exac
 | `(call! "stdlib/with-split" handler)` | Wraps `handler`: splits the focused pane stacked, then calls `handler` with the picker's payload |
 
 `handler` is the same one-argument procedure a picker already passes as `on-select` (see [Custom pickers](plugins.md#custom-pickers)'s `#:actions`). `buffer-actions` is the one plugin authors reach for; `with-tab`/`with-vsplit`/`with-split` are its building blocks, for composing a custom `#:actions` list with different keys or a subset of the four.
-
-`cfg` is whatever `(plugin-config)` returns. Every error names the calling plugin (`plugin`) and the offending key, so a bad `#:config` value fails at load time pointing at exactly what to fix. See [Configuring a plugin](plugins.md#configuring-a-plugin) for the full picture of reading `#:config`.

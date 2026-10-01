@@ -29,7 +29,7 @@ Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at
 | `Ctrl-o` | `jump-backward` | Jump list back |
 | `Ctrl-i` | `jump-forward` | Jump list forward |
 | `Tab` | `jump-forward` (legacy) / `pane-focus-next` (kitty) | Jump list forward (under kitty, `Tab` focuses the next pane instead) |
-| `Ctrl-h/j/k/l/w/b` | `move-left` / `move-right` / `move-down` / `move-up` / `select-next-word` / `select-prev-word` (extend) | One-shot extend of the corresponding motion (kitty only) |
+| `Ctrl` + a motion key, e.g. `Ctrl-h/j/k/l/w/b` | the motion's own command, extended | One-shot extend of that motion (kitty only). Keys with their own `Ctrl` binding keep it; `Ctrl` with a key that is not a motion does nothing |
 
 ### Character find
 
@@ -60,8 +60,8 @@ the current line.
 | `Ctrl-x` | `select-line` (extend) | Same as `x` but always extends |
 | `Ctrl-Shift-x` | `select-line-backward` (extend) | Same as `X` but always extends (kitty only) |
 | `S` | `split-selection-on-newlines` | Split multi-line selections on newlines |
-| `C` | `copy-selection-on-next-line` | Copy each selection to the line below (a count prefix copies onto that many lines, e.g. `3C`) |
-| `_` | `trim-selection-whitespace` | Trim leading/trailing whitespace from each selection |
+| `C` | `copy-selection-on-next-line` | Copy each selection one selection-height down (a count prefix adds that many copies, e.g. `3C`) |
+| `_` | `trim-selection-whitespace` | Shrink each selection to exclude leading/trailing whitespace (text unchanged) |
 | `,` | `keep-primary-selection` | Keep only the primary selection |
 | `Ctrl-,` | `remove-primary-selection` | Remove primary, promote next (kitty only) |
 | `(` / `)` | `cycle-primary-backward` / `cycle-primary-forward` | Cycle primary backward / forward |
@@ -189,7 +189,7 @@ Press `G` then a second key. Not a "case prefix": `G` holds the commands Vim fil
 | `G C` | `make-text-capitalized` | Capitalize each word in the selection |
 
 `G U`/`G C` differ from `g U`/`g C` (previous unit test / previous comment) only in the prefix's
-case, worth knowing before it's muscle memory. `core:lsp` adds a fourth key here, `G R` for
+case. `core:lsp` adds a fourth key here, `G R` for
 `lsp-rename` (see [Language Servers](lsp.md)).
 
 ## View prefix (`z`)
@@ -283,7 +283,7 @@ Entered with `/` (forward) or `?` (backward). Every keystroke live-previews the 
 
 ## Sift mode
 
-Entered with `s` from Normal mode (requires at least one non-collapsed selection). Live-previews sub-match selections within the original selections. Does **not** overwrite the search register, so `n`/`N` continue the prior search after `Enter`.
+Entered with `s` from Normal mode (requires at least one selection wider than a single character). Live-previews sub-match selections within the original selections. Does **not** overwrite the search register, so `n`/`N` continue the prior search after `Enter`.
 
 | Key | Action |
 |-----|--------|

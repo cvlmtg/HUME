@@ -102,7 +102,7 @@ neither side speaks the other's language natively — something has to
 translate.
 
 **Outbound**, a HUME edit is a [changeset](changesets.md): a sequence of
-retain/delete/insert steps describing how the buffer changed. To become
+keep/delete/insert steps describing how the buffer changed. To become
 `didChange` events, that sequence is replayed step by step against a working
 copy of the *pre-edit* text, and each step's range is measured against
 whatever that working copy looks like after the previous steps — not
@@ -131,6 +131,12 @@ describing the result. This sidesteps the older trick of applying edits
 back-to-front so earlier offsets don't shift out from under later ones —
 HUME never needs that, because it resolves positions before composing
 rather than applying them one at a time.
+
+A server describes a file that may not end with a newline, while a HUME
+buffer always does. An edit that would drop the final newline gets it back
+under the same rule every other edit follows: text inserted at the end gets a
+newline of its own, and when nothing is inserted there, deletions stop before
+the structural newline. See [Buffer Invariants](buffer-invariants.md).
 
 A rename that touches several files follows the same idea at a larger
 scale: every file's edits are validated before any file is touched, so a
@@ -217,7 +223,10 @@ or drops a buffer.
 
 Two safety valves keep stale answers from causing damage. If the document
 has moved on by the time a response arrives, the callback can be skipped
-instead of acting on positions that no longer mean anything. And a plugin
+instead of acting on positions that point at other text. A plugin can also
+ask the core to remember a position through edits: while the request is
+outstanding the position follows the text, so the request asks about where the
+symbol is now and the callback acts on the right place. And a plugin
 can supersede its own previous request instead of piling both up — this is
 how completion avoids a backlog when the server's candidate list was
 incomplete and further typing forces a fresh request. (The common case needs
@@ -231,7 +240,7 @@ Server-initiated traffic doesn't all reach plugins the same way:
 | Diagnostics | core stores and remaps them | yes — a hook fires so plugins can react; rendering reads the store directly |
 | Progress, log/status messages | core only | no |
 | "Apply this edit" | core applies it, using the same edit path as everything else | no |
-| Any other notification | core forwards it | yes, to whatever plugin registered for it |
+| Any other notification | core forwards it through the `on-lsp-notification` hook | yes, to every handler on that hook, or only to one registered for specific methods |
 | Any other request | core answers "not supported" itself | no — every request must get exactly one response |
 
 Diagnostics are the one case worth dwelling on: the core owns storage and
@@ -240,6 +249,14 @@ buffer changes), and rendering — gutter signs, inline underlines, the
 statusline count — reads that store directly, no plugin involved. What
 *is* a plugin's job is reacting to the fact that diagnostics changed:
 deciding what `:diagnostics` should list, or what `g n` / `g p` jump to.
+
+Other results that name positions follow edits as well. The list a
+find-references or multi-match goto opens keeps pointing at the right lines as
+the buffer changes, and when the number of lines in a listed file changes the
+core asks the server again about the same symbol once typing pauses. An open
+completion menu stays open when text elsewhere in the buffer changes, and still
+accepts at the cursor, because the position it is anchored to is carried
+through the change.
 
 ## End-to-end: opening a Rust file
 

@@ -66,7 +66,7 @@ Some Normal-mode keys wait for a second key before doing anything. Either they o
 |------|---------|
 | `f`, `F`, `t`, `T` + char | Jump to a character on the current line. See [Moving Around](moving-around.md) |
 | `r` + char | Replace the selected characters with the typed character. See [Editing](editing.md) |
-| `m w` + char | Wrap the selection in that character. See [Selections](selections.md) |
+| `m w` + char | Wrap the selection in that character. See [Editing](editing.md#surround) |
 
 ### Count prefix
 

@@ -21,19 +21,22 @@ The kill ring is a fixed-size queue of the last ten yanks, deletes, and
 changes. Newest at the head; once full, the oldest entry falls off. Every
 editing capture pushes a new entry — with two exceptions.
 
-If the current head is a *pure whitespace* entry (spaces, tabs, newlines), the
-new entry overwrites that slot in place rather than taking a fresh one.
+If the current head is a *pure whitespace* entry (any whitespace characters,
+such as spaces, tabs, or newlines), the new entry overwrites that slot in place rather than taking a fresh one.
 Deleting a space to fix a typo should not cost you a ring slot you
 would never want to cycle back to. The just-deleted whitespace stays
 retrievable until the next push, so the swap itself still works; only
 afterwards is it gone. To keep whitespace durably, yank it into a named
 register (`"0`–`"9`).
 
-If the new entry is text that's already somewhere in the ring, it moves to
-the head instead of taking a fresh slot. Killing the same word twice — say,
-`mmd` on `foo` in two different places — doesn't fill two slots with `foo`;
-the ring only ever holds one copy, and cycling with `[`/`]` never lands you
-back on text you've already seen.
+If the new entry matches one already in the ring, it moves to the head
+instead of taking a fresh slot. Two entries match when their text and their
+paste shape (see "Linewise versus charwise paste" below) are both equal.
+Killing the same word twice, such as `mmd` on `foo` in two different places,
+doesn't fill two slots with `foo`; the ring only ever holds one copy, and
+cycling with `[`/`]` never lands you back on an entry you've already seen.
+The same text captured once as whole lines and once as characters is two
+entries, since the two paste differently.
 
 Ring entries are reachable in two ways: by pasting the head with `"kp` or by
 relative position via `[`/`]` cycling (covered below). The ring keeps up to
@@ -85,8 +88,11 @@ default.
 - **Nothing edited since the last capture (`d`/`c`/`y`)** → paste reads the
   kill-ring head. Swap idioms work: `d`, move around, `p` restores what was
   killed, as long as no edit happened along the way.
-- **Something edited since** → paste reads the system clipboard, falling back
-  to the ring head if no OS clipboard is available (a headless environment).
+- **Something edited since** → paste reads the system clipboard. If no OS
+  clipboard is available (a headless environment), a fresh paste falls back to
+  the ring head. A repeat press whose clipboard cannot be read does nothing
+  instead, because substituting the ring head would replace the text the
+  previous press just pasted.
 
 Motions, searches, and undo/redo don't fit either bucket the way a command
 name would — they're judged by what they actually do to the buffer. A motion
@@ -192,14 +198,38 @@ paste with `p` or `P`.
 
 ## Linewise versus charwise paste
 
-A register's content chooses its own paste shape from how it ends. Content
-ending in a newline is *linewise*: over a cursor it inserts as new line(s)
-below or above the cursor line; over an explicit selection it replaces
-line-by-line and reflows what is left. Content without a trailing newline is
-*charwise*: it lands inline at the cursor, or replaces the selected span in
-place. The distinction falls out of inspecting the yanked text — no separate
-`P`-linewise command names it, and cycling the kill ring moves freely between
-linewise and charwise entries as the cycle position changes.
+Every ring entry remembers the paste shape it was captured with. A selection
+of whole lines (it starts a line and ends on a line break) is captured as
+*linewise*: over a cursor it inserts as new line(s) below the cursor line (`p`)
+or above it (`P`); over an explicit selection it replaces line-by-line and
+reflows what is left. Any other selection is captured as *charwise*: it lands
+inline at the cursor, or replaces the selected span in place.
+
+The shape comes from the capture, not from inspecting the text afterwards.
+Text that did not come from a selection, such as the system clipboard or text
+a script wrote, has no remembered shape. It counts as linewise when it ends in
+a newline and charwise otherwise, since that is the only signal it carries.
+No separate `P`-linewise command is needed, and cycling the kill ring moves
+freely between linewise and charwise entries as the cycle position changes.
+
+When a linewise paste replaces a selection that does not start its line, the
+text kept before the selection is pushed onto a line of its own, so the pasted
+lines start a line. When the selection ends right before its line's break, the
+paste takes that break too, so no blank line is left behind.
+
+## What `d` and `y` capture
+
+`d` and `y` share one rule for what a selection's text is in a register. A
+selection captures everything it covers, one entry per selection in document
+order. Whole lines are captured as lines. Anything else is captured as
+characters, short of the buffer's structural final line break, which an edit
+never removes. A selection that covers only that final line break captures
+nothing, and `d` removes nothing from it. `c` removes a selection's content
+except the line break it ends on, so it rewrites a line without removing the
+line, and it captures that content as characters.
+
+Because one rule serves both, a yank captures the same text that a delete of
+the same selection would have taken out.
 
 **Consecutive `p` presses append** rather than replacing — see "Repeat vs.
 swap" above for the underlying rule. Each press is its own separate undo

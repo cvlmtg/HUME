@@ -2,7 +2,7 @@
 
 Reference for every function a plugin or `init.scm` can call directly, as opposed to a command reached through a key binding or [`call!`](plugins.md#calling-other-commands). Two layers make up this surface:
 
-- **Builtins**: native to the editor, always available, called as plain Scheme: `(buffer-text pane)`, `(bind-key! ...)`. Some are thin Scheme wrappers (keyword arguments, defaults) over a Rust primitive; the wrapper is what's documented here.
+- **Builtins**: native to the editor, always available, called as plain Scheme: `(buffer-text pane)`, `(bind-key! ...)`. Some are thin Scheme wrappers that add keyword arguments and defaults; the signature documented here is the wrapper's.
 - **[Standard Library](standard-library.md)**: `core:stdlib`, an optional bundled *plugin*. Its commands are reached through `call!`, like any other plugin's: `(call! "stdlib/find" pred? lst)`.
 
 This page is a lookup reference: tables of signatures and one-line effects. For narrative walkthroughs and worked examples, see [Plugins](plugins.md), [Language Servers](lsp.md), [Configuration](configuration.md), and the other pages linked throughout.
@@ -11,8 +11,8 @@ This page is a lookup reference: tables of signatures and one-line effects. For 
 
 - A function whose call changes something (editor state, a registration, a process, a file) ends in `!`. Reads and functions that only build a value, like `debounce`, don't.
 - Lines, columns, and char offsets are 0-based everywhere. Add 1 only when showing a line number to the user.
-- Optional arguments are keywords with a default, like `#:cwd`, never a positional `#f` placeholder.
-- A structured value you pass in or get back (a decoration entry, a diagnostic, a request error) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. Values decoded from server JSON are JSON handles instead (see [JSON handles](#json-handles)). Picker items `(display . payload)`, picker `#:actions` `(key-spec . proc)`, and `register-lsp-server!`'s `#:env` `("KEY" . "VALUE")` are pairs, not records: the first two are per-row data on a hot path, the last a map.
+- Optional arguments are keywords with a default, like `#:cwd`, never a positional `#f` placeholder. The exception is `define-language!`, whose extensions, globs, and shebangs are positional lists you can drop from the end.
+- A structured value you pass in or get back (a decoration entry, a diagnostic, a request error) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. Values decoded from server JSON are JSON handles instead (see [JSON handles](#json-handles)). Two kinds of value are hashmaps with string keys, the wire shape: the `lsp-*-params` results (`(hash-ref (lsp-position-params pane) "position")`) and the items `completion-top` returns, whose source is `(hash-ref item "source")`. Picker items `(display . payload)`, picker `#:actions` `(key-spec . proc)`, and `register-lsp-server!`'s `#:env` `("KEY" . "VALUE")` are pairs, not records: the first two are per-row data on a hot path, the last a map.
 - Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, and every call that closes or changes that widget takes it. A stale token (the widget already closed or was replaced) is a no-op, so a late callback can never touch someone else's widget. `#f` — an opener's own answer when the open was dropped before it could happen — is stale by construction and a no-op the same way.
 - A value from a fixed set of names (a mode, a hook name, a log level, an enum option's value) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
@@ -47,10 +47,10 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 | Call | Effect |
 |------|--------|
 | `(define-command! name doc proc #:repeatable #:inline-output)` | Register `name` as an editor command |
-| `(define-typed-command! name doc proc #:inline-output)` | Register `name` as a typed command, reachable as `:name` |
+| `(define-typed-command! name doc proc #:inline-output #:complete)` | Register `name` as a typed command, reachable as `:name` |
 | `(call! name args ...)` | Dispatch any editor command (built-in or Scheme-defined), activating its plugin on demand |
 | `(request-wait-char! cmd-name)` | From inside a running command, dispatch `cmd-name` once the user types a character |
-| `(pending-char)` | Read the character captured by a `WaitChar` binding or `request-wait-char!`, or `#f` outside that context |
+| `(pending-char)` | Read the character captured by a `bind-wait-char!` binding or `request-wait-char!`, or `#f` outside that context |
 | `(command-plugin name)` | The id string of the plugin that registered command `name`: `"user"` for a top-level `init.scm` definition, `"hume"` for a built-in |
 | `(hume/yield!)` | Check the interrupt/step-budget flag inside a long loop, aborting the script if it's set |
 
@@ -98,6 +98,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | `(focused-pane)` | The pane focused right now, paired with its buffer: a live read. Reach for this from a response callback, a timer, or anything else with no pane of its own to act on, e.g. checking `(equal? pane (focused-pane))` before acting on a response, when `pane` was captured before an async request went out. A command body doesn't need this: it receives the pane it was invoked through as its own leading parameter (see [Defining commands](plugins.md#defining-commands)) |
 | `(buffers)` | List of every open buffer, as pane-less pane values, in open-order |
 | `(buffer-live? pane)` | `#t` if `pane`'s buffer is still open, `#f` otherwise; never raises. The idiom for a timer, debounce, or async callback whose captured value may have closed by the time it fires: check this before calling anything that would otherwise raise on a closed buffer |
+| `(pane-live? pane)` | `#t` if `pane` names a pane that still exists and still shows its own buffer, `#f` otherwise, including for a value that carries no pane; never raises. The same idiom as `buffer-live?` for a callback that calls a pane-aware builtin such as `lsp-request!` |
 | `(panes)` | List of every open pane, including panes in other tabs |
 | `(buffer-panes pane)` | Every pane currently showing `pane`'s buffer: the focused pane first if it shows that buffer, then the rest of the active tab, then other tabs. `(car (buffer-panes pane))` picks the same one a plugin would want by default when it just needs *some* pane on the buffer |
 | `(buffer-key pane)` | An opaque, comparable value naming just `pane`'s buffer: two pane values for the same buffer (even with different panes, or no pane at all) produce equal keys. Use this, not the pane value itself, as the key in a hash table a plugin keeps for its own per-buffer state |
@@ -133,7 +134,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | `(goto-location! pane loc)` | Move `pane`'s own pane to `loc`: an LSP `Location`/`LocationLink` JSON handle, or `(hash 'target t 'line l 'char-col c)` with `t` a pane value, path, or `file://` URI and `l`/`c` char-indexed |
 | `(insert-key! pane key)` | Run `key`'s normal Insert-mode behaviour (tab-style-aware Tab, auto-pairs, auto-indented Enter, …) on `pane`, as if it had no Insert-mode binding; `key` is one chord in `bind-key!`'s own syntax |
 
-`#:expect-generation` guards against applying a stale edit: pass a `buffer-generation` snapshot and the call fails if the buffer has mutated since. `apply-text-edits!`/`apply-workspace-edit!`/`goto-location!`'s wire shape each decode their positions using the handle's own producing-server encoding. A plain hashmap you build by hand (not pulled from a response via `json-ref`/`json-list`) has no such encoding to decode with, and is rejected.
+`#:expect-generation` guards against applying a stale edit: pass a `buffer-generation` snapshot and the call fails if the buffer has mutated since. `apply-text-edits!`/`apply-workspace-edit!`/`goto-location!`'s wire shape each decode their positions with the encoding of the server that sent them. A plain hashmap you build by hand (not pulled from a response via `json-ref`/`json-list`) has no such encoding to decode with, and is rejected.
 
 `insert-key!` only works while `pane` is the focused pane and Insert mode is active, from inside a command bound to an Insert-mode key. It exists so a binding can decide, at the moment the key is pressed, whether to override that key's normal behaviour or fall back to it. For example, binding Tab to complete after a letter and insert a tab everywhere else:
 
@@ -193,8 +194,8 @@ These are editor-builtin commands any LSP plugin can drive: an LSP plugin regist
 | `(lsp-linewise-ranges-params pane)` | `{"textDocument" {"uri"} "ranges" [...]}`: one wire range per linewise selection in `pane`'s own pane (a run of touching selections coalesces into one), `"ranges"` empty if none are linewise; `#f` only for the same reasons `lsp-primary-range-params` returns `#f` |
 | `(lsp-position->offset pane position)` | The buffer's char offset for a wire `{"line" "character"}` hashmap, or `#f` |
 | `(lsp-range->offsets pane range)` | `(hash 'start s 'end e)` char offsets for a wire `{"start" ... "end" ...}` range, or `#f` |
-| `(lsp-label-offsets->text label offsets)` | The slice of `label` a `ParameterInformation`-style `(start end)` wire offset pair names; `offsets` decodes with its own tagged producing-server encoding |
-| `(lsp-locations->display-parts locs)` | One `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b)` per raw `Location`/`LocationLink` in `locs`, each decodes wire positions with its own tagged producing-server encoding; `'buffer` is the open buffer the location is in, or `#f` when the file is not open |
+| `(lsp-label-offsets->text label offsets)` | The slice of `label` a `ParameterInformation`-style `(start end)` wire offset pair names; `offsets` decodes with the encoding of the server that sent it |
+| `(lsp-locations->display-parts locs)` | One `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b)` per raw `Location`/`LocationLink` in `locs`, each decodes wire positions with the encoding of the server that sent it; `'buffer` is the open buffer the location is in, or `#f` when the file is not open |
 
 `register-lsp-server!`, `lsp-request!`, and `lsp-notify!` are covered with examples in [Registering a language server](lsp.md#registering-a-language-server) and [Advanced: custom requests](lsp.md#advanced-custom-requests). `lsp-position->offset`/`lsp-range->offsets`/`lsp-label-offsets->text` convert LSP wire units (UTF-16 or byte offsets, depending on the server's negotiated encoding) to editor-native char offsets. Always go through these rather than assuming a 1:1 mapping. `lsp-locations->display-parts`'s column is an exact grapheme column when the target has an open buffer; otherwise it's the location's own wire `character` verbatim, since refining it would mean reading a file the user may never open.
 
@@ -205,7 +206,7 @@ Not LSP-specific (any plugin can populate these), but LSP diagnostics and inlay 
 | Call | Effect |
 |------|--------|
 | `(diagnostics-for-buffer pane #:severity #:range)` | Diagnostics for the buffer, optionally floored by severity symbol or restricted to a `(hash 'start s 'end e)` char range. Each entry is a hash with `'start`, `'end`, `'line`, `'end-line`, `'char-col`, `'grapheme-col`, `'severity` (`'error`, `'warning`, `'info`, or `'hint`), `'severity-rank`, `'message`, `'code`, `'source`, and `'raw` (a JSON handle onto the wire diagnostic) |
-| `(diagnostic-counts pane)` | `(errors . warnings)` pair for the buffer |
+| `(diagnostic-counts pane)` | `(hash 'errors n 'warnings n)` for the buffer |
 | `(set-inlay-hints! source pane hints)` | Replace `source`'s inlay hints for the buffer. `hints`: list of `(hash 'offset o 'text t 'side 'before)`, `'side` `'before` or `'after` |
 | `(register-sign-source! name pane priority)` | Reserve a gutter sign slot for `name` on the buffer, ranked by `(priority desc, name asc)` among every source registered for it |
 | `(set-signs! source pane signs)` | Replace `source`'s gutter signs for the buffer. `signs`: list of `(hash 'line l 'text t 'scope s)`; `source` must already be registered |
@@ -269,7 +270,7 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 | `(after! ms thunk)` | Call `thunk` with no args once `ms` milliseconds pass; returns a timer id |
 | `(cancel-timer! id)` | Cancel a pending timer; idempotent, a no-op if `id` already fired, was cancelled, or never existed |
 | `(debounce ms proc)` | Wrap `proc` so each call reschedules it `ms` out, cancelling any still-pending call from a prior invocation |
-| `(debounce-by ms proc #:key [key car])` | Same, but keyed per `(key . args)`: a call keyed one way never cancels a call keyed another. `#:key` defaults to the first argument itself; pass `#:key (lambda (pane . _) (buffer-key pane))` to key by buffer when different calls might carry different pane values for the same buffer |
+| `(debounce-by ms proc #:key)` | Same, but keyed per `(key . args)`: a call keyed one way never cancels a call keyed another. `#:key` defaults to the first argument itself; pass `#:key (lambda (pane . _) (buffer-key pane))` to key by buffer when different calls might carry different pane values for the same buffer |
 
 ## Async & subprocesses
 

@@ -9,7 +9,8 @@ useful later. Each topic lives in its own file under `docs/learning/`.
 
 ### Core text model
 
-How text is stored and mutated, and the invariants that must always hold.
+How text is stored and mutated, how edits are built and how stored positions
+follow them, and the invariants that must always hold.
 
 | Topic | File |
 |-------|------|
@@ -29,7 +30,7 @@ produce selections.
 | Motions vs Text Objects | [learning/motions-vs-text-objects.md](learning/motions-vs-text-objects.md) |
 | Move vs Extend: Separating Position from Anchor Semantics | [learning/motion-mode.md](learning/motion-mode.md) |
 | Word Motions: Selecting the Whole Word | [learning/word-motions.md](learning/word-motions.md) |
-| CharClass: Word Boundaries and the Eol Split | [learning/charclass.md](learning/charclass.md) |
+| Character Classes: Word Boundaries and the Eol Split | [learning/charclass.md](learning/charclass.md) |
 | Inner vs Around: The Text Object Convention | [learning/inner-vs-around.md](learning/inner-vs-around.md) |
 | Quote Scanning: Parity Instead of Depth | [learning/quote-scanning.md](learning/quote-scanning.md) |
 | Matching Pairs: Depth Tracking and Two Accepted Limitations | [learning/matching-pairs.md](learning/matching-pairs.md) |

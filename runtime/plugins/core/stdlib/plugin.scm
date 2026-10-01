@@ -263,7 +263,7 @@
   stdlib/git-toplevel)
 
 (define-command! "stdlib/resolve-lang-arg"
-  "A typed language-name argument, else pane's language, else #f after a warning."
+  "A typed language-name argument, else pane's language, else #f after an info message."
   stdlib/resolve-lang-arg)
 
 (define-command! "stdlib/config-boolean"

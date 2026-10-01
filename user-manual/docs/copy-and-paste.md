@@ -12,12 +12,25 @@ HUME has two paste sources: the system clipboard and a kill ring that remembers 
 
 With a real selection (more than a single character), `p` and `P` **replace** it, unless what you're pasting is already exactly the selected text, in which case they paste right alongside it instead, so pressing `p` again after a paste adds another copy rather than overwriting the first one. "After" and "before" apply on a bare cursor, or once a matching selection has collapsed this way. The replaced text (when something is replaced) is thrown away rather than pushed onto the kill ring.
 
+## Lines and inline text
+
+A paste remembers how its text was taken. A selection that starts at the beginning of a line and ends on a line break (what `x` selects) is taken as whole lines; any other selection is taken as inline text. Text yanked in HUME keeps this shape when you paste it back from the system clipboard, until something else changes the clipboard.
+
+| Taken as | On a bare cursor | Over a selection |
+|----------|------------------|------------------|
+| Whole lines | `p` puts the lines below the cursor's line, `P` above it | The lines replace the selection. When the selection does not start its line, the pasted lines begin on a new line of their own, and the text after the selection continues on the line below them |
+| Inline text | `p` puts the text after the cursor without crossing the line break, `P` before the cursor | The text replaces the selection |
+
+Text from outside HUME, such as the system clipboard after another program wrote to it, or text a plugin supplies, has no remembered shape: it pastes as whole lines when it ends with a line break and as inline text otherwise.
+
+`d` and `y` take what the selection covers, with one exception: the final line break of the buffer is never taken on its own. On the last line, a cursor resting on that line break (past the last character of a line with text) gives `d` and `y` nothing to take, and deleting the last line with `x` then `d` leaves no empty line behind. `c` keeps the line break a selection ends on and takes the rest as inline text.
+
 ## Smart-p paste
 
 `p` and `P` decide what to paste based on whether the buffer has changed since the ring last did:
 
-- **Nothing edited since the last `d`, `c`, or `y`**: reads the kill ring head (the most recently killed, changed, or yanked text).
-- **Something edited since**: reads the system clipboard, falling back to the kill ring head when the clipboard is empty or unavailable.
+- **Nothing edited since the last `d`, `c`, or `y`**: reads the kill ring. Right after a `d`, `c`, or `y` that is the head (the most recently killed, changed, or yanked text); right after a paste or a `[`/`]` cycle it is the entry that paste or cycle used.
+- **Something edited since**: reads the system clipboard. A first paste falls back to the kill ring head when the clipboard is empty or unavailable. Once a press has read the clipboard, a further `p` or `P` pastes nothing if the clipboard is then empty or unavailable.
 
 Since `y` writes to both the clipboard and the kill ring, `y` then `p` pastes what you just yanked. Yanking to an explicit register instead (`"0y`) leaves both the clipboard and this "what should a bare `p` read" tracking untouched. A following bare `p` behaves exactly as it would have if the `"0y` hadn't happened. Use `"0p` to read the register back.
 
@@ -31,13 +44,13 @@ Pasting text from outside HUME (your system clipboard via the terminal's own pas
 
 - In Insert mode, the text is inserted at the cursor. Auto-pairing does not run on pasted text, so pasted brackets and quotes are never doubled up.
 - In Normal or Extend mode, a real selection is replaced; on a bare cursor the text is inserted in front of it.
-- On the command mode prompt and in search/select prompts, line breaks in the pasted text become spaces, since those fields are single-line.
+- On the command prompt, the Search and Sift prompts, and picker query fields, line breaks in the pasted text become spaces and a trailing line break is dropped, since those fields are single-line.
 
 ## Whitespace and the kill ring
 
-When the current kill-ring head is a pure-whitespace entry (only spaces, tabs, and/or newlines), the next delete, change, or yank overwrites that slot in place instead of taking a fresh one. This stops the ring filling up with entries you'd never want to cycle back to. To keep whitespace durably, yank it into a numbered register (`"0`–`"9`).
+When the current kill-ring head is a pure-whitespace entry (nothing but whitespace characters of any kind, such as spaces, tabs, and line breaks), the next delete, change, or yank overwrites that slot in place instead of taking a fresh one. This stops the ring filling up with entries you'd never want to cycle back to. To keep whitespace durably, yank it into a numbered register (`"0`–`"9`).
 
-The ring never holds two identical entries. Deleting, changing, or yanking text that's already in the ring moves that entry back to the front instead of adding a duplicate, so cycling with `[`/`]` never repeats the same text twice.
+The ring never holds two identical entries: entries with the same text and the same shape (whole lines or inline). Deleting, changing, or yanking text that's already in the ring moves that entry back to the front instead of adding a duplicate, so cycling with `[`/`]` never repeats the same entry twice.
 
 ## Register prefix (`"`)
 

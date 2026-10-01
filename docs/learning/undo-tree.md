@@ -44,9 +44,9 @@ Every node except the root, which is the state before any edit, stores:
   (when the original text is still available) avoids having to reconstruct it
   later.
 - A list of child node references.
-- A timestamp, reserved for future time-travel navigation (`:earlier N
-  minutes`, `:later N minutes`, or any history-browsing UI); not yet wired as
-  user commands.
+- A timestamp, which `:earlier` and `:later` read to travel by age
+  (`:earlier 5m` goes back to how the buffer looked five minutes ago). Both
+  also take a step count, and each walk is the same one `u` and `Ctrl-r` take.
 
 The transactions, not the buffer content, are what's stored. At any point the
 editor holds one live buffer. Undoing applies the inverse transaction to the
@@ -134,10 +134,10 @@ the saved-id pointer is just re-anchored to the current position.
 
 ## Jumping to an arbitrary revision
 
-HUME exposes a goto-revision primitive as a building block for future
-history-browsing UI. It is not yet wired to a `:goto-revision`, `:earlier`,
-or `:later` user command; today only the editor's own tests call it. Given a
-target node anywhere in the tree, the algorithm:
+The history can jump from the current node to any node in the tree. No user
+command exposes that jump; `:earlier` and `:later` follow the chain of most
+recent children instead. Given a target node anywhere in the tree, the
+algorithm:
 
 1. Walks up from the current node and from the target node to collect their
    respective ancestor chains.
@@ -148,9 +148,29 @@ target node anywhere in the tree, the algorithm:
 4. Plays forward transactions from the LCA down to the target (redoing each
    step).
 
-The caller applies each transaction in sequence. This correctly handles jumping
-across branches, jumping to earlier points on the same branch, and even jumping
-forward to future points that are reachable only through a later branch.
+The transactions are composed into one changeset, which is applied to the
+buffer once. The same holds for `5u` and an age-based `:earlier`: however many
+steps the walk spans, the buffer changes once, so everything that follows the
+text (other panes, syntax, language servers) sees a single change. This
+correctly handles jumping across branches, jumping to earlier points on the
+same branch, and even jumping forward to future points that are reachable only
+through a later branch.
+
+## Undo restores the text's version
+
+Every text carries a version label, and every set of selections remembers the
+version of the text it was made for. A selection set is only readable against
+its own text, so undo has to hand back a text that wears the label its
+selections were recorded for. Applying a stored transaction therefore gives
+the resulting text that recorded label, and pairs it with the stored
+selections.
+
+Texts are also ordered by a generation number that only increases, and
+language servers and syntax parsing rely on that order. An undo walk that
+changes the text gets the next generation. A walk whose changes cancel out,
+such as undoing an insertion and its own later deletion, keeps the same text
+and the same generation and only relabels it, so nothing downstream sees a
+change that did not happen.
 
 ---
 

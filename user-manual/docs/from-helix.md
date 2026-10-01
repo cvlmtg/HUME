@@ -130,7 +130,7 @@ Helix's `x` is **modal**: once pressed, all subsequent `x` presses extend the se
 
 HUME's `x` is **one-shot**. Each press re-anchors to the next line. To get Helix's repeat-extend behavior, enter **Extend mode** first (`e`). In Extend mode, `x` (and every other motion) extends rather than replaces. Use `Ctrl-x` for a one-shot extend without entering the mode.
 
-`X` is the backward form: after growing a line selection downward, `X` (or `Ctrl-Shift-x`) shrinks it back up one line at a time. Helix has no key for that.
+`X` is the backward form. In Normal mode, on a whole-line selection, it jumps to the line above. To shrink a line selection grown downward, press `Ctrl-Shift-x`, or `X` in Extend mode; each press removes one line. Helix has no key for that.
 
 ### Multiple selections
 
@@ -142,7 +142,7 @@ Both editors share the same foundations (multiple cursors, `;` to collapse, `S` 
 | Copy selection on line above | `Alt-C` | (unbound) |
 | Remove primary selection | `Alt-,` | `Ctrl-,` (kitty only) |
 | Flip selections | `Alt-;` (Normal and Select mode) | `Ctrl-e` (Normal and Extend mode) |
-| Merge consecutive selections | `Alt-_` (touching selections only); `Alt--` merges all into one span | automatic: adjacent selections never persist |
+| Merge consecutive selections | `Alt-_` (touching selections only); `Alt--` merges all into one span | automatic: selections that share a character merge; touching ones stay separate |
 | Align selections | `&` | `&` |
 | Trim whitespace at edges | `_` | `_` |
 | Sort | `:sort` | `:sort` (different semantics; see below) |
@@ -206,7 +206,7 @@ Enable the Helix-style bindings by loading the built-in plugin:
 
 Helix's match mode binds `m m` to jump to the matching bracket. HUME binds the same idea directly to `#`, with no mode step, and also matches HTML/XML/JSX tag pairs, without disturbing `%` (select whole buffer) in either editor.
 
-Helix's bracket mode also binds `]f`/`[f`, `]t`/`[t`, `]a`/`[a`, `]c`/`[c`, and `]T`/`[T` by default, jumping straight to the next/previous function, class, argument, comment, or unit test. HUME puts the same six kinds (plus `value`, for array/tuple/struct entries, which Helix's bracket mode doesn't have) on the `g` prefix instead of a separate bracket mode: lowercase jumps forward, uppercase jumps backward, on the same letter as the `m i`/`m a` text object: `g f`/`g F`, `g t`/`g T`, `g a`/`g A`, `g c`/`g C`, `g u`/`g U` (unit test), `g v`/`g V` (value).
+Helix's bracket mode also binds `]f`/`[f`, `]t`/`[t`, `]a`/`[a`, `]c`/`[c`, and `]T`/`[T` by default, jumping straight to the next/previous function, class, argument, comment, or unit test. HUME puts the same five kinds (plus `value`, for array/tuple/struct entries, which Helix's bracket mode doesn't have) on the `g` prefix instead of a separate bracket mode: lowercase jumps forward, uppercase jumps backward, on the same letter as the `m i`/`m a` text object: `g f`/`g F`, `g t`/`g T`, `g a`/`g A`, `g c`/`g C`, `g u`/`g U` (unit test), `g v`/`g V` (value).
 
 ## What we took from Helix
 
@@ -214,7 +214,7 @@ Several features were intentionally adopted from Helix rather than reinvented:
 
 - **Tree-sitter grammars**: rather than curating our own grammar repository list, HUME pins a Helix commit and syncs grammar sources, revisions, language extensions, and file-glob associations from Helix's `languages.toml` via a script. Tree-sitter highlight queries are fetched directly from Helix's repository at the pinned revision at install time.
 - **Helix-style surround**: the `core:helix-surround` plugin remaps surround operations to `ms` (wrap), `md` (delete), and `mr` (replace), matching Helix's keybindings. This is opt-in; HUME's default surround follows its own select-then-act model.
-- **Kitty keyboard protocol support**: HUME uses the `termina` crate so the same detection and encoding work consistently on Unix and Windows terminals alike, falling back to legacy key encoding where the protocol isn't available.
+- **Kitty keyboard protocol support**: HUME detects and uses the protocol the same way on Unix and Windows terminals, falling back to legacy key encoding where the protocol isn't available.
 - **Cursor shape**: HUME's Insert-mode cursor defaults to a thin bar, matching the look Helix gives you once you set `insert = "bar"` in `[editor.cursor-shape]`; set `cursor-shape-insert` to `block` or `underline` for the other two shapes (see [Global options](configuration.md#global-options)). Normal and Extend mode have no shape setting of their own and are always a block, same as Helix's own default for every mode it doesn't override. HUME departs from Helix for multi-cursor editing: Helix always shows every extra cursor as a colored block regardless of shape, since only one of them can ever be the real terminal cursor. HUME instead applies `cursor-shape-insert` to every cursor alike. With `block`, each one is painted from the theme's own cursor colors (`ui.cursor.insert`/`ui.cursor.primary.insert`, and their Normal/Extend equivalents); with `bar` or `underline`, only the real terminal cursor marks the primary one, and the rest are visible only where they sit inside a highlighted selection.
 
 ## What Helix has that HUME doesn't
@@ -223,7 +223,7 @@ Several features were intentionally adopted from Helix rather than reinvented:
 - `*` searching the selection with automatic word-boundary anchors: HUME's `Ctrl-/` matches a selection literally (Helix's `Alt-*`), and HUME's own `*` searches the word under the cursor instead of the selection. See [Search](#multiple-selections)
 - Rainbow bracket highlighting: HUME reads the rest of a theme that defines a top-level `rainbow` array but has no feature to act on it
 - Shell pipe integration: piping selections through a command (`|`), inserting a command's output (`!`), or filtering selections by a shell command's exit status (`$`). Anything you'd reach for these for is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands
-- Merging every selection into one span across gaps (`Alt--`); HUME only merges selections that already touch, automatically
+- Merging every selection into one span across gaps (`Alt--`); HUME only merges, automatically, selections that share a character; touching selections stay separate
 - `:x` and `:o`/`:open` as command aliases; use `:wq`/`:write-quit` and `:e` instead
 
 ## What HUME has that Helix doesn't
@@ -233,7 +233,7 @@ Several features were intentionally adopted from Helix rather than reinvented:
 - [Smart paste](copy-and-paste.md#smart-p-paste) with kill ring
 - [Hook system](plugins.md#hooks) (on-buffer-open, on-buffer-save, etc.)
 - [One-shot extends](#growing-selections) that extend a single motion without switching to a select/extend mode
-- Backward line-selection shrinking (`X`/`Ctrl-Shift-x`; see [Line selection](#line-selection-x-vs-extend-mode-e))
+- Backward line-selection shrinking (`Ctrl-Shift-x`, or `X` in Extend mode; see [Line selection](#line-selection-x-vs-extend-mode-e))
 - A structural text object and navigation kind for array/tuple/struct values ([`m i v`/`m a v`](selections.md#text-objects), [`g v`/`g V`](moving-around.md#structural-navigation))
 - [Custom statusline elements](configuration.md#custom-elements) written in Scheme
 - Per-cursor shape and theme coloring for every multi-cursor, not just the primary one (see [Global options](configuration.md#global-options))

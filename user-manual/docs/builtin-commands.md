@@ -1,6 +1,6 @@
 # Builtin Commands
 
-These are editor commands, reached from a key binding or from a plugin with `(call! …)`, never from the command mode prompt. (Typed commands are listed on the [Command mode](command-mode.md) page instead.) Every command below is a native one, owned by the editor itself, not a plugin. They are callable two ways from Scheme:
+These are editor commands, reached from a key binding or from a plugin with `(call! …)`, never from the command mode prompt. (Typed commands are listed on the [Command mode](command-mode.md) page instead.) Every command below is built into the editor, not a plugin. They are callable two ways from Scheme:
 
 ```scheme
 ;; directly, as a bare binding
@@ -9,7 +9,7 @@ These are editor commands, reached from a key binding or from a plugin with `(ca
 (call! "move-left" pane)
 ```
 
-Most builtins act through whatever pane `pane` names (not necessarily the one you're focused on, as long as it's still open and still shows the buffer `pane` names), so a hook or a timer can act on a pane you aren't currently looking at. A few commands require `pane` to be the one you're actually focused on: entering insert mode, opening a search or command prompt, toggling extend mode, paste and paste-cycling, repeating the last action, opening or switching tabs, and every pane-focus/split/close command. Every command needs a `pane` that names a pane — a value with only a buffer (from `(buffers)`, or a buffer-level hook) is refused. Either way, a `pane` the command can't act on errors rather than silently falling back to whatever is focused. The first form is only valid for builtins (they are pre-registered in the Steel scripting engine); `call!` works for any key-bindable command, builtin or Scheme-defined. Each entry lists the command name and what it does. For key bindings that trigger these commands, see the [key reference](default-keys.md) and the per-topic pages.
+Most builtins act through whatever pane `pane` names (not necessarily the one you're focused on, as long as it's still open and still shows the buffer `pane` names), so a hook or a timer can act on a pane you aren't currently looking at. A few commands require `pane` to be the one you're actually focused on: entering insert mode, opening a search or command prompt, toggling extend mode, paste and paste-cycling, repeating the last action, opening or switching tabs, and every pane-focus/split/close command. Every command needs a `pane` that names a pane — a value with only a buffer (from `(buffers)`, or a buffer-level hook) is refused. Either way, a `pane` the command can't act on errors rather than silently falling back to whatever is focused. The first form is only valid for builtins; `call!` works for any key-bindable command, builtin or Scheme-defined. Each entry lists the command name and what it does. For key bindings that trigger these commands, see the [key reference](default-keys.md) and the per-topic pages.
 
 ## Motions
 

@@ -1,4 +1,4 @@
-# CharClass: Word Boundaries and the Eol Split
+# Character Classes: Word Boundaries and the Eol Split
 
 ## word vs WORD
 
@@ -10,7 +10,9 @@ Vim and Helix distinguish two kinds of "word":
 - `WORD` (uppercase, `W`/`B`/`iW`): a run of any non-whitespace characters.
   Only a whitespace boundary counts.
 
-HUME classifies every character into one of four classes:
+HUME classifies every character into one of four classes. A character cluster
+(a letter with its accent, an emoji sequence) is classified by its first
+character, so a cluster never changes class partway through:
 
 | Class | Members | Example chars |
 |-------|---------|---------------|
@@ -24,7 +26,7 @@ like `é` and Han characters like `文` classify as Word just as `a` does. Space
 covers the characters that act as spacing — including the two
 invisible Unicode spaces — while every other exotic whitespace character
 (form feed, thin space, …) is classed as Punctuation, so the
-cursor stops on it rather than silently skipping something invisible.
+cursor stops on it rather than skipping over something invisible.
 
 For `word` boundaries, any adjacent class change is a boundary — `Word`→`Punctuation`,
 `Punctuation`→`Space`, and so on. For `WORD` boundaries, the only merge is

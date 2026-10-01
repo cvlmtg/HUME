@@ -32,7 +32,7 @@ Commands come in a few varieties:
   state, with no side effects.
 - **Selection** commands similarly return a new selection state without
   modifying the buffer.
-- **Edit** commands return a new buffer *and* new cursor state, plus a
+- **Edit** commands return the new text together with its selections, plus a
   changeset (the description of what changed, used for undo).
 - **Editor-level** commands have access to the full editor state: mode
   changes, registers, undo groups. Used for operations that don't fit the pure
@@ -129,8 +129,8 @@ Three types of trie nodes:
 
 - **Leaf**: a complete binding → dispatch the named command.
 - **Interior**: more keys needed (e.g. `m` → `i` → `w` for inner-word).
-- **WaitChar**: the next keypress is consumed as a character argument
-  (used by find, replace, etc.).
+- **Wait-for-a-character**: the next keypress is consumed as a character
+  argument (used by find, replace, etc.).
 
 ### Three keymaps
 
@@ -227,7 +227,7 @@ tracks count as "no count was typed" versus "an explicit count of *n* was
 typed" — a bare `w` and an explicit `1w` both move by one word, but they are
 distinguishable to the layers above dispatch.
 
-Script-defined commands receive the buffer they were invoked for, then count
+Script-defined commands receive the pane they were invoked through, then count
 and extend, as their first three parameters (if declared), the same
 injection mechanism as the extend flag described above. Since Scheme has no built-in way to say "this argument was
 omitted," dispatch passes a count of zero to mean "no count was typed," and a
@@ -235,12 +235,12 @@ command that forwards its count to another command decodes zero back into
 "no count" before passing it on — so a bare keypress stays a bare keypress
 all the way through a chain of commands calling each other.
 
-### WaitChar: parameterized commands
+### Wait-for-a-character bindings: parameterized commands
 
 Some commands need a character argument: find-forward, find-backward, replace.
-The keymap stores these as *WaitChar* nodes.
+The keymap stores these as *wait-for-a-character* nodes.
 
-When the trie walk hits a WaitChar node, the dispatcher saves the command name
+When the trie walk hits such a node, the dispatcher saves the command name
 and waits. The next keypress is consumed as the character argument, and then
 the command runs with that character. Extend mode is resolved at the moment the
 character arrives — not at the moment the trigger key is pressed.
@@ -255,8 +255,8 @@ useful is the user's responsibility. The editor doesn't second-guess it.
 
 ## Insert mode limitations
 
-Insert mode's keymap walk is single-key only. Multi-key sequences and WaitChar
-commands won't work there — insert mode is optimised for typing, not for
+Insert mode's keymap walk is single-key only. Multi-key sequences and
+wait-for-a-character commands won't work there — insert mode is optimised for typing, not for
 command choreography. Single-key leaf commands bind fine.
 
 ## Independence of layers

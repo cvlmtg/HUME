@@ -30,6 +30,8 @@ Whichever way you entered Insert mode, `m i i` recovers what you last typed afte
 
 Use `x` to select the current line first if you want a line-wise delete (`x` then `d`).
 
+`d` takes everything the selection covers except the buffer's final line break; see [Lines and inline text](copy-and-paste.md#lines-and-inline-text). When several cursors' deletions overlap, such as `Ctrl-w` in Insert mode with cursors in the same word, the overlapping text is removed once.
+
 See [Copy & Paste](copy-and-paste.md) for what the kill ring is and how to paste from it.
 
 ## Replacing text
@@ -72,7 +74,7 @@ You can align to the left or the right depending on which end of the selection i
 | Key | Effect |
 |-----|--------|
 | `u` | Undo (accepts a count: `5u` undoes five steps) |
-| `U` / `Ctrl-r` | Redo |
+| `U` / `Ctrl-r` | Redo (accepts a count: `5U` redoes five steps) |
 
 Undo history is a tree rather than a straight line, so redoing after new edits follows the most recent branch. The history lives in memory only and starts fresh each time you open a file.
 
@@ -144,7 +146,7 @@ If you prefer Helix's dedicated surround keys, a bundled plugin provides them:
 | `m d` + char | Delete the surrounding pair |
 | `m r` + char + new | Replace the surrounding pair with a new delimiter |
 
-Note that this moves wrapping onto `m s`: it takes over the default `m s` (select the pair) and removes `m w`.
+This moves wrapping onto `m s`: it takes over the default `m s` (select the pair) and removes `m w`.
 
 ```scheme
 (load-plugin! "core:helix-surround")

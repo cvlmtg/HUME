@@ -24,7 +24,8 @@ characters are **variable-width**: 1 to 4 bytes each.
 
 `é` occupies bytes 3 **and** 4. Byte offset 4 points into the **middle** of a
 character — it is not a valid character boundary. This is why `s[3..4]` on
-`"café"` panics in Rust: slicing through a multi-byte character is undefined.
+`"café"` panics in Rust: slicing through the middle of a multi-byte character
+is refused.
 
 Byte offsets are used internally by Rust's `str` and by the rope library HUME
 stores buffer text in, but they are **never used for buffer positions** in
@@ -47,13 +48,16 @@ regardless of how many bytes each one takes.
 ```
 
 `é` is a single `char` at offset 3 — no partial-character hazard. This is the
-rope library's native addressing unit, and it is what HUME's buffer,
-selections, and selection sets use for all positions.
+rope library's native addressing unit, and it is what HUME's text storage and
+its changesets use for positions.
 
 Char offsets make sense for an editor at the storage layer:
 - `insert(at, text)` and `remove(from, to)` can be expressed cleanly.
-- The anchor and head of a selection are meaningful without knowing the
-  encoding of any particular character.
+- A position means the same thing without knowing the encoding of any
+  particular character.
+
+A char offset does not know about clusters. It can point between a letter and
+its combining accent, so a selection does not use one.
 
 ## Grapheme cluster
 
@@ -72,14 +76,14 @@ character, which may be composed of multiple Unicode scalar values.
 
 Pressing the right-arrow key on `"👨‍👩‍👧"` should advance the cursor past the
 entire emoji in one step, not stop five times. This is the job of the
-grapheme layer: given the buffer, it returns the next/previous **valid
-grapheme boundary** as a char offset.
+grapheme layer: given the buffer, it returns the next or previous **valid
+grapheme boundary**.
 
 ## Architectural rule
 
 | Unit | Granularity | Role in HUME |
 |------|-------------|--------------|
-| Byte offset | Raw memory | Internal to the text storage library — never exposed |
+| Byte offset | Raw memory | Internal to the text storage library, and the unit regex matchers and tree-sitter speak at their seams |
 | Char offset | Unicode scalar value (`char`) | Storage, and positions from outside (a language server, a regex match) |
 | Cluster position | User-perceived character | Selections, cursor movement, motions, text objects |
 
@@ -90,6 +94,13 @@ where a selection starts or ends takes and returns cluster positions, so a
 position inside a cluster is not a bug to look for; it cannot be written down.
 A char offset from outside becomes a cluster position in one step that snaps
 it onto the cluster holding it.
+
+Edit code needs a second kind of position, a **cluster bound**: either the
+start of a cluster or the end of the text. A cursor can never sit at the end
+of the text, since the structural newline is always there to sit on, but an
+edit can: inserting at the very end, or deleting up to it, names the place
+after the last cluster. A cluster bound is the end of a half-open range, and
+every cluster start is one.
 
 A run of whole clusters is its own type too. It knows its first cluster, its
 last cluster and where it ends (the start of the next one), so there is no
@@ -122,8 +133,8 @@ a character behind.
 
 A selection is only meaningful for the text it was made on. Each set of
 selections remembers which version of the text it belongs to, and reading it
-means pairing it with that text: pairing it with any other version is
-reported as a bug.
+means pairing it with that text: pairing it with any other version is a
+bug that panics.
 
 An edit is the one place positions for a text that does not exist yet are
 needed: the text it leaves behind can re-form clusters (deleting the base

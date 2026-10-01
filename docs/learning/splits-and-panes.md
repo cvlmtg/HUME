@@ -46,9 +46,13 @@ If two panes show the same buffer and one of them makes an edit, the other
 pane's selections would go stale the instant the edit lands — a cursor at
 character 40 means something different after ten characters were inserted at
 position 10. Every edit therefore propagates: the editing pane applies its
-edit normally, and every other pane currently viewing that buffer has its
+edit normally, and every other pane that has ever shown that buffer has its
 selections carried forward through the same edit, so a cursor sitting after
-the insertion point moves along with the text it was next to. See
+the insertion point moves along with the text it was next to. A pane that has
+switched to another file still remembers its place in this one, and that place
+follows the edits too. Selections are not the only positions that follow:
+jump lists, marks, prompt snapshots, diagnostics, and the other stored
+positions are carried through the same change at the same moment. See
 [Changesets: Describing Edits as Data](changesets.md) for how an edit maps an
 old position to its new one.
 

@@ -160,7 +160,7 @@ c          change them all at once
 new<Esc>   type the replacement
 ```
 
-That replaces Vim's `:%s/old/new/g`. To scope it to a region instead of the file, select the region first and skip the `%`. To replace only some matches, drop the ones you don't want with `,` and `(` / `)` before pressing `c`.
+That replaces Vim's `:%s/old/new/g`. To scope it to a region instead of the file, select the region first and skip the `%`. To replace only some matches, drop the ones you don't want before pressing `c`: `(` / `)` makes a selection primary and `Ctrl-,` removes the primary (kitty only), while `,` keeps only the primary.
 
 `m /` is the other route: search with `/pattern` first, then `m /` turns every match in the buffer into a selection.
 
@@ -186,7 +186,7 @@ Two more registers exist but can't be typed after `"`: the search register (the 
 `[` and `]` only do something immediately after a paste: they swap the pasted text for an older or newer kill-ring entry. Pressed at any other time they do nothing.
 
 ::: warning
-Letter registers `a`–`z` other than the special names above do not exist. All yanks and deletes go to the kill ring (`k`) and digit registers (`0`–`9`).
+Letter registers `a`–`z` other than the special names above do not exist. Yanks and deletes go to the kill ring (`k`); the digit registers (`0`–`9`) hold only what you write to them explicitly, such as `"0y`.
 :::
 
 See [Register prefix](copy-and-paste.md#register-prefix) for the full syntax and canonical register list.

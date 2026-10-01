@@ -76,8 +76,8 @@ selection.
 
 ## In practice
 
-The implementations share the code that locates the extent of the text object
-(finding the bracket pair, scanning the word boundary) and differ only in what
-range they return: inner stops just inside the delimiters, around includes them.
-Both use the same underlying position logic — the `i`/`a` distinction is a
-one-line change at the end.
+Inner and around locate the same extent (the bracket pair, the word's
+boundaries) and differ in what they select: inner stops just inside the
+delimiters, around includes them. For a word, around is not a fixed-width
+grab. It grows the word by a scan over the adjacent whitespace, as described
+above.

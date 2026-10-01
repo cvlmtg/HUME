@@ -63,7 +63,7 @@ selection list is actually fetched, not one that picks an already-fetched list a
 `stdlib/list-subdirs`.
 
 Thin wrappers over Steel's `steel/filesystem`/`steel/ports`. `core:plum` and `core:lsp`
-both call into these rather than each carrying its own copy. `delete-dir`/`delete-file`
+both call into these rather than each carrying its own copy. `delete-dir!`/`delete-file!`
 are idempotent, unlike Steel's own `delete-directory!`/`delete-file!`: a missing target
 is not an error. `list-subdirs` filters to actual directories, skipping stray files that
 sit alongside a directory tree (`.install-lock`, `.DS_Store`).

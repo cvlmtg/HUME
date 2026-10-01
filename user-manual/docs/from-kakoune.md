@@ -135,7 +135,7 @@ HUME's `x` re-anchors instead: each press selects one line and moves on, rather 
 |---------|------|
 | `<a-s>` (split on line boundaries) | `S` |
 | `S` (split on a regex) | *(none)*: `s` narrows to regex matches instead |
-| `<a-_>` (merge contiguous selections) | automatic: adjacent selections never persist |
+| `<a-_>` (merge contiguous selections) | automatic: selections that share a character merge; touching ones stay separate |
 
 ### Search
 
@@ -154,7 +154,7 @@ The search keys overlap heavily in spelling and barely at all in meaning.
 | `<c-/>` | | Set pattern from the selection, verbatim |
 
 ::: warning
-Two traps: `?` opens a backward search in HUME (Vim-style), not an extend like Kakoune's. And `N` has no equivalent — use `m /` to select every match at once instead, then narrow with `,` and `(`/`)`.
+Two traps: `?` opens a backward search in HUME (Vim-style), not an extend like Kakoune's. And `N` has no equivalent — use `m /` to select every match at once instead, then narrow with `(`/`)` and `Ctrl-,` (kitty only; `,` keeps only the primary).
 :::
 
 Neither `*` moves the cursor; both just set the pattern for `n` to use. The difference is what they read: Kakoune uses whatever is selected, HUME expands to the whole word under the cursor and ignores the selection. `Ctrl-/` is the closer match to Kakoune's `*` family, and it needs kitty.

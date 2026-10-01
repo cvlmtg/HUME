@@ -26,9 +26,21 @@ When an edit touches multiple positions, **the order of application matters**:
 inserting a character at offset 0 shifts every position to its right, so
 naively applying edits one-by-one would corrupt subsequent offsets.
 
-HUME avoids this entirely with a change-set builder: all input positions are
-expressed in **original-buffer coordinates**, and the builder handles the
-translation internally. See the [Changesets](changesets.md) section.
+HUME avoids this entirely with an edit builder: each operation names a
+position or range of the **original buffer**, and the builder handles the
+translation internally. Operations are recorded against the old text and
+applied in position order, so the order a command records them in does not
+change the result.
+
+Because every selection records its own operations, ranges can overlap even
+though the selections themselves do not. Take two cursors in the same word,
+each pressing the delete-word-backward key in insert mode: each deletes back
+to the word's start, so one range contains the other. The builder merges
+overlapping deletions into their union, so the shared characters are removed
+once. A position strictly inside a deleted range
+ends up at the point where the deletion happened. The selections an edit
+leaves behind are resolved once, against the new text, and selections that
+end up sharing a character merge. See the [Changesets](changesets.md) section.
 
 ## Primary vs secondary selections
 
@@ -51,7 +63,8 @@ to every selection in the set simultaneously. The *primary* is just the
    register stores a **list of N strings**, one per selection in document
    order. Pasting with N cursors maps each slot back to the corresponding
    cursor. If the cursor count doesn't match at paste time, the full register
-   content is pasted at every cursor as a fallback.
+   content is pasted at every cursor as a fallback, in the shape of its last
+   entry.
 
    HUME uses mnemonic register names rather than the traditional Vim/Helix
    convention (`"`, `+`, `_`). Since 10 named registers (`0`–`9`) cover all
@@ -126,12 +139,19 @@ to every selection in the set simultaneously. The *primary* is just the
    workaround by never clobbering the ring entry on replace: the kill ring
    already holds the selection's history.
 
-   A register's content chooses its own paste shape. Content that ends in a
-   newline is *linewise*: over a cursor it inserts as new line(s) below or
-   above; over a selection it replaces line-by-line and reflows what is left.
-   Content without a trailing newline is *charwise*: it lands inline at the
-   cursor. The distinction falls out of inspecting the yanked text — no
-   separate `p` vs `P`-linewise command names it.
+   Every register entry remembers the paste shape it was captured with. A
+   selection of whole lines (it starts a line and ends on a line break) is
+   captured as *linewise*: over a cursor it inserts as new line(s) below
+   (`p`) or above (`P`); over a selection it replaces line-by-line and
+   reflows what is left. Any other selection is captured as *charwise*: it
+   lands inline at the cursor. Text that did not come from a selection, such as
+   the system clipboard or a script's text, has no remembered shape, so it
+   counts as linewise only when it ends in a newline. The shape comes from
+   the capture, so no separate `p` vs `P`-linewise command names it.
+
+   When a linewise paste replaces a selection that does not start its line,
+   the retained text before the selection is pushed onto its own line with a
+   line break, so the pasted lines start a line of their own.
 
 **Why cycle the primary?** In a keyboard-only multi-cursor world, cycling
 forward and backward through primaries is how you "focus" a different cursor

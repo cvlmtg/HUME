@@ -17,7 +17,7 @@ All movement happens in Normal mode. Motions move the cursor and change the curr
 
 A `word` breaks at punctuation, so `don't` is three `words`. A `WORD` only breaks at spaces, so `don't` is one `WORD`. Set `word-chars` (see [Configuration](configuration.md)) to widen what counts as a word, e.g. `-` makes `foo-bar` one `word` instead of three.
 
-By default, `w`/`W`/`b`/`B` also cover the whitespace *before* the destination word, except the first word of a line, which takes its *trailing* whitespace instead, since a leading run there would be indentation. This means deleting a word never leaves a double space behind. Turn it off with `:set global word-selects-whitespace=false` (or per buffer) to select just the bare word instead. See [Configuration](configuration.md).
+By default, `w`/`W`/`b`/`B` also cover the whitespace *before* the destination word. When no whitespace precedes the word (the first word of a line, where a leading run would be indentation, or a word that directly follows punctuation), they cover its *trailing* whitespace instead. This means deleting a word never leaves a double space behind. Turn it off with `:set global word-selects-whitespace=false` (or per buffer) to select just the bare word instead. See [Configuration](configuration.md).
 
 <div class="key-demo">
 <strong>Cursor on the first character, press <code>w</code></strong><br>

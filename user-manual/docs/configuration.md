@@ -128,7 +128,7 @@ These options have a global default that every buffer without its own override r
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
 | `auto-pairs` | bool | `#t` | Enable auto-pair insertion |
 | `select-inserted-text` | bool | `#t` | Leaving Insert mode keeps the text you typed selected, instead of leaving a plain cursor |
-| `word-selects-whitespace` | bool | `#t` | `w`/`W`/`b`/`B` and `mm`/`MM` cover the whitespace before the destination word (trailing instead, for the first word of a line); `#f` selects the bare word instead |
+| `word-selects-whitespace` | bool | `#t` | `w`/`W`/`b`/`B` and `mm`/`MM` cover the whitespace before the destination word (the trailing whitespace instead when none precedes it: the first word of a line, or a word directly after punctuation); `#f` selects the bare word instead |
 | `word-chars` | string | `""` | Extra characters counted as part of a word by `w`/`b`, `mm`, `miw`/`maw`, `select-word-nearest-on-line`, `Ctrl-w`, and `*`, e.g. `-` makes `foo-bar` one word instead of three. Also affects quote auto-pairing (`'`, `"`, `` ` ``, not bracket pairs), the identifier under the cursor used by plugin commands (e.g. rename), and where a completion without a server-supplied replace range starts. Does not affect `W`/`B`/`MM`, which already treat punctuation as part of a WORD. No global default ships; set it per language from an `on-language-set` hook (see below). Whitespace and newline characters are rejected |
 | `signcolumn` | `always[:N]` \| `auto[:N]` | `always` | Gutter column for plugin-supplied signs (diagnostics, git changes, etc). Bare `always`/`auto` sizes the column to one column per registered sign source: a source claims its column the moment the plugin registers it, so the width doesn't change as individual signs come and go; `:N` pins it to exactly N columns (1–127) instead, hiding whichever lower-priority sources don't fit. `auto` additionally collapses to zero width when no signs are visible |
 | `auto-read` | bool | `#t` | Prompt to reload when the current buffer's file changes on disk. `#f` only warns; reload manually with `:e!` |
@@ -417,7 +417,7 @@ Place `"steel:<name>"` for any `<name>` of your choosing to add your own element
 
 `core:git-diff` ships a `"steel:git-branch"` element using this same mechanism (see [Core Plugins → core:git-diff](core-plugins.md#core-git-diff)); just add it to your own `configure-statusline!` call.
 
-`set-statusline-text!` takes the element name, a buffer id, and the text to show; an empty string clears it. Each buffer keeps its own value per name, and a placed element shows only the focused buffer's: switching to a buffer with nothing pushed yet shows nothing, same as any other element with no content. Placing the element and pushing its text are independent: either can happen first, and neither errors if the other hasn't happened yet.
+`set-statusline-text!` takes the element name, a pane, and the text to show; an empty string clears it. Each buffer keeps its own value per name, and a placed element shows only the focused buffer's: switching to a buffer with nothing pushed yet shows nothing, same as any other element with no content. Placing the element and pushing its text are independent: either can happen first, and neither errors if the other hasn't happened yet.
 
 ## Language detection
 

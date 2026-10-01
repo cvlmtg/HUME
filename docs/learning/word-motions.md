@@ -1,7 +1,7 @@
 # Word Motions: Selecting the Whole Word
 
 Everything below assumes a fixed notion of "word" for clarity, but that
-notion is itself configurable per buffer — see [CharClass](charclass.md#word-is-a-policy-not-a-fact-about-the-text).
+notion is itself configurable per buffer — see [Character Classes](charclass.md#word-is-a-policy-not-a-fact-about-the-text).
 
 ## A third framework
 
@@ -67,7 +67,7 @@ an option restores the bare-word span shown here.
 ## Line crossing
 
 The word boundary model treats end-of-line as its own character class (see
-[CharClass](charclass.md)). This means a forward word search always stops *at*
+[Character Classes](charclass.md)). This means a forward word search always stops *at*
 the newline character rather than skipping over it. To make `w` cross line
 boundaries as users expect, the implementation takes a second forward step when
 it lands on a non-final newline — treating the newline as whitespace for that
@@ -88,17 +88,20 @@ whether the cursor falls inside them. If it does, take one more backward step
 to land on the previous word. The visible guarantee: `b` always selects a
 *different* word, never the one you're already on.
 
-## Combining characters and word end positions
+## Combining characters and word ends
 
-A word's end position is stored as the position of the **last character** of
-the final grapheme cluster, not the start of it. For most characters this is
-the same thing. For a combining sequence like `café` where `é` is encoded as
-a base `e` followed by a combining accent mark (two separate Unicode code
-points), stopping at the base `e` would leave the accent mark outside the
-selection — an orphaned combining mark that no longer has a base to attach to.
+A selection end always sits on the start of a character cluster, and an end
+covers the whole cluster that starts there. A word that finishes with
+`é`, written as a base `e` followed by a combining accent mark (two separate
+Unicode code points), therefore ends on the cluster that starts at the `e`, and
+the selection covers both the `e` and the accent. The accent mark is never left
+outside the selection as an orphan with no base to attach to, and a subsequent
+deletion removes the whole visible character.
 
-Selecting through the accent mark ensures the whole visible character is
-covered, and any subsequent deletion removes the whole grapheme.
+The same unit decides which class a character belongs to. Each cluster is
+classified by its first code point, so a letter with a combining accent is a
+Word character, and a base character followed by a combining mark does not
+change class in the middle of the cluster.
 
 ## Extend-mode word selection
 
