@@ -104,10 +104,12 @@ pub fn delete_pair(state: EditState) -> Edited {
 /// 1. The character at `head` (what the cursor sits on) is "innocuous":
 ///    whitespace, newline, EOF, or a configured closing-pair character.
 /// 2. For symmetric pairs (quotes/backticks): the character immediately before
-///    `head` must NOT be a word character (this buffer's configured
+///    `head` must be neither a word character (this buffer's configured
 ///    `word-chars` folded in via `chars`, same as every other word
-///    operation). This prevents auto-pairing inside words (e.g. typing `'`
-///    in `don't`) or after identifier characters.
+///    operation) nor the pair's own character. This prevents auto-pairing
+///    inside words (e.g. typing `'` in `don't`), after identifier
+///    characters, and within a run of the same quote (a Markdown fence or
+///    a `"""` string).
 ///
 /// Callers are responsible for the all-or-nothing multi-cursor check; this
 /// function evaluates a single cursor position.
@@ -128,12 +130,13 @@ pub fn should_auto_pair_at(
         return false;
     }
 
-    // Check 2 (symmetric pairs only): prev char must NOT be a word char.
+    // Check 2 (symmetric pairs only): prev char must be neither a word char
+    // nor the pair's own char.
     if pair.is_symmetric()
         && let Some(prev) = text.clusters().prev(head)
         && text
             .char_at(prev.offset())
-            .is_some_and(|c| chars.classify(c) == CharClass::Word)
+            .is_some_and(|c| c == pair.open || chars.classify(c) == CharClass::Word)
     {
         return false;
     }

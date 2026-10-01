@@ -165,6 +165,34 @@ fn quote() -> Pair {
 }
 
 #[test]
+fn auto_pair_symmetric_after_same_quote_rejects() {
+    // Cursor at 2, after ""; a third `"` must not open a new pair.
+    let text = BufferText::from("\"\"\n");
+    let pairs = default_pairs();
+    assert!(!should_auto_pair_at(
+        &text,
+        bound_at(&text, 2),
+        &quote(),
+        &pairs,
+        WordChars::default()
+    ));
+}
+
+#[test]
+fn auto_pair_symmetric_after_other_quote_accepts() {
+    // Cursor at 1, after a single `'`; typing `"` still pairs.
+    let text = BufferText::from("'\n");
+    let pairs = default_pairs();
+    assert!(should_auto_pair_at(
+        &text,
+        bound_at(&text, 1),
+        &quote(),
+        &pairs,
+        WordChars::default()
+    ));
+}
+
+#[test]
 fn auto_pair_next_alphanumeric_rejects_asymmetric() {
     // Cursor at 0, next char 'b': should NOT auto-pair `(`.
     let text = BufferText::from("bar");

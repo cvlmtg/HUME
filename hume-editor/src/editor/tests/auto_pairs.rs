@@ -84,6 +84,18 @@ fn auto_pairs_symmetric_skip_close() {
     assert_eq!(state(&ed), "\"\"-[x]>\n");
 }
 
+/// Typing a symmetric char right after a run of itself inserts only that
+/// char, so a Markdown fence comes out as three backticks.
+#[test]
+fn auto_pairs_triple_backtick_inserts_plain_third() {
+    let mut ed = editor_from("-[\n]>");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('`'));
+    ed.handle_key(key('`'));
+    ed.handle_key(key('`'));
+    assert_eq!(state(&ed), "```-[\n]>");
+}
+
 /// Typing `)` when the next character is NOT `)` inserts a literal `)`.
 #[test]
 fn auto_pairs_no_false_skip() {

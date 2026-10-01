@@ -60,6 +60,9 @@
 - `X` on a cursor at the start of a line selects that line instead of the one above, and `x` on a cursor on a line break selects that line instead of the one below.
 - `t`/`T` with a count stop against the counted match (`2ta` lands before the second `a`), and `=`/`-` after `t`/`T` go on to the next match instead of staying against the one they stopped at.
 
+### Editing
+- Typing a quote right after the same quote no longer opens a new pair, so ```` ``` ```` and `"""` come out as typed with auto-pairs on, with no stray closing quote.
+
 ### Language servers
 - `on-viewport-change` fires when the lines a pane shows change, including when an edit adds or removes lines in a buffer shorter than the pane. A resize or scroll that leaves the shown lines the same no longer fires it.
 - Completion items are filtered against the text their own edit range covers, and a list's default edit range is honored. A server whose completions replace more than the word before the cursor (`foo.ba`, `$ba`) keeps its items while you type, and accepting replaces that range. Such items need a `filterText` that includes the covered text, as the protocol expects.
