@@ -36,7 +36,7 @@ Helix and Mason, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 | `catalog.scm` | Reads `servers.scm` and `sources.scm` from this plugin's directory with `(plugin-dir)`; field lookup; language-to-server index |
 | `receipts.scm` | `<data>/servers/<name>/receipt.scm` paths, reading and writing |
 | `register.scm` | The scan that turns installed servers into registrations |
-| `install.scm` | Blocker check, tool preflight, the per-kind installers |
+| `install.scm` | Per-kind install plans (tools, receipt env dirs, installer), the blocker check, the installers |
 | `commands.scm` | `:lsp-install`, `:lsp-uninstall`, `:lsp-servers`, `:lsp-rescan-servers`, completion sources, discovery hint |
 | `lock.scm` | Cross-process install lock |
 | `sha256.scm`, `unpack.scm`, `platform.scm` | Hashing, unpacking and chmod through system tools; the Mason target name |

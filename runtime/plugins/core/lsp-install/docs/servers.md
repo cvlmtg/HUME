@@ -31,7 +31,7 @@ there.
 Installing or reinstalling a server always starts from a clean slate. That makes it the
 repair and upgrade path too, and it covers reinstalling over a running client:
 
-1. Blocker check and tool preflight.
+1. Resolve the install plan: blocker check, which includes the required tools.
 2. Unregister every seeded language, which shuts down any running client.
 3. Purge any existing install; the receipt goes with it.
 4. Download, verify and unpack (`github`, `generic`), or run the kind's package manager
@@ -45,10 +45,12 @@ needs the parent to exist and nothing else recreates it in between.
 
 ### Choosing the source
 
-One function resolves a download for this platform as `(url asset sha bin)`, or `#f` when
-no row matches. A github row is `(target asset sha bin)` with the url derived from the repo
-and version. A generic row is `(target asset url sha bin)`. That one result serves the
-installability check, the tool preflight and the install itself.
+One function resolves a source into a plan: the tools the kind needs on `$PATH`, the env
+dirs its receipt records, and the procedure that installs into a directory. It is the only
+place that branches on the source's kind. A download plan reads this platform's row once.
+A github row is `(target asset sha bin)` with the url derived from the repo and version.
+A generic row is `(target asset url sha bin)`. That one plan serves the installability
+check, the tool check and the install itself.
 
 - **Asset format.** A name ending in a tar suffix (`.tar.gz`, `.tgz`, `.tar.xz`, `.txz`,
   `.tar.bz2`) is a tar archive, `.zip` a zip, `.gz` a single gzip file. Any other asset is
@@ -56,12 +58,13 @@ installability check, the tool preflight and the install itself.
 - **Platforms.** A source with no `platforms` field installs everywhere.
 - **Blockers.** One function is the single source for `:lsp-install`'s error,
   `:lsp-servers`'s annotation and the discovery hint's gate. In the order it checks:
-  unsupported platform, no install source, not supported on this platform, missing
-  toolchain tool, a stub kind, and no prebuilt asset for this platform.
+  unsupported platform, no install source, not supported on this platform, a stub kind,
+  no prebuilt asset for this platform, an unrecognised asset format, and a missing
+  required tool.
 - **Required tools.** `npm`, `cargo`, `golang`, `pypi`, `gem` and `nuget` kinds need
   `npm`, `cargo`, `go`, `python3` (`python` on Windows), `gem` and `dotnet` on `$PATH`.
-  A download needs `curl` plus the unpack tools for its format. The preflight checks all
-  of them with `which` before anything is downloaded, so a missing tool fails naming it.
+  A download needs `curl` plus the unpack tools for its format. Each is checked with
+  `which` before anything is downloaded, so a missing tool fails naming it.
 
 ### Verifying and unpacking
 
@@ -77,7 +80,7 @@ Hashing, unpacking and chmod run the platform's own tools through `run-capture!`
 | exec bit | `chmod 755` | `chmod 755` | none |
 
 macOS and Windows `tar` decompress xz and bzip2 themselves. Linux `tar` shells out to the
-compressor, so the preflight also asks for it.
+compressor, so that tool is also required.
 
 The archive is checked against the sha256 recorded in `sources.scm` before anything is
 unpacked, and is deleted on a mismatch. A gz asset is decoded in place next to the

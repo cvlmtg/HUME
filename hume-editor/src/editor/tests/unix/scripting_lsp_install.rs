@@ -667,7 +667,7 @@ fn lsp_install_tar_archive_requires_tar_on_path() {
     let log = ed.state.message_log.format_for_display();
     assert!(
         log.contains("requires 'tar' on $PATH"),
-        "a tar-archive server must preflight tar before downloading: {log}"
+        "a tar-archive server must require tar before downloading: {log}"
     );
 }
 
@@ -1240,8 +1240,8 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
 
     // svlangserver (npm-kind, language "systemverilog") must not report
     // installable unconditionally. Reporting installable regardless of npm
-    // availability could suggest a :lsp-install that immediately fails
-    // `lsp/preflight!`'s own npm-on-$PATH check. Force $PATH to a directory
+    // availability could suggest a :lsp-install that immediately fails the
+    // npm-on-$PATH check. Force $PATH to a directory
     // with no npm binary in it.
     let empty_path_dir = safe_tempdir();
     {
@@ -1293,7 +1293,7 @@ fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
     load_lsp_install(&mut ed, data_tmp.path());
 
     // Force $PATH to a directory with no cargo binary in it: must not hint
-    // an install that would immediately fail `lsp/preflight!`'s cargo check.
+    // an install that would immediately fail the cargo-on-$PATH check.
     let empty_path_dir = safe_tempdir();
     {
         let _path = EnvVarGuard::set("PATH", empty_path_dir.path());
@@ -1307,6 +1307,30 @@ fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
     assert!(
         !log.contains("run :lsp-install"),
         "must never hint a cargo-kind install when cargo is not on $PATH: {log}"
+    );
+}
+
+#[test]
+fn discovery_hint_does_not_fire_for_download_kind_when_download_tools_missing_from_path() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp_install(&mut ed, data_tmp.path());
+
+    // rust-analyzer is a github-kind download: it needs curl and gzip.
+    let empty_path_dir = safe_tempdir();
+    {
+        let _path = EnvVarGuard::set("PATH", empty_path_dir.path());
+        let bid = ed.focused_buffer_id();
+        let lang = ed.state.config.languages.intern("rust");
+        ed.set_buffer_language(bid, Some(lang));
+        ed.settle();
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("run :lsp-install"),
+        "must never hint a download install when curl is not on $PATH: {log}"
     );
 }
 

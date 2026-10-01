@@ -9,10 +9,7 @@
 
 (provide lsp-install/install-server! lsp-install/install-blocker)
 
-(define (lsp-install/kind-env-dirs kind)
-  (if (equal? kind 'gem)
-      '(("GEM_HOME" . ".") ("GEM_PATH" . "."))
-      '()))
+(define lsp-install/python (if lsp-install/windows? "python" "python3"))
 
 (define (lsp-install/verify-sha256! path expected)
   (let* ((expected-hex (string-downcase
@@ -37,15 +34,6 @@
         ((ends-with? asset-file ".zip") 'zip)
         ((ends-with? asset-file ".gz") 'gz)
         ((equal? asset-file bin) 'raw)
-        (else (error (string-append "lsp-install/asset-format: unsupported asset format: " asset-file)))))
-
-(define (lsp-install/toolchain-tool kind)
-  (cond ((equal? kind 'npm) "npm")
-        ((equal? kind 'cargo) "cargo")
-        ((equal? kind 'golang) "go")
-        ((equal? kind 'pypi) (if lsp-install/windows? "python" "python3"))
-        ((equal? kind 'gem) "gem")
-        ((equal? kind 'nuget) "dotnet")
         (else #f)))
 
 (define (lsp-install/platform-supported? fields)
@@ -53,45 +41,9 @@
     (or (not platforms)
         (member (string->symbol lsp-install/target) (cdr platforms)))))
 
-(define (lsp-install/download-kind? kind)
-  (or (equal? kind 'github) (equal? kind 'generic)))
-
 (define (lsp-install/find-target targets)
   (let ((want (string->symbol lsp-install/target)))
     (call! "stdlib/find" (lambda (t) (equal? (list-ref t 0) want)) targets)))
-
-(define (lsp-install/resolve-download fields)
-  (let ((target (lsp-install/find-target (lsp-install/ref fields 'targets))))
-    (cond
-      ((not target) #f)
-      ((equal? (lsp-install/ref fields 'kind) 'generic)
-       (list (list-ref target 2) (list-ref target 1) (list-ref target 3) (list-ref target 4)))
-      (else
-       (list (string-append "https://github.com/" (lsp-install/ref fields 'repo)
-                            "/releases/download/" (lsp-install/ref fields 'version)
-                            "/" (list-ref target 1))
-             (list-ref target 1) (list-ref target 2) (list-ref target 3))))))
-
-(define (lsp-install/install-blocker name)
-  (cond
-    ((not lsp-install/target) "unsupported platform")
-    ((not (lsp-install/source name)) "no install source")
-    (else
-     (let* ((fields (lsp-install/source name))
-            (kind   (lsp-install/ref fields 'kind))
-            (tool   (lsp-install/toolchain-tool kind)))
-       (cond
-         ((not (lsp-install/platform-supported? fields)) "not supported on this platform")
-         (tool
-          (if (which tool)
-              #f
-              (string-append "requires '" tool "' on $PATH, which was not found")))
-         ((not (lsp-install/download-kind? kind))
-          (string-append "not installable (kind " (symbol->string kind) ") in v1"))
-         ((not (lsp-install/resolve-download fields)) "no prebuilt asset for this platform")
-         (else #f))))))
-
-;; ── Install pipeline ──────────────────────────────────────────────────────────
 
 (define (lsp-install/tar-compressor-tools asset-file)
   (cond ((not (equal? lsp-install/target "linux-x64")) '())
@@ -99,40 +51,18 @@
         ((ends-with? asset-file ".tar.bz2") '("bzip2"))
         (else '())))
 
-(define (lsp-install/required-tools name)
-  (let* ((fields (lsp-install/source name))
-         (kind   (lsp-install/ref fields 'kind))
-         (tool   (lsp-install/toolchain-tool kind)))
-    (cond
-      (tool (list tool))
-      (else
-       (let* ((download (lsp-install/resolve-download fields))
-              (asset    (list-ref download 1))
-              (fmt      (lsp-install/asset-format asset (list-ref download 3))))
-         (append
-           (cond
-             ((equal? fmt 'zip) (list (lsp-install/unpack-tool 'zip)))
-             ((equal? fmt 'tar) (cons "tar" (lsp-install/tar-compressor-tools asset)))
-             ((equal? fmt 'gz) '("gzip"))
-             (else '()))
-           '("curl")))))))
+(define (lsp-install/download-tools fmt asset)
+  (append
+    (cond ((equal? fmt 'zip) (list (lsp-install/unpack-tool 'zip)))
+          ((equal? fmt 'tar) (cons "tar" (lsp-install/tar-compressor-tools asset)))
+          ((equal? fmt 'gz) '("gzip"))
+          (else '()))
+    '("curl")))
 
-(define (lsp-install/preflight! name)
-  (for-each
-    (lambda (tool)
-      (unless (which tool)
-        (error (string-append "lsp-install/install-server!: " name " requires '" tool
-                              "' on $PATH, which was not found"))))
-    (lsp-install/required-tools name)))
+;; ── Install pipeline ──────────────────────────────────────────────────────────
 
-(define (lsp-install/install-download! name fields dir)
-  (let* ((download (lsp-install/resolve-download fields))
-         (url      (list-ref download 0))
-         (asset    (list-ref download 1))
-         (sha      (list-ref download 2))
-         (bin      (list-ref download 3))
-         (fmt      (lsp-install/asset-format asset bin))
-         (archive  (path-join dir asset)))
+(define (lsp-install/install-download! name url asset sha bin fmt dir)
+  (let ((archive (path-join dir asset)))
     (create-directory! dir)
     (run-inline-output! "curl" (list "-fsSL" "-o" archive "--" url))
     (lsp-install/verify-sha256! archive sha)
@@ -191,7 +121,7 @@
                                          ""
                                          (string-append "[" (string-join extras ",") "]"))
                                      "==" version)))
-    (run-inline-output! (lsp-install/toolchain-tool 'pypi) (list "-m" "venv" venv))
+    (run-inline-output! lsp-install/python (list "-m" "venv" venv))
     (run-inline-output! (path-join dir venv-bin (if windows? "python.exe" "python"))
                         (list "-m" "pip" "install" "--disable-pip-version-check"
                               "--" requirement))
@@ -211,28 +141,89 @@
                               (lsp-install/ref fields 'packages)))
   (lsp-install/managed-bin! "gem" name dir "bin" (lsp-install/ref fields 'bin) ".bat"))
 
+;; ── Per-kind plans ────────────────────────────────────────────────────────────
+;; A plan is the tools a kind needs on $PATH, the env dirs its receipt records,
+;; and the procedure that installs into a directory and returns the bin path.
+
+(define (lsp-install/plan tools env-dirs install!)
+  (hash 'tools tools 'env-dirs env-dirs 'install! install!))
+
+(define (lsp-install/download-plan name fields)
+  (let ((target (lsp-install/find-target (lsp-install/ref fields 'targets))))
+    (if (not target)
+        "no prebuilt asset for this platform"
+        (let* ((generic? (equal? (lsp-install/ref fields 'kind) 'generic))
+               (asset    (list-ref target 1))
+               (url      (if generic?
+                             (list-ref target 2)
+                             (string-append "https://github.com/" (lsp-install/ref fields 'repo)
+                                            "/releases/download/" (lsp-install/ref fields 'version)
+                                            "/" asset)))
+               (sha      (list-ref target (if generic? 3 2)))
+               (bin      (list-ref target (if generic? 4 3)))
+               (fmt      (lsp-install/asset-format asset bin)))
+          (if (not fmt)
+              (string-append "unsupported asset format: " asset)
+              (lsp-install/plan
+                (lsp-install/download-tools fmt asset)
+                '()
+                (lambda (dir)
+                  (lsp-install/install-download! name url asset sha bin fmt dir))))))))
+
+(define (lsp-install/kind-plan name fields)
+  (let ((kind (lsp-install/ref fields 'kind)))
+    (cond
+      ((or (equal? kind 'github) (equal? kind 'generic))
+       (lsp-install/download-plan name fields))
+      ((equal? kind 'npm)
+       (lsp-install/plan '("npm") '() (lambda (dir) (lsp-install/install-npm! name fields dir))))
+      ((equal? kind 'cargo)
+       (lsp-install/plan '("cargo") '() (lambda (dir) (lsp-install/install-cargo! name fields dir))))
+      ((equal? kind 'golang)
+       (lsp-install/plan '("go") '() (lambda (dir) (lsp-install/install-golang! name fields dir))))
+      ((equal? kind 'pypi)
+       (lsp-install/plan (list lsp-install/python) '()
+                         (lambda (dir) (lsp-install/install-pypi! name fields dir))))
+      ((equal? kind 'gem)
+       (lsp-install/plan '("gem") '(("GEM_HOME" . ".") ("GEM_PATH" . "."))
+                         (lambda (dir) (lsp-install/install-gem! name fields dir))))
+      ((equal? kind 'nuget)
+       (lsp-install/plan '("dotnet") '() (lambda (dir) (lsp-install/install-nuget! name fields dir))))
+      (else (string-append "not installable (kind " (symbol->string kind) ") in v1")))))
+
+;; The plan for `name`, or a string naming what blocks installing it.
+(define (lsp-install/resolve name)
+  (let ((fields (lsp-install/source name)))
+    (cond
+      ((not lsp-install/target) "unsupported platform")
+      ((not fields) "no install source")
+      ((not (lsp-install/platform-supported? fields)) "not supported on this platform")
+      (else
+       (let ((plan (lsp-install/kind-plan name fields)))
+         (if (string? plan)
+             plan
+             (let ((missing (call! "stdlib/find" (lambda (tool) (not (which tool)))
+                                   (hash-ref plan 'tools))))
+               (if missing
+                   (string-append "requires '" missing "' on $PATH, which was not found")
+                   plan))))))))
+
+(define (lsp-install/install-blocker name)
+  (let ((resolved (lsp-install/resolve name)))
+    (and (string? resolved) resolved)))
+
 (define (lsp-install/install-server! name)
-  (let ((blocker (lsp-install/install-blocker name)))
-    (when blocker
-      (error (string-append "lsp-install/install-server!: " name ": " blocker))))
-  (lsp-install/preflight! name)
-  (let* ((server-fields (hash-ref lsp-install/servers name))
-         (source-fields (lsp-install/source name))
-         (kind          (lsp-install/ref source-fields 'kind))
-         (dir           (lsp-install/server-dir name)))
-    (lsp-install/unregister-server-languages! name)
-    (call! "stdlib/delete-dir!" dir)
-    (let ((bin-rel (cond
-                     ((lsp-install/download-kind? kind) (lsp-install/install-download! name source-fields dir))
-                     ((equal? kind 'cargo)  (lsp-install/install-cargo! name source-fields dir))
-                     ((equal? kind 'golang) (lsp-install/install-golang! name source-fields dir))
-                     ((equal? kind 'pypi)   (lsp-install/install-pypi! name source-fields dir))
-                     ((equal? kind 'gem)    (lsp-install/install-gem! name source-fields dir))
-                     ((equal? kind 'nuget)  (lsp-install/install-nuget! name source-fields dir))
-                     (else                  (lsp-install/install-npm! name source-fields dir)))))
-      (lsp-install/write-receipt! name (lsp-install/ref source-fields 'version) bin-rel
-                          (lsp-install/kind-env-dirs kind))
-      (let ((cmd (lsp-install/ref server-fields 'command)))
-        (when (which cmd)
-          (log! 'info (string-append "LSP: " cmd " is also on $PATH — the managed install at "
-                                     (path-join dir bin-rel) " takes precedence")))))))
+  (let ((plan (lsp-install/resolve name)))
+    (when (string? plan)
+      (error (string-append "lsp-install/install-server!: " name ": " plan)))
+    (let ((server-fields (hash-ref lsp-install/servers name))
+          (dir           (lsp-install/server-dir name)))
+      (lsp-install/unregister-server-languages! name)
+      (call! "stdlib/delete-dir!" dir)
+      (let ((bin-rel ((hash-ref plan 'install!) dir)))
+        (lsp-install/write-receipt! name (lsp-install/ref (lsp-install/source name) 'version)
+                                    bin-rel (hash-ref plan 'env-dirs))
+        (let ((cmd (lsp-install/ref server-fields 'command)))
+          (when (which cmd)
+            (log! 'info (string-append "LSP: " cmd " is also on $PATH — the managed install at "
+                                       (path-join dir bin-rel) " takes precedence"))))))))
