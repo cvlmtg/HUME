@@ -1619,3 +1619,31 @@ fn yanking_a_selection_ending_on_a_break_pastes_inline() {
 
     assert_eq!(state(&ed), "abc\ndef-[bc\n]>\n");
 }
+
+/// With the write-only OSC 52 clipboard, `y` then an edit then `p` pastes what
+/// was yanked, from the in-memory mirror and without a warning.
+#[test]
+fn smart_p_after_edit_with_osc52_clipboard_pastes_yank_without_warning() {
+    use crate::editor::Severity;
+
+    let mut ed = editor_from("-[ab]>cd\n");
+    ed.state.clipboard = crate::editor::clipboard::SystemClipboard::osc52();
+
+    ed.feed_key(key('y'));
+    assert_eq!(
+        ed.state.clipboard.take_pending_osc52().as_deref(),
+        Some("ab"),
+        "yank queues the text for the terminal"
+    );
+    ed.feed_key(key('d')); // an edit since the yank: smart-p now reads the clipboard
+    ed.feed_key(key('p'));
+
+    assert_eq!(ed.doc().text().to_string(), "cabd\n");
+    assert!(
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Warning),
+        "an OSC 52 clipboard is not a failure"
+    );
+}

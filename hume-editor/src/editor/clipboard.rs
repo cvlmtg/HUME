@@ -1,116 +1,165 @@
-/// Thin wrapper around `arboard::Clipboard` for the system clipboard register.
+/// The system clipboard behind the `c` register.
 ///
-/// `arboard::Clipboard` is not `Send + Sync`, so it must stay on the single-threaded
-/// `Editor`. Initialisation failures (headless CI, SSH without X11 forwarding)
-/// yield `handle = None`; subsequent calls return `Err(String)`, triggering the
-/// in-memory fallback in the caller. `read()` returns the OS clipboard's raw
-/// text. Nothing normalizes line endings here; `register_ops::read_register_text`
-/// normalizes on the way from this raw accessor into register values, so a
-/// Steel `(read-register "c")` sees LF like every other register.
+/// A [`Backend`] is chosen once at startup. `arboard::Clipboard` is not
+/// `Send + Sync`, so it stays on the single-threaded `Editor`. When no
+/// native handle exists (headless Linux, SSH without X11) or the session is
+/// remote, the backend is OSC 52: writes are queued in `pending_osc52` for
+/// the frame loop to send to the terminal, and reads report
+/// [`ClipboardRead::Mirror`] because OSC 52 cannot be read back.
 ///
-/// In test builds, `mock_active` gates a virtual clipboard: when active,
-/// `read()` returns `mock_content` (or `Err` if not yet written) and `write()`
-/// stores the text in `mock_content` and returns `Ok`. When inactive, both
-/// calls fall through to the real-handle path, which returns `Err` for a
-/// dropped handle.
+/// A failed native write also queues the text for OSC 52 and returns `Err`,
+/// so the caller still warns while the text reaches the terminal's clipboard.
+/// `read()` returns the OS clipboard's raw text. Nothing normalizes line
+/// endings here; `register_ops::read_register_text` normalizes on the way
+/// from this raw accessor into register values, so a Steel
+/// `(read-register "c")` sees LF like every other register.
 pub(crate) struct SystemClipboard {
-    handle: Option<arboard::Clipboard>,
-    /// Whether the in-process virtual clipboard is engaged. `false` for
-    /// production instances and `new_unavailable()` (both hit the real handle).
+    backend: Backend,
+    pending_osc52: Option<String>,
+}
+
+enum Backend {
+    System(arboard::Clipboard),
+    Osc52,
+    /// Every native call fails.
     #[cfg(test)]
-    mock_active: bool,
-    /// Content of the virtual clipboard, set by `write()` or `set_mock_content()`.
+    Unavailable,
+    /// In-process virtual clipboard; `None` until first written or seeded.
     #[cfg(test)]
-    mock_content: Option<String>,
+    Mock(Option<String>),
+}
+
+/// Outcome of [`SystemClipboard::read`].
+pub(in crate::editor) enum ClipboardRead {
+    /// The clipboard's current text.
+    Text(String),
+    /// The clipboard cannot be read; the in-memory `c` register is the source.
+    Mirror,
+    Failed(String),
 }
 
 impl SystemClipboard {
     pub(in crate::editor) fn new() -> Self {
-        Self {
-            handle: arboard::Clipboard::new().ok(),
-            #[cfg(test)]
-            mock_active: false,
-            #[cfg(test)]
-            mock_content: None,
+        Self::select(ssh_session())
+    }
+
+    /// A remote session uses OSC 52 without touching arboard: a native
+    /// clipboard on the remote host is not the user's clipboard.
+    fn select(remote: bool) -> Self {
+        if remote {
+            return Self::osc52();
+        }
+        match arboard::Clipboard::new() {
+            Ok(cb) => Self::with_backend(Backend::System(cb)),
+            Err(_) => Self::osc52(),
         }
     }
 
-    pub(in crate::editor) fn read(&mut self) -> Result<String, String> {
-        #[cfg(test)]
-        if self.mock_active {
-            return self
-                .mock_content
-                .clone()
-                .ok_or_else(|| arboard::Error::ClipboardNotSupported.to_string());
+    fn with_backend(backend: Backend) -> Self {
+        Self {
+            backend,
+            pending_osc52: None,
         }
-        match self.handle.as_mut() {
-            Some(cb) => cb.get_text().map_err(|e| e.to_string()),
-            None => Err(arboard::Error::ClipboardNotSupported.to_string()),
+    }
+
+    /// The OSC 52 backend, also the inert baseline in `EditorState::default()`
+    /// so proptest never reaches the real NSPasteboard (which throws
+    /// uncatchable ObjC exceptions in test threads); `Editor::open` overrides
+    /// it via `new()`.
+    pub(in crate::editor) fn osc52() -> Self {
+        Self::with_backend(Backend::Osc52)
+    }
+
+    pub(in crate::editor) fn read(&mut self) -> ClipboardRead {
+        match &mut self.backend {
+            Backend::System(cb) => match cb.get_text() {
+                Ok(text) => ClipboardRead::Text(text),
+                Err(e) => ClipboardRead::Failed(e.to_string()),
+            },
+            Backend::Osc52 => ClipboardRead::Mirror,
+            #[cfg(test)]
+            Backend::Unavailable => {
+                ClipboardRead::Failed(arboard::Error::ClipboardNotSupported.to_string())
+            }
+            #[cfg(test)]
+            Backend::Mock(content) => match content {
+                Some(text) => ClipboardRead::Text(text.clone()),
+                None => ClipboardRead::Failed(arboard::Error::ClipboardNotSupported.to_string()),
+            },
         }
     }
 
     pub(in crate::editor) fn write(&mut self, text: &str) -> Result<(), String> {
-        #[cfg(test)]
-        if self.mock_active {
-            self.mock_content = Some(text.to_string());
-            return Ok(());
+        let result = match &mut self.backend {
+            Backend::System(cb) => cb.set_text(text).map_err(|e| e.to_string()),
+            Backend::Osc52 => {
+                self.pending_osc52 = Some(text.to_string());
+                return Ok(());
+            }
+            #[cfg(test)]
+            Backend::Unavailable => Err(arboard::Error::ClipboardNotSupported.to_string()),
+            #[cfg(test)]
+            Backend::Mock(content) => {
+                *content = Some(text.to_string());
+                return Ok(());
+            }
+        };
+        if result.is_err() {
+            self.pending_osc52 = Some(text.to_string());
         }
-        match self.handle.as_mut() {
-            Some(cb) => cb.set_text(text).map_err(|e| e.to_string()),
-            None => Err(arboard::Error::ClipboardNotSupported.to_string()),
-        }
+        result
     }
 
-    /// Create a clipboard instance whose handle is already dropped.
-    ///
-    /// All read/write calls return `Err`, hitting the in-memory fallback.
-    /// The virtual mock is inactive; `force_unavailable()` on an already-inactive
-    /// instance is also a no-op.
-    /// The inert baseline in `EditorState::default()`, so proptest never reaches
-    /// the real NSPasteboard (which throws uncatchable ObjC exceptions in test
-    /// threads); `Editor::open` overrides it with a real handle via `new()`.
+    /// The text queued for the terminal's OSC 52 clipboard, if any. The last
+    /// write wins.
+    pub(in crate::editor) fn take_pending_osc52(&mut self) -> Option<String> {
+        self.pending_osc52.take()
+    }
+
+    /// A clipboard whose native calls all fail, so writes warn and queue
+    /// OSC 52 and reads report failure.
+    #[cfg(test)]
     pub(in crate::editor) fn new_unavailable() -> Self {
-        Self {
-            handle: None,
-            #[cfg(test)]
-            mock_active: false,
-            #[cfg(test)]
-            mock_content: None,
-        }
+        Self::with_backend(Backend::Unavailable)
     }
 
-    /// Create a clipboard instance backed by an in-process virtual clipboard.
-    ///
-    /// `read()` returns the last value passed to `write()` or `set_mock_content()`;
-    /// `write()` stores text and returns `Ok`. No real OS clipboard is touched.
-    /// Use when a test needs a functioning clipboard without a real server.
+    /// A clipboard backed by an in-process virtual clipboard. No real OS
+    /// clipboard is touched.
     #[cfg(test)]
     pub(in crate::editor) fn new_mock() -> Self {
-        Self {
-            handle: None,
-            mock_active: true,
-            mock_content: None,
-        }
+        Self::with_backend(Backend::Mock(None))
     }
 
-    /// Disable the virtual clipboard mock and drop the real handle.
-    ///
-    /// All subsequent read/write calls return `Err`, triggering the in-memory
-    /// fallback. Undoes a previous `set_mock_content()` / `new_mock()`.
+    /// Replace the backend with `Unavailable`, dropping any mock content.
     #[cfg(test)]
     pub(in crate::editor) fn force_unavailable(&mut self) {
-        self.handle = None;
-        self.mock_active = false;
-        self.mock_content = None;
+        self.backend = Backend::Unavailable;
     }
 
-    /// Seed the virtual clipboard with `text` and engage the mock.
-    ///
-    /// Subsequent `read()` calls return `text`; `write()` calls overwrite it.
-    /// No real OS clipboard is touched.
+    /// Engage the virtual clipboard seeded with `text`.
     #[cfg(test)]
     pub(in crate::editor) fn set_mock_content(&mut self, text: &str) {
-        self.mock_active = true;
-        self.mock_content = Some(text.to_string());
+        self.backend = Backend::Mock(Some(text.to_string()));
+    }
+
+    #[cfg(test)]
+    fn is_osc52(&self) -> bool {
+        matches!(self.backend, Backend::Osc52)
+    }
+}
+
+fn ssh_session() -> bool {
+    ["SSH_TTY", "SSH_CONNECTION"]
+        .iter()
+        .any(|k| std::env::var_os(k).is_some())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SystemClipboard;
+
+    #[test]
+    fn remote_session_selects_osc52() {
+        assert!(SystemClipboard::select(true).is_osc52());
     }
 }

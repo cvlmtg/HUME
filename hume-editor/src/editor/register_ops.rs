@@ -10,7 +10,7 @@
 
 use std::borrow::Cow;
 
-use crate::editor::clipboard::SystemClipboard;
+use crate::editor::clipboard::{ClipboardRead, SystemClipboard};
 use hume_ops::register::{CLIPBOARD_REGISTER, Piece, RegisterSet};
 
 /// Pending state for the two-keystroke `"<reg>` register-prefix sequence.
@@ -25,9 +25,10 @@ pub(crate) enum RegisterPrefix {
 /// Read text from an explicitly named register.
 ///
 /// Returns `(pieces, warning)` where `warning` is `Some(msg)` when the OS
-/// clipboard was unavailable and the in-memory `'c'` mirror was used instead.
+/// clipboard failed and the in-memory `'c'` mirror was used instead.
 ///
-/// - `'c'` → OS clipboard (in-memory fallback on failure).
+/// - `'c'` → OS clipboard; the in-memory mirror on failure (with a warning)
+///   and when the clipboard is write-only OSC 52 (no warning).
 /// - All others (`'0'`–`'9'`, etc.) → in-memory `RegisterSet`.
 ///
 /// The kill-ring register (`'k'`) and black-hole register (`'b'`) are handled
@@ -38,29 +39,27 @@ pub(in crate::editor) fn read_register_text<'a>(
     name: char,
 ) -> (Option<Cow<'a, [Piece]>>, Option<String>) {
     if name == CLIPBOARD_REGISTER {
+        let mirror = || {
+            registers
+                .read(CLIPBOARD_REGISTER)
+                .and_then(|r| r.as_pieces())
+                .map(Cow::Borrowed)
+        };
         match clipboard.read() {
-            Ok(text) => {
+            ClipboardRead::Text(text) => {
                 // When the OS clipboard matches what we last wrote, the in-memory
                 // 'c' register is in sync, so prefer its structured pieces, which
                 // keep multi-selection boundaries and each piece's shape.  When they differ,
                 // the clipboard was externally modified; use its content directly.
                 if registers.clipboard_blob() == Some(&text)
-                    && let Some(mem) = registers
-                        .read(CLIPBOARD_REGISTER)
-                        .and_then(|r| r.as_pieces())
+                    && let Some(mem) = mirror()
                 {
-                    return (Some(Cow::Borrowed(mem)), None);
+                    return (Some(mem), None);
                 }
                 (Some(Cow::Owned(vec![Piece::from(text)])), None)
             }
-            Err(e) => {
-                let warning = clipboard_warn(&e);
-                let fallback = registers
-                    .read(CLIPBOARD_REGISTER)
-                    .and_then(|r| r.as_pieces())
-                    .map(Cow::Borrowed);
-                (fallback, Some(warning))
-            }
+            ClipboardRead::Mirror => (mirror(), None),
+            ClipboardRead::Failed(e) => (mirror(), Some(clipboard_read_warn(&e))),
         }
     } else {
         let v = registers
@@ -73,8 +72,8 @@ pub(in crate::editor) fn read_register_text<'a>(
 
 /// Write `values` into named register `name`, routing `'c'` through the OS clipboard.
 ///
-/// Returns `Some(warning)` if the clipboard write failed; the in-memory mirror
-/// is always updated regardless.
+/// Returns `Some(warning)` if the native clipboard write failed; the text is
+/// then sent through OSC 52 instead. The in-memory mirror is always updated.
 pub(in crate::editor) fn write_register(
     registers: &mut RegisterSet,
     clipboard: &mut SystemClipboard,
@@ -83,15 +82,24 @@ pub(in crate::editor) fn write_register(
 ) -> Option<String> {
     if name == CLIPBOARD_REGISTER {
         let blob = registers.write_clipboard(values);
-        clipboard.write(blob).err().map(|e| clipboard_warn(&e))
+        clipboard
+            .write(blob)
+            .err()
+            .map(|e| clipboard_write_warn(&e))
     } else {
         registers.write_text(name, values);
         None
     }
 }
 
-fn clipboard_warn(err: &str) -> String {
+fn clipboard_read_warn(err: &str) -> String {
     format!("system clipboard unavailable ({err}), using in-memory 'c'")
+}
+
+fn clipboard_write_warn(err: &str) -> String {
+    format!(
+        "system clipboard unavailable ({err}), sent to the terminal (OSC 52) and kept in-memory 'c'"
+    )
 }
 
 #[cfg(test)]

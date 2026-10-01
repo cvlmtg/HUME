@@ -226,6 +226,17 @@ impl Editor {
         self.applied_mouse_mode = desired;
     }
 
+    /// Send the clipboard text queued for OSC 52, if any. A no-op without a
+    /// terminal (tests, headless `run_keys`), which leaves the text queued.
+    pub(in crate::editor::frame) fn flush_osc52(&mut self) {
+        let Some(term) = self.tui.terminal() else {
+            return;
+        };
+        if let Some(text) = self.state.clipboard.take_pending_osc52() {
+            let _ = hume_platform::terminal::set_clipboard(term, &text);
+        }
+    }
+
     /// Sync every pane's viewport dimensions and the frame's geometry
     /// snapshot from the terminal size: the one step that needs the raw
     /// `(width, height)`, so it's split out from `prepare_frame` and called
@@ -453,6 +464,7 @@ impl Editor {
         // Mouse modes are terminal state applied once at startup; resyncing
         // here makes `:set global mouse=…` take effect immediately.
         self.resync_mouse_mode();
+        self.flush_osc52();
 
         // Bake scopes interned since the last frame. It must run before the
         // bottom-band sync: `show-popup!` interns its grammar's scopes at

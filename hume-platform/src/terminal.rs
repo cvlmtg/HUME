@@ -27,7 +27,7 @@ use termina::Terminal as _;
 use termina::escape::csi::{
     Csi, Cursor, DecPrivateMode, DecPrivateModeCode, Keyboard, KittyKeyboardFlags, Mode,
 };
-use termina::escape::osc::{ColorOrQuery, DynamicColorNumber, Osc};
+use termina::escape::osc::{ColorOrQuery, DynamicColorNumber, Osc, Selection};
 use termina::event::KeyEventKind;
 use termina::style::RgbColor;
 use termina::{Event, EventReader, PlatformHandle, PlatformTerminal, WindowSize};
@@ -410,6 +410,16 @@ pub fn set_cursor_color(term: &SharedTerm, black: bool) -> io::Result<()> {
             Osc::ResetDynamicColor(DynamicColorNumber::TextCursorColor)
         )?;
     }
+    term.flush()
+}
+
+/// Ask the terminal to put `text` on the user's clipboard (OSC 52).
+///
+/// Fire-and-forget: a terminal that doesn't implement or permit OSC 52
+/// ignores the sequence, so success here only means the bytes were written.
+pub fn set_clipboard(term: &SharedTerm, text: &str) -> io::Result<()> {
+    let mut term = term.clone();
+    write!(term, "{}", Osc::SetSelection(Selection::CLIPBOARD, text))?;
     term.flush()
 }
 

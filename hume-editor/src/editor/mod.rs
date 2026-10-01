@@ -271,7 +271,7 @@ pub(crate) struct EditorState {
     pub(super) registers: RegisterSet,
     /// Kill ring: bounded history of yanked / deleted text.
     pub(super) kill_ring: KillRing,
-    /// Wrapper around the OS clipboard (`arboard`).
+    /// The `c` register's clipboard: native (`arboard`) or terminal OSC 52.
     pub(super) clipboard: clipboard::SystemClipboard,
     /// State machine for the two-keystroke `"<reg>` register-prefix sequence.
     pub(super) register_prefix: Option<register_ops::RegisterPrefix>,
@@ -473,7 +473,7 @@ pub(crate) struct EditorState {
 /// The trivial-field baseline both `EditorState` constructors build on.
 ///
 /// Not a usable editor on its own: no buffers, no panes, a null
-/// `focus`, a clipboard with no handle, and a no-op waker. It exists
+/// `focus`, an OSC 52 clipboard, and a no-op waker. It exists
 /// so the fields that are identical at both construction sites (`Editor::open`
 /// and `Editor::for_testing`) are written once. Every field whose real value
 /// differs between those two sites is set here to its inert (test) form and
@@ -497,7 +497,7 @@ impl Default for EditorState {
             pending_char: None,
             registers: RegisterSet::new(),
             kill_ring: KillRing::new(),
-            clipboard: clipboard::SystemClipboard::new_unavailable(),
+            clipboard: clipboard::SystemClipboard::osc52(),
             register_prefix: None,
             paste_stamp: None,
             should_quit: false,

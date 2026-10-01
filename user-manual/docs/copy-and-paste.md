@@ -38,6 +38,14 @@ Since `y` writes to both the clipboard and the kill ring, `y` then `p` pastes wh
 
 Two plain commands, `paste-after`/`paste-before`, exist alongside `p`/`P` with no key bound by default: they always read the kill-ring head, with no clipboard fallback, and always replace a real selection outright, with no same-text check. To stack a copy with plain paste, collapse the selection (`;`) before pasting. See [GUI-style paste](#gui-style-paste-bundled-plugin) below for a plugin built on them.
 
+## Clipboard over SSH
+
+In an SSH session, or when no clipboard server is available (a Linux machine without X11 or Wayland), HUME asks your terminal to set the clipboard instead (OSC 52). `y` then puts the text on the clipboard of the machine you are sitting at.
+
+- Your terminal must allow programs to set the clipboard. Some ask for this in their settings, iTerm2 for one.
+- Inside `tmux`, add `set -g set-clipboard on` to your `tmux.conf`.
+- `p` pastes what HUME last yanked. Terminals don't let programs read the clipboard back, so text copied in another application comes in through the terminal's own paste shortcut.
+
 ## Pasting from the terminal
 
 Pasting text from outside HUME (your system clipboard via the terminal's own paste shortcut, a mouse paste, or a paste from `tmux`/`screen`) lands in one step, however long the pasted text is.

@@ -156,3 +156,55 @@ fn write_register_mixed_charwise_then_linewise_inserts_one_newline() {
     write_cb(&mut regs, &mut cb, vec!["bar".into(), "foo\n".into()]);
     assert_eq!(regs.clipboard_blob(), Some("bar\nfoo\n"));
 }
+
+// ── OSC 52 backend ───────────────────────────────────────────────────────
+
+#[test]
+fn osc52_write_queues_blob_without_warning() {
+    let mut regs = RegisterSet::new();
+    let mut cb = SystemClipboard::osc52();
+    let warn = super::write_register(
+        &mut regs,
+        &mut cb,
+        CLIPBOARD_REGISTER,
+        vec![Piece::from("a"), Piece::from("b")],
+    );
+    assert!(warn.is_none());
+    assert_eq!(cb.take_pending_osc52().as_deref(), Some("a\nb"));
+    assert_eq!(cb.take_pending_osc52(), None);
+}
+
+#[test]
+fn osc52_read_returns_in_memory_pieces_without_warning() {
+    let mut regs = RegisterSet::new();
+    let mut cb = SystemClipboard::osc52();
+    write_cb(&mut regs, &mut cb, vec!["a".into(), "b".into()]);
+
+    let (values, warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
+    assert!(warn.is_none());
+    assert_eq!(&values.unwrap()[..], &["a", "b"]);
+}
+
+#[test]
+fn osc52_read_with_empty_mirror_is_none_without_warning() {
+    let regs = RegisterSet::new();
+    let mut cb = SystemClipboard::osc52();
+
+    let (values, warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
+    assert!(values.is_none());
+    assert!(warn.is_none());
+}
+
+#[test]
+fn unavailable_write_warns_and_queues_osc52() {
+    let mut regs = RegisterSet::new();
+    let mut cb = SystemClipboard::new_unavailable();
+    let warn = super::write_register(
+        &mut regs,
+        &mut cb,
+        CLIPBOARD_REGISTER,
+        vec![Piece::from("x")],
+    );
+    assert!(warn.is_some());
+    assert_eq!(cb.take_pending_osc52().as_deref(), Some("x"));
+}
