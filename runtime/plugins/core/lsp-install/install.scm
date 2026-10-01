@@ -152,16 +152,19 @@
   (let ((target (lsp-install/find-target (lsp-install/ref fields 'targets))))
     (if (not target)
         "no prebuilt asset for this platform"
-        (let* ((generic? (equal? (lsp-install/ref fields 'kind) 'generic))
-               (asset    (list-ref target 1))
-               (url      (if generic?
-                             (list-ref target 2)
-                             (string-append "https://github.com/" (lsp-install/ref fields 'repo)
-                                            "/releases/download/" (lsp-install/ref fields 'version)
-                                            "/" asset)))
-               (sha      (list-ref target (if generic? 3 2)))
-               (bin      (list-ref target (if generic? 4 3)))
-               (fmt      (lsp-install/asset-format asset bin)))
+        (let* ((asset (list-ref target 1))
+               (row   (if (equal? (lsp-install/ref fields 'kind) 'generic)
+                          (cdr target)
+                          (list asset
+                                (string-append "https://github.com/" (lsp-install/ref fields 'repo)
+                                               "/releases/download/" (lsp-install/ref fields 'version)
+                                               "/" asset)
+                                (list-ref target 2)
+                                (list-ref target 3))))
+               (url   (list-ref row 1))
+               (sha   (list-ref row 2))
+               (bin   (list-ref row 3))
+               (fmt   (lsp-install/asset-format asset bin)))
           (if (not fmt)
               (string-append "unsupported asset format: " asset)
               (lsp-install/plan
@@ -170,25 +173,24 @@
                 (lambda (dir)
                   (lsp-install/install-download! name url asset sha bin fmt dir))))))))
 
+;; Rows: (kind tool env-dirs installer), installer taking (name fields dir).
+(define lsp-install/package-kinds
+  (list (list 'npm    "npm"              '() lsp-install/install-npm!)
+        (list 'cargo  "cargo"            '() lsp-install/install-cargo!)
+        (list 'golang "go"               '() lsp-install/install-golang!)
+        (list 'pypi   lsp-install/python '() lsp-install/install-pypi!)
+        (list 'gem    "gem" '(("GEM_HOME" . ".") ("GEM_PATH" . ".")) lsp-install/install-gem!)
+        (list 'nuget  "dotnet"           '() lsp-install/install-nuget!)))
+
 (define (lsp-install/kind-plan name fields)
-  (let ((kind (lsp-install/ref fields 'kind)))
+  (let* ((kind (lsp-install/ref fields 'kind))
+         (row  (assoc kind lsp-install/package-kinds)))
     (cond
       ((or (equal? kind 'github) (equal? kind 'generic))
        (lsp-install/download-plan name fields))
-      ((equal? kind 'npm)
-       (lsp-install/plan '("npm") '() (lambda (dir) (lsp-install/install-npm! name fields dir))))
-      ((equal? kind 'cargo)
-       (lsp-install/plan '("cargo") '() (lambda (dir) (lsp-install/install-cargo! name fields dir))))
-      ((equal? kind 'golang)
-       (lsp-install/plan '("go") '() (lambda (dir) (lsp-install/install-golang! name fields dir))))
-      ((equal? kind 'pypi)
-       (lsp-install/plan (list lsp-install/python) '()
-                         (lambda (dir) (lsp-install/install-pypi! name fields dir))))
-      ((equal? kind 'gem)
-       (lsp-install/plan '("gem") '(("GEM_HOME" . ".") ("GEM_PATH" . "."))
-                         (lambda (dir) (lsp-install/install-gem! name fields dir))))
-      ((equal? kind 'nuget)
-       (lsp-install/plan '("dotnet") '() (lambda (dir) (lsp-install/install-nuget! name fields dir))))
+      (row
+       (lsp-install/plan (list (list-ref row 1)) (list-ref row 2)
+                         (lambda (dir) ((list-ref row 3) name fields dir))))
       (else (string-append "not installable (kind " (symbol->string kind) ") in v1")))))
 
 ;; The plan for `name`, or a string naming what blocks installing it.

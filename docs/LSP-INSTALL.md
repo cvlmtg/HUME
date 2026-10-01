@@ -377,7 +377,7 @@ lists) stays in the plugin — Rust never reads them.
   (Mason's packages wrapping vscode-langservers-extracted), …), `pkg:cargo` restricted to
   crates.io semver versions (asm-lsp, beancount-language-server, …), `pkg:golang` (gopls),
   `pkg:pypi` (ty, pylsp, …), `pkg:gem` (ruby-lsp), and `pkg:nuget` (roslyn, fsautocomplete).
-  `:lsp-install` preflights the tools an install needs and fails loudly naming the missing
+  `:lsp-install` checks the tools an install needs and fails loudly naming the missing
   one before downloading anything. Other purl kinds (`opam`, `luarocks`, `cargo-git` — a
   Mason cargo package pinned to a git tag/rev instead of a crates.io version, e.g. `nil` —
   …) fail with a loud, specific error naming the unsupported kind. jdtls installs the
@@ -455,10 +455,10 @@ choice (see below), traded for a hard runtime dependency on these being present:
 `git` and `curl` are already required by the grammar pipeline; this adds `unzip` on
 Linux and `gzip` on Windows as the only new hard requirements for github/npm-kind
 installs. cargo-kind installs are opt-in per server and add a Rust toolchain requirement
-only for those. `:lsp-install` preflights
+only for those. `:lsp-install` checks
 the specific tool an install needs (via Steel's `which`)
 before downloading anything, so a missing tool fails loudly naming it rather than
-partway through an install.
+partway through an install. `:lsp-servers` and the discovery hint run the same check.
 
 **Why shell out instead of adding `sha2`/`flate2`/`zip` crate dependencies**: avoids growing the dependency tree for functionality the
 OS/toolchain already ships, and — since these tools are already required by any
