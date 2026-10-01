@@ -2,7 +2,6 @@
 //! action, with the undo group, typed run, and autoindent state that
 //! entails. What `.` replays is recorded elsewhere (`replay.rs`).
 
-use hume_editing::grapheme::prev_cluster;
 use hume_editing::selection::{EditView, Facing, Selection, SelectionView};
 use hume_editing::text::BufferText;
 use hume_editing::tracked::Tracked;
@@ -410,8 +409,8 @@ fn exit_cursor(sel: SelectionView<'_>, step_back: bool) -> Selection {
     if !step_back {
         return Selection::cursor(head);
     }
-    let at_line_start = head == hume_editing::lines::line_start(sel.text(), sel.head_line());
-    match prev_cluster(sel.text(), head.into()) {
+    let at_line_start = head == sel.text().lines().start(sel.head_line());
+    match sel.text().clusters().prev(head.into()) {
         Some(prev) if !at_line_start => Selection::cursor(prev),
         _ => Selection::cursor(head),
     }

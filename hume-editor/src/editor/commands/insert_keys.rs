@@ -8,7 +8,6 @@
 //! `&mut EditorState` + `&mut EngineView` (see `host_impl.rs`'s own doc),
 //! never a whole `&mut Editor`.
 
-use hume_editing::lines::leading_whitespace_end;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use hume_engine::pipeline::EngineView;
@@ -221,7 +220,7 @@ fn should_dedent_backspace(state: &EditorState, view: &EngineView, fp: FocusedPa
         // leading_whitespace_end` keeps the all-or-nothing "in leading ws"
         // rule: at the whitespace end the cursor sits on the first content
         // char and still qualifies.
-        p.offset() > line_start && p <= leading_whitespace_end(text, line_idx)
+        p.offset() > line_start && p <= text.lines().indent_end(line_idx)
     })
 }
 
@@ -250,7 +249,7 @@ fn is_between_pair(
         if !sel.is_cursor() {
             return false;
         }
-        let Some(prev) = hume_editing::grapheme::prev_cluster(text, sel.head().into()) else {
+        let Some(prev) = text.clusters().prev(sel.head().into()) else {
             return false;
         };
         match (

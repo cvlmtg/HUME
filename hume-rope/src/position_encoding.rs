@@ -112,7 +112,7 @@ fn wire_offset_to_char_index(text: RopeSlice<'_>, offset: usize, enc: PositionEn
 /// The wire-domain half of [`wire_to_char`], split out so a caller that
 /// still needs to *place* the result (snap it to a grapheme boundary, land
 /// it on the motion-domain line end rather than the wire-domain one) can
-/// feed the column to `hume_editing::lines::place_char_column` instead of
+/// feed the column to `ColumnView::place_char` instead of
 /// treating the raw code-unit offset as a final cursor position. `line`
 /// past EOF clamps to the last line here; `character` clamps to the line's
 /// wire-domain content end because that is the extent of the slice handed

@@ -26,7 +26,7 @@ pub(crate) const GRAPHEME_COL_NUMBERS_START_AT_1: &str = "column numbers start a
 
 /// A startup or `:e` cursor position, in the units the statusline shows:
 /// `line` counts buffer lines, `grapheme_col` counts grapheme clusters
-/// within that line (see `hume_editing::lines::place_grapheme_column`), not
+/// within that line (see `ColumnView::place_grapheme`), not
 /// chars, so it agrees with what the user read off a `file:line:col`
 /// diagnostic or the statusline itself. Both are 0-based: decoded from the
 /// 1-based digits via `ContentLine::from_number`/`GraphemeCol::from_number`

@@ -1,5 +1,4 @@
 use super::MotionMode;
-use hume_editing::lines::{line_range, lines_range};
 use hume_editing::selection::{Facing, Selection, SelectionView};
 use hume_editing::state::EditState;
 
@@ -46,7 +45,7 @@ fn extend_line_span(sel: SelectionView<'_>, forward: bool) -> Selection {
     if !sel.is_linewise() {
         let lines = sel.lines();
         return Selection::covering(
-            lines_range(text, lines.start, lines.end),
+            text.lines().span(lines.start, lines.end),
             Facing::from_forward(forward),
         );
     }
@@ -65,7 +64,7 @@ fn extend_line_span(sel: SelectionView<'_>, forward: bool) -> Selection {
         head_line.retreat_saturating(1)
     };
     Selection::covering(
-        lines_range(text, anchor_line, new_head_line),
+        text.lines().span(anchor_line, new_head_line),
         Facing::from_forward(anchor_line <= new_head_line),
     )
 }
@@ -84,7 +83,7 @@ fn move_select_line(sel: SelectionView<'_>) -> Selection {
     } else {
         lines.start
     };
-    Selection::covering(line_range(text, target), Facing::Forward)
+    Selection::covering(text.lines().range(target), Facing::Forward)
 }
 
 /// Select or extend to the full line (`x` / `x` in extend mode): branches on `mode`.
@@ -115,7 +114,7 @@ fn move_select_line_backward(sel: SelectionView<'_>) -> Selection {
     } else {
         top
     };
-    Selection::covering(line_range(sel.text(), target), Facing::Backward)
+    Selection::covering(sel.text().lines().range(target), Facing::Backward)
 }
 
 /// Select or extend to the full line backward (`X` / `X` in extend mode): branches on `mode`.

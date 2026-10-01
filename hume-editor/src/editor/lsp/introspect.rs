@@ -347,9 +347,8 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             let last_content_char = text.last_content_char();
             let clamped_start = d.start.min(last_content_char);
             let line = text.char_to_line(clamped_start);
-            let char_col = hume_editing::lines::char_col_in_line(text, line, clamped_start);
-            let grapheme_col =
-                hume_editing::grapheme::grapheme_col_in_line(text, line, clamped_start);
+            let char_col = text.columns().char_col(line, clamped_start);
+            let grapheme_col = text.columns().grapheme_col(line, clamped_start);
             // `end-line` mirrors `line`'s clamp so a range that reaches (or
             // overshoots) end-of-file still names the buffer's last content
             // line rather than the phantom trailing one. The gutter-sign
@@ -410,11 +409,7 @@ fn wire_pos_to_grapheme_col(
     // Trusted narrow: the bound check above already confirmed `line` names a
     // real content line.
     let line = hume_rope::line::ContentLine::new(pos.line);
-    Some(hume_editing::grapheme::grapheme_col_in_line(
-        text,
-        line,
-        target.offset(),
-    ))
+    Some(text.columns().grapheme_col(line, target.offset()))
 }
 
 /// Filesystem path, wire line, and column for a batch of raw

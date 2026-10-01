@@ -8,7 +8,6 @@ use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, u
 use hume_engine::types::EditorMode;
 
 use super::Editor;
-use hume_editing::lines::{char_to_line_byte, line_break, line_segments};
 use hume_ops::pair::matching_bracket;
 use hume_rope::column::ByteCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
@@ -85,7 +84,7 @@ impl Editor {
                     lines: ExclusiveRange::new(top_line, bottom_line.advance(1).min(past_end)),
                     chars: ExclusiveRange::new(
                         text.line_to_char(top_line),
-                        hume_editing::lines::next_line_start(text, bottom_line),
+                        text.lines().next_start(bottom_line),
                     ),
                 }
             })
@@ -167,7 +166,7 @@ impl Editor {
             let text = self.doc().text();
             let pbs = &self.state.panes.state[focused][self.focused_buffer_id()];
             if let Some(match_pos) = matching_bracket(pbs.view(text).primary()) {
-                let (line, byte) = char_to_line_byte(text, match_pos.offset());
+                let (line, byte) = text.columns().byte_position(match_pos.offset());
                 // The whole cluster holding the partner bracket.
                 let cluster = hume_rope::cluster::ClusterRange::of(text.full_slice(), match_pos);
                 let byte_end = byte.advance_saturating(text.slice(cluster.chars()).len_bytes());
@@ -414,9 +413,9 @@ impl Editor {
                 // include their `\n`), so a hint at end-of-line-content
                 // never bleeds onto the following line.
                 let (line, byte_offset) = if entry.before {
-                    char_to_line_byte(text, entry.pos)
+                    text.columns().byte_position(entry.pos)
                 } else {
-                    char_to_line_byte(text, entry.pos.shift(1))
+                    text.columns().byte_position(entry.pos.shift(1))
                 };
                 // Trusted narrow: `host_impl.rs`'s `validate_offset` already
                 // rejects an 'after anchor that would land on the phantom
@@ -476,8 +475,8 @@ impl Editor {
                     // the next line; see `char_to_line_byte`'s doc comment
                     // on the same pattern used for inlay hints' `'after`
                     // anchor).
-                    let line_newline = line_break(text, line);
-                    let (_, byte_offset) = char_to_line_byte(text, line_newline.offset());
+                    let line_newline = text.lines().newline(line);
+                    let (_, byte_offset) = text.columns().byte_position(line_newline.offset());
                     (
                         source,
                         line,
@@ -714,7 +713,11 @@ fn push_match_highlight_lines(
     if range.is_empty() {
         return;
     }
-    data.extend(line_segments(text, range).map(|(l, s, e)| (l, s, e, scope)));
+    data.extend(
+        text.columns()
+            .segments(range)
+            .map(|(l, s, e)| (l, s, e, scope)),
+    );
 }
 
 /// Push one `(line, byte_start, byte_end, priority, scope)` quintuple per
@@ -737,7 +740,11 @@ fn push_priority_highlight_lines(
     if range.is_empty() {
         return;
     }
-    data.extend(line_segments(text, range).map(|(l, s, e)| (l, s, e, priority, scope)));
+    data.extend(
+        text.columns()
+            .segments(range)
+            .map(|(l, s, e)| (l, s, e, priority, scope)),
+    );
 }
 
 /// Flattens overlapping same-line `(start, end, priority, scope)` spans

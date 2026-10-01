@@ -3,7 +3,6 @@
 use hume_editing::changeset::Assoc;
 use hume_editing::edit::Edited;
 use hume_editing::edit::{Landing, Landings, edit};
-use hume_editing::lines::{leading_indent, line_break, line_start};
 use hume_editing::state::EditState;
 use hume_editing::tab_style::TabStyle;
 use hume_rope::cluster::ClusterRange;
@@ -92,12 +91,12 @@ fn shift_indent(
     let mut rewrites = Vec::new();
 
     for line in lines {
-        let line_start = line_start(text, line);
-        let (ws_end, old_width) = leading_indent(text, line, tab_width);
+        let line_start = text.lines().start(line);
+        let (ws_end, old_width) = text.columns().indent(line, tab_width);
         // Blank line (empty, or whitespace-only): skipped untouched, matching
         // Vim's `>>`, so a blank separator line never collects trailing
         // whitespace.
-        if ws_end == line_break(text, line) {
+        if ws_end == text.lines().newline(line) {
             continue;
         }
         let new_width = old_width.shift_saturating(delta_display_col);

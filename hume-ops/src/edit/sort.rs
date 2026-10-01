@@ -9,7 +9,6 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::{Landing, Landings, edit};
-use hume_editing::lines::{line_content_range, line_start};
 use hume_editing::selection::EditView;
 use hume_editing::state::EditState;
 use hume_rope::line::ContentLine;
@@ -95,9 +94,9 @@ pub fn sort_lines(state: EditState, opts: SortOpts) -> Result<Edited, SortRefusa
     let primary = view.primary().index();
     Ok(edit(&state, |b| {
         for (target, content) in &moves {
-            match line_content_range(text, *target) {
+            match text.lines().content_range(*target) {
                 Some(range) => b.replace(range, content),
-                None => b.insert(line_start(text, *target), content),
+                None => b.insert(text.lines().start(*target), content),
             };
         }
         // A selection on one moved line follows the line to its new place. A

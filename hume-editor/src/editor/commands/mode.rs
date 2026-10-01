@@ -1,4 +1,3 @@
-use hume_editing::lines::line_break;
 use hume_editing::selection::Selection;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
@@ -76,7 +75,7 @@ pub(in crate::editor) fn cmd_insert_at_line_end(
     // A cursor on the head line's `\n`, where appended text goes. On an
     // empty line that is the line itself, so `A` equals `i` there.
     apply_pane_motion(state, view, fp.pane(), |st| {
-        st.map(|sel| Selection::cursor(line_break(sel.text(), sel.head_line())))
+        st.map(|sel| Selection::cursor(sel.text().lines().newline(sel.head_line())))
     });
     begin_insert_session(state, view, fp)?;
     begin_typed_run(state, view, fp, ExitCursor::StepBack);

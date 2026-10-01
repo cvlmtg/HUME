@@ -2,7 +2,6 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
-use hume_editing::lines::{line_break, line_range, line_start};
 use hume_editing::selection::Facing;
 use hume_editing::state::EditState;
 use hume_rope::cluster::ClusterRange;
@@ -72,9 +71,9 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
                 // Linewise cursor paste: whole new line(s) above or below.
                 let line = sel.head_line();
                 let insert_at = if before {
-                    line_start(text, line).into()
+                    text.lines().start(line).into()
                 } else {
-                    line_range(text, line).end()
+                    text.lines().range(line).end()
                 };
                 let mark = b.insert(insert_at, content);
                 return Landing::covering(mark, Facing::Forward);
@@ -101,7 +100,7 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
             // '\n' takes that '\n' too, so no blank line is left.
             let covered = sel.covered();
             let last_line = sel.lines().end;
-            let line_break = line_break(text, last_line);
+            let line_break = text.lines().newline(last_line);
             let range = if covered.end() == line_break.into() {
                 ClusterRange::through(text.full_slice(), covered.start(), line_break)
                     .expect("a selection starts before the break after it")

@@ -7,7 +7,6 @@
 //! (`C`), which needs the same display-column authority to land a duplicated
 //! selection under a tab or wide grapheme without wrap in play at all.
 
-use hume_editing::lines::{line_break, line_range};
 use hume_editing::selection::{Selection, StickyDisplayCol};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
@@ -249,8 +248,8 @@ fn copied_end(
     line: usize,
 ) -> ClusterStart {
     let line = hume_rope::line::ContentLine::new(line);
-    if end == line_break(text, text.char_to_line(end.offset())) {
-        return line_break(text, line);
+    if end == text.lines().newline(text.char_to_line(end.offset())) {
+        return text.lines().newline(line);
     }
     dlm.char_at_buffer_line_col(line, display_col, DisplayColTarget::NearestContent)
 }
@@ -501,9 +500,9 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
             st.map(|sel| {
                 let text = sel.text();
                 let pos = dlm.locate_display_line(sel.anchor());
-                let bounds = dlm
-                    .content_display_line_clusters(pos)
-                    .unwrap_or_else(|| line_range(text, text.char_to_line(sel.anchor().offset())));
+                let bounds = dlm.content_display_line_clusters(pos).unwrap_or_else(|| {
+                    text.lines().range(text.char_to_line(sel.anchor().offset()))
+                });
                 let found = nearest_word_on_line(
                     text,
                     sel.anchor(),

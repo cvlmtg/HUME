@@ -1,7 +1,6 @@
 //! Inner/around argument (comma-separated item) text objects: function
 //! arguments, array items, object fields, or any comma list inside brackets.
 
-use hume_editing::grapheme::{clusters_before, graphemes_at, next_cluster, prev_cluster};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, blank_class};
 use hume_rope::cluster::{ClusterRange, ClusterStart};
@@ -59,7 +58,10 @@ fn find_comma_segments(text: &BufferText, pair: ClusterRange) -> Vec<Segment> {
                     start: seg_start,
                     stop: comma,
                 });
-                seg_start = next_cluster(text, comma).expect("the closing bracket follows");
+                seg_start = text
+                    .clusters()
+                    .next(comma)
+                    .expect("the closing bracket follows");
             }
             None => {}
         }
@@ -107,9 +109,9 @@ fn locate_argument(
 
     // Nudge: if the cursor is on a bracket itself, step into the content zone.
     let pos = if pos == pair.start() {
-        next_cluster(text, pos)?
+        text.clusters().next(pos)?
     } else if pos == pair.last() {
-        prev_cluster(text, pos.into())?
+        text.clusters().prev(pos.into())?
     } else {
         pos
     };
@@ -149,7 +151,8 @@ fn extend_forward_while(
     pos: ClusterStart,
     blank: impl Fn(char) -> bool,
 ) -> ClusterStart {
-    graphemes_at(text, pos.into())
+    text.clusters()
+        .graphemes_at(pos.into())
         .skip(1)
         .take_while(|c| blank(c.first()))
         .last()
@@ -164,7 +167,8 @@ fn extend_backward_while(
     pos: ClusterStart,
     blank: impl Fn(char) -> bool,
 ) -> ClusterStart {
-    clusters_before(text, pos.into())
+    text.clusters()
+        .before(pos.into())
         .take_while(|c| blank(c.first()))
         .last()
         .map_or(pos, |c| c.start())
@@ -209,14 +213,14 @@ pub fn around_from_inner(text: &BufferText, inner: ClusterRange) -> ClusterRange
         ClusterRange::through(text.full_slice(), first, last).expect("first precedes last")
     };
     let before = extend_backward_while(text, inner.start(), is_blank);
-    if let Some(comma) = prev_cluster(text, before.into())
+    if let Some(comma) = text.clusters().prev(before.into())
         && is_comma(text, comma)
     {
         return through(comma, extend_forward_while(text, inner.last(), is_blank));
     }
 
     let after = extend_forward_while(text, inner.last(), is_blank);
-    if let Some(comma) = next_cluster(text, after)
+    if let Some(comma) = text.clusters().next(after)
         && is_comma(text, comma)
     {
         return through(before, extend_forward_while(text, comma, is_inline_blank));

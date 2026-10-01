@@ -2,7 +2,6 @@
 //! whole-selection deletes (`d` and `c`'s content-only variant).
 
 use hume_editing::edit::{EditBuilder, Edited, Landing};
-use hume_editing::grapheme::{char_pos_at_display_col, clusters_before, display_col_in_line};
 use hume_editing::selection::SelectionView;
 use hume_editing::state::EditState;
 use hume_editing::word::{WordChars, is_word_boundary};
@@ -139,7 +138,9 @@ pub fn delete_char_forward(state: EditState) -> Edited {
 /// - **Selection**: removed as [`delete_selection`] removes it.
 pub fn delete_char_backward(state: EditState) -> Edited {
     delete_back_to(state, |sel| {
-        clusters_before(sel.text(), sel.head().into())
+        sel.text()
+            .clusters()
+            .before(sel.head().into())
             .next()
             .map(|cluster| cluster.range())
     })
@@ -170,7 +171,7 @@ fn delete_back_to(
 /// editor's `should_dedent_backspace`), this deletes the whitespace between
 /// the cursor and the previous tab-stop column. Mixed tabs and spaces are
 /// handled by walking the line forward with tab expansion to locate the char
-/// offset at the target column ([`char_pos_at_display_col`]).
+/// offset at the target column ([`hume_editing::text::ColumnView::pos_at_display_col`]).
 pub fn dedent_tab_backward(state: EditState, tab_width: u8) -> Edited {
     debug_assert!(
         state.view().iter().all(|sel| sel.is_cursor()),
@@ -179,12 +180,17 @@ pub fn dedent_tab_backward(state: EditState, tab_width: u8) -> Edited {
     delete_back_to(state, |sel| {
         let text = sel.text();
         let line_idx = sel.head_line();
-        let display_col = display_col_in_line(text, line_idx, sel.head().offset(), tab_width);
+        let display_col = text
+            .columns()
+            .display_col(line_idx, sel.head().offset(), tab_width);
         let prev_stop = hume_rope::column::BufferLineCol::new(hume_rope::width::prev_tab_stop(
             display_col.get() as usize,
             tab_width,
         ) as u32);
-        let start = char_pos_at_display_col(text, line_idx, prev_stop, tab_width).min(sel.head());
+        let start = text
+            .columns()
+            .pos_at_display_col(line_idx, prev_stop, tab_width)
+            .min(sel.head());
         ClusterRange::between(text.full_slice(), start, sel.head().into())
     })
 }

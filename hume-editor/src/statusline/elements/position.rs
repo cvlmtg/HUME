@@ -1,8 +1,6 @@
 use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
 
-use hume_editing::grapheme::grapheme_col_in_line;
-
 use super::StatuslineElement;
 use crate::statusline::HumeStatusline;
 use crate::statusline::colors::EditorColors;
@@ -27,7 +25,7 @@ impl StatuslineElement for PositionElement {
         let text = editor.doc().text();
         let head = editor.current_view().primary().head();
         let head_line = text.char_to_line(head.offset());
-        let grapheme_col = grapheme_col_in_line(text, head_line, head.offset());
+        let grapheme_col = text.columns().grapheme_col(head_line, head.offset());
         Position {
             line: head_line.number(),
             grapheme_col: grapheme_col.number(),

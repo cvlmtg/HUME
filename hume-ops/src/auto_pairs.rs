@@ -1,7 +1,6 @@
 use crate::edit::apply_edit;
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
-use hume_editing::grapheme::{cluster_end, prev_cluster};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
@@ -84,8 +83,10 @@ pub fn delete_pair(state: EditState) -> Edited {
         debug_assert!(sel.is_cursor(), "delete_pair called on a selection");
         let head = sel.head();
         let text = b.text();
-        let next = cluster_end(text, head);
-        let Some(pair) = prev_cluster(text, head.into())
+        let next = text.clusters().end_of(head);
+        let Some(pair) = text
+            .clusters()
+            .prev(head.into())
             .and_then(|prev| ClusterRange::between(text.full_slice(), prev, next))
         else {
             return Landing::kept(sel.selection());
@@ -129,7 +130,7 @@ pub fn should_auto_pair_at(
 
     // Check 2 (symmetric pairs only): prev char must NOT be a word char.
     if pair.is_symmetric()
-        && let Some(prev) = prev_cluster(text, head)
+        && let Some(prev) = text.clusters().prev(head)
         && text
             .char_at(prev.offset())
             .is_some_and(|c| chars.classify(c) == CharClass::Word)

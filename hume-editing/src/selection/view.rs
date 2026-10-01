@@ -174,7 +174,9 @@ impl<'a> SelectionView<'a> {
         if self.ends_on_break() {
             self.sel.last()
         } else {
-            crate::grapheme::next_cluster(self.text, self.sel.last())
+            self.text
+                .clusters()
+                .next(self.sel.last())
                 .expect("a cluster other than the final `\\n` has a successor")
         }
     }
@@ -194,8 +196,8 @@ impl<'a> SelectionView<'a> {
         let covered = self.covered();
         let lines = self.lines();
         lines.iter().map(move |line| {
-            let start = crate::lines::line_start(text, line);
-            let line_break = crate::lines::line_break(text, line);
+            let start = text.lines().start(line);
+            let line_break = text.lines().newline(line);
             let content = ClusterRange::between(
                 text.full_slice(),
                 covered.start().max(start),
@@ -216,7 +218,11 @@ impl<'a> SelectionView<'a> {
     /// Whether the first covered cluster starts its line.
     pub fn starts_line(self) -> bool {
         let start = self.sel.start();
-        start == crate::lines::line_start(self.text, self.text.char_to_line(start.offset()))
+        start
+            == self
+                .text
+                .lines()
+                .start(self.text.char_to_line(start.offset()))
     }
 
     /// Whether this selection covers whole lines: it starts a line and ends
@@ -243,7 +249,9 @@ impl<'a> SelectionView<'a> {
     /// The covered clusters, in order.
     pub fn clusters(self) -> impl Iterator<Item = Cluster> + 'a {
         let end = self.covered().end();
-        hume_rope::grapheme::graphemes_at(self.text.full_slice(), self.sel.start().into())
+        self.text
+            .clusters()
+            .graphemes_at(self.sel.start().into())
             .take_while(move |cluster| cluster.end() <= end)
     }
 

@@ -5,7 +5,6 @@ pub use matching::{
 };
 
 use super::MotionMode;
-use hume_editing::grapheme::{first_cluster, last_cluster};
 use hume_editing::selection::Selection;
 use hume_editing::state::EditState;
 
@@ -55,7 +54,10 @@ pub fn cmd_flip_selections(state: EditState, _count: usize, _mode: MotionMode) -
 /// character to the last (the structural trailing `\n`). Head is placed at
 /// the end so the cursor sits at the bottom, consistent with Helix `%`.
 pub fn cmd_select_all(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
-    let all = Selection::new(first_cluster(state.text()), last_cluster(state.text()));
+    let all = Selection::new(
+        state.text().clusters().first(),
+        state.text().clusters().last(),
+    );
     state.with_selections(vec![all], 0)
 }
 

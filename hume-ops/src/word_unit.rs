@@ -2,7 +2,6 @@
 //! motion and word text object builds on. Position-only: nothing here knows
 //! about selections or motion modes.
 
-use hume_editing::grapheme::{clusters_before, graphemes_at, next_cluster, prev_cluster};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars, blank_class};
 use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
@@ -33,7 +32,8 @@ pub(crate) fn prev_nonblank(
     before: ClusterBound,
     floor: ClusterBound,
 ) -> Option<ClusterStart> {
-    clusters_before(text, before)
+    text.clusters()
+        .before(before)
         .take_while(|c| c.end() > floor)
         .find(|c| blank_class(c.first()).is_none())
         .map(|c| c.start())
@@ -52,7 +52,8 @@ pub(crate) fn find_word_start_from(
     chars: WordChars<'_>,
 ) -> ClusterStart {
     let cat = class_at(text, pos, chars);
-    clusters_before(text, pos.into())
+    text.clusters()
+        .before(pos.into())
         .take_while(|c| !is_boundary(chars.classify(c.first()), cat))
         .last()
         .map_or(pos, |c| c.start())
@@ -72,7 +73,8 @@ pub(crate) fn find_word_end_from(
     chars: WordChars<'_>,
 ) -> ClusterStart {
     let cat = class_at(text, start, chars);
-    graphemes_at(text, start.into())
+    text.clusters()
+        .graphemes_at(start.into())
         .skip(1)
         .take_while(|c| !is_boundary(cat, chars.classify(c.first())))
         .last()
@@ -120,7 +122,9 @@ pub fn expand_word_unit(
     range: ClusterRange,
     min_start: ClusterBound,
 ) -> ClusterRange {
-    let min_start_is_bol = prev_cluster(text, min_start)
+    let min_start_is_bol = text
+        .clusters()
+        .prev(min_start)
         .is_none_or(|prev| blank_class(first_char(text, prev)) == Some(CharClass::Eol));
 
     // Leading scan: walk back over Space clusters from the range's start.
@@ -128,7 +132,11 @@ pub fn expand_word_unit(
     // indentation.
     let mut run_start = range.start();
     let mut hit_eol = false;
-    for c in clusters_before(text, range.start().into()).take_while(|c| c.end() > min_start) {
+    for c in text
+        .clusters()
+        .before(range.start().into())
+        .take_while(|c| c.end() > min_start)
+    {
         match blank_class(c.first()) {
             Some(CharClass::Space) => run_start = c.start(),
             Some(CharClass::Eol) => {
@@ -146,7 +154,9 @@ pub fn expand_word_unit(
 
     // Trailing fallback: first word of a line, punctuation immediately
     // before, or no adjacent whitespace at all.
-    let trailing = graphemes_at(text, range.end())
+    let trailing = text
+        .clusters()
+        .graphemes_at(range.end())
         .take_while(|c| blank_class(c.first()) == Some(CharClass::Space))
         .last();
     match trailing {
@@ -187,10 +197,10 @@ pub fn word_unit_at(
     // On whitespace: `range` is the whitespace run. Find the word adjacent
     // to it (following preferred, preceding fallback) and expand that one by
     // the normal rule instead.
-    let word_pos = match next_cluster(text, range.last()) {
+    let word_pos = match text.clusters().next(range.last()) {
         Some(next) if !is_blank_at(text, next) => next,
         _ => {
-            let prev = prev_cluster(text, range.start().into())?;
+            let prev = text.clusters().prev(range.start().into())?;
             if is_blank_at(text, prev) {
                 return None;
             }

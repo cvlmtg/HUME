@@ -3,7 +3,6 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
-use hume_editing::grapheme::clusters_before;
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
@@ -20,7 +19,8 @@ use super::apply_edit;
 /// word operation, including what the LSP completion fallback this backs is
 /// replacing on the buffer's behalf.
 pub fn word_start_before(text: &BufferText, pos: CharOffset, chars: WordChars<'_>) -> CharOffset {
-    clusters_before(text, text.snap(pos).into())
+    text.clusters()
+        .before(text.snap(pos).into())
         .take_while(|cluster| chars.classify(cluster.first()) == CharClass::Word)
         .last()
         .map_or(pos, |cluster| cluster.start().offset())

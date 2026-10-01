@@ -3,7 +3,6 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
-use hume_editing::grapheme::{char_pos_at_display_col, display_col_in_line};
 use hume_editing::state::EditState;
 use hume_rope::column::BufferLineCol;
 use hume_rope::line::ContentLine;
@@ -70,7 +69,8 @@ pub fn align_selections(state: EditState, tab_width: u8) -> Edited {
                 };
             }
             let anchor_display_col =
-                display_col_in_line(text, start_line, sel.anchor().offset(), tab_width);
+                text.columns()
+                    .display_col(start_line, sel.anchor().offset(), tab_width);
             let line_start = text.line_to_char(start_line.into());
             let sel_start = sel.start().offset();
             // `sel.start()` is `anchor.min(head)`, so for a forward selection
@@ -80,7 +80,7 @@ pub fn align_selections(state: EditState, tab_width: u8) -> Edited {
             let start_display_col = if sel.anchor() <= sel.head() {
                 anchor_display_col
             } else {
-                display_col_in_line(text, start_line, sel_start, tab_width)
+                text.columns().display_col(start_line, sel_start, tab_width)
             };
             let rem = (run_floor.max(line_start).index()..sel_start.index())
                 .rev()
@@ -95,7 +95,7 @@ pub fn align_selections(state: EditState, tab_width: u8) -> Edited {
             // content width into the run's width.
             let run_start = sel_start.retreat(rem);
             let rem_cells = start_display_col
-                .cells_since(display_col_in_line(text, start_line, run_start, tab_width));
+                .cells_since(text.columns().display_col(start_line, run_start, tab_width));
             let counter = slots_on_line.entry(start_line).or_insert(0);
             let slot = *counter;
             *counter += 1;
@@ -239,12 +239,13 @@ pub fn align_selections(state: EditState, tab_width: u8) -> Edited {
                 // grapheme that would overshoot, so a tab straddling the
                 // threshold is deleted whole and the surplus padded back.
                 let threshold = start_display_col.retreat_saturating(need);
-                let cut = char_pos_at_display_col(text, start_line, threshold, tab_width);
+                let cut = text
+                    .columns()
+                    .pos_at_display_col(start_line, threshold, tab_width);
                 let remove = sel_start.chars_since(cut.offset()).min(meta[i].rem);
                 let run = ExclusiveRange::new(sel_start.retreat(remove), sel_start);
                 if let Some(removed) = text.within(run) {
-                    let freed = start_display_col.cells_since(display_col_in_line(
-                        text,
+                    let freed = start_display_col.cells_since(text.columns().display_col(
                         start_line,
                         removed.start().offset(),
                         tab_width,

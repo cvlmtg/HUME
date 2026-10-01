@@ -484,7 +484,7 @@ fn char_indexed_to_cluster(
     let buf = state.buffers.get(bid);
     let text = buf.text();
     let line = hume_rope::line::RopeyLine::clamped(text.rope(), line.index());
-    hume_editing::lines::place_char_column(text, line, char_col)
+    text.columns().place_char(line, char_col)
 }
 
 /// A bare path string and a `file://` URI string both name shape 2's

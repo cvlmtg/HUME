@@ -1,6 +1,5 @@
 //! Inner/around line text objects.
 
-use hume_editing::lines::{line_content_range, line_range};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
@@ -11,12 +10,12 @@ use crate::MotionMode;
 /// Inner line: the line content excluding the trailing newline.
 /// Returns `None` for lines that contain only a newline (no content to select).
 fn inner_line(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
-    line_content_range(text, text.char_to_line(pos.offset()))
+    text.lines().content_range(text.char_to_line(pos.offset()))
 }
 
 /// Around line: the full line including the trailing newline.
 fn around_line(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
-    Some(line_range(text, text.char_to_line(pos.offset())))
+    Some(text.lines().range(text.char_to_line(pos.offset())))
 }
 
 pub fn cmd_inner_line(state: EditState, _count: usize, mode: MotionMode) -> EditState {

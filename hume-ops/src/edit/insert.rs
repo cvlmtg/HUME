@@ -2,8 +2,6 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
-use hume_editing::grapheme::display_col_in_line;
-use hume_editing::lines::{leading_whitespace_end, line_break, line_start};
 use hume_editing::state::EditState;
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
@@ -70,9 +68,9 @@ impl LineIndent {
 pub(in crate::edit) fn line_indent_range(text: &BufferText, pos: CharOffset) -> LineIndent {
     let line_idx = text.char_to_line(pos);
     LineIndent {
-        start: line_start(text, line_idx),
-        ws_end: leading_whitespace_end(text, line_idx),
-        line_break: line_break(text, line_idx),
+        start: text.lines().start(line_idx),
+        ws_end: text.lines().indent_end(line_idx),
+        line_break: text.lines().newline(line_idx),
     }
 }
 
@@ -219,7 +217,7 @@ pub fn clear_blank_line_indent(state: EditState, allowed: &[ExclusiveRange<CharO
 ///   typing any other character.
 /// - **`TabStyle::Soft`**: inserts enough spaces to reach the next tab stop.
 ///   The display column of the cursor is computed with tab expansion (see
-///   [`hume_editing::grapheme::display_col_in_line`]); `spaces = tab_width -
+///   [`hume_editing::text::ColumnView::display_col`]); `spaces = tab_width -
 ///   (display_col % tab_width)`, so a cursor already on a stop gets a full
 ///   tab-width of spaces.
 ///
@@ -250,7 +248,10 @@ fn spaces_to_stops(state: EditState, tab_width: u8) -> Edited {
                 let between = text.slice(ExclusiveRange::new(prev_at, at.offset()));
                 prev_col + str_width(&between.to_string(), prev_col, tab_width)
             }
-            _ => display_col_in_line(text, line, at.offset(), tab_width).get() as usize,
+            _ => text
+                .columns()
+                .display_col(line, at.offset(), tab_width)
+                .get() as usize,
         };
         let n = tab_advance(col, tab_width);
         prev = Some((line, at.offset(), col + n));

@@ -14,9 +14,11 @@
 //! - [`history::History`]: tree-structured undo/redo.
 //!
 //! Motion and selection code steps positions cluster by cluster with
-//! [`grapheme::next_cluster`]/[`grapheme::prev_cluster`], and walks with
-//! [`grapheme::graphemes_at`]/[`grapheme::clusters_before`], never by raw
-//! chars.
+//! [`text::ClusterView::next`]/[`text::ClusterView::prev`], and walks with
+//! [`text::ClusterView::graphemes_at`]/[`text::ClusterView::before`], never
+//! by raw chars. A [`text::BufferText`] hands out [`text::ClusterView`],
+//! [`text::LineView`] and [`text::ColumnView`] for its cluster, line and
+//! column queries.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 
@@ -24,9 +26,7 @@ pub mod changeset;
 pub mod diff;
 pub mod edit;
 pub mod error;
-pub mod grapheme;
 pub mod history;
-pub mod lines;
 #[cfg(any(test, feature = "test-util"))]
 pub mod marked;
 pub mod selection;

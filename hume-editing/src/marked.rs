@@ -228,7 +228,7 @@ pub fn start_at(text: &BufferText, n: usize) -> ClusterStart {
 /// Panics if char `n` is inside a cluster or past the text end.
 pub fn bound_at(text: &BufferText, n: usize) -> ClusterBound {
     if n == text.len_chars() {
-        return hume_rope::grapheme::text_end(text.full_slice());
+        return text.clusters().text_end();
     }
     start_at(text, n).into()
 }

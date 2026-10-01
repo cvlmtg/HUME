@@ -3,7 +3,6 @@ use regex_cursor::engines::meta::Regex;
 use crate::MotionMode;
 use crate::search::find_matches_in_range;
 use crate::text_object::trim_blank;
-use hume_editing::lines::{line_content_end, line_start};
 use hume_editing::selection::{Facing, Selection};
 use hume_editing::state::EditState;
 use hume_rope::cluster::ClusterRange;
@@ -44,16 +43,16 @@ pub fn cmd_split_selection_on_newlines(
         // content, or the start alone when it is the line's `\n`.
         let mut pieces = vec![piece(
             sel.start(),
-            line_content_end(text, lines.start).max(sel.start()),
+            text.lines().content_end(lines.start).max(sel.start()),
         )];
         // Middle lines: full lines.
         pieces.extend(
             ExclusiveRange::new(lines.start.advance(1), lines.end)
                 .iter()
-                .map(|line| piece(line_start(text, line), line_content_end(text, line))),
+                .map(|line| piece(text.lines().start(line), text.lines().content_end(line))),
         );
         // Last line piece: from the line start to the selection's last cluster.
-        pieces.push(piece(line_start(text, lines.end), sel.last()));
+        pieces.push(piece(text.lines().start(lines.end), sel.last()));
         pieces
     })
 }

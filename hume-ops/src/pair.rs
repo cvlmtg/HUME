@@ -1,6 +1,5 @@
 //! Scanning primitives for paired delimiters (brackets and quotes).
 
-use hume_editing::lines::line_range;
 use hume_editing::selection::SelectionView;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
@@ -23,7 +22,9 @@ pub(crate) fn delimiter_at(
     pos: ClusterStart,
     is_delimiter: impl Fn(char) -> bool,
 ) -> Option<(CharOffset, char)> {
-    let len = hume_editing::grapheme::cluster_end(text, pos)
+    let len = text
+        .clusters()
+        .end_of(pos)
         .offset()
         .chars_since(pos.offset());
     text.chars_at(pos.offset())
@@ -414,7 +415,7 @@ pub(crate) fn find_quote_pair(
     quote: char,
 ) -> Option<ClusterRange> {
     let pos = delimiter_at(text, pos, |ch| ch == quote).map_or(pos.offset(), |(at, _)| at);
-    let line = line_range(text, text.char_to_line(pos)).chars();
+    let line = text.lines().range(text.char_to_line(pos)).chars();
 
     // Single pass: track the opening quote position; on every second hit we
     // have a complete pair and can test whether `pos` falls inside it.

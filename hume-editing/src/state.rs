@@ -36,7 +36,7 @@ impl EditState {
 
     /// `text` with one cursor on its first cluster.
     pub fn at_text_start(text: BufferText) -> Self {
-        let first = crate::grapheme::first_cluster(&text);
+        let first = text.clusters().first();
         Self::with_cursor(text, first)
     }
 
@@ -52,11 +52,9 @@ impl EditState {
         picks: &[(usize, usize)],
         primary: usize,
     ) -> Self {
-        let starts: Vec<ClusterStart> = std::iter::successors(
-            hume_rope::grapheme::first_cluster(text.full_slice()),
-            |&s| hume_rope::grapheme::next_cluster(text.full_slice(), s),
-        )
-        .collect();
+        let starts: Vec<ClusterStart> =
+            std::iter::successors(Some(text.clusters().first()), |&s| text.clusters().next(s))
+                .collect();
         let selections = picks
             .iter()
             .map(|&(anchor, head)| {

@@ -63,7 +63,7 @@ pub(in crate::editor) fn wire_to_cluster(
 ) -> hume_rope::cluster::ClusterStart {
     let (line, char_col) =
         hume_rope::position_encoding::wire_to_line_char_col(text.rope(), pos, encoding);
-    hume_editing::lines::place_char_column(text, line, char_col)
+    text.columns().place_char(line, char_col)
 }
 
 /// A Rust closure run with a completed request's outcome. `hume-lsp` never

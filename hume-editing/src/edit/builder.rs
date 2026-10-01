@@ -428,8 +428,8 @@ impl<'id> Landing<'id> {
             }
             Kind::CursorEndingAt(end) => {
                 let end = place(end);
-                let starts_line = end < text.end()
-                    && crate::lines::line_start(text, text.char_to_line(end)).offset() == end;
+                let starts_line =
+                    end < text.end() && text.lines().start(text.char_to_line(end)).offset() == end;
                 if starts_line {
                     Selection::cursor(text.snap(end))
                 } else {
@@ -447,7 +447,7 @@ impl<'id> Landing<'id> {
             }
             Kind::LineStartOf(at) => {
                 let line = text.char_to_line(place(at));
-                Selection::cursor(crate::lines::line_start(text, line))
+                Selection::cursor(text.lines().start(line))
             }
             Kind::Kept { sel, assoc } => resolver.carry(sel, assoc),
             Kind::AtLines { sel, first, last } => {
@@ -474,10 +474,10 @@ impl LineEnd {
     /// `end`, a cluster of `text`, moved to `line` of the new text.
     fn of(text: &BufferText, end: ClusterStart, line: ContentLine) -> Self {
         let old = text.char_to_line(end.offset());
-        let place = if end == crate::lines::line_break(text, old) {
+        let place = if end == text.lines().newline(old) {
             LinePlace::Break
         } else {
-            LinePlace::Col(crate::lines::char_col_in_line(text, old, end.offset()))
+            LinePlace::Col(text.columns().char_col(old, end.offset()))
         };
         Self { line, place }
     }
@@ -493,8 +493,8 @@ impl LineEnd {
             self.line.index()
         );
         match self.place {
-            LinePlace::Break => crate::lines::line_break(text, self.line),
-            LinePlace::Col(col) => crate::lines::place_char_column(text, self.line.into(), col),
+            LinePlace::Break => text.lines().newline(self.line),
+            LinePlace::Col(col) => text.columns().place_char(self.line.into(), col),
         }
     }
 }

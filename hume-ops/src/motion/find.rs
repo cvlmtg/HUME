@@ -1,6 +1,4 @@
 use super::{FindKind, MotionMode, apply_motion};
-use hume_editing::grapheme::{clusters_before, graphemes_at, next_cluster, prev_cluster};
-use hume_editing::lines::{line_break, line_start};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::ClusterStart;
@@ -52,8 +50,9 @@ fn nth_char_on_line_forward(
     n: usize,
     skipped: usize,
 ) -> Option<ClusterStart> {
-    let newline = line_break(text, text.char_to_line(head.offset()));
-    graphemes_at(text, head.into())
+    let newline = text.lines().newline(text.char_to_line(head.offset()));
+    text.clusters()
+        .graphemes_at(head.into())
         .skip(1 + skipped)
         .take_while(|cluster| cluster.start() < newline)
         .filter(|&cluster| cluster_is(text, cluster, ch))
@@ -70,8 +69,9 @@ fn nth_char_on_line_backward(
     n: usize,
     skipped: usize,
 ) -> Option<ClusterStart> {
-    let first = line_start(text, text.char_to_line(head.offset()));
-    clusters_before(text, head.into())
+    let first = text.lines().start(text.char_to_line(head.offset()));
+    text.clusters()
+        .before(head.into())
         .skip(skipped)
         .take_while(|cluster| cluster.start() >= first)
         .filter(|&cluster| cluster_is(text, cluster, ch))
@@ -93,7 +93,7 @@ fn find_forward(
         match nth_char_on_line_forward(s.text(), head, ch, count, skipped) {
             Some(pos) => match kind {
                 FindKind::Inclusive => pos,
-                FindKind::Exclusive => prev_cluster(s.text(), pos.into()).unwrap_or(pos),
+                FindKind::Exclusive => s.text().clusters().prev(pos.into()).unwrap_or(pos),
             },
             None => head,
         }
@@ -114,7 +114,7 @@ fn find_backward(
         match nth_char_on_line_backward(s.text(), head, ch, count, skipped) {
             Some(pos) => match kind {
                 FindKind::Inclusive => pos,
-                FindKind::Exclusive => next_cluster(s.text(), pos).unwrap_or(pos),
+                FindKind::Exclusive => s.text().clusters().next(pos).unwrap_or(pos),
             },
             None => head,
         }

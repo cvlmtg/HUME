@@ -18,7 +18,6 @@ mod tests {
     use crate::editor::position_stores::DetachedStores;
     use crate::editor::tests::co;
     use hume_editing::edit::Edited;
-    use hume_editing::grapheme::{first_cluster, graphemes_at};
     use hume_editing::selection::{EditView, SelectionSet};
     use hume_editing::state::EditState;
     use hume_editing::text::BufferText;
@@ -504,7 +503,7 @@ mod tests {
         fn prop_yank_returns_the_covered_clusters(
             (text, sels) in arb_initial_state(30),
         ) {
-            let clusters: Vec<_> = graphemes_at(&text, first_cluster(&text).into()).collect();
+            let clusters: Vec<_> = text.clusters().graphemes_at(text.clusters().first().into()).collect();
             let chars: Vec<char> = text.to_string().chars().collect();
             let structural = chars.len() - 1;
             let expected: Vec<String> = EditView::bind(&text, &sels)

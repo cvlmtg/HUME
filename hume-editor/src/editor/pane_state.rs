@@ -356,7 +356,7 @@ pub(in crate::editor) fn line_grapheme_to_cluster(
     grapheme_col0: hume_rope::column::GraphemeCol,
 ) -> ClusterStart {
     let line = line0.min(text.last_content_line());
-    hume_editing::lines::place_grapheme_column(text, line.into(), grapheme_col0)
+    text.columns().place_grapheme(line.into(), grapheme_col0)
 }
 
 /// Collapse `pane_state[pid][bid]`'s selection onto a 0-based

@@ -495,6 +495,21 @@ impl BufferText {
         ClusterRange::within(self.full_slice(), chars)
     }
 
+    /// Grapheme-cluster queries over this text.
+    pub fn clusters(&self) -> ClusterView<'_> {
+        ClusterView(self)
+    }
+
+    /// Line queries over this text.
+    pub fn lines(&self) -> LineView<'_> {
+        LineView(self)
+    }
+
+    /// Column conversions over this text.
+    pub fn columns(&self) -> ColumnView<'_> {
+        ColumnView(self)
+    }
+
     /// Returns the Unicode scalar value at `char_idx`, or `None` if out of bounds.
     pub fn char_at(&self, char_idx: CharOffset) -> Option<char> {
         if char_idx.index() >= self.len_chars() {
@@ -621,6 +636,9 @@ impl PartialEq for BufferText {
 }
 
 impl Eq for BufferText {}
+
+mod views;
+pub use views::{ClusterView, ColumnView, LineView};
 
 #[cfg(test)]
 mod tests;

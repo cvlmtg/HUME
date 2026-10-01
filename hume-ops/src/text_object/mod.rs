@@ -1,4 +1,3 @@
-use hume_editing::grapheme::{clusters_before, graphemes_at, next_cluster};
 use hume_editing::selection::{Facing, Selection};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
@@ -87,7 +86,8 @@ fn apply_text_object_extend(
         // Result was a subset (no growth). Retry from the cluster past the
         // selection so bracket/quote searches find the enclosing pair rather
         // than the current one.
-        next_cluster(text, sel.last())
+        text.clusters()
+            .next(sel.last())
             .and_then(|past| text_object(text, past))
             .map_or(sel.selection(), |found| sel.union(found, sel.facing()))
     })
@@ -119,7 +119,7 @@ mod tests;
 /// The clusters strictly between a delimiter pair's first and last cluster,
 /// or `None` when the delimiters are adjacent.
 pub(super) fn inner_of_pair(text: &BufferText, pair: ClusterRange) -> Option<ClusterRange> {
-    let start = next_cluster(text, pair.start())?;
+    let start = text.clusters().next(pair.start())?;
     ClusterRange::between(text.full_slice(), start, pair.last().into())
 }
 
@@ -127,10 +127,14 @@ pub(super) fn inner_of_pair(text: &BufferText, pair: ClusterRange) -> Option<Clu
 /// [`blank_class`]). `None` if the whole range is blank.
 pub(crate) fn trim_blank(text: &BufferText, range: ClusterRange) -> Option<ClusterRange> {
     let is_content = |c: &Cluster| blank_class(c.first()).is_none();
-    let first = graphemes_at(text, range.start().into())
+    let first = text
+        .clusters()
+        .graphemes_at(range.start().into())
         .take_while(|c| c.end() <= range.end())
         .find(is_content)?;
-    let last = clusters_before(text, range.end())
+    let last = text
+        .clusters()
+        .before(range.end())
         .take_while(|c| c.start() >= first.start())
         .find(is_content)?;
     ClusterRange::through(text.full_slice(), first.start(), last.start())

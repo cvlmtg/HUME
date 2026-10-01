@@ -52,7 +52,7 @@ All motions, selections, and edit operations work on grapheme clusters (`unicode
 | | |
 |---|---|
 | **Forbidden** | Stepping a buffer position by a raw `+ 1`/`- 1` in motion or selection code — skips over combining sequences (`é` = U+0065 + U+0301) or ZWJ emoji instead of advancing a full cluster. |
-| **Required** | `next_cluster`/`prev_cluster`/`cluster_end` (`hume-editing/src/grapheme.rs`, thin `&BufferText` wrappers over the `RopeSlice`-based implementations in `hume-rope/src/grapheme.rs`) for every single step in motion/selection logic. A loop walking cluster by cluster iterates `graphemes_at` forward or `clusters_before` backward (same files) instead: a per-step call re-seeks the rope every time. |
+| **Required** | `text.clusters().next`/`prev`/`end_of` (`ClusterView`, `hume-editing/src/text/views.rs`, a thin view over the `RopeSlice`-based implementations in `hume-rope/src/grapheme.rs`) for every single step in motion/selection logic. A loop walking cluster by cluster iterates `graphemes_at` forward or `before` backward (same view) instead: a per-step call re-seeks the rope every time. |
 | **Allowed** | `line += 1` for line-level iteration; `i += 1` in bracket/delimiter scanning (ASCII only). |
 | **Enforced** | The compiler, via `CharOffset` and the cluster position types — see those entries below. One hazard no type reaches: `s.chars().next_back()`/`.last()` return `s`'s last *codepoint*, not the base char of its last cluster (a trailing combining mark) — `hume_rope::grapheme::prev_str_boundary` is the fix. No automated check for this one; relies on ordinary review. |
 
@@ -72,7 +72,7 @@ Every buffer char position is a `hume_rope::offset::CharOffset` (`hume-rope/src/
 
 `hume_rope::cluster` (`hume-rope/src/cluster.rs`): `ClusterStart` (a cluster starts here, below the text end — every selection end, motion result and engine cell position), `ClusterBound` (a cluster start or the text end — the bound of a half-open range), and `ClusterRange` (a non-empty run of whole clusters, carrying its `start`, its `last` cluster and its exclusive `end`, so the inclusive/exclusive ambiguity has no raw form).
 
-**Mints** — only `hume-rope`'s grapheme and line primitives (`graphemes_at`, `clusters_before`, `next_cluster`/`prev_cluster`, `line_start`, `line_break`, `line_range`, `line_content_end`, `place_char_column`, `char_pos_at_display_col`, `LineText`, …). A foreign offset (a wire position, a regex match, a tree-sitter node) enters only through `snap_to_cluster` or `ClusterRange::covering`/`covering_bytes`/`within` (`BufferText::snap`/`covering`/`covering_bytes`/`within`). No `new`, no `Default`, no arithmetic.
+**Mints** — only `hume-rope`'s grapheme and line primitives (`graphemes_at`, `clusters_before`, `next_cluster`/`prev_cluster`, `line_start`, `line_break`, `line_range`, `line_content_end`, `place_char_column`, `char_pos_at_display_col`, `LineText`, …). On a `BufferText` they are reached through `text.clusters()`, `text.lines()` and `text.columns()` (`ClusterView`, `LineView`, `ColumnView`); the `hume-rope` functions are the entry point for a bare `Rope`. A foreign offset (a wire position, a regex match, a tree-sitter node) enters only through `snap_to_cluster` or `ClusterRange::covering`/`covering_bytes`/`within` (`BufferText::snap`/`covering`/`covering_bytes`/`within`). No `new`, no `Default`, no arithmetic.
 
 **Escape** — `offset()`/`chars()`, one way: a raw value never re-enters a selection.
 

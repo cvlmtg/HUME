@@ -1,8 +1,6 @@
 //! Word/WORD text objects (`iw`/`aw`, `iW`/`aW`) and the position-based
 //! `mm`/`MM`/nearest-word-on-line family they share with visual-move.
 
-use hume_editing::grapheme::graphemes_at;
-use hume_editing::lines::line_range;
 use hume_editing::selection::{Facing, Selection, SelectionView};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
@@ -54,7 +52,9 @@ pub fn nearest_word_on_line(
     let prev_anchor = prev_nonblank(text, head.into(), line_start);
 
     // Scan RIGHT within the given bounds for the first non-whitespace grapheme.
-    let next_anchor = graphemes_at(text, head.into())
+    let next_anchor = text
+        .clusters()
+        .graphemes_at(head.into())
         .skip(1)
         .take_while(|cluster| cluster.end() <= line_end)
         .find(|cluster| blank_class(cluster.first()).is_none())
@@ -69,7 +69,8 @@ pub fn nearest_word_on_line(
             // `p` is the last cluster of the prev word's run (nearest edge = p itself).
             // `n` is the first cluster of the next word's run (nearest edge = n itself).
             let clusters_between = |from: ClusterStart, to: ClusterStart| {
-                graphemes_at(text, from.into())
+                text.clusters()
+                    .graphemes_at(from.into())
                     .take_while(|cluster| cluster.start() < to)
                     .count()
             };
@@ -125,7 +126,7 @@ pub fn cmd_select_word_nearest_on_line(
 ) -> EditState {
     state.map(|sel| {
         let text = sel.text();
-        let line = line_range(text, text.char_to_line(sel.anchor().offset()));
+        let line = text.lines().range(text.char_to_line(sel.anchor().offset()));
         let found = nearest_word_on_line(
             text,
             sel.anchor(),

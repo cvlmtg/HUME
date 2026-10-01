@@ -4,7 +4,6 @@ use crate::word_unit::{
     IsBoundary, anchor_unit, class_at, expand_word_unit, find_word_end_from, find_word_start_from,
     is_blank_at, prev_nonblank, word_unit_at,
 };
-use hume_editing::grapheme::{first_cluster, graphemes_at, last_cluster, prev_cluster};
 use hume_editing::selection::{Facing, Selection};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
@@ -30,7 +29,7 @@ pub(super) fn next_word_start(
     chars: WordChars<'_>,
 ) -> ClusterStart {
     let mut prev_class = class_at(text, head, chars);
-    for cluster in graphemes_at(text, head.into()).skip(1) {
+    for cluster in text.clusters().graphemes_at(head.into()).skip(1) {
         let cur_class = chars.classify(cluster.first());
         if is_boundary(prev_class, cur_class)
             && (cur_class == CharClass::Eol || cur_class != CharClass::Space)
@@ -39,7 +38,7 @@ pub(super) fn next_word_start(
         }
         prev_class = cur_class;
     }
-    last_cluster(text)
+    text.clusters().last()
 }
 
 /// The start of the previous word.
@@ -55,7 +54,7 @@ pub(crate) fn prev_word_start(
     // Skip whitespace and line ends backward; nothing but whitespace before
     // `head` lands at the buffer start.
     let pos = prev_nonblank(text, head.into(), ClusterBound::TEXT_START)
-        .unwrap_or_else(|| first_cluster(text));
+        .unwrap_or_else(|| text.clusters().first());
     find_word_start_from(text, pos, is_boundary, chars)
 }
 
@@ -68,7 +67,7 @@ pub(crate) fn prev_word_start(
 pub fn word_runs(text: &BufferText, chars: WordChars<'_>) -> Vec<ClusterRange> {
     let mut runs = Vec::new();
     let mut open: Option<ClusterRange> = None;
-    for cluster in graphemes_at(text, ClusterBound::TEXT_START) {
+    for cluster in text.clusters().graphemes_at(ClusterBound::TEXT_START) {
         if chars.classify(cluster.first()) == CharClass::Word {
             open = Some(open.map_or(cluster.range(), |run| run.hull(cluster.range())));
         } else if let Some(run) = open.take() {
@@ -95,7 +94,7 @@ pub(super) fn select_next_word(
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     chars: WordChars<'_>,
 ) -> Option<ClusterRange> {
-    let last = last_cluster(text);
+    let last = text.clusters().last();
     let mut word_start = next_word_start(text, pos, is_boundary, chars);
 
     // Landed on a newline that is NOT the structural one: cross the line to
@@ -127,7 +126,7 @@ pub(super) fn select_prev_word(
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     chars: WordChars<'_>,
 ) -> Option<ClusterRange> {
-    prev_cluster(text, pos.into())?;
+    text.clusters().prev(pos.into())?;
 
     let word_start = prev_word_start(text, pos, is_boundary, chars);
     // Whitespace here means there is no word to jump to (e.g. the buffer
@@ -144,7 +143,7 @@ pub(super) fn select_prev_word(
     // `pos` inside the word means `prev_word_start` landed on the CURRENT
     // word: one more step back.
     if word.contains(pos) {
-        prev_cluster(text, word_start.into())?;
+        text.clusters().prev(word_start.into())?;
         let prev_start = prev_word_start(text, word_start, is_boundary, chars);
         if is_blank_at(text, prev_start) {
             return None;

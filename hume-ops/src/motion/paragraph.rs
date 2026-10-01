@@ -1,6 +1,5 @@
 use std::iter::Peekable;
 
-use hume_editing::lines::{line_content_end, line_start};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
@@ -76,8 +75,8 @@ fn content_tokens_at(
 fn line_span(text: &BufferText, first_line: usize, last_line: usize) -> ClusterRange {
     ClusterRange::through(
         text.full_slice(),
-        line_start(text, ContentLine::new(first_line)),
-        line_content_end(text, ContentLine::new(last_line)),
+        text.lines().start(ContentLine::new(first_line)),
+        text.lines().content_end(ContentLine::new(last_line)),
     )
     .expect("a paragraph's first line is not after its last")
 }

@@ -3,7 +3,6 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::{Landing, Landings, edit};
-use hume_editing::lines::{leading_whitespace_end, line_break};
 use hume_editing::selection::Facing;
 use hume_editing::state::EditState;
 use hume_rope::cluster::ClusterRange;
@@ -56,9 +55,9 @@ pub fn join_lines_select_spaces(state: EditState) -> Edited {
 
             let mut last_deletion = None;
             for line in ExclusiveRange::new(lines.start.max(next_unjoined), end_line).iter() {
-                let nl_pos = line_break(text, line);
-                let content_start = leading_whitespace_end(text, line.advance(1));
-                let is_blank = content_start >= line_break(text, line.advance(1));
+                let nl_pos = text.lines().newline(line);
+                let content_start = text.lines().indent_end(line.advance(1));
+                let is_blank = content_start >= text.lines().newline(line.advance(1));
                 let joined = ClusterRange::between(text.full_slice(), nl_pos, content_start.into())
                     .expect("a line's break comes before the next line's content");
 
