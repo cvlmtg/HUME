@@ -266,7 +266,7 @@ fn plum_install_grammar_unreadable_query_fails_cleanly() {
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
     {
-        let _path = EnvVarGuard::set("PATH", &format!("{}:/usr/bin:/bin", shims.path().display()));
+        let _path = EnvVarGuard::set("PATH", format!("{}:/usr/bin:/bin", shims.path().display()));
         type_cmd(&mut ed, ":plum-install-grammar rust");
     }
 
