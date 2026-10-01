@@ -235,6 +235,65 @@ fn plum_install_grammar_no_arg_no_language_warns() {
     );
 }
 
+/// A fetched query that cannot be read back fails that grammar's install,
+/// removes the temp file, and leaves the VM usable for the next command.
+#[test]
+fn plum_install_grammar_unreadable_query_fails_cleanly() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _lock = lock();
+    let shims = safe_tempdir();
+    for (tool, body) in [
+        (
+            "git",
+            "#!/bin/sh\nPATH=/usr/bin:/bin\n\
+             if [ \"$1\" = clone ]; then for a in \"$@\"; do last=\"$a\"; done; mkdir -p \"$last\"; fi\n",
+        ),
+        (
+            "curl",
+            "#!/bin/sh\nPATH=/usr/bin:/bin\n\
+             out=\"\"; prev=\"\"\n\
+             for a in \"$@\"; do [ \"$prev\" = \"-o\" ] && out=\"$a\"; prev=\"$a\"; done\n\
+             printf '\\377\\376' > \"$out\"\n",
+        ),
+    ] {
+        let path = shims.path().join(tool);
+        std::fs::write(&path, body).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+    {
+        let _path = EnvVarGuard::set("PATH", &format!("{}:/usr/bin:/bin", shims.path().display()));
+        type_cmd(&mut ed, ":plum-install-grammar rust");
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("rust"),
+        "the unreadable query must fail the install and name the grammar: {log}"
+    );
+    let sources = canonical_data_dir(data_tmp.path())
+        .join("grammars")
+        .join("sources");
+    assert!(
+        !sources.join("_fetch_rust_highlights.scm").exists(),
+        "the temp file must be removed after a failed read"
+    );
+
+    type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
+    assert!(
+        ed.state
+            .status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains(r#"unknown grammar "nosuchlang""#)),
+        "a later command must still run: {:?}",
+        ed.state.status_msg
+    );
+}
+
 /// `:plum-install-grammar nosuchlang`: a name absent from the catalog
 /// reports the unknown-grammar message instead of failing deep inside the
 /// install pipeline with an opaque hash-lookup error. This validation runs

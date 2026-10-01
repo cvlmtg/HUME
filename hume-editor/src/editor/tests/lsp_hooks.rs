@@ -49,8 +49,8 @@ fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
-             (when (equal? server-name "rust") (call! "move-right" (focused-pane)))))"#,
+        r#"(register-hook! 'on-lsp-attach (lambda (bid language)
+             (when (equal? language "rust") (call! "move-right" (focused-pane)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -89,8 +89,8 @@ fn on_lsp_detach_fires_with_the_language_when_a_server_is_stopped() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-lsp-detach (lambda (bid server-name)
-             (when (equal? server-name "rust") (call! "move-right" (focused-pane)))))"#,
+        r#"(register-hook! 'on-lsp-detach (lambda (bid language)
+             (when (equal? language "rust") (call! "move-right" (focused-pane)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -130,8 +130,8 @@ fn set_hook_triggers_from_inside_a_hook_handler_takes_effect() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
-             (set-hook-triggers! "test" server-name '("."))))
+        r#"(register-hook! 'on-lsp-attach (lambda (bid language)
+             (set-hook-triggers! "test" language '("."))))
            (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right" bid)))"#,
         tmp.path(),
     );
@@ -199,9 +199,9 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
-             (set-hook-triggers! "test" server-name
-               (if (equal? server-name "rust") '(".") '(",")))))
+        r#"(register-hook! 'on-lsp-attach (lambda (bid language)
+             (set-hook-triggers! "test" language
+               (if (equal? language "rust") '(".") '(",")))))
            (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right" bid)))"#,
         tmp.path(),
     );

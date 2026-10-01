@@ -283,8 +283,8 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 | `on-mode-change` | The editor mode changes | `(old new)`: mode symbols (`'normal`, `'insert`, `'extend`, `'command`, `'search`, `'sift`); compare with `equal?` |
 | `on-language-set` | A buffer's language is detected or changed | `(pane lang)`: `lang` is the language name, or `""` when the buffer has none |
 | `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(pane)`: pull details with `diagnostics-for-buffer` |
-| `on-lsp-attach` | A language server attaches to a buffer | `(pane server-name)` |
-| `on-lsp-detach` | A language server detaches from a buffer | `(pane server-name)` |
+| `on-lsp-attach` | A language server attaches to a buffer | `(pane language)` |
+| `on-lsp-detach` | A language server detaches from a buffer | `(pane language)` |
 | `on-lsp-notification` | A language server sends a notification HUME doesn't handle itself (it handles `window/logMessage`, `window/showMessage`, `$/progress`, and `publishDiagnostics`) | `(server method params)`: `server` is the server's language or `#f`, `method` a string, `params` a JSON handle. A handler registered here receives every method; to handle only specific ones, use `register-lsp-notification-hook!` instead |
 | `on-viewport-change` | The visible region of a pane changes | `(pane first-line end-line)`: 0-based, end-exclusive; with wrapping on, `end-line` may run a few lines past the bottom edge |
 | `on-trigger-char` | A registered trigger character is typed | `(pane char source)` |

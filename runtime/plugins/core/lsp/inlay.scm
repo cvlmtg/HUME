@@ -56,7 +56,7 @@
 (register-hook! 'on-text-changed lsp/refresh-hints-for-buffer)
 
 (register-hook! 'on-lsp-detach
-  (lambda (pane server-name) (set-inlay-hints! "lsp-inlay-hints" pane '())))
+  (lambda (pane language) (set-inlay-hints! "lsp-inlay-hints" pane '())))
 
 (register-hook! 'on-option-change
   (lambda (key value)

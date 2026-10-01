@@ -205,7 +205,7 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 | `(selections-linewise? pane)` → bool (range-format gate) — a selection collapsed on a blank line is ambiguous and doesn't count either way, so it never masks a real linewise selection into "mixed"; `#f` if every selection is ambiguous | builtin |
 | `(selections-charwise? pane)` → bool (range-format gate, complements `selections-linewise?`) — `#t` if every selection is ambiguous, matching a bare collapsed cursor's default | builtin |
 | `on-lsp-attach` (server ready for buffer) | hook |
-| `on-lsp-detach` (buffer detached by `:lsp-stop`/`:lsp-restart`; args `(pane server-name)`) — a plugin's only signal to clear buffer-scoped state it derived from the now-gone server (e.g. inlay hints), since nothing keeps that state in sync once the buffer has no attached server | hook |
+| `on-lsp-detach` (buffer detached by `:lsp-stop`/`:lsp-restart`; args `(pane language)`) — a plugin's only signal to clear buffer-scoped state it derived from the now-gone server (e.g. inlay hints), since nothing keeps that state in sync once the buffer has no attached server | hook |
 | `on-diagnostics-changed` (signal only; pull via `diagnostics-for-buffer`) | hook |
 | `on-viewport-change` (debounced) | hook |
 | `on-trigger-char` `(pane char-string source)` — fires once per source registered for `char-string` under `pane`'s language, Insert mode + `(set-hook-triggers! source language chars)` — keyed `(source, language)`, empty `chars` removes the entry. This is a shared, listener-agnostic table (signature help uses it); a `'buffer` completion source's own trigger chars are a separate table (`set-completion-triggers!`, below), checked directly with no hook round trip | hook + builtin |

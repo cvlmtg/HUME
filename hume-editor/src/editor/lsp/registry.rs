@@ -385,7 +385,7 @@ impl Editor {
         for bid in bids {
             self.state.queue_event(EditorEvent::OnLspDetach {
                 buffer: bid,
-                server: language.clone(),
+                language: language.clone(),
             });
         }
     }

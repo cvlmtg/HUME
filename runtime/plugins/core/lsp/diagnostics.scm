@@ -181,7 +181,7 @@
       (lsp/refresh-diagnostics-drawer! pane diags))))
 
 (register-hook! 'on-lsp-detach
-  (lambda (pane server-name)
+  (lambda (pane language)
     (register-sign-source! "lsp-diagnostics" pane lsp/*sign-priority*)
     (set-eol-text! "lsp-diagnostics" pane '())
     (set-signs! "lsp-diagnostics" pane '())

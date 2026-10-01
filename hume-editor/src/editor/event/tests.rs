@@ -26,11 +26,11 @@ fn all_variants() -> Vec<EditorEvent> {
         },
         EditorEvent::OnLspAttach {
             buffer,
-            server: "rust-analyzer".to_string(),
+            language: "rust".to_string(),
         },
         EditorEvent::OnLspDetach {
             buffer,
-            server: "rust-analyzer".to_string(),
+            language: "rust".to_string(),
         },
         EditorEvent::OnDiagnosticsChanged { buffer },
         EditorEvent::OnViewportChange {
@@ -205,22 +205,22 @@ fn on_language_set_with_no_language_sends_empty_string() {
 }
 
 #[test]
-fn on_lsp_attach_and_detach_carry_buffer_and_server_name() {
+fn on_lsp_attach_and_detach_carry_buffer_and_language() {
     let buffer = BufferId::default();
     for event in [
         EditorEvent::OnLspAttach {
             buffer,
-            server: "rust-analyzer".to_string(),
+            language: "rust".to_string(),
         },
         EditorEvent::OnLspDetach {
             buffer,
-            server: "rust-analyzer".to_string(),
+            language: "rust".to_string(),
         },
     ] {
         let args = event.steel_args();
         assert_eq!(args.len(), 2);
         assert_steel_pane(&args, 0, PaneHandle::buffer_only(buffer));
-        assert_eq!(steel_string(&args, 1), "rust-analyzer");
+        assert_eq!(steel_string(&args, 1), "rust");
     }
 }
 

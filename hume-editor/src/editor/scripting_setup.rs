@@ -217,14 +217,14 @@ impl Editor {
             .queue_event(EditorEvent::OnBufferSave { buffer: bid });
     }
 
-    /// Fire `OnLspAttach (bid server-name)`, called both when a buffer
+    /// Fire `OnLspAttach (bid language)`, called both when a buffer
     /// attaches to an already-Running server (`lsp_attach_buffer`) and, for
     /// every buffer already attached, when a Starting client reaches
     /// Running (`dispatch_lsp_action`'s `BecameRunning` arm).
-    pub(super) fn queue_lsp_attach(&mut self, bid: BufferId, server_name: &str) {
+    pub(super) fn queue_lsp_attach(&mut self, bid: BufferId, language: &str) {
         self.state.queue_event(EditorEvent::OnLspAttach {
             buffer: bid,
-            server: server_name.to_owned(),
+            language: language.to_owned(),
         });
     }
 

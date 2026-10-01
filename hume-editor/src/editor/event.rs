@@ -77,7 +77,7 @@ pub(in crate::editor) enum EditorEvent {
     /// any buffer that attaches later while the server stays Running.
     OnLspAttach {
         buffer: BufferId,
-        server: String,
+        language: String,
     },
     /// Fires once per buffer detached by `:lsp-stop`/`:lsp-restart`, right
     /// after `buf.lsp_server` is cleared: the counterpart to `OnLspAttach`,
@@ -86,7 +86,7 @@ pub(in crate::editor) enum EditorEvent {
     /// no server left to keep it in sync.
     OnLspDetach {
         buffer: BufferId,
-        server: String,
+        language: String,
     },
     /// Fires once per drain batch that ingested at least one
     /// `publishDiagnostics` for `buffer`, payload-free signal by design;
@@ -367,11 +367,11 @@ impl EditorEvent {
                     SteelVal::StringV(language.as_deref().unwrap_or_default().into()),
                 ]
             }
-            EditorEvent::OnLspAttach { buffer, server }
-            | EditorEvent::OnLspDetach { buffer, server } => {
+            EditorEvent::OnLspAttach { buffer, language }
+            | EditorEvent::OnLspDetach { buffer, language } => {
                 vec![
                     SteelPane::new(PaneHandle::buffer_only(*buffer)).into_steel_val(),
-                    SteelVal::StringV(server.as_str().into()),
+                    SteelVal::StringV(language.as_str().into()),
                 ]
             }
             EditorEvent::OnViewportChange {

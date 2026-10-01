@@ -33,19 +33,19 @@
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
 
 (define (lsp/setup-trigger-chars! cap-key source-name extra-chars on-trigger)
-  (define (set-chars! server-name chars)
+  (define (set-chars! language chars)
     (if on-trigger
-        (set-hook-triggers! source-name server-name chars)
-        (set-completion-triggers! source-name server-name chars)))
+        (set-hook-triggers! source-name language chars)
+        (set-completion-triggers! source-name language chars)))
   (register-hook! 'on-lsp-attach
-    (lambda (pane server-name)
+    (lambda (pane language)
       (let ((caps (lsp-capabilities pane)))
         (when (and caps (json-contains? caps cap-key))
           (let ((tc (lsp/cap-field caps cap-key "triggerCharacters" #f)))
-            (set-chars! server-name (append extra-chars (if tc (json-list tc) (list)))))))))
+            (set-chars! language (append extra-chars (if tc (json-list tc) (list)))))))))
   (register-hook! 'on-lsp-detach
-    (lambda (pane server-name)
-      (set-chars! server-name '())))
+    (lambda (pane language)
+      (set-chars! language '())))
   (when on-trigger
     (register-hook! 'on-trigger-char
       (lambda (pane ch source)

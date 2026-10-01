@@ -117,10 +117,12 @@ after the state it was scheduled against has moved on:
 
 ### Debouncing
 
-Anything that fires per buffer uses `debounce-by` (keyed) rather than plain `debounce`
+Work that keeps per-buffer state uses `debounce-by` (keyed) rather than plain `debounce`
 (global), keyed by `buffer-key` as under [Per-buffer state](#per-buffer-state), so one
 buffer's edits never cancel another buffer's pending refresh. `git-diff`, `buffer-words`,
-and `lsp`'s inlay hints do this.
+and `lsp`'s inlay hints do this. Work that feeds a single editor-wide slot, such as
+`lsp`'s signature-help popup or locations drawer, uses plain `debounce`: a keyed timer per
+buffer would let two buffers' timers write into the same slot.
 
 ### Capture the target, don't re-read focus
 

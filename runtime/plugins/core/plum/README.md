@@ -100,9 +100,8 @@ loads), so HUME uses Helix's query files without vendoring them.
 ### Query fetching
 
 `plum/fetch-raw-query` downloads one query file with `curl` into a temp file under the
-grammar sources directory, reads it, and deletes the temp file. The `curl` call runs
-outside any `with-handler`; the read is wrapped in a handler that deletes the temp file and
-re-raises.
+grammar sources directory, reads it, and deletes the temp file. A failed read still deletes
+the temp file and then raises a fresh error; the native read error is not re-raised.
 
 A query file can declare `; inherits: dep,dep,...` instead of writing out its own
 patterns. The directive names other query sources whose patterns are spliced in; the
