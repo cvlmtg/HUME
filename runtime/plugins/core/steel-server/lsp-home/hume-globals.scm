@@ -256,6 +256,7 @@
 (#%register-global "picker-source-stop!")
 (#%register-global "platform-grammar-ext")
 (#%register-global "plugin-config")
+(#%register-global "plugin-dir")
 (#%register-global "prompt!")
 (#%register-global "read-grammar-sources")
 (#%register-global "read-register")

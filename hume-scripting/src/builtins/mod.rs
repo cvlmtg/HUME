@@ -262,6 +262,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "loaded-plugins" plugins::loaded_plugins();
         open "declared-plugins" plugins::declared_plugins();
         open "plugin-config" plugins::plugin_config();
+        open "plugin-dir" plugins::plugin_dir();
         open "%load-plugin!" plugins::load_plugin(name: String, config: SteelVal);
 
         // Inline activation primitives, called from the %activate-plugin-inline!

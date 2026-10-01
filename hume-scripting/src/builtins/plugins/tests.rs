@@ -582,6 +582,52 @@ fn plugin_config_outside_plugin_body_is_empty() {
     .expect("plugin-config outside a plugin body must be an empty hash");
 }
 
+// ── (plugin-dir) ──────────────────────────────────────────────────────────
+
+/// `(plugin-dir)` outside any plugin body is `#f`.
+#[test]
+fn plugin_dir_outside_plugin_body_is_false() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    let mut host = ScriptingHost::new();
+    host.eval_source(
+        r#"(when (plugin-dir) (error "expected #f outside a plugin body"))"#,
+        &mut NullHost,
+    )
+    .expect("plugin-dir outside a plugin body must be #f");
+}
+
+/// Inside a plugin body `(plugin-dir)` is the directory holding that plugin's
+/// own `plugin.scm`.
+#[test]
+fn plugin_dir_inside_plugin_body_is_the_plugins_own_directory() {
+    use crate::ScriptingHost;
+    use crate::null_host::LazyStubHost;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("me").join("probe");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    let out = plugin_dir.join("seen-dir.txt");
+    std::fs::write(
+        plugin_dir.join("plugin.scm"),
+        format!(
+            "(let ((port (open-output-file {out:?})))\n\
+             (write-string (plugin-dir) port)\n\
+             (close-output-port port))",
+            out = out.to_str().unwrap()
+        ),
+    )
+    .unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    let mut editor_host = LazyStubHost::default();
+    host.eval_source(r#"(load-plugin! "me/probe")"#, &mut editor_host)
+        .expect("the probe plugin must load");
+
+    let seen = std::fs::read_to_string(&out).unwrap();
+    assert_eq!(std::path::Path::new(&seen), plugin_dir.as_path());
+}
+
 // ── Zero-trigger backstop (direct %declare-plugin! call) ──────────────────
 
 /// A direct `%declare-plugin!` call with all three activation lists empty must

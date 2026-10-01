@@ -848,6 +848,23 @@ pub(crate) fn plugin_config(ctx: &mut SteelCtx) -> SteelResult {
     }
 }
 
+/// `(plugin-dir)`: the directory holding the calling plugin's own files, or
+/// `#f` outside a plugin body (or when the root for that plugin's kind is
+/// unset). Resolved from the top of `plugin_stack` like `(plugin-config)`.
+pub(crate) fn plugin_dir(ctx: &mut SteelCtx) -> SteelResult {
+    let dir = ctx.plugin_stack.current().and_then(|id| {
+        plugin_dir_for_id(
+            id,
+            ctx.dirs.runtime_dir.as_deref(),
+            ctx.dirs.data_dir.as_deref(),
+        )
+    });
+    Ok(match dir {
+        Some(d) => SteelVal::StringV(d.to_string_lossy().into_owned().into()),
+        None => SteelVal::BoolV(false),
+    })
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 //
 // Parsing tests (valid/invalid plugin names, segments) live in

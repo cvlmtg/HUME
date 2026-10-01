@@ -86,6 +86,7 @@ To use something newer that has not shipped in a release, check for it directly 
 | `(loaded-plugins)` | List of plugin names that have finished activating |
 | `(declared-plugins)` | List of every declared plugin name, `core:*` included |
 | `(plugin-config)` | The calling plugin's own `#:config` value, or an empty hash |
+| `(plugin-dir)` | The directory holding the calling plugin's own files, or `#f` outside a plugin body |
 
 Full picture (activation timing, `#:config` semantics, dependency checks) in [Plugins](plugins.md), particularly [How plugins are loaded](plugins.md#how-plugins-are-loaded) and [Depending on another plugin](plugins.md#depending-on-another-plugin).
 
