@@ -308,7 +308,7 @@ impl Editor {
         // here for one would hand a handler a stale scroll range. A hidden
         // pane's own repopulation happens when its tab is next focused:
         // `queue_viewport_change`'s active-tab guard dropped its
-        // `last_viewport_key`, so that pane's first visible frame reads as a
+        // `last_visible_range`, so that pane's first visible frame reads as a
         // change.
         for pane_id in self.view.active_pane_ids() {
             if snapshot.survives(self.view.panes[pane_id].buffer_id, &self.state.buffers) {

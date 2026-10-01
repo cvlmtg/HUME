@@ -166,7 +166,7 @@ impl Editor {
             timer_wheel: super::timers::TimerWheel::new(),
             timer_payloads: rustc_hash::FxHashMap::default(),
             viewport_debounce: rustc_hash::FxHashMap::default(),
-            last_viewport_key: rustc_hash::FxHashMap::default(),
+            last_visible_range: rustc_hash::FxHashMap::default(),
             last_tabline_signature: None,
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
             lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),

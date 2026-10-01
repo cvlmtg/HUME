@@ -113,7 +113,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | `(buffer-selections pane)` | List of opaque selections, one per selection in `pane`'s own pane; read each through the [`stdlib/selection-*` accessors](standard-library.md#selections). Anchor and head are each the start of a character (a letter with its combining marks counts as one), and start..end (exclusive) is what the selection covers |
 | `(offset->line pane idx)` | 0-based line containing 0-based char offset `idx` in the buffer's text |
 | `(line->offset pane line)` | 0-based char offset where 0-based content line `line` starts |
-| `(viewport-range pane)` | `(hash 'start first-line 'end end-line)` currently visible in `pane`'s own pane, 0-based end-exclusive |
+| `(viewport-range pane)` | `(hash 'start first-line 'end end-line)` shown in `pane`'s own pane, 0-based end-exclusive; with wrapping on, `'end` may run a few lines past the bottom edge |
 | `(open-buffer! path)` | Open `path`, returning a pane-less pane value for it |
 | `(close-buffer! pane)` | Close a buffer |
 | `(switch-to-buffer! pane target)` | Redirect `pane`'s own pane to `target`'s buffer |

@@ -146,7 +146,7 @@ fn editor_fields_are_classified() {
             // preserved: indexes the native ViewportDebounce timers
             // that themselves survive the reset
             viewport_debounce: _,
-            last_viewport_key: _,      // preserved
+            last_visible_range: _,     // preserved
             last_tabline_signature: _, // preserved
             // preserved: staleness after a reload is forced by
             // DecorationStores::reset bumping the generation

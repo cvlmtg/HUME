@@ -366,6 +366,59 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
     );
 }
 
+/// Registers an `on-viewport-change` hook that bumps `tab-width` once per
+/// fire, so a test reads the fire count off the buffer's override.
+fn count_viewport_fires(ed: &mut Editor, dir: &Path) {
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        ed,
+        &mut host,
+        r#"(register-hook! 'on-viewport-change (lambda (bid first end)
+             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
+        dir,
+    );
+    ed.scripting = Some(host);
+}
+
+#[test]
+fn on_viewport_change_fires_when_an_edit_moves_the_clamped_end() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\nb\n");
+    seed_frame(&mut ed, 40, 10);
+    count_viewport_fires(&mut ed, tmp.path());
+
+    type_text(&mut ed, "x\n");
+    frame(&mut ed, 40, 10);
+    ed.drain_async_sources();
+    ed.settle();
+
+    let bid = ed.focused_buffer_id();
+    assert_eq!(
+        ed.state.buffers.get(bid).overrides.tab_width,
+        Some(EditorSettings::default().tab_width + 1),
+        "a buffer shorter than the pane that gains a line changes the visible range's end, so the hook must fire once"
+    );
+}
+
+#[test]
+fn on_viewport_change_does_not_fire_when_a_resize_leaves_the_range_unchanged() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\nb\n");
+    seed_frame(&mut ed, 40, 10);
+    count_viewport_fires(&mut ed, tmp.path());
+
+    frame(&mut ed, 40, 12);
+    ed.drain_async_sources();
+    ed.settle();
+
+    let bid = ed.focused_buffer_id();
+    assert_eq!(
+        ed.state.buffers.get(bid).overrides.tab_width,
+        None,
+        "a taller pane over a buffer that already fits leaves the visible range at 0..2, so the hook must not fire"
+    );
+}
+
 #[test]
 fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertion() {
     let tmp = safe_tempdir();

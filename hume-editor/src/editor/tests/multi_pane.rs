@@ -1335,7 +1335,7 @@ fn wq_with_multiple_panes_closes_focused_pane_not_editor() {
     );
 }
 
-/// `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced` live on
+/// `viewport_debounce`/`last_visible_range`/`virtual_lines_synced` live on
 /// `Editor` rather than `EditorState.panes`, so `drop_pane_state` can't clear
 /// them directly. `prepare_frame`'s `prune_closed_pane_caches` sweep is the
 /// only place that reclaims a closed pane's entries. Without it these three
@@ -1355,7 +1355,7 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
     ed.prepare_frame(&mut ctx);
 
     assert!(
-        ed.last_viewport_key.contains_key(&pid_b),
+        ed.last_visible_range.contains_key(&pid_b),
         "sanity: prepare_frame populated pane B's scroll-key cache entry"
     );
     assert!(
@@ -1374,7 +1374,7 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
     ed.prepare_frame(&mut ctx);
 
     assert!(
-        !ed.last_viewport_key.contains_key(&pid_b),
+        !ed.last_visible_range.contains_key(&pid_b),
         "closed pane's scroll-key entry must be reclaimed"
     );
     assert!(

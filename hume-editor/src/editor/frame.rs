@@ -177,7 +177,7 @@ impl Editor {
         buf
     }
 
-    /// Drop `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced`
+    /// Drop `viewport_debounce`/`last_visible_range`/`virtual_lines_synced`
     /// entries whose pane no longer exists in `self.view.panes`. A pending
     /// debounce timer is cancelled outright (its `TimerPayload` no-ops via
     /// `queue_viewport_change`'s own liveness check anyway, but there is no
@@ -189,7 +189,7 @@ impl Editor {
     /// `SecondaryMap` entries.
     fn prune_closed_pane_caches(&mut self) {
         let panes = &self.view.panes;
-        self.last_viewport_key
+        self.last_visible_range
             .retain(|pid, _| panes.contains_key(*pid));
         self.virtual_lines_synced
             .retain(|pid, _| panes.contains_key(*pid));
@@ -511,7 +511,8 @@ impl Editor {
         //
         // A pane whose tab went to the background keeps no key, so its
         // next visible frame always counts as a viewport change.
-        self.last_viewport_key.retain(|pid, _| active.contains(pid));
+        self.last_visible_range
+            .retain(|pid, _| active.contains(pid));
 
         let scroll_margin = self.state.settings.scroll_margin;
         for &pid in &active {
@@ -546,13 +547,11 @@ impl Editor {
             }
 
             // A visible-range change arms the `OnViewportChange` debounce
-            // timer; the hook fires later from the timer drain. The key
-            // includes `slot` because a wheel or `Ctrl-d` scroll can move
-            // within one line's virtual block.
-            let viewport = &self.view.panes[pid].viewport;
-            let top = viewport.top();
-            let key = (buf_id, top.line, top.slot, viewport.height);
-            if self.last_viewport_key.insert(pid, key) != Some(key) {
+            // timer; the hook fires later from the timer drain.
+            let content_lines = self.state.buffers.get(buf_id).text().content_line_count();
+            let range =
+                super::lsp::introspect::pane_visible_range(&self.view.panes[pid], content_lines);
+            if self.last_visible_range.insert(pid, (buf_id, range)) != Some((buf_id, range)) {
                 self.debounce_viewport_change(pid);
             }
         }

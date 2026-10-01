@@ -888,24 +888,26 @@ pub(crate) struct Editor {
     /// This pane's currently-pending `OnViewportChange` debounce timer, if
     /// any, looked up to cancel-and-replace on the next change.
     viewport_debounce: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, timers::TimerId>,
-    /// `(buffer_id, top_line, top_slot, height)` as of the last frame this
-    /// pane was *visible*, per pane. `prepare_frame`'s scroll step compares
-    /// against this to detect a real viewport change worth debouncing, rather
-    /// than firing every frame regardless. The buffer id is part of the key
-    /// for the same reason `virtual_lines_synced` below carries one: a pane
-    /// switching buffers at unchanged `(top_line, top_slot, height)` (`:b#`,
-    /// a tab switch back onto identical geometry) must still count as a
-    /// change, or the newly-shown buffer's viewport-driven consumers (LSP
-    /// inlay hints) never re-fire. `top_slot` is in the key, not just
-    /// `top_line`, so a view-led scroll landing entirely within one line's
-    /// virtual block still counts as a change. Entries for panes outside the
-    /// active set are dropped each frame rather than left to go stale (see
-    /// `prepare_frame`'s scroll pass): a background tab's pane isn't observed at all
-    /// while hidden, so its return must itself be treated as a change, never
-    /// a match against a snapshot from before it left.
-    last_viewport_key: rustc_hash::FxHashMap<
+    /// `(buffer_id, visible range)` as of the last frame this pane was
+    /// *visible*, per pane, the range being what `OnViewportChange` carries
+    /// (`lsp::introspect::pane_visible_range`). `prepare_frame`'s scroll step
+    /// compares against this so the hook arms only when its payload would
+    /// differ. The buffer id is part of the key for the same reason
+    /// `virtual_lines_synced` below carries one: a pane switching buffers at
+    /// an unchanged range (`:b#`, a tab switch back onto identical geometry)
+    /// must still count as a change, or the newly-shown buffer's
+    /// viewport-driven consumers (LSP inlay hints) never re-fire. Entries for
+    /// panes outside the active set are dropped each frame rather than left
+    /// to go stale (see `prepare_frame`'s scroll pass): a background tab's
+    /// pane isn't observed at all while hidden, so its return must itself be
+    /// treated as a change, never a match against a snapshot from before it
+    /// left.
+    last_visible_range: rustc_hash::FxHashMap<
         hume_engine::pipeline::PaneId,
-        (BufferId, hume_rope::line::ContentLine, usize, u16),
+        (
+            BufferId,
+            hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
+        ),
     >,
     /// Hash of everything `sync_tabline_view`'s rebuild depends on, as of
     /// the last frame it actually ran the rebuild. `None` before the first

@@ -94,12 +94,12 @@ pub(in crate::editor) enum EditorEvent {
     OnDiagnosticsChanged {
         buffer: BufferId,
     },
-    /// Fires after scroll/resize resolves a pane's viewport, debounced
-    /// (`lsp.viewport-debounce-ms`) so a scroll burst fires once. `first_line`
-    /// / `end_line` are the visible range, end-exclusive (matching
-    /// `viewport-range`'s convention). No registered handler currently reads
-    /// either arg (each re-reads live state via `(viewport-range pane)`
-    /// instead), so this is a payload shape, not a behavior guarantee.
+    /// Fires when a pane's visible range changes (scroll, resize, an edit
+    /// that moves the EOF-clamped end, a buffer switch), debounced
+    /// (`lsp.viewport-debounce-ms`) so a burst fires once. `first_line` /
+    /// `end_line` are the range `viewport-range` returns, end-exclusive; it
+    /// covers every line that could be visible and is exact unless soft wrap
+    /// makes lines span several rows.
     /// `target`'s pane is the pane whose viewport actually scrolled, not
     /// necessarily the focused one.
     OnViewportChange {

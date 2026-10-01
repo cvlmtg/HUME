@@ -244,7 +244,7 @@ impl Editor {
     /// fired: the frame's scroll step stops maintaining a backgrounded
     /// pane's scroll position (only its size stays current), so firing with
     /// its frozen scroll would hand a handler a range the code itself no
-    /// longer trusts. `prepare_frame` drops that pane's `last_viewport_key`
+    /// longer trusts. `prepare_frame` drops that pane's `last_visible_range`
     /// when its tab backgrounds, so the pane's first frame back on screen
     /// reads as a fresh change and re-arms this on its own. This guard only
     /// skips the fire for the frames spent hidden, not the one on return.

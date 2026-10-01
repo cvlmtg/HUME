@@ -673,7 +673,7 @@ fn tabclose_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
 /// `prepare_frame`'s scroll pass only ever visits *active-tab* panes, so a
 /// background tab's pane is not observed while it is hidden. Returning to it
 /// at unchanged terminal geometry must still re-arm `on-viewport-change`.
-/// A stale `last_viewport_key` entry matching on return would leave a
+/// A stale `last_visible_range` entry matching on return would leave a
 /// viewport-driven consumer (LSP inlay hints) pinned to whatever it last saw
 /// before the tab went to the background.
 #[test]
@@ -716,8 +716,8 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
     );
 }
 
-/// `last_viewport_key`'s key includes the `buffer_id`, so a pane switching
-/// buffers (`:e`, `:b#`) at unchanged geometry must re-arm
+/// `last_visible_range`'s key includes the `buffer_id`, so a pane switching
+/// buffers (`:e`, `:b#`) at an unchanged range must re-arm
 /// `on-viewport-change` for the newly-shown buffer. Single pane, single
 /// tab. This is the
 /// same-tab twin of `returning_to_a_background_tab_...` above, which covers
@@ -726,7 +726,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
 fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
-    seed_frame(&mut ed, 40, 10); // seeds last_viewport_key[pid] keyed on A's buffer
+    seed_frame(&mut ed, 40, 10); // seeds last_visible_range[pid] keyed on A's buffer
 
     let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("second.txt");
@@ -745,7 +745,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
     let bid_b = ed.focused_buffer_id();
 
-    frame(&mut ed, 40, 10); // identical (top_line, height), only buffer_id differs
+    frame(&mut ed, 40, 10); // identical visible range, only buffer_id differs
 
     ed.drain_async_sources();
     ed.settle();
@@ -753,7 +753,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
     assert_eq!(
         ed.state.buffers.get(bid_b).overrides.tab_width,
         Some(EditorSettings::default().tab_width + 1),
-        "switching buffer in place at unchanged (top_line, height) must still \
+        "switching buffer in place at an unchanged visible range must still \
          re-fire on-viewport-change"
     );
 }
@@ -761,7 +761,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
 /// A pane's debounced `on-viewport-change` timer must not fire with its
 /// frozen bounds if the pane's tab went to the background before the timer
 /// came due. `prepare_frame`'s own housekeeping (dropping
-/// `last_viewport_key`, retiring `viewport_debounce` on close) only runs
+/// `last_visible_range`, retiring `viewport_debounce` on close) only runs
 /// for a pane no longer in the pool at all (a background-tab pane still is),
 /// and the timer can come due from `settle()`'s drain, which runs
 /// *before* that housekeeping even sees the pane leave the active set. The
@@ -780,7 +780,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
     let mut ed = editor_from("-[a]>bc\ndef\nghi\njkl\nmno\n");
     ed.state.settings.lsp_viewport_debounce_ms = 0;
     let bid_a = ed.focused_buffer_id();
-    seed_frame(&mut ed, 40, 3); // baseline last_viewport_key[pid_a] at top_line 0
+    seed_frame(&mut ed, 40, 3); // baseline last_visible_range[pid_a] at top_line 0
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -804,7 +804,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
 
     // The new tab's own next frame drains the still-pending timer, inside
     // its `settle()`, which runs before this same frame's own housekeeping
-    // drops pid_a's `last_viewport_key`. Must not fire on-viewport-change for A.
+    // drops pid_a's `last_visible_range`. Must not fire on-viewport-change for A.
     // (It legitimately arms and fires for the new tab's own buffer, but that's
     // not under test here.)
     frame(&mut ed, 40, 3);

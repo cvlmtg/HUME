@@ -61,6 +61,7 @@
 - `t`/`T` with a count stop against the counted match (`2ta` lands before the second `a`), and `=`/`-` after `t`/`T` go on to the next match instead of staying against the one they stopped at.
 
 ### Language servers
+- `on-viewport-change` fires when the lines a pane shows change, including when an edit adds or removes lines in a buffer shorter than the pane. A resize or scroll that leaves the shown lines the same no longer fires it.
 - Completion items are filtered against the text their own edit range covers, and a list's default edit range is honored. A server whose completions replace more than the word before the cursor (`foo.ba`, `$ba`) keeps its items while you type, and accepting replaces that range. Such items need a `filterText` that includes the covered text, as the protocol expects.
 - The completion menu stays open when text elsewhere in the buffer changes (a script's edit, an auto-format) and still accepts at the cursor. It closes as soon as a character outside the completed word is typed, including right after the menu opens on nothing (a `(` typed after `.`); before, it stayed open with no matches.
 - The list `z r` (and a goto with several matches) opens follows your edits. When the number of lines in a file it lists changes, HUME asks the language server again about the same symbol once you pause typing, wherever your cursor is, and replaces the rows, so `Enter` lands on the right line. If nothing is found any more the list closes with a message.

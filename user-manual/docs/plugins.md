@@ -286,7 +286,7 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 | `on-lsp-attach` | A language server attaches to a buffer | `(pane server-name)` |
 | `on-lsp-detach` | A language server detaches from a buffer | `(pane server-name)` |
 | `on-lsp-notification` | A language server sends a notification HUME doesn't handle itself (it handles `window/logMessage`, `window/showMessage`, `$/progress`, and `publishDiagnostics`) | `(server method params)`: `server` is the server's language or `#f`, `method` a string, `params` a JSON handle. A handler registered here receives every method; to handle only specific ones, use `register-lsp-notification-hook!` instead |
-| `on-viewport-change` | The visible region of a pane changes | `(pane first-line end-line)`: 0-based, end-exclusive |
+| `on-viewport-change` | The visible region of a pane changes | `(pane first-line end-line)`: 0-based, end-exclusive; with wrapping on, `end-line` may run a few lines past the bottom edge |
 | `on-trigger-char` | A registered trigger character is typed | `(pane char source)` |
 | `on-completion-accept` | A completion entry is accepted | `(pane item)` |
 | `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)`: `key` is a string, `value` the option's new value as `get-option` returns it |
