@@ -8,8 +8,6 @@
 
 (provide lsp-install/install-server! lsp-install/install-blocker)
 
-;; Environment a toolchain-installed server needs at run time, as
-;; ("KEY" . "subpath of the server dir") pairs.
 (define (lsp-install/kind-env-dirs kind)
   (if (equal? kind 'gem)
       '(("GEM_HOME" . ".") ("GEM_PATH" . "."))
@@ -33,8 +31,6 @@
 (define (lsp-install/ends-with-any? s suffixes)
   (if (call! "stdlib/find" (lambda (suffix) (ends-with? s suffix)) suffixes) #t #f))
 
-;; A download is a bare executable when it carries no archive extension; the
-;; sync guarantees its bin path equals the asset name in that case.
 (define (lsp-install/asset-format asset-file bin)
   (cond ((lsp-install/ends-with-any? asset-file *lsp-install-tar-suffixes*) 'tar)
         ((ends-with? asset-file ".zip") 'zip)
@@ -42,7 +38,6 @@
         ((equal? asset-file bin) 'raw)
         (else (error (string-append "lsp-install/asset-format: unsupported asset format: " asset-file)))))
 
-;; The package manager each toolchain-installed kind needs on $PATH.
 (define (lsp-install/toolchain-tool kind)
   (cond ((equal? kind 'npm) "npm")
         ((equal? kind 'cargo) "cargo")
@@ -52,7 +47,6 @@
         ((equal? kind 'nuget) "dotnet")
         (else #f)))
 
-;; A source with no `platforms` field installs everywhere.
 (define (lsp-install/platform-supported? fields)
   (let ((platforms (lsp-install/field fields 'platforms)))
     (or (not platforms)
@@ -62,7 +56,6 @@
             #t
             #f))))
 
-;; github and generic sources both download one file per platform target.
 (define (lsp-install/download-kind? kind)
   (or (equal? kind 'github) (equal? kind 'generic)))
 
@@ -70,9 +63,6 @@
   (let ((want (string->symbol (lsp-install/target))))
     (call! "stdlib/find" (lambda (t) (equal? (list-ref t 0) want)) targets)))
 
-;; (url asset sha bin) for this platform, or #f. A github row is
-;; (target asset sha bin) with the url derived from repo and version; a
-;; generic row is (target asset url sha bin).
 (define (lsp-install/resolve-download fields)
   (let ((target (lsp-install/find-target (cdr (lsp-install/field fields 'targets)))))
     (cond
@@ -106,7 +96,6 @@
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
-;; Linux's tar shells out to the compressor; macOS and Windows tar link their own.
 (define (lsp-install/tar-compressor-tools asset-file)
   (cond ((not (equal? (lsp-install/target) "linux-x64")) '())
         ((lsp-install/ends-with-any? asset-file '(".tar.xz" ".txz")) '("xz"))
@@ -174,8 +163,6 @@
                             ": expected binary not found after npm install: " bin-rel)))
     bin-rel))
 
-;; Path of `bin` under `bin-dir` (relative to the server dir); errors when the
-;; toolchain left no such file.
 (define (lsp-install/managed-bin! who name dir bin-dir bin windows-suffix)
   (let ((bin-rel (string-append bin-dir "/" bin
                                 (if (lsp-install/windows?) windows-suffix ""))))

@@ -81,6 +81,25 @@ invalid name logs `'warn`, not `'info`: it also catches a path-traversal name (e
 `"../plugins"`), a security-relevant refusal worth a persistent `:messages` record, not
 an ordinary usage typo (same reasoning as `core:plum`'s grammar-name rejection).
 
+### Source rules
+
+- **Asset format.** An asset name ending in a tar suffix (`.tar.gz`, `.tgz`, `.tar.xz`,
+  `.txz`, `.tar.bz2`) is a tar archive, `.zip` a zip, `.gz` a single gzip file. Any other
+  asset is a bare executable; the sync guarantees its bin path equals the asset name.
+- **Toolchain kinds.** `npm`, `cargo`, `golang`, `pypi`, `gem` and `nuget` need `npm`,
+  `cargo`, `go`, `python3` (`python` on Windows), `gem` and `dotnet` on `$PATH`.
+- **Platforms.** A source with no `platforms` field installs everywhere.
+- **Downloads.** `github` and `generic` sources both download one file per platform
+  target. The resolved download is `(url asset sha bin)`, or `#f` when no row matches. A
+  github row is `(target asset sha bin)` with the url derived from repo and version; a
+  generic row is `(target asset url sha bin)`.
+- **Compressor tools.** On Linux, `tar` shells out to `xz` or `bzip2` for those suffixes;
+  macOS and Windows `tar` decompress both themselves.
+- **Receipt environment.** A toolchain-installed server's run-time environment is a list
+  of `("KEY" . "subpath of the server dir")` pairs; only gem installs have any.
+- **Managed binary.** After a toolchain install, the binary's path under the kind's bin
+  directory (relative to the server dir) must exist, or the install fails.
+
 ### System tools
 
 Hashing, unpacking and chmod run the platform's own tools through `run-capture!` and
