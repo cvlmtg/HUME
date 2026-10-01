@@ -15,6 +15,7 @@
 //!   hashing, archive unpacking).
 //! - [`dirs`]: XDG/platform config, data, home, and runtime directories.
 //! - [`path`]: tilde/env-var expansion and path-separator utilities.
+//! - [`version`]: the running build's version and commit, stamped by `build.rs`.
 //!
 //! All platform-conditional code (`#[cfg(unix)]`, `#[cfg(windows)]`) is
 //! hidden behind private sub-modules; every public function has a uniform
@@ -32,6 +33,7 @@ pub mod process;
 pub mod screen;
 pub mod target;
 pub mod terminal;
+pub mod version;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};

@@ -52,9 +52,29 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 | `(request-wait-char! cmd-name)` | From inside a running command, dispatch `cmd-name` once the user types a character |
 | `(pending-char)` | Read the character captured by a `bind-wait-char!` binding or `request-wait-char!`, or `#f` outside that context |
 | `(command-plugin name)` | The id string of the plugin that registered command `name`: `"user"` for a top-level `init.scm` definition, `"hume"` for a built-in |
+| `(command-exists? name)` | `#t` if `name` is something your plugin can use: a command reachable with `call!` (built-in, Scheme-defined, or a not-yet-loaded plugin's), or a built-in scripting function. `#f` otherwise |
 | `(hume/yield!)` | Check the interrupt/step-budget flag inside a long loop, aborting the script if it's set |
 
 `define-command!`, `define-typed-command!`, `call!`, `request-wait-char!`, and `pending-char` are covered with examples in [Defining commands](plugins.md#defining-commands), [Calling other commands](plugins.md#calling-other-commands), and [Pending character input](plugins.md#pending-character-input). `hume/yield!` only matters for a script doing real work in a loop. Without it, a script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](configuration.md#global-options)) still runs to completion; interruption is cooperative, not preemptive.
+
+## Supporting several HUME versions
+
+| Call | Effect |
+|------|--------|
+| `(hume-version)` | The running editor's version as `(major minor patch commit)`. `commit` is the short git hash on a development build and `#f` on a release |
+| `(hume-version>=? major minor patch)` | `#t` if the running editor is at least that version |
+
+A development build reports the release it is heading toward, so `(hume-version>=? 0 15 0)` is `#t` on a nightly of the 0.15.0 cycle. Use it to gate on a release.
+
+To use something newer that has not shipped in a release, check for it directly instead of comparing versions:
+
+```scheme
+(if (command-exists? "set-inlay-hints!")
+    (set-inlay-hints! source pane hints)
+    (fallback))
+```
+
+`command-exists?` works the same for a command and for a function, including one provided by another plugin. Show the commit in a bug report if you like, but don't compare it: hashes have no order.
 
 ## Plugin lifecycle
 

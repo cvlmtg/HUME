@@ -196,6 +196,11 @@
     ((_ name args ...)
      (%dispatch-command! name (list args ...)))))
 
+(define (command-exists? name)
+  (or (%command-callable? name)
+      (with-handler (lambda (e) #f)
+        (procedure? (eval (string->symbol name))))))
+
 (define %raw-displayln displayln)
 (define %raw-display display)
 (define %raw-print print)

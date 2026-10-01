@@ -2,6 +2,9 @@
 members = ["hume-engine", "hume-editor", "hume-platform", "hume-scripting", "hume-editing", "hume-treesitter", "hume-lsp", "test-fixtures", "hume-ops", "hume-rope", "hume-grid", "hume-ui", "hume-decorations", "arch-lints"]
 resolver = "2"
 
+[workspace.package]
+version = "0.14.0"
+
 [profile.dev]
 debug = "line-tables-only"
 split-debuginfo = "unpacked"

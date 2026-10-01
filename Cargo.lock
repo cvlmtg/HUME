@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "arch-lints"
-version = "0.1.0"
+version = "0.14.0"
 
 [[package]]
 name = "arrayvec"
@@ -773,7 +773,7 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
 name = "hume-decorations"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "hume-editing",
  "hume-engine",
@@ -783,7 +783,7 @@ dependencies = [
 
 [[package]]
 name = "hume-editing"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "hume-rope",
  "pretty_assertions",
@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "hume-engine"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "bitflags 2.13.2",
  "hume-grid",
@@ -852,7 +852,7 @@ dependencies = [
 
 [[package]]
 name = "hume-grid"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "bitflags 2.13.2",
  "compact_str 0.10.0",
@@ -863,7 +863,7 @@ dependencies = [
 
 [[package]]
 name = "hume-lsp"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "hume-editing",
  "hume-platform",
@@ -877,7 +877,7 @@ dependencies = [
 
 [[package]]
 name = "hume-ops"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "criterion",
  "hume-editing",
@@ -896,7 +896,7 @@ dependencies = [
 
 [[package]]
 name = "hume-platform"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "ctrlc",
  "hume-grid",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "hume-rope"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "criterion",
  "pretty_assertions",
@@ -920,7 +920,7 @@ dependencies = [
 
 [[package]]
 name = "hume-scripting"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "hume-editing",
  "hume-engine",
@@ -938,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "hume-treesitter"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "globset",
  "hume-editing",
@@ -957,7 +957,7 @@ dependencies = [
 
 [[package]]
 name = "hume-ui"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "hume-engine",
  "hume-grid",
@@ -2114,7 +2114,7 @@ dependencies = [
 
 [[package]]
 name = "test-fixtures"
-version = "0.1.0"
+version = "0.14.0"
 dependencies = [
  "hume-editing",
  "hume-rope",

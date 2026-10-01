@@ -4,7 +4,7 @@ use std::process;
 
 /// HUME: a modal text editor.
 #[derive(Parser)]
-#[command(name = "hume", version = hume_editor::VERSION)]
+#[command(name = "hume", version = hume_platform::version::DISPLAY)]
 struct Cli {
     /// Headless key-runner: replay a golf-notation key STREAM.
     ///

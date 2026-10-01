@@ -35,7 +35,7 @@ The frame's cell grid: `Grid`/`Cell` storage, screen-region geometry, the style 
 - hume-scripting
 - hume-editor
 ## Description
-Platform abstraction layer: terminal control, frame presentation, process spawning, atomic file writes, and OS-specific directory conventions. Walls off every platform-specific code path so callers get one uniform, platform-independent signature.
+Platform abstraction layer: terminal control, frame presentation, process spawning, atomic file writes, OS-specific directory conventions, and the build's version stamp. Walls off every platform-specific code path so callers get one uniform, platform-independent signature.
 
 # hume-editing
 ### Depends on

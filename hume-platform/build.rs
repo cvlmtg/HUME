@@ -1,6 +1,6 @@
 fn main() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR set by cargo");
-    // editor/ is one level below the workspace root where .git/ lives
+    // hume-platform/ is one level below the workspace root where .git/ lives
     let workspace = std::path::Path::new(&manifest)
         .parent()
         .expect("manifest dir has a parent");
@@ -37,6 +37,11 @@ fn main() {
         format!("-{sha}")
     };
     println!("cargo:rustc-env=HUME_VERSION_SUFFIX={suffix}");
+    println!("cargo:rustc-env=HUME_BUILD_COMMIT={sha}");
+    println!(
+        "cargo:rustc-env=HUME_BUILD_RELEASE={}",
+        if is_release_tag { "1" } else { "" }
+    );
 
     // Resolve the real git-dir paths via `--git-path` so the rerun-if-changed
     // directives work correctly in git worktrees and submodules (where `.git`

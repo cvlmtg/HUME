@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cut a release: verify the tree, promote CHANGELOG.md's Unreleased section
-# to a dated version header, bump hume-editor's Cargo.toml version, commit,
+# to a dated version header, bump the workspace version in Cargo.toml, commit,
 # and tag — then bump Cargo.toml again to the next dev version in a second
 # commit, so `hume --version` on the branch reflects the version in progress
 # rather than the one just tagged. Stops short of pushing — one
@@ -58,14 +58,14 @@ resolve_version() {
   resolved="$reply"
 }
 
-# Only [package]'s own version line, never a dependency's `version = "..."`.
+# Only [workspace.package]'s own version line, never a dependency's `version = "..."`.
 set_cargo_version() {
   awk -v ver="$1" '
-    /^\[/ { in_pkg = ($0 == "[package]") }
+    /^\[/ { in_pkg = ($0 == "[workspace.package]") }
     in_pkg && /^version = / { print "version = \"" ver "\""; next }
     { print }
-  ' hume-editor/Cargo.toml > hume-editor/Cargo.toml.new
-  mv hume-editor/Cargo.toml.new hume-editor/Cargo.toml
+  ' Cargo.toml > Cargo.toml.new
+  mv Cargo.toml.new Cargo.toml
 }
 
 branch="$(git rev-parse --abbrev-ref HEAD)"
@@ -141,14 +141,14 @@ perl -0pi -e "s/^## Unreleased\n/## Unreleased\n\n## [$version] - $release_date\
 set_cargo_version "$version"
 cargo check -p hume-editor --offline >/dev/null
 
-git add CHANGELOG.md hume-editor/Cargo.toml Cargo.lock
+git add CHANGELOG.md Cargo.toml Cargo.lock
 git commit -m "release: bump to v$version"
 git tag -a "v$version" -m "v$version"
 
 set_cargo_version "$next_version"
 cargo check -p hume-editor --offline >/dev/null
 
-git add hume-editor/Cargo.toml Cargo.lock
+git add Cargo.toml Cargo.lock
 git commit -m "chore(release): bump dev version to v$next_version" \
   -m "Post-v$version-tag dev bump so \`--version\` reflects the version in
 progress instead of the last tagged release."

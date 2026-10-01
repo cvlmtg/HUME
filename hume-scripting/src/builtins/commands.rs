@@ -386,6 +386,15 @@ pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     Ok(SteelVal::StringV(owner.to_string().into()))
 }
 
+/// `(%command-callable? name)`: whether `(call! name …)` can reach `name`,
+/// i.e. it is in the mappable command table (native, Steel, or a `Lazy` stub).
+/// Read-only: a `Lazy` stub is reported, not activated.
+pub(crate) fn command_callable(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    Ok(SteelVal::BoolV(
+        ctx.host.commands().command_is_native(&name).is_ok(),
+    ))
+}
+
 /// `(pending-char)`: return the pending character as a one-character string,
 /// or `#f` if no character is waiting.
 ///

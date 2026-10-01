@@ -31,6 +31,7 @@ pub(crate) mod settings;
 pub(crate) mod syntax;
 pub(crate) mod timers;
 pub(crate) mod ui;
+pub(crate) mod version;
 pub(crate) mod words;
 
 use std::borrow::Cow;
@@ -151,6 +152,14 @@ macro_rules! builtins {
 // Engine is borrowed. A retry miss raises rather than falling through to
 // %call-native!, which would misreport the name as unknown. call! is defined
 // here, not only in prelude.scm, so harnesses without the prelude have it.
+//
+// command-exists?: one probe for "can the caller use `name`". The registry
+// answer (%command-callable?) covers commands, including a lazy plugin's
+// not-yet-activated ones. The fallback resolves `name` as a global in the VM,
+// which covers builtins and prelude forms; it lives in Scheme because a
+// builtin has no access to the Engine it runs in. The handler returns #f and
+// never re-raises, so the hazard above does not apply. A macro name (`call!`)
+// fails to evaluate as a value and reads as absent.
 //
 // %apply-command!: arms the #:inline-output alt-screen bracket for call!, as
 // Editor::call_steel_command_body does for keypress and `:`. The restore
@@ -291,6 +300,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd  "request-wait-char!" commands::request_wait_char(cmd: String);
         open "pending-char" commands::pending_char();
         open "command-plugin" commands::command_plugin(name: String);
+        open "%command-callable?" commands::command_callable(name: String);
 
         // Grammar compilation: sandbox-free, full-trust plugin model. Kept as a
         // Rust builtin only for the Windows compiler-selection dance (see
@@ -480,10 +490,15 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
     // Context-free builtins that don't fit the typed-arity table above: raw
     // `&[SteelVal]` FuncV, no SteelCtx. `path-join` is a pure string helper;
-    // `hume-target` reads platform info, not directory state; `json-ref`/
+    // `hume-target` and `hume-version` read platform info, not directory state; `json-ref`/
     // `json-contains?`/`json-ref-or` take a variadic path (`j seg ...`),
     // which the typed-arity table's fixed parameter list can't express.
     steel.register_value("hume-target", SteelVal::FuncV(install::hume_target));
+    steel.register_value("hume-version", SteelVal::FuncV(version::hume_version));
+    steel.register_value(
+        "hume-version>=?",
+        SteelVal::FuncV(version::hume_version_at_least),
+    );
     steel.register_value("path-join", SteelVal::FuncV(fs::path_join));
     steel.register_value("path->display", SteelVal::FuncV(fs::path_to_display));
     steel.register_value("json-ref", SteelVal::FuncV(json::json_ref));

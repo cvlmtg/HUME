@@ -1,7 +1,5 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("HUME_VERSION_SUFFIX"));
-
 pub mod cli;
 pub(crate) mod editor;
 // `pub`, not `pub(crate)`: `tests/scripting.rs` is a separate crate that

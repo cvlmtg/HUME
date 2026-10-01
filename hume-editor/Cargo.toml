@@ -1,6 +1,6 @@
 [package]
 name = "hume-editor"
-version = "0.14.0"
+version.workspace = true
 edition = "2024"
 
 [[bin]]

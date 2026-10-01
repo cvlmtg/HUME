@@ -422,7 +422,10 @@ pub(in crate::editor) fn typed_version(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    ed.report(Severity::Info, format!("hume {}", crate::VERSION));
+    ed.report(
+        Severity::Info,
+        format!("hume {}", hume_platform::version::DISPLAY),
+    );
     Ok(())
 }
 
