@@ -365,6 +365,8 @@ These back `:plum-*` and `:lsp-install`/`:lsp-uninstall`: full-trust primitives 
 | `(sha256-file path)` | Lowercase hex sha256 digest of `path` |
 | `(unpack-gz! src dest)` | Decode a single-file gzip archive into `dest`; chmod's it executable on Unix |
 | `(unpack-zip! src dest-dir bin-path)` | Extract a zip archive into `dest-dir`, then verify `bin-path` exists and chmod it executable on Unix |
+| `(unpack-tar! src dest-dir bin-path)` | Same as `unpack-zip!` for a tar archive (gzip, xz or bzip2 compressed) |
+| `(mark-executable! path)` | Make a single downloaded binary executable on Unix; raises if `path` is not a regular file |
 | `(acquire-install-lock!)`, `(release-install-lock!)` | Cross-process install lock guarding concurrent `:lsp-install`/`:lsp-uninstall` runs |
 
 ## Standard Library

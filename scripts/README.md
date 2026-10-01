@@ -31,7 +31,8 @@ server×platform to record checksums. `sync-grammars.py` is a single HTTP fetch.
 
 `sync-lsp-sources.py` caches sha256 hashes from the previously checked-in
 `lsp-sources.scm`, keyed by the full download URL (repo, version, and asset file —
-`https://github.com/<repo>/releases/download/<version>/<asset-file>`), so a routine
+`https://github.com/<repo>/releases/download/<version>/<asset-file>` for github servers, the
+recorded url for generic ones), so a routine
 re-sync doesn't re-download unchanged assets. This means a version bump always
 re-hashes (safe), but
 if an upstream maintainer re-pushes a release tag with different bytes under the same

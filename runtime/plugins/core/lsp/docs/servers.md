@@ -12,8 +12,8 @@ and `<data>/servers/` for receipts, registering every installed server it finds;
 `plugin.scm` runs it once at its own top level, so it also happens at load or lazy
 activation. It's the *only* registrar for managed servers. `:lsp-rescan-servers` exposes
 the same scan for a server installed outside `:lsp-install`. A server directory with no
-readable receipt (pure data, `((name . "X") (version . "V") (bin . "relative/bin/path"))`)
-is treated as an interrupted install, logged as a warning naming it, rather than
+readable receipt (pure data, `((name . "X") (version . "V") (bin . "relative/bin/path")
+(env-dirs ("KEY" . "subpath")…))`) is treated as an interrupted install, logged as a warning naming it, rather than
 silently skipped.
 
 `registration.scm`'s catalog accessor is read-only: callers must not mutate the value it
@@ -31,10 +31,21 @@ way:
 1. Blocker check + tool preflight.
 2. Unregister every seeded language, reaping any running client.
 3. Purge any existing install (the receipt dies with it).
-4. Download, verify, and unpack (github), or run `npm install`/`cargo install`.
+4. Download, verify, and unpack (github, generic), or run the kind's package manager
+   (`npm`, `cargo`, `go`, `pip` in a venv, `gem`, `dotnet tool`).
 5. Write the receipt (the commit point).
 6. A `$PATH` notice, if the seeded command also happens to resolve there independently of
    the managed install.
+
+A receipt's `env-dirs` values are relative to the server dir; registration joins them with
+it and passes the result as `register-lsp-server!`'s `#:env`. Only gem-kind installs write
+any, since their binstub resolves gems through `GEM_HOME` and `GEM_PATH`.
+
+One function resolves a download source for this platform (url, file, sha256, bin) and
+serves the installability check, the tool preflight, and the install itself, for github
+and generic alike. One table maps each toolchain kind to the tool it needs on `$PATH`,
+shared by the blocker and the preflight. One check after a toolchain install confirms the
+expected binary exists, shared by cargo, go, pip, gem and dotnet.
 
 The github path's own download step recreates the install directory right after step 3
 purges it: `curl -o` needs the parent directory to already exist, and nothing else

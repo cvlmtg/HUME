@@ -160,11 +160,20 @@ the server, and languages sharing a server differ (javascript/jsx root on
 ```
 
 - **github**: each target is `(target asset-file sha256 bin-path)` — the unpacked binary's
-  path relative to the server dir (for a plain-gzip asset like rust-analyzer's `.gz`, the
-  name the decompressed file gets; for `.zip`, the path inside the archive). It is
-  per-target because Mason's `{{source.asset.bin}}` templates resolve differently per
-  platform (`.exe` suffix, nested archive dirs). The sync script resolves all templating —
-  the runtime sees literals only.
+  path relative to the server dir. It is per-target because Mason's
+  `{{source.asset.bin}}` templates resolve differently per platform (`.exe` suffix, nested
+  archive dirs). The sync script resolves all templating — the runtime sees literals only.
+  The asset's format decides how it is unpacked: `.tar.gz`/`.tgz`/`.tar.xz`/`.txz`/`.tar.bz2`
+  with `tar -xf`, `.zip`, single-file `.gz`, or *raw* — a download with no archive
+  extension is the binary itself, kept under its asset name, which the sync requires to
+  equal the bin path. A target in any other format (a lone `.xz`, `.dmg`, …) is dropped at
+  sync time with a report, so the runtime only ever sees a format it can unpack.
+- **generic**: a Mason `pkg:generic` package with explicit download URLs. Each target is
+  `(target file url sha256 bin-path)`, `file` being the local name the download is saved
+  as. A package listing several files names the server's own in the sync script's
+  `GENERIC_PRIMARY_FILE` (jdtls: the tarball; its `lombok.jar` is not fetched). github and
+  generic share one download-verify-unpack path. A generic package that is built from
+  source (`haskell-language-server`, a ghcup build) is the `generic-build` stub.
 - **npm**: `packages` = main package + Mason's `extra_packages`, flattened and canonicalised
   to `name@version` strings passed straight to
   `npm install --ignore-scripts --prefix servers/<name>/`.
@@ -178,11 +187,32 @@ the server, and languages sharing a server differ (javascript/jsx root on
   pinned to a git tag/rev instead of a crates.io version (e.g. `nil`) is not reachable via
   `cargo install crate@version` and is emitted as the `cargo-git` stub kind instead (below)
   — deferred, see `docs/ROADMAP.md`.
-- **Unsupported kinds** (`pkg:golang`, `pkg:pypi`, `cargo-git`, …): emitted as a *stub* —
-  `(kind . golang)` plus `version`, no install fields. That is what lets `:lsp-install`
-  fail naming the kind and `:lsp-servers` mark the entry "not installable". A Helix-primary
-  server Mason doesn't carry at all (no name-mapping match) gets no entry; `:lsp-install`
-  for it fails with "no install source" and `:lsp-servers` marks it the same way.
+- **golang**: `module` (the purl's module path plus its `#subpath`, when present),
+  installed via `go install -- <module>@<version>` with `GOBIN=servers/<name>/bin`.
+- **pypi**: `package`, `extras` (from the purl's `?extra=` qualifier; any other qualifier
+  skips the server) and `bin`. A venv is created at `servers/<name>/venv`, then
+  `<venv python> -m pip install --disable-pip-version-check -- <package>[<extras>]==<version>`.
+  The binary is `venv/bin/<bin>` (`venv/Scripts/<bin>.exe` on Windows).
+- **gem**: `packages` (`name:version` for the main gem, then Mason's `extra_packages`),
+  installed via `gem install --no-document --install-dir servers/<name> --bindir
+  servers/<name>/bin`. RubyGems takes `--` as the start of native-build arguments, so the
+  list follows the options directly. The binstub finds its gems through `GEM_HOME` and
+  `GEM_PATH`; the receipt records them (see Installation layout).
+- **nuget**: `package`, installed via `dotnet tool install <package> --tool-path
+  servers/<name>/bin --version <version>`.
+- **`platforms`**: an optional `(platforms hume-target …)` on a package-manager row
+  (npm, cargo, golang, pypi, gem, nuget), derived from Mason's `supported_platforms`.
+  Absent means every platform. `:lsp-install` refuses a listed-elsewhere host with "not
+  supported on this platform". A downloaded asset is already per-platform through its own
+  targets.
+- **Unsupported kinds** (`opam`, `luarocks`, `github-build`, `generic-build`, `cargo-git`, …):
+  emitted as a *stub* — `(kind . opam)` plus `version`, no install fields. That is what lets
+  `:lsp-install` fail naming the kind and `:lsp-servers` mark the entry "not installable". A
+  Helix-primary server Mason doesn't carry at all (no name-mapping match) gets no entry;
+  `:lsp-install` for it fails with "no install source" and `:lsp-servers` marks it the same
+  way. A Mason package that shares a Helix server's name but runs a different program
+  (`cuelsp`: Helix runs `cue lsp serve`) is listed in the sync script's
+  `MASON_NOT_HELIX_SERVER` and gets no entry either.
 
 ## Config delivery & per-server audit
 
@@ -216,7 +246,7 @@ the server, and languages sharing a server differ (javascript/jsx root on
     ├── .install-lock            transient — held only during an install/uninstall
     └── rust-analyzer/
         ├── receipt.scm         written LAST — the install commit point
-        └── rust-analyzer       (or node_modules/… for npm, bin/… for cargo-kind installs)
+        └── rust-analyzer       (or node_modules/… for npm, bin/… for cargo/golang/gem/nuget, venv/… for pypi)
 ```
 
 - **Per-server dir, no shared `bin/`.** Mason keeps a symlinked `bin/` dir so users can put
@@ -234,7 +264,9 @@ the server, and languages sharing a server differ (javascript/jsx root on
   it crashed or was killed) and replaced, with a warning. The sentinel file lives directly
   under `servers/`, excluded from the startup scan so it's never misread as an interrupted
   or orphan server install.
-- **Receipt = commit point.** `receipt.scm` (pure data: name, version, bin path) is written
+- **Receipt = commit point.** `receipt.scm` (pure data: name, version, bin path, and
+  `env-dirs`, the environment the server needs at run time as `("KEY" . "subpath of the
+  server dir")` pairs — `GEM_HOME`/`GEM_PATH` for gem-kind, empty otherwise) is written
   as the final install step. A dir without a receipt is an interrupted install: warned
   about, ignored by the scan, safely redone by `:lsp-install`. No half-installed server is
   ever registered. (This is a new mechanism, not grammar precedent — grammars have no
@@ -251,7 +283,10 @@ the server, and languages sharing a server differ (javascript/jsx root on
   plus `--locked` (pinning upstream's own published dependency graph). Unlike npm's
   `--ignore-scripts`, `cargo install` compiles the crate from source, so its `build.rs`
   build script does run — an accepted tradeoff, the same trust decision as running the
-  server binary itself.
+  server binary itself. golang, pypi, gem and nuget installs rest on their registries'
+  version immutability the same way, and run package build or install code (`pip` may
+  build an sdist; `go install` compiles). generic downloads carry a sha256 like github
+  assets.
 
 ## Registration model
 
@@ -328,17 +363,18 @@ lists) stays in the plugin — Rust never reads them.
 
 ## v1 scope and limitations
 
-- **Source kinds**: `pkg:github` (prebuilt release binaries — rust-analyzer, clangd,
-  marksman, taplo, zls, lua-language-server, …), `pkg:npm` (typescript-language-server,
-  pyright, bash-language-server, `json-lsp`/`css-lsp` (Mason's packages wrapping
-  vscode-langservers-extracted), …), and `pkg:cargo` restricted to crates.io semver
-  versions (asm-lsp, beancount-language-server, cairo-language-server, circom-lsp, `nls`
-  (crate `nickel-lang-lsp`), openscad-lsp, pest-language-server). npm-kind installs
-  require node, cargo-kind installs require a Rust toolchain — `:lsp-install` preflights
-  and fails loudly naming the missing tool before downloading anything. Other purl kinds
-  (`pkg:golang` → gopls, `pkg:pypi`, `cargo-git` — a Mason cargo package pinned to a git
-  tag/rev instead of a crates.io version, e.g. `nil` — …) fail with a loud, specific error
-  naming the unsupported kind. Expand later.
+- **Source kinds**: `pkg:github` and `pkg:generic` (prebuilt binaries — rust-analyzer,
+  clangd, marksman, taplo, zls, lua-language-server, terraform-ls, jdtls, …), `pkg:npm`
+  (typescript-language-server, pyright, bash-language-server, `json-lsp`/`css-lsp`
+  (Mason's packages wrapping vscode-langservers-extracted), …), `pkg:cargo` restricted to
+  crates.io semver versions (asm-lsp, beancount-language-server, …), `pkg:golang` (gopls),
+  `pkg:pypi` (ty, pylsp, …), `pkg:gem` (ruby-lsp), and `pkg:nuget` (roslyn, fsautocomplete).
+  `:lsp-install` preflights the tools an install needs and fails loudly naming the missing
+  one before downloading anything. Other purl kinds (`opam`, `luarocks`, `cargo-git` — a
+  Mason cargo package pinned to a git tag/rev instead of a crates.io version, e.g. `nil` —
+  …) fail with a loud, specific error naming the unsupported kind. jdtls installs the
+  tarball only: it needs a JDK and `python3` at run time, which the installer does not
+  check.
 - **One server per language — no multi-server support.** Helix lists ordered *multiple*
   servers for some languages (python → `["ty", "ruff", "jedi", "pylsp"]`,
   toml → `["taplo", "tombi"]`, go → `["gopls", "golangci-lint-lsp"]`). The registry holds
@@ -404,6 +440,11 @@ choice (see below), traded for a hard runtime dependency on these being present:
 | `.zip` extract | `unzip -o` (ships with the OS) | `unzip -o` (not always preinstalled — install the `unzip` package) | `tar -xf` (bsdtar, built into Windows 10+) |
 | npm-kind installs | `node`/`npm` on `PATH` — required regardless of platform |
 | cargo-kind installs | a Rust toolchain (`cargo` on `PATH`, e.g. via [rustup.rs](https://rustup.rs)) — required regardless of platform; compiles the crate from source, so the first install of a given server can take a few minutes |
+| golang-kind installs | `go` on `PATH` — required regardless of platform |
+| pypi-kind installs | `python3` (`python` on Windows) with the `venv` and `pip` modules |
+| gem-kind installs | `gem` (`gem.cmd` on Windows) on `PATH` |
+| nuget-kind installs | `dotnet` on `PATH` |
+| tar archives | `tar` everywhere. On Linux, `.tar.xz` also needs `xz` and `.tar.bz2` needs `bzip2`; macOS and Windows `tar` decompress both themselves |
 
 `git` and `curl` are already required by the grammar pipeline; this adds `unzip` on
 Linux and `gzip` on Windows as the only new hard requirements for github/npm-kind

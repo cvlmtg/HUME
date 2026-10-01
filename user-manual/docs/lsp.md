@@ -77,13 +77,20 @@ server:
 - `curl`: for servers downloaded as a release asset
 - `gzip`: for servers distributed as a single gzip-compressed binary
 - `unzip` (macOS/Linux) or `tar` (Windows): for servers distributed as a zip archive
+- `tar`: for servers distributed as a tar archive; on Linux, `xz` or `bzip2` too for
+  `.tar.xz` or `.tar.bz2` archives
 - `npm`: for servers distributed as an npm package
 - `cargo`: for servers built from a Rust crate (compiled from source; the first install
   can take a few minutes)
+- `go`: for servers installed with `go install` (gopls)
+- `python3` (`python` on Windows), with `venv` and `pip`: for servers distributed on PyPI
+  (ty, pylsp)
+- `gem`: for servers distributed as a Ruby gem (ruby-lsp)
+- `dotnet`: for servers distributed as a .NET tool (the C# and F# servers)
 
 How you install these depends on your operating system:
 
-- **macOS**: [Homebrew](https://brew.sh): `brew install curl gzip unzip node`; install
+- **macOS**: [Homebrew](https://brew.sh): `brew install curl gzip unzip node go`; install
   `cargo` via [rustup.rs](https://rustup.rs).
 - **Linux**: use your distribution's package manager; these are usually already installed
   except `node`/`npm`, which most distros package as `nodejs`/`npm`, and `cargo`, best
@@ -148,10 +155,16 @@ message tells you to run `:lsp-install` again, which normally succeeds the secon
 **`:lsp-install` fails naming a missing tool.** Install it; see the
 [prerequisites](#prerequisites) above.
 
+**`:lsp-install` says "not supported on this platform".** The server's own packaging
+doesn't support your operating system.
+
+**A server installs but fails to start.** A few servers need more than the install provides:
+the Java server (jdtls) needs a JDK 21 or newer and `python3` on your `$PATH` when it runs.
+
 **`:lsp-install` says "not installable".** Not every server HUME knows about can be
 auto-installed: some don't publish prebuilt binaries HUME can unpack, are pinned by their
 package manager to a git revision rather than a released version, or are only available
-through a package manager not yet supported (`pip`, `gem`, …). Install it yourself
+through a package manager not yet supported (`opam`, `luarocks`, …). Install it yourself
 and register it manually as described in [Registering a language server](#registering-a-language-server)
 below.
 

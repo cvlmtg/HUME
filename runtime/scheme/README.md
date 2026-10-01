@@ -75,10 +75,14 @@ first-listed server only, since the client is single-server-per-buffer by design
 
 **`lsp-sources.scm`**: one tagged alist per server, joined to `lsp-servers.scm` by name.
 `hume-target` is one of `darwin-arm64`, `darwin-x64`, `linux-x64`, `windows-x64`; a server
-missing a target simply omits that row. Four `kind`s: `github` (per-target asset + sha256 +
-bin path), `npm` (package list + bin script), `cargo` (crate + bin name), and `stub` (not
-installable, either an unsupported purl kind or a source-only `github-build` package). A Helix
-server with no Mason equivalent gets no entry at all.
+missing a target simply omits that row. Installable `kind`s: `github` (per-target asset +
+sha256 + bin path; the asset is a tar archive, zip, gzip, or a raw binary), `generic` (per-target
+file + url + sha256 + bin path), `npm` (package list + bin script), `cargo` (crate + bin
+name), `golang` (module + bin name), `pypi` (package + extras + bin name), `gem` (package
+list + bin name) and `nuget` (package + bin name). A package-manager row may carry
+`(platforms hume-target …)` when Mason restricts it. Any other `kind` is a stub, not
+installable: an unsupported purl kind or a source-only `github-build`/`generic-build`
+package. A Helix server with no Mason equivalent gets no entry at all.
 
 ## `languages.scm`
 

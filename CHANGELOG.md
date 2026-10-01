@@ -67,6 +67,9 @@
 - Typing a quote right after the same quote no longer opens a new pair, so ```` ``` ```` and `"""` come out as typed with auto-pairs on, with no stray closing quote.
 
 ### Language servers
+- `:lsp-install` installs many more servers: those distributed as tar archives or a single binary (lua-language-server, marksman, zls, texlab, tinymist, …), terraform-ls and jdtls, and servers installed through `go` (gopls), `pip` (ty, pylsp, …), `gem` (ruby-lsp) or `dotnet` (the C# and F# servers). Each needs its tool on your `$PATH`; see [Installing servers](user-manual/docs/lsp.md#installing-servers).
+- `:lsp-install` says "not supported on this platform" for a server that doesn't support your operating system.
+- `unpack-tar!` and `mark-executable!` are new scripting functions, and `run-inline-output!` takes an `#:env` keyword.
 - Diagnostics are hidden on the line you are typing on in Insert mode, both the underline and the end-of-line summary. `lsp.diagnostics-on-insert-line` set to `#t` keeps them showing.
 - `on-viewport-change` fires when the lines a pane shows change, including when an edit adds or removes lines in a buffer shorter than the pane. A resize or scroll that leaves the shown lines the same no longer fires it.
 - Completion items are filtered against the text their own edit range covers, and a list's default edit range is honored. A server whose completions replace more than the word before the cursor (`foo.ba`, `$ba`) keeps its items while you type, and accepting replaces that range. Such items need a `filterText` that includes the covered text, as the protocol expects.
