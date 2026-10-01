@@ -1652,3 +1652,63 @@ fn lsp_install_raw_binary_is_marked_executable_and_kept() {
         .expect("markdown must be registered after a successful install");
     assert_eq!(Path::new(&cmd), bin);
 }
+
+#[test]
+fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
+    let _lock = lock();
+    let work = safe_tempdir();
+    let payload = work.path().join("payload");
+    std::fs::create_dir_all(&payload).unwrap();
+    std::fs::write(payload.join("terraform-ls"), b"#!/bin/sh\n").unwrap();
+    let archive = work.path().join("tfls.zip");
+    assert!(
+        std::process::Command::new("zip")
+            .arg("-j")
+            .arg(&archive)
+            .arg(payload.join("terraform-ls"))
+            .status()
+            .unwrap()
+            .success()
+    );
+    let sha = sha256_hex(&archive);
+    let url = "https://example.test/terraform-ls/9.9.9/tfls.zip";
+    let targets: String = ["darwin-arm64", "darwin-x64", "linux-x64"]
+        .iter()
+        .map(|t| format!("({t} \"tfls.zip\" \"{url}\" \"sha256:{sha}\" \"terraform-ls\")"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let runtime = runtime_with_sources(&format!(
+        "((\"terraform-ls\" (kind . generic) (version . \"9.9.9\") (targets {targets})))"
+    ));
+    let args_file = work.path().join("curl-argv.txt");
+    let (_shim, path) = write_fake_curl_shim(&archive, &args_file);
+
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init_in_runtime(
+        &mut ed,
+        runtime.path(),
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp\")",
+    );
+    {
+        let _path = EnvVarGuard::set("PATH", &path);
+        type_cmd(&mut ed, ":lsp-install hcl");
+    }
+
+    let argv = std::fs::read_to_string(&args_file).expect("curl shim must have run");
+    assert_eq!(
+        argv.lines().last(),
+        Some(url),
+        "curl must fetch the url recorded in the row verbatim: {argv}"
+    );
+    let bin = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("terraform-ls")
+        .join("terraform-ls");
+    let cmd = ed
+        .lsp
+        .config_command_for_test("hcl")
+        .expect("hcl must be registered after a successful install");
+    assert_eq!(Path::new(&cmd), bin);
+}

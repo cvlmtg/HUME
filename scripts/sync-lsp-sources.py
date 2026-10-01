@@ -92,6 +92,10 @@ HELIX_TO_MASON = {
     "yls": "yls-yara",
 }
 
+# A generic package whose download lists several files names the one that is
+# the server; the others (e.g. jdtls's lombok.jar) are not fetched.
+GENERIC_PRIMARY_FILE = {"jdtls": "jdtls.tar.gz"}
+
 # hume-target -> ordered Mason target names to try, most-preferred first
 # (e.g. prefer a glibc Linux build over musl when both are offered). The
 # trailing arch-agnostic entries (`darwin`, `linux`, `win`, `unix`) are real
@@ -116,6 +120,7 @@ UNSUPPORTED_EXTENSIONS = (
     ".msi", ".vsix", ".nupkg", ".jar", ".whl",
 )
 _TEMPLATE_RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
+_STRIP_PREFIX_RE = re.compile(r'version\s*\|\s*strip_prefix\s+"([^"]*)"')
 _BIN_PREFIX_RE = re.compile(r"^[a-z][a-z0-9_]*:(?!//)")
 _CARGO_SEMVER_RE = re.compile(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.\-]+)?")
 
@@ -192,9 +197,13 @@ def resolve_template(template: str, *, version: str, asset: dict) -> str | None:
         expr = m.group(1).strip()
         if expr == "version":
             return version
-        if expr.startswith("source.asset."):
+        stripped = _STRIP_PREFIX_RE.fullmatch(expr)
+        if stripped:
+            return version.removeprefix(stripped.group(1))
+        ref = next((r for r in ("source.asset.", "source.download.") if expr.startswith(r)), None)
+        if ref:
             value = asset
-            for key in expr[len("source.asset.") :].split("."):
+            for key in expr[len(ref) :].split("."):
                 if not isinstance(value, dict) or key not in value:
                     unresolved = True
                     return ""
@@ -259,7 +268,7 @@ def pick_bin_template(bin_map: dict, helix_command: str, server_name: str):
 def load_sha256_cache(path: Path) -> dict[str, str]:
     """Return {download-url: sha256} read from the previously checked-in
     lsp-sources.scm, so re-syncing after an unrelated pin bump doesn't
-    re-download and re-hash every unchanged github asset. Best-effort: a
+    re-download and re-hash every unchanged github or generic asset. Best-effort: a
     missing or unparseable file yields an empty cache (equivalent to a
     from-scratch run) rather than aborting the sync — the cache is a speed
     optimization, not a correctness dependency."""
@@ -274,7 +283,8 @@ def load_sha256_cache(path: Path) -> dict[str, str]:
     cache: dict[str, str] = {}
     for rec in data:
         fields = {str(f[0]): f[1] for f in rec[1:] if isinstance(f, tuple)}
-        if fields.get("kind") != "github":
+        kind = fields.get("kind")
+        if kind not in ("github", "generic"):
             continue
         repo = fields.get("repo")
         version = fields.get("version")
@@ -282,13 +292,16 @@ def load_sha256_cache(path: Path) -> dict[str, str]:
             (f for f in rec[1:] if isinstance(f, list) and f and str(f[0]) == "targets"),
             None,
         )
-        if not (repo and version and targets_entry):
+        if not targets_entry or (kind == "github" and not (repo and version)):
             continue
         for target_row in targets_entry[1:]:
-            if len(target_row) != 4:
+            if kind == "github" and len(target_row) == 4:
+                _hume_target, asset_file, sha256, _bin_path = target_row
+                url = f"https://github.com/{repo}/releases/download/{version}/{asset_file}"
+            elif kind == "generic" and len(target_row) == 5:
+                _hume_target, _asset_file, url, sha256, _bin_path = target_row
+            else:
                 continue
-            _hume_target, asset_file, sha256, _bin_path = target_row
-            url = f"https://github.com/{repo}/releases/download/{version}/{asset_file}"
             cache[url] = sha256
     return cache
 
@@ -392,6 +405,62 @@ def build_github_record(
     return {"kind": "github", "version": version, "repo": repo, "targets": targets}
 
 
+def build_generic_record(
+    name: str, package: dict, helix_command: str, reports: dict, hash_cache: dict[str, str]
+):
+    _kind, _subject, version = parse_purl(package["source"]["id"])
+    downloads = package["source"].get("download")
+    if not downloads:
+        return {"kind": "generic-build", "version": version}
+
+    bin_template = pick_bin_template(package.get("bin") or {}, helix_command, name)
+    if bin_template is None:
+        return None
+    python_launcher = bin_template.startswith("python:")
+
+    by_mason_target = index_assets_by_mason_target(downloads, name)
+    targets = []
+    for hume_target, mason_targets in MASON_TARGET_PRIORITY.items():
+        entry = next((by_mason_target[t] for t in mason_targets if t in by_mason_target), None)
+        if entry is None:
+            print(f"  {name} [{hume_target}]: no matching Mason download — dropped", file=sys.stderr)
+            continue
+        if python_launcher and hume_target == "windows-x64":
+            print(f"  {name} [{hume_target}]: python launcher script, not directly executable — dropped", file=sys.stderr)
+            continue
+
+        files = entry["files"]
+        local_name = GENERIC_PRIMARY_FILE.get(name) if len(files) > 1 else next(iter(files))
+        if local_name not in files:
+            sys.exit(f"error: generic package '{name}' has {sorted(files)}; add it to GENERIC_PRIMARY_FILE")
+        url = resolve_template(files[local_name], version=version, asset=entry)
+        resolved_bin = resolve_template(bin_template, version=version, asset=entry)
+        if url is None or resolved_bin is None:
+            reports["unresolved_targets"].append((name, hume_target, "url/bin", files[local_name]))
+            continue
+        resolved_bin = strip_mason_bin_prefix(resolved_bin)
+
+        fmt = asset_format(local_name, resolved_bin)
+        if fmt is None:
+            reports["unsupported_format"].append((name, hume_target, local_name))
+            continue
+        reports["format_census"][fmt] += 1
+
+        sha256 = hash_cache.get(url)
+        if sha256 is None:
+            print(f"  hashing {name} [{hume_target}]: {url}", file=sys.stderr)
+            sha256 = sha256_of_url(url)
+            if sha256 is None:
+                reports["download_failures"].append((name, hume_target, url))
+                continue
+        targets.append((hume_target, local_name, url, sha256, resolved_bin))
+
+    if not targets:
+        reports["no_usable_targets"].append(name)
+        return {"kind": "generic-build", "version": version}
+    return {"kind": "generic", "version": version, "targets": targets}
+
+
 def build_npm_record(name: str, package: dict, helix_command: str):
     _kind, subject, version = parse_purl(package["source"]["id"])
     extra_packages = package["source"].get("extra_packages", [])
@@ -479,6 +548,16 @@ def emit_lsp_sources(records: dict) -> list[str]:
                 scheme_str(r["repo"]),
                 target_rows,
             )
+        elif r["kind"] == "generic":
+            target_rows = " ".join(
+                "({} {} {} {} {})".format(
+                    t, scheme_str(f), scheme_str(u), scheme_str(sha), scheme_str(b)
+                )
+                for t, f, u, sha, b in r["targets"]
+            )
+            row = " ({} (kind . generic) (version . {}) (targets {}))".format(
+                scheme_str(name), scheme_str(r["version"]), target_rows
+            )
         elif r["kind"] == "npm":
             row = " ({} (kind . npm) (version . {}) (packages {}) (bin . {}))".format(
                 scheme_str(name),
@@ -563,6 +642,8 @@ def main() -> None:
 
         if purl_kind == "github":
             record = build_github_record(helix_name, package, helix_command, reports, hash_cache)
+        elif purl_kind == "generic":
+            record = build_generic_record(helix_name, package, helix_command, reports, hash_cache)
         elif purl_kind == "npm":
             record = build_npm_record(helix_name, package, helix_command)
         elif purl_kind == "cargo":

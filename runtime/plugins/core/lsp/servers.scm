@@ -68,9 +68,28 @@
         ((equal? asset-file bin) 'raw)
         (else (error (string-append "lsp/asset-format: unsupported asset format: " asset-file)))))
 
+;; github and generic sources both download one file per platform target.
+(define (lsp/download-kind? kind)
+  (or (equal? kind 'github) (equal? kind 'generic)))
+
 (define (lsp/find-target targets)
   (let ((want (string->symbol (hume-target))))
     (call! "stdlib/find" (lambda (t) (equal? (list-ref t 0) want)) targets)))
+
+;; (url asset sha bin) for this platform, or #f. A github row is
+;; (target asset sha bin) with the url derived from repo and version; a
+;; generic row is (target asset url sha bin).
+(define (lsp/resolve-download fields)
+  (let ((target (lsp/find-target (cdr (lsp/field fields 'targets)))))
+    (cond
+      ((not target) #f)
+      ((equal? (cdr (lsp/field fields 'kind)) 'generic)
+       (list (list-ref target 2) (list-ref target 1) (list-ref target 3) (list-ref target 4)))
+      (else
+       (list (string-append "https://github.com/" (cdr (lsp/field fields 'repo))
+                            "/releases/download/" (cdr (lsp/field fields 'version))
+                            "/" (list-ref target 1))
+             (list-ref target 1) (list-ref target 2) (list-ref target 3))))))
 
 (define (lsp/install-blocker name)
   (cond
@@ -84,13 +103,10 @@
           (if (which "npm") #f "requires 'npm' on $PATH, which was not found"))
          ((equal? kind 'cargo)
           (if (which "cargo") #f "requires 'cargo' on $PATH, which was not found"))
-         ((not (equal? kind 'github))
+         ((not (lsp/download-kind? kind))
           (string-append "not installable (kind " (symbol->string kind) ") in v1"))
-         (else
-          (let ((target (lsp/find-target (cdr (lsp/field fields 'targets)))))
-            (cond
-              ((not target) "no prebuilt asset for this platform")
-              (else #f)))))))))
+         ((not (lsp/resolve-download fields)) "no prebuilt asset for this platform")
+         (else #f))))))
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
@@ -108,39 +124,33 @@
       ((equal? kind 'npm) '("npm"))
       ((equal? kind 'cargo) '("cargo"))
       (else
-       (let* ((target (lsp/find-target (cdr (lsp/field fields 'targets))))
-              (asset  (list-ref target 1))
-              (fmt    (lsp/asset-format asset (list-ref target 3))))
-         (cond
-           ((equal? fmt 'zip) (list (if (equal? (hume-target) "windows-x64") "tar" "unzip")))
-           ((equal? fmt 'tar) (cons "tar" (lsp/tar-compressor-tools asset)))
-           ((equal? fmt 'gz) '("gzip"))
-           (else '())))))))
+       (let* ((download (lsp/resolve-download fields))
+              (asset    (list-ref download 1))
+              (fmt      (lsp/asset-format asset (list-ref download 3))))
+         (append
+           (cond
+             ((equal? fmt 'zip) (list (if (equal? (hume-target) "windows-x64") "tar" "unzip")))
+             ((equal? fmt 'tar) (cons "tar" (lsp/tar-compressor-tools asset)))
+             ((equal? fmt 'gz) '("gzip"))
+             (else '()))
+           '("curl")))))))
 
 (define (lsp/preflight! name)
-  (let* ((fields (hash-ref *lsp-sources* name))
-         (kind   (cdr (lsp/field fields 'kind)))
-         (tools  (if (equal? kind 'github)
-                     (append (lsp/required-tools name) '("curl"))
-                     (lsp/required-tools name))))
-    (for-each
-      (lambda (tool)
-        (unless (which tool)
-          (error (string-append "lsp/install-server!: " name " requires '" tool
-                                "' on $PATH, which was not found"))))
-      tools)))
+  (for-each
+    (lambda (tool)
+      (unless (which tool)
+        (error (string-append "lsp/install-server!: " name " requires '" tool
+                              "' on $PATH, which was not found"))))
+    (lsp/required-tools name)))
 
-(define (lsp/install-github! name fields dir)
-  (let* ((repo    (cdr (lsp/field fields 'repo)))
-         (version (cdr (lsp/field fields 'version)))
-         (target  (lsp/find-target (cdr (lsp/field fields 'targets))))
-         (asset   (list-ref target 1))
-         (sha     (list-ref target 2))
-         (bin     (list-ref target 3))
-         (fmt     (lsp/asset-format asset bin))
-         (archive (path-join dir asset))
-         (url     (string-append "https://github.com/" repo "/releases/download/"
-                                 version "/" asset)))
+(define (lsp/install-download! name fields dir)
+  (let* ((download (lsp/resolve-download fields))
+         (url      (list-ref download 0))
+         (asset    (list-ref download 1))
+         (sha      (list-ref download 2))
+         (bin      (list-ref download 3))
+         (fmt      (lsp/asset-format asset bin))
+         (archive  (path-join dir asset)))
     (create-directory! dir)
     (run-inline-output! "curl" (list "-fsSL" "-o" archive "--" url))
     (lsp/verify-sha256! archive sha)
@@ -153,7 +163,7 @@
             ((equal? fmt 'tar) (unpack-tar! archive dir bin)))
           (call! "stdlib/delete-file!" archive)))
     (unless (path-exists? (path-join dir bin))
-      (error (string-append "lsp/install-github!: " name
+      (error (string-append "lsp/install-download!: " name
                             ": expected binary not found after unpack: " bin)))
     bin))
 
@@ -196,7 +206,7 @@
               (cdr (lsp/field server-fields 'languages)))
     (call! "stdlib/delete-dir!" dir)
     (let ((bin-rel (cond
-                     ((equal? kind 'github) (lsp/install-github! name source-fields dir))
+                     ((lsp/download-kind? kind) (lsp/install-download! name source-fields dir))
                      ((equal? kind 'cargo)  (lsp/install-cargo! name source-fields dir))
                      (else                  (lsp/install-npm! name source-fields dir)))))
       (lsp/write-receipt! name (cdr (lsp/field source-fields 'version)) bin-rel)
