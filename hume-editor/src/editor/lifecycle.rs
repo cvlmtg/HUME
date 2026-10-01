@@ -315,6 +315,9 @@ impl Editor {
     /// 3. Block until the next terminal event.
     /// 4. Dispatch the event.
     ///
+    /// Whatever exit the loop takes, clipboard text still queued for OSC 52
+    /// is sent before the terminal handle is released.
+    ///
     /// **Invariant not independently unit-testable**: `settle()`
     /// always runs, and `should_quit` is always observed, before this loop's
     /// `prepare_frame`/draw. `run` itself needs a live terminal and event
@@ -331,6 +334,9 @@ impl Editor {
         // the one point all of them pass through.
         self.tui = Tui::On(term.clone());
         let result = self.run_loop(term, screen);
+        // Clipboard text queued after the last drawn frame (a quit or signal
+        // exit skips `prepare_frame`) is sent here.
+        self.flush_osc52();
         self.tui = Tui::Off;
         result
     }

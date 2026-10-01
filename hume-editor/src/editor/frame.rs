@@ -228,7 +228,7 @@ impl Editor {
 
     /// Send the clipboard text queued for OSC 52, if any. A no-op without a
     /// terminal (tests, headless `run_keys`), which leaves the text queued.
-    pub(in crate::editor::frame) fn flush_osc52(&mut self) {
+    pub(super) fn flush_osc52(&mut self) {
         let Some(term) = self.tui.terminal() else {
             return;
         };
