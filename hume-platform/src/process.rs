@@ -74,7 +74,8 @@ fn base_command(cmd: &str, args: &[String], cwd: Option<&Path>) -> Command {
     command
 }
 
-/// Run `cmd` with `args`, inherited stdio, in its own process group.
+/// Run `cmd` with `args`, inherited stdio, in its own process group. `env`
+/// entries are added to the inherited environment.
 ///
 /// Used for `#:inline-output` Steel commands. Terminal raw mode is
 /// temporarily disabled there (`hume_platform::terminal::enter_inline_output`
@@ -91,8 +92,16 @@ fn base_command(cmd: &str, args: &[String], cwd: Option<&Path>) -> Command {
 /// way regardless: it would hit the same background-process-group
 /// `SIGTTIN`/`SIGTTOU` wall on its own reads/writes the moment it touched
 /// the terminal.
-pub fn run_inline_output(cmd: &str, args: &[String], cwd: Option<&Path>) -> io::Result<ExitStatus> {
-    base_command(cmd, args, cwd).new_process_group().status()
+pub fn run_inline_output(
+    cmd: &str,
+    args: &[String],
+    cwd: Option<&Path>,
+    env: &[(String, String)],
+) -> io::Result<ExitStatus> {
+    base_command(cmd, args, cwd)
+        .envs(env.iter().map(|(k, v)| (k, v)))
+        .new_process_group()
+        .status()
 }
 
 /// Run `cmd` with `args`, both stdout and stderr fully captured, stdin

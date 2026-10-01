@@ -317,6 +317,7 @@ fn run_inline_output_missing_binary_raises() {
         "definitely-not-a-real-binary-xyz".to_string(),
         list_val(&[]),
         SteelVal::BoolV(false),
+        list_val(&[]),
     )
     .unwrap_err();
     assert!(err.to_string().contains("definitely-not-a-real-binary-xyz"));
@@ -334,6 +335,7 @@ fn run_inline_output_calls_ensure_before_spawn() {
         "definitely-not-a-real-binary-xyz".to_string(),
         list_val(&[]),
         SteelVal::BoolV(false),
+        list_val(&[]),
     );
     drop(ctx);
     assert_eq!(host.ensure_calls, 1);

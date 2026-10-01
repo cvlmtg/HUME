@@ -140,8 +140,8 @@
 (define (run-capture! cmd args #:cwd [cwd #f])
   (%run-capture! cmd args cwd))
 
-(define (run-inline-output! cmd args #:cwd [cwd #f])
-  (let ([code (%run-inline-output! cmd args cwd)])
+(define (run-inline-output! cmd args #:cwd [cwd #f] #:env [env '()])
+  (let ([code (%run-inline-output! cmd args cwd env)])
     (unless (= code 0)
       (error (string-append cmd ": failed (exit " (number->string code) ")")))))
 

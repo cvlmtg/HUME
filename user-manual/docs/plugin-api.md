@@ -298,7 +298,7 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 |------|--------|
 | `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's own working directory); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later |
 | `(cancel-async! id)` | Kill a still-running `spawn-async!` job and drop its callback; idempotent |
-| `(run-inline-output! cmd args #:cwd)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; raises on nonzero exit |
+| `(run-inline-output! cmd args #:cwd #:env)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; `#:env` is a list of `("KEY" . "VALUE")` pairs added to the environment; raises on nonzero exit |
 | `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's own working directory), blocking until it exits; returns `(hash 'stdout s 'stderr s 'exit code)`. `core:stdlib`'s `stdlib/run!` (see [Standard Library](standard-library.md)) is this call under its usual name |
 
 Covered with examples in [Filesystem and processes](plugins.md#filesystem-and-processes).

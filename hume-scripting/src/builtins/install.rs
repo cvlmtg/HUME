@@ -22,7 +22,7 @@
 //! | `mark-executable!`               | `string → void`       | chmod 0755 on Unix; refuses non-files |
 //! | `acquire-install-lock!`         | `() → void`            | O_EXCL over `<data>/servers/.install-lock`; stale (>1h) → replace |
 //! | `release-install-lock!`        | `() → void`            | idempotent: a missing lock is not an error |
-//! | `%run-inline-output!`           | `string list string|#f → int` | process-group-isolated spawn for `#:inline-output` commands; see `run_inline_output` doc |
+//! | `%run-inline-output!`           | `string list string|#f list → int` | process-group-isolated spawn for `#:inline-output` commands; see `run_inline_output` doc |
 
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
@@ -34,7 +34,7 @@ use crate::SteelCtx;
 use crate::log::LogLevel;
 
 use super::SteelResult;
-use super::args::{list_to_strings, optional_path_arg};
+use super::args::{list_to_env_pairs, list_to_strings, optional_path_arg};
 use super::errors::generic_err;
 
 const INSTALL_LOCK_FILE_NAME: &str = ".install-lock";
@@ -241,9 +241,10 @@ pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> SteelResult {
     Ok(SteelVal::Void)
 }
 
-/// `(%run-inline-output! cmd args cwd)`: spawn `cmd` with `args` (a list of
+/// `(%run-inline-output! cmd args cwd env)`: spawn `cmd` with `args` (a list of
 /// strings), inherited stdio, in its own process group; blocks until exit and
-/// returns the exit code as an int. `cwd` is a string or `#f`.
+/// returns the exit code as an int. `cwd` is a string or `#f`; `env` is a list
+/// of `("KEY" . "VALUE")` pairs added to the inherited environment.
 ///
 /// The process-group isolation is the entire reason this is a Rust builtin
 /// rather than Steel's own `spawn-process`: `#:inline-output` commands run
@@ -259,9 +260,11 @@ pub(crate) fn run_inline_output(
     cmd: String,
     args_val: SteelVal,
     cwd_val: SteelVal,
+    env_val: SteelVal,
 ) -> SteelResult {
     let args = list_to_strings(args_val, "%run-inline-output! args")?;
     let cwd = optional_path_arg(cwd_val, "%run-inline-output! cwd")?;
+    let env = list_to_env_pairs(env_val, "%run-inline-output! env")?;
 
     // The child inherits stdio, so this is a real terminal write: open the
     // bracket before spawning it.
@@ -271,7 +274,7 @@ pub(crate) fn run_inline_output(
             .map_err(|e| generic_err(format!("run-inline-output!: {e}")))?;
     }
 
-    let status = hume_platform::process::run_inline_output(&cmd, &args, cwd.as_deref())
+    let status = hume_platform::process::run_inline_output(&cmd, &args, cwd.as_deref(), &env)
         .map_err(|e| generic_err(format!("run-inline-output!: cannot run '{cmd}': {e}")))?;
 
     // `-1` for a signal-killed child (no exit code); matches the sentinel a

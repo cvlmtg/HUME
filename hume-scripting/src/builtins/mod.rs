@@ -319,7 +319,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open  "mark-executable!" install::mark_executable(path: String);
         open  "acquire-install-lock!" install::acquire_install_lock();
         open  "release-install-lock!" install::release_install_lock();
-        open  "%run-inline-output!" install::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal);
+        open  "%run-inline-output!" install::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal, env_val: SteelVal);
 
         // Logging: push messages to the editor message log
         open "log!" crate::log::log_msg(severity: SteelVal, message: String);

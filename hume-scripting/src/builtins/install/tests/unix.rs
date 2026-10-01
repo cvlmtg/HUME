@@ -12,6 +12,7 @@ fn run_inline_output_returns_exit_code() {
         "true".to_string(),
         list_val(&[]),
         SteelVal::BoolV(false),
+        list_val(&[]),
     )
     .unwrap();
     assert_eq!(result, SteelVal::IntV(0));
@@ -21,6 +22,7 @@ fn run_inline_output_returns_exit_code() {
         "false".to_string(),
         list_val(&[]),
         SteelVal::BoolV(false),
+        list_val(&[]),
     )
     .unwrap();
     assert_eq!(result, SteelVal::IntV(1));
@@ -37,6 +39,7 @@ fn run_inline_output_honors_cwd_arg() {
         "test".to_string(),
         list_val(&["-f", "marker.txt"]),
         SteelVal::StringV(tmp.path().to_string_lossy().into_owned().into()),
+        list_val(&[]),
     )
     .unwrap();
     assert_eq!(
@@ -75,4 +78,24 @@ fn run_inline_output_scheme_wrapper_raises_on_nonzero_exit() {
     host2
         .eval_source(fail_src, &mut null_host2)
         .expect("run-inline-output! failure-path assertion failed");
+}
+
+#[test]
+fn run_inline_output_scheme_wrapper_passes_env() {
+    use crate::ScriptingHost;
+    use crate::null_host::NullHost;
+
+    let tmp = TempDir::new().unwrap();
+    let out = tmp.path().join("out.txt");
+    let src = format!(
+        r#"(run-inline-output! "sh"
+             (list "-c" "printf %s \"$HUME_ENV_PROBE\" > {}")
+             #:env '(("HUME_ENV_PROBE" . "probe-value")))"#,
+        out.display()
+    );
+    let mut host = ScriptingHost::new();
+    let mut null_host = NullHost;
+    host.eval_source(&src, &mut null_host)
+        .expect("run-inline-output! with #:env must not raise");
+    assert_eq!(fs::read_to_string(out).unwrap(), "probe-value");
 }

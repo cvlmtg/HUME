@@ -385,7 +385,7 @@ A few extra functions cover things Scheme has no way to know on its own:
 | `(path-join seg…)` | Join path segments with the OS-native separator |
 | `(json-parse str)` | Decode a JSON string: an object/array becomes a JSON handle (read with `json-ref`/`json-contains?`/`json-list`), a scalar crosses natively; errors on malformed input |
 
-`run-inline-output!` also takes a `#:cwd` keyword to set the working directory, and raises an error if the command exits non-zero; wrap it in a handler if a failure is expected.
+`run-inline-output!` also takes a `#:cwd` keyword to set the working directory and an `#:env` keyword, a list of `("KEY" . "VALUE")` pairs added to the child's environment, and raises an error if the command exits non-zero; wrap it in a handler if a failure is expected.
 
 `command`/`spawn-process`/`wait` all block the whole editor until the command finishes. That's fine for something instant (`git rev-parse`), but not for anything that might take a moment while the user keeps typing. For that, run it in the background instead:
 

@@ -55,10 +55,10 @@ fn run_capture_sets_git_terminal_prompt_to_deny_credential_prompts() {
 
 #[test]
 fn run_inline_output_returns_exit_status_of_child() {
-    let status = run_inline_output("true", &[], None).expect("spawn true");
+    let status = run_inline_output("true", &[], None, &[]).expect("spawn true");
     assert!(status.success());
 
-    let status = run_inline_output("false", &[], None).expect("spawn false");
+    let status = run_inline_output("false", &[], None, &[]).expect("spawn false");
     assert!(!status.success());
 }
 
@@ -79,11 +79,30 @@ fn run_inline_output_sets_git_terminal_prompt_to_deny_credential_prompts() {
             "printf %s \"$GIT_TERMINAL_PROMPT\" > out.txt".to_string(),
         ],
         Some(dir.path()),
+        &[],
     )
     .expect("spawn sh");
     assert!(status.success());
     let out = std::fs::read_to_string(dir.path().join("out.txt")).expect("read out.txt");
     assert_eq!(out, "0");
+}
+
+#[test]
+fn run_inline_output_applies_env() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let status = run_inline_output(
+        "sh",
+        &[
+            "-c".to_string(),
+            "printf %s \"$HUME_ENV_PROBE\" > out.txt".to_string(),
+        ],
+        Some(dir.path()),
+        &[("HUME_ENV_PROBE".to_string(), "probe-value".to_string())],
+    )
+    .expect("spawn sh");
+    assert!(status.success());
+    let out = std::fs::read_to_string(dir.path().join("out.txt")).expect("read out.txt");
+    assert_eq!(out, "probe-value");
 }
 
 #[test]
@@ -94,6 +113,7 @@ fn run_inline_output_honors_cwd() {
         "test",
         &["-f".to_string(), "marker.txt".to_string()],
         Some(dir.path()),
+        &[],
     )
     .expect("spawn test -f");
     assert!(status.success(), "marker.txt must be found via cwd");
