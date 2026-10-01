@@ -259,21 +259,18 @@ fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
     );
 }
 
-/// The `on-option-change` hook (`inlay.scm`) must read `get-option`'s
-/// coerced bool. A handler testing the raw `:set` string with
-/// `(equal? value "true")` would send any of `parse-bool`'s other accepted
-/// spellings (`on`/`yes`/`1`) down the *else* branch, which **clears** hints
-/// instead of requesting them.
+/// The `on-option-change` hook (`inlay.scm`) receives the coerced bool, so
+/// any of `parse-bool`'s accepted spellings (`on`/`yes`/`1`) must take the
+/// branch that requests hints rather than the one that clears them.
 ///
-/// Writes through `settings::ops::apply_global` directly (the exact
-/// production path `:set global`/`set-option!`/`:theme` all funnel
-/// through, see its module doc) rather than `type_cmd(":set global …")`:
-/// typing and executing a command line opens and closes the minibuffer,
-/// which resizes the pane and queues its own `on-viewport-change`. That
-/// event independently re-requests hints via its own, already-correct
-/// `get-option` check, which would mask this bug. The hook's own branch,
-/// and nothing else, must be what re-requests them here. No
-/// `fire_viewport_change` for the same reason.
+/// Writes through `settings::ops::apply_global` directly (the production
+/// path `:set global`/`set-option!`/`:theme` all funnel through, see its
+/// module doc) rather than `type_cmd(":set global …")`: typing and executing
+/// a command line opens and closes the minibuffer, which resizes the pane
+/// and queues its own `on-viewport-change`. That event independently
+/// re-requests hints via its own `get-option` check, which would mask a
+/// wrong hook branch. The hook's own branch, and nothing else, must be what
+/// re-requests them here. No `fire_viewport_change` for the same reason.
 #[test]
 fn setting_on_via_a_non_true_spelling_still_requests_hints() {
     let tmp = safe_tempdir();

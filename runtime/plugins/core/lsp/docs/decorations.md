@@ -130,5 +130,5 @@ The render bridge itself is deliberately *not* gated on the `lsp.inlay-hints` op
 the hint store is per-source, so an unrelated plugin's hints must not vanish just because
 this one setting toggles. This plugin instead owns clearing its own source when the
 setting turns off, and re-requesting hints for every visible buffer when it turns back
-on; the option-change handler reads the option back through the normal option-read path
-(already coerced to a bool) rather than trusting the hook's own raw string value.
+on; the option-change handler branches on the hook's `value`, the option's new value
+already coerced to a bool.

@@ -61,7 +61,7 @@
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "lsp.inlay-hints")
-      (if (get-option "lsp.inlay-hints")
+      (if value
           (for-each lsp/refresh-hints-for-buffer (buffers))
           (for-each (lambda (pane) (set-inlay-hints! "lsp-inlay-hints" pane '()))
                     (buffers))))))
