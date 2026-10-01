@@ -2,7 +2,7 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
-use hume_editing::selection::Facing;
+use hume_editing::selection::{Facing, SelectionView};
 use hume_editing::state::EditState;
 use hume_rope::cluster::ClusterRange;
 
@@ -50,13 +50,17 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
     // needs no leading '\n' of its own.
     let follows_pasted_line: Vec<bool> = {
         let view = state.view();
-        let sels: Vec<_> = view.iter().collect();
-        (0..sels.len())
-            .map(|i| {
-                i > 0
-                    && !sels[i - 1].is_cursor()
-                    && piece_of(i - 1).is_linewise()
-                    && sels[i - 1].covered().end().offset() == sels[i].start().offset()
+        let mut prev: Option<SelectionView> = None;
+        view.iter()
+            .enumerate()
+            .map(|(i, sel)| {
+                let follows = prev.is_some_and(|p| {
+                    !p.is_cursor()
+                        && piece_of(i - 1).is_linewise()
+                        && p.covered().end().offset() == sel.start().offset()
+                });
+                prev = Some(sel);
+                follows
             })
             .collect()
     };

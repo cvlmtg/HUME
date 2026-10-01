@@ -131,7 +131,10 @@ pub fn replace_selections(state: EditState, ch: char) -> Edited {
                 }
                 _ => {
                     if let Some((range, count)) = run.take() {
-                        b.replace(range, &effective_ch.to_string().repeat(count));
+                        b.replace(
+                            range,
+                            &std::iter::repeat_n(effective_ch, count).collect::<String>(),
+                        );
                     }
                 }
             }
