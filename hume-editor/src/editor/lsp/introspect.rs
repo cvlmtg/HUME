@@ -48,7 +48,7 @@ pub(super) fn resolve_server_for_buffer(
 }
 
 /// The registered language for `server_id`: reverse of the
-/// `(language, root) -> ServerId` lookup `lsp/registration.scm` uses to
+/// `(language, root) -> ServerId` lookup `core:lsp-install/register.scm` uses to
 /// attach a buffer to a server.
 pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<LanguageName> {
     lsp.servers.get(&server_id)?.language.clone()

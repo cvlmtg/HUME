@@ -6,7 +6,7 @@
 //! `json-parse` is not LSP-specific: any plugin data pipeline that embeds a
 //! JSON blob as a Scheme string literal (rather than reconstructing the same
 //! structure as nested Scheme data) needs this to get it back out.
-//! `core:lsp`'s seeded server catalog (`registration.scm`) is the first
+//! `core:lsp`'s seeded server catalog (`core:lsp-install`'s `register.scm`) is the first
 //! caller: settings are generated as a single canonical JSON string rather
 //! than a nested tagged-alist/vector-array Scheme literal.
 

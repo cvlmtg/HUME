@@ -4,12 +4,12 @@
 Reads the pinned release tag from runtime/plugins/core/lsp-install/mason-pin.scm, downloads
 that release's compiled registry.json.zip, joins it against the checked-in
 runtime/plugins/core/lsp-install/servers.scm (server names Helix actually wires) through
-an explicit name-mapping table, and rewrites lsp-sources.scm with per-server
+an explicit name-mapping table, and rewrites sources.scm with per-server
 install records.
 
 Standalone and slow by design: on a from-scratch run it downloads every
 selected github asset to compute a sha256. A repeat run reuses the sha256
-already recorded in the checked-in lsp-sources.scm for any (repo, version,
+already recorded in the checked-in sources.scm for any (repo, version,
 asset-file) combination that hasn't changed, so a routine re-sync after an
 unrelated pin bump downloads only the genuinely new or changed assets. Run
 after sync-grammars.py if a helix-pin bump renamed or dropped any LSP
@@ -279,7 +279,7 @@ def pick_bin_template(bin_map: dict, helix_command: str, server_name: str):
 
 def load_sha256_cache(path: Path) -> dict[str, str]:
     """Return {download-url: sha256} read from the previously checked-in
-    lsp-sources.scm, so re-syncing after an unrelated pin bump doesn't
+    sources.scm, so re-syncing after an unrelated pin bump doesn't
     re-download and re-hash every unchanged github or generic asset. Best-effort: a
     missing or unparseable file yields an empty cache (equivalent to a
     from-scratch run) rather than aborting the sync — the cache is a speed

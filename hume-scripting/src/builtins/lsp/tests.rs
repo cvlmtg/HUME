@@ -391,7 +391,7 @@ fn lsp_show_status_rejects_init_context() {
 /// Unlike the buffer/pane-touching LSP builtins above,
 /// `lsp-registered-for-language?` is a pure registry read and must stay
 /// callable during init: `core:lsp`'s load-time scan
-/// (`registration.scm`) calls it directly to skip already-registered
+/// (`core:lsp-install`'s `register.scm`) calls it directly to skip already-registered
 /// languages, with no `with-handler` fallback to catch a gate error.
 ///
 /// Its table entry is `open` for that reason. A `cmd` entry would make this
@@ -455,7 +455,7 @@ fn register_then_unregister_in_queue_order_reports_false() {
 }
 
 /// The reverse order: this is exactly the install-path shape:
-/// `lsp/install-server!` queues `Unregister` for every seeded language
+/// `lsp-install/install-server!` queues `Unregister` for every seeded language
 /// before the post-install rescan queues `Register` behind it.
 #[test]
 fn unregister_then_register_in_queue_order_reports_true() {

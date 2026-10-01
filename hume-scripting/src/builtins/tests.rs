@@ -196,7 +196,7 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
 }
 
 /// `(lsp-stop! #f)` / `(lsp-restart! #f)`: there is no "focused buffer"
-/// fallback left to decode `#f` into (`registration.scm`'s typed commands
+/// fallback left to decode `#f` into (`core:lsp-install`'s `register.scm`'s typed commands
 /// supply the invoking buffer explicitly instead), so `#f` must raise a
 /// type error through the real dispatch path, the same as passing any other
 /// value neither a buffer-id nor a string/symbol names.

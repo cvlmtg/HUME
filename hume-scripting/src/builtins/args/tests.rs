@@ -303,7 +303,7 @@ fn lsp_target_arg_accepts_a_string_or_symbol_language() {
 }
 
 /// No fallback left to decode `#f` into: the typed-command wrapper
-/// (`registration.scm`) supplies the focused buffer explicitly instead.
+/// (`core:lsp-install`'s `register.scm`) supplies the focused buffer explicitly instead.
 #[test]
 fn lsp_target_arg_rejects_false() {
     let err = LspTargetArg::from_steelval(&SteelVal::BoolV(false)).unwrap_err();

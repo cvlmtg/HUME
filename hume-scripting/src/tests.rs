@@ -41,7 +41,7 @@ fn process_and_fs_globals_are_available_unrequired() {
     host.eval_source(src, &mut null_host)
         .expect("steel stdlib availability pin failed");
 
-    // string-downcase, needed by lsp/verify-sha256!.
+    // string-downcase, needed by lsp-install/verify-sha256!.
     let mut host3 = ScriptingHost::new();
     let mut null_host3 = NullHost;
     let downcase_src = r#"

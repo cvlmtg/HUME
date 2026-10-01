@@ -2,28 +2,29 @@
 
 Everything an IDE gives you, in the terminal. `core:lsp` connects HUME to language servers
 for hover docs, go-to-definition, references, diagnostics, rename, formatting, code actions,
-signature help, completions, and inlay hints, and installs the servers themselves, so
-getting a language working is usually one command.
+signature help, completions, and inlay hints. The companion plugin `core:lsp-install`
+installs the servers themselves, so getting a language working is usually one command.
 
 ## Setup
 
-Bring in `core:lsp` from your [`init.scm`](configuration.md) (see [Core Plugins](core-plugins.md#core-lsp)
-for how it fits alongside HUME's other bundled plugins) and make sure a server is
-registered for the languages you use. The easiest way to get a server is
-[`:lsp-install`](#installing-servers): run it once per language and it downloads,
+Bring in `core:lsp` and `core:lsp-install` from your [`init.scm`](configuration.md) (see
+[Core Plugins](core-plugins.md#core-lsp) for how they fit alongside HUME's other bundled
+plugins) and make sure a server is registered for the languages you use. The easiest way
+to get a server is [`:lsp-install`](#installing-servers): run it once per language and it downloads,
 verifies, and registers the server in one step, no separate download tool needed. If
 you'd rather manage a server yourself (a local build, a version the seeded catalog
 doesn't carry, or a `$PATH` copy you want to take precedence), register it by hand
 instead. See [Registering a language server](#registering-a-language-server).
 
 ```scheme
-(declare-plugin! "core:stdlib")   ; core:lsp depends on it — declared or loaded, either works
+(declare-plugin! "core:stdlib")       ; the plugins depend on it — declared or loaded, either works
 (declare-plugin! "core:lsp")
+(declare-plugin! "core:lsp-install")  ; :lsp-install and friends; leave it out to manage servers yourself
 ```
 
 Declaring `core:lsp` is recommended: it keeps startup fast, and `core:lsp` activates the
 first time any file with a recognized language opens, or you run one of its commands
-directly (including `:lsp-install`). If you use LSP in every session and would rather it
+directly. If you use LSP in every session and would rather it
 load from the start, swap `declare-plugin!` for `load-plugin!`:
 
 ```scheme
@@ -42,7 +43,6 @@ and it uses exactly what you list instead of the defaults:
                "goto-next-diagnostic" "goto-prev-diagnostic"
                "lsp-rename" "lsp-fmt" "lsp-code-actions")
   #:typed-commands '("diagnostics" "format-source"
-                      "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"
                       "lsp-status" "lsp-stop" "lsp-restart"))
 ```
 
@@ -51,7 +51,7 @@ and it uses exactly what you list instead of the defaults:
 is registered yet, so nothing attaches, so the event that would trigger activation never
 fires. List the languages you want servers for in `#:languages`, list the `lsp-*`
 commands in `#:commands`/`#:typed-commands` (as above), or load `core:lsp` eagerly. Any
-one of these gets you a working `:lsp-install`.
+one of these gets you a working `core:lsp`.
 
 Completions are a separate case: `Ctrl-Space` and a server's trigger characters both run
 through the editor's own `completion-trigger` key, never through one of `core:lsp`'s own
@@ -65,7 +65,7 @@ project root) and attaches.
 
 ## Installing servers
 
-`core:lsp` downloads and manages language servers for you, the same way [PLUM](core-plugins.md#core-plum)
+`core:lsp-install` downloads and manages language servers for you, the same way [PLUM](core-plugins.md#core-plum)
 handles tree-sitter grammars, with no need to track down a binary or install it by hand.
 
 ### Prerequisites
@@ -168,13 +168,11 @@ through a package manager not yet supported (`opam`, `luarocks`, …). Install i
 and register it manually as described in [Registering a language server](#registering-a-language-server)
 below.
 
-**A server is on disk but nothing attaches.** This means `core:lsp`'s scan hasn't (yet)
-seen it: either `core:lsp` hasn't loaded or activated this session at all (a lazily
-declared `core:lsp` whose trigger hasn't fired yet), or the server appeared on disk after
-the scan already ran (installed outside `:lsp-install`, copied in or installed by an
-earlier HUME version). Run `:lsp-rescan-servers`, add `(load-plugin! "core:lsp")`, or add a
-`#:languages`/`#:commands` entry that triggers activation on a lazily declared `core:lsp`
-(see [Setup](#setup)).
+**A server is on disk but nothing attaches.** This means `core:lsp-install`'s scan hasn't
+(yet) seen it: either `core:lsp-install` hasn't loaded or activated this session at all
+(a lazily declared plugin whose trigger hasn't fired yet), or the server appeared on disk
+after the scan already ran (installed outside `:lsp-install`, copied in or installed by an
+earlier HUME version). Run `:lsp-rescan-servers`, or add `(load-plugin! "core:lsp-install")`.
 
 **A server on your `$PATH` isn't the one HUME runs.** `:lsp-install` always spawns the managed
 copy, even when the same command name also resolves on `$PATH`. You'll see a note about this

@@ -65,7 +65,7 @@ Structural work found during a cheap-wins sweep. Each is real but wants a design
 ### Plugins
 
 - [ ] PLUM: pin plugins to commit / tag / branch.
-- [ ] `core:lsp` `cargo-git` install flavor — installs from a pinned git tag instead of crates.io semver; unblocks `nil`.
+- [ ] `core:lsp-install` `cargo-git` install flavor — installs from a pinned git tag instead of crates.io semver; unblocks `nil`.
 - [ ] **[breaking]** Per-buffer plugin exclusion — enable a plugin everywhere except for chosen languages or file patterns, e.g. `core:buffer-words` on for every buffer but `*.min.js`. `declare-plugin!`'s `#:languages` only picks what triggers loading; once active, a plugin acts on every buffer. Exclusion therefore has to be checked per buffer each time the plugin would act, not once at activation. Changes when every plugin's hooks, commands, and completion sources fire.
 - [x] `:lsp-install` argument completion — a `#:target 'minibuf` source over the installable server names, declared via `define-typed-command!`'s `#:complete`.
 - [ ] Color highlighter plugin — inline-highlight hex color literals (`#abcdef`, `#0365AF01`) in a buffer, like `nvim-colorizer.lua`. Needs a new Steel builtin to set a decoration whose background/foreground is computed from arbitrary RGB(A), not one of the theme's fixed scopes.

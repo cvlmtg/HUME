@@ -25,7 +25,7 @@ walking disk at the moment it's asked (see [Plugin discovery](#plugin-discovery)
   core's job (see [Startup registration](#startup-registration-is-cores-job-and-passive)
   below), not PLUM's. PLUM is only needed to *install* a plugin or grammar in the first
   place.
-- LSP language servers are `core:lsp`'s own responsibility (`:lsp-install`,
+- LSP language servers are `core:lsp-install`'s own responsibility (`:lsp-install`,
   `:lsp-uninstall`, `:lsp-servers`); see that plugin's README and `docs/LSP-INSTALL.md`
   in the repository. PLUM never touches `<data>/servers/` or the LSP catalogs.
 - **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-plum)

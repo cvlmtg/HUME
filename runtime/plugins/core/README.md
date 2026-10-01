@@ -17,6 +17,7 @@ plugin-authoring API (not core-specific), see
 | [`stdlib`](stdlib/README.md) | Shared helpers for plugin authors | lazy | — |
 | [`plum`](plum/README.md) | Plugin/theme/grammar installer | lazy | `stdlib` |
 | [`lsp`](lsp/README.md) | Language server client | lazy | `stdlib` |
+| [`lsp-install`](lsp-install/README.md) | Language server installer | lazy | `stdlib` |
 | [`steel-server`](steel-server/README.md) | Registers a Scheme language server | lazy | `lsp` |
 | [`pickers`](pickers/README.md) | Fuzzy file/buffer/git pickers | eager | `stdlib` |
 | [`git-diff`](git-diff/README.md) | Inline git diff decorations | lazy | `stdlib` |

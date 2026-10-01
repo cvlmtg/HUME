@@ -1,22 +1,23 @@
-# core:lsp — Server install and registration
+# core:lsp-install — Server install and registration
 
 ## Install and registration
 
-`servers.scm` downloads, verifies, and unpacks a server (`:lsp-install`), writes a
-receipt as the install commit point, and calls `registration.scm`'s scan
-(`lsp/register-installed-servers!`) directly afterward so the server attaches
-immediately, with no cross-plugin notify, since install and registration are the same
-plugin. That scan is passive (registers already-installed servers only, no subprocess,
-no network) and independently reads the seeded `runtime/scheme/lsp-servers.scm` catalog
-and `<data>/servers/` for receipts, registering every installed server it finds;
-`plugin.scm` runs it once at its own top level, so it also happens at load or lazy
-activation. It's the *only* registrar for managed servers. `:lsp-rescan-servers` exposes
+`install.scm` downloads, verifies, and unpacks a server (`:lsp-install`), writes a
+receipt as the install commit point, and calls `register.scm`'s scan
+(`lsp-install/register-installed-servers!`) directly afterward so the server attaches
+immediately. The scan registers through `register-lsp-server!`, the editor-level registry
+`core:lsp` and every other plugin share, so `core:lsp` needs no knowledge of this plugin
+and a replacement installer needs no protocol beyond that builtin. That scan is passive
+(registers already-installed servers only, no subprocess, no network) and independently
+reads the seeded `servers.scm` catalog and `<data>/servers/` for receipts, registering
+every installed server it finds; `plugin.scm` runs it once at its own top level, so it
+also happens at load or lazy activation. It's the *only* registrar for managed servers. `:lsp-rescan-servers` exposes
 the same scan for a server installed outside `:lsp-install`. A server directory with no
 readable receipt (pure data, `((name . "X") (version . "V") (bin . "relative/bin/path")
 (env-dirs ("KEY" . "subpath")…))`) is treated as an interrupted install, logged as a warning naming it, rather than
 silently skipped.
 
-`registration.scm`'s catalog accessor is read-only: callers must not mutate the value it
+`catalog.scm`'s accessors are read-only: callers must not mutate the value it
 returns, since Scheme itself enforces nothing here. Every catalog entry, in both the
 servers catalog and the sources catalog, is a tagged alist tail (`(key . value)` or `(key
 sub…)`, never a positional tuple), so the shared field lookup works uniformly across both
@@ -80,17 +81,43 @@ invalid name logs `'warn`, not `'info`: it also catches a path-traversal name (e
 `"../plugins"`), a security-relevant refusal worth a persistent `:messages` record, not
 an ordinary usage typo (same reasoning as `core:plum`'s grammar-name rejection).
 
+### System tools
+
+Hashing, unpacking and chmod run the platform's own tools through `run-capture!` and
+`run-inline-output!`, in `sha256.scm` and `unpack.scm`, rather than through hashing or
+archive crates:
+
+| Operation | macOS | Linux | Windows |
+|---|---|---|---|
+| sha256 | `shasum -a 256` | `sha256sum` | `certutil -hashfile … SHA256` |
+| `.gz` decode | `gzip -d -f` | `gzip -d -f` | `gzip -d -f` (Git for Windows) |
+| `.zip` extract | `unzip -o` | `unzip -o` | `tar -xf` |
+| `.tar.*` extract | `tar -xf` | `tar -xf` (plus `xz`/`bzip2` for those suffixes) | `tar -xf` |
+| exec bit | `chmod 755` | `chmod 755` | none |
+
+An archive's regular files are found with `read-dir-iter`, which reports a symlink as a
+symlink without following it, so only regular files are chmod'd and a symlinked `bin`
+fails the post-unpack check instead of being made executable. A gz asset is decoded in
+place next to the archive, then renamed to its `bin` path.
+
+Zip-slip protection is the system tool's job (modern Info-ZIP strips `../` entries, bsdtar
+refuses them). The sha256 pin recorded in `sources.scm` bounds the residual risk: unpacking
+only runs after `lsp-install/verify-sha256!` has matched the archive against that pin.
+
 ## Server config delivery
 
-`runtime/scheme/lsp-servers.scm`'s `config` field is delivered as **both**
+`servers.scm`'s `config` field is delivered as **both**
 `#:init-options` and `#:settings` by `register-lsp-server!`, matching Helix's own
 delivery of the same blob. A catalog entry's config tail decodes to the JSON string; an
 empty tail (no config) decodes to `#f`, so no config is sent.
 
 ## Install lock
 
-`lsp/with-install-lock!` runs a thunk under a cross-process lock
-(`<data>/servers/.install-lock`), releasing it exactly once regardless of outcome. It is used
+`lsp-install/with-lock!` (`lock.scm`) runs a thunk under a cross-process lock
+(`<data>/servers/.install-lock`), releasing it once regardless of outcome. The lock
+file is created with `open-output-file`, which fails on an existing file, so creation is
+atomic. A lock older than an hour is replaced with a warning; one whose mtime is in the
+future (clock skew) counts as live. It is used
 by both install and uninstall, so two HUME processes (or two `:lsp-install` calls) never
 race the same server directory. It never re-raises the thunk's error through an outer
 handler: re-raising a native-builtin error through a nested handler corrupts the Steel
@@ -111,10 +138,11 @@ Two separate hashes, kept intentionally apart:
 
 | Hash | Source | Answers |
 |---|---|---|
-| Servers catalog | `runtime/scheme/lsp-servers.scm` | What a server actually *does* once registered: languages, command, args, config |
-| Sources catalog | `runtime/scheme/lsp-sources.scm` | How to *get* it: kind, version, download targets |
+| Servers catalog | `servers.scm` | What a server actually *does* once registered: languages, command, args, config |
+| Sources catalog | `sources.scm` | How to *get* it: kind, version, download targets |
 
-A third hash, the language-to-server index, is derived from the servers catalog at load
+Both files sit in this plugin's own directory and are read through `(plugin-dir)`, so a
+fork carries its catalogs with it. A third hash, the language-to-server index, is derived from the servers catalog at load
 time for O(1) language lookup. Languages are disjoint across servers by a sync-time
 guarantee (`scripts/sync-grammars.py` takes only each language's primary language
 server), so building that index never silently last-wins two servers against each other.
@@ -134,10 +162,3 @@ dedup marker (a session-scoped set) is set regardless of outcome, so a disqualif
 language (no seeded server, or blocked on this platform) is never re-evaluated either.
 Logged `'warn`, not `'info`: `Severity::Info` is display-only and never reaches
 `:messages`, so a nudge missed at the moment it fires must stay reviewable afterward.
-
-## Runtime management
-
-`:lsp-status` shows every running server and its state, plus attached buffers'
-diagnostic counts. `:lsp-stop [lang]`/`:lsp-restart [lang]` stop, or stop and respawn, a
-running server, defaulting to the focused buffer's. All three are thin wrappers around Rust
-builtins; no Scheme-side state to describe beyond the argument default.

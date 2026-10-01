@@ -49,9 +49,8 @@
         (else (stdlib/find pred? (cdr lst)))))
 
 (define (stdlib/write-file! path content)
-  ;; `#:exists 'truncate` — without it, `open-output-file` neither errors nor
-  ;; truncates an existing file, so a shorter `content` leaves the old
-  ;; file's tail behind past the new write's end.
+  ;; `#:exists 'truncate` — without it, `open-output-file` fails when the file
+  ;; already exists.
   (let ([port (open-output-file path #:exists 'truncate)])
     (write-string content port)
     (close-output-port port)))

@@ -13,7 +13,7 @@ A plugin's key bindings only exist once its body has run, so a lazily declared p
 
 ## core:stdlib
 
-A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, and `core:lsp` all depend on it, so declare or load it before them:
+A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, `core:lsp`, and `core:lsp-install` all depend on it, so declare or load it before them:
 
 ```scheme
 (declare-plugin! "core:stdlib")
@@ -60,7 +60,7 @@ Leaving PLUM out only removes these commands. Already-installed plugins, grammar
 
 ## core:lsp
 
-Language server support: hover, go-to-definition, references, diagnostics, rename, formatting, code actions, signature help, completions, and inlay hints. It also downloads and manages the servers themselves (`:lsp-install`, `:lsp-uninstall`, `:lsp-servers`), and the running processes (`:lsp-status`, `:lsp-stop`, `:lsp-restart`).
+Language server support: hover, go-to-definition, references, diagnostics, rename, formatting, code actions, signature help, completions, and inlay hints, and manages the running server processes (`:lsp-status`, `:lsp-stop`, `:lsp-restart`). Downloading the servers is `core:lsp-install`'s job.
 
 ```scheme
 (declare-plugin! "core:stdlib")
@@ -70,6 +70,17 @@ Language server support: hover, go-to-definition, references, diagnostics, renam
 Requires `core:stdlib` declared or loaded first. `core:lsp` itself is still declared lazily here: it wakes up on the first buffer with a detected language, or the first `:lsp-*` command you type, and its key bindings go live at that same moment, before there's a buffer they'd need to act on.
 
 See [Language Servers](lsp.md) for setup, the full command and key tables, and settings.
+
+## core:lsp-install
+
+Downloads, verifies and registers language servers: `:lsp-install`, `:lsp-uninstall`, `:lsp-servers` and `:lsp-rescan-servers`. It registers what it installed through `register-lsp-server!`, so `core:lsp` works the same with or without it, and a different installer can take its place by declaring that one instead.
+
+```scheme
+(declare-plugin! "core:stdlib")
+(declare-plugin! "core:lsp-install")
+```
+
+Requires `core:stdlib` declared or loaded first. Wakes up on the first buffer with a detected language, or the first `:lsp-install`-family command you type. See [Language Servers](lsp.md#installing-servers) for the prerequisites and the commands.
 
 ## core:steel-server
 

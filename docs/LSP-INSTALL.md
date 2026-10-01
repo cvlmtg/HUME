@@ -1,4 +1,4 @@
-# HUME — LSP Server Installation (core:lsp `servers.scm`)
+# HUME — LSP Server Installation (`core:lsp-install`)
 
 Design decisions for automatic language-server download, installation, and registration.
 Status: **shipped**. Kept apart from `LSP.md` (client architecture) and
@@ -12,25 +12,33 @@ onboarding step: users must find, install, and wire each server by hand. This fe
 closes the gap: `:lsp-install` downloads a server, installs it under HUME's data dir, and
 registers it — mirroring what the grammar pipeline already does for tree-sitter grammars.
 
-## Placement: core:lsp owns the server lifecycle end to end
+## Placement: core:lsp-install owns the server lifecycle, core:lsp stays a client
 
-LSP server install, uninstall, and registration all live in `core:lsp`
-(`servers.scm` installs/uninstalls; `registration.scm` turns an installed server into a
-live `register-lsp-server!` call, on plugin load, lazy activation, or right after an
-install/uninstall). `core:plum` (the plugin manager) is not involved — it manages
-ordinary plugins and grammars only, via its own `plugins.scm`/`grammars.scm` modules and
-shared `lib.scm` helpers, with the same install/list/cleanup + scan-on-load-registration
-shape `core:lsp`'s server pipeline mirrors.
+Install, uninstall, receipts and the registration scan live in their own plugin,
+`core:lsp-install`. `core:lsp` is the language-server client only and knows nothing about
+servers on disk: the two meet at the editor-level registry, through the
+`register-lsp-server!` / `unregister-lsp-server!` / `lsp-registered-for-language?`
+builtins that `core:steel-server` already uses. The installer pushes registrations into
+that registry; the client never asks an installer anything.
 
-Command names keep the `lsp-` prefix (`lsp-install`, not a `plum-`-prefixed name): the
-command namespace is flat, and discoverability next to `core:lsp`'s other `:lsp-status` /
-`:lsp-stop` / `:lsp-restart` commands matters more than any naming symmetry with
+Why push rather than have `core:lsp` ask a configured installer: the registry already is
+the contract, so a replacement installer (better version management, a different catalog,
+another package source) is a plugin that registers servers, with nothing to configure and
+no provider protocol to version. A fork of `core:lsp-install` carries its own catalogs
+(read through `(plugin-dir)`), pipeline and receipt format, and `core:lsp` needs no change
+for it. Swapping installers is one line in `init.scm`.
+
+`core:plum` (the plugin manager) is not involved: it manages ordinary plugins and
+grammars only. The installer has the same install/list/cleanup + scan-on-load shape
+`core:plum` has. Command names keep the `lsp-` prefix (`lsp-install`, not a `plum-`
+prefixed name): the command namespace is flat, and discoverability next to `core:lsp`'s
+`:lsp-status`/`:lsp-stop`/`:lsp-restart` matters more than naming symmetry with
 `core:plum`.
 
-Consequence: with no `core:lsp` in `init.scm` at all, there is no LSP
-install/uninstall/registration feature — `core:plum` never touches `servers/` or the LSP
-catalogs. See `docs/LSP.md`'s "LSP server lifecycle ownership" row for how this
-placement was arrived at.
+Consequence: with no `core:lsp-install` in `init.scm` there is no install, uninstall or
+installed-server registration; `core:lsp` works with servers registered by hand. See
+`docs/LSP.md`'s "LSP server lifecycle ownership" row for how the first placement was
+arrived at.
 
 ## Architecture: two seeded data sources, two pins
 
@@ -41,8 +49,8 @@ No upstream format is ever parsed inside the editor.
 
 | Concern | Upstream | Pin | Generated data |
 |---|---|---|---|
-| **Registration** — which server per language, command, args, root markers | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/scheme/lsp-servers.scm` |
-| **Installation** — where to download, per platform | `mason-org/mason-registry` (Apache-2.0; one `package.yaml` per tool, purl sources, per-platform assets; publishes compiled `registry.json` per release tag) | new `mason-pin.scm` (registry release tag) | `runtime/scheme/lsp-sources.scm` |
+| **Registration** — which server per language, command, args, root markers | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/plugins/core/lsp-install/servers.scm` |
+| **Installation** — where to download, per platform | `mason-org/mason-registry` (Apache-2.0; one `package.yaml` per tool, purl sources, per-platform assets; publishes compiled `registry.json` per release tag) | new `mason-pin.scm` (registry release tag) | `runtime/plugins/core/lsp-install/sources.scm` |
 
 One generated file per pin: a helix-pin bump touches only registration data, a mason-pin
 bump only install sources — every diff traceable to one upstream. Join key = server name,
@@ -62,12 +70,12 @@ Scripts align with *pins*, not features (see `scripts/README.md`):
 
 - **`scripts/sync-grammars.py`** (existing, extended): already fetches `languages.toml` at
   helix-pin and emits `languages.scm` + `grammar-sources.scm`; additionally emits
-  `lsp-servers.scm` from the same parsed TOML. One bump, one run, all helix-derived files
+  `servers.scm` from the same parsed TOML. One bump, one run, all helix-derived files
   move in one diff.
-- **`scripts/sync-lsp-sources.py`** (new, standalone): mason-pin → `lsp-sources.scm`.
+- **`scripts/sync-lsp-sources.py`** (new, standalone): mason-pin → `sources.scm`.
   Standalone because it is *expensive* — it downloads every asset per server×platform to
   compute sha256s; a routine helix bump must not pay that.
-- **Ordering**: the Mason script reads the checked-in `lsp-servers.scm` for the server-name
+- **Ordering**: the Mason script reads the checked-in `servers.scm` for the server-name
   intersection filter, so after a helix bump that changes server names run helix sync
   first, mason sync second. Both outputs are checked in; normally each runs alone.
 - Shared sexpr-emission/pin-reading helpers move to `scripts/sync_common.py` (hyphenated
@@ -97,7 +105,7 @@ instead of positional tuples**: install records are heterogeneous (`github` vs `
 different fields, and more kinds will come), and positional encoding does not survive
 optional fields.
 
-**`lsp-servers.scm`** (registration, from helix-pin) — keyed by *server*, with a language
+**`servers.scm`** (registration, from helix-pin) — keyed by *server*, with a language
 list that the scan fans out into one `register-lsp-server!` call per language. Keying by
 language would copy a multi-language server's `config` blob once per language
 (typescript-language-server serves four); normalized beats denormalized copies. Root
@@ -129,13 +137,13 @@ the server, and languages sharing a server differ (javascript/jsx root on
 - **Language lists are disjoint across servers**, enforced at sync time — see
   [v1 scope](#v1-scope-and-limitations) for the full rule and why.
 - Field encoding (empty tail never `#f`, canonical JSON `config` string, delivered both ways
-  by `core:lsp/registration.scm`, decoded once via `(json-parse)` at the one consuming site):
-  see `runtime/scheme/README.md`'s record-shape reference. A JSON string sidesteps the fact that plain
+  by `core:lsp-install/register.scm`, decoded once via `(json-parse)` at the one consuming site):
+  see `runtime/plugins/core/lsp-install/README.md`'s record-shape reference. A JSON string sidesteps the fact that plain
   sexpr syntax can't tell an empty JSON array from an empty JSON object. See
   [Config delivery & per-server audit](#config-delivery--per-server-audit) for why delivering
   the same blob two ways is correct rather than a mismatch.
 
-**`lsp-sources.scm`** (install, from mason-pin) — per-kind record shapes:
+**`sources.scm`** (install, from mason-pin) — per-kind record shapes:
 
 ```scheme
 (("rust-analyzer"
@@ -200,7 +208,7 @@ the server, and languages sharing a server differ (javascript/jsx root on
   `GEM_PATH`; the receipt records them (see Installation layout).
 - **nuget**: `package`, installed via `dotnet tool install <package> --tool-path
   servers/<name>/bin --version <version>`.
-- **`platforms`**: an optional `(platforms hume-target …)` on a package-manager row
+- **`platforms`**: an optional `(platforms target …)` on a package-manager row
   (npm, cargo, golang, pypi, gem, nuget), derived from Mason's `supported_platforms`.
   Absent means every platform. `:lsp-install` refuses a listed-elsewhere host with "not
   supported on this platform". A downloaded asset is already per-platform through its own
@@ -219,10 +227,10 @@ the server, and languages sharing a server differ (javascript/jsx root on
 - **`#:settings` wired up**: pushed once as `workspace/didChangeConfiguration` after
   `initialized`, resolved per-item to answer `workspace/configuration` pull requests.
   Mechanism: `hume-lsp/src/client.rs`'s `resolve_config_section`.
-- **Seeded catalog delivers its config correctly**: `runtime/scheme/lsp-servers.scm`'s
-  `config` field is delivered as **both** `#:init-options` and `#:settings` by
-  `core:lsp/registration.scm`, matching Helix's own delivery of the same blob — see
-  `runtime/plugins/core/lsp/docs/servers.md`.
+- **Seeded catalog delivers its config correctly**: `servers.scm`'s `config` field is
+  delivered as **both** `#:init-options` and `#:settings` by `core:lsp-install/register.scm`,
+  matching Helix's own delivery of the same blob — see
+  `runtime/plugins/core/lsp-install/docs/servers.md`.
 - **Per-server config audit** (all 17 seeded servers carrying a `config` blob, verified
   against each server's own source): 15 work correctly as delivered. Two —
   `actions-language-server` and `pony-lsp` — need a correction, in both cases tracing to a
@@ -258,7 +266,7 @@ the server, and languages sharing a server differ (javascript/jsx root on
   which `CreateProcess` cannot spawn directly. The client's single process-spawn site
   (`hume-lsp`'s transport) wraps `.cmd`/`.bat` commands in `cmd /C`, cfg-gated.
 - **Cross-process install lock**: `:lsp-install`/`:lsp-uninstall` acquire
-  `<data>/servers/.install-lock` (O_EXCL — `acquire-install-lock!`/`release-install-lock!`)
+  `<data>/servers/.install-lock` (created with `open-output-file`, which fails on an existing file — `lock.scm`)
   before mutating `servers/`, so two HUME processes racing the same operation refuse rather
   than interleave. A lock older than an hour is treated as abandoned (the process that held
   it crashed or was killed) and replaced, with a warning. The sentinel file lives directly
@@ -271,7 +279,7 @@ the server, and languages sharing a server differ (javascript/jsx root on
   about, ignored by the scan, safely redone by `:lsp-install`. No half-installed server is
   ever registered. (This is a new mechanism, not grammar precedent — grammars have no
   receipts; they rely on delete-and-reclone idempotency.) Languages are *not* stored — the
-  scan derives them from `lsp-servers.scm`, and an orphan (no seeded entry) is never
+  scan derives them from `servers.scm`, and an orphan (no seeded entry) is never
   registered anyway, so caching them would only go stale.
 - **Integrity**: the installer verifies each downloaded asset against the sha256 recorded
   at sync time. GitHub release assets are not content-addressed (a tag can be re-pushed
@@ -291,22 +299,22 @@ the server, and languages sharing a server differ (javascript/jsx root on
 ## Registration model
 
 - **Filesystem is the SSOT for "what is installed"; seeded data is the SSOT for "how to
-  run it".** On `core:lsp` load (or lazy activation — see the caveat below), the scan
+  run it".** On `core:lsp-install` load (or lazy activation — see the caveat below), the scan
   reads `servers/` receipts and registers each installed server for every language it
   serves (per the seeded data). A directory scan is cheap. `:lsp-install` calls the same
-  scan (`lsp/register-installed-servers!`, `registration.scm`) directly right after a
+  scan (`lsp-install/register-installed-servers!`, `register.scm`) directly right after a
   successful install — or after confirming an already-up-to-date one — so a server
-  installed mid-session attaches immediately, without a restart. `core:lsp` also exposes
+  installed mid-session attaches immediately, without a restart. `core:lsp-install` also exposes
   the rescan directly as `:lsp-rescan-servers`, for servers installed out-of-band (not
   through `:lsp-install`).
-  **Caveat for a lazily-declared `core:lsp`** (see `runtime/plugins/core/lsp/README.md`
+  **Caveat for a lazily-declared `core:lsp-install`** (see `runtime/plugins/core/lsp-install/README.md`
   for the short version): a manifest keyed only on `#:events '(on-lsp-attach)`
   can never activate on its own — nothing is registered yet, so nothing attaches, so the
-  event that would trigger activation never fires. Load `core:lsp` eagerly, declare it with
+  event that would trigger activation never fires. Load `core:lsp-install` eagerly, declare it with
   `#:languages` (activation triggered by opening a matching file), or declare it with
   `#:commands` naming `lsp-install`/`lsp-uninstall`/`lsp-servers`/`lsp-rescan-servers` — Lazy
   command stubs activate their plugin before arity marshalling, so `:lsp-install <lang>` on
-  a not-yet-activated `core:lsp` works with no eager `(load-plugin! "core:lsp")` needed.
+  a not-yet-activated `core:lsp-install` works with no eager `(load-plugin! "core:lsp-install")` needed.
 - **Last-wins registration.** `register-lsp-server!` uses *replace* semantics, matching
   `define-language!`. `init.scm` reads naturally: `load-plugin!` → scan auto-registers →
   later user `register-lsp-server!` calls override. At init time replacement never races
@@ -398,45 +406,42 @@ lists) stays in the plugin — Rust never reads them.
 ## Implementation shape
 
 Each layer is a pure consumer of the one below it: a Python-only data pipeline
-(`mason-pin.scm`; `sync-grammars.py` → `lsp-servers.scm`; `sync-lsp-sources.py` →
-`lsp-sources.scm`, with the Helix→Mason name-mapping table and unmatched-server report;
-shared `sync_common.py`); Rust platform primitives (below); and `servers.scm` itself (Steel,
-a pure consumer of the previous two — scan-on-load registration,
+(`mason-pin.scm`; `sync-grammars.py` → `servers.scm`; `sync-lsp-sources.py` →
+`sources.scm`, with the Helix→Mason name-mapping table and unmatched-server report;
+shared `sync_common.py`); the generic scripting primitives below; and `core:lsp-install`
+itself (Steel, a pure consumer of the previous two — scan-on-load registration,
 `lsp-install`/`lsp-uninstall`/`lsp-servers`/`lsp-rescan-servers` commands, receipts, orphan
-warnings, npm install path, missing-server hint, user-manual + `init.scm.example` docs —
-`core:plum`'s `grammars.scm` is the template. Lives in `core:lsp` — see
-[Placement](#placement-corelsp-owns-the-server-lifecycle-end-to-end)).
+warnings, per-kind install paths, missing-server hint, user-manual + `init.scm.example`
+docs — `core:plum`'s `grammars.scm` is the template. See
+[Placement](#placement-corelsp-install-owns-the-server-lifecycle-corelsp-stays-a-client)).
 Marshalling gotcha: the minibuffer passes the integer `1` to an arity-1 Steel command
 invoked with no argument — the `lsp-install` no-arg branch must test "argument is a
 string", not absence.
 
-**Rust platform primitives**: last-wins `register-lsp-server!` semantics plus a runtime
-registration path (registrations are queued and flushed once per eval, not just at init);
-unregister path + client shutdown (for `:lsp-uninstall` and reinstall-while-running;
-per-language, matching the registry's language keying — the plugin fans out); attach
-already-open buffers after registration. `servers.scm` runs `curl`/`git`/`npm` directly
-through Steel's own `steel/process` (`command`/`spawn-process`/`which`) — per HUME's
-full-trust plugin model (see `user-manual/docs/plugins.md`'s "Filesystem and processes"), there is no
-path sandbox to route these through. The sandbox-free Rust builtins that survive are ones a
-Scheme rewrite would only make platform-conditional logic worse: `run-inline-output!`
-(process-group-isolated spawn, needed because `#:inline-output` commands run with terminal
-raw mode off and Steel's `spawn-process` has no `setpgid`), `sha256-file` (hash only; the
-compare-and-delete-on-mismatch logic lives in `lsp/verify-sha256!` in `servers.scm`),
-platform/arch identifier, `lsp-registered-for-language?` (registry query for the
-discovery hint), and `unpack-gz!`/`unpack-zip!` (chmod + archive-format platform logic).
-`$PATH` lookup (for the already-on-`$PATH` notice) uses Steel's own `which`. The
-tool-preflight and zip-slip/symlink notes below are otherwise unaffected.
+**Primitives the plugin relies on**: last-wins `register-lsp-server!` semantics plus a
+runtime registration path (registrations are queued and flushed once per eval, not just at
+init); unregister path + client shutdown (for `:lsp-uninstall` and
+reinstall-while-running; per-language, matching the registry's language keying — the
+plugin fans out); attach already-open buffers after registration;
+`lsp-registered-for-language?` (registry query for the discovery hint and the scan's
+manual-wins filter); `(plugin-dir)` (a plugin reading its own catalogs); `run-capture!`
+and `run-inline-output!` (subprocesses — the latter process-group-isolated, needed because
+`#:inline-output` commands run with terminal raw mode off and Steel's `spawn-process` has
+no `setpgid`; `run-capture!` is isolated the same way). Everything else is Steel's own
+stdlib: `which`, `open-output-file` for the atomic lock create, `read-dir-iter` for the
+symlink-safe tree walk, the time and metadata functions for lock staleness,
+`current-os!`/`target-arch!` for the Mason target. No install-specific Rust remains.
 
 ### Required external tools
 
-sha256 verification and archive unpacking (the Rust-platform-primitives step) shell out to each platform's
+sha256 verification and archive unpacking shell out to each platform's
 canonical system tool rather than pulling in hashing/archive crates — a deliberate
 choice (see below), traded for a hard runtime dependency on these being present:
 
 | Operation | macOS | Linux | Windows |
 |---|---|---|---|
 | sha256 | `shasum -a 256` (ships with the OS) | `sha256sum` (coreutils) | `certutil -hashfile … SHA256` (built in) |
-| `.gz` decode | `gzip -dc` (ships with the OS) | `gzip -dc` (ships with the OS) | `gzip -dc` — requires Git for Windows (or equivalent) on `PATH` |
+| `.gz` decode | `gzip -d -f` (ships with the OS) | `gzip -d -f` (ships with the OS) | `gzip -d -f` — requires Git for Windows (or equivalent) on `PATH` |
 | `.zip` extract | `unzip -o` (ships with the OS) | `unzip -o` (not always preinstalled — install the `unzip` package) | `tar -xf` (bsdtar, built into Windows 10+) |
 | npm-kind installs | `node`/`npm` on `PATH` — required regardless of platform |
 | cargo-kind installs | a Rust toolchain (`cargo` on `PATH`, e.g. via [rustup.rs](https://rustup.rs)) — required regardless of platform; compiles the crate from source, so the first install of a given server can take a few minutes |
@@ -444,35 +449,34 @@ choice (see below), traded for a hard runtime dependency on these being present:
 | pypi-kind installs | `python3` (`python` on Windows) with the `venv` and `pip` modules |
 | gem-kind installs | `gem` (`gem.cmd` on Windows) on `PATH` |
 | nuget-kind installs | `dotnet` on `PATH` |
+| exec bit | `chmod 755` | `chmod 755` | none |
 | tar archives | `tar` everywhere. On Linux, `.tar.xz` also needs `xz` and `.tar.bz2` needs `bzip2`; macOS and Windows `tar` decompress both themselves |
 
 `git` and `curl` are already required by the grammar pipeline; this adds `unzip` on
 Linux and `gzip` on Windows as the only new hard requirements for github/npm-kind
 installs. cargo-kind installs are opt-in per server and add a Rust toolchain requirement
 only for those. `:lsp-install` preflights
-the specific tool an install needs (via Steel's `which` — see the Rust-platform-primitives note above)
+the specific tool an install needs (via Steel's `which`)
 before downloading anything, so a missing tool fails loudly naming it rather than
 partway through an install.
 
-**Why shell out instead of adding `sha2`/`flate2`/`zip` crate dependencies**: keeps the
-audited process-spawn surface (`hume-platform/src/process.rs`) as the only place
-`std::process::Command` is used, avoids growing the dependency tree for functionality the
+**Why shell out instead of adding `sha2`/`flate2`/`zip` crate dependencies**: avoids growing the dependency tree for functionality the
 OS/toolchain already ships, and — since these tools are already required by any
 developer's `git`/build toolchain — costs no new install step in the common case.
 
 **Accepted tradeoff — zip-slip protection is delegated to the system tool** (modern
 Info-ZIP strips `../` entries; bsdtar refuses them by default), rather than implemented in
-HUME. The residual risk is bounded by the sync-time sha256 pin: `unpack-zip!` runs only
-after `lsp/verify-sha256!` (Scheme, `servers.scm` — wraps the sandbox-free `sha256-file`
-builtin; see the Rust-platform-primitives note above) has confirmed the archive matches the
-maintainer-vetted, hash-locked asset recorded in `lsp-sources.scm` — an attacker would need
+HUME. The residual risk is bounded by the sync-time sha256 pin: unpacking runs only
+after `lsp-install/verify-sha256!` (`install.scm`, over `sha256.scm`) has confirmed the
+archive matches the maintainer-vetted, hash-locked asset recorded in `sources.scm` — an attacker would need
 to compromise the pinned upstream release itself, not just something interposed at install
 time.
 
-**Symlink-entry handling**: `unpack-zip!` (Unix) chmods `0o755` every *regular file* in the
-extracted tree, not just the seeded `bin-path` — a server whose layout ships a wrapper
-script or sibling helper binaries needs all of them executable. Every check and chmod goes
-through `symlink_metadata`, never a symlink-following stat/chmod: a symlink entry the
-archive tool extracted (whether it's `bin-path` itself or some other tree entry) is neither
-recursed into nor chmod'd, so a malicious symlink pointing outside the server dir can't have
-its target's permissions mutated.
+**Symlink-entry handling**: on Unix every *regular file* in the extracted tree is chmod'd
+`0o755`, not just the seeded `bin-path` — a server whose layout ships a wrapper script or
+sibling helper binaries needs all of them executable. The tree is walked with
+`read-dir-iter`, which reports a symlink as a symlink without following it: a symlink entry
+the archive tool extracted (whether it's `bin-path` itself or some other tree entry) is
+neither recursed into nor chmod'd, so a malicious symlink pointing outside the server dir
+can't have its target's permissions mutated, and a symlinked `bin-path` fails the
+post-unpack check.

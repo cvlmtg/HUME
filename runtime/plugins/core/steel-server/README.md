@@ -35,7 +35,7 @@ a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), including HUME's own
 HUME's regular server catalog (synced from those two sources) can't offer it. This plugin
 keeps its own `cargo install` step until upstream carries it. Once either source gains
 it, HUME's catalog sync will pick it up automatically, `:lsp-install` will handle it like
-any other server, and this plugin retires. `core:lsp` can install cargo-kind *catalog*
+any other server, and this plugin retires. `core:lsp-install` can install cargo-kind *catalog*
 servers directly via `:lsp-install`, but only for servers already seeded in its catalog,
 which this one isn't yet.
 

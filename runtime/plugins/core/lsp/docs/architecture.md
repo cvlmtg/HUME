@@ -3,15 +3,14 @@
 ## File layout
 
 One `plugin.scm` entry `require`s a file per feature area, plus `lib.scm` (shared
-helpers), `registration.scm` (catalog, receipts, the install scan), and `servers.scm`
-(install/uninstall).
+helpers) and `status.scm` (`:lsp-status`, `:lsp-stop`, `:lsp-restart`). Installing servers
+is `core:lsp-install`'s job.
 
 | File | Owns | Doc |
 |---|---|---|
 | `lib.scm` | Capability checks, error reporting | this file |
 | `locations.scm` | Locations drawer and its refresh session | this file |
-| `registration.scm` | Seeded catalog, receipt/path helpers, the registration scan | `servers.md` |
-| `servers.scm` | Install/uninstall pipeline, install lock, discovery hint | `servers.md` |
+| `status.scm` | Server status, stop and restart commands | this file |
 | `diagnostics.scm` | Diagnostics navigation, EOL summary, gutter signs | `decorations.md` |
 | `inlay.scm` | Inlay hints | `decorations.md` |
 | `goto.scm` | Goto-definition family, references | `features.md` |

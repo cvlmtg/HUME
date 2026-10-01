@@ -1,9 +1,9 @@
-// Editor-level tests for core:lsp's server install pipeline (servers.scm):
+// Editor-level tests for core:lsp-install's server install pipeline:
 // scan-on-load registration, :lsp-install/:lsp-uninstall/:lsp-servers,
 // receipts, orphan warnings, and the on-language-set discovery hint.
 //
-// Fixture servers, chosen from the real runtime/scheme/lsp-{servers,sources}.scm
-// catalogs (verified at authoring time, re-checked by these tests every run):
+// Fixture servers, chosen from the real core:lsp-install
+// servers.scm and sources.scm catalogs (verified at authoring time, re-checked by these tests every run):
 //   rust-analyzer (language "rust"): github, plain .gz, installable
 //   svlangserver (language "systemverilog"): npm, settings contain a real
 //     JSON array (systemverilog.includeIndexing)
@@ -22,7 +22,7 @@ use super::*;
 use crate::editor::Severity;
 
 /// Write a receipt + a dummy binary file for `name` directly into
-/// `<data_dir>/servers/<name>/`, matching what `lsp/install-server!` would
+/// `<data_dir>/servers/<name>/`, matching what `lsp-install/install-server!` would
 /// produce, for scan-time tests that don't need a real network install.
 fn fabricate_server(data_dir_root: &Path, name: &str, version: &str, bin: &str) {
     let dir = canonical_data_dir(data_dir_root).join("servers").join(name);
@@ -59,9 +59,8 @@ fn plum_plugin_loads_cleanly() {
     );
 }
 
-/// core:lsp's own catalog load (`registration.scm`), which reads the seeded
-/// lsp-servers.scm catalog, and `servers.scm`'s lsp-sources.scm catalog load.
-/// This is the smoke test for both self-contained module loads.
+/// core:lsp-install's catalog load, which reads its own `servers.scm` and
+/// `sources.scm`: the smoke test for both self-contained module loads.
 #[test]
 fn lsp_plugin_loads_with_real_lsp_catalogs() {
     let _lock = lock();
@@ -79,7 +78,7 @@ fn lsp_plugin_loads_with_real_lsp_catalogs() {
         .collect();
     assert!(
         errors.is_empty(),
-        "loading core:lsp against the real lsp-servers.scm/lsp-sources.scm catalogs must not error: {errors:?}"
+        "loading core:lsp-install against the real servers.scm/sources.scm catalogs must not error: {errors:?}"
     );
 }
 
@@ -149,7 +148,7 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
 }
 
 /// The expected JSON is transcribed by hand from
-/// runtime/scheme/lsp-servers.scm's current text, not derived by calling
+/// runtime/plugins/core/lsp-install/servers.scm's current text, not derived by calling
 /// `lsp/settings->hash`: this is the settings-conversion correctness
 /// check, so it must not share logic with the thing it verifies.
 #[test]
@@ -168,7 +167,7 @@ fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_object
     load_lsp_install(&mut ed, data_tmp.path());
 
     // The seeded catalog's `config` field is registered under BOTH keywords
-    // (`registration.scm` delivers it as init-options and settings, exactly
+    // (`core:lsp-install`'s `register.scm` delivers it as init-options and settings, exactly
     // as Helix delivers the same blob), so assert the conversion lands
     // correctly in both, not just one.
 
@@ -281,7 +280,7 @@ fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
     // A file, not a directory, sitting directly under servers/, exactly
-    // where acquire-install-lock! puts it and register-installed-servers!
+    // where lsp-install/acquire-lock! puts it and register-installed-servers!
     // scans.
     std::fs::write(servers_dir.join(".install-lock"), b"").unwrap();
 
@@ -465,7 +464,7 @@ fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
     );
 }
 
-/// A lazily-declared core:lsp (`#:languages`) still registers an installed
+/// A lazily-declared core:lsp-install (`#:languages`) still registers an installed
 /// server once activated (the startup scan runs at activation time, not
 /// only at eager `(load-plugin! "core:lsp-install")`), and the very buffer whose
 /// language-set triggered the activation attaches to that server in the
@@ -503,17 +502,17 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     assert_eq!(
         ed.lsp.config_command_for_test("rust"),
         None,
-        "precondition: core:lsp must not have activated yet"
+        "precondition: core:lsp-install must not have activated yet"
     );
     // Set the path *after* init_scripting (which re-detects language for
-    // every already-open buffer and would otherwise activate core:lsp early,
+    // every already-open buffer and would otherwise activate core:lsp-install early,
     // before this test's own explicit `set_buffer_language` call below).
     ed.doc_mut().set_path(Some(file));
 
     let bid = ed.focused_buffer_id();
     assert!(
         ed.state.buffers.get(bid).lsp_server.is_none(),
-        "precondition: buffer must be unattached before core:lsp activates"
+        "precondition: buffer must be unattached before core:lsp-install activates"
     );
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
@@ -525,7 +524,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     assert_eq!(
         ed.lsp.config_command_for_test("rust"),
         Some(expected_cmd.to_string_lossy().into_owned()),
-        "activating core:lsp via a language-set trigger must apply its startup scan \
+        "activating core:lsp-install via a language-set trigger must apply its startup scan \
          immediately, in the same set_buffer_language call"
     );
     assert!(
@@ -536,7 +535,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     assert_eq!(ed.lsp.server_count_for_test(), 1);
 }
 
-/// A `:`-typed command can activate a lazily-declared core:lsp when the
+/// A `:`-typed command can activate a lazily-declared core:lsp-install when the
 /// command name is listed in the declaration's `#:commands` manifest:
 /// dispatch runs `activate_lazy_plugin` before arity marshalling (see
 /// input_stack/command.rs), so `:lsp-install` on a plugin that hasn't
@@ -617,7 +616,7 @@ fn lsp_install_unknown_language_warns() {
 }
 
 /// Tab on `:lsp-install`'s argument completes against the seeded catalog's
-/// own languages, read from the real `runtime/scheme/lsp-servers.scm` (not
+/// own languages, read from the real `runtime/plugins/core/lsp-install/servers.scm` (not
 /// a fixture subset): "rus" matches only "rust" (unlike "ru", which also
 /// matches "ruby").
 #[test]
@@ -672,7 +671,7 @@ fn lsp_install_tar_archive_requires_tar_on_path() {
     );
 }
 
-/// `lsp/with-install-lock!`'s failure branch (`thunk` raised) must still
+/// `lsp-install/with-lock!`'s failure branch (`thunk` raised) must still
 /// release the lock: a failed install must not permanently wedge every
 /// later `:lsp-install`/`:lsp-uninstall` behind a lock nothing will ever
 /// release.
@@ -683,8 +682,8 @@ fn install_lock_is_released_after_a_failed_install() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
-    // Fails inside lsp/install-server! (lsp/install-blocker), i.e. inside
-    // lsp/with-install-lock!'s thunk. Exercises the release-on-failure path,
+    // Fails inside lsp-install/install-server! (lsp-install/install-blocker), i.e. inside
+    // lsp-install/with-lock!'s thunk. Exercises the release-on-failure path,
     // not the release-on-success path every other install test hits.
     type_cmd(&mut ed, ":lsp-install ocaml");
     let log = ed.state.message_log.format_for_display();
@@ -716,7 +715,7 @@ fn install_lock_is_released_after_a_failed_install() {
 
 /// A live `.install-lock` (as another HUME process mid-install would leave)
 /// must refuse the install loudly, before any network activity, and never
-/// interleave with a concurrent install/uninstall. `acquire-install-lock!`
+/// interleave with a concurrent install/uninstall. `lsp-install/acquire-lock!`
 /// fails first, so this never actually reaches rust-analyzer's real
 /// download path.
 #[test]
@@ -780,7 +779,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
     assert_eq!(
         ed.lsp.config_command_for_test("rust"),
         None,
-        "precondition: nothing installed at load time, so core:lsp's load-time scan \
+        "precondition: nothing installed at load time, so core:lsp-install's load-time scan \
          registered nothing"
     );
     // Fabricate the receipt only now, after the load-time scan already ran
@@ -1268,7 +1267,7 @@ fn discovery_hint_fires_for_cargo_kind_now_installable() {
     load_lsp_install(&mut ed, data_tmp.path());
 
     // pest-language-server (cargo-kind, language "pest") must report
-    // installable: core:lsp has a cargo installer, and cargo is
+    // installable: core:lsp-install has a cargo installer, and cargo is
     // guaranteed on $PATH since this test suite itself runs under cargo.
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("pest");
@@ -1323,7 +1322,7 @@ fn discovery_hint_does_not_fire_when_already_registered() {
     );
 
     let mut ed = editor_from("-[x]>\n");
-    load_lsp_install(&mut ed, data_tmp.path()); // core:lsp's own scan registers rust-analyzer for "rust"
+    load_lsp_install(&mut ed, data_tmp.path()); // core:lsp-install's own scan registers rust-analyzer for "rust"
 
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
@@ -1746,7 +1745,7 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
     assert_eq!(Path::new(&cmd), bin);
 }
 
-/// Load `core:lsp` against a runtime whose catalog is `sources`, with a curl
+/// Load `core:lsp-install` against a runtime whose catalog is `sources`, with a curl
 /// shim serving `fixture`, and run `:lsp-install <lang>`. Returns the data dir
 /// and the editor for post-install assertions.
 fn install_from_fixture(

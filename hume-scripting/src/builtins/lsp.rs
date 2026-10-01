@@ -311,7 +311,7 @@ pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, pane: ArgPane) -> SteelR
 /// Unlike its buffer/pane-touching siblings, this is a pure registry read
 /// (no `EditorHost` state beyond the LSP registry itself), so its table
 /// entry is `open` kind: no gate, callable during init/plugin load too.
-/// That lets `core:lsp`'s own load-time scan (`registration.scm`) query it
+/// That lets `core:lsp-install`'s load-time scan (`register.scm`) query it
 /// directly to skip already-registered languages.
 pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = string_arg(language, "lsp-registered-for-language? language")?;

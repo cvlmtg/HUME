@@ -342,9 +342,7 @@ fn every_default_lsp_binding_dispatches_without_error() {
 /// Loading `core:lsp` without `core:stdlib` declared or loaded first must
 /// fail to load (contained, not aborting `eval_init`), naming `core:stdlib`
 /// (`core:lsp`'s `(declared-plugins)` guard rejects a `core:stdlib` that
-/// was never declared or loaded at all, before
-/// `lsp/register-installed-servers!` ever reaches its load-time
-/// `stdlib/list-subdirs` call).
+/// was never declared or loaded at all).
 #[test]
 fn missing_stdlib_errors_at_load() {
     let guard = RealRuntimeGuard::new();

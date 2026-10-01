@@ -2,9 +2,9 @@
 
 Language server features: hover, go-to-definition (+ declaration / type-definition /
 implementation), references, diagnostics navigation, rename, formatting, code actions,
-signature help, completions, inlay hints. Also owns the LSP server lifecycle end to end
-(install, uninstall, registration, and runtime management); see `docs/LSP-INSTALL.md` in
-the repository. `core:plum` (the plugin manager) is not involved.
+signature help, completions, inlay hints, and runtime management of running servers. It
+does not install servers: `core:lsp-install` downloads and registers them, and any
+plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 
 ## Usage
 
@@ -16,20 +16,16 @@ the repository. `core:plum` (the plugin manager) is not involved.
 (declare-plugin! "core:lsp")
 ```
 
-- **Depends on:** `core:stdlib`: scans installed servers via `stdlib/list-subdirs` at
-  its own load time; diagnostics navigation and `:lsp-install` call
-  `stdlib/cursor-char-index`/`stdlib/resolve-lang-arg` at runtime.
+- **Depends on:** `core:stdlib`: diagnostics navigation and the other features call
+  `stdlib/cursor-char-index` and similar helpers at runtime.
 - **Activates on:** the first buffer with a detected language, or the first `lsp-*`
   command typed. Its `manifest.scm` declares `#:languages '("*")` plus every `lsp-*`
   command. An explicit `#:commands`/`#:events`/`#:languages` bypasses it, but a manifest
   keyed only on `#:events '(on-lsp-attach)` can never activate on its own, since nothing
-  is registered yet for that event to fire on; `#:languages`, or the four install
-  commands (`lsp-install`, `lsp-uninstall`, `lsp-servers`, `lsp-rescan-servers`), give it
-  a real trigger instead.
-- **A manual `register-lsp-server!` call always wins** over the catalog default, placed
-  before or after the `declare-plugin!` line, since the post-load scan reads through any
-  registration queued earlier in the same eval and skips a language that override already
-  claims.
+  is registered yet for that event to fire on; `#:languages`, or one of the `lsp-*`
+  commands, give it a real trigger instead.
+- **A manual `register-lsp-server!` call always wins** over a `core:lsp-install` default,
+  placed before or after the `declare-plugin!` line.
 - **User docs:** [Language Servers](https://cvlmtg.github.io/HUME/lsp.html) for the full
   walkthrough, commands, keys, and settings, and
   [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-lsp) for the quick
@@ -39,10 +35,6 @@ the repository. `core:plum` (the plugin manager) is not involved.
 
 | Command                | Effect                                                                       |
 |-------------------------|-------------------------------------------------------------------------------|
-| `:lsp-install [lang]`  | Download, verify, unpack, and register the server for a language (default: current buffer's language). Tab-completes seeded languages |
-| `:lsp-uninstall <name>`| Shut down and unregister a server's clients, remove it from disk (by server name, not language). Tab-completes installed servers |
-| `:lsp-servers`         | Catalog listing: every seeded server, its languages, and install status      |
-| `:lsp-rescan-servers`  | Re-scan `<data>/servers/` and register any installed server not yet registered; useful for a server installed out-of-band |
 | `:lsp-status`          | Show every running server and its state, plus attached buffers' diagnostic counts |
 | `:lsp-stop [lang]`     | Stop a running server (default: focused buffer's)                            |
 | `:lsp-restart [lang]`  | Stop and respawn a running server (default: focused buffer's)                |

@@ -358,7 +358,7 @@ impl LspState {
 
     /// Same as `config_settings_for_test`, for `init_options`: the seeded
     /// catalog registers the same blob under both keywords (see
-    /// `core:lsp/registration.scm`), so a test asserting the conversion
+    /// `core:lsp-install/register.scm`), so a test asserting the conversion
     /// needs both, not just `settings`.
     #[cfg(all(test, unix))]
     pub(in crate::editor) fn config_init_options_for_test(

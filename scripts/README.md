@@ -6,8 +6,8 @@ formats at runtime. Design rationale for the LSP parts: `docs/LSP-INSTALL.md`.
 
 | Script | Pin | Fetches | Emits |
 |---|---|---|---|
-| `sync-grammars.py` | `runtime/scheme/helix-pin.scm` | `helix-editor/helix` `languages.toml` | `languages.scm`, `grammar-sources.scm`, `lsp-servers.scm` |
-| `sync-lsp-sources.py` | `runtime/scheme/mason-pin.scm` | `mason-org/mason-registry` `registry.json.zip` + every release asset (for sha256) | `lsp-sources.scm` |
+| `sync-grammars.py` | `runtime/scheme/helix-pin.scm` | `helix-editor/helix` `languages.toml` | `runtime/scheme/languages.scm`, `runtime/scheme/grammar-sources.scm`, `runtime/plugins/core/lsp-install/servers.scm` |
+| `sync-lsp-sources.py` | `runtime/plugins/core/lsp-install/mason-pin.scm` | `mason-org/mason-registry` `registry.json.zip` + every release asset (for sha256) | `runtime/plugins/core/lsp-install/sources.scm` |
 
 Shared helpers (pin reading, sexpr emission, atomic writes) live in `sync_common.py`.
 
@@ -16,9 +16,9 @@ Shared helpers (pin reading, sexpr emission, atomic writes) live in `sync_common
 Each script runs alone after its own pin bump:
 
 - bump `helix-pin.scm` → run `sync-grammars.py`
-- bump `mason-pin.scm` → run `sync-lsp-sources.py`
+- bump `lsp-install/mason-pin.scm` → run `sync-lsp-sources.py`
 
-One exception: `sync-lsp-sources.py` reads the checked-in `lsp-servers.scm` to filter
+One exception: `sync-lsp-sources.py` reads the checked-in `servers.scm` to filter
 Mason to the servers Helix actually wires — through an explicit Helix→Mason name-mapping
 table (the namespaces differ: Helix `pylsp` is Mason `python-lsp-server`), reporting every
 Helix server left unmatched. So after a helix bump that changes server names, run
@@ -30,7 +30,7 @@ server×platform to record checksums. `sync-grammars.py` is a single HTTP fetch.
 ## sha256 cache and re-pushed tags
 
 `sync-lsp-sources.py` caches sha256 hashes from the previously checked-in
-`lsp-sources.scm`, keyed by the full download URL (repo, version, and asset file —
+`sources.scm`, keyed by the full download URL (repo, version, and asset file —
 `https://github.com/<repo>/releases/download/<version>/<asset-file>` for github servers, the
 recorded url for generic ones), so a routine
 re-sync doesn't re-download unchanged assets. This means a version bump always

@@ -385,7 +385,7 @@ def main() -> None:
     )
     read_sexpr(GRAMMAR_SOURCES_SCM)  # self-check: emitted file must re-parse
 
-    # lsp-servers.scm — LSP server registration catalog
+    # servers.scm — LSP server registration catalog
     write_generated_file(
         LSP_SERVERS_SCM, LSP_SERVERS_HEADER.format(sha=sha), emit_lsp_servers(servers)
     )
