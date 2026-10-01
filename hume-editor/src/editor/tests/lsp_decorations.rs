@@ -835,6 +835,39 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
 }
 
 #[test]
+fn set_eol_text_hide_on_insert_line_defaults_off_and_round_trips() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdef\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "arm-plain" "" (lambda (bid)
+             (set-eol-text! "s" bid
+               (list (hash 'line 0 'text "t" 'scope "diagnostic.error")))))
+           (define-typed-command! "arm-hidden" "" (lambda (bid)
+             (set-eol-text! "s" bid
+               (list (hash 'line 0 'text "t" 'scope "diagnostic.error"))
+               #:hide-on-insert-line #t)))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    let hide_flags = |ed: &Editor| -> Vec<bool> {
+        ed.state
+            .config
+            .decorations
+            .eol_text_for_buffer(bid)
+            .map(|(_, e)| e.hide_on_insert_line)
+            .collect()
+    };
+    type_cmd(&mut ed, ":arm-plain");
+    assert_eq!(hide_flags(&ed), vec![false]);
+    type_cmd(&mut ed, ":arm-hidden");
+    assert_eq!(hide_flags(&ed), vec![true]);
+}
+
+#[test]
 fn set_line_backgrounds_round_trips_and_replaces_per_source() {
     let tmp = safe_tempdir();
     // "xabcdef\n" is line 0 (8 chars); "ghijkl\n" (line 1) starts at char 8.

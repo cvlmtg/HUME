@@ -171,7 +171,8 @@
 (define (lsp/refresh-diagnostic-decorations! pane diags)
   (register-sign-source! "lsp-diagnostics" pane lsp/*sign-priority*)
   (set-eol-text! "lsp-diagnostics" pane
-    (map lsp/line-group->entry (lsp/group-by-line diags)))
+    (map lsp/line-group->entry (lsp/group-by-line diags))
+    #:hide-on-insert-line (not (get-option "lsp.diagnostics-on-insert-line")))
   (set-signs! "lsp-diagnostics" pane (lsp/diagnostic-signs diags)))
 
 (register-hook! 'on-diagnostics-changed
@@ -189,7 +190,7 @@
 
 (register-hook! 'on-option-change
   (lambda (key value)
-    (when (equal? key "lsp.diagnostics-severity-floor")
+    (when (member key '("lsp.diagnostics-severity-floor" "lsp.diagnostics-on-insert-line"))
       (for-each (lambda (pane)
                   (let ((diags (diagnostics-for-buffer pane)))
                     (lsp/refresh-diagnostic-decorations! pane diags)

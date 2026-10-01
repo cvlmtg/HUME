@@ -33,6 +33,10 @@ pub(super) struct DecoratedPane {
     /// Rust-side store (diagnostics, decorations) instead of the whole
     /// buffer.
     pub(super) chars: ExclusiveRange<CharOffset>,
+    /// The primary cursor's line while this pane owns the Insert session,
+    /// `None` otherwise. Diagnostic decorations on it are hidden unless
+    /// `lsp.diagnostics-on-insert-line` is set.
+    pub(super) insert_line: Option<hume_rope::line::ContentLine>,
 }
 
 impl Editor {
@@ -78,9 +82,21 @@ impl Editor {
                 let bottom_line =
                     hume_rope::line::RopeyLine::from(vp.top().line).advance(vp.height as usize);
                 let past_end = hume_rope::line::RopeyLine::new(text.ropey_line_count().get());
+                let insert_line = self
+                    .state
+                    .active_session
+                    .as_ref()
+                    .is_some_and(|s| s.is_insert_at(pid, bid))
+                    .then(|| {
+                        self.state.panes.state[pid][bid]
+                            .view(text)
+                            .primary()
+                            .head_line()
+                    });
                 DecoratedPane {
                     pid,
                     bid,
+                    insert_line,
                     lines: ExclusiveRange::new(top_line, bottom_line.advance(1).min(past_end)),
                     chars: ExclusiveRange::new(
                         text.line_to_char(top_line),
@@ -184,10 +200,11 @@ impl Editor {
 
         // ── Diagnostic + extra highlights — every pane ───────────────────────
         // Unlike search/bracket-match highlights, these stay visible in
-        // Insert mode: an error squiggle is exactly as relevant while you're
-        // editing the line it's on (most editors keep them showing).
+        // Insert mode, except on the primary cursor's line unless
+        // `lsp.diagnostics-on-insert-line` is set.
         {
             let floor = self.state.settings.lsp_diagnostics_severity_floor;
+            let on_insert_line = self.state.settings.lsp_diagnostics_on_insert_line;
             // Editing-area scope per diagnostic severity, in `DiagSeverity`
             // discriminant order (`[error, warning, info, hint]`), indexed
             // below by `d.severity as usize`. The gutter counterpart (the
@@ -232,7 +249,11 @@ impl Editor {
                             &mut raw,
                         );
                     }
-                    flatten_priority_overlaps(raw)
+                    let mut spans = flatten_priority_overlaps(raw);
+                    if !on_insert_line {
+                        spans.retain(|&(line, ..)| Some(line) != p.insert_line);
+                    }
+                    spans
                 };
 
                 let extra_spans = {
@@ -275,9 +296,8 @@ impl Editor {
     /// Write per-frame gutter sign data (`set-signs!`, all sources
     /// pre-merged at write time, diagnostics included via `core:lsp`'s own
     /// `"lsp-diagnostics"` source) to every pane's own decoration handle,
-    /// read by that pane's `SharedSignSource`. Stays visible in Insert mode, for the
-    /// same reasoning as [`Self::update_highlight_providers`]'s diagnostics
-    /// section. Called from `prepare_frame` before scrolling, against the
+    /// read by that pane's `SharedSignSource`. Stays visible in Insert mode:
+    /// the gutter doesn't crowd the text being typed. Called from `prepare_frame` before scrolling, against the
     /// pre-scroll snapshot (see [`Self::decorated_panes`]), because the sign column's
     /// width feeds `Pane::content_width`, which decides the wrap column the
     /// scroll step's `DisplayLineMap` resolves against.
@@ -469,6 +489,7 @@ impl Editor {
                     self.state.config.decorations.eol_text_for_buffer(bid),
                     |e| e.pos,
                 )
+                .filter(|&(_, line, e)| !(e.hide_on_insert_line && Some(line) == p.insert_line))
                 .map(|(source, line, e)| {
                     // End-of-line placement: the line's own trailing '\n'
                     // char resolves to a byte offset within `line` (never

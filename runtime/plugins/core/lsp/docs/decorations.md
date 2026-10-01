@@ -13,7 +13,11 @@ the most severe one: independent choices, since the most severe diagnostic isn't
 the leftmost. A change to `lsp.diagnostics-severity-floor` needs an explicit refresh of
 every buffer's inline summary: the diagnostics store only applies the new floor the next
 time it's read, so without this hook every buffer would keep showing the old cut until
-its next unrelated diagnostics-changed fire.
+its next unrelated diagnostics-changed fire. The same hook handles
+`lsp.diagnostics-on-insert-line`: the plugin passes its negation as
+`#:hide-on-insert-line` to `set-eol-text!`, and the render side drops flagged entries on
+the primary cursor's line while its pane types in Insert mode. The underline is Rust-owned
+and reads the option directly.
 
 The summary's scope is `<severity>.diagnostic.inline` (`error.diagnostic.inline` and
 friends), a HUME scope with no Helix counterpart, since Helix has no end-of-line

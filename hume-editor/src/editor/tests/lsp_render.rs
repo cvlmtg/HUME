@@ -202,35 +202,74 @@ fn zero_diagnostics_produce_empty_provider_output() {
     );
 }
 
-/// Unlike search/bracket-match highlights, diagnostics stay visible while
-/// typing: an error squiggle is exactly as relevant mid-edit as it is in
-/// Normal mode.
-#[test]
-fn diagnostics_stay_visible_in_insert_mode() {
-    let mut c = setup_with_diagnostics("abcdefgh\n", &[((0, 0), (0, 1), 1)]);
-    assert!(
-        !pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic).is_empty(),
-        "sanity: visible in Normal mode"
-    );
-
-    c.ed.feed_key(key('i'));
+fn redraw(c: &mut DiagCtx) {
     let mut ctx = RenderContext::new();
     c.ed.sync_viewport_dims(80, 25);
     c.ed.settle();
     c.ed.prepare_frame(&mut ctx);
-    assert!(
-        !pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic).is_empty(),
-        "diagnostics must stay visible in Insert mode"
+}
+
+fn diagnostic_lines(c: &DiagCtx) -> Vec<usize> {
+    pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic)
+        .iter()
+        .map(|&(line, ..)| line.index())
+        .collect()
+}
+
+#[test]
+fn diagnostic_underline_is_hidden_on_the_insert_cursor_line_and_returns_on_esc() {
+    let mut c = setup_with_diagnostics("abc\ndef\n", &[((0, 0), (0, 1), 1), ((1, 0), (1, 1), 1)]);
+    assert_eq!(
+        diagnostic_lines(&c),
+        vec![0, 1],
+        "sanity: both lines in Normal mode"
+    );
+
+    c.ed.feed_key(key('i'));
+    redraw(&mut c);
+    assert_eq!(
+        diagnostic_lines(&c),
+        vec![1],
+        "cursor line 0 hidden while typing"
     );
 
     c.ed.feed_key(key_esc());
-    c.ed.sync_viewport_dims(80, 25);
-    c.ed.settle();
-    c.ed.prepare_frame(&mut ctx);
-    assert!(
-        !pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic).is_empty(),
-        "still visible back in Normal mode"
-    );
+    redraw(&mut c);
+    assert_eq!(diagnostic_lines(&c), vec![0, 1], "back in Normal mode");
+}
+
+#[test]
+fn diagnostic_underline_stays_in_insert_with_the_option_on() {
+    let mut c = setup_with_diagnostics("abc\ndef\n", &[((0, 0), (0, 1), 1), ((1, 0), (1, 1), 1)]);
+    let fp = FocusedPane::current(&c.ed.state);
+    crate::editor::commands::typed_set(
+        &mut c.ed,
+        fp,
+        Some("global lsp.diagnostics-on-insert-line=true"),
+        false,
+    )
+    .unwrap();
+
+    c.ed.feed_key(key('i'));
+    redraw(&mut c);
+    assert_eq!(diagnostic_lines(&c), vec![0, 1]);
+}
+
+#[test]
+fn moving_to_another_line_in_insert_restores_the_previous_line_underline() {
+    let mut c = setup_with_diagnostics("abc\ndef\n", &[((0, 0), (0, 1), 1), ((1, 0), (1, 1), 1)]);
+    c.ed.feed_key(key('i'));
+    c.ed.feed_key(key_down());
+    redraw(&mut c);
+    assert_eq!(diagnostic_lines(&c), vec![0], "line 1 now holds the cursor");
+}
+
+#[test]
+fn multi_line_diagnostic_hides_only_the_cursor_line_segment() {
+    let mut c = setup_with_diagnostics("abc\ndef\n", &[((0, 2), (1, 3), 1)]);
+    c.ed.feed_key(key('i'));
+    redraw(&mut c);
+    assert_eq!(diagnostic_lines(&c), vec![1]);
 }
 
 // ── Extra highlights ──────────────────────────────────────────────────────────

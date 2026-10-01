@@ -80,13 +80,16 @@ pub trait DecorationHost {
     /// `bid` wholesale. Each entry is `(line, text, scope)`; `text` is
     /// spliced in at the end of `line`, which converts to that line's
     /// line-start char offset at this boundary. `Err`, naming the builtin,
-    /// if `line` is out of range. Not diagnostics-specific: the diagnostics
-    /// plugin is its first client, not its owner.
+    /// if `line` is out of range. `hide_on_insert_line` marks every entry
+    /// to be hidden on the primary cursor's line while the pane types in
+    /// Insert mode. Not diagnostics-specific: the diagnostics plugin is its
+    /// first client, not its owner.
     fn set_eol_text(
         &mut self,
         source: String,
         bid: BufferId,
         lines: Vec<(usize, String, String)>,
+        hide_on_insert_line: bool,
     ) -> Result<(), String>;
 
     /// `(set-line-backgrounds! source pane entries)`: replaces `source`'s

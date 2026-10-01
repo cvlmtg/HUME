@@ -285,7 +285,9 @@ function the server knows about, and inlay hints (see below) appear inline once 
 
 `g n` and `g p` show the full diagnostic message in a popup after they jump; it clears on
 your next keypress or mouse action. Each line with a problem also gets a short summary at
-its end.
+its end. While you type in Insert mode, the underline and summary are hidden on the line
+the cursor is on and return when you leave Insert mode or move to another line. Set
+`lsp.diagnostics-on-insert-line` to `#t` to keep them showing.
 
 ## Settings
 

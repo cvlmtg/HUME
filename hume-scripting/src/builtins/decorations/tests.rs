@@ -210,8 +210,25 @@ fn set_eol_text_without_decoration_host_errors() {
         SteelVal::StringV("test".into()),
         default_pane(),
         empty,
+        SteelVal::BoolV(false),
     );
     assert_names_builtin(result, "set-eol-text!");
+}
+
+#[test]
+fn set_eol_text_rejects_a_non_bool_hide_flag() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
+    let result = set_eol_text(
+        &mut ctx,
+        SteelVal::StringV("test".into()),
+        default_pane(),
+        empty,
+        SteelVal::StringV("yes".into()),
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("#:hide-on-insert-line"), "got: {msg}");
 }
 
 #[test]

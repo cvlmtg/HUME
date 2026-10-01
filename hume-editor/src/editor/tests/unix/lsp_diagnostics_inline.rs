@@ -109,6 +109,39 @@ fn inline_color_follows_the_highest_severity_on_the_line_not_the_leftmost() {
     );
 }
 
+#[test]
+fn eol_summary_is_flagged_by_default_and_unflagged_when_the_option_is_set() {
+    let diag: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _dirs,
+        ..
+    } = setup_diagnostics(FIXTURE, &[diag]);
+    let bid = ed.focused_buffer_id();
+    let hide_flags = |ed: &Editor| -> Vec<bool> {
+        ed.state
+            .config
+            .decorations
+            .eol_text_for_buffer(bid)
+            .map(|(_, e)| e.hide_on_insert_line)
+            .collect()
+    };
+
+    assert_eq!(
+        hide_flags(&ed),
+        vec![true],
+        "hidden on the insert line by default"
+    );
+
+    run(&mut ed, ":set global lsp.diagnostics-on-insert-line=true");
+    assert_eq!(
+        hide_flags(&ed),
+        vec![false],
+        "the option change must refresh the already-published summary"
+    );
+}
+
 /// `diagnostics-for-buffer` (no `#:severity`) must default to
 /// `lsp.diagnostics-severity-floor`, same as the underline/gutter-sign
 /// bridges: a below-floor diagnostic must not appear in the EOL summary

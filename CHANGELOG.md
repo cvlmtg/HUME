@@ -26,6 +26,7 @@
 - `on-lsp-notification` is now a hook: `(register-hook! 'on-lsp-notification (lambda (server method params) ...))`, called for every notification HUME doesn't handle itself, with the method as a new second argument. Like any hook, a plugin that fails to load has its handlers removed. To handle only specific methods, use `(register-lsp-notification-hook! '("method/a" "method/b") (lambda (server method params) ...))`; a single method can be passed as a plain string.
 
 ### Plugins
+- `set-eol-text!` takes `#:hide-on-insert-line`: with `#t`, its text is hidden on the cursor's line while you type in Insert mode.
 - `(hume-version)` returns the running editor's version as `(major minor patch commit)`, and `(hume-version>=? major minor patch)` checks it against a release. `(command-exists? name)` tells a plugin whether a command or built-in function is available, so it can use newer ones when present and fall back when not.
 - `register-completion-source!` takes `#:token-chars`, extra characters that belong to a `'buffer` source's token on top of the buffer's `word-chars`: `#:token-chars "-"` makes `foo-ba` one token for that source, so its `prefix` argument holds it, typing `-` keeps the menu open, and accepting an item replaces it.
 - `track-position!`, `tracked-position-params` and `untrack-position!` let a plugin remember a position in a buffer through edits and ask for the language-server request params for where it is now. `lsp-request!`'s `#:tracked` hands a request such a position, forgotten once the request is done with it unless its callback calls `keep-tracked-position!`.
@@ -65,6 +66,7 @@
 - Typing a quote right after the same quote no longer opens a new pair, so ```` ``` ```` and `"""` come out as typed with auto-pairs on, with no stray closing quote.
 
 ### Language servers
+- Diagnostics are hidden on the line you are typing on in Insert mode, both the underline and the end-of-line summary. `lsp.diagnostics-on-insert-line` set to `#t` keeps them showing.
 - `on-viewport-change` fires when the lines a pane shows change, including when an edit adds or removes lines in a buffer shorter than the pane. A resize or scroll that leaves the shown lines the same no longer fires it.
 - Completion items are filtered against the text their own edit range covers, and a list's default edit range is honored. A server whose completions replace more than the word before the cursor (`foo.ba`, `$ba`) keeps its items while you type, and accepting replaces that range. Such items need a `filterText` that includes the covered text, as the protocol expects.
 - The completion menu stays open when text elsewhere in the buffer changes (a script's edit, an auto-format) and still accepts at the cursor. It closes as soon as a character outside the completed word is typed, including right after the menu opens on nothing (a `(` typed after `.`); before, it stayed open with no matches.

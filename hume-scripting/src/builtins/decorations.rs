@@ -13,8 +13,8 @@ use crate::types::{PaneHandle, VirtualLineSpec};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, HashEntry, hash_list, int_arg, optional_hash_entry, optional_symbol_arg, string_arg,
-    symbol_enum_arg, symbol_hash,
+    ArgPane, HashEntry, bool_arg, hash_list, int_arg, optional_hash_entry, optional_symbol_arg,
+    string_arg, symbol_enum_arg, symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -221,14 +221,18 @@ fn side_arg(val: SteelVal, ctx_name: &str) -> Result<bool, SteelErr> {
 const LINE_TEXT_SCOPE: &[&str] = &["line", "text", "scope"];
 const START_END_SCOPE: &[&str] = &["start", "end", "scope"];
 
-/// `(set-eol-text! source pane lines)`: `lines`: list of `(hash 'line 'text
-/// 'scope)`. Not diagnostics-specific: the diagnostics plugin is its first
-/// client, not its owner, same as every other decoration kind is to LSP.
+/// `(set-eol-text! source pane lines #:hide-on-insert-line #f)`: `lines`: list
+/// of `(hash 'line 'text 'scope)`. `#:hide-on-insert-line #t` hides every
+/// entry on the primary cursor's line while the pane types in Insert mode.
+/// `bootstrap.scm` defines the public keyword form over this `%` native. Not
+/// diagnostics-specific: the diagnostics plugin is its first client, not its
+/// owner, same as every other decoration kind is to LSP.
 pub(crate) fn set_eol_text(
     ctx: &mut SteelCtx,
     source: SteelVal,
     pane: PaneHandle,
     lines: SteelVal,
+    hide_on_insert_line: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
     let source = string_arg(source, "set-eol-text! source")?;
@@ -239,8 +243,9 @@ pub(crate) fn set_eol_text(
             entry.string("scope")?,
         ))
     })?;
+    let hide_on_insert_line = bool_arg(hide_on_insert_line, "set-eol-text! #:hide-on-insert-line")?;
     require_cap(ctx.host.decorations(), "set-eol-text!")?
-        .set_eol_text(source, bid, parsed)
+        .set_eol_text(source, bid, parsed, hide_on_insert_line)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }

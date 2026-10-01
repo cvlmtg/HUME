@@ -95,6 +95,9 @@ pub struct EolTextEntry {
     pub pos: CharOffset,
     pub text: String,
     pub scope: ScopeId,
+    /// The render side drops this entry on the line holding the primary
+    /// cursor of the pane typing in Insert mode.
+    pub hide_on_insert_line: bool,
 }
 
 /// One `(set-extra-highlights! …)` entry: a char range styled with `scope`,

@@ -865,6 +865,12 @@ define_settings! {
         "lsp.inlay-hints" => lsp_inlay_hints: bool = false,
             scope: [Scope::Global],
             parser: bool;
+        // Off hides the diagnostic underline and end-of-line summary on the
+        // primary cursor's line while typing in Insert mode. The summary is
+        // hidden by `core:lsp` passing the negation to `set-eol-text!`.
+        "lsp.diagnostics-on-insert-line" => lsp_diagnostics_on_insert_line: bool = false,
+            scope: [Scope::Global],
+            parser: bool;
     }
     buffer {
         // A buffer-overridable setting like any other (e.g. from an

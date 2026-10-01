@@ -36,6 +36,7 @@ fn eol(pos: usize, text: &str) -> EolTextEntry {
         pos: co(pos),
         text: text.into(),
         scope: ScopeId(0),
+        hide_on_insert_line: false,
     }
 }
 

@@ -231,7 +231,7 @@ Not LSP-specific (any plugin can populate these), but LSP diagnostics and inlay 
 | `(register-sign-source! name pane priority)` | Reserve a gutter sign slot for `name` on the buffer, ranked by `(priority desc, name asc)` among every source registered for it |
 | `(set-signs! source pane signs)` | Replace `source`'s gutter signs for the buffer. `signs`: list of `(hash 'line l 'text t 'scope s)`; `source` must already be registered |
 | `(set-virtual-lines! source pane lines)` | Replace `source`'s virtual (ghost) lines for the buffer. `lines`: list of hashmaps with `'line`/`'text` required, optional `'anchor` (`'before`/`'after`), `'scope`, `'segments` (a list of `(hash 'start 'end 'scope)` char ranges into `'text`) |
-| `(set-eol-text! source pane lines)` | Replace `source`'s end-of-line text for the buffer. `lines`: list of `(hash 'line l 'text t 'scope s)` |
+| `(set-eol-text! source pane lines #:hide-on-insert-line #f)` | Replace `source`'s end-of-line text for the buffer. `lines`: list of `(hash 'line l 'text t 'scope s)`. With `#:hide-on-insert-line #t`, the text is hidden on the line the cursor is on while you type in Insert mode |
 | `(set-extra-highlights! source pane spans)` | Replace `source`'s extra syntax highlights for the buffer. `spans`: list of `(hash 'start s 'end e 'scope sc)` char ranges |
 | `(set-line-backgrounds! source pane entries)` | Replace `source`'s full-line background tints for the buffer. `entries`: list of `(hash 'line l 'scope s)` |
 

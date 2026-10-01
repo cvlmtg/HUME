@@ -408,7 +408,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "register-sign-source!" decorations::register_sign_source(name: SteelVal, pane: args::LivePane, priority: SteelVal);
         cmd "set-signs!" decorations::set_signs(source: SteelVal, pane: args::LivePane, signs: SteelVal);
         cmd "set-virtual-lines!" decorations::set_virtual_lines(source: SteelVal, pane: args::LivePane, lines: SteelVal);
-        cmd "set-eol-text!" decorations::set_eol_text(source: SteelVal, pane: args::LivePane, lines: SteelVal);
+        cmd "%set-eol-text!" decorations::set_eol_text(source: SteelVal, pane: args::LivePane, lines: SteelVal, hide_on_insert_line: SteelVal);
         cmd "set-extra-highlights!" decorations::set_extra_highlights(source: SteelVal, pane: args::LivePane, spans: SteelVal);
         cmd "set-line-backgrounds!" decorations::set_line_backgrounds(source: SteelVal, pane: args::LivePane, entries: SteelVal);
         cmd "set-statusline-text!" decorations::set_statusline_text(source: SteelVal, pane: args::LivePane, text: SteelVal);

@@ -108,6 +108,9 @@
 (define (diagnostics-for-buffer pane #:severity [severity #f] #:range [range #f])
   (%diagnostics-for-buffer pane severity range))
 
+(define (set-eol-text! source pane lines #:hide-on-insert-line [hide #f])
+  (%set-eol-text! source pane lines hide))
+
 (define (buffer-lines pane #:start [start #f] #:end [end #f])
   (%buffer-lines pane start end))
 

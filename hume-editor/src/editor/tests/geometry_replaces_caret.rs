@@ -269,6 +269,7 @@ fn eol_text_that_wraps_an_earlier_line_replaces_the_caret_even_when_the_cursor_h
             pos: line19_start,
             text: "XY".to_string(),
             scope,
+            hide_on_insert_line: false,
         }],
     );
 

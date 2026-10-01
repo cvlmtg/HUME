@@ -166,6 +166,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         source: String,
         bid: BufferId,
         lines: Vec<(usize, String, String)>,
+        hide_on_insert_line: bool,
     ) -> Result<(), String> {
         let text = buffer_text(self.state, bid, "set-eol-text!")?;
         let entries = lines
@@ -175,6 +176,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                     pos: line_start_offset(text, line, "set-eol-text!")?,
                     text: eol_text,
                     scope: self.view.registry.intern_runtime(&scope),
+                    hide_on_insert_line,
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
