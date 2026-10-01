@@ -524,13 +524,22 @@ fn lock() -> ClaimGuard {
 /// `runtime/` dir (so the real shipped plugin sources and catalogs are used)
 /// and `XDG_DATA_HOME` at `data_dir`. Env vars are process-global; callers
 /// must hold a `TEST_GLOBALS.claim(Global::Env)` for the test's duration.
-// Sanctioned caller; see `HumeRuntimeGuard::new`.
-#[allow(clippy::disallowed_methods)]
 fn load_with_init(ed: &mut Editor, data_dir: &Path, init_src: &str) {
-    let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    load_with_init_in_runtime(ed, &repo_runtime_dir(), data_dir, init_src);
+}
+
+fn repo_runtime_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
-        .join("runtime");
+        .join("runtime")
+}
+
+/// [`load_with_init`] against an explicit runtime directory, for a test
+/// that fabricates part of the runtime (e.g. `scheme/lsp-sources.scm`).
+// Sanctioned caller; see `HumeRuntimeGuard::new`.
+#[allow(clippy::disallowed_methods)]
+fn load_with_init_in_runtime(ed: &mut Editor, runtime_dir: &Path, data_dir: &Path, init_src: &str) {
     let config_tmp = safe_tempdir();
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
@@ -538,7 +547,7 @@ fn load_with_init(ed: &mut Editor, data_dir: &Path, init_src: &str) {
 
     unsafe {
         std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
+        std::env::set_var("HUME_RUNTIME", runtime_dir);
         std::env::set_var("XDG_DATA_HOME", data_dir);
     }
     ed.init_scripting(&mut Default::default());

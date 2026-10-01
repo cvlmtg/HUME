@@ -54,10 +54,19 @@
 
 ;; ── Asset format + installability ─────────────────────────────────────────────
 
-(define (lsp/asset-format asset-file)
-  (cond ((ends-with? asset-file ".zip") 'zip)
-        ((and (ends-with? asset-file ".gz") (not (ends-with? asset-file ".tar.gz"))) 'gz)
-        (else #f)))
+(define *lsp-tar-suffixes* '(".tar.gz" ".tgz" ".tar.xz" ".txz" ".tar.bz2"))
+
+(define (lsp/ends-with-any? s suffixes)
+  (if (call! "stdlib/find" (lambda (suffix) (ends-with? s suffix)) suffixes) #t #f))
+
+;; A download is a bare executable when it carries no archive extension; the
+;; sync guarantees its bin path equals the asset name in that case.
+(define (lsp/asset-format asset-file bin)
+  (cond ((lsp/ends-with-any? asset-file *lsp-tar-suffixes*) 'tar)
+        ((ends-with? asset-file ".zip") 'zip)
+        ((ends-with? asset-file ".gz") 'gz)
+        ((equal? asset-file bin) 'raw)
+        (else (error (string-append "lsp/asset-format: unsupported asset format: " asset-file)))))
 
 (define (lsp/find-target targets)
   (let ((want (string->symbol (hume-target))))
@@ -81,35 +90,45 @@
           (let ((target (lsp/find-target (cdr (lsp/field fields 'targets)))))
             (cond
               ((not target) "no prebuilt asset for this platform")
-              ((not (lsp/asset-format (list-ref target 1)))
-               (string-append "unsupported asset format (" (list-ref target 1) ") in v1"))
               (else #f)))))))))
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
-(define (lsp/required-tool name)
+;; Linux's tar shells out to the compressor; macOS and Windows tar link their own.
+(define (lsp/tar-compressor-tools asset-file)
+  (cond ((not (equal? (hume-target) "linux-x64")) '())
+        ((lsp/ends-with-any? asset-file '(".tar.xz" ".txz")) '("xz"))
+        ((ends-with? asset-file ".tar.bz2") '("bzip2"))
+        (else '())))
+
+(define (lsp/required-tools name)
   (let* ((fields (hash-ref *lsp-sources* name))
          (kind   (cdr (lsp/field fields 'kind))))
     (cond
-      ((equal? kind 'npm) "npm")
-      ((equal? kind 'cargo) "cargo")
+      ((equal? kind 'npm) '("npm"))
+      ((equal? kind 'cargo) '("cargo"))
       (else
        (let* ((target (lsp/find-target (cdr (lsp/field fields 'targets))))
-              (fmt    (lsp/asset-format (list-ref target 1))))
+              (asset  (list-ref target 1))
+              (fmt    (lsp/asset-format asset (list-ref target 3))))
          (cond
-           ((equal? fmt 'zip) (if (equal? (hume-target) "windows-x64") "tar" "unzip"))
-           (else "gzip")))))))
+           ((equal? fmt 'zip) (list (if (equal? (hume-target) "windows-x64") "tar" "unzip")))
+           ((equal? fmt 'tar) (cons "tar" (lsp/tar-compressor-tools asset)))
+           ((equal? fmt 'gz) '("gzip"))
+           (else '())))))))
 
 (define (lsp/preflight! name)
   (let* ((fields (hash-ref *lsp-sources* name))
          (kind   (cdr (lsp/field fields 'kind)))
-         (tool   (lsp/required-tool name)))
-    (unless (which tool)
-      (error (string-append "lsp/install-server!: " name " requires '" tool
-                            "' on $PATH, which was not found")))
-    (when (and (equal? kind 'github) (not (which "curl")))
-      (error (string-append "lsp/install-server!: " name
-                            " requires 'curl' on $PATH, which was not found")))))
+         (tools  (if (equal? kind 'github)
+                     (append (lsp/required-tools name) '("curl"))
+                     (lsp/required-tools name))))
+    (for-each
+      (lambda (tool)
+        (unless (which tool)
+          (error (string-append "lsp/install-server!: " name " requires '" tool
+                                "' on $PATH, which was not found"))))
+      tools)))
 
 (define (lsp/install-github! name fields dir)
   (let* ((repo    (cdr (lsp/field fields 'repo)))
@@ -118,17 +137,21 @@
          (asset   (list-ref target 1))
          (sha     (list-ref target 2))
          (bin     (list-ref target 3))
-         (fmt     (lsp/asset-format asset))
+         (fmt     (lsp/asset-format asset bin))
          (archive (path-join dir asset))
          (url     (string-append "https://github.com/" repo "/releases/download/"
                                  version "/" asset)))
     (create-directory! dir)
     (run-inline-output! "curl" (list "-fsSL" "-o" archive "--" url))
     (lsp/verify-sha256! archive sha)
-    (cond
-      ((equal? fmt 'gz) (unpack-gz! archive (path-join dir bin)))
-      ((equal? fmt 'zip) (unpack-zip! archive dir bin)))
-    (call! "stdlib/delete-file!" archive)
+    (if (equal? fmt 'raw)
+        (mark-executable! archive)
+        (begin
+          (cond
+            ((equal? fmt 'gz) (unpack-gz! archive (path-join dir bin)))
+            ((equal? fmt 'zip) (unpack-zip! archive dir bin))
+            ((equal? fmt 'tar) (unpack-tar! archive dir bin)))
+          (call! "stdlib/delete-file!" archive)))
     (unless (path-exists? (path-join dir bin))
       (error (string-append "lsp/install-github!: " name
                             ": expected binary not found after unpack: " bin)))

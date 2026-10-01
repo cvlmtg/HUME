@@ -107,6 +107,14 @@ MASON_TARGET_PRIORITY = {
 }
 
 ARCHIVE_EXTENSIONS = (".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".txz", ".zip", ".gz", ".xz")
+TAR_EXTENSIONS = (".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2")
+# Extensions of downloads the installer cannot turn into a runnable binary.
+# Anything else without one of the supported archive extensions is a bare
+# executable.
+UNSUPPORTED_EXTENSIONS = (
+    ".xz", ".bz2", ".zst", ".tzst", ".7z", ".rar", ".dmg", ".pkg", ".deb", ".rpm",
+    ".msi", ".vsix", ".nupkg", ".jar", ".whl",
+)
 _TEMPLATE_RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
 _BIN_PREFIX_RE = re.compile(r"^[a-z][a-z0-9_]*:(?!//)")
 _CARGO_SEMVER_RE = re.compile(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.\-]+)?")
@@ -218,6 +226,21 @@ def index_assets_by_mason_target(assets, package_name: str) -> dict:
                 )
             by_target[t] = asset
     return by_target
+
+
+def asset_format(asset_file: str, bin_path: str) -> str | None:
+    """Return 'tar', 'zip', 'gz' or 'raw' for a download the runtime's
+    `lsp/asset-format` (core:lsp servers.scm) can install, else None. A raw
+    download is the binary itself, so its bin path must equal its file name."""
+    if asset_file.endswith(TAR_EXTENSIONS):
+        return "tar"
+    if asset_file.endswith(".zip"):
+        return "zip"
+    if asset_file.endswith(".gz"):
+        return "gz"
+    if asset_file == bin_path and not asset_file.endswith(UNSUPPORTED_EXTENSIONS):
+        return "raw"
+    return None
 
 
 def pick_bin_template(bin_map: dict, helix_command: str, server_name: str):
@@ -333,8 +356,11 @@ def build_github_record(
             continue
         resolved_bin = strip_mason_bin_prefix(resolved_bin)
 
-        ext = next((e for e in ARCHIVE_EXTENSIONS if resolved_file.endswith(e)), None)
-        reports["format_census"][ext or "(raw)"] += 1
+        fmt = asset_format(resolved_file, resolved_bin)
+        if fmt is None:
+            reports["unsupported_format"].append((name, hume_target, resolved_file))
+            continue
+        reports["format_census"][fmt] += 1
 
         url = f"https://github.com/{repo}/releases/download/{version}/{resolved_file}"
         cached = hash_cache.get(url)
@@ -519,6 +545,7 @@ def main() -> None:
         "missing_platform": collections.Counter(),
         "format_census": collections.Counter(),
         "no_usable_targets": [],
+        "unsupported_format": [],
     }
 
     records = {}
@@ -560,6 +587,10 @@ def main() -> None:
         print(f"unresolved targets ({len(reports['unresolved_targets'])}):", file=sys.stderr)
         for name, target, field, template in reports["unresolved_targets"]:
             print(f"  {name} [{target}] {field}: {template!r}", file=sys.stderr)
+    if reports["unsupported_format"]:
+        print(f"unsupported asset formats, skipped ({len(reports['unsupported_format'])}):", file=sys.stderr)
+        for name, target, asset_file in reports["unsupported_format"]:
+            print(f"  {name} [{target}]: {asset_file}", file=sys.stderr)
     if reports["download_failures"]:
         print(f"download failures, skipped ({len(reports['download_failures'])}):", file=sys.stderr)
         for name, target, url in reports["download_failures"]:

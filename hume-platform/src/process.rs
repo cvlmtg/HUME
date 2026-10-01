@@ -10,7 +10,7 @@
 //!
 //! Stdio is captured (`sha256_file`, [`run_capture`]), inherited so the user
 //! sees live progress (`run_inline_output`, `tree_sitter_build`,
-//! `unpack_zip`), or piped to a file (`unpack_gz`).
+//! `unpack_zip`, `unpack_tar`), or piped to a file (`unpack_gz`).
 //!
 //! External tools reject Windows' `\\?\` prefix, so every path handed to a
 //! `Command` here goes through `strip_unc_prefix` first.
@@ -408,16 +408,8 @@ pub fn unpack_gz(src: &Path, dest: &Path) -> io::Result<()> {
 
 /// Extract the zip archive at `src` into `dest_dir`, by shelling out to
 /// `unzip -o` (Unix) or `tar -xf` (Windows, via bsdtar). `dest_dir` must
-/// already exist.
-///
-/// `bin_path` (relative to `dest_dir`) is the server binary the caller
-/// expects; verified to exist after extraction, mirroring `unpack_gz`'s
-/// guarantee. On Unix, every regular file in the extracted tree (not just
-/// `bin_path`) is chmod'd `0o755`. Unlike `.gz`, zip entries carry the
-/// archive's own stored permissions and CI-built release zips routinely
-/// strip the exec bit, so a layout with a wrapper script or sibling helpers
-/// needs all of them executable. Every check/chmod goes through
-/// `symlink_metadata`, so a symlink is never followed.
+/// already exist. See [`unpack_tar`] for the post-extraction guarantees,
+/// which are identical.
 ///
 /// Zip-slip and symlink-entry protection is delegated to the system tool
 /// (modern Info-ZIP strips `../` entries; bsdtar refuses them by default);
@@ -441,20 +433,68 @@ pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()
             exit_code_str(status)
         )));
     }
-    let bin_full = dest_dir.join(bin_path);
+    finish_unpack(&dest_dir, bin_path)
+}
+
+/// See the Unix `unpack_zip` doc comment: same contract, via bsdtar, which
+/// is built into Windows 10+ and reads zip archives.
+#[cfg(windows)]
+pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()> {
+    unpack_tar(src, dest_dir, bin_path)
+}
+
+/// Extract the tar archive at `src` into `dest_dir` with `tar -xf`, which
+/// detects gzip, xz and bzip2 compression itself. `dest_dir` must already
+/// exist.
+///
+/// `bin_path` (relative to `dest_dir`) is the server binary the caller
+/// expects; verified to exist after extraction, mirroring `unpack_gz`'s
+/// guarantee. On Unix, every regular file in the extracted tree (not just
+/// `bin_path`) is chmod'd `0o755`: archive entries carry their stored
+/// permissions and CI-built release archives routinely strip the exec bit,
+/// so a layout with a wrapper script or sibling helpers needs all of them
+/// executable. Every check and chmod goes through `symlink_metadata`, so a
+/// symlink is never followed. Windows has no exec bit, so nothing is chmod'd
+/// there.
+///
+/// Path-traversal protection is delegated to the system tool, bounded by
+/// the sync-time sha256 pin as described on [`unpack_zip`].
+pub fn unpack_tar(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()> {
+    let src = strip_unc_prefix(src.to_path_buf());
+    let dest_dir = strip_unc_prefix(dest_dir.to_path_buf());
+    let status = Command::new("tar")
+        .arg("-xf")
+        .arg(&src)
+        .arg("-C")
+        .arg(&dest_dir)
+        .new_process_group()
+        .status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!(
+            "tar -xf failed ({})",
+            exit_code_str(status)
+        )));
+    }
+    finish_unpack(&dest_dir, bin_path)
+}
+
+/// Verify `bin_path` exists under `dest_dir` as a regular file and, on Unix,
+/// chmod every regular file in the tree.
+fn finish_unpack(dest_dir: &Path, bin_path: &Path) -> io::Result<()> {
     let missing_binary = || {
         io::Error::other(format!(
             "extracted archive is missing expected binary: {}",
             bin_path.display()
         ))
     };
-    if !std::fs::symlink_metadata(&bin_full)
+    let is_file = std::fs::symlink_metadata(dest_dir.join(bin_path))
         .map_err(|_| missing_binary())?
-        .is_file()
-    {
+        .is_file();
+    if !is_file {
         return Err(missing_binary());
     }
-    chmod_all_regular_files(&dest_dir)?;
+    #[cfg(unix)]
+    chmod_all_regular_files(dest_dir)?;
     Ok(())
 }
 
@@ -477,30 +517,21 @@ fn chmod_all_regular_files(dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// See the Unix `unpack_zip` doc comment: same contract, via `tar -xf`
-/// (bsdtar, built into Windows 10+) instead of `unzip`. No chmod: Windows has
-/// no exec-bit concept.
-#[cfg(windows)]
-pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()> {
-    let src = strip_unc_prefix(src.to_path_buf());
-    let dest_dir = strip_unc_prefix(dest_dir.to_path_buf());
-    let status = Command::new("tar")
-        .arg("-xf")
-        .arg(&src)
-        .arg("-C")
-        .arg(&dest_dir)
-        .status()?;
-    if !status.success() {
+/// Mark the single downloaded binary at `path` executable (`0o755` on Unix,
+/// nothing on Windows). Errors if `path` is not a regular file; a symlink is
+/// refused rather than followed.
+pub fn mark_executable(path: &Path) -> io::Result<()> {
+    let path = strip_unc_prefix(path.to_path_buf());
+    if !std::fs::symlink_metadata(&path)?.is_file() {
         return Err(io::Error::other(format!(
-            "tar -xf failed ({})",
-            exit_code_str(status)
+            "not a regular file: {}",
+            path.display()
         )));
     }
-    if !dest_dir.join(bin_path).is_file() {
-        return Err(io::Error::other(format!(
-            "extracted archive is missing expected binary: {}",
-            bin_path.display()
-        )));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
     }
     Ok(())
 }

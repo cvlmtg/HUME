@@ -344,6 +344,8 @@
 (#%register-global "unindent")
 (#%register-global "unpack-gz!")
 (#%register-global "unpack-zip!")
+(#%register-global "unpack-tar!")
+(#%register-global "mark-executable!")
 (#%register-global "unregister-lsp-server!")
 (#%register-global "untrack-position!")
 (#%register-global "update-drawer-list!")

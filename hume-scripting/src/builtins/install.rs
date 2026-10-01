@@ -7,7 +7,8 @@
 //! sha256 hashing and archive unpacking shell out to per-platform system
 //! tools (`hume_platform::process`) rather than pulling in hashing/archive
 //! crates: `shasum`/`sha256sum`/`certutil` for hashing, `gzip` for `.gz`,
-//! `unzip`/`tar` for `.zip`. The OS/toolchain already ships all of these,
+//! `tar` for `.zip` on Windows and every tar archive, `unzip` for `.zip`
+//! elsewhere. The OS/toolchain already ships all of these,
 //! so it costs no new install step in the common case, at the price of a
 //! hard runtime dependency on them being present.
 //!
@@ -17,6 +18,8 @@
 //! | `sha256-file`                   | `string → string`      | sha256 digest as lowercase hex     |
 //! | `unpack-gz!`                     | `string string → void` | `gzip -dc`, chmod 0755 on Unix     |
 //! | `unpack-zip!`                    | `string string string → void` | `unzip`/`tar`, bin-path chmod'd |
+//! | `unpack-tar!`                    | `string string string → void` | `tar -xf` (gz/xz/bz2), bin-path chmod'd |
+//! | `mark-executable!`               | `string → void`       | chmod 0755 on Unix; refuses non-files |
 //! | `acquire-install-lock!`         | `() → void`            | O_EXCL over `<data>/servers/.install-lock`; stale (>1h) → replace |
 //! | `release-install-lock!`        | `() → void`            | idempotent: a missing lock is not an error |
 //! | `%run-inline-output!`           | `string list string|#f → int` | process-group-isolated spawn for `#:inline-output` commands; see `run_inline_output` doc |
@@ -89,10 +92,10 @@ pub(crate) fn unpack_gz(ctx: &mut SteelCtx, src: String, dest: String) -> SteelR
 
 /// `(unpack-zip! src dest-dir bin-path)`: extract the zip archive at `src`
 /// into `dest-dir` (`unzip -o` on Unix, `tar -xf` on Windows), then verify
-/// `bin-path` (relative to `dest-dir`) exists and (on Unix) chmod it
-/// `0o755`. Unlike `.gz` (always a bare executable, chmod'd unconditionally),
-/// zip entries carry the archive's own stored permissions and CI-built
-/// release zips routinely strip the exec bit.
+/// `bin-path` (relative to `dest-dir`) exists and (on Unix) chmod the
+/// extracted files `0o755`. Unlike `.gz` (always a bare executable, chmod'd
+/// unconditionally), archive entries carry their own stored permissions and
+/// CI-built release archives routinely strip the exec bit.
 ///
 /// Zip-slip and symlink-entry protection is delegated to the system tool
 /// (modern Info-ZIP strips `../` entries; bsdtar refuses them by default);
@@ -111,28 +114,72 @@ pub(crate) fn unpack_zip(
     dest_dir: String,
     bin_path: String,
 ) -> SteelResult {
-    let src_path = PathBuf::from(&src);
-    let dest_path = PathBuf::from(&dest_dir);
-    std::fs::create_dir_all(&dest_path).map_err(|e| {
+    unpack_archive(
+        ctx,
+        "unpack-zip!",
+        hume_platform::process::unpack_zip,
+        &src,
+        &dest_dir,
+        &bin_path,
+    )
+}
+
+/// `(unpack-tar! src dest-dir bin-path)`: same contract as `unpack-zip!`
+/// for a tar archive (`tar -xf`, which detects gzip, xz and bzip2 itself).
+pub(crate) fn unpack_tar(
+    ctx: &mut SteelCtx,
+    src: String,
+    dest_dir: String,
+    bin_path: String,
+) -> SteelResult {
+    unpack_archive(
+        ctx,
+        "unpack-tar!",
+        hume_platform::process::unpack_tar,
+        &src,
+        &dest_dir,
+        &bin_path,
+    )
+}
+
+/// `(mark-executable! path)`: chmod a single downloaded binary `0o755` on
+/// Unix (nothing on Windows). Errors if `path` is not a regular file.
+pub(crate) fn mark_executable(ctx: &mut SteelCtx, path: String) -> SteelResult {
+    ctx.log(LogLevel::Trace, format!("mark-executable!: {path}"));
+    hume_platform::process::mark_executable(Path::new(&path))
+        .map_err(|e| generic_err(format!("mark-executable!: {e}")))?;
+    Ok(SteelVal::Void)
+}
+
+fn unpack_archive(
+    ctx: &mut SteelCtx,
+    builtin: &str,
+    unpack: fn(&Path, &Path, &Path) -> std::io::Result<()>,
+    src: &str,
+    dest_dir: &str,
+    bin_path: &str,
+) -> SteelResult {
+    let dest_path = Path::new(dest_dir);
+    std::fs::create_dir_all(dest_path).map_err(|e| {
         generic_err(format!(
-            "unpack-zip!: cannot create dest dir '{dest_dir}': {e}"
+            "{builtin}: cannot create dest dir '{dest_dir}': {e}"
         ))
     })?;
 
     ctx.log(
         LogLevel::Trace,
-        format!("unpack-zip!: {src} → {dest_dir} (bin: {bin_path})"),
+        format!("{builtin}: {src} → {dest_dir} (bin: {bin_path})"),
     );
 
-    // `unzip`/`tar` inherit stdio (see `hume_platform::process::unpack_zip`'s
+    // The archive tool inherits stdio (see `hume_platform::process::unpack_zip`'s
     // doc), so this is a real terminal write: open the bracket first.
     if let Some(output) = ctx.host.output() {
         output
             .ensure_inline_output_screen()
-            .map_err(|e| generic_err(format!("unpack-zip!: {e}")))?;
+            .map_err(|e| generic_err(format!("{builtin}: {e}")))?;
     }
-    hume_platform::process::unpack_zip(&src_path, &dest_path, Path::new(&bin_path))
-        .map_err(|e| generic_err(format!("unpack-zip!: {e}")))?;
+    unpack(Path::new(src), dest_path, Path::new(bin_path))
+        .map_err(|e| generic_err(format!("{builtin}: {e}")))?;
     Ok(SteelVal::Void)
 }
 

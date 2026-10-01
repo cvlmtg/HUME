@@ -365,3 +365,122 @@ fn unpack_zip_missing_expected_binary_is_error() {
         "expected error naming the missing binary, got: {err}"
     );
 }
+
+// ── unpack_tar ─────────────────────────────────────────────────────────────
+
+fn make_tar_gz(dir: &Path, entry: &str, contents: &[u8]) -> std::path::PathBuf {
+    let src_dir = dir.join("src");
+    let entry_path = src_dir.join(entry);
+    std::fs::create_dir_all(entry_path.parent().expect("entry has a parent")).expect("mkdir src");
+    std::fs::write(&entry_path, contents).expect("write fixture");
+    let tar_path = dir.join("archive.tar.gz");
+    let status = Command::new("tar")
+        .arg("-czf")
+        .arg(&tar_path)
+        .arg("-C")
+        .arg(&src_dir)
+        .arg(".")
+        .status()
+        .expect("spawn tar");
+    assert!(status.success());
+    tar_path
+}
+
+#[test]
+fn unpack_tar_round_trip_sets_exec_bit_on_a_nested_bin_path() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let tar_path = make_tar_gz(dir.path(), "pkg/bin/server", b"binary contents");
+    let dest_dir = dir.path().join("dest");
+    std::fs::create_dir(&dest_dir).expect("mkdir dest");
+
+    unpack_tar(&tar_path, &dest_dir, Path::new("pkg/bin/server")).expect("unpack_tar");
+
+    let unpacked = dest_dir.join("pkg/bin/server");
+    assert_eq!(
+        std::fs::read(&unpacked).expect("read unpacked entry"),
+        b"binary contents"
+    );
+    let mode = std::fs::metadata(&unpacked)
+        .expect("metadata")
+        .permissions()
+        .mode();
+    assert_eq!(
+        mode & 0o777,
+        0o755,
+        "unpacked tar binary must be executable"
+    );
+}
+
+#[test]
+fn unpack_tar_missing_expected_binary_is_error() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let tar_path = make_tar_gz(dir.path(), "other", b"x");
+    let dest_dir = dir.path().join("dest");
+    std::fs::create_dir(&dest_dir).expect("mkdir dest");
+    assert!(unpack_tar(&tar_path, &dest_dir, Path::new("bin-name")).is_err());
+}
+
+#[test]
+fn unpack_tar_missing_source_is_error() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let dest_dir = dir.path().join("dest");
+    std::fs::create_dir(&dest_dir).expect("mkdir dest");
+    assert!(
+        unpack_tar(
+            &dir.path().join("missing.tar.gz"),
+            &dest_dir,
+            Path::new("bin-name")
+        )
+        .is_err()
+    );
+}
+
+// ── mark_executable ────────────────────────────────────────────────────────
+
+#[test]
+fn mark_executable_sets_exec_bit() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("server");
+    std::fs::write(&path, b"binary contents").expect("write fixture");
+
+    mark_executable(&path).expect("mark_executable");
+
+    let mode = std::fs::metadata(&path)
+        .expect("metadata")
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o755);
+}
+
+#[test]
+fn mark_executable_missing_file_is_error() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    assert!(mark_executable(&dir.path().join("missing")).is_err());
+}
+
+#[test]
+fn mark_executable_refuses_a_symlink() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let target = dir.path().join("target");
+    std::fs::write(&target, b"x").expect("write fixture");
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600)).expect("chmod");
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&target, &link).expect("symlink");
+
+    assert!(mark_executable(&link).is_err());
+    let mode = std::fs::metadata(&target)
+        .expect("metadata")
+        .permissions()
+        .mode();
+    assert_eq!(
+        mode & 0o777,
+        0o600,
+        "a symlink's target must never be chmod'd"
+    );
+}

@@ -65,7 +65,7 @@ fn sha256_file_missing_source_is_error() {
     assert!(sha256_file(&mut ctx, f.to_string_lossy().to_string()).is_err());
 }
 
-// ── unpack-gz! / unpack-zip! ───────────────────────────────────────────────
+// ── unpack-gz! / unpack-zip! / unpack-tar! / mark-executable! ───────────────────────────────────────────────
 //
 // Round-trip behavior (content, exec bit, zip entries, symlink safety)
 // is covered by `hume-platform`'s own tests against the real system
@@ -129,6 +129,57 @@ fn unpack_zip_calls_ensure_before_unzip() {
     );
     drop(ctx);
     assert_eq!(host.ensure_calls, 1);
+}
+
+#[test]
+fn unpack_tar_missing_src_is_error() {
+    let tmp = TempDir::new().unwrap();
+    let src = tmp.path().join("does-not-exist.tar.gz");
+    let dest_dir = tmp.path().join("out-dir");
+
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    assert!(
+        unpack_tar(
+            &mut ctx,
+            src.to_string_lossy().to_string(),
+            dest_dir.to_string_lossy().to_string(),
+            "bin".to_string(),
+        )
+        .is_err()
+    );
+}
+
+/// `unpack-tar!` shells out to `tar` with inherited stdio, so it must open
+/// the inline-output bracket before spawning it, even when the spawn itself
+/// then fails (missing src).
+#[test]
+fn unpack_tar_calls_ensure_before_tar() {
+    let tmp = TempDir::new().unwrap();
+    let src = tmp.path().join("does-not-exist.tar.gz");
+    let dest_dir = tmp.path().join("out-dir");
+
+    let mut host = RecordingInlineOutputHost::default();
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_with_host(&mut host);
+    let _ = unpack_tar(
+        &mut ctx,
+        src.to_string_lossy().to_string(),
+        dest_dir.to_string_lossy().to_string(),
+        "bin".to_string(),
+    );
+    drop(ctx);
+    assert_eq!(host.ensure_calls, 1);
+}
+
+#[test]
+fn mark_executable_missing_file_is_error() {
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("does-not-exist");
+
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    assert!(mark_executable(&mut ctx, path.to_string_lossy().to_string()).is_err());
 }
 
 // ── acquire-install-lock! / release-install-lock! ───────────────────────

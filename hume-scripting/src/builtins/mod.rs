@@ -315,6 +315,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open  "sha256-file" install::sha256_file(path: String);
         open  "unpack-gz!" install::unpack_gz(src: String, dest: String);
         open  "unpack-zip!" install::unpack_zip(src: String, dest_dir: String, bin_path: String);
+        open  "unpack-tar!" install::unpack_tar(src: String, dest_dir: String, bin_path: String);
+        open  "mark-executable!" install::mark_executable(path: String);
         open  "acquire-install-lock!" install::acquire_install_lock();
         open  "release-install-lock!" install::release_install_lock();
         open  "%run-inline-output!" install::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal);

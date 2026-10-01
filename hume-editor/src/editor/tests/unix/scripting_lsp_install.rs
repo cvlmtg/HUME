@@ -14,6 +14,7 @@
 //     installable
 //   nil (language "nix"): cargo-git, a Mason git-tag pin, a stub: not
 //     installable
+//   ocamllsp (language "ocaml"): opam, a stub: not installable
 
 use std::path::Path;
 
@@ -651,21 +652,23 @@ fn lsp_install_no_language_buffer_and_no_arg_warns() {
 }
 
 #[test]
-fn lsp_install_unsupported_asset_format_fails_loudly() {
+fn lsp_install_tar_archive_requires_tar_on_path() {
     let _lock = lock();
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
-    // ada-language-server ships only .tar.gz on every platform, unsupported
-    // in v1 (step 2 shipped plain-.gz and .zip unpacking only) regardless of
-    // which host OS runs this test.
-    type_cmd(&mut ed, ":lsp-install ada");
+    // ada-language-server ships only .tar.gz on every platform.
+    let empty_path_dir = safe_tempdir();
+    {
+        let _path = EnvVarGuard::set("PATH", empty_path_dir.path());
+        type_cmd(&mut ed, ":lsp-install ada");
+    }
 
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("unsupported asset format"),
-        "a tar.gz-only server must fail naming the format, not silently skip: {log}"
+        log.contains("requires 'tar' on $PATH"),
+        "a tar-archive server must preflight tar before downloading: {log}"
     );
 }
 
@@ -683,10 +686,10 @@ fn install_lock_is_released_after_a_failed_install() {
     // Fails inside lsp/install-server! (lsp/install-blocker), i.e. inside
     // lsp/with-install-lock!'s thunk. Exercises the release-on-failure path,
     // not the release-on-success path every other install test hits.
-    type_cmd(&mut ed, ":lsp-install ada");
+    type_cmd(&mut ed, ":lsp-install ocaml");
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("unsupported asset format"),
+        log.contains("opam"),
         "sanity: the install must actually have failed: {log}"
     );
 
@@ -703,7 +706,7 @@ fn install_lock_is_released_after_a_failed_install() {
     // A second, unrelated install must be able to acquire the lock. Proves
     // release actually happened, not just that the sentinel file is
     // (coincidentally) absent.
-    type_cmd(&mut ed, ":lsp-install ada");
+    type_cmd(&mut ed, ":lsp-install ocaml");
     let log = ed.state.message_log.format_for_display();
     assert!(
         !log.contains("already in progress"),
@@ -1453,4 +1456,199 @@ fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
         ed.lsp.config_command_for_test("pest").is_none(),
         "pest must not be registered when the install failed"
     );
+}
+
+// ── github-kind download pipeline (fabricated sources, fake curl) ───────────────
+//
+// The real catalog pins each asset's sha256, so a fabricated archive can't
+// pass it. These tests run the shipped plugin sources against a runtime copy
+// whose `scheme/lsp-sources.scm` names a fabricated asset with its true
+// digest, and a `curl` shim that copies that asset into place.
+
+/// Copy of the repo's `runtime/` whose `scheme/lsp-sources.scm` is `sources`.
+fn runtime_with_sources(sources: &str) -> tempfile::TempDir {
+    let runtime = safe_tempdir();
+    let status = std::process::Command::new("cp")
+        .arg("-R")
+        .arg(format!("{}/.", repo_runtime_dir().display()))
+        .arg(runtime.path())
+        .status()
+        .expect("spawn cp");
+    assert!(status.success());
+    std::fs::write(
+        runtime.path().join("scheme").join("lsp-sources.scm"),
+        sources,
+    )
+    .unwrap();
+    runtime
+}
+
+fn sha256_hex(path: &Path) -> String {
+    let out = std::process::Command::new("shasum")
+        .args(["-a", "256"])
+        .arg(path)
+        .output()
+        .expect("spawn shasum");
+    String::from_utf8(out.stdout)
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_string()
+}
+
+/// A github-kind source record serving `asset` (digest of `fixture`) for
+/// every Unix install target, with `bin` as the binary's path in the server
+/// directory.
+fn github_source(name: &str, asset: &str, fixture: &Path, bin: &str) -> String {
+    let sha = sha256_hex(fixture);
+    let targets: String = ["darwin-arm64", "darwin-x64", "linux-x64"]
+        .iter()
+        .map(|t| format!("({t} \"{asset}\" \"sha256:{sha}\" \"{bin}\")"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        "((\"{name}\" (kind . github) (version . \"9.9.9\") (repo . \"o/r\") (targets {targets})))"
+    )
+}
+
+/// Fake `curl` that copies `fixture` to its `-o` argument and records its
+/// argv to `args_file`. The real `tar`/`gzip`/`unzip` stay reachable through
+/// the returned `$PATH` value.
+fn write_fake_curl_shim(fixture: &Path, args_file: &Path) -> (tempfile::TempDir, String) {
+    let shim_dir = safe_tempdir();
+    let body = format!(
+        "#!/bin/sh\n\
+         PATH=/usr/bin:/bin\n\
+         printf '%s\\n' \"$@\" > {args_file}\n\
+         out=\"\"; prev=\"\"\n\
+         for a in \"$@\"; do [ \"$prev\" = \"-o\" ] && out=\"$a\"; prev=\"$a\"; done\n\
+         cp {fixture} \"$out\"\n",
+        args_file = args_file.display(),
+        fixture = fixture.display(),
+    );
+    let shim_path = shim_dir.path().join("curl");
+    std::fs::write(&shim_path, body).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&shim_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let path = format!("{}:/usr/bin:/bin", shim_dir.path().display());
+    (shim_dir, path)
+}
+
+#[test]
+fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _lock = lock();
+    let work = safe_tempdir();
+    let payload = work.path().join("payload");
+    std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
+    std::fs::write(payload.join("pkg/bin/lua-language-server"), b"#!/bin/sh\n").unwrap();
+    let archive = work.path().join("lls.tar.gz");
+    assert!(
+        std::process::Command::new("tar")
+            .arg("-czf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(&payload)
+            .arg(".")
+            .status()
+            .unwrap()
+            .success()
+    );
+    let runtime = runtime_with_sources(&github_source(
+        "lua-language-server",
+        "lls.tar.gz",
+        &archive,
+        "pkg/bin/lua-language-server",
+    ));
+    let args_file = work.path().join("curl-argv.txt");
+    let (_shim, path) = write_fake_curl_shim(&archive, &args_file);
+
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init_in_runtime(
+        &mut ed,
+        runtime.path(),
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp\")",
+    );
+    {
+        let _path = EnvVarGuard::set("PATH", &path);
+        type_cmd(&mut ed, ":lsp-install lua");
+    }
+
+    let server_dir = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("lua-language-server");
+    let bin = server_dir.join("pkg/bin/lua-language-server");
+    assert_eq!(
+        std::fs::metadata(&bin)
+            .expect("binary must be unpacked")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o755
+    );
+    assert!(
+        !server_dir.join("lls.tar.gz").exists(),
+        "the downloaded archive must be deleted after unpacking"
+    );
+    let cmd = ed
+        .lsp
+        .config_command_for_test("lua")
+        .expect("lua must be registered after a successful install");
+    assert_eq!(Path::new(&cmd), bin);
+}
+
+#[test]
+fn lsp_install_raw_binary_is_marked_executable_and_kept() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _lock = lock();
+    let work = safe_tempdir();
+    let asset = work.path().join("marksman-fake");
+    std::fs::write(&asset, b"#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&asset, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let runtime = runtime_with_sources(&github_source(
+        "marksman",
+        "marksman-fake",
+        &asset,
+        "marksman-fake",
+    ));
+    let args_file = work.path().join("curl-argv.txt");
+    let (_shim, path) = write_fake_curl_shim(&asset, &args_file);
+
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init_in_runtime(
+        &mut ed,
+        runtime.path(),
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp\")",
+    );
+    {
+        let _path = EnvVarGuard::set("PATH", &path);
+        type_cmd(&mut ed, ":lsp-install markdown");
+    }
+
+    let bin = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("marksman")
+        .join("marksman-fake");
+    assert_eq!(
+        std::fs::metadata(&bin)
+            .expect("the raw download is the binary and must be kept")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o755
+    );
+    let cmd = ed
+        .lsp
+        .config_command_for_test("markdown")
+        .expect("markdown must be registered after a successful install");
+    assert_eq!(Path::new(&cmd), bin);
 }
