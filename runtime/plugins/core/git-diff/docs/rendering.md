@@ -1,109 +1,114 @@
 # core:git-diff — Rendering (`render.scm`)
 
 Every function in this file is a pure `hunks → decoration records` view over the one hunk
-shape `state.scm` stores (the additivity invariant described in `docs/architecture.md`'s
-"State" section), ending in exactly one setter call. `render-inline!` is the one
-documented exception, below. All setters share a feature-scoped source name, `"git-diff"`,
-not the `core:git-diff` plugin id, matching `core:lsp`'s own decoration sources
-(`"lsp-diagnostics"`, `"lsp-inlay-hints"`).
-
-## Signs
-
-Signs render at VSCode/gitsigns density (one per changed line, not one per hunk: a
-20-line paste shows 20 `+` marks). Its gutter slot comes from registering `"git-diff"` as
-a sign source *per buffer* (idempotently, right before every `set-signs!` call), rather
-than from anything in the call itself. A buffer whose signs never render (untracked, or
-`"signs?"` never turned on) never reserves this slot. This plugin's sign priority is `0`;
-its rank against every other source registered for the same buffer, `core:lsp`'s
-`"lsp-diagnostics"` source (priority `10`) included, decides its gutter slot there (see
-`docs/LSP.md`'s `register-sign-source!` entry). `0` puts git-diff last in a buffer's
-registry, so its column is the first to fall off signcolumn's auto-size cap when several
-higher-priority channels share the buffer.
-
-### Sign kinds
-
-| Hunk shape | Sign | Glyph | Where |
-|---|---|---|---|
-| Pure deletion (no new-side lines), at end of file | — | `▁` (bottom-aligned) | `(- new-start 1)`, the line above the gap |
-| Pure deletion at the very start (`new-start` 0) | — | `▔` (top-aligned) | Line `0` |
-| Pure addition (`old-count` 0) | `+` | `+` | Every new-side line |
-| Anything else | `~` | `~` | Every new-side line |
-
-A pure deletion has no new-side lines to anchor on, so its sign lands on the line above
-the gap instead (gitsigns' convention); `(- new-start 1)` sidesteps an out-of-range
-`set-signs!` call for a deletion at end of file. It draws bottom-aligned so it reads as a
-mark on the boundary *below* that line rather than on the line itself; a deletion at line
-0 has no line above to anchor on, so it gets the top-aligned glyph instead.
-
-The `(apply append …)` that joins the per-hunk sign lists is deliberate, not `flatten`: a
-sign entry is itself a list, and `flatten` would tear each one apart. An empty `hunks`
-clears the gutter (`set-signs!` replaces a source's signs wholesale), so this doubles as
-the clear function.
-
-## Inline: deleted lines + word highlights
-
-Where a hunk's removed old-side lines attach, as a `(kind . line)` anchor pair:
-`'after (- new-start 1)` when a preceding line exists. It renders at the same position
-`'before new-start` would, but stays valid when `new-start` is the buffer's content line
-count (a deletion at end of file, where `'before new-start` would address the phantom
-trailing line and raise). `'before 0` only for a deletion at the very start.
-
-`'segments` is omitted when empty rather
-than set to `'()`, keeping the hash to what's used. A whole removed line with no
-word-level detail passes the old line straight through as `'text`; `set-virtual-lines!`
-accepts a literal tab and expands it itself.
-
-A removed line's word-deletion `'segments` come from `diff-words`' hunks (`'old-start`, `'old-end`,
-`'new-start`, `'new-end`, `'old-text`, `'new-text`), filtered to `'old-start < 'old-end`: a pure
-insertion has nothing to underline on the old-side line, and a zero-width segment would
-raise (`set-virtual-lines!`'s `start < end` check). The new-side counterpart
-(`(hash 'start 'end 'scope)` spans in *buffer* char offsets, since `set-extra-highlights!`
-addresses the whole buffer, not one line) is filtered to `new-start < new-end` for the
-same reason.
-
-Char offsets for a hunk's paired new-side lines are computed without one `line->offset`
-host call per line: only the hunk's first new-side line needs it; every later line is
-exactly its predecessor's length plus one `\n` further along.
-
-One paired `(old-line . new-line)` becomes a `(virtual-line . spans)` pair from a single
-`diff-words` call shared by both sides; the two-setter exception described below starts
-here. Within a hunk, old-lines `[0, paired-count)` have a same-index new-line counterpart
-to word-diff against; any remainder gets a plain whole-line virtual line. The three-list
-walk (old-lines, new-lines, offsets) advances via `cdr`, not `list-ref` by index. Steel
-lists are linked, so indexing would make this quadratic in `paired-count`.
-
-A pure addition (`old-count` zero) contributes nothing to the inline pass: nothing was
-removed to show as a virtual line; the line-background pass alone covers its new-side
-tint.
-
-`render-inline!` makes two setter calls (`set-virtual-lines!`/`set-extra-highlights!`)
-instead of this file's usual one: a single `diff-words` pass inherently produces two
-decoration kinds (old-side virtual lines and new-side highlight spans), and splitting it
-into two renderers to keep one setter each would call `diff-words` twice for no benefit.
-
-## Line background tint
-
-One hunk becomes `(hash 'line 'scope)` entries, one per new-side line: pure add → `diff.plus.line`,
-change → `diff.delta.line`. A pure delete contributes nothing: the inline pass's virtual
-lines already cover the removed content, tinted via `diff.minus.line` on the virtual
-line's own scope instead. No priority field on this setter (unlike `set-signs!`), since this
-plugin is the only tint producer for its own scopes.
-
-### Scope naming
-
-| Bare scope | `.line` scope | Used for |
-|---|---|---|
-| `diff.plus`, `diff.minus`, `diff.delta` | — | Helix's own scope names, read as `fg` for the gutter marker's color |
-| — | `diff.plus.line`, `diff.minus.line`, `diff.delta.line` | HUME's row/virtual-line tint |
-
-The `.line` suffix matters: the bare names are Helix's own, so HUME's row/virtual-line
-tint (a Helix-incompatible extension) gets its own suffix rather than shadowing what a
-Helix theme means by the bare name.
+shape `state.scm` stores (see [One hunk store](architecture.md#one-hunk-store)), and ends in
+one setter call. `render-inline!` makes two. All setters share a feature-scoped source name,
+`"git-diff"`, not the `core:git-diff` plugin id, matching `core:lsp`'s own decoration
+sources (`"lsp-diagnostics"`, `"lsp-inlay-hints"`).
 
 ## Flag → renderer dispatch
 
-`render-for!` is the one place a flag key (`"signs?"`/`"inline?"`) maps to its
-renderer(s), so every caller that needs to paint or clear a rendering (`diff.scm`'s
-`apply-hunks!` on a live refresh, `plugin.scm`'s toggle command on enable/disable) goes
-through it rather than re-stating the mapping.
+`render-for!` is the one place a flag key (`"signs?"` or `"inline?"`) maps to its
+renderers: `"signs?"` calls `render-signs!`, and any other key calls `render-inline!` then
+`render-line-bgs!`. Every caller that paints or clears a rendering goes through it:
+`diff.scm`'s `apply-hunks!` on a live refresh and `plugin.scm`'s toggle command on enable
+and disable.
 
+## Scope naming
+
+| Scope | Used for |
+|---|---|
+| `diff.plus`, `diff.minus`, `diff.delta` | Helix's own names, read as `fg` for the gutter marker's color |
+| `diff.plus.line`, `diff.minus.line`, `diff.delta.line` | HUME's row and virtual-line tint |
+| `diff.plus.word`, `diff.minus.word` | Word-level highlights inside a changed line pair |
+
+The bare names are Helix's own, so HUME's tint, which a Helix theme does not define, uses
+the `.line` suffix.
+
+## Signs
+
+Signs render at VSCode/gitsigns density: one per changed line, not one per hunk, so a
+20-line paste shows 20 `+` marks.
+
+### Sign priority
+
+The gutter slot comes from registering `"git-diff"` as a sign source for the buffer,
+idempotently, right before every `set-signs!` call, and not from anything in the call
+itself. A buffer whose signs never render, because it is untracked or `"signs?"` was never
+turned on, never reserves the slot. The source's priority is `0`, ranked against every
+other source registered for the buffer. `core:lsp`'s `"lsp-diagnostics"` is `10`; see the
+`register-sign-source!` entry in [`docs/LSP.md`](../../../../../docs/LSP.md). Priority `0`
+puts git-diff last, so its column is the first to fall off the signcolumn auto-size cap
+when several higher-priority sources share the buffer.
+
+### Sign kinds
+
+| Hunk shape | Text | Scope | Line |
+|---|---|---|---|
+| Pure deletion (`new-count` 0) with `new-start` above 0 | `▁` (bottom-aligned) | `diff.minus` | `(- new-start 1)`, the line above the gap |
+| Pure deletion at the very start (`new-count` 0, `new-start` 0) | `▔` (top-aligned) | `diff.minus` | `0` |
+| Pure addition (`old-count` 0) | `+` | `diff.plus` | Every new-side line |
+| Anything else | `~` | `diff.delta` | Every new-side line |
+
+A pure deletion has no new-side lines to anchor on, so its sign lands on the line above the
+gap (gitsigns' convention). `(- new-start 1)` also keeps a deletion at end of file from
+addressing a line past the end. The bottom-aligned glyph reads as a mark on the boundary
+below that line. A deletion at line 0 has no line above, so it gets the top-aligned glyph.
+
+The `(apply append …)` that joins the per-hunk sign lists is not `flatten`: a sign entry
+is itself a list, and `flatten` would tear each one apart. An empty `hunks` clears the
+gutter, since `set-signs!` replaces a source's signs wholesale, so the same function clears.
+
+## Line background tint
+
+`render-line-bgs!` turns one hunk into `(hash 'line 'scope)` entries, one per new-side
+line: `diff.plus.line` for a pure addition and `diff.delta.line` for a change. A pure
+deletion adds nothing, since the inline pass's virtual lines cover the removed content and
+carry `diff.minus.line` on their own scope. `set-line-backgrounds!` has no priority
+argument; this plugin is the only producer of these scopes.
+
+## Inline: deleted lines and word highlights
+
+`render-inline!` makes two setter calls, `set-virtual-lines!` and `set-extra-highlights!`.
+One `diff-words` pass produces two decoration kinds, old-side virtual lines and new-side
+highlight spans, and both come from the same call.
+
+A pure addition (`old-count` 0) contributes nothing to this pass: there is nothing removed
+to show. The line-background pass alone tints its new-side lines.
+
+### Anchors
+
+A hunk's removed old-side lines attach at a `(kind . line)` anchor pair: `'after
+(- new-start 1)` when `new-start` is above 0, and `'before 0` for a deletion at the very
+start. `'after (- new-start 1)` renders where `'before new-start` would, and stays valid
+when `new-start` is the buffer's content line count, a deletion at end of file, where
+`'before new-start` would address the phantom trailing line and raise.
+
+### Virtual lines
+
+Within a hunk, old-lines `[0, paired-count)` have a same-index new-line to word-diff
+against, with `paired-count` the smaller of `old-count` and `new-count`. Any remainder gets
+a plain whole-line virtual line, as does a pair whose `diff-words` call reports
+`deadline-hit`. A plain virtual line passes the old line through as `'text`, with no
+`'segments` key (it is omitted when empty and not set to `'()`). `set-virtual-lines!`
+accepts a literal tab and expands it.
+
+A paired line's `'segments` come from the `diff-words` hunks (`'old-start`, `'old-end`,
+`'new-start`, `'new-end`, `'old-text`, `'new-text`), filtered to `'old-start < 'old-end`.
+A pure insertion has nothing to underline on the old-side line, and a zero-width segment
+would raise on `set-virtual-lines!`'s `start < end` check.
+
+### New-side spans
+
+The new-side counterpart is `(hash 'start 'end 'scope)` spans in buffer char offsets, since
+`set-extra-highlights!` addresses the whole buffer and not one line. They are filtered to
+`new-start < new-end` for the same reason.
+
+Offsets for a hunk's paired new-side lines come from one `line->offset` host call, for the
+hunk's first new-side line. Each later line starts at its predecessor's offset plus its
+length plus one `\n`.
+
+One paired `(old-line . new-line)` becomes a `(virtual-line . spans)` pair from a single
+`diff-words` call shared by both sides. The walk over old-lines, new-lines, offsets and the
+remaining count advances with `cdr`. Steel lists are linked, so `list-ref` by index would
+make it quadratic in `paired-count`.

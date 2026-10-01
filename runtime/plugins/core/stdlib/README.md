@@ -1,7 +1,15 @@
 # core:stdlib
 
-General-purpose standard library for plugin authors: a growing toolkit of helpers any
-plugin might need, exposed via `call!` so cross-plugin code never has to re-derive them.
+General-purpose standard library for plugin authors: helpers any plugin might need,
+exposed through `call!` so cross-plugin code never has to re-derive them.
+
+Cross-plugin access in HUME is `call!`-only: plugins never `require` each other's
+modules, since that would break the namespace isolation each plugin gets. So this plugin's
+public API is a set of `define-command!`-registered commands rather than a `provide`d
+library. A command name and a Steel binding of the same name live in separate namespaces,
+so the command `"stdlib/run!"` does not collide with the function it wraps. The prelude
+(convenience macros for `init.scm`, loaded at startup) is a separate layer and not part of
+this plugin.
 
 ## Usage
 
@@ -13,183 +21,158 @@ plugin might need, exposed via `call!` so cross-plugin code never has to re-deri
 - **Activates on:** the first call to any command below. Its `manifest.scm` lists every
   one of them as an activation trigger. `(load-plugin! "core:stdlib")` also works, loading
   it eagerly instead.
-- **Pitfall:** this mechanism only works while `core:stdlib` is declared with no explicit
-  `#:commands`/`#:events`/`#:languages` override. An override that omits a helper a
-  dependent needs leaves no activation stub for it (see the
-  [core plugins index](../README.md#depending-on-corestdlib)).
-- **User docs:** [Standard Library](https://cvlmtg.github.io/HUME/stdlib.html) for full
-  call signatures, and [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-stdlib)
-  for the dependency-ordering rule every other core plugin follows.
-
-## Two layers, one reason for each
-
-HUME's scripting surface splits into two layers:
-
-- **The prelude**: convenience macros for `init.scm`, loaded at startup.
-- **`core:stdlib`** (this plugin): commands useful to plugin authors, declared or loaded
-  like any other plugin, before anything that depends on it.
-
-Cross-plugin access in HUME is `call!`-only: plugins never `require` each other's
-modules, since that would break the namespace isolation each plugin gets. That's why
-this plugin's public API is a set of `define-command!`-registered commands rather than a
-`provide`d library. A command name and a Steel binding of the same name live in
-separate namespaces, so there's no collision between the command `"stdlib/run!"` and the
-function it wraps.
+- **Overrides:** declaring it with an explicit `#:commands`/`#:events`/`#:languages` list
+  that omits a helper a dependent needs leaves that helper with no activation stub; see
+  the [core plugins index](../README.md#depending-on-corestdlib).
+- **User docs:** [Standard Library](https://cvlmtg.github.io/HUME/standard-library.html)
+  for call signatures, and
+  [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-stdlib) for the
+  dependency-ordering rule every other core plugin follows.
 
 ## Commands
 
-The notes below cover only what the [Standard Library](https://cvlmtg.github.io/HUME/stdlib.html)
-manual page doesn't: internals a plugin author calling `call!` never needs, but a
-contributor touching this file does.
+The manual page above has the signatures. This table groups the commands; the sections
+under [How it works](#how-it-works) cover what a contributor needs beyond that.
+
+| Group | Commands |
+|---|---|
+| [Selections](#selections) | `stdlib/selection-anchor`, `-head`, `-start`, `-end`, `-primary?`, `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-index` |
+| [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs` |
+| [Path safety](#path-safety) | `stdlib/safe-path-segment?` |
+| [Subprocess](#subprocess) | `stdlib/run!` |
+| [Git](#git) | `stdlib/git-repo?`, `stdlib/git-toplevel` |
+| [Command arguments](#command-arguments) | `stdlib/resolve-lang-arg` |
+| [Picker buffer-placement](#picker-buffer-placement) | `stdlib/with-tab`, `stdlib/with-vsplit`, `stdlib/with-split`, `stdlib/buffer-actions` |
+| [Word tokenization](#word-tokenization) | `stdlib/split-words` |
+| [Plugin config](#plugin-config) | `stdlib/config-boolean`, `-string`, `-enum`, `-integer`, `-list` |
+
+## How it works
 
 ### Selections
 
-`stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-start`,
-`stdlib/selection-end`, `stdlib/selection-primary?`, `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`,
-`stdlib/cursor-char-index`.
+A selection is the list `(anchor head start end primary?)` that `buffer-selections`
+returns. The accessors are its only reading API, so the shape can change without breaking
+callers. All nine accept `#f` and answer `#f` in turn, so a caller building on a value
+that may itself be `#f` (a picker payload, an optional match) checks once, at the call
+site.
 
-A selection is the list `(anchor head start end primary?)` that
-`buffer-selections` returns; the accessors are its only reading API, so the shape can
-change without breaking callers. All nine accept `#f` and answer `#f` in turn, so a caller building on a value that may itself be `#f` (a picker payload, an
-optional match) only has to check once, at the call site.
-
-`(buffer-selections pane)` itself is not one of these nine. It raises rather than
-answering `#f` for a pane that isn't live or isn't shown, since it's the one place a
-selection list is actually fetched, not one that picks an already-fetched list apart.
+`(buffer-selections pane)` is not one of the nine. It raises for a pane that isn't live or
+isn't shown, since it is where a selection list is fetched, not where an already-fetched
+list is picked apart.
 
 ### Filesystem and list search
 
-`stdlib/find`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`,
-`stdlib/list-subdirs`.
-
-Thin wrappers over Steel's `steel/filesystem`/`steel/ports`. `core:plum` and `core:lsp`
-both call into these rather than each carrying its own copy. `delete-dir!`/`delete-file!`
-are idempotent, unlike Steel's own `delete-directory!`/`delete-file!`: a missing target
-is not an error. `list-subdirs` filters to actual directories, skipping stray files that
-sit alongside a directory tree (`.install-lock`, `.DS_Store`).
+Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `core:plum` and
+`core:lsp-install` call them rather than each carrying a copy. `delete-dir!` and
+`delete-file!` are idempotent, unlike Steel's own `delete-directory!` and `delete-file!`:
+a missing target is not an error. `list-subdirs` returns the names of the directories
+under a path, sorted, and skips stray files that sit alongside a directory tree
+(`.install-lock`, `.DS_Store`).
 
 ### Path safety
 
-`stdlib/safe-path-segment?`.
+`stdlib/safe-path-segment?` rejects the empty string, `.`, `..`, a path separator (`/` or
+`\`), `:`, `"` and NUL: the set that is unsafe as one filesystem path segment. Use it for
+any name that reaches `path-join` or a subprocess argument but did not come from a fixed
+catalog: a user-typed slug, or a name parsed out of downloaded content.
 
-Rejects the empty string, `.`/`..`, a path separator (`/` or `\`), `:`/`"`, and NUL: the
-set that's unsafe to use as one filesystem path segment. Use it for any name that reaches
-`path-join` or a subprocess argument but did not come from a fixed catalog: a user-typed
-slug, or a name parsed out of downloaded content.
+The `:` rejection matters on Windows: a segment like `c:evil` after a single path
+component makes `PathBuf::push` treat it as a drive-relative root, replacing the base path
+instead of joining onto it. The rule mirrors `hume_platform::path::is_safe_segment`.
 
-The `:` rejection matters on Windows specifically: a segment like `c:evil` after a single
-path component makes `PathBuf::push` treat it as a drive-relative root, replacing the
-sandboxed base path entirely instead of joining onto it (mirrors
-`hume_platform::path::is_safe_segment`'s rule on the Rust side).
-
-> [!IMPORTANT]
-> Every call site checks `(eq? #t (call! "stdlib/safe-path-segment?" …))`, not a bare
-> truthiness test. A `call!` miss to an unknown command already answers `#f`, same as a
-> genuine rejection. The `eq?` guard keeps the two distinguishable in case that ever
-> changes.
+Call sites check the result with `(eq? #t (call! "stdlib/safe-path-segment?" …))`; see
+[Design decisions](#design-decisions).
 
 ### Subprocess
 
-`stdlib/run!`.
+`stdlib/run!` is `run-capture!`, the native blocking capture
+(`hume_platform::process::run_capture`): it runs a command with direct argv, closes stdin,
+and returns `(hash 'stdout s 'stderr s 'exit code)`. Its Rust doc explains why it exists
+instead of Steel's `spawn-process`, `wait` and `child-stdout`. `GIT_TERMINAL_PROMPT=0`,
+set by `hume_platform::process::base_command`, applies to it and to `run-inline-output!`
+alike.
 
 Three ways to run a subprocess exist across the codebase; pick by shape:
 
 | Need | Use |
 |---|---|
-| An `#:inline-output` command | `run-inline-output!` (process-group safety for Ctrl-c) |
+| An `#:inline-output` command | `run-inline-output!` (process-group isolation for Ctrl-c) |
 | Enumeration-scale streaming output | `spawn-async!` |
-| Everything else | `stdlib/run!` |
-
-`stdlib/run!` is `run-capture!` (native, `hume_platform::process::run_capture`); see its
-own Rust doc for why it exists instead of Steel's `spawn-process`/`wait`/`child-stdout`/
-`child-stderr`, and `hume_platform::process::base_command`'s doc for the
-`GIT_TERMINAL_PROMPT=0` policy it shares with `run-inline-output!`. The git probes below
-build their `#f`-on-failure policy on it.
+| Anything else | `stdlib/run!` |
 
 ### Git
 
-`stdlib/git-repo?`, `stdlib/git-toplevel`.
-
-Both build on an internal `stdlib/run-stdout` (`stdlib/run!`'s stdout, trimmed, if the
-command exits 0, else `#f`), not exposed as a command itself, since trimming is only
-safe for a single-value probe like these; a `-z`-delimited multi-entry blob (e.g. `git
-status`) can have a leading space as significant data in its first entry, which trimming
-would eat.
-
-`git-repo?` checks stdout rather than just the exit code: inside a bare repo, `rev-parse`
-exits 0 but prints `false`. `core:pickers` uses both: `git-repo?` to choose
-`picker-files`'s source, `git-toplevel` to resolve a `picker-git-modified` selection
-against the repo root.
+`stdlib/git-repo?` and `stdlib/git-toplevel` answer `#f` when `git` is not on `$PATH` or
+the command exits non-zero. `git-repo?` compares stdout with `true` rather than checking
+only the exit code: inside a bare repo, `rev-parse --is-inside-work-tree` exits 0 and
+prints `false`. `core:pickers` uses both: `git-repo?` to choose `picker-files`'s source
+and `git-toplevel` to resolve a `picker-git-modified` selection against the repo root.
 
 ### Command arguments
 
-`stdlib/resolve-lang-arg`.
-
-Both of `resolve-lang-arg`'s callers (`:lsp-install [lang]`, `:plum-install-grammar
-[lang]`) are 2-arity typed commands, so their `arg` parameter is always either the string
-the user typed after the command name, or `#f` when they typed none. `crate::editor::
-dispatch`'s typed-command marshalling never injects anything else into that slot.
-`resolve-lang-arg` falls back to the current buffer's language when `arg` isn't a string.
+`stdlib/resolve-lang-arg` is called by `:lsp-install [lang]` and, through its grammar
+argument helper, by `:plum-install-grammar [lang]`. Both are 2-arity typed commands, so
+`arg` is the string the user typed after the command name, or `#f` when they typed none;
+`crate::editor::dispatch`'s typed-command marshalling never puts anything else in that
+slot. `resolve-lang-arg` falls back to the current buffer's language when `arg` is not a
+string, and logs `'info` and answers `#f` when the buffer has none.
 
 ### Picker buffer-placement
 
-`stdlib/with-tab`, `stdlib/with-vsplit`, `stdlib/with-split`, `stdlib/buffer-actions`.
+`stdlib/with-tab`, `stdlib/with-vsplit` and `stdlib/with-split` each wrap a handler (the
+one a picker already passes as `on-select`). Accepting an item then does two things:
 
-Each of the first three wraps a handler (the same one a picker already passes as
-`on-select`), so accepting an item does three things in order:
+1. Place a pane: a new tab, a side-by-side split or a stacked split. The placement command
+   leaves the new pane focused.
+2. Call the handler with the picker's selected payload.
 
-1. Place a pane (new tab, side-by-side split, or stacked split).
-2. Focus it.
-3. Call the handler with the picker's selected payload.
+Because the new pane is focused before the handler runs, the handler stays unchanged: its
+`(switch-to-buffer! (focused-pane) (open-buffer! path))` or `(goto-location! …)` targets
+the focused pane, which is the newly placed one. None of the three interprets `payload`, so
+a handler works with any payload shape: a path, a buffer id, a `path:line:col` location.
 
-That ordering is what lets the handler stay unchanged: its existing
-`(switch-to-buffer! (focused-pane) (open-buffer! path))` (or `(goto-location! ...)`)
-targets whichever pane is focused, so it lands in the newly placed one for free. None of
-the three interprets `payload` itself, so any picker's handler works no matter what shape
-its payload is: a path, a buffer id, a `path:line:col` location.
-
-Two guards sit in front of placement, both in the shared `with-pane-command` core that
-`with-vsplit`/`with-split` build on (`with-tab` keeps its own simpler payload-only check,
-since a new tab has no minimum-size failure mode to guard against):
+Two guards sit in front of placement. `with-vsplit` and `with-split` share them in
+`stdlib/with-pane-command`; `with-tab` has only the first, since a new tab has no
+minimum-size failure:
 
 - **A false payload** (an empty or not-yet-matching picker) skips placement but still
-  calls the handler. The git-modified picker's handler, for instance, cancels its
-  in-flight async job on `#f`, so skipping that call too would leave it running.
-- **A split refused for being too small** skips the handler entirely, rather than opening
-  the payload in the pane that stayed put, matching the typed `:split`/`:vsplit [path]`
-  commands' own precedent of aborting before the side effect rather than silently
-  redirecting it.
+  calls the handler. The git-modified picker's handler cancels its in-flight async job on
+  `#f`, so skipping the call would leave the job running.
+- **A split refused for being too small** skips the handler, so the payload does not open
+  in the pane that stayed put. This matches the typed `:split` and `:vsplit [path]`
+  commands, which abort before the side effect.
 
-`stdlib/buffer-actions` composes all three plus a bare `Ctrl-o` (the handler as-is, an
-`Enter` synonym) into one `#:actions` alist for `picker!`/`live-picker!`. `core:pickers`'
-three built-in pickers all opt in this way. Reserved keys always win: `picker!`/
-`live-picker!` try `#:actions` only after every built-in picker key (movement,
-`Backspace`, `Enter`, `Escape`, query input), so `Ctrl-o`/`t`/`v`/`s` are safe choices
-precisely because none of them collides with a built-in, and a plugin adding its own entries
-should pick keys the same way. A picker whose payload isn't a placeable buffer target (a
-theme picker, a command palette) simply doesn't pass `#:actions`. There's no flag to
-turn off, only a kwarg to omit.
+`stdlib/buffer-actions` combines all three, plus a bare `ctrl-o` that runs the handler
+as-is (an `Enter` synonym), into one `#:actions` alist for `picker!` and `live-picker!`.
+The three `core:pickers` pickers use it. `picker!` and `live-picker!` try `#:actions` only
+after every built-in picker key, so `ctrl-o`, `ctrl-t`, `ctrl-v` and `ctrl-s` never collide with a built-in; a plugin adding
+its own entries picks keys the same way. A picker whose payload is not a placeable buffer
+target (a theme picker, a command palette) omits `#:actions`.
 
 ### Word tokenization
 
-`stdlib/split-words`.
-
 `(stdlib/split-words pane str)` is `(split-words str (get-buffer-option pane
-"word-chars"))`: tokenizing `str` using that buffer's configured `word-chars`, the same
-classification `w`/`b` motions and text objects use, without the caller fetching and
-threading `word-chars` through itself.
-
-`core:buffer-words`' scan calls it once per line. A plugin tokenizing text that isn't
-`pane`'s own content calls `split-words` directly.
+"word-chars"))`. It tokenizes `str` with that buffer's `word-chars`, the same
+classification the `w` and `b` motions and text objects use, without the caller fetching
+`word-chars` itself. `core:buffer-words` calls it once per line. A plugin tokenizing text
+that is not `pane`'s own content calls the builtin `split-words` directly.
 
 ### Plugin config
 
-`stdlib/config-boolean`, `stdlib/config-string`, `stdlib/config-enum`,
-`stdlib/config-integer`, `stdlib/config-list`.
+Every config helper's error names the calling plugin (its first argument) and the offending
+key, so a bad `#:config` value fails at load time with a message that says what to fix.
+`core:git-diff`, `core:pickers`, `core:vim-keybind` and `core:buffer-words` use them for
+their own config. All five build on an internal `stdlib/config-value`, which returns `cfg`'s
+value for `key`, or `default` if absent.
 
-Every error names the calling plugin (its first argument) and the offending key, so a bad
-`#:config` value fails at load time with a message pointing at exactly what to fix.
-`core:git-diff`, `core:pickers`, `core:vim-keybind`, and `core:buffer-words` all use this
-shape for their own config. All five build on an internal `stdlib/config-value` (`cfg`'s
-value for `key`, or `default` if absent), not exposed as a command, since a raw lookup
-with no type check has no cross-plugin use case these five don't already cover.
+## Design decisions
+
+- **`eq? #t` at every `safe-path-segment?` call site.** A `call!` to an unknown command
+  answers `#f`, the same value as a rejection. Comparing against `#t` keeps a missing
+  command from reading as a valid segment.
+- **`stdlib/run-stdout` is internal.** It returns `stdlib/run!`'s stdout, trimmed, when the
+  command exits 0, and `#f` otherwise. Trimming is safe for a single-value probe like the
+  git commands; a `-z`-delimited multi-entry blob such as `git status` can start with
+  significant whitespace in its first entry.
+- **`stdlib/config-value` is internal.** The five typed helpers are the cross-plugin
+  surface.

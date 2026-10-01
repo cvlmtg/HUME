@@ -1,5 +1,4 @@
-;;; core:git-diff — diff.scm. See docs/pipeline.md. Word diff
-;;; (`diff-words`) is called from render.scm, not here.
+;;; core:git-diff — diff.scm. See docs/pipeline.md.
 
 (require "state.scm")
 (require "render.scm")

@@ -1,178 +1,159 @@
 # core:lsp — Request-driven features
 
-## Request flags at a glance
-
-Every `lsp-request!` call in this plugin picks its flags for a reason. Reading them side
-by side is more useful than reading each feature's own paragraph in isolation:
-
-| Request | `#:require-focus` | `#:allow-stale` | `#:supersede` | Why |
-|---|---|---|---|---|
-| `lsp-hover` | ✓ | ✓ | | A popup for a symbol the user isn't looking at anymore would be worse than none; but a slow hover response is still worth showing if focus hasn't moved |
-| `lsp-goto-*` (4) | | | | A navigation the user asked for completes even if they looked elsewhere while waiting, like pressing Enter on a slow-loading link |
-| `lsp-references` | ✓ | | | Same "complete the navigation" reasoning as goto, but the drawer it may open should reflect where the user actually is |
-| Signature help | ✓ | | | Anchors the popup at the request's own invocation pane, confirmed still focused |
-| Code actions (menu request) | ✓ | | | Builds a menu from context (selection, diagnostics) captured at invocation. Stale context would build the wrong menu |
-| `codeAction/resolve`, `workspace/executeCommand` | | ✓ | | The user already picked an action from the menu; dropping the follow-up would silently do nothing after that choice. `apply-workspace-edit!`'s own generation check still fails loudly if the buffer actually changed |
-| Completion | | | ✓ `"completion"` | A stale completion response should be replaced by a fresher one, not shown. The editor drops a response to a call it has since superseded anyway |
-| Formatting (all three shapes) | | ✓ | | Same as the code-action follow-ups: the generation check guards correctness, so staleness alone isn't worth dropping a formatting result over |
-| Rename | | ✓ | | Same reasoning as formatting |
-| Locations drawer refresh | | ✓ | ✓ `"lsp-locations"` | Repeats the goto/references request after an edit. It must complete even if the user jumped to another file from the drawer, and a newer refresh replaces an older one still in flight |
+Each section covers one feature file: what it asks the server, how it decodes the answer,
+and what it does with it. The flags every request passes to `lsp-request!` are collected
+in [Request flags](#request-flags) at the end. The diagnostics commands and inlay hints
+are in `decorations.md`.
 
 ## Goto and references
 
-All four goto-family commands and `lsp-references` share one response-handling cascade:
+`goto.scm` serves the four goto commands (definition, declaration, type definition,
+implementation) and `lsp-references` through one response handler:
 
 1. An error is reported.
-2. A null/empty response says "no results".
-3. A single `Location` jumps directly.
-4. A `Location[]`/`LocationLink[]` array jumps directly if it has exactly one entry,
-   otherwise lists them in the drawer.
+2. An empty or null response logs "No definition found" (or "No references found").
+3. A single location jumps to it.
+4. Several locations open the [locations drawer](architecture.md#locations-drawer-locationsscm).
 
-`lsp-references` forces the drawer even for a single result ("where is this used"
-expects a list, unlike goto's "take me there") and reuses the same cascade rather than
-reimplementing it, so its single-`Location` branch is simply unreached:
-`textDocument/references` only ever returns `Location[] | null` per spec, never a bare
-`Location`.
-
-While the drawer is open it follows edits. It remembers where the symbol was asked about with `track-position!`, and once the line count of the origin buffer or a listed buffer changes and typing pauses (300 ms), it repeats the request at that position and swaps the rows, keeping the selected row. An answer with nothing in it closes the drawer with the same message the original request would have shown; an error keeps the rows; a closed or replaced drawer is left alone and its position released. Edits that keep the line count are ignored, so a reference on the edited line can sit a few columns off until the next line-count change.
-
-Every jump in the cascade lands on `(focused-pane)`, not a captured invocation pane: the
-response's own tagged encoding already carries what it needs to decode correctly, so the
-jump itself should go wherever the user actually is once the response lands.
+`lsp-references` always opens the drawer, even for one result, because "where is this
+used" expects a list. Its request adds `context.includeDeclaration`. Every jump lands on
+`(focused-pane)`, so it goes where the user is when the response arrives.
 
 ## Hover
 
-A `MarkedString` (bare string or `{language, value}`) or `MarkupContent` (`{kind, value}`)
-response is decoded to raw text. A `{language, value}` `MarkedString` arrives with its
-code fence already stripped, so it's re-added before rendering: the popup's markdown
-injection needs the fence to highlight it, rather than falling back to plain text. Only
-an explicit `MarkupContent` with `kind: "plaintext"` opts out of markdown highlighting; a
-bare `MarkedString` is always markdown per the LSP spec.
+The response's `contents` is decoded to text: a bare string as is, an array of
+`MarkedString`s joined with blank lines, a `{language, value}` `MarkedString` re-fenced as
+a code block so the popup's markdown injection can highlight it, and a
+`MarkupContent`'s `value` as is. The text is shown as markdown unless the contents is a
+`MarkupContent` with `kind: "plaintext"`.
 
-The popup docks at the bottom instead of floating near the cursor once its line count
-exceeds ⅓ of the last-known viewport height. Either way it's still the same popup, just
-with a different anchor. Any key, paste, or mouse input other than a scrolling Ctrl-u/d
-closes it and still does its own job, so no dismiss code needed here.
+The popup floats near the cursor when its line count is at most a third of the viewport
+height and docks at the bottom otherwise. Each `lsp-hover` closes the previous hover popup
+before sending its request. An empty response logs "No hover info".
 
 ## Signature help
 
-The popup lives in the editor's current-mode slot and closes on its own once Insert ends,
-with no dismiss code needed in this plugin.
+Typing a trigger character the server advertises, or `)`, reaches the plugin through
+`on-trigger-char`. `)` closes the popup. Any other trigger character runs a request
+debounced by 150 ms, which first checks that the pane is still live, since the pane may
+have closed or changed buffer during the debounce window. A null response, an empty
+signature list or an error closes the popup.
 
-A parameter label is either a plain string or a `[start, end)` offset pair into the
-signature's own label. The offset form is what a server sends because HUME declares
-offset support, and those offsets count code units in the server's negotiated encoding,
-so the host, not this file, does the slicing. There's no styling API for the popup, so
-the active parameter's text is marked with `⟨…⟩` on a second line instead of highlighted
-in place.
-
-`")"` is registered as a trigger character but treated as a dismiss, not a request. It
-still has to be registered or it would never reach Insert-mode text at all. The request
-callback is guarded against a stale trigger character left registered past detach (or a
-server that never advertised signature help), so a matching keystroke on such a buffer
-skips politely instead of hitting a server-resolution failure. The debounced request body
-also checks that the pane is still live before sending: the pane itself, not just its
-buffer, may have closed or switched buffers during the debounce window, and building the
-request would raise on either, and a benign "this pane is no longer what it was when the
-keystroke armed this timer" isn't worth a logged error.
-
-Signature/parameter indices from the server are clamped into range rather than trusted
-verbatim. An empty signature list is spec-valid ("nothing to show"), handled the same as
-a null/void response.
+The server's `activeSignature` and `activeParameter` are clamped into range. A parameter
+label is either a string or a `[start, end)` offset pair into the signature's label. The
+offsets count code units in the server's negotiated encoding, so the host slices them
+(`lsp-label-offsets->text`). The popup has no styling API, so the active parameter is
+marked with `⟨…⟩` on a second line. A response with no `activeParameter` shows the label
+alone.
 
 ## Completion
 
-The plugin is a *source*, not the driver: it registers `"lsp"` (a buffer-target source:
-its token is the identifier before the cursor, so the editor seeds the
-filter from it and accept replaces it) with `#:resolve #t`, its claim that its items are
-wire items from the buffer's own attached server, licensing `completionItem/resolve` on
-accept, and `#:priority 10`), and the editor calls it: on `Ctrl-Space`, on a server
-trigger character (registered as this source's own trigger chars at attach, so the
-editor invokes the source directly with no hook round trip), and again after each
-keystroke while the last answer said incomplete. The source declines with an empty answer
-when the buffer's server has no completion provider.
+The plugin registers a completion source, `"lsp"`, and the editor drives it. The source
+is a buffer-target source with `#:priority 10` and `#:resolve #t`: its token is the
+identifier before the cursor, and `#:resolve` licenses `completionItem/resolve` on accept
+because its items come from the buffer's own attached server. The editor calls it on
+`Ctrl-Space`, on a server trigger character (registered at attach as the source's own
+trigger characters, with no hook round trip), and again after each keystroke while the
+last answer was incomplete.
 
-Each item's own edit range, or the list's default `itemDefaults.editRange`, says where
-its token starts: the item is filtered against the text from there to the cursor, so a
-server whose range covers `foo.ba` (with a `filterText` that includes it) keeps its
-items while you type, and accept replaces that range.
+The source answers with an empty list when the buffer's server has no completion
+provider. Otherwise it sends `textDocument/completion` with `#:supersede "completion"`, so
+a newer request replaces an older one still in flight, and passes any non-null response to
+`completion-emit!` unchanged. An error is reported and answered with an empty list.
 
-This source never reads a field of its own response. It hands the response straight to
-the store, which reads the incomplete flag and items itself. Snippet stripping happens at
-the store's own ingress, so items arriving here already have plain insert text. There's
-deliberately no accept handler in Scheme: the host applies the main edit,
-`additionalTextEdits`, and `completionItem/resolve` atomically on accept, leaving nothing
-for Scheme to do.
+The rest happens in the editor. Each item's own edit range, or the list's default
+`itemDefaults.editRange`, says where its token starts, and the item is filtered against
+the text from there to the cursor. Snippet stripping happens as items enter the store.
+Accepting an item applies its main edit, its `additionalTextEdits` and
+`completionItem/resolve` together, so the plugin has no accept handler.
 
 ## Code actions
 
-`context.diagnostics` must echo back the *raw* wire `Diagnostic` objects in range:
-rust-analyzer (confirmed) gates diagnostic-derived quickfixes on this, withholding them
-for an empty array; the diagnostics store's raw field carries these through unmodified
-for exactly this reason.
+`lsp-code-actions` captures the pane and `(buffer-generation pane)` when it sends the
+menu request, and threads both through the menu selection and any `codeAction/resolve`
+round trip without re-reading focus, since each round trip is asynchronous.
 
-A `CodeAction` is filtered out of the menu if it carries a truthy `"disabled"` field (LSP
-3.16); v1 doesn't otherwise pre-filter by kind. Applying an action runs its `edit` first,
-then its `command`, per spec order; an action with neither is lazily resolved via
-`codeAction/resolve` first, bounded to a single round trip so a non-conforming server that
-re-resolves to a still-empty edit/command can't loop. The bare legacy `Command` shape (a
-plain top-level `command` string, no `edit` key) is handled by passing the whole action
-object through as the `Command`, since its shape already matches what the executor expects.
+The request's `context.diagnostics` echoes the raw wire `Diagnostic` objects in the
+primary selection's range (the `'raw` field of the diagnostics store entries), and
+`triggerKind` is `1`. Actions with a truthy `"disabled"` field are dropped from the menu.
 
-The buffer the action came from, and that buffer's edit generation at the same capture
-point, are both captured when the menu request is sent, then threaded through the menu
-selection and, for an unresolved action, the `codeAction/resolve` round trip, never
-re-read from focus, since both round trips are async (the user picks a menu item, then
-waits on the network). The generation is checked before applying, so an edit computed
-against text that has since changed fails loudly instead of applying against the wrong
-text.
+Running a chosen action applies its `edit`, then runs its `command`. An action with
+neither is resolved once through `codeAction/resolve` when the server advertises
+`resolveProvider`, and logs "Code action has no edit or command" if the resolved action is
+still empty. The resolve step runs at most once, so a server that keeps returning an empty
+action cannot loop. A bare legacy `Command` (a string `command` and no `edit`) is passed to
+`workspace/executeCommand` as the whole action object. The edit is applied with
+`#:expect-generation`, so an edit computed against text that has since changed fails
+instead of applying to the wrong text.
 
 ## Formatting
 
-Format-on-save is not wired by default: v1 is manual `:lsp-fmt` only. To opt in,
-uncomment `format.scm`'s commented-out hook:
+`lsp-fmt` and `:format-source` run the same function. Format-on-save is not wired by
+default. To opt in, add this to `init.scm`:
 
 ```scheme
 (register-hook! 'on-buffer-save
   (lambda (pane)
-    ;; on-buffer-save's own pane carries no pane of its own — lsp-fmt
-    ;; needs one (it reads the live selection set), so this resolves one
-    ;; explicitly first rather than passing the pane-less value straight through.
     (let ((resolved (lsp/resolve-pane pane)))
       (when resolved (call! "lsp-fmt" resolved)))))
 ```
+
+The hook's value carries no pane, and `lsp-fmt` reads the live selection set, so the
+snippet resolves a pane first.
+
+A buffer with no attached server, or one with no path, logs a message and formats
+nothing. The two cases are told apart directly, because a capability guard cannot
+distinguish them.
 
 ### Selection classification
 
 | Selection set | Result |
 |---|---|
-| All selections linewise | Formats those ranges (touching selections coalesced, disjoint ones kept separate, since an LSP range is one contiguous span, so a gap can't be expressed as a single range) |
-| None linewise (all charwise) | Formats the whole buffer |
-| A mix of the two | Warns and formats nothing rather than guessing which reading was meant |
+| All selections linewise | Formats those ranges. Touching selections coalesce into one range, and disjoint ones stay separate, since an LSP range is one contiguous span |
+| None linewise | Formats the whole buffer |
+| A mix | Logs "mixed whole-line and partial selections" and formats nothing |
 
-A collapsed cursor that happens to land on a blank line is ambiguous either way, so it's
-excluded from all three classifications. It never masks a real selection elsewhere in
-the set into "mixed", and never bridges two real linewise selections it happens to touch
-on both sides into one coalesced range.
+### Range requests
 
-Disjoint ranges go out as one `rangesFormatting` request (LSP 3.18) when the server
-advertises range support, otherwise one `rangeFormatting` request per range, capped at
-`lsp.format-max-ranges`. Past the cap, `:lsp-fmt` warns and formats nothing, the same
-refusal a mixed selection set gets, rather than silently narrowing to one selection. A
-buffer with no path, or no attached server, is distinguished directly, since a capability
-guard can't tell the two apart: without a server there's no capabilities to check in the
-first place.
+Several disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP 3.18)
+when the server advertises `rangesSupport`. Otherwise each range is its own
+`textDocument/rangeFormatting` request, and more than `lsp.format-max-ranges` ranges log a
+message and format nothing, the same refusal a mixed selection gets.
 
-The multi-range fan-out tracks three boxes: requests still in flight, edits accumulated
-so far, and whether the fan-out has already aborted. The abort flag only suppresses
-duplicate error log lines when two or more ranges fail. The no-partial-format guarantee
-comes from the in-flight count never reaching zero after an error, not from this flag.
-Responses can land in any order (once aborted, the fan-out is already dead; otherwise the
-fold order doesn't matter); applying edits sorts them by position first, and coalescing
-guarantees no two ranges can tie.
+The per-range fan-out keeps three boxes: requests still in flight, edits collected so far,
+and whether it has aborted. All edits are applied together when the in-flight count
+reaches zero. After an error the count never reaches zero, so no partial format is applied.
+The abort flag only suppresses duplicate error lines when several ranges fail. Responses
+can land in any order.
 
 ## Rename
 
-No tree-sitter fallback in v1: a buffer with no attached server just reports "not
-supported" via the ordinary capability guard, the same as any other unsupported feature.
-The rename prompt pre-fills with the symbol under the cursor.
+`lsp-rename` prompts with the symbol under the cursor prefilled, captures the buffer's
+generation when the name is accepted, and sends `textDocument/rename`. A null response
+logs "Nothing to rename". Otherwise the workspace edit is applied with
+`#:expect-generation`. A buffer with no server gets the capability guard's "not supported"
+message.
+
+## Request flags
+
+| Request | `#:require-focus` | `#:allow-stale` | `#:supersede` |
+|---|---|---|---|
+| `lsp-hover` | yes | yes | |
+| `lsp-goto-*` (four) | | | |
+| `lsp-references` | yes | | |
+| Signature help | yes | | |
+| Code actions (menu request) | yes | | |
+| `codeAction/resolve`, `workspace/executeCommand` | | yes | |
+| Completion | | | `"completion"` |
+| Formatting (all three request shapes) | | yes | |
+| Rename | | yes | |
+| Locations drawer refresh | | yes | `"lsp-locations"` |
+
+`#:require-focus` drops the callback unless the invoking pane is still the focused pane
+and still shows the same buffer when the response arrives. It fits requests whose result
+is a popup or menu anchored to that pane. `#:allow-stale` runs the callback even if the
+buffer has changed since the request was sent. It fits requests whose result is checked
+another way: edits carry `#:expect-generation`, and the locations refresh re-requests at
+the tracked position. The goto commands use neither, so a navigation the user asked for
+completes even if they looked elsewhere while waiting. `#:supersede` cancels the caller's
+own previous pending request under the same key.

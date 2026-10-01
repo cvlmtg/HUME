@@ -1,6 +1,4 @@
-;;; core:git-diff — render.scm. See docs/rendering.md. Pure
-;;; `hunks → decoration records` functions, one setter call each unless
-;;; noted otherwise.
+;;; core:git-diff — render.scm. See docs/rendering.md.
 
 (provide git-diff/render-signs! git-diff/render-inline! git-diff/render-line-bgs!
          git-diff/render-for!)

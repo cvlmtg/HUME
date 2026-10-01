@@ -1,9 +1,9 @@
 # core:lsp
 
-Language server features: hover, go-to-definition (+ declaration / type-definition /
+The language-server client: hover, go-to-definition (plus declaration, type-definition and
 implementation), references, diagnostics navigation, rename, formatting, code actions,
-signature help, completions, inlay hints, and runtime management of running servers. It
-does not install servers: `core:lsp-install` downloads and registers them, and any
+signature help, completions, inlay hints, and status, stop and restart of running servers.
+It does not install servers. `core:lsp-install` downloads and registers them, and any
 plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 
 ## Usage
@@ -16,46 +16,46 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 (declare-plugin! "core:lsp")
 ```
 
-- **Depends on:** `core:stdlib`: diagnostics navigation and the other features call
-  `stdlib/cursor-char-index` and similar helpers at runtime.
-- **Activates on:** the first buffer with a detected language, or the first `lsp-*`
-  command typed. Its `manifest.scm` declares `#:languages '("*")` plus every `lsp-*`
-  command. An explicit `#:commands`/`#:events`/`#:languages` bypasses it, but a manifest
-  keyed only on `#:events '(on-lsp-attach)` can never activate on its own, since nothing
-  is registered yet for that event to fire on; `#:languages`, or one of the `lsp-*`
-  commands, give it a real trigger instead.
-- **A manual `register-lsp-server!` call always wins** over a `core:lsp-install` default,
-  placed before or after the `declare-plugin!` line.
+- **Depends on:** `core:stdlib`: diagnostics navigation, code actions and the other
+  features call `stdlib/cursor-char-index`, `stdlib/primary-selection` and
+  `stdlib/selection-start`/`-end` at runtime.
+- **Activates on:** the first buffer with a detected language, or the first of its
+  commands typed. Its `manifest.scm` declares `#:languages '("*")` plus every command
+  below. An explicit `#:commands`/`#:events`/`#:languages` bypasses the manifest. A
+  declaration keyed only on `#:events '(on-lsp-attach)` can never activate on its own,
+  since nothing is registered yet for that event to fire on; `#:languages` or a command
+  gives it a real trigger.
 - **User docs:** [Language Servers](https://cvlmtg.github.io/HUME/lsp.html) for the full
-  walkthrough, commands, keys, and settings, and
+  walkthrough, commands, keys and settings, and
   [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-lsp) for the quick
   summary.
 
 ## Commands
 
-| Command                | Effect                                                                       |
-|-------------------------|-------------------------------------------------------------------------------|
-| `:lsp-status`          | Show every running server and its state, plus attached buffers' diagnostic counts |
-| `:lsp-stop [lang]`     | Stop a running server (default: focused buffer's)                            |
-| `:lsp-restart [lang]`  | Stop and respawn a running server (default: focused buffer's)                |
-
-## Shape
-
-Every feature file follows the same three-line shape: send an `lsp-request!`, transform
-the response, call a UI or store builtin.
-
-```
-lsp-request! ──▶ transform response ──▶ UI builtin (show-popup!/show-menu!/goto-location!)
-                                    └─▶ store builtin (set-signs!/set-inlay-hints!/…)
-```
+| Command | Effect | Default key |
+|---|---|---|
+| `lsp-hover` | Show hover documentation for the symbol under the cursor | `K` |
+| `lsp-goto-definition` | Go to the definition | `g d` |
+| `lsp-goto-declaration` | Go to the declaration | `g D` |
+| `lsp-goto-type-definition` | Go to the type definition | `g y` |
+| `lsp-goto-implementation` | Go to the implementation | `g i` |
+| `lsp-references` | List references in a drawer | `z r` |
+| `lsp-rename` | Rename the symbol under the cursor | `G R` |
+| `lsp-code-actions` | Show code actions for the cursor or selection | `z a` |
+| `goto-next-diagnostic`, `goto-prev-diagnostic` | Jump to the next or previous diagnostic and show its message | `g n`, `g p` |
+| `lsp-fmt` | Format the buffer or the linewise selections | none |
+| `:format-source` | `lsp-fmt` from the command line | none |
+| `:diagnostics` | List this buffer's diagnostics in a drawer | none |
+| `:lsp-status` | Show every running server and its state, plus attached buffers' diagnostic counts | none |
+| `:lsp-stop [lang]` | Stop a running server (default: the focused buffer's) | none |
+| `:lsp-restart [lang]` | Stop and respawn a running server (default: the focused buffer's) | none |
 
 ## Key layout
 
-Goto-shaped requests (the four `lsp-goto-*` plus diagnostic nav) live under `g`,
-alongside HUME's native line gotos and structural navigation, since each one names a
-destination. Requests that answer with a panel rather than a jump (references list,
-code-action menu) live under `z` instead, the view prefix, since what they do is open
-something over the buffer, the same shape `core:pickers`' fuzzy finders use.
+Requests that name a destination (the four `lsp-goto-*` and diagnostic navigation) live
+under `g`, beside HUME's native line gotos and structural navigation. Requests that
+answer with a panel rather than a jump (the references list and the code-action menu)
+live under `z`, the view prefix, the same shape `core:pickers`' finders use.
 
 | Key | Command | Why here |
 |---|---|---|
@@ -63,21 +63,18 @@ something over the buffer, the same shape `core:pickers`' fuzzy finders use.
 | `g n`/`g p` | Next/previous diagnostic | Names a destination |
 | `z r` | References | Opens a panel |
 | `z a` | Code actions | Opens a panel |
-| `G R` | Rename | `G` is where Vim's `g`-adjacent-but-not-goto commands live (`G L`/`G U`/`G C` case transforms); nvim's own rename default `grn` is no more a goto than those are |
-| `K` | Hover | Vim's own keyword-lookup key, used often enough that a prefix would be a tax |
+| `G R` | Rename | `G` is a prefix for edit commands that sit near `g` without being gotos |
+| `K` | Hover | The conventional keyword-lookup key, used often enough that a prefix would cost a keystroke |
 
-No collisions with HUME's native leaves (`g`'s `g e h l s`, plus the structural
-`f F t T a A c C u U v V`; `G`'s `L U C`; or `z`'s `z k j`), per
-`crate::editor::keymap::defaults`. `z f`/`z b`/`z m` under the same view prefix belong to
-`core:pickers`. Every one of these is a two-key sequence or a fresh top-level key, never
-a bare key over an existing prefix: a single-key bind is a plain map insert and would
-drop the whole subtree under it (see `core:vim-keybind`'s README for the shape of that
-hazard). `lsp-fmt` and `:diagnostics` have no default key; they are typed-command only.
+None of these collide with a binding in HUME's default keymap, and the `z` keys beside
+them belong to `core:pickers`. Every binding is a two-key sequence or a fresh top-level
+key. A single-key bind over an existing prefix is a plain map insert and drops the whole
+subtree under it (see `core:vim-keybind`'s README).
 
 ## Documentation
 
 | Doc | Covers |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | File layout, response conventions, `lib.scm`'s shared helpers, runtime management |
-| [`docs/features.md`](docs/features.md) | Goto/references, hover, signature help, completion, code actions, formatting, rename |
-| [`docs/decorations.md`](docs/decorations.md) | Diagnostics navigation, EOL summary, gutter signs, inlay hints |
+| [`docs/architecture.md`](docs/architecture.md) | File layout, request pattern, response conventions, `lib.scm` helpers, the locations drawer, status commands |
+| [`docs/features.md`](docs/features.md) | Request flags, goto and references, hover, signature help, completion, code actions, formatting, rename |
+| [`docs/decorations.md`](docs/decorations.md) | Diagnostics navigation and drawer, end-of-line summary, gutter signs, inlay hints |

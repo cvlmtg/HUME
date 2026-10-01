@@ -1,5 +1,13 @@
 # core:git-diff — Architecture
 
+The plugin is orchestration: state, debounce, git process management and decoration
+construction over two native builtins, `diff-buffer-lines` (line diff against a ref blob)
+and `diff-words` (word diff inside a changed line pair). Signs and inline rendering share
+one hunk store and one fetch/diff pipeline: the repo probe, ref fetch, line diff, debounce,
+ref-cache invalidation and the hunk-equality check that skips no-op refreshes. They differ
+only in the decoration construction (a `set-signs!` call, versus virtual lines, word spans
+and a line tint).
+
 ## File layout
 
 | File | Owns |
@@ -8,31 +16,29 @@
 | `state.scm` | Per-buffer state (see below) |
 | `diff.scm` | Ref-content fetch and the native line-diff call, debounced per buffer (see `docs/pipeline.md`) |
 | `branch.scm` | Current-branch fetch, debounced per buffer, pushed to the statusline (see `docs/pipeline.md`) |
-| `render.scm` | Pure `hunks → decoration records` functions, one per rendering (see `docs/rendering.md`) |
-
-`diff-words` (word-level diff) is called from `render.scm`, not `diff.scm`: the records
-it feeds are built there.
+| `render.scm` | Pure `hunks → decoration records` functions, one per rendering, and the `diff-words` calls that feed the inline records (see `docs/rendering.md`) |
 
 ## State (`state.scm`)
 
 One `(box (hash))` keyed by `(buffer-key pane)`, not by a pane value itself. A command's
 own pane and a hook's pane-less value for the same buffer must resolve to the same entry
-(see the [core plugins index](../../README.md#per-buffer-state)). Each entry, built from
-a single `fresh-entry` source of truth, holds:
+(see the [core plugins index](../../README.md#per-buffer-state)). Each entry is built from
+one `fresh-entry` and holds:
 
 | Field | Holds |
 |---|---|
 | `"signs?"` / `"inline?"` | The two independent enable flags |
 | `"ref-text"` | The fetch/diff cache (see the table below) |
-| `"hunks"` | The verbatim hunk hashes `diff-buffer-lines` last returned, always kept in sync with what's actually painted |
+| `"hunks"` | The verbatim hunk hashes `diff-buffer-lines` last returned, always equal to what is painted |
 | `"job"` | The in-flight diff-fetch `spawn-async!` id, or `#f` |
 | `"ref"` | `#f` (use the config default) or a runtime override string set via `:toggle-git-signs <ref>`/`:toggle-inline-diff <ref>` |
 | `"branch-job"` | The in-flight branch-fetch `spawn-async!` id, or `#f`; independent of `"job"` |
 
-`"hunks"` staying in sync with what's painted is the *additivity invariant*: every
-renderer in `render.scm` is a pure function over this one shared hunk set, so adding a new
-rendering is one function and one setter call, touching neither this file, the fetch
-pipeline, nor the lifecycle hooks in `plugin.scm`.
+### One hunk store
+
+`"hunks"` equals what is painted, and every renderer in `render.scm` is a pure function
+over that one hunk set. A new rendering is one function and one setter call: it touches
+neither this file, the fetch pipeline, nor the lifecycle hooks in `plugin.scm`.
 
 ### `"ref-text"` states
 
@@ -40,42 +46,49 @@ pipeline, nor the lifecycle hooks in `plugin.scm`.
 |---|---|
 | a string | The cached `git show` blob; a refresh is a local diff, no process |
 | `#f` | Not yet fetched, or invalidated by a save; the next refresh fetches |
-| `'unavailable` | The last fetch failed: a sticky negative cache, so a doomed fetch isn't retried on every debounce fire |
+| `'unavailable` | The last fetch failed: a sticky negative cache, so a doomed fetch is not retried on every debounce fire |
 
-### `entry-set!` vs. `ensure-entry!`
+### `entry-set!` and `ensure-entry!`
 
-Both write to an entry, but disagree on what to do when one doesn't exist yet: the
-[core plugins index](../../README.md#stale-async-work)'s two write-path shapes, side by
-side:
+Both write to an entry. They differ on a missing one, the two write-path shapes from the
+[core plugins index](../../README.md#stale-async-work):
 
 | | On a missing entry | Used by |
 |---|---|---|
 | `entry-set!` | No-ops | A `spawn-async!` callback. A late callback for a buffer closed while its fetch was in flight must not resurrect state for it |
-| `ensure-entry!` | Resurrects one from `fresh-entry` | A toggle command. An explicit-ref or bare toggle invocation must succeed even for a buffer whose `on-buffer-open` never fired (an activation list can override the manifest's `#:events` with a `#:commands`-only list) |
+| `ensure-entry!` | Resurrects one from `fresh-entry` | A toggle command. An explicit-ref or bare toggle must succeed even for a buffer whose `on-buffer-open` never fired (an activation list can override the manifest's `#:events` with a `#:commands`-only list) |
 
-`toggle-flag!` is built from `ensure-entry!` plus `entry-set!` rather than its own
-box/hash pair: needing the flipped value back is just an extra `hash-ref` around the
-two, not a reason to duplicate them.
+`toggle-flag!` is `ensure-entry!` plus `entry-set!`, with an extra `hash-ref` to return the
+flipped value.
 
 `cancel-job!` cancels any in-flight `spawn-async!` job stored under a given key
-(`"job"`/`"branch-job"`) for a buffer, without firing its callback. It is shared by `diff.scm`'s
-and `branch.scm`'s otherwise-identical cancel functions, only the key differs between them.
+(`"job"`/`"branch-job"`) for a buffer, without firing its callback. `diff.scm`'s and
+`branch.scm`'s cancel functions call it, differing only in the key.
 
 ## Ref handling
 
-Both commands share one per-buffer `"ref"` override. Switching it from either toggle
-re-renders whichever of the two is currently on, and it survives a later bare toggle
-off/on rather than resetting to the config default. `buffer-ref` (`plugin.scm`) resolves
-it: the per-buffer override when set, else the config `"ref"` default. Giving a ref always
-turns that rendering on, never off, and re-fetches even if it's already on at the same
-ref.
+### Per-buffer ref
 
-`git-diff:refs`, the completion source both toggles complete their ref argument against,
-is a minibuffer-target source: its callback gets only `id`/`input`/`cursor`, no pane of
-its own. It reads `(focused-pane)` for the buffer whose repo to look in: the same pane
-that opened the `:` command line this completes for, and the one its typed command will
-receive as its own leading pane once Enter is pressed. Its universe is every local
-branch, tag, and remote-tracking ref the focused buffer's repo knows about
-(`git for-each-ref`, spawned async against its directory, the same shape as `branch.scm`'s
-own branch fetch); it answers `'()` on any failure (no path, not a repo, git missing), since a
-ref name is a nice-to-have completion, never worth erroring the command line over.
+Both commands share one per-buffer `"ref"` override. `buffer-ref` (`plugin.scm`) resolves
+it: the per-buffer override when set, else the config `"ref"` default. The shared body
+`run-toggle!` handles both commands:
+
+- With a ref argument it ensures the entry exists, turns that rendering on, stores the ref,
+  clears `"ref-text"`, paints the stored hunks and force-refreshes. A ref always turns the
+  rendering on and always re-fetches, even if it is already on at the same ref.
+- With no argument it flips the flag. Turning it on paints the stored hunks and
+  force-refreshes; turning it off clears that rendering.
+
+Switching the ref from either command re-renders whichever rendering is on. The override
+survives a later bare toggle off and on, and does not reset to the config default.
+
+### Ref completion
+
+`git-diff:refs` is the completion source both commands complete their ref argument
+against. It is a minibuffer-target source, so its callback gets `id`/`input`/`cursor` and no
+pane. It reads `(focused-pane)`: the pane that opened the `:` command line, and the one
+the typed command receives as its leading pane on Enter. The completion universe is every
+local branch, tag and remote-tracking ref the focused buffer's repo knows (`git
+for-each-ref`, spawned async in the buffer's directory, the same shape as `branch.scm`'s
+branch fetch). It answers `'()` when there is no path, the directory is not a repo, or git
+fails.

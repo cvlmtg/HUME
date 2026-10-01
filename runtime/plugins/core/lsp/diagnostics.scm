@@ -1,6 +1,5 @@
-;;; core:lsp/diagnostics.scm — diagnostics navigation, EOL summary, gutter
-;;; signs. No LSP request — reads the diagnostics store via
-;;; diagnostics-for-buffer. See docs/decorations.md.
+;;; core:lsp/diagnostics.scm — diagnostics navigation, drawer, EOL summary, gutter
+;;; signs. See docs/decorations.md.
 
 (require "lib.scm")
 

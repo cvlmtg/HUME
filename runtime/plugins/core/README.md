@@ -14,7 +14,7 @@ plugin-authoring API (not core-specific), see
 
 | Plugin | Purpose | Loads | Depends on |
 |---|---|---|---|
-| [`stdlib`](stdlib/README.md) | Shared helpers for plugin authors | lazy | — |
+| [`stdlib`](stdlib/README.md) | Shared helpers for plugin authors | lazy | none |
 | [`plum`](plum/README.md) | Plugin/theme/grammar installer | lazy | `stdlib` |
 | [`lsp`](lsp/README.md) | Language server client | lazy | `stdlib` |
 | [`lsp-install`](lsp-install/README.md) | Language server installer | lazy | `stdlib` |
@@ -23,8 +23,8 @@ plugin-authoring API (not core-specific), see
 | [`git-diff`](git-diff/README.md) | Inline git diff decorations | lazy | `stdlib` |
 | [`buffer-words`](buffer-words/README.md) | Buffer-text completion source | eager | `stdlib` |
 | [`vim-keybind`](vim-keybind/README.md) | Vim muscle-memory keys | eager | `stdlib` |
-| [`helix-surround`](helix-surround/README.md) | Helix-compat surround keys | eager | — |
-| [`classic-paste`](classic-paste/README.md) | GUI-style clipboard/kill-ring split | eager | — |
+| [`helix-surround`](helix-surround/README.md) | Helix-compat surround keys | eager | none |
+| [`classic-paste`](classic-paste/README.md) | GUI-style clipboard/kill-ring split | eager | none |
 
 "Loads": **lazy** means the plugin ships a `manifest.scm` and can be brought in with
 `declare-plugin!`, activating itself later. **Eager** means it has no `manifest.scm` and
@@ -44,9 +44,10 @@ would leave it permanently dormant. `buffer-words`, `pickers`, `vim-keybind`,
 `helix-surround`, and `classic-paste` are all this shape.
 
 Passing an explicit `#:commands`/`#:events`/`#:languages`/`#:typed-commands` list to
-`declare-plugin!` bypasses the plugin's own `manifest.scm` entirely. This is how a config
-can activate a plugin on a narrower trigger than its default, but see the pitfall below
-before doing it to a plugin other code depends on.
+`declare-plugin!` bypasses the plugin's own `manifest.scm`. A config can use this to
+activate a plugin on a narrower trigger than its default; the pitfall under
+[Depending on `core:stdlib`](#depending-on-corestdlib) applies when other code depends on
+that plugin.
 
 ## Depending on `core:stdlib`
 
@@ -66,8 +67,8 @@ for the full mechanism, including the stronger `(loaded-plugins)` check.
 `#:commands`/`#:events`/`#:languages`/`#:typed-commands` list that omits a command a
 dependent needs, there is no activation stub for that command. `call!` then logs an error
 and returns `#f` instead of raising, so a dependent's config validation or runtime call
-silently resolves to `#f` instead of failing loudly. The `(declared-plugins)` check can't
-catch this, since the dependency is declared.
+resolves to `#f` instead of failing. The `(declared-plugins)` check can't catch this,
+since the dependency is declared.
 
 ## Patterns shared across core plugins
 
@@ -84,20 +85,20 @@ Steel's `hash` is persistent (immutable: `hash-insert` returns a new map rather 
 mutating in place), so updating an entry means read-modify-write the whole box, not
 mutating a captured reference to the old map.
 
-`git-diff`, `buffer-words`, and `lsp`'s diagnostics drawer all use this shape.
+`git-diff` and `buffer-words` use this shape.
 
 ### Pane values vs. pane-less values
 
 Some hooks (`on-buffer-open`, `on-text-changed`, `on-buffer-close`, `on-diagnostics-changed`)
 hand their callback a pane-less value that identifies a buffer but names no pane showing
-it. A builtin that needs a real pane (to read the cursor, the viewport, or the live
-selection set) raises on a pane-less value rather than degrading gracefully.
+it. A builtin that needs a pane (to read the cursor, the viewport, or the live selection
+set) raises on a pane-less value.
 
 The standard resolution is `(buffer-panes pane)`: `car` of the result if some pane shows
 the buffer, otherwise a documented fallback (line 0, or skip the operation) if it isn't
-shown anywhere. A caller that already holds a genuine, live pane (a command's own leading
-argument, a hook that does carry one) should use it directly. Re-resolving risks picking
-a *different* pane on the same buffer than the one the caller actually meant.
+shown anywhere. A caller that already holds a live pane (a command's own leading
+argument, a hook that does carry one) uses it directly: re-resolving can pick a different
+pane on the same buffer than the one the caller was given.
 
 ### Stale async work
 
@@ -105,10 +106,9 @@ A plugin that schedules a timer or spawns a subprocess has to handle the callbac
 after the state it was scheduled against has moved on:
 
 - **The entry may be gone.** A buffer can close while a fetch or a walk is in flight.
-  A write path serving a live read (a toggle command, an explicit user action) should
-  *resurrect* a missing entry rather than no-op; a write path serving an async callback
-  should no-op, since resurrecting state for a buffer that's gone would leak it
-  forever.
+  A write path serving a live read (a toggle command, an explicit user action) recreates
+  a missing entry; a write path serving an async callback does nothing, since recreating
+  state for a buffer that's gone would leak it.
 - **`cancel-timer!`/canceling a job can't stop a callback that's already been dequeued
   onto the run queue.** For anything more than a single in-flight timer, an entry needs
   a generation counter, bumped every time the operation restarts; a callback closes over
@@ -117,11 +117,10 @@ after the state it was scheduled against has moved on:
 
 ### Debouncing
 
-`debounce-by` (keyed) rather than plain `debounce` (global) for anything that fires per
-buffer. A command's own pane and a hook's pane-less value for the same buffer must
-collapse into the same pending timer, and one buffer's edits must never cancel a
-different buffer's pending refresh. `git-diff`, `buffer-words`, and `lsp`'s inlay hints
-all key by `buffer-key`.
+Anything that fires per buffer uses `debounce-by` (keyed) rather than plain `debounce`
+(global), keyed by `buffer-key` as under [Per-buffer state](#per-buffer-state), so one
+buffer's edits never cancel another buffer's pending refresh. `git-diff`, `buffer-words`,
+and `lsp`'s inlay hints do this.
 
 ### Capture the target, don't re-read focus
 
@@ -129,25 +128,25 @@ A callback that runs later (a debounced fire, an async process result, a menu se
 after a network round trip) should capture the pane (and, where relevant, the buffer's
 edit generation) at the moment the request was made, not re-read `(focused-pane)` when
 the callback finally runs. The user is free to switch buffers while something is in
-flight; re-reading focus at completion time silently redirects the result to wherever the
-user happens to be looking now instead of where it was requested. `lsp`'s code-action
+flight; re-reading focus at completion time sends the result to wherever the user is looking
+now instead of where it was requested. `lsp`'s code-action
 menu and `git-diff`'s fetch/diff pipeline both follow this.
 
 ### Log severity
 
 `log!` supports `'error`/`'warn`/`'info`/`'trace`. Route by how actionable the failure is
-to the *user*, not by how verbose the plugin author wants to be:
+to the user, not by how verbose the plugin author wants to be:
 
 - `'error`: the operation couldn't run (a required tool is missing, a process
   failed to start at all).
-- `'warn`: a real failure that's a direct answer to something the user just typed (a
-  bad ref, an invalid name), or a security-relevant refusal (a path-traversal attempt)
-  worth a persistent record.
-- `'trace`: an expected, common failure that would otherwise spam `:messages` for every
-  buffer that never opted into the feature (e.g. "not a git repository" for branch
-  tracking, which runs unconditionally for every buffer).
-- `'info` (via `Severity::Info`) is status-line only and never reaches `:messages`. Never
-  use it for anything that should stay reviewable after the moment it flashed by.
+- `'warn`: a failure that's a direct answer to something the user just typed (a bad ref,
+  an invalid name), or a security-relevant refusal (a path-traversal attempt) worth a
+  persistent record.
+- `'trace`: an expected, common failure that would otherwise fill `:messages` for every
+  buffer that never opted into the feature (e.g. `git show` failing for a buffer with no
+  ref override, which `git-diff` runs for every buffer).
+- `'info` (via `Severity::Info`) is status-line only and never reaches `:messages`, so it
+  suits status that need not outlive the moment it flashed by.
 
 ## Steel pitfalls worth knowing before you hit them
 
@@ -169,7 +168,8 @@ never the explanation itself. All prose (design rationale, algorithms, non-obvio
 gotchas) lives in the plugin's README (or its `docs/*.md`, for a plugin split into
 several).
 
-Each plugin's own doc follows the same shape:
+Each plugin's own doc follows the same shape; sections 5-7 appear where the plugin has
+something to put in them:
 
 1. **What it does and why**, in a couple of paragraphs.
 2. **Usage**: a config snippet, then bullets for dependencies, activation, and a link to

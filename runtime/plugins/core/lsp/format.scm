@@ -1,6 +1,5 @@
 ;;; core:lsp/format.scm — textDocument/formatting / rangeFormatting /
-;;; rangesFormatting. See docs/features.md, including the format-on-save
-;;; opt-in snippet.
+;;; rangesFormatting. See docs/features.md.
 
 (require "lib.scm")
 

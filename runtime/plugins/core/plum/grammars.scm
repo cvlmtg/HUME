@@ -1,6 +1,4 @@
-;;; core:plum/grammars.scm — grammar INSTALL pipeline only. The source
-;;; catalog, path helpers, and startup registration of already-compiled
-;;; grammars live in core (runtime/scheme/grammars.scm) — see README.md.
+;;; core:plum/grammars.scm — the grammar install pipeline; see README.md.
 
 (require "lib.scm")
 
@@ -23,8 +21,7 @@
   (let ((trimmed (trim line)))
     (map trim (split-many (trim (substring trimmed 11 (string-length trimmed))) ","))))
 
-;;; `curl` deliberately NOT wrapped in `with-handler` — see README.md's
-;;; "Grammar sources and the Helix pin".
+;;; See README.md's "Query fetching".
 (define (plum/fetch-raw-query name filename)
   ;; `name` may be untrusted (an `; inherits:` line) — see core:stdlib's README.
   (unless (eq? #t (call! "stdlib/safe-path-segment?" name))
