@@ -82,22 +82,21 @@ fn finish_edit(
     cs: &ChangeSet,
     text_pre: &BufferText,
 ) {
-    pane_state[pane_id][buf_id].set_selections(new_sels, buffers.get(buf_id).text());
     // An identity `cs` moved no bytes: `Buffer::apply_edit*` skipped
     // `install` for it directly, and `commit_edit_group` never records it as
     // a revision for `undo`/`redo` to later replay, so the text generation did
     // not move either way. Feeding the LSP stream an edit tagged with
     // an already-parsed generation would be actively wrong, and paste-stamping
-    // must not count a no-op as an edit. Selections are still written above:
-    // a no-op edit can still move cursors.
+    // must not count a no-op as an edit. Selections are still written: a
+    // no-op edit can still move cursors.
     if cs.is_identity() {
+        pane_state[pane_id][buf_id].set_selections(new_sels, buffers.get(buf_id).text());
         return;
     }
     // A real edit reveals the acting pane even when it didn't move the
-    // primary head (`r` replacing the character under the cursor): the
-    // selection funnel above only raises this for a head move, but the
-    // buffer under this pane just changed regardless.
-    pane_state[pane_id][buf_id].reveal_pending = true;
+    // primary head (`r` replacing the character under the cursor). `install`
+    // left this pane's selections for the new ones to replace.
+    pane_state[pane_id][buf_id].set_selections_after_edit(new_sels);
     buffers.bump_edit_seq();
     let generation = buffers.get(buf_id).text().generation();
     record_lsp_edits(buffers, buf_id, generation, cs, text_pre.rope());
@@ -192,7 +191,7 @@ pub(in crate::editor) fn apply_doc_edit(
     let sels = stores.panes[pane_id][buf_id].selections().clone();
     let (new_sels, cs) = buffers
         .get_mut(buf_id)
-        .apply_edit(buf_id, stores, sels, cmd);
+        .apply_edit(buf_id, stores, pane_id, sels, cmd);
     finish_edit(
         buffers,
         stores.panes,
@@ -243,7 +242,8 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
         .expect(
             "apply_doc_edit_grouped called without an open Insert session on this (pane, buffer)",
         );
-    let (new_sels, cs) = doc.apply_edit_grouped(buf_id, stores, sels, session.group_mut(), cmd);
+    let (new_sels, cs) =
+        doc.apply_edit_grouped(buf_id, stores, pane_id, sels, session.group_mut(), cmd);
     finish_edit(
         buffers,
         stores.panes,
@@ -293,7 +293,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
         .group_mut();
     let (new_sels, propagation_cs) = buffers
         .get_mut(buf_id)
-        .apply_edit_regrouped(buf_id, stores, group, cmd);
+        .apply_edit_regrouped(buf_id, stores, pane_id, group, cmd);
     finish_edit(
         buffers,
         stores.panes,
@@ -306,7 +306,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
 }
 
 /// Run one history walk on `buf_id` through `pane_id` (`walk`, typically
-/// `|b, id, stores| b.undo_n(id, stores, count)`), which carries every stored
+/// `|b, id, stores, pane| b.undo_n(id, stores, pane, count)`), which carries every stored
 /// position through the net `ChangeSet`.
 ///
 /// `walk` already composes every revision it crosses into one transform (see
@@ -326,7 +326,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     active_session: &Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
-    walk: impl FnOnce(&mut Buffer, BufferId, &mut PositionStores<'_>) -> HistoryWalkResult,
+    walk: impl FnOnce(&mut Buffer, BufferId, &mut PositionStores<'_>, PaneId) -> HistoryWalkResult,
 ) -> Result<HistoryWalk, CommandError> {
     if buffers.get(buf_id).is_read_only() {
         return Ok(HistoryWalk::RefusedReadOnly);
@@ -339,7 +339,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
         "apply_doc_history_walk called while a session is open on this (pane, buffer)"
     );
     let text_pre = buffers.get(buf_id).text().clone();
-    let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), buf_id, stores) else {
+    let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), buf_id, stores, pane_id) else {
         return Ok(HistoryWalk::Took(0));
     };
     finish_edit(

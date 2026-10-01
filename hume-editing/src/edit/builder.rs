@@ -253,7 +253,18 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
     /// The `ChangeSet` of the recorded operations, with every deletion
     /// stopping at `ceiling`, and where each item starts and ends in the new
     /// text.
-    fn drive(&self, ceiling: Option<CharOffset>) -> (ChangeSet, Vec<(CharOffset, CharOffset)>) {
+    ///
+    /// Inserted text moves into the changeset, so a call that another may
+    /// follow clones it instead. Only a deletion reaching the text end can
+    /// drop the final `\n` (an insertion there ends with its own), so only
+    /// then is a second call possible.
+    fn drive(&mut self, ceiling: Option<CharOffset>) -> (ChangeSet, Vec<(CharOffset, CharOffset)>) {
+        let text_end = self.text.end();
+        let rerun_possible = ceiling.is_none()
+            && self
+                .items
+                .iter()
+                .any(|item| matches!(item.kind, ItemKind::Delete { end } if end == text_end));
         let mut order: Vec<usize> = (0..self.items.len()).collect();
         order.sort_by_key(|&index| (self.items[index].key, index));
         let mut changes = ChangeSetBuilder::new(self.text.end());
@@ -261,13 +272,13 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
         // The old start and new position of the deletion ending at `old_pos`.
         let mut deletion: Option<(CharOffset, CharOffset)> = None;
         for index in order {
-            let item = &self.items[index];
+            let item = &mut self.items[index];
             if item.key > changes.old_pos() {
                 changes.retain_to(item.key);
                 deletion = None;
             }
             let before = changes.new_pos();
-            match &item.kind {
+            match &mut item.kind {
                 ItemKind::Delete { end } => {
                     let end = ceiling.map_or(*end, |ceiling| (*end).min(ceiling));
                     if end > changes.old_pos() {
@@ -276,7 +287,12 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
                     }
                 }
                 ItemKind::Insert(text) => {
-                    changes.insert_normalized(text.clone());
+                    let text = if rerun_possible {
+                        text.clone()
+                    } else {
+                        std::mem::take(text)
+                    };
+                    changes.insert_normalized(text);
                 }
                 ItemKind::Anchor => {}
             }
@@ -292,12 +308,12 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
         (changes.finish(), placed)
     }
 
-    fn finish(self, results: Landings<'id>) -> Edited {
+    fn finish(mut self, results: Landings<'id>) -> Edited {
         let (text, changes, placed) =
             super::apply_keeping_final_break(self.text, |ceiling| self.drive(ceiling));
         let selections = {
             let change = TextChange::new(self.text, &text, &changes);
-            let mut resolver = Resolver::new(&change, &text);
+            let mut resolver = Resolver::new(&change);
             let selections = results
                 .items
                 .into_iter()
@@ -412,9 +428,9 @@ impl<'id> Landing<'id> {
             }
             Kind::CursorEndingAt(end) => {
                 let end = place(end);
-                let starts_line =
-                    end == CharOffset::default() || text.char_at(end.retreat(1)) == Some('\n');
-                if starts_line && end < text.end() {
+                let starts_line = end < text.end()
+                    && crate::lines::line_start(text, text.char_to_line(end)).offset() == end;
+                if starts_line {
                     Selection::cursor(text.snap(end))
                 } else {
                     Selection::cursor(text.snap(end.retreat(1)))
@@ -431,7 +447,7 @@ impl<'id> Landing<'id> {
             }
             Kind::LineStartOf(at) => {
                 let line = text.char_to_line(place(at));
-                Selection::cursor(text.snap(text.line_to_char(line.into())))
+                Selection::cursor(crate::lines::line_start(text, line))
             }
             Kind::Kept { sel, assoc } => resolver.carry(sel, assoc),
             Kind::AtLines { sel, first, last } => {

@@ -209,6 +209,7 @@ fn p6_e_bang_undo_then_edit_branches_off_old_tree() {
             &mut ed.state.buffer_positions,
             &mut ed.state.config.decorations,
         ),
+        PaneId::default(),
         &mut sels,
         r_reload,
     );
@@ -257,6 +258,7 @@ fn p6_e_bang_inverse_is_fine_grained() {
                 &mut ed.state.buffer_positions,
                 &mut ed.state.config.decorations,
             ),
+            PaneId::default(),
             1,
         )
         .expect("undo returns the inverse CS");

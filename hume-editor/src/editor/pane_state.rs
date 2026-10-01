@@ -195,22 +195,34 @@ impl PaneBufferState {
         self.selections = new;
     }
 
-    /// Carry this pane's positions for the buffer through `change`. Raises
+    /// Replace this pane's selections with those of an edit it made, and
+    /// raise a reveal: the buffer under the pane changed whether or not the
+    /// primary head moved.
+    pub(in crate::editor) fn set_selections_after_edit(&mut self, new: SelectionSet) {
+        self.selections = new;
+        self.reveal_pending = true;
+    }
+
+    /// Carry this pane's selections for the buffer through `change`. Raises
     /// no reveal of its own: a text change moves the text generation, which
     /// `frame.rs`'s scroll step already reads off `EditorState::layout_key`
     /// and reveals for, gated on [`PaneBufferState::parked`] like every other
     /// external change (see that field's own doc for why a parked pane must
     /// not snap back just because the head it can't currently see also
     /// moved). The pane that made an edit raises its own in `finish_edit`.
-    pub(in crate::editor) fn carry(&mut self, change: &TextChange<'_>) {
+    pub(in crate::editor) fn carry_selections(&mut self, change: &TextChange<'_>) {
         self.selections.translate(change);
+    }
+
+    /// Carry this pane's typed-run and autoindent records through `change`.
+    pub(in crate::editor) fn carry_marks(&mut self, change: &TextChange<'_>) {
         // `ChangeSet::map_ranges` maps (start, end) pairs directly, but with
         // `Assoc::After` on starts and `Assoc::Before` on ends: it shrinks a
         // range around inserted text. A typed run needs the opposite: it must
         // grow to include what was just typed, so anchors and ends are mapped
         // separately with `Assoc` reversed from what `map_ranges` would use.
         if let Some(run) = self.typed_run.as_mut() {
-            run.translate(change, |run, change| {
+            run.translate(change, |run| {
                 change
                     .changes()
                     .map_positions(&mut run.anchors, Assoc::Before);
@@ -223,7 +235,7 @@ impl PaneBufferState {
         // before its start, falls outside the mapped range without any key
         // handler needing to clear it.
         if let Some(ranges) = self.autoindent.as_mut() {
-            ranges.translate(change, |ranges, change| change.changes().map_ranges(ranges));
+            ranges.translate(change, |ranges| change.changes().map_ranges(ranges));
         }
     }
 }

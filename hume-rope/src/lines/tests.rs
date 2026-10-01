@@ -506,34 +506,18 @@ fn is_empty_line_token_false_for_content_line() {
     assert!(!is_empty_line_token(buf.line(0)));
 }
 
-// ── is_empty_line ─────────────────────────────────────────────────────────
-
 #[test]
-fn is_empty_line_true_for_bare_newline() {
-    // "a\n\nb\n": line 1 is just "\n".
-    let buf = rope("a\n\nb\n");
-    assert!(is_empty_line(&buf, RopeyLine::new(1)));
-}
-
-#[test]
-fn is_empty_line_false_for_content_line() {
-    let buf = rope("hello\n");
-    assert!(!is_empty_line(&buf, RopeyLine::new(0)));
-}
-
-#[test]
-fn is_empty_line_false_for_whitespace_only_line() {
-    // "   \n": whitespace-only is NOT empty (Helix semantics).
-    let buf = rope("   \n");
-    assert!(!is_empty_line(&buf, RopeyLine::new(0)));
-}
-
-#[test]
-fn is_empty_line_false_for_a_cr_only_line() {
+fn is_empty_line_token_false_for_a_cr_only_line() {
     // "a\n\r\nb\n": line 1 is "\r\n". The `\r` is content, not part of the
-    // terminator, so the line has one char and is not empty.
+    // terminator, so the line has one char before its `\n` and is not empty.
     let buf = rope("a\n\r\nb\n");
-    assert!(!is_empty_line(&buf, RopeyLine::new(1)));
+    assert!(!is_empty_line_token(buf.line(1)));
+}
+
+#[test]
+fn is_empty_line_token_false_for_whitespace_only_line() {
+    let buf = rope("   \n");
+    assert!(!is_empty_line_token(buf.line(0)));
 }
 
 // ── char_col_in_line ─────────────────────────────────────────────────────

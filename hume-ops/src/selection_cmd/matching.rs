@@ -7,7 +7,7 @@ use hume_editing::lines::{line_content_end, line_start};
 use hume_editing::selection::{Facing, Selection};
 use hume_editing::state::EditState;
 use hume_rope::cluster::ClusterRange;
-use hume_rope::line::ContentLine;
+use hume_rope::offset::ExclusiveRange;
 
 // ── Split on newlines ─────────────────────────────────────────────────────────
 
@@ -46,13 +46,10 @@ pub fn cmd_split_selection_on_newlines(
             sel.start(),
             line_content_end(text, lines.start).max(sel.start()),
         )];
-        // Middle lines: full lines. Bare-`usize` range, `ContentLine`
-        // re-minted each iteration: `ContentLine` has no `Step`/`Range`
-        // impl to loop over directly. Sound here: both endpoints are
-        // already-valid `ContentLine`s.
+        // Middle lines: full lines.
         pieces.extend(
-            (lines.start.advance(1).index()..lines.end.index())
-                .map(ContentLine::new)
+            ExclusiveRange::new(lines.start.advance(1), lines.end)
+                .iter()
                 .map(|line| piece(line_start(text, line), line_content_end(text, line))),
         );
         // Last line piece: from the line start to the selection's last cluster.

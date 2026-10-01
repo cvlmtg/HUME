@@ -1486,3 +1486,19 @@ lets go wrong: stale windows, reachable misplacements, invariants left to
 convention. Name the failure each permits before naming its cost. If the
 smaller option has a correctness gap, it is not the recommendation, whatever
 the churn. Write the test for the gap before choosing.
+
+## L33 — A deviation report recommended skipping on an unmeasured churn count (2026-10-01)
+
+**Root cause:** Threading the acting pane through `Buffer::install` and the
+`apply_edit*` family had been approved. The deviation report recommended
+skipping it, citing "about 130 call sites". The count came from one `grep -c`
+that matched 119 calls to a test helper's own `apply_edit` method. The real
+change was about ten signatures and call sites, and the third option on
+offer (a mutable "acting" flag on `PositionStores`) was a convention-kept
+invariant. The user asked for the correct option and told us to ignore
+churn.
+
+**Prevention rule:** Count what a change touches by reading the call sites
+(group by caller, separate wrappers from real call sites) before putting a
+number in a report. Even a true number is not a reason to recommend the
+option that leaves wasted work or a convention-kept invariant in place.

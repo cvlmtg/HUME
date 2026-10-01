@@ -6,7 +6,7 @@ use hume_editing::state::EditState;
 use hume_ops::edit::yank_selections;
 use hume_ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
-    paste_before, repeat_edit,
+    paste_before,
 };
 use hume_ops::register::Piece;
 use pretty_assertions::assert_eq;
@@ -29,6 +29,7 @@ impl DocHelper {
         let (new_sels, _cs) = self.buf.apply_edit(
             BufferId::default(),
             &mut DetachedStores::default().stores(),
+            PaneId::default(),
             sels,
             cmd,
         );
@@ -44,6 +45,7 @@ impl DocHelper {
         let (new_sels, _cs) = self.buf.apply_edit_grouped(
             BufferId::default(),
             &mut DetachedStores::default().stores(),
+            PaneId::default(),
             sels,
             group,
             cmd,
@@ -79,6 +81,7 @@ impl DocHelper {
         let Some((new_sels, _cs, steps)) = self.buf.undo_n(
             BufferId::default(),
             &mut DetachedStores::default().stores(),
+            PaneId::default(),
             count,
         ) else {
             return 0;
@@ -93,6 +96,7 @@ impl DocHelper {
         let Some((new_sels, _cs, steps)) = self.buf.redo_n(
             BufferId::default(),
             &mut DetachedStores::default().stores(),
+            PaneId::default(),
             count,
         ) else {
             return 0;
@@ -105,6 +109,7 @@ impl DocHelper {
         self.buf.goto_revision(
             BufferId::default(),
             &mut DetachedStores::default().stores(),
+            PaneId::default(),
             &mut self.sels,
             target,
         );
@@ -268,12 +273,16 @@ fn undo_multi_cursor_delete() {
     assert_eq!(state(&d), "-{h}>el-[l]>o\n");
 }
 
-// ── repeat_edit produces single undo step ─────────────────────────────────
+// ── a multi-step edit is a single undo step ───────────────────────────────
 
 #[test]
-fn repeat_edit_is_single_undo_step() {
+fn a_multi_step_edit_is_a_single_undo_step() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|s| repeat_edit(3, s, delete_char_forward));
+    d.apply_edit(|s| {
+        delete_char_forward(s)
+            .then(delete_char_forward)
+            .then(delete_char_forward)
+    });
     assert_eq!(state(&d), "-[l]>o\n");
     d.undo();
     assert_eq!(state(&d), "-[h]>ello\n");
@@ -999,6 +1008,7 @@ fn reload_from_text_inverse_is_fine_grained() {
         .undo_n(
             BufferId::default(),
             &mut DetachedStores::default().stores(),
+            PaneId::default(),
             1,
         )
         .expect("undo after reload returns the inverse CS");
@@ -1010,5 +1020,43 @@ fn reload_from_text_inverse_is_fine_grained() {
         has_small_insert,
         "reload inverse should re-insert only the changed line, got {:?}",
         inv_cs.ops(),
+    );
+}
+
+// ── Acting pane ───────────────────────────────────────────────────────────
+
+#[test]
+fn an_edit_leaves_the_acting_panes_selections_to_its_caller() {
+    let mut d = doc("-[a]>bc\n");
+    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
+    let before = stores.selections(pane, id);
+
+    d.buf
+        .apply_edit(id, &mut stores.stores(), pane, d.sels.clone(), |s| {
+            insert_char(s, 'x')
+        });
+
+    assert_eq!(stores.selections(pane, id), before);
+}
+
+#[test]
+fn an_edit_carries_the_selections_of_every_other_pane() {
+    let mut d = doc("-[a]>bc\n");
+    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
+
+    d.buf.apply_edit(
+        id,
+        &mut stores.stores(),
+        PaneId::default(),
+        d.sels.clone(),
+        |s| insert_char(s, 'x'),
+    );
+
+    let carried = stores.selections(pane, id);
+    assert_eq!(carried.version(), d.buf.text().version());
+    assert_eq!(
+        serialize_state(d.buf.text(), &carried),
+        "x-[a]>bc\n",
+        "the other pane's cursor moves past the inserted char"
     );
 }

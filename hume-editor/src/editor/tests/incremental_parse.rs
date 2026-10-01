@@ -12,7 +12,6 @@ use hume_treesitter::grammar::LoadedGrammar;
 use test_fixtures::{grammar_parser_path, require_grammars};
 
 use crate::editor::buffer::Buffer;
-use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
 
 /// Create an editor with `source` as buffer text and a JSON grammar attached.
@@ -372,20 +371,32 @@ fn grammar_swap_clears_pending_and_full_reparses() {
     );
 }
 
-/// One soft Tab with several cursors chains one step per cursor, so a single
-/// installed text consumes several text versions. The recorded edit still
-/// leads from the tree's text to the current one, so no full reparse is forced.
+/// An edit built from several steps installs one text that consumes several
+/// text versions. The recorded edit still leads from the tree's text to the
+/// current one, so no full reparse is forced.
 #[test]
-fn multi_cursor_tab_keeps_the_pending_edit_chain_linked() {
+fn an_edit_spanning_several_text_versions_keeps_the_pending_edit_chain_linked() {
+    use crate::editor::position_stores::PositionStores;
+    use hume_engine::pipeline::PaneId;
+    use hume_ops::edit::insert_str;
+
     require_grammars(&["json"]);
     let (mut ed, bid) = json_editor("[1,\n2,\n3]\n");
-    ed.state.settings.tab_style = TabStyle::Soft;
-    select(&mut ed, &[(1, 1), (4, 4), (7, 7)], 0);
     let gen_before = ed.state.buffers.get(bid).text().generation();
+    let sels = ed.current_selections().clone();
 
-    ed.feed_key(key('i'));
-    ed.feed_key(key_tab());
-    ed.feed_key(key_esc());
+    ed.state.buffers.get_mut(bid).apply_edit(
+        bid,
+        &mut PositionStores::new(
+            &mut ed.state.panes,
+            &mut ed.state.input,
+            &mut ed.state.buffer_positions,
+            &mut ed.state.config.decorations,
+        ),
+        PaneId::default(),
+        sels,
+        |state| insert_str(state, " ").then(|state| insert_str(state, " ")),
+    );
 
     let gen_after = ed.state.buffers.get(bid).text().generation();
     assert!(

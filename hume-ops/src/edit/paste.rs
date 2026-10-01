@@ -2,8 +2,7 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
-use hume_editing::grapheme::cluster_end;
-use hume_editing::lines::{line_break, line_start};
+use hume_editing::lines::{line_break, line_range, line_start};
 use hume_editing::selection::Facing;
 use hume_editing::state::EditState;
 use hume_rope::cluster::ClusterRange;
@@ -11,7 +10,7 @@ use hume_rope::cluster::ClusterRange;
 use super::apply_edit;
 use crate::register::{Piece, Shape};
 
-/// `before` governs insert position for cursor (non-collapsed) selections:
+/// `before` governs insert position for cursors (collapsed selections):
 ///
 /// | `before` | charwise piece             | linewise piece                 |
 /// |----------|----------------------------|--------------------------------|
@@ -75,7 +74,7 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
                 let insert_at = if before {
                     line_start(text, line).into()
                 } else {
-                    cluster_end(text, line_break(text, line))
+                    line_range(text, line).end()
                 };
                 let mark = b.insert(insert_at, content);
                 return Landing::covering(mark, Facing::Forward);

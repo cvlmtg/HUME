@@ -12,27 +12,25 @@ use crate::text::BufferText;
 /// the last one asked about.
 pub(crate) struct Resolver<'a> {
     change: &'a TextChange<'a>,
-    text: &'a BufferText,
     cursor: PosMapCursor<'a>,
     last: CharOffset,
 }
 
 impl<'a> Resolver<'a> {
-    pub(crate) fn new(change: &'a TextChange<'a>, text: &'a BufferText) -> Self {
+    pub(crate) fn new(change: &'a TextChange<'a>) -> Self {
         Self {
             change,
-            text,
             cursor: PosMapCursor::new(change.changes().ops()),
             last: CharOffset::default(),
         }
     }
 
     pub(crate) fn text(&self) -> &'a BufferText {
-        self.text
+        self.change.after()
     }
 
     /// `pos` of the old text in the new one.
-    pub(crate) fn map_old(&mut self, pos: CharOffset, assoc: Assoc) -> CharOffset {
+    fn map_old(&mut self, pos: CharOffset, assoc: Assoc) -> CharOffset {
         if pos < self.last {
             self.cursor = PosMapCursor::new(self.change.changes().ops());
         }
@@ -45,6 +43,6 @@ impl<'a> Resolver<'a> {
     pub(crate) fn carry(&mut self, sel: Selection, assoc: Assoc) -> Selection {
         let start = self.map_old(sel.start().offset(), assoc);
         let last = self.map_old(sel.last().offset(), assoc);
-        sel.with_ends(self.text.snap(start), self.text.snap(last))
+        sel.with_ends(self.text().snap(start), self.text().snap(last))
     }
 }

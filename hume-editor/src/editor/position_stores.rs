@@ -32,6 +32,29 @@ pub(crate) struct BufferPositions {
     pub(in crate::editor) last_inserts: SecondaryMap<BufferId, Tracked<Vec<ClusterRange>>>,
 }
 
+impl BufferPositions {
+    /// Carry `buffer`'s diagnostics and last insertion through `change`.
+    fn carry(&mut self, buffer: BufferId, change: &TextChange<'_>) {
+        self.diagnostics.remap_through(buffer, change.changes());
+        let Some(last) = self.last_inserts.get_mut(buffer) else {
+            return;
+        };
+        last.translate(change, |ranges| {
+            let mut chars: Vec<_> = ranges.iter().map(|range| range.chars()).collect();
+            change.changes().map_ranges(&mut chars);
+            ranges.clear();
+            ranges.extend(
+                chars
+                    .into_iter()
+                    .filter_map(|range| change.after().covering(range)),
+            );
+        });
+        if last.get(change.after()).is_some_and(Vec::is_empty) {
+            self.last_inserts.remove(buffer);
+        }
+    }
+}
+
 pub(crate) struct PositionStores<'a> {
     pub(in crate::editor) panes:
         &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -64,10 +87,24 @@ impl<'a> PositionStores<'a> {
     /// shows it now, every jump list, every position a script is tracking,
     /// every open prompt's snapshot, the open completion session, the
     /// buffer's diagnostics and decorations, and its last insertion.
-    pub(in crate::editor) fn carry(&mut self, buffer: BufferId, change: &TextChange<'_>) {
-        for buffers in self.panes.values_mut() {
+    ///
+    /// `acting` is the pane whose caller replaces its selections with the
+    /// edit's own once this returns, so a real change does not carry them. An
+    /// identity change carries them too: it only retags them for the relabeled
+    /// text.
+    pub(in crate::editor) fn carry(
+        &mut self,
+        buffer: BufferId,
+        change: &TextChange<'_>,
+        acting: Option<PaneId>,
+    ) {
+        let acting = acting.filter(|_| !change.changes().is_identity());
+        for (pane, buffers) in self.panes.iter_mut() {
             if let Some(state) = buffers.get_mut(buffer) {
-                state.carry(change);
+                if Some(pane) != acting {
+                    state.carry_selections(change);
+                }
+                state.carry_marks(change);
             }
         }
         self.jumps.translate(buffer, change);
@@ -78,16 +115,8 @@ impl<'a> PositionStores<'a> {
         if let Some(session) = self.input.buffer_completion_mut() {
             session.carry(buffer, change);
         }
-        self.buffers
-            .diagnostics
-            .remap_through(buffer, change.changes());
+        self.buffers.carry(buffer, change);
         self.decorations.remap_through(buffer, change.changes());
-        if let Some(last) = self.buffers.last_inserts.get_mut(buffer) {
-            carry_last_insert(last, change);
-            if last.get(change.after()).is_some_and(Vec::is_empty) {
-                self.buffers.last_inserts.remove(buffer);
-            }
-        }
     }
 
     /// Reset every position stored for `buffer`, whose text was replaced
@@ -131,18 +160,6 @@ impl<'a> PositionStores<'a> {
         self.decorations.remove_buffer(buffer);
         self.buffers.last_inserts.remove(buffer);
     }
-}
-
-/// Carry the last insertion's ranges through `change`.
-fn carry_last_insert(last: &mut Tracked<Vec<ClusterRange>>, change: &TextChange<'_>) {
-    last.translate(change, |ranges, change| {
-        let mut chars: Vec<_> = ranges.iter().map(|range| range.chars()).collect();
-        change.changes().map_ranges(&mut chars);
-        *ranges = chars
-            .into_iter()
-            .filter_map(|range| change.after().covering(range))
-            .collect();
-    });
 }
 
 /// Empty stores for a test that changes a detached `Buffer`, one no pane,

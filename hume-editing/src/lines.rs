@@ -53,11 +53,6 @@ pub fn leading_indent(
     hume_rope::lines::leading_indent(text.rope(), line, tab_width)
 }
 
-/// See [`hume_rope::lines::is_empty_line`].
-pub fn is_empty_line(text: &BufferText, line: RopeyLine) -> bool {
-    hume_rope::lines::is_empty_line(text.rope(), line)
-}
-
 /// See [`hume_rope::lines::line_content_end`].
 pub fn line_content_end(text: &BufferText, line: ContentLine) -> ClusterStart {
     hume_rope::lines::line_content_end(text.rope(), line)

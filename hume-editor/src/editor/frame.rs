@@ -31,11 +31,11 @@ pub(in crate::editor::frame) fn write_pane_mirror(
         cursor: s.head(),
     });
     match &mut pane.selections {
-        Some(mirror) => mirror.rewrite(items, view.primary_index()),
+        Some(mirror) => mirror.rewrite(items, view.primary().index()),
         None => {
             pane.selections = Some(PaintedSelections::new(
                 items.collect(),
-                view.primary_index(),
+                view.primary().index(),
             ))
         }
     }

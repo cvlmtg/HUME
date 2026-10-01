@@ -131,12 +131,7 @@ impl EditState {
     /// The primary selection replaced by `sel`.
     #[must_use]
     pub fn replace_primary(self, sel: Selection) -> Self {
-        let Self {
-            text, selections, ..
-        } = self;
-        let (mut selections, primary) = selections.into_parts();
-        selections[primary] = sel;
-        Self::from_text(text, selections, primary)
+        self.edit_parts(|selections, primary| selections[*primary] = sel)
     }
 
     /// Only the primary selection.
@@ -158,26 +153,31 @@ impl EditState {
         if len == 1 {
             return self;
         }
-        let Self { text, selections } = self;
-        let (mut selections, primary) = selections.into_parts();
-        selections.remove(idx);
-        let primary = if idx < primary {
-            primary - 1
-        } else if idx == primary {
-            idx % selections.len()
-        } else {
-            primary
-        };
-        Self::from_text(text, selections, primary)
+        self.edit_parts(|selections, primary| {
+            selections.remove(idx);
+            if idx < *primary {
+                *primary -= 1;
+            } else if idx == *primary {
+                *primary = idx % selections.len();
+            }
+        })
     }
 
     /// The primary moved `delta` selections along document order, wrapping.
     #[must_use]
     pub fn cycle_primary(self, delta: isize) -> Self {
+        self.edit_parts(|selections, primary| {
+            let len = selections.len() as isize;
+            *primary = (*primary as isize + delta).rem_euclid(len) as usize;
+        })
+    }
+
+    /// `f` applied to the selections and the primary index, then the result
+    /// re-fitted to the same text.
+    fn edit_parts(self, f: impl FnOnce(&mut Vec<Selection>, &mut usize)) -> Self {
         let Self { text, selections } = self;
-        let (selections, primary) = selections.into_parts();
-        let len = selections.len() as isize;
-        let primary = (primary as isize + delta).rem_euclid(len) as usize;
+        let (mut selections, mut primary) = selections.into_parts();
+        f(&mut selections, &mut primary);
         Self::from_text(text, selections, primary)
     }
 

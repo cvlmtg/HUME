@@ -48,11 +48,6 @@ impl<'a> EditView<'a> {
         self.at(index)
     }
 
-    /// The primary selection's position in [`iter`](Self::iter)'s order.
-    pub fn primary_index(&self) -> usize {
-        self.selections.primary_pos()
-    }
-
     /// Every selection in document order.
     pub fn iter(&self) -> impl Iterator<Item = SelectionView<'a>> + '_ {
         (0..self.len()).map(|index| self.at(index))
@@ -198,11 +193,7 @@ impl<'a> SelectionView<'a> {
         let text = self.text;
         let covered = self.covered();
         let lines = self.lines();
-        // Bare-`usize` range, `ContentLine` re-minted each iteration:
-        // `ContentLine` has no `Step` impl to range over, and both endpoints
-        // are already valid lines.
-        (lines.start.index()..=lines.end.index()).map(move |index| {
-            let line = ContentLine::new(index);
+        lines.iter().map(move |line| {
             let start = crate::lines::line_start(text, line);
             let line_break = crate::lines::line_break(text, line);
             let content = ClusterRange::between(

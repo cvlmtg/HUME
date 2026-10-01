@@ -22,9 +22,9 @@ fn translating_carries_the_value_to_the_new_text() {
     let cs = b.finish();
     let post = cs.apply(&text).expect("insert applies");
     let mut tracked = Tracked::new(CharOffset::new(1), &text);
-    tracked.translate(&TextChange::new(&text, &post, &cs), |pos, change| {
-        *pos = crate::changeset::PosMapCursor::new(change.changes().ops())
-            .map(*pos, crate::changeset::Assoc::After);
+    tracked.translate(&TextChange::new(&text, &post, &cs), |pos| {
+        *pos =
+            crate::changeset::PosMapCursor::new(cs.ops()).map(*pos, crate::changeset::Assoc::After);
     });
     assert_eq!(tracked.get(&text), None);
     assert_eq!(tracked.get(&post), Some(&CharOffset::new(2)));
@@ -40,6 +40,6 @@ fn a_stale_value_is_not_translated() {
     let cs = b.finish();
     let post = cs.apply(&text).expect("insert applies");
     let mut tracked = Tracked::new(1, &stale_text);
-    tracked.translate(&TextChange::new(&text, &post, &cs), |v, _| *v = 2);
+    tracked.translate(&TextChange::new(&text, &post, &cs), |v| *v = 2);
     assert_eq!(tracked.into_inner(&stale_text), Some(1));
 }

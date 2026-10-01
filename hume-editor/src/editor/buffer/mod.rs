@@ -290,7 +290,7 @@ impl Buffer {
         self.saved_revision = Some(self.history.current_id());
         self.search_pattern = None;
         self.search_matches = SearchMatches::default();
-        self.install(id, stores, text, Change::Replace);
+        self.install(id, stores, text, Change::Replace, None);
     }
 
     /// `true` when the buffer blocks user edits.
@@ -322,6 +322,7 @@ impl Buffer {
         stores: &mut PositionStores<'_>,
         text: BufferText,
         change: Change<'_>,
+        acting: Option<PaneId>,
     ) {
         let relabel = text.generation() == self.text.generation();
         debug_assert!(
@@ -339,7 +340,7 @@ impl Buffer {
                 if !relabel && let Some(syn) = self.syntax.as_mut() {
                     syn.record_edit(&change);
                 }
-                stores.carry(id, &change);
+                stores.carry(id, &change, acting);
             }
             Change::Replace => stores.reset(id, || crate::editor::pane_state::fresh_from_buf(self)),
         }
@@ -491,6 +492,7 @@ impl Buffer {
             stores,
             reloaded.with_line_ending(new_text.line_ending()),
             Change::Edit(&forward),
+            None,
         );
         let post_sels = recorded(stores);
         self.record_revision(forward, inverse, pre_sels, post_sels);
@@ -594,6 +596,7 @@ impl Buffer {
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
+        acting: PaneId,
         sels: SelectionSet,
         cmd: impl FnOnce(EditState) -> Edited,
     ) -> (SelectionSet, ChangeSet) {
@@ -613,7 +616,7 @@ impl Buffer {
         let post_text = post.text().clone();
         let post_sels = post.into_selections();
         self.record_revision(cs.clone(), inverse_cs, pre_sels, post_sels.clone());
-        self.install(id, stores, post_text, Change::Edit(&cs));
+        self.install(id, stores, post_text, Change::Edit(&cs), Some(acting));
         (post_sels, cs)
     }
 
@@ -627,6 +630,7 @@ impl Buffer {
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
+        acting: PaneId,
         sels: SelectionSet,
         group: &mut EditGroup,
         cmd: impl FnOnce(EditState) -> Edited,
@@ -650,7 +654,7 @@ impl Buffer {
             Some(acc) => acc.compose(cs.clone()),
         });
 
-        self.install(id, stores, new_text, Change::Edit(&cs));
+        self.install(id, stores, new_text, Change::Edit(&cs), Some(acting));
         (new_sels, cs)
     }
 
@@ -668,6 +672,7 @@ impl Buffer {
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
+        acting: PaneId,
         group: &mut EditGroup,
         cmd: impl FnOnce(EditState) -> Edited,
     ) -> (SelectionSet, ChangeSet) {
@@ -693,7 +698,13 @@ impl Buffer {
             .expect("the propagation changeset maps the live text")
             .into_parts();
         if post.text().version() != self.text.version() {
-            self.install(id, stores, post.text().clone(), Change::Edit(&cs));
+            self.install(
+                id,
+                stores,
+                post.text().clone(),
+                Change::Edit(&cs),
+                Some(acting),
+            );
         }
         (post.into_selections(), cs)
     }
@@ -774,6 +785,7 @@ impl Buffer {
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
+        acting: PaneId,
         txns: Vec<Transaction>,
     ) -> HistoryWalkResult {
         let steps = txns.len();
@@ -785,7 +797,7 @@ impl Buffer {
         let new_sels = landed.into_selections();
         let cs = txn.into_changes();
         if new_text.version() != self.text.version() {
-            self.install(id, stores, new_text, Change::Edit(&cs));
+            self.install(id, stores, new_text, Change::Edit(&cs), Some(acting));
         }
         Some((new_sels, cs, steps))
     }
@@ -798,10 +810,11 @@ impl Buffer {
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
+        acting: PaneId,
         count: usize,
     ) -> HistoryWalkResult {
         let txns = self.history.undo_n(count);
-        self.apply_transactions(id, stores, txns)
+        self.apply_transactions(id, stores, acting, txns)
     }
 
     /// Redo up to `count` steps forward as one composed transform. See
@@ -810,10 +823,11 @@ impl Buffer {
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
+        acting: PaneId,
         count: usize,
     ) -> HistoryWalkResult {
         let txns = self.history.redo_n(count);
-        self.apply_transactions(id, stores, txns)
+        self.apply_transactions(id, stores, acting, txns)
     }
 
     /// The current buffer contents.
@@ -853,11 +867,13 @@ impl Buffer {
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
+        acting: PaneId,
         sels: &mut SelectionSet,
         target: hume_editing::history::RevisionId,
     ) {
         if let Some(transactions) = self.history.goto_revision(target)
-            && let Some((new_sels, _cs, _steps)) = self.apply_transactions(id, stores, transactions)
+            && let Some((new_sels, _cs, _steps)) =
+                self.apply_transactions(id, stores, acting, transactions)
         {
             *sels = new_sels;
         }

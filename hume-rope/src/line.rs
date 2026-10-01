@@ -16,6 +16,7 @@
 use ropey::Rope;
 
 use crate::lines::{content_line_count, last_content_line, last_ropey_line};
+use crate::offset::{ExclusiveRange, InclusiveRange};
 
 /// A line index in the ropey domain: ropey's own line indexing, phantom
 /// trailing line included. See the module doc for the domain distinction.
@@ -155,6 +156,21 @@ impl ContentLine {
             "lines_since: {earlier:?} is after {self:?}, lines_since measures forward only"
         );
         self.0.saturating_sub(earlier.0)
+    }
+}
+
+impl InclusiveRange<ContentLine> {
+    /// Every line from `start` through `end`, in order.
+    pub fn iter(self) -> impl DoubleEndedIterator<Item = ContentLine> + Clone {
+        (self.start.0..=self.end.0).map(ContentLine)
+    }
+}
+
+impl ExclusiveRange<ContentLine> {
+    /// Every line from `start` up to, not including, `end`. Empty when
+    /// `start` is at or past `end`.
+    pub fn iter(self) -> impl DoubleEndedIterator<Item = ContentLine> + Clone {
+        (self.start.0..self.end.0).map(ContentLine)
     }
 }
 

@@ -3,12 +3,14 @@
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
 use hume_editing::grapheme::display_col_in_line;
-use hume_editing::lines::{leading_whitespace_end, line_start};
+use hume_editing::lines::{leading_whitespace_end, line_break, line_start};
 use hume_editing::state::EditState;
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
+use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_rope::width::{str_width, tab_advance};
 
 use super::apply_edit;
 
@@ -40,22 +42,17 @@ pub fn insert_str(state: EditState, inserted: &str) -> Edited {
 }
 
 /// Returns `true` if `line` has leading whitespace and nothing else before its
-/// structural newline: a blank, auto-indented line with no real content.
-///
-/// `ws_end` (from [`leading_whitespace_end`]) lands exactly on the line's `\n`
-/// when the line is whitespace-only: the scan only stops early on a
-/// non-whitespace char, and every line's char content ends in `\n` (buffer
-/// invariant), so a whitespace-only line is the one case where the scan runs
-/// all the way to that `\n` without finding one.
-fn is_blank_indented_line(text: &BufferText, indent: LineIndent) -> bool {
-    indent.ws_end > indent.start && text.char_at(indent.ws_end.offset()) == Some('\n')
+/// `\n`: a blank, auto-indented line with no real content.
+fn is_blank_indented_line(indent: LineIndent) -> bool {
+    indent.ws_end > indent.start && indent.ws_end == indent.line_break
 }
 
-/// Where a line starts and where its leading whitespace ends.
+/// Where a line starts, where its leading whitespace ends, and its `\n`.
 #[derive(Clone, Copy)]
 pub(in crate::edit) struct LineIndent {
     start: ClusterStart,
     ws_end: ClusterStart,
+    line_break: ClusterStart,
 }
 
 impl LineIndent {
@@ -75,6 +72,7 @@ pub(in crate::edit) fn line_indent_range(text: &BufferText, pos: CharOffset) -> 
     LineIndent {
         start: line_start(text, line_idx),
         ws_end: leading_whitespace_end(text, line_idx),
+        line_break: line_break(text, line_idx),
     }
 }
 
@@ -95,7 +93,7 @@ pub(in crate::edit) fn line_indent_range(text: &BufferText, pos: CharOffset) -> 
 ///
 /// Single source of truth for "is this whitespace the session's own to
 /// vacate": [`owned_blank_indent`] (the editor's exit pre-flight check) and
-/// [`try_trim_blank_line`] (the trim itself) both read this, so gate and trim
+/// [`clear_blank_line_indent`] (the trim itself) both read this, so gate and trim
 /// can never drift on what counts as owned.
 fn owned_indent(
     text: &BufferText,
@@ -103,7 +101,7 @@ fn owned_indent(
     allowed: Option<ExclusiveRange<CharOffset>>,
 ) -> Option<ClusterRange> {
     let allowed = allowed?;
-    let owned = is_blank_indented_line(text, indent)
+    let owned = is_blank_indented_line(indent)
         && indent.start.offset() == allowed.start
         && indent.ws_end.offset() <= allowed.end;
     if !owned {
@@ -174,8 +172,8 @@ pub fn insert_newline_indent(state: EditState, allowed: &[ExclusiveRange<CharOff
 /// Two preconditions its only caller (`cmd_open_line_above`) satisfies but
 /// this function does not enforce: every selection must already be
 /// collapsed. Unlike every sibling insertion op in this module, a
-/// non-collapsed selection here is neither deleted nor preserved, it is
-/// simply orphaned by the resulting cursor. Also at most one
+/// non-collapsed selection here is neither deleted nor preserved: the
+/// resulting cursor orphans it. Also at most one
 /// selection per line: two cursors on the same line each open their own
 /// blank line above it, rather than sharing one the way vim/Helix do. The
 /// caller supplies both: `cmd_goto_line_start` collapses every selection to
@@ -231,29 +229,32 @@ pub fn insert_tab(state: EditState, style: TabStyle, tab_width: u8) -> Edited {
     if style == TabStyle::Hard {
         return insert_char(state, '\t');
     }
-    // A selection's deletion can join lines, and an earlier cursor's spaces
-    // move every later cursor on its line, so each tab stop is read from the
-    // text the edits before it left: one edit per cursor, left to right.
-    let count = state.view().len();
-    let mut edited = insert_str(state, "");
-    for index in 0..count {
-        edited = edited.then(|state| space_to_stop(state, index, tab_width));
-    }
-    edited
+    // A selection's deletion can join lines, so tab stops are read from the
+    // text left once every selection is cleared.
+    insert_str(state, "").then(|state| spaces_to_stops(state, tab_width))
 }
 
-/// Spaces to the next tab stop at the cursor of selection `index`.
-fn space_to_stop(state: EditState, index: usize, tab_width: u8) -> Edited {
+/// Spaces to the next tab stop at every cursor. An earlier cursor on the same
+/// line leaves its column on a tab stop, so a later one is measured from
+/// there across the text between them: a tab in between expands from that
+/// stop, not from where it stood before the spaces went in.
+fn spaces_to_stops(state: EditState, tab_width: u8) -> Edited {
+    // The previous cursor's line, where it inserted, and the column it left.
+    let mut prev: Option<(ContentLine, CharOffset, usize)> = None;
     apply_edit(state, |b, sel| {
-        if sel.index() != index {
-            return Landing::kept(sel.selection());
-        }
         let text = b.text();
-        let start = sel.start().offset();
-        let line = text.char_to_line(start);
-        let display_col = display_col_in_line(text, line, start, tab_width);
-        let n = hume_rope::width::tab_advance(display_col.get() as usize, tab_width);
-        let mark = b.insert(sel.start(), &" ".repeat(n));
+        let at = sel.start();
+        let line = text.char_to_line(at.offset());
+        let col = match prev {
+            Some((prev_line, prev_at, prev_col)) if prev_line == line => {
+                let between = text.slice(ExclusiveRange::new(prev_at, at.offset()));
+                prev_col + str_width(&between.to_string(), prev_col, tab_width)
+            }
+            _ => display_col_in_line(text, line, at.offset(), tab_width).get() as usize,
+        };
+        let n = tab_advance(col, tab_width);
+        prev = Some((line, at.offset(), col + n));
+        let mark = b.insert(at, &" ".repeat(n));
         Landing::cursor(mark.end())
     })
 }

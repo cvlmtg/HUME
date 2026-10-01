@@ -174,13 +174,13 @@ pub fn line_start(rope: &Rope, line: ContentLine) -> ClusterStart {
         "line_start: line {} is not a real content line",
         line.index()
     );
-    ClusterStart::mint(CharOffset::new(rope.line_to_char(line.index())))
+    ClusterStart::mint(line_start_char(rope, line.into()))
 }
 
 /// The boundary where `line` starts, up to and including the phantom line
 /// past the structural `\n`, whose start is the text end.
 pub fn ropey_line_start(rope: &Rope, line: RopeyLine) -> ClusterBound {
-    ClusterBound::mint(CharOffset::new(rope.line_to_char(line.index())))
+    ClusterBound::mint(line_start_char(rope, line))
 }
 
 /// The `\n` that ends `line`: one char, its own cluster.
@@ -213,13 +213,7 @@ pub fn lines_range(rope: &Rope, first: ContentLine, last: ContentLine) -> Cluste
         last.index()
     );
     let end = ropey_line_start(rope, RopeyLine::from(last).advance(1));
-    // The char before the next line's start is `last`'s `\n`, its own
-    // cluster.
-    ClusterRange::mint(
-        line_start(rope, first),
-        ClusterStart::mint(end.offset().retreat(1)),
-        end,
-    )
+    ClusterRange::mint(line_start(rope, first), line_break(rope, last), end)
 }
 
 /// `line` without its `\n`, or `None` when the line is empty.
@@ -329,13 +323,6 @@ pub fn is_empty_line_token(token: RopeSlice<'_>) -> bool {
     }
 }
 
-/// Returns `true` if `line` is an empty line: zero content chars before its
-/// terminating `\n`. Whitespace-only lines are NOT empty (matching Helix
-/// semantics).
-pub fn is_empty_line(rope: &Rope, line: RopeyLine) -> bool {
-    is_empty_line_token(rope.line(line.index()))
-}
-
 /// The last char offset a cursor can land on for `line`.
 ///
 /// Returns the last char before the line's `\n`, or the `\n` itself when the
@@ -353,7 +340,7 @@ pub fn is_empty_line(rope: &Rope, line: RopeyLine) -> bool {
 /// `head < len_chars()` invariant. Callers that might resolve onto the
 /// phantom line (a scripted `goto-location!` target) clamp to
 /// [`last_content_line`] before calling this, rather than this function
-/// silently answering with an illegal head.
+/// answering with an illegal head.
 pub fn line_content_end(rope: &Rope, line: ContentLine) -> ClusterStart {
     line_content_end_at(rope, line, line_start(rope, line))
 }

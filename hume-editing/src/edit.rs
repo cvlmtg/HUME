@@ -9,9 +9,8 @@ use std::cell::OnceCell;
 
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-use crate::changeset::{Assoc, ChangeSet};
+use crate::changeset::ChangeSet;
 use crate::error::ApplyError;
-use crate::selection::{Resolver, SelectionSet};
 use crate::state::EditState;
 use crate::text::{BufferText, TextVersion};
 use crate::transaction::Transaction;
@@ -188,39 +187,9 @@ impl<'a> TextChange<'a> {
 
     /// The changeset's edited old ranges, computed on first use and shared by
     /// every set translated through this change.
-    fn edited_old_ranges(&self) -> &[ExclusiveRange<CharOffset>] {
+    pub(crate) fn edited_old_ranges(&self) -> &[ExclusiveRange<CharOffset>] {
         self.edited_old_ranges
             .get_or_init(|| self.changes.edited_old_ranges())
-    }
-}
-
-impl SelectionSet {
-    /// This set carried through `change`. Each end maps past text inserted
-    /// at it and lands on the cluster of the new text holding it; selections
-    /// the change folds together merge. A sticky column survives only when
-    /// the change left the head's line alone.
-    ///
-    /// # Panics
-    /// Panics if this set was not computed for `change`'s old text: carrying
-    /// it would land its positions wherever the change happens to map them.
-    pub fn translate(&mut self, change: &TextChange<'_>) {
-        crate::selection::assert_fits(change.before(), self);
-        let untouched = self.heads_untouched(change.edited_old_ranges(), change.before());
-        let mut resolver = Resolver::new(change, change.after());
-        let carried = self
-            .selections()
-            .iter()
-            .zip(untouched)
-            .map(|(sel, keep_sticky)| {
-                let sel = if keep_sticky {
-                    *sel
-                } else {
-                    sel.without_sticky()
-                };
-                resolver.carry(sel, Assoc::After)
-            })
-            .collect();
-        *self = SelectionSet::from_parts(carried, self.primary_pos(), change.after().version());
     }
 }
 

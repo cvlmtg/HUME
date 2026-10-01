@@ -13,6 +13,7 @@ use hume_editing::lines::{line_content_range, line_start};
 use hume_editing::selection::EditView;
 use hume_editing::state::EditState;
 use hume_rope::line::ContentLine;
+use hume_rope::lines::line_token_content;
 use unicode_normalization::UnicodeNormalization;
 
 /// Flags accepted by `:sort`.
@@ -79,8 +80,7 @@ pub fn sort_lines(state: EditState, opts: SortOpts) -> Result<Edited, SortRefusa
             }
             let target = entries[group[slot]].line;
             let source = entries[group[local]].line;
-            let content = line_content_range(text, source)
-                .map_or_else(String::new, |range| text.slice(range.chars()).to_string());
+            let content = line_token_content(text.rope().line(source.index()));
             moves.push((target, content));
         }
     }

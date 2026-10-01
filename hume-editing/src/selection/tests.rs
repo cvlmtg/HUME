@@ -187,6 +187,20 @@ fn an_insertion_at_a_line_start_touches_that_line() {
 }
 
 #[test]
+fn translation_returns_the_primary_head_in_the_new_text() {
+    let state = parse("ab-{c}>d-[e]>f\n");
+    let cs = replace(state.text(), 0, 0, "XX");
+    let post = cs
+        .apply(state.text())
+        .expect("changeset built for the text");
+    let mut set = state.clone().into_selections();
+
+    let head = set.translate(&crate::edit::TextChange::new(state.text(), &post, &cs));
+
+    assert_eq!(head.offset(), CharOffset::new(4));
+}
+
+#[test]
 fn a_backward_selection_stays_backward_through_a_translation() {
     let state = parse("a<[bcd]-e\n");
     let out = translate(&state, &replace(state.text(), 0, 0, "XX"));

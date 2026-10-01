@@ -29,7 +29,7 @@ pub enum StickyDisplayCol {
         /// position once display lines re-flow at a new width), so a reader
         /// compares this against `DisplayLineMap`'s *current* resolved width and
         /// re-derives on a mismatch instead of reusing a column measured for
-        /// a wrap geometry that no longer exists.
+        /// a wrap geometry other than the current one.
         wrap_width: Option<u16>,
     },
     /// Column within the buffer line (`DisplayLineMap::buffer_line_col`): what an
@@ -47,6 +47,17 @@ pub enum Facing {
     Forward,
     /// The head is before the anchor.
     Backward,
+}
+
+impl Facing {
+    /// `Forward` when `forward`, else `Backward`.
+    pub fn from_forward(forward: bool) -> Self {
+        if forward {
+            Self::Forward
+        } else {
+            Self::Backward
+        }
+    }
 }
 
 /// A selection: an anchor, which stays put when the user extends, and a

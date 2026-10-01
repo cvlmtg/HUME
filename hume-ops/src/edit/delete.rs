@@ -2,7 +2,7 @@
 //! whole-selection deletes (`d` and `c`'s content-only variant).
 
 use hume_editing::edit::{EditBuilder, Edited, Landing};
-use hume_editing::grapheme::{char_pos_at_display_col, display_col_in_line, prev_cluster};
+use hume_editing::grapheme::{char_pos_at_display_col, clusters_before, display_col_in_line};
 use hume_editing::selection::SelectionView;
 use hume_editing::state::EditState;
 use hume_editing::word::{WordChars, is_word_boundary};
@@ -30,17 +30,18 @@ pub struct Removal {
 /// whole lines as lines and anything else short of the structural `\n`.
 pub fn delete_selection(state: EditState) -> Removal {
     let mut yanked = Vec::new();
-    let edited = remove_each(state, remove, |sel, removed| {
-        yanked.push(removed_piece(sel, removed))
+    let edited = remove_each(state, remove, |removed, linewise| {
+        yanked.push(removed_piece(removed, linewise))
     });
     Removal { edited, yanked }
 }
 
 /// What [`remove`] or [`remove_content`] took out of a selection: the text
-/// a register gets, `None` when it took nothing, and where the selection
-/// lands.
+/// a register gets, `None` when it took nothing, whether that text is whole
+/// lines, and where the selection lands.
 struct Removed<'a, 'id> {
     text: Option<RopeSlice<'a>>,
+    linewise: bool,
     cursor: Landing<'id>,
 }
 
@@ -49,14 +50,17 @@ struct Removed<'a, 'id> {
 /// start of the line after them, or of the last line when they ran to the
 /// end.
 fn remove<'a, 'id>(b: &mut EditBuilder<'a, 'id>, sel: SelectionView<'a>) -> Removed<'a, 'id> {
-    let at = b.delete(sel.covered());
-    let cursor = if sel.is_linewise() {
+    let covered = sel.covered();
+    let linewise = sel.is_linewise();
+    let at = b.delete(covered);
+    let cursor = if linewise {
         Landing::line_start_of(at)
     } else {
         Landing::cursor(at)
     };
     Removed {
-        text: removal(sel),
+        text: removal_of(sel, covered, linewise),
+        linewise,
         cursor,
     }
 }
@@ -70,10 +74,12 @@ fn remove_content<'a, 'id>(
     match sel.content() {
         Some(content) => Removed {
             text: Some(b.text().slice(content.chars())),
+            linewise: false,
             cursor: Landing::cursor(b.delete(content)),
         },
         None => Removed {
             text: None,
+            linewise: false,
             cursor: Landing::kept(sel.selection()),
         },
     }
@@ -83,13 +89,22 @@ fn remove_content<'a, 'id>(
 /// removes nothing of it. Whole lines give the whole covered text; anything
 /// else gives it short of the structural `\n`, which `d` keeps.
 pub(crate) fn removal(sel: SelectionView<'_>) -> Option<RopeSlice<'_>> {
+    removal_of(sel, sel.covered(), sel.is_linewise())
+}
+
+/// [`removal`] for a caller already holding `sel`'s covered range and its
+/// linewise classification.
+fn removal_of(
+    sel: SelectionView<'_>,
+    covered: ClusterRange,
+    linewise: bool,
+) -> Option<RopeSlice<'_>> {
     let text = sel.text();
-    let covered = sel.covered();
     let kept_break = ExclusiveRange::new(
         covered.start().offset(),
         covered.end().offset().min(text.last_char()),
     );
-    if sel.is_linewise() {
+    if linewise {
         (!kept_break.is_empty() || sel.lines().start.index() != 0).then(|| sel.slice())
     } else {
         (!kept_break.is_empty()).then(|| text.slice(kept_break))
@@ -97,15 +112,16 @@ pub(crate) fn removal(sel: SelectionView<'_>) -> Option<RopeSlice<'_>> {
 }
 
 /// Remove what `remove` takes out of each selection. `on_removed` sees each
-/// selection with the text it removed, `None` when it removed nothing.
+/// selection's removed text, `None` when it removed nothing, and whether that
+/// text is whole lines.
 fn remove_each(
     state: EditState,
     remove: impl for<'a, 'id> Fn(&mut EditBuilder<'a, 'id>, SelectionView<'a>) -> Removed<'a, 'id>,
-    mut on_removed: impl FnMut(SelectionView<'_>, Option<RopeSlice<'_>>),
+    mut on_removed: impl FnMut(Option<RopeSlice<'_>>, bool),
 ) -> Edited {
     apply_edit(state, |b, sel| {
         let removed = remove(b, sel);
-        on_removed(sel, removed.text);
+        on_removed(removed.text, removed.linewise);
         removed.cursor
     })
 }
@@ -122,24 +138,26 @@ pub fn delete_char_forward(state: EditState) -> Edited {
 ///   cursor moves back onto what follows it. No-op at the buffer start.
 /// - **Selection**: removed as [`delete_selection`] removes it.
 pub fn delete_char_backward(state: EditState) -> Edited {
-    delete_back_to(state, |sel| prev_cluster(sel.text(), sel.head().into()))
+    delete_back_to(state, |sel| {
+        clusters_before(sel.text(), sel.head().into())
+            .next()
+            .map(|cluster| cluster.range())
+    })
 }
 
-/// The backward deletes' shared shape: each cursor deletes back from its
-/// head to where `start_of` says, and keeps its place when there is nothing
-/// to delete; each selection is removed as [`delete_selection`] removes it.
+/// The backward deletes' shared shape: each cursor deletes the range
+/// `range_of` names, which ends at its head, and keeps its place when there
+/// is nothing to delete; each selection is removed as [`delete_selection`]
+/// removes it.
 fn delete_back_to(
     state: EditState,
-    start_of: impl Fn(SelectionView<'_>) -> Option<hume_rope::cluster::ClusterStart>,
+    range_of: impl Fn(SelectionView<'_>) -> Option<ClusterRange>,
 ) -> Edited {
     apply_edit(state, |b, sel| {
         if !sel.is_cursor() {
             return remove(b, sel).cursor;
         }
-        let head = sel.head();
-        match start_of(sel)
-            .and_then(|start| ClusterRange::between(b.text().full_slice(), start, head.into()))
-        {
+        match range_of(sel) {
             Some(range) => Landing::cursor(b.delete(range)),
             None => Landing::kept(sel.selection()),
         }
@@ -166,7 +184,8 @@ pub fn dedent_tab_backward(state: EditState, tab_width: u8) -> Edited {
             display_col.get() as usize,
             tab_width,
         ) as u32);
-        Some(char_pos_at_display_col(text, line_idx, prev_stop, tab_width).min(sel.head()))
+        let start = char_pos_at_display_col(text, line_idx, prev_stop, tab_width).min(sel.head());
+        ClusterRange::between(text.full_slice(), start, sel.head().into())
     })
 }
 
@@ -179,12 +198,9 @@ pub fn dedent_tab_backward(state: EditState, tab_width: u8) -> Edited {
 /// Non-yanking: Ctrl-w is readline-style word-rubout, not a kill.
 pub fn delete_word_backward(state: EditState, chars: WordChars<'_>) -> Edited {
     delete_back_to(state, |sel| {
-        Some(prev_word_start(
-            sel.text(),
-            sel.head(),
-            is_word_boundary,
-            chars,
-        ))
+        let text = sel.text();
+        let start = prev_word_start(text, sel.head(), is_word_boundary, chars);
+        ClusterRange::between(text.full_slice(), start, sel.head().into())
     })
 }
 
@@ -197,17 +213,16 @@ pub fn delete_word_backward(state: EditState, chars: WordChars<'_>) -> Edited {
 /// nothing, like `i`.
 pub fn delete_selection_content(state: EditState) -> Removal {
     let mut yanked = Vec::new();
-    let edited = remove_each(state, remove_content, |_, removed| {
+    let edited = remove_each(state, remove_content, |removed, _| {
         yanked.push(piece(removed, Shape::Charwise));
     });
     Removal { edited, yanked }
 }
 
-/// What `d` puts in the register for `sel`, given the text it removed:
-/// whole lines paste as lines, anything else as characters. Empty when `d`
-/// removed nothing.
-fn removed_piece(sel: SelectionView<'_>, removed: Option<RopeSlice<'_>>) -> Piece {
-    let shape = if removed.is_some() && sel.is_linewise() {
+/// What `d` puts in the register for the text it removed: whole lines paste
+/// as lines, anything else as characters. Empty when `d` removed nothing.
+fn removed_piece(removed: Option<RopeSlice<'_>>, linewise: bool) -> Piece {
+    let shape = if removed.is_some() && linewise {
         Shape::Linewise
     } else {
         Shape::Charwise
@@ -229,6 +244,6 @@ pub fn yank_selections(state: &EditState) -> Vec<Piece> {
     state
         .view()
         .iter()
-        .map(|sel| removed_piece(sel, removal(sel)))
+        .map(|sel| removed_piece(removal(sel), sel.is_linewise()))
         .collect()
 }

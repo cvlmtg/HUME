@@ -54,12 +54,10 @@ pub fn apply_object_motion(
                 MotionMode::Move => (Selection::covering(object, Facing::Backward), object),
                 MotionMode::Extend => {
                     let union = covered.hull(object);
-                    let facing = if backward {
-                        Facing::Backward
-                    } else {
-                        Facing::Forward
-                    };
-                    (Selection::covering(union, facing), union)
+                    (
+                        Selection::covering(union, Facing::from_forward(!backward)),
+                        union,
+                    )
                 }
             };
         }

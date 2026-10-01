@@ -8,6 +8,7 @@ use hume_editing::selection::Facing;
 use hume_editing::state::EditState;
 use hume_rope::cluster::ClusterRange;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::ExclusiveRange;
 
 /// Join lines inside each selection and select the inserted spaces.
 ///
@@ -41,7 +42,7 @@ pub fn join_lines_select_spaces(state: EditState) -> Edited {
         let mut fallback = Vec::new();
         // The first line not yet joined: selections and the lines each spans
         // ascend, so a line an earlier selection joined is skipped.
-        let mut next_unjoined = 0;
+        let mut next_unjoined = ContentLine::default();
 
         for sel in view.iter() {
             let lines = sel.lines();
@@ -54,11 +55,7 @@ pub fn join_lines_select_spaces(state: EditState) -> Edited {
             };
 
             let mut last_deletion = None;
-            // Bare-`usize` range, `ContentLine` re-minted each iteration:
-            // `ContentLine` has no `Step`/`Range` impl to loop over directly.
-            // Sound here: both endpoints are already-valid `ContentLine`s.
-            for line_idx in lines.start.index().max(next_unjoined)..end_line.index() {
-                let line = ContentLine::new(line_idx);
+            for line in ExclusiveRange::new(lines.start.max(next_unjoined), end_line).iter() {
                 let nl_pos = line_break(text, line);
                 let content_start = leading_whitespace_end(text, line.advance(1));
                 let is_blank = content_start >= line_break(text, line.advance(1));
@@ -70,7 +67,7 @@ pub fn join_lines_select_spaces(state: EditState) -> Edited {
                     let mark = b.insert(nl_pos, " ");
                     spaces.push(Landing::covering(mark, Facing::Forward));
                 }
-                next_unjoined = line_idx + 1;
+                next_unjoined = line.advance(1);
             }
             // With no space inserted, every later line of the run was blank and
             // went whole, so the cursor takes the last cluster of the joined

@@ -3,10 +3,11 @@
 use hume_editing::changeset::Assoc;
 use hume_editing::edit::Edited;
 use hume_editing::edit::{Landing, Landings, edit};
-use hume_editing::lines::{leading_indent, line_start};
+use hume_editing::lines::{leading_indent, line_break, line_start};
 use hume_editing::state::EditState;
 use hume_editing::tab_style::TabStyle;
 use hume_rope::cluster::ClusterRange;
+use hume_rope::line::ContentLine;
 use hume_rope::width::indent_stop;
 
 /// Indent every line touched by a selection by `levels` indent levels (`>`).
@@ -82,13 +83,7 @@ fn shift_indent(
     // Every distinct line touched by any selection, ascending: selections
     // are in document order and non-overlapping, so a consecutive dedup is
     // enough (mirrors `sort::collect_entries`).
-    let mut lines: Vec<usize> = view
-        .iter()
-        .flat_map(|sel| {
-            let lines = sel.lines();
-            lines.start.index()..=lines.end.index()
-        })
-        .collect();
+    let mut lines: Vec<ContentLine> = view.iter().flat_map(|sel| sel.lines().iter()).collect();
     lines.dedup();
 
     let text = state.text();
@@ -96,19 +91,13 @@ fn shift_indent(
     // whose indent changes.
     let mut rewrites = Vec::new();
 
-    // `lines` stays bare `usize` rather than `Vec<ContentLine>`. CLAUDE.md's
-    // "Line counts and ranges" sanctions this exact shape (a bare-usize loop
-    // bounded by typed endpoints, re-minted immediately below): every value
-    // here came from `.index()` on an already-valid `ContentLine` one line
-    // up, so the mint can't fail.
-    for line_idx in lines {
-        let line = hume_rope::line::ContentLine::new(line_idx);
+    for line in lines {
         let line_start = line_start(text, line);
         let (ws_end, old_width) = leading_indent(text, line, tab_width);
         // Blank line (empty, or whitespace-only): skipped untouched, matching
         // Vim's `>>`, so a blank separator line never collects trailing
         // whitespace.
-        if text.char_at(ws_end.offset()) == Some('\n') {
+        if ws_end == line_break(text, line) {
             continue;
         }
         let new_width = old_width.shift_saturating(delta_display_col);

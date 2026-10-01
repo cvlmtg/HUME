@@ -36,9 +36,9 @@ impl<T> Tracked<T> {
 
     /// Carry the value through `change` with `f`, when it was computed
     /// against the change's old text; otherwise leave it stale.
-    pub fn translate(&mut self, change: &TextChange<'_>, f: impl FnOnce(&mut T, &TextChange<'_>)) {
+    pub fn translate(&mut self, change: &TextChange<'_>, f: impl FnOnce(&mut T)) {
         if self.version == change.before().version() {
-            f(&mut self.value, change);
+            f(&mut self.value);
             self.version = change.after().version();
         }
     }

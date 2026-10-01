@@ -22,7 +22,7 @@ mod tests {
     use hume_editing::selection::{EditView, SelectionSet};
     use hume_editing::state::EditState;
     use hume_editing::text::BufferText;
-    use hume_engine::pipeline::BufferId;
+    use hume_engine::pipeline::{BufferId, PaneId};
     use hume_ops::edit::yank_selections;
     use hume_ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
@@ -60,6 +60,7 @@ mod tests {
             let (new_sels, _cs) = self.buf.apply_edit(
                 BufferId::default(),
                 &mut DetachedStores::default().stores(),
+                PaneId::default(),
                 self.sels.clone(),
                 cmd,
             );
@@ -69,6 +70,7 @@ mod tests {
             if let Some((sels, _cs, _steps)) = self.buf.undo_n(
                 BufferId::default(),
                 &mut DetachedStores::default().stores(),
+                PaneId::default(),
                 1,
             ) {
                 self.sels = sels;
@@ -78,6 +80,7 @@ mod tests {
             if let Some((sels, _cs, _steps)) = self.buf.redo_n(
                 BufferId::default(),
                 &mut DetachedStores::default().stores(),
+                PaneId::default(),
                 1,
             ) {
                 self.sels = sels;

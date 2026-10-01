@@ -57,8 +57,8 @@ impl JumpEntry {
 
     /// Carry this entry through `change`, keeping `primary_line` in step.
     fn translate(&mut self, change: &TextChange<'_>) {
-        self.selections.translate(change);
-        self.primary_line = Self::primary_line_of(&self.selections, change.after());
+        let head = self.selections.translate(change);
+        self.primary_line = change.after().char_to_line(head.offset());
     }
 
     /// Build a jump entry from selections of `text`, the buffer's current

@@ -20,7 +20,7 @@ use super::{
 };
 use crate::editor::error::CommandError;
 use crate::editor::position_stores::PositionStores;
-use hume_engine::pipeline::BufferId;
+use hume_engine::pipeline::{BufferId, PaneId};
 
 // ── Edit composites ───────────────────────────────────────────────────────────
 
@@ -196,7 +196,7 @@ fn history_step(
     view: &mut EngineView,
     t: CommandPane,
     count: usize,
-    walk: fn(&mut Buffer, BufferId, &mut PositionStores<'_>, usize) -> HistoryWalkResult,
+    walk: fn(&mut Buffer, BufferId, &mut PositionStores<'_>, PaneId, usize) -> HistoryWalkResult,
     exhausted_msg: &str,
 ) -> Result<(), CommandError> {
     let buf = t.bid(view);
@@ -211,7 +211,7 @@ fn history_step(
         &state.active_session,
         t.pid(),
         buf,
-        |b, id, stores| walk(b, id, stores, count),
+        |b, id, stores, pane| walk(b, id, stores, pane, count),
     )?;
     // `RefusedReadOnly` stays a distinct arm rather than folding into
     // `Took(0)`. See `HistoryWalk`'s own doc for why.

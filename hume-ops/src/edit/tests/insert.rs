@@ -414,6 +414,18 @@ fn insert_tab_soft_two_cursors_same_line_not_on_stop() {
 }
 
 #[test]
+fn insert_tab_soft_expands_a_tab_between_cursors_from_the_stop_the_first_left() {
+    // "a\tx": cursor 0 on the tab (col 1) gets 3 spaces and so ends on col 4.
+    // The tab then runs from col 4 to col 8, where cursor 1 sits and gets a
+    // full 4. Measured against the original text the tab would end at col 4.
+    assert_state!(
+        "a-{\t}>-[x]>\n",
+        |(text, sels)| insert_tab(test_fixtures::testing::state(text, sels), TabStyle::Soft, 4),
+        "a   -{\t}>    -[x]>\n"
+    );
+}
+
+#[test]
 fn insert_tab_soft_tab_width_1() {
     // Minimum tab width: every column is a stop, so exactly one space is
     // inserted regardless of the cursor's column.

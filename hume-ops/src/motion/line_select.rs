@@ -24,14 +24,6 @@ fn repeat_motion<'a>(
     s.selection()
 }
 
-fn facing(forward: bool) -> Facing {
-    if forward {
-        Facing::Forward
-    } else {
-        Facing::Backward
-    }
-}
-
 /// Extend a linewise selection by one line in extend mode: branches on
 /// whether `sel` already covers whole lines.
 ///
@@ -53,7 +45,10 @@ fn extend_line_span(sel: SelectionView<'_>, forward: bool) -> Selection {
     let text = sel.text();
     if !sel.is_linewise() {
         let lines = sel.lines();
-        return Selection::covering(lines_range(text, lines.start, lines.end), facing(forward));
+        return Selection::covering(
+            lines_range(text, lines.start, lines.end),
+            Facing::from_forward(forward),
+        );
     }
 
     let anchor_line = text.char_to_line(sel.anchor().offset());
@@ -71,7 +66,7 @@ fn extend_line_span(sel: SelectionView<'_>, forward: bool) -> Selection {
     };
     Selection::covering(
         lines_range(text, anchor_line, new_head_line),
-        facing(anchor_line <= new_head_line),
+        Facing::from_forward(anchor_line <= new_head_line),
     )
 }
 

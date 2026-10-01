@@ -30,16 +30,6 @@ pub use replace::{
 };
 pub use sort::{SortOpts, SortRefusal, sort_lines};
 
-/// Apply an edit command `count` times as one edit, so the repetition is a
-/// single undo step. `count == 0` leaves `state` unchanged.
-///
-/// Test-only, but used from `hume-editor`'s test suite too (a downstream
-/// crate); see the `test-util` feature.
-#[cfg(any(test, feature = "test-util"))]
-pub fn repeat_edit(count: usize, state: EditState, cmd: impl Fn(EditState) -> Edited) -> Edited {
-    (0..count).fold(Edited::unchanged(state), |edited, _| edited.then(&cmd))
-}
-
 /// One edit made selection by selection. `f` receives the builder and the
 /// selection, and returns where that selection lands; the primary stays on
 /// the primary's result. The builder applies its operations in position
