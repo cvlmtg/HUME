@@ -1,16 +1,22 @@
 ;;; core:stdlib
 
 ;; ── Selection helpers (internal) ────────────────────────────────────────────
-;; A selection is (hash 'anchor a 'head h 'start s 'end e 'primary p) — see README.md's "Selections".
+;; A selection is (anchor head start end primary?) — see README.md's "Selections".
 
 (define (stdlib/selection-anchor sel)
-  (and sel (hash-ref sel 'anchor)))
+  (and sel (list-ref sel 0)))
 
 (define (stdlib/selection-head sel)
-  (and sel (hash-ref sel 'head)))
+  (and sel (list-ref sel 1)))
+
+(define (stdlib/selection-start sel)
+  (and sel (list-ref sel 2)))
+
+(define (stdlib/selection-end sel)
+  (and sel (list-ref sel 3)))
 
 (define (stdlib/selection-primary? sel)
-  (and sel (hash-ref sel 'primary)))
+  (and sel (list-ref sel 4)))
 
 (define (stdlib/primary-selection sels)
   (and sels
@@ -191,6 +197,14 @@
 (define-command! "stdlib/selection-head"
   "Head char offset of the given selection, or #f."
   stdlib/selection-head)
+
+(define-command! "stdlib/selection-start"
+  "First char offset the given selection covers, or #f."
+  stdlib/selection-start)
+
+(define-command! "stdlib/selection-end"
+  "Char offset one past the last one the given selection covers, or #f."
+  stdlib/selection-end)
 
 (define-command! "stdlib/selection-primary?"
   "#t if the given selection is the primary selection, or #f."

@@ -316,12 +316,12 @@ pub(crate) fn buffer_cursor_line(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelR
     ))
 }
 
-/// `(buffer-selections pane)` → list of
-/// `(hash 'anchor a 'head h 'start s 'end e 'primary p)` per selection in
-/// `pane`'s own pane: raw 0-indexed char offsets, direction preserved
-/// (anchor > head when backward), sorted by selection start, exactly one
-/// `primary?` = `#t`. `start`..`end` is what the selection covers,
-/// `end` exclusive.
+/// `(buffer-selections pane)` → list of `(anchor head start end primary?)`
+/// per selection in `pane`'s own pane. The entry shape is opaque to scripts;
+/// `core:stdlib`'s `stdlib/selection-*` accessors are the reading API.
+/// Offsets are raw 0-indexed chars, direction preserved (anchor > head when
+/// backward), sorted by selection start, exactly one `primary?` = `#t`.
+/// `start`..`end` is what the selection covers, `end` exclusive.
 pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     let sels = ctx
         .host
@@ -331,15 +331,17 @@ pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
     let list: Vec<SteelVal> = sels
         .into_iter()
         .map(|sel| {
-            symbol_hash([
-                ("anchor", SteelVal::IntV(sel.anchor as isize)),
-                ("head", SteelVal::IntV(sel.head as isize)),
-                ("start", SteelVal::IntV(sel.start as isize)),
-                ("end", SteelVal::IntV(sel.end as isize)),
-                ("primary", SteelVal::BoolV(sel.primary)),
-            ])
+            vec![
+                SteelVal::IntV(sel.anchor as isize),
+                SteelVal::IntV(sel.head as isize),
+                SteelVal::IntV(sel.start as isize),
+                SteelVal::IntV(sel.end as isize),
+                SteelVal::BoolV(sel.primary),
+            ]
+            .into_steelval()
+            .map_err(generic_err)
         })
-        .collect();
+        .collect::<Result<_, _>>()?;
     list.into_steelval().map_err(generic_err)
 }
 

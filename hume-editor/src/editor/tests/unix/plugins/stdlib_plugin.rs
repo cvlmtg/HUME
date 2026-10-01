@@ -52,7 +52,7 @@ fn core_stdlib_plugin_loads_eagerly() {
 /// fires `(error ...)`, which propagates as an `Err`, caught by the assert
 /// below, failing the test with the offending assertion name.
 ///
-/// `stdlib`'s per-selection accessors (`selection-anchor`/`-head`/`-primary?`,
+/// `stdlib`'s per-selection accessors (`selection-anchor`/`-head`/`-start`/`-end`/`-primary?`,
 /// `primary-selection`) are `call!`-reachable public commands, same as the
 /// three list-level predicates. A plugin holding a single selection
 /// (not a list) can use them for their `#f` passthrough.
@@ -67,34 +67,40 @@ fn core_stdlib_selection_commands() {
 (unless (equal? (call! "stdlib/selection-anchor" #f) #f) (error "selection-anchor #f passthrough"))
 (unless (equal? (call! "stdlib/selection-head" #f) #f) (error "selection-head #f passthrough"))
 (unless (equal? (call! "stdlib/selection-primary?" #f) #f) (error "selection-primary? #f passthrough"))
+(unless (equal? (call! "stdlib/selection-start" #f) #f) (error "selection-start #f passthrough"))
+(unless (equal? (call! "stdlib/selection-end" #f) #f) (error "selection-end #f passthrough"))
 (unless (equal? (call! "stdlib/primary-selection" #f) #f) (error "primary-selection #f passthrough"))
 
-(unless (equal? (call! "stdlib/single-selection?" (list (hash 'anchor 0 'head 1 'primary #t))) #t)
+(unless (equal? (call! "stdlib/single-selection?" (list (list 0 1 0 2 #t))) #t)
   (error "single-selection? true"))
-(unless (equal? (call! "stdlib/single-selection?" (list (hash 'anchor 0 'head 1 'primary #t) (hash 'anchor 2 'head 3 'primary #f))) #f)
+(unless (equal? (call! "stdlib/single-selection?" (list (list 0 1 0 2 #t) (list 2 3 2 4 #f))) #f)
   (error "single-selection? false"))
 
-(unless (equal? (call! "stdlib/all-single-char?" (list (hash 'anchor 2 'head 2 'primary #t) (hash 'anchor 5 'head 5 'primary #f))) #t)
+(unless (equal? (call! "stdlib/all-single-char?" (list (list 2 2 2 3 #t) (list 5 5 5 6 #f))) #t)
   (error "all-single-char? true"))
-(unless (equal? (call! "stdlib/all-single-char?" (list (hash 'anchor 2 'head 3 'primary #t))) #f)
+(unless (equal? (call! "stdlib/all-single-char?" (list (list 2 3 2 4 #t))) #f)
   (error "all-single-char? false"))
-(unless (equal? (call! "stdlib/all-single-char?" (list (hash 'anchor 2 'head 2 'primary #f) (hash 'anchor 5 'head 6 'primary #t))) #f)
+(unless (equal? (call! "stdlib/all-single-char?" (list (list 2 2 2 3 #f) (list 5 6 5 7 #t))) #f)
   (error "all-single-char? false when only a later selection is wide"))
 
-(unless (equal? (call! "stdlib/cursor-char-index" (list (hash 'anchor 0 'head 0 'primary #f) (hash 'anchor 7 'head 4 'primary #t))) 4)
+(unless (equal? (call! "stdlib/cursor-char-index" (list (list 0 0 0 1 #f) (list 7 4 4 8 #t))) 4)
   (error "cursor-char-index picks the primary's head"))
 
-(unless (equal? (call! "stdlib/selection-anchor" (hash 'anchor 3 'head 9 'primary #t)) 3)
-  (error "selection-anchor reads the hash's 'anchor"))
-(unless (equal? (call! "stdlib/selection-head" (hash 'anchor 3 'head 9 'primary #t)) 9)
-  (error "selection-head reads the hash's 'head"))
-(unless (equal? (call! "stdlib/selection-primary?" (hash 'anchor 3 'head 9 'primary #t)) #t)
+(unless (equal? (call! "stdlib/selection-anchor" (list 3 9 3 10 #t)) 3)
+  (error "selection-anchor reads the anchor"))
+(unless (equal? (call! "stdlib/selection-head" (list 3 9 3 10 #t)) 9)
+  (error "selection-head reads the head"))
+(unless (equal? (call! "stdlib/selection-start" (list 9 3 3 10 #t)) 3)
+  (error "selection-start reads the covered start"))
+(unless (equal? (call! "stdlib/selection-end" (list 9 3 3 10 #t)) 10)
+  (error "selection-end reads the covered end"))
+(unless (equal? (call! "stdlib/selection-primary?" (list 3 9 3 10 #t)) #t)
   (error "selection-primary? true"))
-(unless (equal? (call! "stdlib/selection-primary?" (hash 'anchor 3 'head 9 'primary #f)) #f)
+(unless (equal? (call! "stdlib/selection-primary?" (list 3 9 3 10 #f)) #f)
   (error "selection-primary? false"))
-(unless (equal? (call! "stdlib/primary-selection" (list (hash 'anchor 0 'head 0 'primary #f) (hash 'anchor 7 'head 4 'primary #t) (hash 'anchor 1 'head 1 'primary #f))) (hash 'anchor 7 'head 4 'primary #t))
+(unless (equal? (call! "stdlib/primary-selection" (list (list 0 0 0 1 #f) (list 7 4 4 8 #t) (list 1 1 1 2 #f))) (list 7 4 4 8 #t))
   (error "primary-selection picks the flagged selection out of a list"))
-(unless (equal? (call! "stdlib/primary-selection" (list (hash 'anchor 0 'head 0 'primary #f) (hash 'anchor 1 'head 1 'primary #f))) #f)
+(unless (equal? (call! "stdlib/primary-selection" (list (list 0 0 0 1 #f) (list 1 1 1 2 #f))) #f)
   (error "primary-selection #f when no selection is flagged"))
 "#;
 

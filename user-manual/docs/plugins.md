@@ -177,7 +177,7 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
 
 ### Reading selections
 
-`(buffer-selections pane)` returns the selections in `pane`'s own pane, as a list of `(hash 'anchor a 'head h 'start s 'end e 'primary p)`: char offsets, not grapheme ordinals, `'anchor` and `'head` each the start of a character (a letter with its combining marks is one), `'start` and `'end` bounding what the selection covers with `'end` exclusive, `'primary` an `#t`/`#f` flag. A command body reading its own buffer's selections declares a leading `pane` parameter and passes that. `core:stdlib`'s helpers answer the common questions about the whole list:
+`(buffer-selections pane)` returns the selections in `pane`'s own pane, as a list of opaque selections: char offsets, not grapheme ordinals, anchor and head each the start of a character (a letter with its combining marks is one), start and end bounding what the selection covers with end exclusive, and a primary flag. A command body reading its own buffer's selections declares a leading `pane` parameter and passes that. `core:stdlib`'s helpers answer the common questions about the whole list:
 
 ```scheme
 (define-command! "example" "" (lambda (pane)
@@ -186,16 +186,18 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
   (call! "stdlib/cursor-char-index" (buffer-selections pane))))
 ```
 
-Those three read the whole list. To work with a single selection (the primary one, say), use these accessors, which also pass a `#f` selection through as `#f`, or read the hash's own keys with `hash-ref`:
+Those three read the whole list. To work with a single selection (the primary one, say), use these accessors, which also pass a `#f` selection through as `#f`:
 
 ```scheme
 (call! "stdlib/primary-selection" (buffer-selections pane))
 (call! "stdlib/selection-anchor" primary)
 (call! "stdlib/selection-head" primary)
+(call! "stdlib/selection-start" primary)
+(call! "stdlib/selection-end" primary)
 (call! "stdlib/selection-primary?" primary)
 ```
 
-`(offset->line pane idx)` converts a char offset to a line number when you need one. It's a separate call rather than a field on every selection, since deriving it needs rope access a plain hash doesn't have.
+`(offset->line pane idx)` converts a char offset to a line number when you need one. It's a separate call rather than a field on every selection, since deriving it needs rope access a selection doesn't have.
 
 See [Plugin API → Standard Library](plugin-api.md#selections) for the full list of selection helpers.
 

@@ -7,12 +7,12 @@
 - `buffer-cursor-line` and `offset->line` now return 0-based lines, like every other position in the scripting API.
 - The `on-mode-change` hook now passes the old and new modes as symbols (`'insert`), not strings.
 - `spawn-async!` and `run-capture!` (and `stdlib/run!`) take the working directory as an optional `#:cwd` keyword instead of a required positional argument: `(spawn-async! cmd args callback #:cwd dir)`, `(run-capture! cmd args #:cwd dir)`.
+- `buffer-selections` entries are opaque: read them with `core:stdlib`'s `stdlib/selection-anchor`, `-head`, `-start`, `-end` and `-primary?`. `stdlib/selection-start` and `stdlib/selection-end` are new; they give what the selection covers, end exclusive.
 - `show-popup!` and `show-menu!` return a token, and `close-popup!`, `close-menu!`, and `picker-close!` now require one, matching `show-drawer-list!`/`close-drawer!`: `(close-popup! token)`, `(close-menu! token)`, `(picker-close! token)`. A token for a widget that already closed or was replaced is a no-op.
 - Decoration entries are symbol-keyed hashmaps instead of positional lists: `set-signs!`/`set-eol-text!` take `(hash 'line l 'text t 'scope s)`, `set-extra-highlights!` and `set-virtual-lines!`'s `'segments` take `(hash 'start s 'end e 'scope sc)`, `set-line-backgrounds!` takes `(hash 'line l 'scope s)`, and `set-inlay-hints!` takes `(hash 'offset o 'text t 'side 'before)`.
 - `diagnostics-for-buffer` entries, `lsp-server-status` entries, and `lsp-request!`'s `err` use symbol keys: `(hash-ref d 'message)`, not `(hash-ref d "message")`. A diagnostic's `'severity` is a symbol (`'error`), and a server status's `'state` is a lowercase symbol (`'running`).
 - Builtins that returned a positional list or pair now return a symbol-keyed hashmap, and `goto-location!` and `diagnostics-for-buffer #:range` take one:
   - `diagnostic-counts` returns `(hash 'errors n 'warnings n)`.
-  - `buffer-selections` returns a list of `(hash 'anchor a 'head h 'start s 'end e 'primary p)`, where `'start` and `'end` bound what the selection covers and `'end` is exclusive.
   - `run-capture!` and `stdlib/run!` return `(hash 'stdout s 'stderr s 'exit code)`.
   - `viewport-range`, `lsp-range->offsets`, and the `#:range` of `diagnostics-for-buffer` use `(hash 'start s 'end e)`.
   - `diff-lines` and `diff-buffer-lines` hunks are `(hash 'old-start 'old-count 'new-start 'new-count 'old-lines 'new-lines)`. `diff-words` returns `(hash 'hunks … 'deadline-hit …)`, each hunk `(hash 'old-start 'old-end 'new-start 'new-end 'old-text 'new-text)`.

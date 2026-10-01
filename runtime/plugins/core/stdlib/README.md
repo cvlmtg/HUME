@@ -44,15 +44,16 @@ contributor touching this file does.
 
 ### Selections
 
-`stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-primary?`,
-`stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`,
+`stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-start`,
+`stdlib/selection-end`, `stdlib/selection-primary?`, `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`,
 `stdlib/cursor-char-index`.
 
-A selection is `(hash 'anchor a 'head h 'start s 'end e 'primary p)`, the shape
-`buffer-selections` returns. All seven accept `#f` and answer `#f` in turn, so a caller building on a value that may itself be `#f` (a picker payload, an
+A selection is the list `(anchor head start end primary?)` that
+`buffer-selections` returns; the accessors are its only reading API, so the shape can
+change without breaking callers. All nine accept `#f` and answer `#f` in turn, so a caller building on a value that may itself be `#f` (a picker payload, an
 optional match) only has to check once, at the call site.
 
-`(buffer-selections pane)` itself is not one of these seven. It raises rather than
+`(buffer-selections pane)` itself is not one of these nine. It raises rather than
 answering `#f` for a pane that isn't live or isn't shown, since it's the one place a
 selection list is actually fetched, not one that picks an already-fetched list apart.
 

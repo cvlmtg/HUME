@@ -2025,7 +2025,7 @@ fn buffer_selections_steel_roundtrip() {
     host.eval_source(
         r#"(define-command! "probe-selections-roundtrip" ""
              (lambda (bid)
-               (unless (equal? (buffer-selections bid) (list (hash 'anchor 0 'head 0 'start 0 'end 1 'primary #t)))
+               (unless (equal? (buffer-selections bid) (list (list 0 0 0 1 #t)))
                  (call! "delete" bid 1))))"#,
         &mut init_host,
     )
@@ -2037,6 +2037,6 @@ fn buffer_selections_steel_roundtrip() {
     assert_eq!(
         state(&ed),
         "-[a]>bc\n",
-        "buffer must be untouched: (buffer-selections bid) must equal a list of one hash with 'anchor 0, 'head 0, 'start 0, 'end 1, 'primary #t"
+        "buffer must be untouched: (buffer-selections bid) must equal ((0 0 0 1 #t))"
     );
 }

@@ -1,7 +1,8 @@
 ; Default activation for `(declare-plugin! "core:stdlib")` with no explicit
 ; #:commands/#:typed-commands/#:events/#:languages — see README.md "Usage".
 (declare-plugin! "core:stdlib"
-  #:commands '("stdlib/selection-anchor" "stdlib/selection-head" "stdlib/selection-primary?"
+  #:commands '("stdlib/selection-anchor" "stdlib/selection-head" "stdlib/selection-start"
+               "stdlib/selection-end" "stdlib/selection-primary?"
                "stdlib/primary-selection"
                "stdlib/all-single-char?" "stdlib/single-selection?" "stdlib/cursor-char-index"
                "stdlib/find" "stdlib/write-file!" "stdlib/delete-dir!" "stdlib/delete-file!"
