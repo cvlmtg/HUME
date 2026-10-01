@@ -1953,3 +1953,75 @@ fn lsp_install_pypi_requires_python3_on_path() {
         "a pypi-kind install must name the missing interpreter: {log}"
     );
 }
+
+// ── per-platform restriction ────────────────────────────────────────────────────
+
+fn load_lsp_with_sources(ed: &mut Editor, sources: &str, data_dir: &Path) -> tempfile::TempDir {
+    let runtime = runtime_with_sources(sources);
+    load_with_init_in_runtime(
+        ed,
+        runtime.path(),
+        data_dir,
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp\")",
+    );
+    runtime
+}
+
+#[test]
+fn lsp_install_refuses_a_server_restricted_to_other_platforms() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    let _runtime = load_lsp_with_sources(
+        &mut ed,
+        "((\"ty\" (kind . pypi) (version . \"1.0.0\") (package . \"ty\") (extras) (bin . \"ty\") \
+          (platforms windows-x64)))",
+        data_tmp.path(),
+    );
+
+    let args_tmp = safe_tempdir();
+    let venv_args = args_tmp.path().join("venv-argv.txt");
+    let pip_args = args_tmp.path().join("pip-argv.txt");
+    let shim_dir = write_fake_tool_shim("python3", &venv_args, &venv_layout(&pip_args, "ty", true));
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install python");
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("not supported on this platform"),
+        "a platform-restricted server must refuse loudly: {log}"
+    );
+    assert!(
+        !venv_args.exists(),
+        "the toolchain must not run for a refused install"
+    );
+}
+
+#[test]
+fn lsp_install_allows_a_server_whose_platform_list_includes_this_one() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    let _runtime = load_lsp_with_sources(
+        &mut ed,
+        "((\"ty\" (kind . pypi) (version . \"1.0.0\") (package . \"ty\") (extras) (bin . \"ty\") \
+          (platforms darwin-arm64 darwin-x64 linux-x64)))",
+        data_tmp.path(),
+    );
+
+    let args_tmp = safe_tempdir();
+    let venv_args = args_tmp.path().join("venv-argv.txt");
+    let pip_args = args_tmp.path().join("pip-argv.txt");
+    let shim_dir = write_fake_tool_shim("python3", &venv_args, &venv_layout(&pip_args, "ty", true));
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install python");
+    }
+
+    assert!(
+        ed.lsp.config_command_for_test("python").is_some(),
+        "an install on a listed platform must register"
+    );
+}

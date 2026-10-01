@@ -92,6 +92,11 @@ HELIX_TO_MASON = {
     "yls": "yls-yara",
 }
 
+# Kinds whose install is a package-manager command, so a Mason
+# `supported_platforms` restriction applies to them. A downloaded asset is
+# already per-platform through its own targets.
+PACKAGE_MANAGER_KINDS = ("npm", "cargo", "golang", "pypi")
+
 # Mason packages that share a Helix server's name but run a different program
 # than the command Helix registers, so installing one would register the wrong
 # binary.
@@ -560,6 +565,24 @@ def build_cargo_record(name: str, package: dict, helix_command: str):
     return {"kind": "cargo", "version": version, "crate": subject, "bin": bin_template[len("cargo:") :]}
 
 
+def supported_hume_targets(package: dict) -> list[str] | None:
+    """The hume targets Mason's `supported_platforms` allows, or None when the
+    package is unrestricted."""
+    restricted = package["source"].get("supported_platforms")
+    if not restricted:
+        return None
+    return [
+        hume_target
+        for hume_target, mason_targets in MASON_TARGET_PRIORITY.items()
+        if any(t in restricted for t in mason_targets)
+    ]
+
+
+def platforms_field(record: dict) -> str:
+    platforms = record.get("platforms")
+    return " (platforms {})".format(" ".join(platforms)) if platforms is not None else ""
+
+
 def scheme_str_list(items) -> str:
     return " ".join(scheme_str(x) for x in items)
 
@@ -610,33 +633,37 @@ def emit_lsp_sources(records: dict) -> list[str]:
                 scheme_str(name), scheme_str(r["version"]), target_rows
             )
         elif r["kind"] == "npm":
-            row = " ({} (kind . npm) (version . {}) (packages {}) (bin . {}))".format(
+            row = " ({} (kind . npm) (version . {}) (packages {}) (bin . {}){})".format(
                 scheme_str(name),
                 scheme_str(r["version"]),
                 scheme_str_list(r["packages"]),
                 scheme_str(r["bin"]),
+                platforms_field(r),
             )
         elif r["kind"] == "pypi":
-            row = " ({} (kind . pypi) (version . {}) (package . {}) (extras{}) (bin . {}))".format(
+            row = " ({} (kind . pypi) (version . {}) (package . {}) (extras{}) (bin . {}){})".format(
                 scheme_str(name),
                 scheme_str(r["version"]),
                 scheme_str(r["package"]),
                 "".join(" " + scheme_str(e) for e in r["extras"]),
                 scheme_str(r["bin"]),
+                platforms_field(r),
             )
         elif r["kind"] == "golang":
-            row = " ({} (kind . golang) (version . {}) (module . {}) (bin . {}))".format(
+            row = " ({} (kind . golang) (version . {}) (module . {}) (bin . {}){})".format(
                 scheme_str(name),
                 scheme_str(r["version"]),
                 scheme_str(r["module"]),
                 scheme_str(r["bin"]),
+                platforms_field(r),
             )
         elif r["kind"] == "cargo":
-            row = " ({} (kind . cargo) (version . {}) (crate . {}) (bin . {}))".format(
+            row = " ({} (kind . cargo) (version . {}) (crate . {}) (bin . {}){})".format(
                 scheme_str(name),
                 scheme_str(r["version"]),
                 scheme_str(r["crate"]),
                 scheme_str(r["bin"]),
+                platforms_field(r),
             )
         else:
             row = " ({} (kind . {}) (version . {}))".format(
@@ -727,6 +754,9 @@ def main() -> None:
 
         if record is None:
             continue
+        platforms = supported_hume_targets(package)
+        if platforms is not None and record["kind"] in PACKAGE_MANAGER_KINDS:
+            record["platforms"] = platforms
         records[helix_name] = record
         reports["kind_census"][record["kind"]] += 1
 

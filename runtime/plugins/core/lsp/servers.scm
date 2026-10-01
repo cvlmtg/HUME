@@ -76,6 +76,16 @@
         ((equal? kind 'pypi) (if (equal? (hume-target) "windows-x64") "python" "python3"))
         (else #f)))
 
+;; A source with no `platforms` field installs everywhere.
+(define (lsp/platform-supported? fields)
+  (let ((platforms (lsp/field fields 'platforms)))
+    (or (not platforms)
+        (if (call! "stdlib/find"
+                   (lambda (p) (equal? p (string->symbol (hume-target))))
+                   (cdr platforms))
+            #t
+            #f))))
+
 ;; github and generic sources both download one file per platform target.
 (define (lsp/download-kind? kind)
   (or (equal? kind 'github) (equal? kind 'generic)))
@@ -107,6 +117,7 @@
      (let* ((fields (hash-ref *lsp-sources* name))
             (kind   (cdr (lsp/field fields 'kind))))
        (cond
+         ((not (lsp/platform-supported? fields)) "not supported on this platform")
          ((lsp/toolchain-tool kind)
           (let ((tool (lsp/toolchain-tool kind)))
             (if (which tool)
