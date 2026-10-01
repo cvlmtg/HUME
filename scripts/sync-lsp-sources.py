@@ -95,7 +95,7 @@ HELIX_TO_MASON = {
 # Kinds whose install is a package-manager command, so a Mason
 # `supported_platforms` restriction applies to them. A downloaded asset is
 # already per-platform through its own targets.
-PACKAGE_MANAGER_KINDS = ("npm", "cargo", "golang", "pypi")
+PACKAGE_MANAGER_KINDS = ("npm", "cargo", "golang", "pypi", "gem")
 
 # Mason packages that share a Helix server's name but run a different program
 # than the command Helix registers, so installing one would register the wrong
@@ -517,6 +517,19 @@ def build_pypi_record(name: str, package: dict, helix_command: str):
     }
 
 
+def build_gem_record(name: str, package: dict, helix_command: str):
+    purl = package["source"]["id"]
+    _kind, subject, version = parse_purl(purl)
+    bin_template = pick_bin_template(package.get("bin") or {}, helix_command, name)
+    if bin_template is None:
+        return None
+    if not bin_template.startswith("gem:"):
+        print(f"  skip '{name}': gem-kind bin template has no gem: prefix: {bin_template!r}", file=sys.stderr)
+        return None
+    packages = [f"{subject}:{version}"] + list(package["source"].get("extra_packages", []))
+    return {"kind": "gem", "version": version, "packages": packages, "bin": bin_template[len("gem:") :]}
+
+
 def build_npm_record(name: str, package: dict, helix_command: str):
     _kind, subject, version = parse_purl(package["source"]["id"])
     extra_packages = package["source"].get("extra_packages", [])
@@ -640,6 +653,14 @@ def emit_lsp_sources(records: dict) -> list[str]:
                 scheme_str(r["bin"]),
                 platforms_field(r),
             )
+        elif r["kind"] == "gem":
+            row = " ({} (kind . gem) (version . {}) (packages {}) (bin . {}){})".format(
+                scheme_str(name),
+                scheme_str(r["version"]),
+                scheme_str_list(r["packages"]),
+                scheme_str(r["bin"]),
+                platforms_field(r),
+            )
         elif r["kind"] == "pypi":
             row = " ({} (kind . pypi) (version . {}) (package . {}) (extras{}) (bin . {}){})".format(
                 scheme_str(name),
@@ -749,6 +770,8 @@ def main() -> None:
             record = build_golang_record(helix_name, package, helix_command)
         elif purl_kind == "pypi":
             record = build_pypi_record(helix_name, package, helix_command)
+        elif purl_kind == "gem":
+            record = build_gem_record(helix_name, package, helix_command)
         else:
             record = {"kind": purl_kind, "version": version}
 

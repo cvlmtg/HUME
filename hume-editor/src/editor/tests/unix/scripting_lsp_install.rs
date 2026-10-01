@@ -2025,3 +2025,121 @@ fn lsp_install_allows_a_server_whose_platform_list_includes_this_one() {
         "an install on a listed platform must register"
     );
 }
+
+// ── gem installer (fake shim) ───────────────────────────────────────────────────
+
+/// Layout of a real `gem install --bindir <dir>`: `<dir>/<bin_name>`.
+fn gem_layout(bin_name: &str) -> String {
+    format!(
+        "bindir=\"\"; prev=\"\"\n\
+         for a in \"$@\"; do [ \"$prev\" = \"--bindir\" ] && bindir=\"$a\"; prev=\"$a\"; done\n\
+         mkdir -p \"$bindir\"\n\
+         printf '#!/bin/sh\\n' > \"$bindir/{bin_name}\"\n\
+         chmod +x \"$bindir/{bin_name}\""
+    )
+}
+
+#[test]
+fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let args_tmp = safe_tempdir();
+    let args_file = args_tmp.path().join("argv.txt");
+    let shim_dir = write_fake_tool_shim("gem", &args_file, &gem_layout("ruby-lsp"));
+
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install ruby");
+    }
+
+    let server_dir = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("ruby-lsp");
+    let argv = read_lines(&args_file);
+    assert_eq!(
+        argv[..6],
+        [
+            "install",
+            "--no-document",
+            "--install-dir",
+            server_dir.to_str().unwrap(),
+            "--bindir",
+            server_dir.join("bin").to_str().unwrap(),
+        ],
+        "argv: {argv:?}"
+    );
+    assert!(
+        argv[6].starts_with("ruby-lsp:"),
+        "the main package must be pinned as name:version: {argv:?}"
+    );
+    assert_eq!(argv[7], "ruby-lsp-rails", "extra packages follow: {argv:?}");
+
+    let cmd = ed
+        .lsp
+        .config_command_for_test("ruby")
+        .expect("ruby must be registered after a successful gem install");
+    assert_eq!(Path::new(&cmd), server_dir.join("bin").join("ruby-lsp"));
+
+    let env = ed
+        .lsp
+        .config_env_for_test("ruby")
+        .expect("ruby is registered");
+    for key in ["GEM_HOME", "GEM_PATH"] {
+        let value = env
+            .iter()
+            .find(|(k, _)| k == key)
+            .unwrap_or_else(|| panic!("{key} must be registered for the server: {env:?}"));
+        assert_eq!(
+            Path::new(&value.1),
+            server_dir,
+            "{key} must be the server dir"
+        );
+    }
+}
+
+#[test]
+fn lsp_install_gem_missing_binary_after_install_fails_loudly() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let args_tmp = safe_tempdir();
+    let args_file = args_tmp.path().join("argv.txt");
+    let shim_dir = write_fake_tool_shim("gem", &args_file, "");
+
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install ruby");
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("expected binary not found after gem install"),
+        "a gem install that produces no binary must fail loudly: {log}"
+    );
+    assert!(ed.lsp.config_command_for_test("ruby").is_none());
+}
+
+#[test]
+fn lsp_install_gem_requires_gem_on_path() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let empty_path_dir = safe_tempdir();
+    {
+        let _path = EnvVarGuard::set("PATH", empty_path_dir.path());
+        type_cmd(&mut ed, ":lsp-install ruby");
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("requires 'gem' on $PATH"),
+        "a gem-kind install must name the missing toolchain: {log}"
+    );
+}

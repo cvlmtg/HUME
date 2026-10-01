@@ -35,11 +35,25 @@
 (define (lsp/scheme-quote s)
   (string-append "\"" (string-replace (string-replace s "\\" "\\\\") "\"" "\\\"") "\""))
 
-(define (lsp/write-receipt! name version bin)
+(define (lsp/write-receipt! name version bin env-dirs)
   (call! "stdlib/write-file!" (lsp/receipt-path name)
     (string-append "((name . " (lsp/scheme-quote name) ")"
                    " (version . " (lsp/scheme-quote version) ")"
-                   " (bin . " (lsp/scheme-quote bin) "))")))
+                   " (bin . " (lsp/scheme-quote bin) ")"
+                   " (env-dirs"
+                   (apply string-append
+                          (map (lambda (entry)
+                                 (string-append " (" (lsp/scheme-quote (car entry))
+                                                " . " (lsp/scheme-quote (cdr entry)) ")"))
+                               env-dirs))
+                   "))")))
+
+;; Environment a toolchain-installed server needs at run time, as
+;; ("KEY" . "subpath of the server dir") pairs.
+(define (lsp/kind-env-dirs kind)
+  (if (equal? kind 'gem)
+      '(("GEM_HOME" . ".") ("GEM_PATH" . "."))
+      '()))
 
 (define (lsp/verify-sha256! path expected)
   (let* ((expected-hex (string-downcase
@@ -74,6 +88,7 @@
         ((equal? kind 'cargo) "cargo")
         ((equal? kind 'golang) "go")
         ((equal? kind 'pypi) (if (equal? (hume-target) "windows-x64") "python" "python3"))
+        ((equal? kind 'gem) "gem")
         (else #f)))
 
 ;; A source with no `platforms` field installs everywhere.
@@ -200,8 +215,9 @@
 
 ;; Path of `bin` under `bin-dir` (relative to the server dir); errors when the
 ;; toolchain left no such file.
-(define (lsp/managed-bin! who name dir bin-dir bin)
-  (let ((bin-rel (string-append bin-dir "/" bin (if (equal? (hume-target) "windows-x64") ".exe" ""))))
+(define (lsp/managed-bin! who name dir bin-dir bin windows-suffix)
+  (let ((bin-rel (string-append bin-dir "/" bin
+                                (if (equal? (hume-target) "windows-x64") windows-suffix ""))))
     (unless (path-exists? (path-join dir bin-rel))
       (error (string-append "lsp/install-" who "!: " name
                             ": expected binary not found after " who " install: " bin-rel)))
@@ -213,7 +229,7 @@
     (run-inline-output! "cargo"
                         (list "install" "--locked" "--root" dir "--"
                               (string-append crate "@" version)))
-    (lsp/managed-bin! "cargo" name dir "bin" (cdr (lsp/field fields 'bin)))))
+    (lsp/managed-bin! "cargo" name dir "bin" (cdr (lsp/field fields 'bin)) ".exe")))
 
 (define (lsp/install-golang! name fields dir)
   (let ((module  (cdr (lsp/field fields 'module)))
@@ -221,7 +237,7 @@
     (run-inline-output! "go"
                         (list "install" "--" (string-append module "@" version))
                         #:env (list (cons "GOBIN" (path-join dir "bin"))))
-    (lsp/managed-bin! "go" name dir "bin" (cdr (lsp/field fields 'bin)))))
+    (lsp/managed-bin! "go" name dir "bin" (cdr (lsp/field fields 'bin)) ".exe")))
 
 (define (lsp/install-pypi! name fields dir)
   (let* ((package     (cdr (lsp/field fields 'package)))
@@ -239,7 +255,14 @@
     (run-inline-output! (path-join dir venv-bin (if windows? "python.exe" "python"))
                         (list "-m" "pip" "install" "--disable-pip-version-check"
                               "--" requirement))
-    (lsp/managed-bin! "pip" name dir venv-bin (cdr (lsp/field fields 'bin)))))
+    (lsp/managed-bin! "pip" name dir venv-bin (cdr (lsp/field fields 'bin)) ".exe")))
+
+(define (lsp/install-gem! name fields dir)
+  (run-inline-output! (if (equal? (hume-target) "windows-x64") "gem.cmd" "gem")
+                      (append (list "install" "--no-document" "--install-dir" dir
+                                    "--bindir" (path-join dir "bin"))
+                              (cdr (lsp/field fields 'packages))))
+  (lsp/managed-bin! "gem" name dir "bin" (cdr (lsp/field fields 'bin)) ".bat"))
 
 (define (lsp/install-server! name)
   (let ((blocker (lsp/install-blocker name)))
@@ -258,8 +281,10 @@
                      ((equal? kind 'cargo)  (lsp/install-cargo! name source-fields dir))
                      ((equal? kind 'golang) (lsp/install-golang! name source-fields dir))
                      ((equal? kind 'pypi)   (lsp/install-pypi! name source-fields dir))
+                     ((equal? kind 'gem)    (lsp/install-gem! name source-fields dir))
                      (else                  (lsp/install-npm! name source-fields dir)))))
-      (lsp/write-receipt! name (cdr (lsp/field source-fields 'version)) bin-rel)
+      (lsp/write-receipt! name (cdr (lsp/field source-fields 'version)) bin-rel
+                          (lsp/kind-env-dirs kind))
       (let ((cmd (cdr (lsp/field server-fields 'command))))
         (when (which cmd)
           (log! 'info (string-append "LSP: " cmd " is also on $PATH — the managed install at "

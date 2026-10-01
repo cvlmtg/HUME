@@ -5,6 +5,7 @@
 
 (provide lsp/register-installed-servers! lsp/field lsp/servers-dir lsp/server-dir
          lsp/receipt-path lsp/read-receipt lsp/receipt-bin lsp/receipt-version
+         lsp/receipt-env-dirs
          lsp/servers-catalog)
 
 ;; ── Server catalog ────────────────────────────────────────────────────────────
@@ -43,9 +44,14 @@
 (define (lsp/receipt-bin receipt) (cdr (lsp/field receipt 'bin)))
 (define (lsp/receipt-version receipt) (cdr (lsp/field receipt 'version)))
 
+;; ("KEY" . "subpath") pairs; each value is relative to the server dir.
+(define (lsp/receipt-env-dirs receipt)
+  (let ((field (lsp/field receipt 'env-dirs)))
+    (if field (cdr field) '())))
+
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
-(define (lsp/register-server-languages! name cmd)
+(define (lsp/register-server-languages! name cmd env)
   (let* ((fields   (hash-ref *lsp-servers* name))
          (langs    (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
                             (cdr (lsp/field fields 'languages))))
@@ -59,7 +65,8 @@
                                #:args args
                                #:root-markers (cdr lang-entry)
                                #:init-options config
-                               #:settings config))
+                               #:settings config
+                               #:env env))
       langs)))
 
 ;; ── Startup server registration ───────────────────────────────────────────────
@@ -80,7 +87,9 @@
               (else
                (lsp/register-server-languages!
                  name
-                 (path-join (lsp/server-dir name) (lsp/receipt-bin receipt)))))))
+                 (path-join (lsp/server-dir name) (lsp/receipt-bin receipt))
+                 (map (lambda (entry) (cons (car entry) (path-join (lsp/server-dir name) (cdr entry))))
+                      (lsp/receipt-env-dirs receipt)))))))
         (call! "stdlib/list-subdirs" sdir)))))
 
 (define-typed-command! "lsp-rescan-servers"
