@@ -155,6 +155,7 @@ pub fn run(
         .split_first()
         .map_or((None, &[][..]), |(f, r)| (Some(f), r));
 
+    let panic_wake = wake.clone();
     let mut editor = editor::Editor::open(first.map(|f| f.path.clone()), wake)?;
     editor.attach_terminate_flag(terminate.clone());
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
@@ -188,10 +189,18 @@ pub fn run(
         editor.state.settings.mouse_select,
         kitty_enabled,
     )?;
+    // After `init`, so the hook it wraps is the terminal's: from here a panic
+    // on a background thread is queued for the editor to report instead of
+    // restoring the terminal under a loop that keeps drawing.
+    let worker_panics = hume_platform::worker_panic::WorkerPanics::install(panic_wake);
+    editor.attach_worker_panics(worker_panics.clone());
     let scratch_dumps = hume_platform::dirs::data_dir().map(|dir| dir.join("dumps"));
     let result = editor.run_dumping_on_panic(scratch_dumps.as_deref(), |editor| {
         editor.run(&shared, &mut term)
     });
+    // Before any terminal write or teardown: the dump is cheap, and the
+    // terminator thread forces the process down `QUIT_GRACE` after a signal.
+    let dumps = editor.dump_if_abnormal_exit(&result, scratch_dumps.as_deref());
     // Restore the terminal (cursor shape/colour, leave alt-screen, cooked
     // mode) before the LSP grace window below, not after: `lsp_shutdown_all`
     // can take up to `SHUTDOWN_GRACE` per server, and every millisecond of
@@ -223,6 +232,15 @@ pub fn run(
     let _ = hume_platform::terminal::set_cursor_color(&shared, false); // emits reset sequence
     if let Err(e) = hume_platform::restore_for_exit(&shared) {
         restore_err.get_or_insert(e);
+    }
+    // Back on the normal screen, where the messages stay in scrollback. The
+    // writes ignore errors: after a hangup there is no stderr to write to.
+    editor::buffer::report_dumps(&dumps);
+    {
+        use std::io::Write as _;
+        for panic in worker_panics.all() {
+            let _ = writeln!(std::io::stderr().lock(), "hume: {panic}");
+        }
     }
     // Give every running LSP server a chance to exit cleanly (shutdown
     // request, then exit notification) before the process ends;

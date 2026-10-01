@@ -2,6 +2,7 @@
 
 use super::*;
 use pretty_assertions::assert_eq;
+use std::io;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 fn dirty_focused(ed: &mut Editor) {
@@ -127,4 +128,88 @@ fn one_failed_dump_does_not_skip_the_other_buffers() {
         std::fs::read_to_string(dir.path().join("good.txt.dump")).unwrap(),
         "xtwo\n"
     );
+}
+
+// ── abnormal exits ────────────────────────────────────────────────────────
+
+fn dirty_file_editor(dir: &tempfile::TempDir) -> Editor {
+    let mut ed = editor_with_path("hello\n", &dir.path().join("foo.txt"));
+    dirty_focused(&mut ed);
+    ed
+}
+
+fn signalled(code: i32) -> std::sync::Arc<std::sync::atomic::AtomicI32> {
+    std::sync::Arc::new(std::sync::atomic::AtomicI32::new(code))
+}
+
+fn dump_text(dir: &tempfile::TempDir) -> Option<String> {
+    std::fs::read_to_string(dir.path().join("foo.txt.dump")).ok()
+}
+
+#[test]
+fn a_signal_exit_dumps_the_dirty_buffers() {
+    let dir = safe_tempdir();
+    let mut ed = dirty_file_editor(&dir);
+    ed.attach_terminate_flag(signalled(143));
+
+    let outcomes = ed.dump_if_abnormal_exit(&Ok(()), None);
+
+    assert_eq!(outcomes.len(), 1);
+    assert_eq!(dump_text(&dir).as_deref(), Some("xhello\n"));
+}
+
+#[test]
+fn a_terminal_hangup_error_dumps_the_dirty_buffers() {
+    let dir = safe_tempdir();
+    let ed = dirty_file_editor(&dir);
+
+    ed.dump_if_abnormal_exit(&Err(io::ErrorKind::UnexpectedEof.into()), None);
+
+    assert_eq!(dump_text(&dir).as_deref(), Some("xhello\n"));
+}
+
+#[test]
+fn any_other_run_error_dumps_the_dirty_buffers() {
+    let dir = safe_tempdir();
+    let ed = dirty_file_editor(&dir);
+
+    ed.dump_if_abnormal_exit(&Err(io::ErrorKind::PermissionDenied.into()), None);
+
+    assert_eq!(dump_text(&dir).as_deref(), Some("xhello\n"));
+}
+
+#[test]
+fn a_deliberate_quit_is_not_dumped_even_if_a_signal_follows() {
+    let dir = safe_tempdir();
+    let mut ed = dirty_file_editor(&dir);
+    ed.attach_terminate_flag(signalled(143));
+    ed.state.request_quit();
+
+    let outcomes = ed.dump_if_abnormal_exit(&Err(io::ErrorKind::BrokenPipe.into()), None);
+
+    assert!(outcomes.is_empty());
+    assert_eq!(dump_text(&dir), None);
+}
+
+#[test]
+fn a_normal_exit_is_not_dumped() {
+    let dir = safe_tempdir();
+    let ed = dirty_file_editor(&dir);
+
+    let outcomes = ed.dump_if_abnormal_exit(&Ok(()), None);
+
+    assert!(outcomes.is_empty());
+    assert_eq!(dump_text(&dir), None);
+}
+
+#[test]
+fn an_abnormal_exit_leaves_a_clean_buffer_alone() {
+    let dir = safe_tempdir();
+    let mut ed = editor_with_path("hello\n", &dir.path().join("foo.txt"));
+    ed.attach_terminate_flag(signalled(143));
+
+    let outcomes = ed.dump_if_abnormal_exit(&Ok(()), None);
+
+    assert!(outcomes.is_empty());
+    assert_eq!(dump_text(&dir), None);
 }

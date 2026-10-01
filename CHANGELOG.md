@@ -66,7 +66,8 @@
 - `t`/`T` with a count stop against the counted match (`2ta` lands before the second `a`), and `=`/`-` after `t`/`T` go on to the next match instead of staying against the one they stopped at.
 
 ### Editing
-- If HUME panics, unsaved changes are written to `<file>.dump` next to each file (unsaved scratch buffers go to the `dumps` folder of HUME's data directory), and opening a file that has one asks whether to restore it, discard it, or keep it. See "Crash recovery" in the manual.
+- If HUME panics, is stopped by a signal, or loses its terminal, unsaved changes are written to `<file>.dump` next to each file (unsaved scratch buffers go to the `dumps` folder of HUME's data directory), and opening a file that has one asks whether to restore it, discard it, or keep it. See "Crash recovery" in the manual.
+- A crash in a background thread (syntax highlighting, a language server connection) leaves the terminal as it was while HUME keeps running. It shows as an error in `:messages` and is printed after you quit.
 - Yanks reach your clipboard over SSH and wherever no clipboard server is available: HUME asks the terminal to set it (OSC 52), when the terminal supports and allows that. `p` then pastes what HUME last yanked.
 - Typing a quote right after the same quote no longer opens a new pair, so ```` ``` ```` and `"""` come out as typed with auto-pairs on, with no stray closing quote.
 

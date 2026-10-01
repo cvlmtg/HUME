@@ -287,6 +287,10 @@ pub(crate) struct EditorState {
     /// the single-threaded, in-editor quit path (dirty-buffer prompts, `:q`
     /// semantics); a signal bypasses all of that.
     pub(super) terminate_exit_code: Arc<AtomicI32>,
+    /// Panics on background threads, queued by the panic hook
+    /// `hume_editor::run` installs. The run loop reports each new one as an
+    /// Error; empty (and never filled) when no hook is installed.
+    pub(super) worker_panics: hume_platform::worker_panic::WorkerPanics,
     /// Transient one-line message shown in the statusline after an action.
     pub(crate) status_msg: Option<String>,
     /// Keystrokes the message-log summary stays visible before auto-dismissing.
@@ -502,6 +506,7 @@ impl Default for EditorState {
             paste_stamp: None,
             should_quit: false,
             terminate_exit_code: Arc::new(AtomicI32::new(0)),
+            worker_panics: hume_platform::worker_panic::WorkerPanics::default(),
             status_msg: None,
             summary_ttl: 0,
             message_log: MessageLog::new(),

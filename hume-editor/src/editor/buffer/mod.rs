@@ -31,6 +31,7 @@ mod dump;
 pub(in crate::editor) use disk::DiskCheckTrigger;
 #[cfg(test)]
 pub(in crate::editor) use disk::DiskState;
+pub(crate) use dump::report_dumps;
 pub(in crate::editor) use file_open::ReplaceSource;
 mod file_open;
 pub(in crate::editor) mod lifecycle;

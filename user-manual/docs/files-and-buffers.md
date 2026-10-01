@@ -158,15 +158,16 @@ In `[messages]`, each entry's `[warning]`/`[error]`/`[trace]` tag and message te
 - **Undo history is in-memory only.** It's **lost when HUME exits**; there is no undo across restarts (not yet).
 - **No swap or backup files.** HUME does not write Vim-style `.swp` files while you edit. Saves write to a temporary file and rename it into place, so the file on disk holds either the old content or the new, never a half-written mix.
 - **Unsaved changes survive a crash.** If HUME itself panics, it writes them to disk and offers them back the next time you open the file; see [Crash recovery](#crash-recovery).
+- **A background crash doesn't stop HUME.** If a background task crashes (syntax highlighting, a language server connection), HUME keeps running, the crash appears as an error in `:messages`, and it is printed on the terminal after you quit. The feature that task ran can stop working until you restart.
 - **UTF-8 only.** Files must be valid UTF-8: invalid bytes are rejected with an error (no lossy fallback). A byte-order mark isn't stripped; it will appear as a character at the top of the buffer.
 - **CRLF detected and preserved.** Files using CRLF line endings are normalized to LF in the buffer and re-expanded to CRLF on save; the status bar shows `CRLF` or `LF`. Text arriving from anywhere else (a paste, a register, an edit from a language server) is normalized the same way, so a buffer's lines always end in LF no matter the source. A file using bare CR line endings (pre-OS X Mac) is read correctly but is not a preserved convention: it loads and saves as LF.
 - **No on-disk log file.** `:messages` is the entire logging surface: an in-memory ring capped at 1000 entries, discarded on exit. If you need to keep warnings/errors, copy them out of `:messages` before quitting.
 
 ### Crash recovery
 
-If HUME panics, it writes every buffer with unsaved changes to a dump file and prints each path on stderr. A buffer for `foo.txt` is dumped next to it as `foo.txt.dump`, in the same directory, with its line endings intact. An unsaved scratch buffer has no file to sit next to, so it goes to `scratch-<pid>-<n>.dump` in the `dumps` folder of HUME's data directory (`~/.local/share/hume/dumps`, or `$XDG_DATA_HOME/hume/dumps`; `%LOCALAPPDATA%\hume\dumps` on Windows). HUME doesn't offer scratch dumps back; open the file and copy what you need out of it. A dump is readable only by you.
+If HUME panics, receives a signal such as `SIGTERM` or `SIGHUP`, or loses its terminal (you closed the window), it writes every buffer with unsaved changes to a dump file and prints each path on stderr, when there's still a terminal to print to. A buffer for `foo.txt` is dumped next to it as `foo.txt.dump`, in the same directory, with its line endings intact. An unsaved scratch buffer has no file to sit next to, so it goes to `scratch-<pid>-<n>.dump` in the `dumps` folder of HUME's data directory (`~/.local/share/hume/dumps`, or `$XDG_DATA_HOME/hume/dumps`; `%LOCALAPPDATA%\hume\dumps` on Windows). HUME doesn't offer scratch dumps back; open the file and copy what you need out of it. A dump is readable only by you.
 
-Dumps are written only when HUME panics. Closing the terminal, a signal such as `SIGTERM`, or a power cut writes nothing.
+No dump is written after `:q!` or `:qa!`, which discard on purpose. Nothing can be written when HUME is killed outright (`SIGKILL`, a crash of the whole machine, a power cut), and a HUME that is stuck and doesn't react to a signal within about three seconds is forced to exit without one.
 
 The next time you open `foo.txt` and `foo.txt.dump` exists, HUME asks what to do with it:
 

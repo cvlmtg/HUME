@@ -49,3 +49,45 @@ fn a_write_that_does_not_panic_passes_its_result_through() {
     let failed: io::Result<()> = panic_to_error(|| Err(io::Error::other("disk full")));
     assert_eq!(failed.unwrap_err().to_string(), "disk full");
 }
+
+fn one_saved_one_failed() -> Vec<(String, io::Result<PathBuf>)> {
+    vec![
+        ("foo.txt".to_string(), Ok(PathBuf::from("/w/foo.txt.dump"))),
+        (
+            "*scratch*".to_string(),
+            Err(io::Error::other("no data directory")),
+        ),
+    ]
+}
+
+#[test]
+fn the_report_names_each_buffer_and_where_it_went() {
+    let mut out = Vec::new();
+
+    report_dumps_to(&mut out, &one_saved_one_failed());
+
+    insta::assert_snapshot!(String::from_utf8(out).unwrap(), @r"
+    hume: unsaved foo.txt saved to /w/foo.txt.dump
+    hume: could not save unsaved *scratch*: no data directory
+    ");
+}
+
+#[test]
+fn the_report_keeps_going_when_the_writer_fails() {
+    struct Broken(usize);
+    impl io::Write for Broken {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            self.0 += 1;
+            Err(io::Error::other("stderr is gone"))
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut out = Broken(0);
+    let outcomes = one_saved_one_failed();
+
+    report_dumps_to(&mut out, &outcomes);
+
+    assert_eq!(out.0, outcomes.len(), "each line is attempted once");
+}

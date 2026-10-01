@@ -1522,4 +1522,5 @@ mod virtual_line_scroll;
 mod visual_move;
 mod word_chars;
 mod word_motion_settings;
+mod worker_panic;
 mod wrap;

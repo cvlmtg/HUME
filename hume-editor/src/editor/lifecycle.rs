@@ -11,10 +11,10 @@ use hume_engine::types::EditorMode;
 use hume_platform::screen::Screen;
 use hume_platform::terminal::SharedTerm;
 
-use super::Editor;
 use super::event::EditorEvent;
 use super::input_stack::InputEvent;
 use super::tui::Tui;
+use super::{Editor, Severity};
 use crate::cli::ConfigSource;
 
 impl Editor {
@@ -192,6 +192,24 @@ impl Editor {
     /// entering `run`.
     pub(crate) fn attach_terminate_flag(&mut self, code: Arc<std::sync::atomic::AtomicI32>) {
         self.state.terminate_exit_code = code;
+    }
+
+    /// Share the queue the panic hook fills when a background thread
+    /// panics, so [`Self::report_worker_panics`] reads what
+    /// `hume_editor::run` reads at exit. Call once, before entering `run`.
+    pub(crate) fn attach_worker_panics(
+        &mut self,
+        panics: hume_platform::worker_panic::WorkerPanics,
+    ) {
+        self.state.worker_panics = panics;
+    }
+
+    /// Report each background-thread panic not yet reported as an Error.
+    /// Called once per run-loop iteration.
+    pub(crate) fn report_worker_panics(&mut self) {
+        for panic in self.state.worker_panics.take_unreported() {
+            self.report(Severity::Error, panic.to_string());
+        }
     }
 
     /// Set where `init_scripting` (and every later `:reload-config`) reads
@@ -372,6 +390,8 @@ impl Editor {
             if std::mem::take(&mut self.state.force_full_redraw) {
                 screen.invalidate();
             }
+
+            self.report_worker_panics();
 
             // ── 1. Sync geometry, then settle (single sync point) ────────────
             // `sync_viewport_dims` must run before `settle`: `drain_due_timers`
