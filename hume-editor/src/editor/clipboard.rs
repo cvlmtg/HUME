@@ -78,14 +78,11 @@ impl SystemClipboard {
             },
             Backend::Osc52 => ClipboardRead::Mirror,
             #[cfg(test)]
-            Backend::Unavailable => {
+            Backend::Mock(Some(text)) => ClipboardRead::Text(text.clone()),
+            #[cfg(test)]
+            Backend::Unavailable | Backend::Mock(None) => {
                 ClipboardRead::Failed(arboard::Error::ClipboardNotSupported.to_string())
             }
-            #[cfg(test)]
-            Backend::Mock(content) => match content {
-                Some(text) => ClipboardRead::Text(text.clone()),
-                None => ClipboardRead::Failed(arboard::Error::ClipboardNotSupported.to_string()),
-            },
         }
     }
 
@@ -141,11 +138,6 @@ impl SystemClipboard {
     pub(in crate::editor) fn set_mock_content(&mut self, text: &str) {
         self.backend = Backend::Mock(Some(text.to_string()));
     }
-
-    #[cfg(test)]
-    fn is_osc52(&self) -> bool {
-        matches!(self.backend, Backend::Osc52)
-    }
 }
 
 fn ssh_session() -> bool {
@@ -156,10 +148,13 @@ fn ssh_session() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::SystemClipboard;
+    use super::{Backend, SystemClipboard};
 
     #[test]
     fn remote_session_selects_osc52() {
-        assert!(SystemClipboard::select(true).is_osc52());
+        assert!(matches!(
+            SystemClipboard::select(true).backend,
+            Backend::Osc52
+        ));
     }
 }
