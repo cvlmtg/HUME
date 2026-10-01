@@ -89,6 +89,7 @@
         ((equal? kind 'golang) "go")
         ((equal? kind 'pypi) (if (equal? (hume-target) "windows-x64") "python" "python3"))
         ((equal? kind 'gem) "gem")
+        ((equal? kind 'nuget) "dotnet")
         (else #f)))
 
 ;; A source with no `platforms` field installs everywhere.
@@ -257,6 +258,13 @@
                               "--" requirement))
     (lsp/managed-bin! "pip" name dir venv-bin (cdr (lsp/field fields 'bin)) ".exe")))
 
+(define (lsp/install-nuget! name fields dir)
+  (run-inline-output! "dotnet"
+                      (list "tool" "install" (cdr (lsp/field fields 'package))
+                            "--tool-path" (path-join dir "bin")
+                            "--version" (cdr (lsp/field fields 'version))))
+  (lsp/managed-bin! "dotnet" name dir "bin" (cdr (lsp/field fields 'bin)) ".exe"))
+
 (define (lsp/install-gem! name fields dir)
   (run-inline-output! (if (equal? (hume-target) "windows-x64") "gem.cmd" "gem")
                       (append (list "install" "--no-document" "--install-dir" dir
@@ -282,6 +290,7 @@
                      ((equal? kind 'golang) (lsp/install-golang! name source-fields dir))
                      ((equal? kind 'pypi)   (lsp/install-pypi! name source-fields dir))
                      ((equal? kind 'gem)    (lsp/install-gem! name source-fields dir))
+                     ((equal? kind 'nuget)  (lsp/install-nuget! name source-fields dir))
                      (else                  (lsp/install-npm! name source-fields dir)))))
       (lsp/write-receipt! name (cdr (lsp/field source-fields 'version)) bin-rel
                           (lsp/kind-env-dirs kind))

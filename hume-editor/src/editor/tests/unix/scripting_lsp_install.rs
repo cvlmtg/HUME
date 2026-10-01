@@ -2143,3 +2143,111 @@ fn lsp_install_gem_requires_gem_on_path() {
         "a gem-kind install must name the missing toolchain: {log}"
     );
 }
+
+// ── nuget installer (fake shim) ─────────────────────────────────────────────────
+
+/// Layout of a real `dotnet tool install --tool-path <dir>`: `<dir>/<bin_name>`.
+fn dotnet_layout(bin_name: &str) -> String {
+    format!(
+        "tp=\"\"; prev=\"\"\n\
+         for a in \"$@\"; do [ \"$prev\" = \"--tool-path\" ] && tp=\"$a\"; prev=\"$a\"; done\n\
+         mkdir -p \"$tp\"\n\
+         printf '#!/bin/sh\\n' > \"$tp/{bin_name}\"\n\
+         chmod +x \"$tp/{bin_name}\""
+    )
+}
+
+#[test]
+fn lsp_install_nuget_installs_a_dotnet_tool_and_registers() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let args_tmp = safe_tempdir();
+    let args_file = args_tmp.path().join("argv.txt");
+    let shim_dir = write_fake_tool_shim(
+        "dotnet",
+        &args_file,
+        &dotnet_layout("roslyn-language-server"),
+    );
+
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install c-sharp");
+    }
+
+    let server_dir = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("roslyn-language-server");
+    let argv = read_lines(&args_file);
+    assert_eq!(
+        argv[..5],
+        [
+            "tool",
+            "install",
+            "roslyn-language-server",
+            "--tool-path",
+            server_dir.join("bin").to_str().unwrap(),
+        ],
+        "argv: {argv:?}"
+    );
+    assert_eq!(argv[5], "--version", "argv: {argv:?}");
+    assert!(
+        !argv[6].is_empty(),
+        "the seeded version must follow --version: {argv:?}"
+    );
+
+    let cmd = ed
+        .lsp
+        .config_command_for_test("c-sharp")
+        .expect("c-sharp must be registered after a successful dotnet tool install");
+    assert_eq!(
+        Path::new(&cmd),
+        server_dir.join("bin").join("roslyn-language-server")
+    );
+}
+
+#[test]
+fn lsp_install_nuget_missing_binary_after_install_fails_loudly() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let args_tmp = safe_tempdir();
+    let args_file = args_tmp.path().join("argv.txt");
+    let shim_dir = write_fake_tool_shim("dotnet", &args_file, "");
+
+    {
+        let _path = EnvVarGuard::set("PATH", shim_dir.path());
+        type_cmd(&mut ed, ":lsp-install c-sharp");
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("expected binary not found after dotnet install"),
+        "a dotnet tool install that produces no binary must fail loudly: {log}"
+    );
+    assert!(ed.lsp.config_command_for_test("c-sharp").is_none());
+}
+
+#[test]
+fn lsp_install_nuget_requires_dotnet_on_path() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    let empty_path_dir = safe_tempdir();
+    {
+        let _path = EnvVarGuard::set("PATH", empty_path_dir.path());
+        type_cmd(&mut ed, ":lsp-install c-sharp");
+    }
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("requires 'dotnet' on $PATH"),
+        "a nuget-kind install must name the missing toolchain: {log}"
+    );
+}
