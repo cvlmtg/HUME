@@ -180,11 +180,9 @@ pub fn hangup_exit_code(err: &std::io::Error) -> Option<i32> {
 /// control event fired) and routes through the editor's normal quit path
 /// (graceful LSP `shutdown`) rather than tearing the terminal down here.
 /// This thread then waits up to `QUIT_GRACE` for the main loop to exit on
-/// its own before force-restoring and exiting with that code anyway, or with
-/// a second trigger's code if one arrives inside the window (Unix only:
-/// `ctrlc` gives no shared wait primitive to interrupt, so this window is
-/// not interruptible on Windows). A bare terminal hangup with no signal at
-/// all does not go through this function at all; see
+/// its own before force-restoring and exiting with that code anyway; a
+/// second trigger inside the window is ignored. A bare terminal hangup with
+/// no signal at all does not go through this function at all; see
 /// [`hangup_exit_code`]'s doc.
 ///
 /// In raw mode the kernel does not deliver SIGINT for Ctrl-c (ISIG is
@@ -206,13 +204,8 @@ pub fn spawn_terminator(
             // telling us which one, so every trigger uses the same
             // conventional "killed by signal" code.
             request_quit(WINDOWS_SIGNAL_EXIT_CODE);
-            // Unlike Unix's `grace_window_exit_code`, this sleep isn't
-            // interruptible by a second control event: `ctrlc` gives no
-            // shared wait primitive to interrupt, and every event already
-            // maps to the same `WINDOWS_SIGNAL_EXIT_CODE`, so there's no
-            // second signal's code to race ahead for. A repeat Ctrl-c during
-            // this window is a harmless no-op, not a faster exit. Accepted
-            // asymmetry with the Unix path rather than a bug.
+            // A repeat control event during this sleep changes nothing, the
+            // same as Unix's `wait_out_grace`.
             std::thread::sleep(QUIT_GRACE);
             // The main loop had a full grace window and didn't exit the
             // process itself, so force it down.

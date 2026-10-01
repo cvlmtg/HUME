@@ -57,8 +57,8 @@ impl super::ProbeChannel for TtyChannel {
 //
 // SIGINT/SIGTERM/SIGHUP/SIGQUIT arrive through a `signal_hook` self-pipe that
 // this thread `select`s on. `request_quit` asks the main loop to quit, then
-// the thread waits up to `QUIT_GRACE` before force-exiting (with a second
-// signal's code if one arrives in the window). A pty teardown may not send
+// the thread waits `QUIT_GRACE` before force-exiting; a second signal in the
+// window is ignored. A pty teardown may not send
 // SIGHUP; termina's reader then returns `UnexpectedEof` and the main loop
 // exits on its own (see `hume_platform::hangup_exit_code`).
 //
@@ -111,8 +111,8 @@ impl Drop for OrphanGuard {
 /// (`128 + signo`) and routes through the editor's normal quit path
 /// (graceful LSP `shutdown`) rather than tearing the terminal down here.
 /// This thread then waits up to `QUIT_GRACE` for the main loop to exit on
-/// its own before force-restoring and exiting with that code anyway, or with
-/// a second signal's code if one arrives inside the window. If the thread
+/// its own before force-restoring and exiting with that code anyway; a
+/// second signal inside the window is ignored. If the thread
 /// itself is lost (spawn failure, or a later permanent I/O error), a
 /// `register_conditional_shutdown` fallback still terminates the process on
 /// the next signal, without a graceful LSP shutdown or terminal restore.
@@ -173,12 +173,7 @@ pub(super) fn spawn_terminator(
                     Ok(Watched::Signal) => {
                         let code = exit_code_for_signal(signal_flag.load(Ordering::Acquire));
                         request_quit(code);
-                        let code = grace_window_exit_code(
-                            sig_read.as_fd(),
-                            &signal_flag,
-                            code,
-                            crate::QUIT_GRACE,
-                        );
+                        wait_out_grace(sig_read.as_fd(), crate::QUIT_GRACE);
                         crate::force_exit(&term, code);
                     }
                     // An unbounded watch has no deadline to end on, so `Ended`
@@ -285,7 +280,7 @@ enum Watched {
 /// deadline, the caller has already committed to acting once it elapses
 /// regardless, so this sleeps out the rest of the window instead of
 /// returning early on that same closure
-/// (`grace_window_exit_code_waits_out_the_window_on_a_closed_pipe` covers the
+/// (`wait_out_grace_waits_out_the_window_on_a_closed_pipe` covers the
 /// `Drained::Closed` case of this). A `wait_readable` `Err` gets the same
 /// treatment when a deadline is given: the predecessor this function replaced
 /// (`wait_for_second_signal`) returned `None` immediately on that same
@@ -347,28 +342,20 @@ fn watch(sig_fd: BorrowedFd<'_>, deadline: Option<Instant>) -> io::Result<Watche
     }
 }
 
-/// Waits out the remainder of `grace` after a terminate trigger fired,
-/// racing a second signal against the grace window running out, then maps
-/// the outcome to the exit code [`force_exit`](crate::force_exit) should
-/// use: the second signal's own mapped code if one arrives first, or
-/// `fallback_code` for a plain timeout. `grace` is [`crate::QUIT_GRACE`] in
+/// Waits out `grace` after a terminate trigger fired. A signal that arrives
+/// meanwhile is drained and ignored: it neither ends the window early nor
+/// changes the exit code, so the main thread's shutdown, including the dump
+/// of unsaved buffers, runs undisturbed. `grace` is [`crate::QUIT_GRACE`] in
 /// production; a parameter (rather than reading the constant directly) so
 /// tests can bound their own runtime instead of waiting out the real
 /// multi-second window.
-fn grace_window_exit_code(
-    sig_fd: BorrowedFd<'_>,
-    signal_flag: &AtomicUsize,
-    fallback_code: i32,
-    grace: Duration,
-) -> i32 {
+fn wait_out_grace(sig_fd: BorrowedFd<'_>, grace: Duration) {
+    let deadline = Instant::now() + grace;
     // `watch` never errors with a deadline given (see its own doc), but if
-    // it somehow did, the grace window is over either way, which is exactly
-    // what `Ended` means, so this falls back rather than panicking on a
+    // it somehow did, the grace window is over either way, which is what
+    // `Ended` means, so the loop ends rather than panicking on a
     // documented-but-not-type-enforced invariant.
-    match watch(sig_fd, Some(Instant::now() + grace)).unwrap_or(Watched::Ended) {
-        Watched::Signal => exit_code_for_signal(signal_flag.load(Ordering::Acquire)),
-        Watched::Ended => fallback_code,
-    }
+    while matches!(watch(sig_fd, Some(deadline)), Ok(Watched::Signal)) {}
 }
 
 /// `select(2)`-based readiness wait for a single `fd`. `select`, not
@@ -504,71 +491,60 @@ mod terminator_tests {
             .expect_err("a permanently closed signal pipe is a real failure, not a trigger");
     }
 
-    // ── grace_window_exit_code ───────────────────────────────────────────
+    // ── wait_out_grace ───────────────────────────────────────────────────
 
     #[test]
-    fn grace_window_exit_code_falls_back_when_nothing_arrives() {
+    fn wait_out_grace_waits_the_full_window_when_nothing_arrives() {
         let (sig_read, _sig_write) = idle_sig_pipe();
-        let flag = AtomicUsize::new(0);
         let grace = Duration::from_millis(30);
 
         let start = Instant::now();
-        assert_eq!(
-            grace_window_exit_code(sig_read.as_fd(), &flag, 42, grace),
-            42,
-            "no second signal arrived, must fall back to the caller's code"
-        );
+        wait_out_grace(sig_read.as_fd(), grace);
+
         assert!(
             start.elapsed() >= grace,
-            "must wait out the full grace window before giving up"
+            "must wait out the full grace window"
         );
     }
 
     #[test]
-    fn grace_window_exit_code_returns_the_second_signals_own_code() {
+    fn a_second_signal_does_not_shorten_the_grace_window() {
         let (sig_read, mut sig_write) = idle_sig_pipe();
-        let flag = AtomicUsize::new(0);
-        // Stands in for signal-hook's own action pair for a real second
-        // signal: the flag is set, then the pipe byte written, the same order
-        // `spawn_terminator` registers them in.
-        flag.store(SIGTERM as usize, Ordering::Release);
+        let grace = Duration::from_millis(80);
         let writer = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(10));
             sig_write.write_all(b"x").expect("write");
+            // Returned so the write end outlives the signal: dropping it
+            // would read as a closed pipe, a different path from the one
+            // under test.
+            sig_write
         });
 
         let start = Instant::now();
-        assert_eq!(
-            grace_window_exit_code(sig_read.as_fd(), &flag, 0, Duration::from_secs(5)),
-            143,
-            "a second signal inside the window must win with its own mapped code"
-        );
+        wait_out_grace(sig_read.as_fd(), grace);
+
         assert!(
-            start.elapsed() < Duration::from_secs(1),
-            "must return as soon as the second signal arrives, not wait out the full grace window"
+            start.elapsed() >= grace,
+            "a signal inside the window must not end it early"
         );
-        writer.join().expect("writer thread panicked");
+        drop(writer.join().expect("writer thread panicked"));
     }
 
     /// Covers `watch`'s `Drained::Closed`-with-deadline arm: every write end
-    /// of the signal pipe going away mid-grace-window must not be mistaken
-    /// for a second signal, and (unlike the `deadline: None` case tested by
-    /// `terminator_exits_instead_of_spinning_when_the_pipe_closes`) must not
-    /// return early either, since the caller has already committed to acting
-    /// once the window elapses regardless.
+    /// of the signal pipe going away mid-grace-window must not end the
+    /// window early (unlike the `deadline: None` case tested by
+    /// `terminator_exits_instead_of_spinning_when_the_pipe_closes`), since
+    /// the caller has already committed to acting once the window elapses
+    /// regardless.
     #[test]
-    fn grace_window_exit_code_waits_out_the_window_on_a_closed_pipe() {
+    fn wait_out_grace_waits_out_the_window_on_a_closed_pipe() {
         let (sig_read, sig_write) = idle_sig_pipe();
         retire_write_end(sig_write);
-        let flag = AtomicUsize::new(0);
         let grace = Duration::from_millis(30);
 
         let start = Instant::now();
-        assert_eq!(
-            grace_window_exit_code(sig_read.as_fd(), &flag, 42, grace),
-            42,
-            "a closed pipe mid-window is not a signal, must fall back to the caller's code"
-        );
+        wait_out_grace(sig_read.as_fd(), grace);
+
         assert!(
             start.elapsed() >= grace,
             "must sleep out the rest of the window rather than returning early on the closure"
