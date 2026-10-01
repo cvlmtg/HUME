@@ -608,7 +608,8 @@ impl Editor {
         }
         // Built only once a handler is confirmed registered, so an event
         // nobody subscribes to never allocates a `SteelVal`.
-        let args = event.steel_args();
+        let key = key.map(str::to_owned);
+        let args = event.into_steel_args();
         let result = {
             let host_scr = self.scripting.as_mut().expect("checked above");
             let mut impl_host = EditorHostImpl::full(
@@ -620,7 +621,7 @@ impl Editor {
                 self.tui.clone(),
                 self.kitty_enabled,
             );
-            host_scr.fire_hook(name, key, &args, &mut impl_host)
+            host_scr.fire_hook(name, key.as_deref(), &args, &mut impl_host)
         };
         self.flush_script_messages();
         // A hook body's own `call!` to an `#:inline-output` command is

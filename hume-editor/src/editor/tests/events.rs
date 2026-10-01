@@ -721,7 +721,7 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
 }
 
 /// **Paneless case**: `on-buffer-save`'s own
-/// payload is a *buffer*-level handle (see `EditorEvent::steel_args`'s
+/// payload is a *buffer*-level handle (see `EditorEvent::into_steel_args`'s
 /// doc): it never carries a pane, even for a
 /// buffer that happens to be shown somewhere, so a hook that wants to reach
 /// a `Pane`-category native command must resolve one explicitly via
@@ -1202,7 +1202,7 @@ fn handler_driven_switch_produces_a_second_on_buffer_enter_in_the_same_settle_ca
 /// mechanism, since regaining terminal focus may be relevant to every open
 /// buffer, not just the focused one.
 ///
-/// A missing raise site, a wrong Steel name, or a non-empty `steel_args`
+/// A missing raise site, a wrong Steel name, or a non-empty `into_steel_args`
 /// payload would each break this test.
 #[test]
 fn on_focus_gained_fires_from_handle_input_and_settle_with_no_args() {
@@ -1244,7 +1244,7 @@ fn on_focus_gained_fires_from_handle_input_and_settle_with_no_args() {
 ///
 /// The raise has to exist, sit after the write (and off the buffer-scoped
 /// `apply_buffer` path), use the right Steel name, and pass the right pair
-/// through `steel_args`.
+/// through `into_steel_args`.
 #[test]
 fn on_option_change_fires_key_and_value_after_a_set_global() {
     use crate::testing::MockHost;
@@ -1311,7 +1311,7 @@ fn on_option_change_passes_an_enum_value_as_a_symbol() {
 /// Typing one character fires exactly one `on-text-changed`, naming the
 /// edited buffer.
 ///
-/// A stale or wrong id in `steel_args`, or a missing raise, trips either the
+/// A stale or wrong id in `into_steel_args`, or a missing raise, trips either the
 /// count or the buffer-id check below.
 #[test]
 fn typing_one_character_fires_on_text_changed_once() {

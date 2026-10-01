@@ -1674,7 +1674,7 @@ fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
         &archive,
         "pkg/bin/server",
     );
-    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
+    let (data_tmp, _ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
 
     let server_dir = canonical_data_dir(data_tmp.path())
         .join("servers")

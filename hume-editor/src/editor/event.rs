@@ -15,7 +15,7 @@ use super::Mode;
 /// Something that happened in the editor, carrying whatever payload its
 /// Steel handlers (and, for a growing subset, Rust-side reactions) need.
 ///
-/// `steel_args` is the single place a variant's fields become `SteelVal`s;
+/// `into_steel_args` is the single place a variant's fields become `SteelVal`s;
 /// see its doc for why arg construction lives there and not at the raise
 /// site.
 // All variants share the `On` prefix, matching the `on-buffer-open` Steel naming
@@ -342,36 +342,36 @@ impl EditorEvent {
     /// the only place `IntoSteelVal`/`to_steel_handle` is invoked for events.
     /// Called at drain, after the `has_hook_handlers` early-exit, so an
     /// event nobody subscribes to never allocates a `SteelVal`.
-    pub(in crate::editor) fn steel_args(&self) -> Vec<SteelVal> {
+    pub(in crate::editor) fn into_steel_args(self) -> Vec<SteelVal> {
         match self {
             EditorEvent::OnBufferOpen { buffer }
             | EditorEvent::OnBufferClose { buffer }
             | EditorEvent::OnBufferSave { buffer }
             | EditorEvent::OnDiagnosticsChanged { buffer }
             | EditorEvent::OnTextChanged { buffer } => {
-                vec![SteelPane::new(PaneHandle::buffer_only(*buffer)).into_steel_val()]
+                vec![SteelPane::new(PaneHandle::buffer_only(buffer)).into_steel_val()]
             }
             EditorEvent::OnBufferEnter { target } => {
-                vec![SteelPane::new(*target).into_steel_val()]
+                vec![SteelPane::new(target).into_steel_val()]
             }
             EditorEvent::OnFocusGained => vec![],
             EditorEvent::OnModeChange { from, to } => {
                 vec![
-                    SteelVal::SymbolV(mode_name(*from).into()),
-                    SteelVal::SymbolV(mode_name(*to).into()),
+                    SteelVal::SymbolV(mode_name(from).into()),
+                    SteelVal::SymbolV(mode_name(to).into()),
                 ]
             }
             EditorEvent::OnLanguageSet { buffer, language } => {
                 vec![
-                    SteelPane::new(PaneHandle::buffer_only(*buffer)).into_steel_val(),
-                    SteelVal::StringV(language.as_deref().unwrap_or_default().into()),
+                    SteelPane::new(PaneHandle::buffer_only(buffer)).into_steel_val(),
+                    SteelVal::StringV(language.unwrap_or_default().into()),
                 ]
             }
             EditorEvent::OnLspAttach { buffer, language }
             | EditorEvent::OnLspDetach { buffer, language } => {
                 vec![
-                    SteelPane::new(PaneHandle::buffer_only(*buffer)).into_steel_val(),
-                    SteelVal::StringV(language.as_str().into()),
+                    SteelPane::new(PaneHandle::buffer_only(buffer)).into_steel_val(),
+                    SteelVal::StringV(language.into()),
                 ]
             }
             EditorEvent::OnViewportChange {
@@ -380,29 +380,26 @@ impl EditorEvent {
                 end_line,
             } => {
                 vec![
-                    SteelPane::new(*target).into_steel_val(),
+                    SteelPane::new(target).into_steel_val(),
                     SteelVal::IntV(first_line.index() as isize),
                     SteelVal::IntV(end_line.index() as isize),
                 ]
             }
             EditorEvent::OnTriggerChar { target, ch, source } => {
                 vec![
-                    SteelPane::new(*target).into_steel_val(),
+                    SteelPane::new(target).into_steel_val(),
                     SteelVal::StringV(ch.to_string().into()),
-                    SteelVal::StringV(source.as_str().into()),
+                    SteelVal::StringV(source.into()),
                 ]
             }
             EditorEvent::OnCompletionAccept { target, item } => {
                 vec![
-                    SteelPane::new(*target).into_steel_val(),
-                    item.clone().into_steel_val(),
+                    SteelPane::new(target).into_steel_val(),
+                    item.into_steel_val(),
                 ]
             }
             EditorEvent::OnOptionChange { key, value } => {
-                vec![
-                    SteelVal::StringV(key.as_str().into()),
-                    SteelVal::from(value.clone()),
-                ]
+                vec![SteelVal::StringV(key.into()), SteelVal::from(value)]
             }
             EditorEvent::OnLspNotification {
                 server_name: _,
@@ -412,11 +409,9 @@ impl EditorEvent {
                 origin,
             } => {
                 vec![
-                    server
-                        .as_deref()
-                        .map_or(SteelVal::BoolV(false), |s| SteelVal::StringV(s.into())),
-                    SteelVal::StringV(method.as_str().into()),
-                    hume_scripting::json::to_steel_handle(std::sync::Arc::clone(params), *origin),
+                    server.map_or(SteelVal::BoolV(false), |s| SteelVal::StringV(s.into())),
+                    SteelVal::StringV(method.into()),
+                    hume_scripting::json::to_steel_handle(params, origin),
                 ]
             }
         }
@@ -465,7 +460,7 @@ pub(in crate::editor) enum PendingWork {
         dot_capture: Option<super::edit_session::DotCapture>,
     },
     /// An editor event to fire by name at drain time. Args are built by
-    /// `steel_args()` only if a handler is actually registered.
+    /// `into_steel_args()` only if a handler is actually registered.
     Event(EditorEvent),
 }
 
