@@ -536,7 +536,7 @@ fn repo_runtime_dir() -> PathBuf {
 }
 
 /// [`load_with_init`] against an explicit runtime directory, for a test
-/// that fabricates part of the runtime (e.g. `scheme/lsp-sources.scm`).
+/// that fabricates part of the runtime (e.g. the `core:lsp-install` source catalog).
 // Sanctioned caller; see `HumeRuntimeGuard::new`.
 #[allow(clippy::disallowed_methods)]
 fn load_with_init_in_runtime(ed: &mut Editor, runtime_dir: &Path, data_dir: &Path, init_src: &str) {
@@ -571,9 +571,19 @@ fn load_plum(ed: &mut Editor, data_dir: &Path) {
     );
 }
 
+/// Load the real `core:lsp-install` plugin only (plus its documented
+/// `core:stdlib` dependency): the entire LSP server lifecycle: install,
+/// uninstall, listing, and scan-on-load registration.
+fn load_lsp_install(ed: &mut Editor, data_dir: &Path) {
+    load_with_init(
+        ed,
+        data_dir,
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
+    );
+}
+
 /// Load the real `core:lsp` plugin only (plus its documented `core:stdlib`
-/// dependency): the entire LSP server lifecycle: install, uninstall,
-/// listing, and scan-on-load registration.
+/// dependency): the language-server client, with no install lifecycle.
 fn load_lsp(ed: &mut Editor, data_dir: &Path) {
     load_with_init(
         ed,

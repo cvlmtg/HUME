@@ -116,12 +116,12 @@ fn generated_scm_headers_match_their_generator_templates() {
         (
             "scripts/sync-grammars.py",
             "LSP_SERVERS_HEADER",
-            "runtime/scheme/lsp-servers.scm",
+            "runtime/plugins/core/lsp-install/servers.scm",
         ),
         (
             "scripts/sync-lsp-sources.py",
             "LSP_SOURCES_HEADER",
-            "runtime/scheme/lsp-sources.scm",
+            "runtime/plugins/core/lsp-install/sources.scm",
         ),
     ];
 

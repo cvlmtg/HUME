@@ -339,7 +339,7 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
-    load_lsp(&mut ed, data_tmp.path());
+    load_lsp_install(&mut ed, data_tmp.path());
 
     type_cmd(&mut ed, ":lsp-servers");
 

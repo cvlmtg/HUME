@@ -7,5 +7,4 @@
                "goto-next-diagnostic" "goto-prev-diagnostic"
                "lsp-rename" "lsp-fmt" "lsp-code-actions")
   #:typed-commands '("diagnostics" "format-source"
-                      "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"
                       "lsp-status" "lsp-stop" "lsp-restart"))

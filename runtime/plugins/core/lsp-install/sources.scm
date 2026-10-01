@@ -1,5 +1,5 @@
-;;; runtime/scheme/lsp-sources.scm — HUME bundled LSP server install catalog.
-;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
+;;; runtime/plugins/core/lsp-install/sources.scm — HUME bundled LSP server install catalog.
+;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: mason-org/mason-registry @ 2026-07-20-precious-hemp
 
 (

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Regenerate runtime/scheme/lsp-sources.scm from mason-org/mason-registry.
+"""Regenerate runtime/plugins/core/lsp-install/sources.scm from mason-org/mason-registry.
 
-Reads the pinned release tag from runtime/scheme/mason-pin.scm, downloads
+Reads the pinned release tag from runtime/plugins/core/lsp-install/mason-pin.scm, downloads
 that release's compiled registry.json.zip, joins it against the checked-in
-runtime/scheme/lsp-servers.scm (server names Helix actually wires) through
+runtime/plugins/core/lsp-install/servers.scm (server names Helix actually wires) through
 an explicit name-mapping table, and rewrites lsp-sources.scm with per-server
 install records.
 
@@ -44,13 +44,13 @@ from sync_common import (  # noqa: E402
 )
 
 REPO = Path(__file__).resolve().parent.parent
-MASON_PIN_SCM = REPO / "runtime" / "scheme" / "mason-pin.scm"
-LSP_SERVERS_SCM = REPO / "runtime" / "scheme" / "lsp-servers.scm"
-LSP_SOURCES_SCM = REPO / "runtime" / "scheme" / "lsp-sources.scm"
+MASON_PIN_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "mason-pin.scm"
+LSP_SERVERS_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "servers.scm"
+LSP_SOURCES_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "sources.scm"
 
 LSP_SOURCES_HEADER = """\
-;;; runtime/scheme/lsp-sources.scm — HUME bundled LSP server install catalog.
-;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
+;;; runtime/plugins/core/lsp-install/sources.scm — HUME bundled LSP server install catalog.
+;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: mason-org/mason-registry @ {tag}
 """
 
@@ -843,7 +843,7 @@ def main() -> None:
 
     for name in records:
         if name not in commands:
-            sys.exit(f"error: invariant violated: emitted server '{name}' not in lsp-servers.scm")
+            sys.exit(f"error: invariant violated: emitted server '{name}' not in servers.scm")
 
     source_rows = emit_lsp_sources(records)
     assert_no_unresolved_templates(source_rows)

@@ -1,8 +1,7 @@
 ;;; core:lsp — plugin.scm (see docs/architecture.md).
 
 (require "lib.scm")
-(require "registration.scm")
-(require "servers.scm")
+(require "status.scm")
 (require "hover.scm")
 (require "goto.scm")
 (require "diagnostics.scm")
@@ -15,10 +14,6 @@
 
 (unless (member "core:stdlib" (declared-plugins))
   (error "core:lsp: requires core:stdlib — (declare-plugin! \"core:stdlib\") or (load-plugin! \"core:stdlib\") before (load-plugin! \"core:lsp\")"))
-
-;; ── Register installed servers ────────────────────────────────────────────────
-
-(lsp/register-installed-servers!)
 
 ;; ── Default keybindings ───────────────────────────────────────────────────────
 

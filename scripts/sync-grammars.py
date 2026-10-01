@@ -6,7 +6,7 @@ Reads the pinned SHA from runtime/scheme/helix-pin.scm, fetches helix's
 languages.toml at that commit, and rewrites:
   - languages.scm       — (define-language! …) for every [[language]] block
   - grammar-sources.scm — tree-sitter grammar source catalog
-  - lsp-servers.scm     — LSP server registration catalog, derived from
+  - lsp-install/servers.scm — LSP server registration catalog, derived from
     [[language]].language-servers and [language-server.*]
 
 Idempotent: running twice produces byte-identical files.
@@ -40,7 +40,7 @@ REPO = Path(__file__).resolve().parent.parent
 HELIX_PIN_SCM = REPO / "runtime" / "scheme" / "helix-pin.scm"
 LANGUAGES_SCM = REPO / "runtime" / "scheme" / "languages.scm"
 GRAMMAR_SOURCES_SCM = REPO / "runtime" / "scheme" / "grammar-sources.scm"
-LSP_SERVERS_SCM = REPO / "runtime" / "scheme" / "lsp-servers.scm"
+LSP_SERVERS_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "servers.scm"
 
 LANGUAGES_HEADER = """\
 ;;; runtime/scheme/languages.scm — HUME bundled default language identities.
@@ -55,8 +55,8 @@ GRAMMAR_SOURCES_HEADER = """\
 """
 
 LSP_SERVERS_HEADER = """\
-;;; runtime/scheme/lsp-servers.scm — HUME bundled LSP server registration catalog.
-;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
+;;; runtime/plugins/core/lsp-install/servers.scm — HUME bundled LSP server registration catalog.
+;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
 
@@ -318,12 +318,12 @@ def check_lsp_invariants(servers: dict[str, dict], langs: list[dict]) -> None:
             lang_name = lang_tuple[0]
             if lang_name not in lang_names:
                 sys.exit(
-                    f"error: lsp-servers.scm invariant violated: language "
+                    f"error: servers.scm invariant violated: language "
                     f"'{lang_name}' (server '{server_name}') is not a known language"
                 )
             if lang_name in owner and owner[lang_name] != server_name:
                 sys.exit(
-                    f"error: lsp-servers.scm invariant violated: language "
+                    f"error: servers.scm invariant violated: language "
                     f"'{lang_name}' claimed by both '{owner[lang_name]}' and '{server_name}'"
                 )
             owner[lang_name] = server_name
