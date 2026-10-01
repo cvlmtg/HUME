@@ -1714,6 +1714,267 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
     assert_eq!(Path::new(&cmd), bin);
 }
 
+/// Load `core:lsp` against a runtime whose catalog is `sources`, with a curl
+/// shim serving `fixture`, and run `:lsp-install <lang>`. Returns the data dir
+/// and the editor for post-install assertions.
+fn install_from_fixture(
+    sources: &str,
+    fixture: &Path,
+    lang: &str,
+) -> (tempfile::TempDir, Editor, tempfile::TempDir) {
+    let runtime = runtime_with_sources(sources);
+    let args_file = fixture.with_extension("curl-argv");
+    let (_shim, path) = write_fake_curl_shim(fixture, &args_file);
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init_in_runtime(
+        &mut ed,
+        runtime.path(),
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp\")",
+    );
+    {
+        let _path = EnvVarGuard::set("PATH", &path);
+        type_cmd(&mut ed, &format!(":lsp-install {lang}"));
+    }
+    (data_tmp, ed, runtime)
+}
+
+#[test]
+fn lsp_install_gz_asset_is_decoded_and_marked_executable() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _lock = lock();
+    let work = safe_tempdir();
+    let plain = work.path().join("rust-analyzer-fake");
+    std::fs::write(&plain, b"#!/bin/sh\necho decoded\n").unwrap();
+    assert!(
+        std::process::Command::new("gzip")
+            .arg("-k")
+            .arg(&plain)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let archive = work.path().join("rust-analyzer-fake.gz");
+    let sources = github_source(
+        "rust-analyzer",
+        "rust-analyzer-fake.gz",
+        &archive,
+        "rust-analyzer",
+    );
+
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "rust");
+
+    let server_dir = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("rust-analyzer");
+    let bin = server_dir.join("rust-analyzer");
+    assert_eq!(std::fs::read(&bin).unwrap(), b"#!/bin/sh\necho decoded\n");
+    assert_eq!(
+        std::fs::metadata(&bin).unwrap().permissions().mode() & 0o777,
+        0o755
+    );
+    assert!(!server_dir.join("rust-analyzer-fake.gz").exists());
+    let cmd = ed
+        .lsp
+        .config_command_for_test("rust")
+        .expect("rust must be registered after a successful install");
+    assert_eq!(Path::new(&cmd), bin);
+}
+
+#[test]
+fn lsp_install_zip_marks_every_regular_file_executable_and_never_follows_symlinks() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _lock = lock();
+    let work = safe_tempdir();
+    let outside = work.path().join("outside-target");
+    std::fs::write(&outside, b"not part of the archive").unwrap();
+    std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let payload = work.path().join("payload");
+    std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
+    for name in ["server", "helper"] {
+        let f = payload.join("pkg/bin").join(name);
+        std::fs::write(&f, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
+    }
+    std::os::unix::fs::symlink(&outside, payload.join("pkg/link")).unwrap();
+    let archive = work.path().join("tfls.zip");
+    assert!(
+        std::process::Command::new("zip")
+            .current_dir(&payload)
+            .arg("-ry")
+            .arg(&archive)
+            .arg("pkg")
+            .status()
+            .unwrap()
+            .success()
+    );
+    let sources = github_source("terraform-ls", "tfls.zip", &archive, "pkg/bin/server");
+
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "hcl");
+
+    let pkg = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("terraform-ls")
+        .join("pkg");
+    for name in ["server", "helper"] {
+        assert_eq!(
+            std::fs::metadata(pkg.join("bin").join(name))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755,
+            "{name} must be made executable"
+        );
+    }
+    assert!(
+        std::fs::symlink_metadata(pkg.join("link"))
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "the symlink entry must stay a symlink"
+    );
+    assert_eq!(
+        std::fs::metadata(&outside).unwrap().permissions().mode() & 0o777,
+        0o644,
+        "a symlink's target must never be chmod'd"
+    );
+    assert!(ed.lsp.config_command_for_test("hcl").is_some());
+}
+
+#[test]
+fn lsp_install_missing_binary_after_unpack_fails_loudly() {
+    let _lock = lock();
+    let work = safe_tempdir();
+    let payload = work.path().join("payload");
+    std::fs::create_dir_all(&payload).unwrap();
+    std::fs::write(payload.join("other"), b"x").unwrap();
+    let archive = work.path().join("lls.tar.gz");
+    assert!(
+        std::process::Command::new("tar")
+            .arg("-czf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(&payload)
+            .arg(".")
+            .status()
+            .unwrap()
+            .success()
+    );
+    let sources = github_source(
+        "lua-language-server",
+        "lls.tar.gz",
+        &archive,
+        "bin/lua-language-server",
+    );
+
+    let (data_tmp, mut ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("expected binary"),
+        "an archive without the recorded binary must fail loudly: {log}"
+    );
+    let server_dir = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("lua-language-server");
+    assert!(!server_dir.join("receipt.scm").exists());
+    assert!(ed.lsp.config_command_for_test("lua").is_none());
+}
+
+#[test]
+fn lsp_install_sha256_mismatch_deletes_the_archive_and_fails() {
+    let _lock = lock();
+    let work = safe_tempdir();
+    let archive = work.path().join("marksman-fake");
+    std::fs::write(&archive, b"served bytes").unwrap();
+    let pinned = work.path().join("pinned-bytes");
+    std::fs::write(&pinned, b"different bytes").unwrap();
+    let sources = github_source("marksman", "marksman-fake", &pinned, "marksman-fake");
+
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "markdown");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("sha256 mismatch"),
+        "a digest that differs from the pin must fail loudly: {log}"
+    );
+    let server_dir = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("marksman");
+    assert!(!server_dir.join("marksman-fake").exists());
+    assert!(!server_dir.join("receipt.scm").exists());
+    assert!(ed.lsp.config_command_for_test("markdown").is_none());
+}
+
+fn set_lock_mtime(lock_path: &Path, offset_secs: i64) {
+    let now = std::time::SystemTime::now();
+    let delta = std::time::Duration::from_secs(offset_secs.unsigned_abs());
+    let when = if offset_secs < 0 {
+        now - delta
+    } else {
+        now + delta
+    };
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(lock_path)
+        .unwrap()
+        .set_modified(when)
+        .unwrap();
+}
+
+#[test]
+fn lsp_install_replaces_a_lock_older_than_an_hour() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    std::fs::create_dir_all(&servers_dir).unwrap();
+    let lock_path = servers_dir.join(".install-lock");
+    std::fs::write(&lock_path, b"").unwrap();
+    set_lock_mtime(&lock_path, -2 * 3600);
+
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+    // ocamllsp fails inside the locked section, after the lock was acquired.
+    type_cmd(&mut ed, ":lsp-install ocaml");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("already in progress"),
+        "a stale lock must be replaced, not honoured: {log}"
+    );
+    assert!(log.contains("opam"), "the install must have run: {log}");
+    assert!(
+        !lock_path.exists(),
+        "the replaced lock must be released afterwards"
+    );
+}
+
+#[test]
+fn lsp_install_treats_a_lock_dated_in_the_future_as_live() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    std::fs::create_dir_all(&servers_dir).unwrap();
+    let lock_path = servers_dir.join(".install-lock");
+    std::fs::write(&lock_path, b"").unwrap();
+    set_lock_mtime(&lock_path, 2 * 3600);
+
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+    type_cmd(&mut ed, ":lsp-install ocaml");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("already in progress"),
+        "a lock with a future mtime must count as live: {log}"
+    );
+    assert!(lock_path.exists(), "a live lock must be left in place");
+}
+
 // ── golang installer (fake shim) ────────────────────────────────────────────────
 
 #[test]
