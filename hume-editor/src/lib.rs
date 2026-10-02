@@ -233,15 +233,10 @@ pub fn run(
     if let Err(e) = hume_platform::restore_for_exit(&shared) {
         restore_err.get_or_insert(e);
     }
-    // Back on the normal screen, where the messages stay in scrollback. The
-    // writes ignore errors: after a hangup there is no stderr to write to.
+    // Back on the normal screen, where the messages stay in scrollback.
     editor::buffer::report_dumps(&dumps);
-    {
-        use std::io::Write as _;
-        for panic in worker_panics.all() {
-            let _ = writeln!(std::io::stderr().lock(), "hume: {panic}");
-        }
-    }
+    let reported = worker_panics.all();
+    report_worker_panics(&reported);
     // Give every running LSP server a chance to exit cleanly (shutdown
     // request, then exit notification) before the process ends;
     // ServerHandle::drop would otherwise SIGKILL them.
@@ -252,6 +247,8 @@ pub fn run(
     // skip each attached LSP server's `WRITER_FLUSH_GRACE` teardown whenever
     // that branch is taken.
     drop(editor);
+    // Panics raised during the LSP shutdown or the drop above.
+    report_worker_panics(&worker_panics.all()[reported.len()..]);
 
     let code = terminate.load(std::sync::atomic::Ordering::Acquire);
     if code != 0 {
@@ -290,4 +287,13 @@ pub fn run(
         std::process::exit(code);
     }
     Ok(result?)
+}
+
+/// Writes each worker-thread panic to stderr, ignoring write errors: after a
+/// hangup there is no stderr to write to.
+fn report_worker_panics(panics: &[hume_platform::worker_panic::WorkerPanic]) {
+    use std::io::Write as _;
+    for panic in panics {
+        let _ = writeln!(std::io::stderr().lock(), "hume: {panic}");
+    }
 }
