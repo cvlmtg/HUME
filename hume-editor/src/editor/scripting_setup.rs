@@ -942,7 +942,7 @@ impl Editor {
                 self.tui.clone(),
                 self.kitty_enabled,
             );
-            host.eval_init(&path, init_budget, &mut ih, builtin_names)
+            host.eval_runtime(&path, init_budget, &mut ih, builtin_names)
         };
         self.apply_script_result(result, &format!("runtime/{rel_path}: "));
     }

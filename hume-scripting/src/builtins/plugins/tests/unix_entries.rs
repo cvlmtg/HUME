@@ -647,3 +647,26 @@ fn a_local_declare_without_an_init_file_errors() {
         "got: {err}"
     );
 }
+
+#[test]
+fn a_runtime_file_does_not_set_the_local_plugin_directory() {
+    let dir = TempDir::new().unwrap();
+    let runtime = dir.path().join("rt.scm");
+    std::fs::write(
+        &runtime,
+        r#"(declare-plugin! "./x.scm" #:typed-commands '("c"))"#,
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("x.scm"), "").unwrap();
+    let mut host = ScriptingHost::new();
+
+    let err = host
+        .eval_runtime(&runtime, 10_000, &mut NullHost, Default::default())
+        .expect_err("a runtime file has no init.scm to resolve a local plugin against")
+        .to_string();
+
+    assert!(
+        err.contains("can only be declared from init.scm"),
+        "got: {err}"
+    );
+}
