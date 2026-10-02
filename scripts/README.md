@@ -7,7 +7,7 @@ formats at runtime. Design rationale for the LSP parts: `docs/LSP-INSTALL.md`.
 | Script | Pin | Fetches | Emits |
 |---|---|---|---|
 | `sync-grammars.py` | `runtime/scheme/helix-pin.scm` | `helix-editor/helix` `languages.toml` | `runtime/scheme/languages.scm`, `runtime/scheme/grammar-sources.scm`, `runtime/plugins/core/lsp-install/servers.scm` |
-| `sync-lsp-sources.py` | `runtime/plugins/core/lsp-install/mason-pin.scm` | `mason-org/mason-registry` `registry.json.zip` + every release asset (for sha256) | `runtime/plugins/core/lsp-install/sources.scm` |
+| `sync-lsp-sources.py` | `runtime/plugins/core/lsp-install/mason-pin.scm` | `mason-org/mason-registry` `registry.json.zip` + every release asset (for sha256) | `runtime/plugins/core/lsp-install/sources.scm` and `requirements.scm` |
 
 Shared helpers (pin reading, sexpr emission, atomic writes) live in `sync_common.py`.
 
@@ -23,6 +23,9 @@ Mason to the servers Helix actually wires — through an explicit Helix→Mason 
 table (the namespaces differ: Helix `pylsp` is Mason `python-lsp-server`), reporting every
 Helix server left unmatched. So after a helix bump that changes server names, run
 `sync-grammars.py` first, then `sync-lsp-sources.py`.
+
+`sync-lsp-sources.py --requirements-only` rewrites `requirements.scm` from the checked-in
+`sources.scm` without the network, and adding `--check` exits non-zero when it is stale.
 
 Note: `sync-lsp-sources.py` is slow by design — it downloads every asset per
 server×platform to record checksums. `sync-grammars.py` is a single HTTP fetch.

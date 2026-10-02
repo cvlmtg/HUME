@@ -123,6 +123,11 @@ fn generated_scm_headers_match_their_generator_templates() {
             "LSP_SOURCES_HEADER",
             "runtime/plugins/core/lsp-install/sources.scm",
         ),
+        (
+            "scripts/sync-lsp-sources.py",
+            "LSP_REQUIREMENTS_HEADER",
+            "runtime/plugins/core/lsp-install/requirements.scm",
+        ),
     ];
 
     let mut violations: Vec<String> = Vec::new();

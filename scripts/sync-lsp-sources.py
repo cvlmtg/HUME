@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""Regenerate runtime/plugins/core/lsp-install/sources.scm from mason-org/mason-registry.
+"""Regenerate runtime/plugins/core/lsp-install/sources.scm and requirements.scm from mason-org/mason-registry.
 
 Reads the pinned release tag from runtime/plugins/core/lsp-install/mason-pin.scm, downloads
 that release's compiled registry.json.zip, joins it against the checked-in
 runtime/plugins/core/lsp-install/servers.scm (server names Helix actually wires) through
 an explicit name-mapping table, and rewrites sources.scm with per-server
-install records.
+install records, then derives requirements.scm from the sources.scm it wrote: per
+server and platform, the format of the download and the programs the install needs
+on $PATH. The runtime reads requirements.scm whenever a language is set and sources.scm
+only when it installs.
+
+    sync-lsp-sources.py                          full sync, writes both files
+    sync-lsp-sources.py --requirements-only      rewrite requirements.scm from sources.scm, offline
+    sync-lsp-sources.py --requirements-only --check    exit 1 if requirements.scm is stale
+    --sources PATH / --out PATH                  with --requirements-only, read and write other files
 
 Standalone and slow by design: on a from-scratch run it downloads every
 selected github asset to compute a sha256. A repeat run reuses the sha256
@@ -21,6 +29,7 @@ file.
 
 from __future__ import annotations
 
+import argparse
 import collections
 import hashlib
 import http.client
@@ -37,6 +46,7 @@ from urllib.error import URLError
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sync_common import (  # noqa: E402
     fetch_bytes,
+    generated_file_text,
     read_pin,
     read_sexpr,
     scheme_str,
@@ -48,11 +58,18 @@ LSP_INSTALL_DIR = REPO / "runtime" / "plugins" / "core" / "lsp-install"
 MASON_PIN_SCM = LSP_INSTALL_DIR / "mason-pin.scm"
 LSP_SERVERS_SCM = LSP_INSTALL_DIR / "servers.scm"
 LSP_SOURCES_SCM = LSP_INSTALL_DIR / "sources.scm"
+LSP_REQUIREMENTS_SCM = LSP_INSTALL_DIR / "requirements.scm"
 
 LSP_SOURCES_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/sources.scm — HUME bundled LSP server install catalog.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: mason-org/mason-registry @ {tag}
+"""
+
+LSP_REQUIREMENTS_HEADER = """\
+;;; runtime/plugins/core/lsp-install/requirements.scm — HUME bundled LSP server install requirements.
+;;; Generated — do not hand-edit. Record format: README.md, this directory.
+;;; Source: sources.scm
 """
 
 # Helix server name -> Mason package name, for the cases where the two
@@ -98,6 +115,16 @@ HELIX_TO_MASON = {
 # already per-platform through its own targets.
 PACKAGE_MANAGER_KINDS = ("npm", "cargo", "golang", "pypi", "gem", "nuget")
 
+ARCHIVE_EXTENSIONS = (".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".txz", ".zip", ".gz", ".xz")
+TAR_EXTENSIONS = (".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2")
+# Extensions of downloads the installer cannot turn into a runnable binary.
+# Anything else without one of the supported archive extensions is a bare
+# executable.
+UNSUPPORTED_EXTENSIONS = (
+    ".xz", ".bz2", ".zst", ".tzst", ".7z", ".rar", ".dmg", ".pkg", ".deb", ".rpm",
+    ".msi", ".vsix", ".nupkg", ".jar", ".whl",
+)
+
 # Mason packages that share a Helix server's name but run a different program
 # than the command Helix registers, so installing one would register the wrong
 # binary.
@@ -122,16 +149,8 @@ MASON_TARGET_PRIORITY = {
     "linux-x64": ("linux_x64_gnu", "linux_x64", "linux_x64_musl", "linux", "unix"),
     "windows-x64": ("win_x64", "win"),
 }
+HUME_TARGETS = tuple(MASON_TARGET_PRIORITY)
 
-ARCHIVE_EXTENSIONS = (".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".txz", ".zip", ".gz", ".xz")
-TAR_EXTENSIONS = (".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2")
-# Extensions of downloads the installer cannot turn into a runnable binary.
-# Anything else without one of the supported archive extensions is a bare
-# executable.
-UNSUPPORTED_EXTENSIONS = (
-    ".xz", ".bz2", ".zst", ".tzst", ".7z", ".rar", ".dmg", ".pkg", ".deb", ".rpm",
-    ".msi", ".vsix", ".nupkg", ".jar", ".whl",
-)
 _TEMPLATE_RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
 _STRIP_PREFIX_RE = re.compile(r'version\s*\|\s*strip_prefix\s+"([^"]*)"')
 _BIN_PREFIX_RE = re.compile(r"^[a-z][a-z0-9_]*:(?!//)")
@@ -251,9 +270,9 @@ def index_assets_by_mason_target(assets, package_name: str) -> dict:
 
 
 def asset_format(asset_file: str, bin_path: str) -> str | None:
-    """Return 'tar', 'zip', 'gz' or 'raw' for a download the runtime's
-    `lsp/asset-format` (core:lsp servers.scm) can install, else None. A raw
-    download is the binary itself, so its bin path must equal its file name."""
+    """Return 'tar', 'zip', 'gz' or 'raw' for a download the installer can
+    unpack, else None. A raw download is the binary itself, so its bin path
+    must equal its file name."""
     if asset_file.endswith(TAR_EXTENSIONS):
         return "tar"
     if asset_file.endswith(".zip"):
@@ -714,8 +733,166 @@ def emit_lsp_sources(records: dict) -> list[str]:
     return ["("] + rows + [")"]
 
 
+DOWNLOAD_KINDS = ("github", "generic")
+
+# The program a package-manager install runs, by kind. A dict value is by target.
+PACKAGE_TOOLS = {
+    "npm": "npm",
+    "cargo": "cargo",
+    "golang": "go",
+    "pypi": {"windows-x64": "python"},
+    "gem": "gem",
+    "nuget": "dotnet",
+}
+PYPI_DEFAULT_TOOL = "python3"
+assert set(PACKAGE_TOOLS) == set(PACKAGE_MANAGER_KINDS)
+
+ALL_TARGETS = "*"
+
+
+def package_tool(kind: str, target: str) -> str:
+    tool = PACKAGE_TOOLS[kind]
+    if isinstance(tool, dict):
+        return tool.get(target, PYPI_DEFAULT_TOOL)
+    return tool
+
+
+def download_tools(fmt: str, target: str, asset_file: str) -> list[str]:
+    """The programs a download needs on $PATH, in the order the runtime checks
+    them: what unpacks it, then curl. Windows unpacks a zip with tar; a tar
+    compressed with xz or bzip2 needs that tool on Linux."""
+    tools: list[str] = []
+    if fmt == "zip":
+        tools.append("tar" if target == "windows-x64" else "unzip")
+    elif fmt == "tar":
+        tools.append("tar")
+        if target == "linux-x64":
+            if asset_file.endswith((".tar.xz", ".txz")):
+                tools.append("xz")
+            elif asset_file.endswith(".tar.bz2"):
+                tools.append("bzip2")
+    elif fmt == "gz":
+        tools.append("gzip")
+    tools.append("curl")
+    return tools
+
+
+def fields_of(record: list) -> dict:
+    """A record's `(key . value)` and `(key item ...)` fields by key."""
+    fields = {}
+    for field in record[1:]:
+        if isinstance(field, tuple):
+            fields[str(field[0])] = field[1]
+        elif isinstance(field, list) and field:
+            fields[str(field[0])] = field[1:]
+    return fields
+
+
+def grouped_rows(per_target: dict[str, tuple]) -> list[str]:
+    """One row per distinct (format, tools): `(targets fmt tool ...)`, with
+    `*` for targets that cover every platform."""
+    groups: dict[tuple, list[str]] = {}
+    for target in HUME_TARGETS:
+        if target in per_target:
+            groups.setdefault(per_target[target], []).append(target)
+    rows = []
+    for (fmt, tools), targets in groups.items():
+        covered = ALL_TARGETS if tuple(targets) == HUME_TARGETS else "(" + " ".join(targets) + ")"
+        rows.append(f"({covered} {fmt} {' '.join(scheme_str(t) for t in tools)})")
+    return rows
+
+
+def download_rows(name: str, kind: str, targets: list) -> list[str]:
+    by_target = {}
+    for row in targets:
+        target = str(row[0])
+        if kind == "github" and len(row) == 4:
+            asset, bin_path = row[1], row[3]
+        elif kind == "generic" and len(row) == 5:
+            asset, bin_path = row[1], row[4]
+        else:
+            sys.exit(f"error: {name}: unexpected {kind} target row {row!r}")
+        fmt = asset_format(asset, bin_path)
+        if fmt is None:
+            sys.exit(f"error: {name} [{target}]: {asset} is not an installable download")
+        by_target[target] = (fmt, tuple(download_tools(fmt, target, asset)))
+    return grouped_rows(by_target)
+
+
+def package_rows(kind: str, platforms: list | None) -> list[str]:
+    allowed = HUME_TARGETS if platforms is None else [str(p) for p in platforms]
+    return grouped_rows(
+        {
+            target: ("#f", (package_tool(kind, target),))
+            for target in HUME_TARGETS
+            if target in allowed
+        }
+    )
+
+
+def emit_requirements(records: list) -> list[str]:
+    rows = []
+    for record in sorted(records, key=lambda r: str(r[0])):
+        name = str(record[0])
+        fields = fields_of(record)
+        kind = str(fields["kind"])
+        if kind in DOWNLOAD_KINDS:
+            targets = download_rows(name, kind, fields["targets"])
+            missing = "download"
+        elif kind in PACKAGE_MANAGER_KINDS:
+            targets = package_rows(kind, fields.get("platforms"))
+            missing = "package"
+        else:
+            rows.append(f" ({scheme_str(name)} (blocked . {kind}))")
+            continue
+        rows.append(f" ({scheme_str(name)} (targets {' '.join(targets)}) (missing . {missing}))")
+    return ["("] + rows + [")"]
+
+
+def write_requirements(sources: Path, out: Path, *, check: bool) -> None:
+    rows = emit_requirements(read_sexpr(sources))
+    if check:
+        expected = generated_file_text(LSP_REQUIREMENTS_HEADER, rows)
+        if not out.exists() or out.read_text(encoding="utf-8") != expected:
+            sys.exit(
+                f"error: {out} is stale — run scripts/sync-lsp-sources.py --requirements-only"
+            )
+        return
+    write_generated_file(out, LSP_REQUIREMENTS_HEADER, rows)
+    read_sexpr(out)  # self-check: emitted file must re-parse
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Regenerate the LSP install data.")
+    parser.add_argument(
+        "--requirements-only",
+        action="store_true",
+        help="regenerate requirements.scm from sources.scm, offline",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="with --requirements-only: fail if requirements.scm is stale",
+    )
+    parser.add_argument("--sources", type=Path, default=LSP_SOURCES_SCM)
+    parser.add_argument("--out", type=Path, default=LSP_REQUIREMENTS_SCM)
+    parser.add_argument(
+        "--no-cache", action="store_true", help="re-hash every asset instead of reusing hashes"
+    )
+    args = parser.parse_args()
+    if not args.requirements_only and (
+        args.check or args.sources != LSP_SOURCES_SCM or args.out != LSP_REQUIREMENTS_SCM
+    ):
+        parser.error("--check, --sources and --out require --requirements-only")
+    return args
+
+
 def main() -> None:
-    no_cache = "--no-cache" in sys.argv[1:]
+    args = parse_args()
+    if args.requirements_only:
+        write_requirements(args.sources, args.out, check=args.check)
+        return
+    no_cache = args.no_cache
 
     tag = read_pin(MASON_PIN_SCM)
     print(f"mason-pin: {tag}", file=sys.stderr)
@@ -852,6 +1029,8 @@ def main() -> None:
     write_generated_file(LSP_SOURCES_SCM, LSP_SOURCES_HEADER.format(tag=tag), source_rows)
 
     read_sexpr(LSP_SOURCES_SCM)  # self-check: emitted file must re-parse
+
+    write_requirements(LSP_SOURCES_SCM, LSP_REQUIREMENTS_SCM, check=False)
 
 
 if __name__ == "__main__":

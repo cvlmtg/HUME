@@ -55,10 +55,15 @@ def write_atomic(path: Path, content: str) -> None:
     print(f"wrote {path}", file=sys.stderr)
 
 
+def generated_file_text(header: str, rows: list[str]) -> str:
+    """`header` + the row lines + a trailing newline — the shape every
+    generated `*.scm` file shares."""
+    return "\n".join([header, "\n".join(rows), ""])
+
+
 def write_generated_file(path: Path, header: str, rows: list[str]) -> None:
-    """Assemble `header` + the row lines + a trailing newline and write it
-    atomically — the shape every generated `*.scm` file shares."""
-    write_atomic(path, "\n".join([header, "\n".join(rows), ""]))
+    """Write `generated_file_text(header, rows)` atomically."""
+    write_atomic(path, generated_file_text(header, rows))
 
 
 def fetch_bytes(url: str, *, timeout: int) -> bytes:
