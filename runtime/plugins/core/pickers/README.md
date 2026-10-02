@@ -6,7 +6,7 @@ with no native (Rust) picker definitions.
 ## Usage
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "core:pickers" #:config (hash "untracked" #f))
 ```
 

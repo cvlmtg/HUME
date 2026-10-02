@@ -14,7 +14,7 @@ use rustc_hash::FxHashMap;
 
 use steel::rvals::SteelVal;
 
-use crate::attribution::PluginId;
+use crate::attribution::EntryId;
 
 // ── HookRegistry ──────────────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ use crate::attribution::PluginId;
 /// so rollback removes it together with the handler.
 #[derive(Debug)]
 pub(crate) struct HookEntry {
-    pub(crate) owner: Option<PluginId>,
+    pub(crate) owner: Option<EntryId>,
     pub(crate) proc: SteelVal,
     pub(crate) keys: Option<Box<[String]>>,
 }
@@ -54,7 +54,7 @@ impl HookRegistry {
     pub(crate) fn register(
         &mut self,
         name: &str,
-        owner: Option<PluginId>,
+        owner: Option<EntryId>,
         proc: SteelVal,
         keys: Option<Box<[String]>>,
     ) {
@@ -93,7 +93,7 @@ impl HookRegistry {
     /// by `finish_lazy_activation` on activation failure so a `Failed`
     /// plugin's hooks stop firing. Entries with `owner: None` (top-level) are
     /// never matched.
-    pub(crate) fn remove_owned_by(&mut self, owner: &PluginId) {
+    pub(crate) fn remove_owned_by(&mut self, owner: &EntryId) {
         for entries in self.handlers.values_mut() {
             entries.retain(|e| e.owner.as_ref() != Some(owner));
         }

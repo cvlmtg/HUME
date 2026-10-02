@@ -1,7 +1,7 @@
 //! Command registry queries, synchronous native dispatch, and Steel
 //! command registration.
 
-use crate::attribution::PluginId;
+use crate::attribution::EntryId;
 use crate::types::{PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
 /// Command registry queries, synchronous native dispatch, and Steel command
@@ -106,19 +106,19 @@ pub trait CommandHost {
     /// Returns `Err(msg)` if `name` is already claimed by any existing
     /// command (native, `SteelBacked`, or another plugin's `Lazy` stub); the
     /// message names the conflicting owner for a specific declare-time log.
-    fn register_lazy_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String>;
+    fn register_lazy_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String>;
 
     /// Register a typed `Lazy` activation stub for `name`, owned by `plugin`.
     ///
     /// Called from `declare-plugin!`'s `#:typed-commands` processing: the
     /// typed counterpart of [`Self::register_lazy_command`]. Same conflict
     /// rules, same message shape.
-    fn register_lazy_typed_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String>;
+    fn register_lazy_typed_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String>;
 
     /// The plugin that owns `name`'s `Lazy` stub (mappable or typed alike),
     /// or `None` if `name` is not a pending lazy activation entry (already
     /// activated, never declared, or a non-lazy command).
-    fn lazy_command_owner(&self, name: &str) -> Option<PluginId>;
+    fn lazy_command_owner(&self, name: &str) -> Option<EntryId>;
 
     /// The plugin that owns `name`'s *mappable* `Lazy` stub, or `None` if
     /// `name` has no pending mappable activation, even if a typed stub of
@@ -130,7 +130,7 @@ pub trait CommandHost {
     /// reported here would trigger a plugin load for an activation that can
     /// never succeed. [`Self::lazy_command_owner`] stays kind-agnostic for
     /// the callers that want either kind.
-    fn lazy_mappable_command_owner(&self, name: &str) -> Option<PluginId>;
+    fn lazy_mappable_command_owner(&self, name: &str) -> Option<EntryId>;
 
     /// Remove every remaining `Lazy` stub owned by `plugin`, mappable and
     /// typed alike.
@@ -142,5 +142,5 @@ pub trait CommandHost {
     /// stub the plugin ever claimed must be freed so a later plugin can claim
     /// the name. Never removes a resolved `SteelBacked`/`Steel` command,
     /// only `Lazy` entries.
-    fn unregister_lazy_stubs_of(&mut self, plugin: &PluginId);
+    fn unregister_lazy_stubs_of(&mut self, plugin: &EntryId);
 }

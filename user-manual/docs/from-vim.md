@@ -31,19 +31,19 @@ You see the selection `w` built (word plus its leading whitespace) before `d` ev
 
 #### Try it on your config
 
-Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 20 with `hume ~/.config/hume/init.scm:20`. Then make the same three edits you would in Vim:
+Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 21 with `hume ~/.config/hume/init.scm:21`. Then make the same three edits you would in Vim:
 
 | Edit | Vim | HUME |
 |------|-----|------|
-| Uncomment line 20 (`core:buffer-words`) | `dt(` | `Ctrl-t` `(` `d` |
-| Delete lines 17 and 18 (`core:plum`, `core:git-diff`) | `:17` `2dd` | `:17` `2` `Ctrl-x` `d` |
-| Turn `declare-plugin!` into `load-plugin!` on line 16 | `:16` `l` `ciw` `load` `Esc` | `:16` `w` `c` `load` `Esc` |
+| Uncomment line 21 (`core:buffer-words`) | `dt(` | `Ctrl-t` `(` `d` |
+| Delete lines 18 and 19 (`core:plum`, `core:git-diff`) | `:18` `2dd` | `:18` `2` `Ctrl-x` `d` |
+| Change `load` to `declare` on line 16, then undo it with `u` | `:16` `l` `ciw` `declare` `Esc` | `:16` `w` `c` `declare` `Esc` |
 
 What each step shows:
 
 - **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it. For longer selections, `e` toggles Extend mode, where every motion extends until you act or press `Esc`. The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
 - **`x` selects a line.** It replaces Vim's `dd`/`yy`/`cc` doubling: `x d` deletes a line, `x c` rewrites its content and keeps the line. `Ctrl-x` adds the line below to the selection.
-- **`Esc` keeps what you typed selected.** After the last edit `load` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `select-inserted-text` option (see [Configuration](configuration.md)).
+- **`Esc` keeps what you typed selected.** After the last edit `declare` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `select-inserted-text` option (see [Configuration](configuration.md)).
 
 A few more keys you'll want early: `d` on its own deletes the character under the cursor (Vim's `x`), since the cursor is already a one-character selection. `g h` and `g l` go to the start and end of the line, `g g` and `g e` to the first and last line. `/`, `n` and `N` search as in Vim.
 

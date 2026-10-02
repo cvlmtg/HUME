@@ -1,15 +1,15 @@
 ;;; core:lsp-install/install.scm — see README.md.
 
 (require "catalog.scm")
+(require "source-catalog.scm")
 (require "receipts.scm")
 (require "platform.scm")
+(require "blocker.scm")
 (require "register.scm")
 (require "sha256.scm")
 (require "unpack.scm")
 
-(provide lsp-install/install-server! lsp-install/install-blocker)
-
-(define lsp-install/python (if lsp-install/windows? "python" "python3"))
+(provide lsp-install/install-server!)
 
 (define (lsp-install/verify-sha256! path expected)
   (let* ((expected-hex (string-downcase
@@ -22,46 +22,9 @@
       (error (string-append "lsp-install/verify-sha256!: sha256 mismatch for '" path
                             "': expected " expected-hex ", got " actual)))))
 
-;; ── Asset format + installability ─────────────────────────────────────────────
-
-(define *lsp-install-tar-suffixes* '(".tar.gz" ".tgz" ".tar.xz" ".txz" ".tar.bz2"))
-
-(define (lsp-install/ends-with-any? s suffixes)
-  (call! "stdlib/find" (lambda (suffix) (ends-with? s suffix)) suffixes))
-
-(define (lsp-install/asset-format asset-file bin)
-  (cond ((lsp-install/ends-with-any? asset-file *lsp-install-tar-suffixes*) 'tar)
-        ((ends-with? asset-file ".zip") 'zip)
-        ((ends-with? asset-file ".gz") 'gz)
-        ((equal? asset-file bin) 'raw)
-        (else #f)))
-
-(define (lsp-install/platform-supported? fields)
-  (let ((platforms (assoc 'platforms fields)))
-    (or (not platforms)
-        (member (string->symbol lsp-install/target) (cdr platforms)))))
-
-(define (lsp-install/find-target targets)
-  (let ((want (string->symbol lsp-install/target)))
-    (call! "stdlib/find" (lambda (t) (equal? (list-ref t 0) want)) targets)))
-
-(define (lsp-install/tar-compressor-tools asset-file)
-  (cond ((not (equal? lsp-install/target "linux-x64")) '())
-        ((lsp-install/ends-with-any? asset-file '(".tar.xz" ".txz")) '("xz"))
-        ((ends-with? asset-file ".tar.bz2") '("bzip2"))
-        (else '())))
-
-(define (lsp-install/download-tools fmt asset)
-  (append
-    (cond ((equal? fmt 'zip) (list (lsp-install/unpack-tool 'zip)))
-          ((equal? fmt 'tar) (cons "tar" (lsp-install/tar-compressor-tools asset)))
-          ((equal? fmt 'gz) '("gzip"))
-          (else '()))
-    '("curl")))
-
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
-(define (lsp-install/install-download! name url asset sha bin fmt dir)
+(define (lsp-install/install-download! name url asset sha bin fmt unpacker dir)
   (let ((archive (path-join dir asset)))
     (create-directory! dir)
     (run-inline-output! "curl" (list "-fsSL" "-o" archive "--" url))
@@ -71,8 +34,7 @@
         (begin
           (cond
             ((equal? fmt 'gz) (lsp-install/unpack-gz! archive (path-join dir bin)))
-            ((equal? fmt 'zip) (lsp-install/unpack-archive! 'zip archive dir))
-            ((equal? fmt 'tar) (lsp-install/unpack-archive! 'tar archive dir)))
+            (else (lsp-install/unpack-archive! unpacker archive dir)))
           (call! "stdlib/delete-file!" archive)))
     (unless (path-exists? (path-join dir bin))
       (error (string-append "lsp-install/install-download!: " name
@@ -114,6 +76,7 @@
          (extras      (lsp-install/ref fields 'extras))
          (version     (lsp-install/ref fields 'version))
          (windows?    lsp-install/windows?)
+         (python      (car (lsp-install/row-tools (lsp-install/target-row name))))
          (venv        (path-join dir "venv"))
          (venv-bin    (if windows? "venv/Scripts" "venv/bin"))
          (requirement (string-append package
@@ -121,7 +84,7 @@
                                          ""
                                          (string-append "[" (string-join extras ",") "]"))
                                      "==" version)))
-    (run-inline-output! lsp-install/python (list "-m" "venv" venv))
+    (run-inline-output! python (list "-m" "venv" venv))
     (run-inline-output! (path-join dir venv-bin (if windows? "python.exe" "python"))
                         (list "-m" "pip" "install" "--disable-pip-version-check"
                               "--" requirement))
@@ -141,90 +104,64 @@
                               (lsp-install/ref fields 'packages)))
   (lsp-install/managed-bin! "gem" name dir "bin" (lsp-install/ref fields 'bin) ".bat"))
 
-;; ── Per-kind plans ────────────────────────────────────────────────────────────
-;; A plan is the tools a kind needs on $PATH, the env dirs its receipt records,
-;; and the procedure that installs into a directory and returns the bin path.
+;; ── Running an install ────────────────────────────────────────────────────────
 
-(define (lsp-install/plan tools env-dirs install!)
-  (hash 'tools tools 'env-dirs env-dirs 'install! install!))
+;; Rows: (kind installer env-dirs), installer taking (name fields dir).
+(define lsp-install/package-installers
+  (list (list 'npm    lsp-install/install-npm!    '())
+        (list 'cargo  lsp-install/install-cargo!  '())
+        (list 'golang lsp-install/install-golang! '())
+        (list 'pypi   lsp-install/install-pypi!   '())
+        (list 'gem    lsp-install/install-gem!    '(("GEM_HOME" . ".") ("GEM_PATH" . ".")))
+        (list 'nuget  lsp-install/install-nuget!  '())))
 
-(define (lsp-install/download-plan name fields)
-  (let ((target (lsp-install/find-target (lsp-install/ref fields 'targets))))
-    (if (not target)
-        "no prebuilt asset for this platform"
-        (let* ((asset (list-ref target 1))
-               (row   (if (equal? (lsp-install/ref fields 'kind) 'generic)
-                          (cdr target)
-                          (list asset
-                                (string-append "https://github.com/" (lsp-install/ref fields 'repo)
-                                               "/releases/download/" (lsp-install/ref fields 'version)
-                                               "/" asset)
-                                (list-ref target 2)
-                                (list-ref target 3))))
-               (url   (list-ref row 1))
-               (sha   (list-ref row 2))
-               (bin   (list-ref row 3))
-               (fmt   (lsp-install/asset-format asset bin)))
-          (if (not fmt)
-              (string-append "unsupported asset format: " asset)
-              (lsp-install/plan
-                (lsp-install/download-tools fmt asset)
-                '()
-                (lambda (dir)
-                  (lsp-install/install-download! name url asset sha bin fmt dir))))))))
+(define (lsp-install/download-kind? source)
+  (member (lsp-install/ref source 'kind) '(github generic)))
 
-;; Rows: (kind tool env-dirs installer), installer taking (name fields dir).
-(define lsp-install/package-kinds
-  (list (list 'npm    "npm"              '() lsp-install/install-npm!)
-        (list 'cargo  "cargo"            '() lsp-install/install-cargo!)
-        (list 'golang "go"               '() lsp-install/install-golang!)
-        (list 'pypi   lsp-install/python '() lsp-install/install-pypi!)
-        (list 'gem    "gem" '(("GEM_HOME" . ".") ("GEM_PATH" . ".")) lsp-install/install-gem!)
-        (list 'nuget  "dotnet"           '() lsp-install/install-nuget!)))
+;; This platform's download as (asset url sha bin).
+(define (lsp-install/download-row source)
+  (let* ((want   (string->symbol lsp-install/target))
+         (target (call! "stdlib/find" (lambda (t) (equal? (list-ref t 0) want))
+                        (lsp-install/ref source 'targets)))
+         (asset  (list-ref target 1)))
+    (if (equal? (lsp-install/ref source 'kind) 'generic)
+        (cdr target)
+        (list asset
+              (string-append "https://github.com/" (lsp-install/ref source 'repo)
+                             "/releases/download/" (lsp-install/ref source 'version)
+                             "/" asset)
+              (list-ref target 2)
+              (list-ref target 3)))))
 
-(define (lsp-install/kind-plan name fields)
-  (let* ((kind (lsp-install/ref fields 'kind))
-         (row  (assoc kind lsp-install/package-kinds)))
-    (cond
-      ((or (equal? kind 'github) (equal? kind 'generic))
-       (lsp-install/download-plan name fields))
-      (row
-       (lsp-install/plan (list (list-ref row 1)) (list-ref row 2)
-                         (lambda (dir) ((list-ref row 3) name fields dir))))
-      (else (string-append "not installable (kind " (symbol->string kind) ") in v1")))))
+;; Installs `name` into `dir` and returns the binary's path inside it.
+(define (lsp-install/run-install! name source dir)
+  (if (lsp-install/download-kind? source)
+      (let* ((download (lsp-install/download-row source))
+             (row      (lsp-install/target-row name)))
+        (lsp-install/install-download! name (list-ref download 1) (list-ref download 0)
+                                       (list-ref download 2) (list-ref download 3)
+                                       (lsp-install/row-fmt row)
+                                       (car (lsp-install/row-tools row)) dir))
+      ((cadr (assoc (lsp-install/ref source 'kind) lsp-install/package-installers))
+       name source dir)))
 
-;; The plan for `name`, or a string naming what blocks installing it.
-(define (lsp-install/resolve name)
-  (let ((fields (lsp-install/source name)))
-    (cond
-      ((not lsp-install/target) "unsupported platform")
-      ((not fields) "no install source")
-      ((not (lsp-install/platform-supported? fields)) "not supported on this platform")
-      (else
-       (let ((plan (lsp-install/kind-plan name fields)))
-         (if (string? plan)
-             plan
-             (let ((missing (call! "stdlib/find" (lambda (tool) (not (which tool)))
-                                   (hash-ref plan 'tools))))
-               (if missing
-                   (string-append "requires '" missing "' on $PATH, which was not found")
-                   plan))))))))
-
-(define (lsp-install/install-blocker name)
-  (let ((resolved (lsp-install/resolve name)))
-    (and (string? resolved) resolved)))
+(define (lsp-install/env-dirs source)
+  (if (lsp-install/download-kind? source)
+      '()
+      (list-ref (assoc (lsp-install/ref source 'kind) lsp-install/package-installers) 2)))
 
 (define (lsp-install/install-server! name)
-  (let ((plan (lsp-install/resolve name)))
-    (when (string? plan)
-      (error (string-append "lsp-install/install-server!: " name ": " plan)))
+  (let ((blocker (lsp-install/install-blocker name)))
+    (when blocker
+      (error (string-append "lsp-install/install-server!: " name ": " blocker)))
     (let ((server-fields (hash-ref lsp-install/servers name))
+          (source        (lsp-install/source name))
           (dir           (lsp-install/server-dir name)))
       (lsp-install/unregister-server-languages! name)
       (call! "stdlib/delete-dir!" dir)
-      (let ((bin-rel ((hash-ref plan 'install!) dir)))
-        (lsp-install/write-receipt! name (lsp-install/ref (lsp-install/source name) 'version)
-                                    bin-rel (hash-ref plan 'env-dirs))
+      (let ((bin-rel (lsp-install/run-install! name source dir)))
+        (lsp-install/write-receipt! name (lsp-install/ref source 'version)
+                                    bin-rel (lsp-install/env-dirs source))
         (let ((cmd (lsp-install/ref server-fields 'command)))
           (when (which cmd)
             (log! 'info (string-append "LSP: " cmd " is also on $PATH — the managed install at "

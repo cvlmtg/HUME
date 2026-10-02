@@ -213,24 +213,24 @@ impl crate::host::CommandHost for ValidNameHost {
     fn register_lazy_command(
         &mut self,
         name: &str,
-        plugin: &crate::attribution::PluginId,
+        plugin: &crate::attribution::EntryId,
     ) -> Result<(), String> {
         self.inner.register_lazy_command(name, plugin)
     }
     fn register_lazy_typed_command(
         &mut self,
         name: &str,
-        plugin: &crate::attribution::PluginId,
+        plugin: &crate::attribution::EntryId,
     ) -> Result<(), String> {
         self.inner.register_lazy_typed_command(name, plugin)
     }
-    fn lazy_command_owner(&self, name: &str) -> Option<crate::attribution::PluginId> {
+    fn lazy_command_owner(&self, name: &str) -> Option<crate::attribution::EntryId> {
         self.inner.lazy_command_owner(name)
     }
-    fn lazy_mappable_command_owner(&self, name: &str) -> Option<crate::attribution::PluginId> {
+    fn lazy_mappable_command_owner(&self, name: &str) -> Option<crate::attribution::EntryId> {
         self.inner.lazy_mappable_command_owner(name)
     }
-    fn unregister_lazy_stubs_of(&mut self, plugin: &crate::attribution::PluginId) {
+    fn unregister_lazy_stubs_of(&mut self, plugin: &crate::attribution::EntryId) {
         self.inner.unregister_lazy_stubs_of(plugin)
     }
 }
@@ -303,24 +303,24 @@ impl crate::host::CommandHost for RegisterCapableHost {
     fn register_lazy_command(
         &mut self,
         name: &str,
-        plugin: &crate::attribution::PluginId,
+        plugin: &crate::attribution::EntryId,
     ) -> Result<(), String> {
         self.inner.register_lazy_command(name, plugin)
     }
     fn register_lazy_typed_command(
         &mut self,
         name: &str,
-        plugin: &crate::attribution::PluginId,
+        plugin: &crate::attribution::EntryId,
     ) -> Result<(), String> {
         self.inner.register_lazy_typed_command(name, plugin)
     }
-    fn lazy_command_owner(&self, name: &str) -> Option<crate::attribution::PluginId> {
+    fn lazy_command_owner(&self, name: &str) -> Option<crate::attribution::EntryId> {
         self.inner.lazy_command_owner(name)
     }
-    fn lazy_mappable_command_owner(&self, name: &str) -> Option<crate::attribution::PluginId> {
+    fn lazy_mappable_command_owner(&self, name: &str) -> Option<crate::attribution::EntryId> {
         self.inner.lazy_mappable_command_owner(name)
     }
-    fn unregister_lazy_stubs_of(&mut self, plugin: &crate::attribution::PluginId) {
+    fn unregister_lazy_stubs_of(&mut self, plugin: &crate::attribution::EntryId) {
         self.inner.unregister_lazy_stubs_of(plugin)
     }
 }

@@ -17,23 +17,16 @@ doesn't carry, or a `$PATH` copy you want to take precedence), register it by ha
 instead. See [Registering a language server](#registering-a-language-server).
 
 ```scheme
-(declare-plugin! "core:stdlib")       ; the plugins depend on it — declared or loaded, either works
-(declare-plugin! "core:lsp")
-(declare-plugin! "core:lsp-install")  ; :lsp-install and friends; leave it out to manage servers yourself
-```
-
-Declaring `core:lsp` is recommended: it keeps startup fast, and `core:lsp` activates the
-first time any file with a recognized language opens, or you run one of its commands
-directly. If you use LSP in every session and would rather it
-load from the start, swap `declare-plugin!` for `load-plugin!`:
-
-```scheme
+(load-plugin! "core:stdlib")       ; the plugins depend on it
 (load-plugin! "core:lsp")
+(load-plugin! "core:lsp-install")  ; :lsp-install and friends; leave it out to manage servers yourself
 ```
+
+Both plugins load lazily, which keeps startup fast: `core:lsp` activates the first time any file with a recognized language opens, or you run one of its commands directly.
 
 Want activation to only trigger for specific languages, or a smaller set of commands?
-Pass `#:languages`/`#:commands`/`#:typed-commands`/`#:events` to `declare-plugin!` yourself
-and it uses exactly what you list instead of the defaults:
+Pass `#:languages`/`#:commands`/`#:typed-commands`/`#:events` to `declare-plugin!` before the
+`load-plugin!` line, and it uses what you list instead of the defaults:
 
 ```scheme
 (declare-plugin! "core:lsp"
@@ -44,20 +37,20 @@ and it uses exactly what you list instead of the defaults:
                "lsp-rename" "lsp-fmt" "lsp-code-actions")
   #:typed-commands '("diagnostics" "format-source"
                       "lsp-status" "lsp-stop" "lsp-restart"))
+(load-plugin! "core:lsp")
 ```
 
 ::: warning
 `#:events '(on-lsp-attach)` by itself never activates on its own. Nothing
 is registered yet, so nothing attaches, so the event that would trigger activation never
-fires. List the languages you want servers for in `#:languages`, list the `lsp-*`
-commands in `#:commands`/`#:typed-commands` (as above), or load `core:lsp` eagerly. Any
-one of these gets you a working `core:lsp`.
+fires. List the languages you want servers for in `#:languages`, or list the `lsp-*`
+commands in `#:commands`/`#:typed-commands` (as above). Either one gets you a working `core:lsp`.
 
 Completions are a separate case: `Ctrl-Space` and a server's trigger characters both run
 through the editor's own `completion-trigger` key, never through one of `core:lsp`'s own
 commands, so `#:commands`/`#:typed-commands` alone does not get completions working:
-`core:lsp` has to already be active. List the languages you use in `#:languages`, or load
-it eagerly, to get completions along with everything else.
+`core:lsp` has to already be active. List the languages you use in `#:languages` to get
+completions along with everything else.
 :::
 
 Opening a file whose language matches a registered server spawns it automatically (once per
@@ -170,9 +163,9 @@ below.
 
 **A server is on disk but nothing attaches.** This means `core:lsp-install`'s scan hasn't
 (yet) seen it: either `core:lsp-install` hasn't loaded or activated this session at all
-(a lazily declared plugin whose trigger hasn't fired yet), or the server appeared on disk
+(a lazy plugin whose trigger hasn't fired yet), or the server appeared on disk
 after the scan already ran (installed outside `:lsp-install`, copied in or installed by an
-earlier HUME version). Run `:lsp-rescan-servers`, or add `(load-plugin! "core:lsp-install")`.
+earlier HUME version). Run `:lsp-rescan-servers`, or add `(load-plugin! "core:lsp-install")` to your `init.scm`.
 
 **A server on your `$PATH` isn't the one HUME runs.** `:lsp-install` always spawns the managed
 copy, even when the same command name also resolves on `$PATH`. You'll see a note about this
@@ -187,9 +180,9 @@ catalog doesn't carry, or a `$PATH` copy you want to take precedence over a mana
 `register-lsp-server!` itself has no dependency on `core:lsp`, but the
 [managing-servers commands](#managing-servers) below (`:lsp-status`, `:lsp-stop`,
 `:lsp-restart`) are `core:lsp` commands, so a manually registered server still needs
-`core:lsp` loaded or declared to inspect, stop, or restart it. A manual `register-lsp-server!`
+`core:lsp` loaded to inspect, stop, or restart it. A manual `register-lsp-server!`
 call always overrides a seeded, installed server for the same language, whether it comes
-before or after `(load-plugin! "core:lsp")` or `(declare-plugin! "core:lsp")` in your init.scm;
+before or after `(load-plugin! "core:lsp")` in your init.scm;
 order doesn't matter. `register-lsp-server!` takes:
 
 | Argument | Meaning |

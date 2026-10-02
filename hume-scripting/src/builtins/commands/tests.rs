@@ -197,7 +197,9 @@ fn command_plugin_known_returns_owner() {
     let mut h = SteelCtxTestHarness::new();
     h.registries.cmd_owners.insert(
         "my-cmd".to_string(),
-        Owner::Plugin(crate::attribution::PluginId::Core("plum".to_string())),
+        Owner::Plugin(crate::attribution::EntryId::main(
+            crate::attribution::PluginId::Core("plum".to_string()),
+        )),
     );
     let mut ctx = h.ctx();
     let result = command_plugin(&mut ctx, "my-cmd".to_string()).unwrap();
@@ -374,7 +376,9 @@ fn define_command_dup_names_error_names_existing_owner() {
         .insert("my-cmd".to_string(), SteelVal::BoolV(false));
     h.registries.cmd_owners.insert(
         "my-cmd".to_string(),
-        Owner::Plugin(crate::attribution::PluginId::Core("plum".to_string())),
+        Owner::Plugin(crate::attribution::EntryId::main(
+            crate::attribution::PluginId::Core("plum".to_string()),
+        )),
     );
     let mut ctx = h.ctx_init();
     let err = define_command(
@@ -413,7 +417,9 @@ fn define_typed_command_dup_names_error_names_existing_owner() {
         .insert("my-cmd".to_string(), SteelVal::BoolV(false));
     h.registries.cmd_owners.insert(
         "my-cmd".to_string(),
-        Owner::Plugin(crate::attribution::PluginId::Core("plum".to_string())),
+        Owner::Plugin(crate::attribution::EntryId::main(
+            crate::attribution::PluginId::Core("plum".to_string()),
+        )),
     );
     let mut ctx = h.ctx_init();
     // A real callable proc: check_definable must reject before ever reaching

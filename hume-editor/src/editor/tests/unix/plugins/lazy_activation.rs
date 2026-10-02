@@ -114,7 +114,10 @@ fn call_bang_does_not_activate_a_typed_only_lazy_stub() {
     };
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&tp_id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(tp_id.clone())),
             Some(PluginStatus::Declared)
         ),
         "call! on a typed-only name must not activate the plugin"
@@ -291,7 +294,10 @@ fn body_error_removes_stub_and_marks_failed() {
     };
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Failed)
         ),
         "plugin must be Failed after body error"
@@ -324,7 +330,10 @@ fn lazy_cmd_arg_passed_on_first_call() {
     };
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin must be Loaded after first dispatch with arg"
@@ -524,21 +533,27 @@ fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
     assert!(
         matches!(
             ed.state.config.registry.get_mappable("bar"),
-            Some(MappableCommand::Lazy { plugin, .. }) if *plugin == pa_id
+            Some(MappableCommand::Lazy { plugin, .. }) if *plugin == hume_scripting::attribution::EntryId::main(pa_id.clone())
         ),
         "bar's Lazy stub must be owned by pa (first-writer-wins)"
     );
     // Both plugins are Declared: pb stays declared even though its "bar" entry was dropped.
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&pa_id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(pa_id.clone())),
             Some(PluginStatus::Declared)
         ),
         "pa must be Declared"
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&pb_id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(pb_id.clone())),
             Some(PluginStatus::Declared)
         ),
         "pb must be Declared even with its 'bar' entry dropped"

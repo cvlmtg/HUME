@@ -15,7 +15,7 @@ impl<'a> EditorHostImpl<'a> {
     fn claim_lazy_name(
         &self,
         name: &str,
-        plugin: &hume_scripting::attribution::PluginId,
+        plugin: &hume_scripting::attribution::EntryId,
     ) -> Result<bool, String> {
         if let Some(owner) = self.state.config.registry.lazy_owner(name) {
             return if owner == plugin {
@@ -96,7 +96,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
     fn register_lazy_command(
         &mut self,
         name: &str,
-        plugin: &hume_scripting::attribution::PluginId,
+        plugin: &hume_scripting::attribution::EntryId,
     ) -> Result<(), String> {
         if self.claim_lazy_name(name, plugin)? {
             self.state.config.registry.register(MappableCommand::Lazy {
@@ -110,7 +110,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
     fn register_lazy_typed_command(
         &mut self,
         name: &str,
-        plugin: &hume_scripting::attribution::PluginId,
+        plugin: &hume_scripting::attribution::EntryId,
     ) -> Result<(), String> {
         if self.claim_lazy_name(name, plugin)? {
             self.state.config.registry.register_typed(TypedCommand {
@@ -129,7 +129,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
 
     /// The plugin owning `name`'s `Lazy` stub, mappable or typed alike.
     /// See [`crate::editor::registry::CommandRegistry::lazy_owner`].
-    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::PluginId> {
+    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::EntryId> {
         self.state.config.registry.lazy_owner(name).cloned()
     }
 
@@ -138,7 +138,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
     fn lazy_mappable_command_owner(
         &self,
         name: &str,
-    ) -> Option<hume_scripting::attribution::PluginId> {
+    ) -> Option<hume_scripting::attribution::EntryId> {
         self.state
             .config
             .registry
@@ -146,7 +146,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             .cloned()
     }
 
-    fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::attribution::PluginId) {
+    fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::attribution::EntryId) {
         self.state.config.registry.unregister_lazy_stubs_of(plugin);
     }
 

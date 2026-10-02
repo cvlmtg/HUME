@@ -133,7 +133,7 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
     );
 
     let mut ed = editor_from("-[x]>\n");
-    load_lsp_install(&mut ed, data_tmp.path());
+    load_lsp_install_eager(&mut ed, data_tmp.path());
 
     let expected_cmd = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -164,7 +164,7 @@ fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_object
     );
 
     let mut ed = editor_from("-[x]>\n");
-    load_lsp_install(&mut ed, data_tmp.path());
+    load_lsp_install_eager(&mut ed, data_tmp.path());
 
     // The seeded catalog's `config` field is registered under BOTH keywords
     // (`core:lsp-install`'s `register.scm` delivers it as init-options and settings, exactly
@@ -236,7 +236,7 @@ fn interrupted_install_is_warned_and_not_registered() {
     std::fs::write(dir.join("rust-analyzer"), b"").unwrap();
 
     let mut ed = editor_from("-[x]>\n");
-    load_lsp_install(&mut ed, data_tmp.path());
+    load_lsp_install_eager(&mut ed, data_tmp.path());
 
     assert_eq!(
         ed.lsp.config_command_for_test("rust"),
@@ -262,7 +262,7 @@ fn orphan_server_is_warned_and_not_registered() {
     );
 
     let mut ed = editor_from("-[x]>\n");
-    load_lsp_install(&mut ed, data_tmp.path());
+    load_lsp_install_eager(&mut ed, data_tmp.path());
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -367,7 +367,7 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
         &mut ed,
         data_tmp.path(),
         "(load-plugin! \"core:stdlib\")\n\
-         (load-plugin! \"core:lsp-install\")\n\
+         (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)\n\
          (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
          #:root-markers '(\"Cargo.toml\"))",
     );
@@ -417,7 +417,7 @@ fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registrat
         &mut ed,
         data_tmp.path(),
         "(load-plugin! \"core:stdlib\")\n\
-         (load-plugin! \"core:lsp-install\")\n\
+         (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)\n\
          (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
          #:root-markers '(\"Cargo.toml\"))",
     );
@@ -453,7 +453,7 @@ fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
         "(load-plugin! \"core:stdlib\")\n\
          (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
          #:root-markers '(\"Cargo.toml\"))\n\
-         (load-plugin! \"core:lsp-install\")",
+         (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)",
     );
 
     assert_eq!(
@@ -535,8 +535,42 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     assert_eq!(ed.lsp.server_count_for_test(), 1);
 }
 
+/// Setting a language activates only the registration entry; the install
+/// commands' entry stays declared until a command runs.
+#[test]
+fn language_set_loads_the_registration_entry_and_leaves_the_commands_entry_lazy() {
+    use hume_scripting::PluginStatus;
+    use hume_scripting::attribution::{EntryFile, EntryId, PluginId};
+
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
+    );
+    let plugin = PluginId::parse("core:lsp-install").unwrap();
+    let registration = EntryId::main(plugin.clone());
+    let commands = EntryId::new(plugin, EntryFile::parse("commands.scm").unwrap());
+    let status = |ed: &Editor, id: &EntryId| ed.scripting.as_ref().unwrap().plugin_status(id);
+    assert_eq!(status(&ed, &registration), Some(PluginStatus::Declared));
+    assert_eq!(status(&ed, &commands), Some(PluginStatus::Declared));
+
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.config.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
+
+    assert_eq!(status(&ed, &registration), Some(PluginStatus::Loaded));
+    assert_eq!(status(&ed, &commands), Some(PluginStatus::Declared));
+
+    type_cmd(&mut ed, ":lsp-install not-a-real-language-xyz");
+
+    assert_eq!(status(&ed, &commands), Some(PluginStatus::Loaded));
+}
+
 /// A `:`-typed command can activate a lazily-declared core:lsp-install when the
-/// command name is listed in the declaration's `#:commands` manifest:
+/// command name is listed in the plugin's manifest:
 /// dispatch runs `activate_lazy_plugin` before arity marshalling (see
 /// input_stack/command.rs), so `:lsp-install` on a plugin that hasn't
 /// loaded yet still works, no eager `(load-plugin! "core:lsp-install")` required.
@@ -548,8 +582,7 @@ fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
     load_with_init(
         &mut ed,
         data_tmp.path(),
-        "(load-plugin! \"core:stdlib\")\n\
-         (declare-plugin! \"core:lsp-install\" #:typed-commands '(\"lsp-install\"))",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
     );
 
     type_cmd(&mut ed, ":lsp-install not-a-real-language-xyz");
@@ -825,7 +858,7 @@ fn plum_missing_plugins_excludes_declared_core_plugins() {
         &mut ed,
         data_tmp.path(),
         "(load-plugin! \"core:stdlib\")\n\
-         (load-plugin! \"core:plum\")\n\
+         (load-plugin! \"core:plum\") (%activate-plugin-inline! \"core:plum\" #f)\n\
          (declare-plugin! \"core:lsp-install\" #:languages '(\"rust\"))",
     );
 
@@ -857,7 +890,12 @@ fn lsp_uninstall_removes_registration_and_directory() {
     );
 
     let mut ed = editor_from("-[x]>\n");
-    load_lsp_install(&mut ed, data_tmp.path());
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
+    );
+    type_cmd(&mut ed, ":lsp-rescan-servers");
     assert!(
         ed.lsp.config_command_for_test("rust").is_some(),
         "precondition: scan must have registered the fabricated install"
@@ -1526,16 +1564,25 @@ fn runtime_with_sources(sources: &str) -> tempfile::TempDir {
         .status()
         .expect("spawn cp");
     assert!(status.success());
-    std::fs::write(
-        runtime
-            .path()
-            .join("plugins")
-            .join("core")
-            .join("lsp-install")
-            .join("sources.scm"),
-        sources,
-    )
-    .unwrap();
+    let install_dir = runtime
+        .path()
+        .join("plugins")
+        .join("core")
+        .join("lsp-install");
+    std::fs::write(install_dir.join("sources.scm"), sources).unwrap();
+    let status = std::process::Command::new("python3")
+        .arg(repo_runtime_dir().join("../scripts/sync-lsp-sources.py"))
+        .arg("--requirements-only")
+        .arg("--sources")
+        .arg(install_dir.join("sources.scm"))
+        .arg("--out")
+        .arg(install_dir.join("requirements.scm"))
+        .status()
+        .expect("spawn python3");
+    assert!(
+        status.success(),
+        "requirements must regenerate from the fixture's sources"
+    );
     runtime
 }
 

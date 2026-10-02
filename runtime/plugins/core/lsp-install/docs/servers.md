@@ -31,7 +31,7 @@ there.
 Installing or reinstalling a server always starts from a clean slate. That makes it the
 repair and upgrade path too, and it covers reinstalling over a running client:
 
-1. Resolve the install plan: blocker check, which includes the required tools.
+1. Run the blocker check, which includes the required tools.
 2. Unregister every seeded language, which shuts down any running client.
 3. Purge any existing install; the receipt goes with it.
 4. Download, verify and unpack (`github`, `generic`), or run the kind's package manager
@@ -45,22 +45,24 @@ needs the parent to exist and nothing else recreates it in between.
 
 ### Choosing the source
 
-One function resolves a source into a plan: the tools the kind needs on `$PATH`, the env
-dirs its receipt records, and the procedure that installs into a directory. It is the only
-place that branches on the source's kind. A download plan reads this platform's row once.
+What an install needs is decided when the catalogs are generated, not at runtime.
+`requirements.scm` records, per server and platform, the download's format and the tools the
+install needs on `$PATH`, so the blocker check and the discovery hint read a small file and
+never load `sources.scm` or the installers. The installer then reads the same row: it takes
+the unpack tool and the format from it instead of working them out again. A download row in
+`sources.scm` is read once, for this platform.
 A github row is `(target asset sha bin)` with the url derived from the repo and version.
-A generic row is `(target asset url sha bin)`. That one plan serves the installability
-check, the tool check and the install itself.
+A generic row is `(target asset url sha bin)`.
 
-- **Asset format.** A name ending in a tar suffix (`.tar.gz`, `.tgz`, `.tar.xz`, `.txz`,
-  `.tar.bz2`) is a tar archive, `.zip` a zip, `.gz` a single gzip file. Any other asset is
-  a bare executable; the sync guarantees its bin path equals the asset name.
-- **Platforms.** A source with no `platforms` field installs everywhere.
+- **Asset format.** The generator classifies each download: a name ending in a tar suffix
+  (`.tar.gz`, `.tgz`, `.tar.xz`, `.txz`, `.tar.bz2`) is a tar archive, `.zip` a zip, `.gz` a
+  single gzip file. Any other asset is a bare executable; its bin path equals the asset name.
+  A download in none of these shapes is dropped when `sources.scm` is generated.
+- **Platforms.** A package-manager source with no `platforms` field installs everywhere.
 - **Blockers.** One function is the single source for `:lsp-install`'s error,
   `:lsp-servers`'s annotation and the discovery hint's gate. In the order it checks:
-  unsupported platform, no install source, not supported on this platform, a stub kind,
-  no prebuilt asset for this platform, an unrecognised asset format, and a missing
-  required tool.
+  unsupported platform, no install source, a stub kind, no row for this platform (not
+  supported on this platform, or no prebuilt asset for it), and a missing required tool.
 - **Required tools.** `npm`, `cargo`, `golang`, `pypi`, `gem` and `nuget` kinds need
   `npm`, `cargo`, `go`, `python3` (`python` on Windows), `gem` and `dotnet` on `$PATH`.
   A download needs `curl` plus the unpack tools for its format. Each is checked with

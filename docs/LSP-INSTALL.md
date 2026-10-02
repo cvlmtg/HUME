@@ -299,7 +299,7 @@ the server, and languages sharing a server differ (javascript/jsx root on
 ## Registration model
 
 - **Filesystem is the SSOT for "what is installed"; seeded data is the SSOT for "how to
-  run it".** On `core:lsp-install` load (or lazy activation — see the caveat below), the scan
+  run it".** When `core:lsp-install`'s `plugin.scm` activates, the scan
   reads `servers/` receipts and registers each installed server for every language it
   serves (per the seeded data). A directory scan is cheap. `:lsp-install` calls the same
   scan (`lsp-install/register-installed-servers!`, `register.scm`) directly right after a
@@ -307,14 +307,14 @@ the server, and languages sharing a server differ (javascript/jsx root on
   installed mid-session attaches immediately, without a restart. `core:lsp-install` also exposes
   the rescan directly as `:lsp-rescan-servers`, for servers installed out-of-band (not
   through `:lsp-install`).
-  **Caveat for a lazily-declared `core:lsp-install`** (see `runtime/plugins/core/lsp-install/README.md`
-  for the short version): a manifest keyed only on `#:events '(on-lsp-attach)`
-  can never activate on its own — nothing is registered yet, so nothing attaches, so the
-  event that would trigger activation never fires. Load `core:lsp-install` eagerly, declare it with
-  `#:languages` (activation triggered by opening a matching file), or declare it with
-  `#:commands` naming `lsp-install`/`lsp-uninstall`/`lsp-servers`/`lsp-rescan-servers` — Lazy
-  command stubs activate their plugin before arity marshalling, so `:lsp-install <lang>` on
-  a not-yet-activated `core:lsp-install` works with no eager `(load-plugin! "core:lsp-install")` needed.
+  `(load-plugin! "core:lsp-install")` is the supported way to bring the plugin in. Its
+  `manifest.scm` splits it into two lazy entries: `plugin.scm` (`#:languages '("*")`,
+  `:lsp-rescan-servers`) registers installed servers, and `commands.scm` (`#:entry`, the other
+  three commands) loads the install pipeline on first use. Lazy command stubs activate their
+  plugin before arity marshalling, so `:lsp-install <lang>` works before either entry has
+  loaded. A trigger set keyed only on `#:events '(on-lsp-attach)` can never activate, since
+  nothing is registered yet for that event to fire on; the shipped manifest uses a language
+  trigger instead.
 - **Last-wins registration.** `register-lsp-server!` uses *replace* semantics, matching
   `define-language!`. `init.scm` reads naturally: `load-plugin!` → scan auto-registers →
   later user `register-lsp-server!` calls override. At init time replacement never races

@@ -189,10 +189,10 @@ fn eager_load_no_keywords_reaches_loaded_state() {
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("eager load must succeed");
 
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
-    };
+    });
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Loaded)),
         "plugin must reach Loaded state; got {:?}",
@@ -224,10 +224,10 @@ fn lazy_load_stays_declared_body_not_evaluated() {
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("lazy load must not error during init");
 
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
-    };
+    });
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Declared)),
         "plugin must stay Declared; got {:?}",
@@ -257,10 +257,10 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("#:commands declaration must not error during init");
 
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
-    };
+    });
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Declared)),
         "plugin declared with #:commands must stay Declared; got {:?}",
@@ -294,10 +294,10 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("init must succeed");
 
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
-    };
+    });
 
     // First activation: Declared → Loaded, registers the plugin's command.
     h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
@@ -349,10 +349,10 @@ fn eager_plugin_body_error_is_contained() {
         h.peek_pending_messages()
     );
 
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
-    };
+    });
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Failed)),
         "plugin must be Failed after body error; got {:?}",
@@ -408,10 +408,10 @@ fn manifest_collision_with_builtin_logs_error_continues() {
         "valid activation entry must appear as a Lazy stub"
     );
     // Plugin stays Declared (body not evaluated), with the remaining activation entry.
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
-    };
+    });
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Declared)),
         "plugin must stay Declared after partial-collision #:commands list; got {:?}",
@@ -502,10 +502,10 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
         "Lazy stub must be present before activation"
     );
 
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
-    };
+    });
     h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
         .expect("activate_plugin_inline must succeed");
 
@@ -535,10 +535,10 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("#:languages declaration must not error during init");
 
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
-    };
+    });
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Declared)),
         "plugin declared with #:languages must stay Declared; got {:?}",
@@ -576,10 +576,10 @@ fn activate_plugin_drops_language_activation_on_loaded() {
         "activation entry must be present before activation"
     );
 
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
-    };
+    });
     h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
         .expect("activate_plugin_inline must succeed");
 
@@ -589,13 +589,13 @@ fn activate_plugin_drops_language_activation_on_loaded() {
     );
 }
 
-/// `(load-plugin! "x")` after `(declare-plugin! "x" #:commands …)` force-activates
-/// the plugin: state transitions to `Loaded` and the activation command entry is cleared.
+/// `(load-plugin! "x")` after `(declare-plugin! "x" #:commands …)` leaves the
+/// plugin lazy: the declared triggers stay and the body waits for one of them.
 ///
-/// The activation comes from the `%activate-plugin-inline!` call in the load-plugin!
-/// wrapper. Lacking it, the plugin would stay `Declared` with its entry intact.
+/// The user's declaration comes first and `load-plugin!` only stores the
+/// config, so no activation runs and nothing is logged.
 #[test]
-fn declare_then_load_activates_and_logs_soft_error() {
+fn declare_then_load_keeps_the_plugin_lazy() {
     use hume_scripting::host::CommandHost;
 
     let (dir, init_path) = plugin_fixture(
@@ -608,33 +608,29 @@ fn declare_then_load_activates_and_logs_soft_error() {
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
-        .expect("declare-then-load must succeed (soft error, not hard)");
+        .expect("declare-then-load must succeed");
 
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
-    };
+    });
     assert!(
-        matches!(h.plugin_status(&id), Some(PluginStatus::Loaded)),
-        "plugin must be Loaded after explicit load-plugin!; got {:?}",
+        matches!(h.plugin_status(&id), Some(PluginStatus::Declared)),
+        "plugin must stay Declared after load-plugin!; got {:?}",
         h.plugin_status(&id)
     );
-    assert!(
-        mock.lazy_command_owner("my-cmd").is_none(),
-        "Lazy stub must be cleared after activation"
+    assert_eq!(
+        mock.lazy_command_owner("my-cmd"),
+        Some(id),
+        "the declared Lazy stub must stay in place"
     );
     assert!(
-        mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
-        "tp-cmd must be registered after activation"
+        !mock.registered_cmds.iter().any(|d| d.name == "tp-cmd"),
+        "the body must not have run"
     );
-    // Soft error: declare-then-load is contradictory and must be logged.
     assert!(
-        h.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_scripting::LogLevel::Error)
-                && msg.contains("user/tp")
-                && msg.contains("declared lazily")
-        }),
-        "expected a soft error about declare-then-load contradiction; got: {:?}",
+        h.peek_pending_messages().is_empty(),
+        "declare-then-load is not a contradiction; got: {:?}",
         h.peek_pending_messages()
     );
 }
@@ -661,10 +657,10 @@ fn load_then_declare_ignored_with_soft_error() {
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("load-then-declare must succeed (soft error, not hard)");
 
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "tp".to_string(),
-    };
+    });
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Loaded)),
         "plugin must remain Loaded; got {:?}",
@@ -723,10 +719,10 @@ fn load_plugin_in_plugin_body_rejected() {
         "error must mention top-level restriction; got: {:?}",
         h.peek_pending_messages()
     );
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "pb".to_string(),
-    };
+    });
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Failed)),
         "pb must be Failed after its body's top-level violation; got {:?}",
@@ -769,10 +765,10 @@ fn declare_plugin_in_plugin_body_rejected() {
         "error must mention top-level restriction; got: {:?}",
         h.peek_pending_messages()
     );
-    let id = attribution::PluginId::User {
+    let id = attribution::EntryId::main(attribution::PluginId::User {
         user: "user".to_string(),
         repo: "pb".to_string(),
-    };
+    });
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Failed)),
         "pb must be Failed after its body's top-level violation; got {:?}",
@@ -782,15 +778,11 @@ fn declare_plugin_in_plugin_body_rejected() {
 
 // ── zero-entry / duplicate no-op regressions ─────────────────────────────────
 
-/// `(declare-plugin! "foo")` with no activation entries and no `manifest.scm`
-/// on disk is a hard error even in the hume-scripting unit-test harness (no
-/// editor needed); a plugin directory without a manifest doesn't support the
-/// zero-trigger form at all.
-///
-/// The manifest-presence check in `%begin-manifest-declare!` raises it; with that
-/// check gone, eval_source would succeed and do nothing.
+/// `(declare-plugin! "foo")` with no activation entries is a hard error even in
+/// the hume-scripting unit-test harness (no editor needed): an entry with no
+/// trigger could never activate.
 #[test]
-fn declare_plugin_no_triggers_no_manifest_hard_error_scripting_level() {
+fn declare_plugin_without_triggers_hard_error_scripting_level() {
     let dir = tempfile::tempdir().unwrap();
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
@@ -806,18 +798,17 @@ fn declare_plugin_no_triggers_no_manifest_hard_error_scripting_level() {
     let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
     assert!(
         result.is_err(),
-        "zero-trigger declare-plugin! without a manifest.scm must hard-error"
+        "declare-plugin! without triggers must hard-error"
     );
     let msg = result.unwrap_err();
     assert!(
-        msg.message.contains("manifest.scm"),
-        "error must name the missing manifest.scm; got: {msg}"
+        msg.message.contains("no activation entries"),
+        "error must name the missing triggers; got: {msg}"
     );
 }
 
-/// The Rust `%declare-plugin!` primitive's own zero-entry backstop still
-/// hard-errors when called directly, bypassing the Scheme `declare-plugin!`
-/// wrapper's zero-trigger → manifest.scm routing.
+/// The Rust `%declare-plugin!` primitive hard-errors on its own when called
+/// directly with no activation entries, bypassing the Scheme wrapper.
 ///
 /// Without the zero-entry guard in `declare_plugin`, eval_source would succeed.
 #[test]
@@ -829,7 +820,7 @@ fn declare_plugin_bang_no_triggers_hard_error_scripting_level() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        r#"(%declare-plugin! "user/tp" '() '() '() '() (hash))"#,
+        r#"(%declare-plugin! "user/tp" "plugin.scm" '() '() '() '())"#,
     )
     .unwrap();
 

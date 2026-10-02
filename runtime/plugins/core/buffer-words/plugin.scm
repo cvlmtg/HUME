@@ -1,7 +1,7 @@
 ;;; core:buffer-words
 
 (unless (member "core:stdlib" (declared-plugins))
-  (error "core:buffer-words: requires core:stdlib — (declare-plugin! \"core:stdlib\") or (load-plugin! \"core:stdlib\") before (load-plugin! \"core:buffer-words\")"))
+  (error "core:buffer-words: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:buffer-words\")"))
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 

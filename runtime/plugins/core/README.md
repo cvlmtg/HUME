@@ -26,26 +26,30 @@ plugin-authoring API (not core-specific), see
 | [`helix-surround`](helix-surround/README.md) | Helix-compat surround keys | eager | none |
 | [`classic-paste`](classic-paste/README.md) | GUI-style clipboard/kill-ring split | eager | none |
 
-"Loads": **lazy** means the plugin ships a `manifest.scm` and can be brought in with
-`declare-plugin!`, activating itself later. **Eager** means it has no `manifest.scm` and
-must be loaded with `load-plugin!` (see below for why).
+"Loads": **lazy** means the plugin ships a `manifest.scm`, so `(load-plugin! "core:x")`
+registers its entry points and the plugin's code runs when one fires. **Eager** means it
+has no `manifest.scm`, so `(load-plugin! "core:x")` runs `plugin.scm` at startup (see below
+for why).
 
 ## Loading model
 
-`declare-plugin!` reads a plugin's `manifest.scm`, which lists the commands, typed
-commands, events, and languages that should activate it. The plugin's body doesn't run
-until one of those actually fires. `load-plugin!` skips all of that and runs the plugin's
-body immediately.
+`load-plugin!` is the one call a user's `init.scm` makes for a core plugin. A plugin with a
+`manifest.scm` loads lazily: the manifest's `declare-plugin!` calls list the commands,
+typed commands, events, and languages that activate it, and the plugin's code doesn't run
+until one of those fires. `load-plugin!` never forces such a plugin to load at startup. A
+plugin without a manifest has its `plugin.scm` run during `load-plugin!`. A directory with
+neither file is an error.
 
-A plugin has no `manifest.scm`, and so can only be loaded eagerly, when **its own key
+A plugin has no `manifest.scm`, and so loads eagerly, when **its own key
 bindings are the only way to reach its commands**. A command with no typed form and no
-hook has nothing a manifest could list as an activation trigger, so declaring it lazily
-would leave it permanently dormant. `buffer-words`, `pickers`, `vim-keybind`,
+hook has nothing a manifest could list as an activation trigger, so a lazy plugin of that
+shape would stay dormant. `buffer-words`, `pickers`, `vim-keybind`,
 `helix-surround`, and `classic-paste` are all this shape.
 
-Passing an explicit `#:commands`/`#:events`/`#:languages`/`#:typed-commands` list to
-`declare-plugin!` bypasses the plugin's own `manifest.scm`. A config can use this to
-activate a plugin on a narrower trigger than its default; the pitfall under
+A config can activate a plugin on a narrower trigger than its manifest's by calling
+`declare-plugin!` with an explicit `#:commands`/`#:events`/`#:languages`/`#:typed-commands`
+list before the plugin's `load-plugin!` line. `load-plugin!` then keeps that declaration,
+skips the manifest, and does not force the plugin eager. The pitfall under
 [Depending on `core:stdlib`](#depending-on-corestdlib) applies when other code depends on
 that plugin.
 
@@ -54,11 +58,11 @@ that plugin.
 Plugins never `require` each other's Scheme modules, since that would break the namespace
 isolation each plugin gets. All cross-plugin calls go through `call!` by command name.
 
-`call!`'s lazy-miss retry means a bare `(declare-plugin! "core:stdlib")` is enough to
+`call!`'s lazy-miss retry means `(load-plugin! "core:stdlib")` is enough to
 satisfy a dependency, even for a call made at the dependent plugin's own load time:
 `call!` notices the target is only declared, not yet loaded, activates it inline, and
 retries. Every core plugin that depends on `stdlib` checks `(declared-plugins)` for it at
-load time and errors immediately if it's missing, rather than letting a missing dependency
+load time and errors immediately if it's missing (the message says to add `(load-plugin! "core:stdlib")` first), rather than letting a missing dependency
 surface later as a `call!` failure buried in a command few users exercise. See the
 manual's [Depending on another plugin](https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin)
 for the full mechanism, including the stronger `(loaded-plugins)` check.

@@ -270,7 +270,7 @@ fn setup_trigger_char_feature(
         &mut ed,
         &mut host,
         r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp")"#,
+(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp,
     );
     ed.scripting = Some(host);
@@ -385,7 +385,7 @@ fn setup_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagSetup {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin! "core:stdlib") (load-plugin! "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib") (load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -570,18 +570,34 @@ fn load_plum(ed: &mut Editor, data_dir: &Path) {
     load_with_init(
         ed,
         data_dir,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:plum\")",
+        &format!(
+            "(load-plugin! \"core:stdlib\")\n{}",
+            hume_scripting::eager_load_scm("core:plum", None)
+        ),
     );
 }
 
 /// Load the real `core:lsp-install` plugin only (plus its documented
-/// `core:stdlib` dependency): the entire LSP server lifecycle: install,
-/// uninstall, listing, and scan-on-load registration.
+/// `core:stdlib` dependency): the entire LSP server lifecycle (install,
+/// uninstall, listing, rescan), each entry activating on first use.
 fn load_lsp_install(ed: &mut Editor, data_dir: &Path) {
     load_with_init(
         ed,
         data_dir,
         "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
+    );
+}
+
+/// Eagerly load `core:lsp-install`'s `plugin.scm` (plus `core:stdlib`): the
+/// startup scan runs during init, and the install commands stay undefined.
+fn load_lsp_install_eager(ed: &mut Editor, data_dir: &Path) {
+    load_with_init(
+        ed,
+        data_dir,
+        &format!(
+            "(load-plugin! \"core:stdlib\")\n{}",
+            hume_scripting::eager_load_scm("core:lsp-install", None)
+        ),
     );
 }
 
@@ -591,7 +607,10 @@ fn load_lsp(ed: &mut Editor, data_dir: &Path) {
     load_with_init(
         ed,
         data_dir,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp\")",
+        &format!(
+            "(load-plugin! \"core:stdlib\")\n{}",
+            hume_scripting::eager_load_scm("core:lsp", None)
+        ),
     );
 }
 

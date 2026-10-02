@@ -8,10 +8,10 @@ Plugins are installed and updated by **PLUM**, a bundled plugin. See [Core Plugi
 
 ## Installing a plugin
 
-Add a `declare-plugin!` or `load-plugin!` call to your [`init.scm`](configuration.md).
+Add a `load-plugin!` call to your [`init.scm`](configuration.md).
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "cvlmtg/grep.hume")
 ```
 
@@ -22,12 +22,12 @@ Add a `declare-plugin!` or `load-plugin!` call to your [`init.scm`](configuratio
 `core:stdlib` is grep.hume's own dependency, not something every plugin needs; check each
 plugin's docs for what it requires. Then run `:plum-install-plugins` to clone it from GitHub. PLUM never installs anything on its own, so nothing is fetched behind your back at startup; once the plugin is on disk, its commands and key bindings are available from the next launch.
 
-See [How plugins are loaded](#how-plugins-are-loaded) for the difference between the two verbs.
+See [How plugins are loaded](#how-plugins-are-loaded) for when a plugin's code runs.
 
 If a plugin supports configuration, pass it with `#:config`:
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "core:vim-keybind" #:config (hash "change-to-eol" 'off))
 ```
 
@@ -57,23 +57,28 @@ If the failing plugin came from a git repository (rather than one you're editing
 
 ## How plugins are loaded
 
-There are two ways to bring a plugin into the editor from `init.scm`:
+`(load-plugin! "name")` is the call to put in `init.scm`. When the plugin loads depends on what the plugin ships:
 
-| Verb | Timing |
+| Plugin ships | Timing |
 |------|--------|
-| `(declare-plugin! "name" #:commands ...)` | **Lazy**: body deferred until first use |
-| `(load-plugin! "name")` | **Eager**: body runs during startup |
+| a `manifest.scm` | **Lazy**: code deferred until first use |
+| only a `plugin.scm` | **Eager**: code runs during startup |
 
-**Eager plugins** (`load-plugin!`) evaluate their body immediately. Use this for a plugin whose only way of being triggered is one of the things its own body sets up (a key binding it adds or overrides, an option, a hook), since nothing else could ever wake it.
+**Lazy plugins** ship a *manifest* that lists what the plugin offers (commands, typed commands, events, languages). `load-plugin!` registers those entries and does not run the plugin's code until the first one is exercised. This keeps startup fast: a language-server or formatting plugin whose commands you might never call costs nothing until you do. `load-plugin!` never forces such a plugin to load at startup.
 
-**Lazy plugins** (`declare-plugin!`) record a *manifest* of what the plugin offers, but don't evaluate the body until the first activation entry is exercised. This keeps startup fast, and is the recommended default: a language-server or formatting plugin whose commands you might never call costs nothing until you do.
+**Eager plugins** have no manifest, so `plugin.scm` runs during startup. This suits a plugin whose only way of being triggered is something its own code sets up (a key binding it adds or overrides, an option, a hook), since nothing else could wake it.
 
-A lazy plugin needs at least one activation entry, or it could never activate. Declare them yourself:
+A directory with neither `manifest.scm` nor `plugin.scm` is an error. A missing `core:` plugin logs an error; a missing `user/repo` plugin logs an info message, and `:plum-install-plugins` installs it.
+
+### Choosing your own triggers
+
+`declare-plugin!` lists the entries that wake a lazy plugin. Declare an installed plugin before its `load-plugin!` line to use your triggers instead of its manifest's:
 
 - **`#:commands`**: editor-command names the plugin provides (defined with `define-command!`). HUME creates placeholder stubs so the names are key-bindable and reachable from `call!` immediately; the first dispatch triggers real definition. A key you bind to one of these names in your own `init.scm` works this way: pressing it activates the plugin, then runs the command, so a lazy plugin's commands are key-bindable from the start even though the plugin's *own* bindings aren't in place yet:
 
   ```scheme
   (declare-plugin! "cvlmtg/grep.hume" #:commands '("picker-grep"))
+  (load-plugin! "cvlmtg/grep.hume")
   (bind-key! 'normal "space g" "picker-grep")
   ; pressing <space>g the first time loads cvlmtg/grep.hume, then runs picker-grep
   ```
@@ -81,18 +86,23 @@ A lazy plugin needs at least one activation entry, or it could never activate. D
 
   ```scheme
   (declare-plugin! "cvlmtg/grep.hume" #:typed-commands '("picker-grep"))
+  (load-plugin! "cvlmtg/grep.hume")
   ; typing :picker-grep the first time loads cvlmtg/grep.hume, then runs picker-grep
   ```
 - **`#:events`**: lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
 - **`#:languages`**: buffer language names that trigger loading. Triggers on the name being *set* on a buffer (by detection, `:set buffer language=`, or another plugin's `define-language!`), not on the name being a known language yet — so a plugin can't use `#:languages '("foo")` to lazily define `"foo"` itself: HUME sets the buffer's language and reports it as unregistered before your plugin's activation runs, then activates you anyway. The message is informational; call `define-language!` in your activation body and everything downstream (highlighting, LSP) still works from there.
 
-...or, if the plugin ships its own defaults, leave all four off:
+A plugin that already has a declared entry keeps those triggers when `load-plugin!` runs: the manifest is not read and the plugin stays lazy. Put `load-plugin!` right after the `declare-plugin!`, because a plugin that activates during startup before its `load-plugin!` line sees an empty config.
+
+### Lazy local files
+
+A script beside your `init.scm` can load lazily too. Name it with a path that starts with `./`, relative to the directory of `init.scm`:
 
 ```scheme
-(declare-plugin! "cvlmtg/grep.hume")
+(declare-plugin! "./my-lazy.scm" #:commands '("my-cmd"))
 ```
 
-A bare `declare-plugin!` with no activation entries asks the plugin for its own defaults instead of erroring. See [Default activation](#default-activation) if you're writing a plugin and want to support this.
+The name must end in `.scm`, must not contain `..`, and the file must exist, or `init.scm` fails with an error. `#:entry` is not accepted. Inside the file, `(plugin-config)` is an empty hash and `(plugin-dir)` is the file's directory. A local file appears in `(loaded-plugins)` once it has loaded, but not in `(declared-plugins)`.
 
 ## Writing a plugin
 
@@ -207,18 +217,18 @@ See [Standard Library](standard-library.md#selections) for the full list of sele
 `call!` with an unknown command name logs an error and no-ops instead of aborting the command body: a missing plugin dependency shows up as an error in `:messages`, not as a crash, so check dependencies up front rather than relying on the error to be noticed.
 :::
 
-If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it. Whether that call sits at your plugin's own top level or inside a command a key press later fires makes no difference: `call!` activates a lazily-declared dependency on demand either way, so the usual check is `(declared-plugins)`:
+If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it. Whether that call sits at your plugin's own top level or inside a command a key press later fires makes no difference: `call!` activates a lazily-declared dependency on demand either way, so the usual check is `(declared-plugins)`, which lists installed plugins named by `load-plugin!` or `declare-plugin!`:
 
 ```scheme
 (unless (member "core:stdlib" (declared-plugins))
-  (error "my-plugin: requires core:stdlib — declare or load it before my-plugin"))
+  (error "my-plugin: requires core:stdlib — add (load-plugin! \"core:stdlib\") before it"))
 ```
 
-This is enough as long as the command you're calling is one of the dependency's own activation entries: its `manifest.scm` defaults, or an explicit `#:commands`/`#:events`/`#:languages` list that includes it. If whoever declared the dependency wrote a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#f` instead of raising, and the check above can't catch it, since the plugin genuinely is declared, just not for the command you need. When you don't control how a dependency gets declared and want a stronger guarantee, check `(loaded-plugins)` instead: it only lists plugins that have actually finished activating, so a missed-activation `#f` on the specific command name never happens. The trade-off is that this forces the dependency to be loaded eagerly, not just declared.
+This is enough as long as the command you're calling is one of the dependency's own activation entries: the entries of its `manifest.scm`, or an explicit `#:commands`/`#:events`/`#:languages` list that includes it. If whoever declared the dependency wrote a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#f` instead of raising, and the check above can't catch it, since the plugin is declared, just not for the command you need. When you don't control how a dependency gets declared and want a stronger guarantee, check `(loaded-plugins)` instead: it only lists plugins that have actually finished activating, so a missed-activation `#f` on the specific command name never happens. The trade-off is that this forces the dependency to be loaded eagerly, not just declared.
 
 ```scheme
 (unless (member "core:stdlib" (loaded-plugins))
-  (error "my-plugin: requires core:stdlib loaded eagerly — load it before my-plugin"))
+  (error "my-plugin: requires core:stdlib loaded eagerly — add (load-plugin! \"core:stdlib\") before it"))
 ```
 
 Either check fails loudly at load time (startup or `:reload-config`), naming exactly what's missing, instead of leaving the bug to surface later at whatever moment the dependent command actually runs.
@@ -296,7 +306,7 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 
 `on-text-changed` covers edits, undo, redo, `:e!` reload, and refreshes of read-only view buffers (`:messages`, `:ls`, `:plugin-status`) alike. Those buffers have no file, so a handler that looks up a path must handle it being absent. It coalesces multiple mutations made by a single command (a multi-cursor edit, a macro, a paste) into one fire, but each keystroke while typing is its own command and so fires on its own. Pair it with `debounce` if you want to react only after typing settles rather than on every character.
 
-For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin!` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry: a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it. The same caveat applies to `on-text-changed`: gating a lazy plugin on it activates on the first edit in *any* buffer, not a buffer the plugin specifically cares about.
+For lazy plugins, declare the events that should trigger activation via `#:events` in your `manifest.scm` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry: a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it. The same caveat applies to `on-text-changed`: gating a lazy plugin on it activates on the first edit in *any* buffer, not a buffer the plugin specifically cares about.
 
 `set-option!` works from a hook or command handler too, not just at the top level of your plugin. It changes the *global* default, so use it there when that's really what you want.
 
@@ -330,9 +340,9 @@ A few more examples:
 (get-buffer-option pane "tab-width") ; pane's effective tab-width
 ```
 
-### Default activation
+### Shipping a manifest
 
-If most users would activate your plugin the same way, give them a one-liner: put a `declare-plugin!` call for your own plugin in a `manifest.scm` file next to your plugin's main file.
+A plugin is lazy because it ships a `manifest.scm` next to its main file. The manifest declares the entry points that wake the plugin, and a user's `(load-plugin! "username/repo-name")` registers them.
 
 ```scheme
 ; manifest.scm
@@ -340,7 +350,7 @@ If most users would activate your plugin the same way, give them a one-liner: pu
   #:commands '("my-cmd" "my-other-cmd"))
 ```
 
-A user who writes `(declare-plugin! "username/repo-name")` with no `#:commands`/`#:typed-commands`/`#:events`/`#:languages` gets your manifest's entries instead of an error. Passing any activation entry explicitly skips your manifest entirely: the user's list is authoritative, not merged with yours. A plugin with no `manifest.scm` can't be declared this way; users who want to use it lazily must list its activation entries themselves (or you can add one).
+A plugin with no `manifest.scm` loads eagerly. A user who wants different triggers declares them before their `load-plugin!` line (see [Choosing your own triggers](#choosing-your-own-triggers)); their list replaces the manifest's rather than merging with it.
 
 If your plugin reacts to a language but can't predict which ones a given user cares about, `#:languages '("*")` matches any buffer with a detected language:
 
@@ -351,13 +361,28 @@ If your plugin reacts to a language but can't predict which ones a given user ca
   #:commands '("my-cmd"))
 ```
 
-`#:config` behaves the same as elsewhere: if the user passes `#:config` to their zero-argument `declare-plugin!`, that value wins over anything your manifest passes; read it back the usual way with `(plugin-config)`.
+Keep `manifest.scm` to just the `declare-plugin!` calls. A manifest takes no `#:config`; the user's config comes from `load-plugin!` and you read it with `(plugin-config)`.
 
-Keep `manifest.scm` to just the `declare-plugin!` call. It runs whenever a user's bare `declare-plugin!` resolves it, which is not a signal that your plugin is about to load.
+### Splitting a plugin into entries
+
+A plugin can load in pieces. Give `declare-plugin!` an `#:entry` naming another `.scm` file in the plugin's directory, with its own activation entries, and that file loads only when one of them fires. The declaration without `#:entry` is the plugin's main file, `plugin.scm`.
+
+```scheme
+; manifest.scm
+(declare-plugin! "username/repo-name"
+  #:languages '("*"))
+(declare-plugin! "username/repo-name"
+  #:entry "commands.scm"
+  #:typed-commands '("my-install"))
+```
+
+Here `plugin.scm` runs when a buffer gets a language, which keeps startup cheap, and the heavier `commands.scm` runs the first time `:my-install` is used, or its argument is completed with Tab. Each file is loaded, rolled back on failure and reported on its own; a `commands.scm` that fails leaves what `plugin.scm` registered in place. Files that both `require` the same module share it.
+
+The user's `#:config` belongs to the plugin as a whole, and `(plugin-config)` returns that same value in every file.
 
 ### Configuring a plugin
 
-A plugin can read the `#:config` value its user passed to `load-plugin!` or `declare-plugin!` with `(plugin-config)`. It returns whatever was passed (typically a hash) or an empty hash if nothing was passed. Rather than picking it apart with raw `hash-contains?`/`hash-ref` and hand-rolling a type check, go through `core:stdlib`'s config helpers, which default a missing key and raise an error naming your plugin and the offending key if the resolved value is the wrong type:
+A plugin can read the `#:config` value its user passed to `load-plugin!` with `(plugin-config)`. It returns whatever was passed (typically a hash) or an empty hash if nothing was passed. Rather than picking it apart with raw `hash-contains?`/`hash-ref` and hand-rolling a type check, go through `core:stdlib`'s config helpers, which default a missing key and raise an error naming your plugin and the offending key if the resolved value is the wrong type:
 
 ```scheme
 (unless (call! "stdlib/config-boolean" "my-plugin" (plugin-config) "disable-binding" #f)
@@ -368,7 +393,7 @@ A plugin can read the `#:config` value its user passed to `load-plugin!` or `dec
 
 Document the keys your plugin understands so users know what to pass.
 
-The two verbs treat `#:config` differently: with `declare-plugin!` the first declaration wins, so a later one can't quietly change it, while `load-plugin!` always applies the config it's given. That means a bare `(load-plugin! "name")` after a configured `declare-plugin!` resets the plugin to its defaults.
+`load-plugin!` is the only way to pass configuration; `declare-plugin!` takes no `#:config`.
 
 ### Filesystem and processes
 

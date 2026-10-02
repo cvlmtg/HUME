@@ -58,8 +58,8 @@ fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeGuard) {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let mut host = ScriptingHost::new();
     let load_git_diff = match config_expr {
-        Some(cfg) => format!("(load-plugin! \"core:git-diff\" #:config {cfg})"),
-        None => "(load-plugin! \"core:git-diff\")".to_string(),
+        Some(cfg) => hume_scripting::eager_load_scm("core:git-diff", Some(cfg)),
+        None => hume_scripting::eager_load_scm("core:git-diff", None),
     };
     // core:git-diff's config validation depends on core:stdlib (see
     // plugin.scm's header); load it first, same as the shipped init.scm.example.
@@ -1170,7 +1170,10 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
     let init_path = tmp.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:git-diff\" #:config (hash \"signs\" \"yes\"))",
+        format!(
+            "(load-plugin! \"core:stdlib\")\n{}",
+            hume_scripting::eager_load_scm("core:git-diff", Some("(hash \"signs\" \"yes\")"))
+        ),
     )
     .unwrap();
 
@@ -1202,7 +1205,10 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
     let id = PluginId::Core("git-diff".to_string());
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Failed)
         ),
         "core:git-diff must be marked Failed after its body raises"
@@ -1219,7 +1225,11 @@ fn missing_stdlib_errors_at_load() {
     let _guard = RealRuntimeGuard::new();
     let init_path = tmp.path().join("init.scm");
     // No `(load-plugin! "core:stdlib")`: the test covers its absence.
-    std::fs::write(&init_path, r#"(load-plugin! "core:git-diff")"#).unwrap();
+    std::fs::write(
+        &init_path,
+        r#"(load-plugin! "core:git-diff") (%activate-plugin-inline! "core:git-diff" #f)"#,
+    )
+    .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();

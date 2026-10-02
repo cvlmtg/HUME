@@ -67,7 +67,12 @@ fn effect_log_preserves_emission_order_across_kinds() {
     };
     let effects = {
         let mut ih = init_host!(ed);
-        host.activate_plugin_inline(&plugin_id, 10_000, &mut ih, &Default::default())
+        host.activate_plugin_inline(
+            &hume_scripting::attribution::EntryId::main(plugin_id.clone()),
+            10_000,
+            &mut ih,
+            &Default::default(),
+        )
     }
     .expect("activation must succeed");
 
@@ -180,7 +185,12 @@ fn failed_command_delivers_committed_activation_effects() {
         repo: "efx".to_string(),
     };
     assert_eq!(
-        ed.scripting.as_ref().unwrap().plugin_status(&plugin_id),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .plugin_status(&hume_scripting::attribution::EntryId::main(
+                plugin_id.clone()
+            )),
         Some(PluginStatus::Loaded),
         "user/efx must be Loaded: its activation succeeded before outer-fail's own failure"
     );
@@ -243,7 +253,9 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
         repo: "efx".to_string(),
     };
     assert_eq!(
-        host.plugin_status(&plugin_id),
+        host.plugin_status(&hume_scripting::attribution::EntryId::main(
+            plugin_id.clone()
+        )),
         Some(PluginStatus::Loaded),
         "user/efx must be Loaded: load-plugin!'s activation succeeded before the top-level error"
     );

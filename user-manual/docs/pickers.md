@@ -6,11 +6,11 @@ keyboard: type a few characters, watch the list narrow, `Enter` to go there.
 ## Setup
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "core:pickers")
 ```
 
-Must be loaded eagerly: `z f` and `z b` are the only way to reach its commands, so declared lazily it would have no trigger to ever wake it up. `core:stdlib` only needs to be declared or loaded before it.
+Must be loaded eagerly: `z f` and `z b` are the only way to reach its commands, so loaded lazily it would have no trigger to ever wake it up. `core:stdlib` only needs to be loaded before it.
 
 ## Picking files
 
@@ -48,7 +48,7 @@ By default, untracked files are included, each shown as its own row. Turn them o
 loading the plugin:
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "core:pickers" #:config (hash "untracked" #f))
 ```
 

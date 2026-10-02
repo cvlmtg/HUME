@@ -56,7 +56,7 @@ fn mode_derives_from_session_and_plugin_stack() {
     assert_eq!(h.ctx().mode(), EvalMode::Command);
 
     h.plugin_stack
-        .push(PluginId::parse("core:test-plugin").unwrap());
+        .push(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     assert_eq!(h.ctx_init().mode(), EvalMode::PluginLoad);
     assert_eq!(h.ctx_activation().mode(), EvalMode::PluginActivation);
 }

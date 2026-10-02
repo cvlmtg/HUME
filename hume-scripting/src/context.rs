@@ -3,7 +3,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 use steel::gc::unsafe_erased_pointers::CustomReference;
 use steel::rerrs::SteelErr;
 
-use super::attribution::{PluginId, PluginStack};
+use super::attribution::{EntryId, PluginId, PluginStack};
 use super::host::EditorHost;
 use super::log::LogLevel;
 use super::types::{Effect, QueuedEffect};
@@ -74,18 +74,17 @@ pub(crate) struct SteelCtx<'a> {
     /// already committed) without touching whatever the enclosing eval
     /// queued before this activation began. See `pop_effect_marks`.
     pub(crate) activation_effect_marks: Vec<usize>,
-    /// Set for the duration of a `manifest.scm` eval driven by a zero-trigger
-    /// `(declare-plugin! "id")`: the id being resolved. `%begin-manifest-declare!`
-    /// sets it, `%finish-manifest-declare!` clears it. Guards against a manifest
-    /// declaring a different plugin than the one it was resolved for, and against
-    /// a manifest whose own `declare-plugin!` is itself zero-trigger (which would
-    /// otherwise recurse into manifest resolution forever).
+    /// Set for the duration of a `manifest.scm` eval driven by
+    /// `(load-plugin! "id")`: the id being evaluated. `%load-plugin!` sets it,
+    /// `%finish-manifest-load!` clears it. Guards against a manifest declaring
+    /// a different plugin than its own, and against a manifest calling
+    /// `load-plugin!` (which would otherwise recurse into manifest evaluation).
     pub(crate) manifest_resolving: Option<PluginId>,
     /// Plugin activations contained mid-session: `finish_lazy_activation`/
-    /// `finish_manifest_declare` push here instead of letting the body's
+    /// `finish_manifest_load` push here instead of letting the body's
     /// error propagate (see their own docs). Drained and reported by
     /// `run_steel_session` once the session ends, in emission order.
-    pub(crate) failed_activations: Vec<(PluginId, SteelErr)>,
+    pub(crate) failed_activations: Vec<(EntryId, SteelErr)>,
 }
 
 /// Which entry point started this eval session.

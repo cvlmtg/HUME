@@ -6,7 +6,7 @@ natively, `o` to flip the selection in Extend mode, and `Ctrl-6` for the alterna
 ## Usage
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "core:vim-keybind" #:config (hash "change-to-eol" 'smart))
 ```
 

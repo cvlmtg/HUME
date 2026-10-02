@@ -26,7 +26,10 @@ fn language_trigger_activates_on_set() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Declared)
         ),
         "plugin must be Declared before first language set"
@@ -53,7 +56,10 @@ fn language_trigger_activates_on_set() {
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin must be Loaded after first language set"
@@ -114,7 +120,10 @@ fn language_trigger_idempotent_on_round_trip() {
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin must remain Loaded after round-trip (not re-enter Declared or fail)"
@@ -182,14 +191,20 @@ fn language_trigger_one_to_many_activates_all() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_a.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin A must be Loaded after language set"
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_b.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin B must be Loaded after language set"
@@ -224,7 +239,10 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Declared)
         ),
         "plugin must stay Declared when an unrelated language is set"
@@ -280,7 +298,10 @@ fn language_wildcard_trigger_activates_on_any_language() {
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin must be Loaded after a wildcard-matched language set"
@@ -336,14 +357,20 @@ fn language_wildcard_and_specific_entry_coexist() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_rust),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_rust.clone())),
             Some(PluginStatus::Declared)
         ),
         "the \"rust\"-only plugin must stay Declared for an unrelated language"
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_any),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_any.clone())),
             Some(PluginStatus::Loaded)
         ),
         "the wildcard plugin must activate for any language, including \"toml\""

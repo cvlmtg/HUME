@@ -56,6 +56,16 @@ fn setup_editor_with_init_scripting(
     init_scm: &str,
     runtime_dir: Option<&std::path::Path>,
 ) -> (Editor, Vec<tempfile::TempDir>) {
+    setup_editor_with_init_files(init_scm, &[], runtime_dir)
+}
+
+/// [`setup_editor_with_init_scripting`] with extra files (relative path,
+/// source) written beside `init.scm`, for local plugins.
+fn setup_editor_with_init_files(
+    init_scm: &str,
+    files: &[(&str, &str)],
+    runtime_dir: Option<&std::path::Path>,
+) -> (Editor, Vec<tempfile::TempDir>) {
     let _lock = TEST_GLOBALS.claim(Global::Env);
 
     let config_tmp = safe_tempdir();
@@ -66,6 +76,11 @@ fn setup_editor_with_init_scripting(
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), init_scm).unwrap();
+    for (name, src) in files {
+        let path = hume_config.join(name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, src).unwrap();
+    }
 
     unsafe {
         std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());

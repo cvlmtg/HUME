@@ -2,8 +2,7 @@
 
 (require "platform.scm")
 
-(provide lsp-install/unpack-gz! lsp-install/unpack-archive! lsp-install/unpack-tool
-         lsp-install/mark-executable!)
+(provide lsp-install/unpack-gz! lsp-install/unpack-archive! lsp-install/mark-executable!)
 
 (define lsp-install/chmod-batch 200)
 
@@ -34,19 +33,14 @@
     (run-inline-output! "chmod" (cons "755" (lsp-install/take files lsp-install/chmod-batch)))
     (lsp-install/mark-executable! (lsp-install/drop files lsp-install/chmod-batch))))
 
-(define (lsp-install/unpack-tool fmt)
-  (if (and (equal? fmt 'zip) (not lsp-install/windows?))
-      "unzip"
-      "tar"))
-
-(define (lsp-install/extract-argv fmt archive dir)
-  (if (equal? (lsp-install/unpack-tool fmt) "unzip")
+(define (lsp-install/extract-argv tool archive dir)
+  (if (equal? tool "unzip")
       (list "unzip" "-o" archive "-d" dir)
       (list "tar" "-xf" archive "-C" dir)))
 
-(define (lsp-install/unpack-archive! fmt archive dir)
+(define (lsp-install/unpack-archive! tool archive dir)
   (create-directory! dir)
-  (let ((argv (lsp-install/extract-argv fmt archive dir)))
+  (let ((argv (lsp-install/extract-argv tool archive dir)))
     (run-inline-output! (car argv) (cdr argv)))
   (lsp-install/mark-executable! (lsp-install/regular-files dir)))
 

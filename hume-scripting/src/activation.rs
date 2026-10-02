@@ -10,8 +10,9 @@
 //! ```
 //!
 //! All plugin activation is synchronous/inline:
-//! - `load-plugin!` (init.scm): the BOOTSTRAP Scheme wrapper calls `%load-plugin!`
-//!   (declare/record) then `%activate-plugin-inline!` (inline body eval via `hm.eval-string`).
+//! - `load-plugin!` (init.scm): the BOOTSTRAP Scheme wrapper calls `%load-plugin!`,
+//!   which either returns a manifest to evaluate (lazy) or asks for
+//!   `%activate-plugin-inline!` (inline body eval via `hm.eval-string`).
 //! - Lazy keypress dispatch: `%dispatch-command!` activates the owner inline on a
 //!   `command_table` miss, then retries.
 //! - Event/language activations: `activate_plugin_inline` (Rust) bounces into
@@ -87,7 +88,7 @@ pub(crate) fn run_steel_session<'a, R>(
     }
 
     // A plugin activation contained mid-session (see `finish_lazy_activation`/
-    // `finish_manifest_declare` in `builtins/plugins.rs`) never surfaces as
+    // `finish_manifest_load` in `builtins/plugins.rs`) never surfaces as
     // this session's own `Err`. It's reported here instead, once per
     // failure, through the same `pending_messages` sink every other `log!`
     // and soft-error uses, so it reaches the user via the ordinary message
@@ -239,12 +240,15 @@ impl ScriptingHost {
     /// `take_eval_effects` salvages onto the returned `EvalError`.
     pub fn activate_plugin_inline(
         &mut self,
-        id: &attribution::PluginId,
+        id: &attribution::EntryId,
         budget_ms: u64,
         host: &mut dyn EditorHost,
         builtin_names: &FxHashSet<String>,
     ) -> Result<Vec<Effect>, EvalError> {
-        let args = vec![SteelVal::StringV(id.to_string().into())];
+        let args = vec![
+            SteelVal::StringV(id.plugin.to_string().into()),
+            SteelVal::StringV(id.file.as_str().into()),
+        ];
         let effects_start = self.effects.len();
         let result = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();

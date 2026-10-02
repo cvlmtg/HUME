@@ -411,7 +411,11 @@ fn plum_requires_core_stdlib() {
     let _lock = lock();
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
-    load_with_init(&mut ed, data_tmp.path(), "(load-plugin! \"core:plum\")");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin! \"core:plum\") (%activate-plugin-inline! \"core:plum\" #f)",
+    );
 
     let errors = error_log(&ed);
     assert!(

@@ -134,7 +134,10 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     };
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&tp_id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(tp_id.clone())),
             Some(PluginStatus::Failed)
         ),
         "plugin must be Failed when body calls (load-plugin!) at runtime"
@@ -331,16 +334,12 @@ fn language_activation_lint_silent_for_wildcard() {
     );
 }
 
-/// A real core plugin with no `manifest.scm` of its own (`core:vim-keybind`) still
-/// hard-errors on a zero-trigger `(declare-plugin! "core:vim-keybind")` against the
-/// repo's actual `runtime/` tree. The manifest opt-in doesn't silently make
-/// every plugin support the zero-trigger form.
-///
-/// Were manifest resolution to fall back to a default on a missing file, no
-/// error would be logged here at all.
+/// A real core plugin with no `manifest.scm` of its own (`core:vim-keybind`)
+/// loads eagerly under `load-plugin!`: only a manifest makes a plugin lazy.
 #[test]
-fn core_vim_keybind_has_no_manifest_scm_zero_trigger_declare_errors() {
-    use crate::editor::Severity;
+fn core_vim_keybind_without_a_manifest_loads_eagerly() {
+    use hume_scripting::PluginStatus;
+    use hume_scripting::attribution::{EntryId, PluginId};
 
     let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -353,24 +352,17 @@ fn core_vim_keybind_has_no_manifest_scm_zero_trigger_declare_errors() {
             .join("vim-keybind")
             .join("manifest.scm")
             .exists(),
-        "sanity: core:vim-keybind must NOT ship a manifest.scm for this negative check to be meaningful"
+        "sanity: core:vim-keybind must NOT ship a manifest.scm for this check to be meaningful"
     );
 
     let (ed, _dirs) = setup_editor_with_init_scripting(
-        r#"(declare-plugin! "core:vim-keybind")"#,
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:vim-keybind\")",
         Some(&runtime_dir),
     );
 
-    assert!(
-        ed.state
-            .message_log
-            .entries()
-            .any(|e| { e.severity == Severity::Error && e.text.contains("manifest.scm") }),
-        "must log an Error naming the missing manifest.scm; messages: {:?}",
-        ed.state
-            .message_log
-            .entries()
-            .map(|e| format!("{:?}: {}", e.severity, e.text))
-            .collect::<Vec<_>>()
+    let id = EntryId::main(PluginId::parse("core:vim-keybind").unwrap());
+    assert_eq!(
+        ed.scripting.as_ref().unwrap().plugin_status(&id),
+        Some(PluginStatus::Loaded)
     );
 }

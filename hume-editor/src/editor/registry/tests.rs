@@ -291,10 +291,10 @@ fn is_extendable_lazy_stub_true() {
     // before the plugin is activated.
     let cmd = MappableCommand::Lazy {
         name: "lazy-cmd".into(),
-        plugin: PluginId::User {
+        plugin: hume_scripting::attribution::EntryId::main(PluginId::User {
             user: "u".to_string(),
             repo: "r".to_string(),
-        },
+        }),
     };
     assert!(cmd.is_extendable());
 }
@@ -466,10 +466,10 @@ fn unregister_removes_dynamic_but_not_native() {
     });
     reg.register(MappableCommand::Lazy {
         name: Cow::Owned("lazy-cmd".to_string()),
-        plugin: PluginId::User {
+        plugin: hume_scripting::attribution::EntryId::main(PluginId::User {
             user: "u".to_string(),
             repo: "r".to_string(),
-        },
+        }),
     });
 
     reg.unregister("steel-cmd");

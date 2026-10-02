@@ -73,19 +73,22 @@ fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
         .write_all(b"(define x 1)")
         .unwrap();
 
-    let id = PluginId::parse("core:deep").unwrap();
+    let id = EntryId::main(PluginId::parse("core:deep").unwrap());
     let mut host = ScriptingHost::new();
     host.registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
     // Simulate maximum nesting depth already reached by seeding the stack.
-    let dummy = PluginId::parse("core:dummy").unwrap();
+    let dummy = EntryId::main(PluginId::parse("core:dummy").unwrap());
     for _ in 0..MAX_ACTIVATION_DEPTH {
         host.push_plugin_for_test(dummy.clone());
     }
 
-    let result = host.eval_source(r#"(%begin-lazy-activation! "core:deep")"#, &mut NullHost);
+    let result = host.eval_source(
+        r#"(%begin-lazy-activation! "core:deep" "plugin.scm")"#,
+        &mut NullHost,
+    );
 
     assert!(
         result.is_err(),
@@ -116,20 +119,23 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
         .write_all(b"(define x 1)")
         .unwrap();
 
-    let id = PluginId::parse("core:ok").unwrap();
+    let id = EntryId::main(PluginId::parse("core:ok").unwrap());
     let mut host = ScriptingHost::new();
     host.registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
     // One below the cap: must still be allowed.
-    let dummy = PluginId::parse("core:dummy").unwrap();
+    let dummy = EntryId::main(PluginId::parse("core:dummy").unwrap());
     for _ in 0..MAX_ACTIVATION_DEPTH - 1 {
         host.push_plugin_for_test(dummy.clone());
     }
 
     // Transition to Loading and return the require-string (not an error).
-    let result = host.eval_source(r#"(%begin-lazy-activation! "core:ok")"#, &mut NullHost);
+    let result = host.eval_source(
+        r#"(%begin-lazy-activation! "core:ok" "plugin.scm")"#,
+        &mut NullHost,
+    );
     assert!(result.is_ok(), "depth below cap must be allowed; got Err");
     assert!(
         matches!(
@@ -165,7 +171,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
         .write_all(b"(define x 1)")
         .unwrap();
 
-    let id = PluginId::parse("core:deep").unwrap();
+    let id = EntryId::main(PluginId::parse("core:deep").unwrap());
     let mut host = ScriptingHost::new();
     host.registries.lazy_registry.declare(
         id.clone(),
@@ -180,12 +186,15 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
         .register_lazy_command("deep-cmd", &id)
         .expect("stub claim must succeed on a fresh host");
 
-    let dummy = PluginId::parse("core:dummy").unwrap();
+    let dummy = EntryId::main(PluginId::parse("core:dummy").unwrap());
     for _ in 0..MAX_ACTIVATION_DEPTH {
         host.push_plugin_for_test(dummy.clone());
     }
 
-    let result = host.eval_source(r#"(%begin-lazy-activation! "core:deep")"#, &mut editor_host);
+    let result = host.eval_source(
+        r#"(%begin-lazy-activation! "core:deep" "plugin.scm")"#,
+        &mut editor_host,
+    );
     assert!(result.is_err(), "depth cap must raise; got Ok");
 
     assert!(
@@ -445,7 +454,7 @@ fn define_command_rejects_name_claimed_by_lazy_plugin() {
     use crate::host::EditorHost;
     use crate::null_host::LazyStubHost;
 
-    let id = PluginId::parse("core:my-plugin").unwrap();
+    let id = EntryId::main(PluginId::parse("core:my-plugin").unwrap());
     let mut host = ScriptingHost::new();
     // Simulate declare-plugin! having claimed the name as a `Lazy` stub.
     let mut editor_host = LazyStubHost::default();
@@ -487,7 +496,7 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
     use crate::host::EditorHost;
     use crate::null_host::LazyStubHost;
 
-    let id = PluginId::parse("core:my-plugin").unwrap();
+    let id = EntryId::main(PluginId::parse("core:my-plugin").unwrap());
     let mut host = ScriptingHost::new();
     // Simulate declare-plugin! having claimed the name as a typed `Lazy` stub.
     let mut editor_host = LazyStubHost::default();
@@ -532,7 +541,7 @@ fn begin_lazy_activation_escapes_backslashes_in_path() {
     use crate::{ScriptingHost, null_host::NullHost};
     use std::path::PathBuf;
 
-    let id = PluginId::parse("core:winpath").unwrap();
+    let id = EntryId::main(PluginId::parse("core:winpath").unwrap());
     let mut host = ScriptingHost::new();
     host.registries.lazy_registry.plugins.insert(
         id.clone(),
@@ -548,7 +557,7 @@ fn begin_lazy_activation_escapes_backslashes_in_path() {
     //   "(require \"C:\\\\Users\\\\x\\\\plugin.scm\")"
     // In a Rust raw string (r#"…"#) there is no further Rust escaping.
     let program = r#"
-(define __result (%begin-lazy-activation! "core:winpath"))
+(define __result (%begin-lazy-activation! "core:winpath" "plugin.scm"))
 (when (not (equal? __result "(require \"C:\\\\Users\\\\x\\\\plugin.scm\")"))
   (error (string-append "backslash escaping wrong; got: " __result)))
 "#;
@@ -628,17 +637,16 @@ fn plugin_dir_inside_plugin_body_is_the_plugins_own_directory() {
     assert_eq!(std::path::Path::new(&seen), plugin_dir.as_path());
 }
 
-// ── Zero-trigger backstop (direct %declare-plugin! call) ──────────────────
+// ── No-trigger backstop (direct %declare-plugin! call) ────────────────────
 
 /// A direct `%declare-plugin!` call with all three activation lists empty must
-/// hard-error. This is the backstop the Scheme `declare-plugin!` wrapper's
-/// zero-trigger routing sits in front of.
+/// hard-error: an entry with no trigger could never activate.
 #[test]
-fn declare_plugin_bang_direct_zero_trigger_call_errors() {
+fn declare_plugin_bang_direct_no_trigger_call_errors() {
     use crate::{ScriptingHost, null_host::NullHost};
     let mut host = ScriptingHost::new();
     let result = host.eval_source(
-        r#"(%declare-plugin! "user/direct-zero" '() '() '() '() (hash))"#,
+        r#"(%declare-plugin! "user/direct-zero" "plugin.scm" '() '() '() '())"#,
         &mut NullHost,
     );
     let err = result.expect_err("direct %declare-plugin! with zero activation entries must error");
@@ -648,14 +656,14 @@ fn declare_plugin_bang_direct_zero_trigger_call_errors() {
     );
 }
 
-/// A zero-trigger declare of a plugin whose directory doesn't exist at all is a
-/// soft no-op: Info log, `declared_plugins` recorded for PLUM, no plugin state.
+/// `load-plugin!` of a plugin whose directory doesn't exist at all is a soft
+/// no-op: Info log, `declared_plugins` recorded for PLUM, no plugin state.
 ///
-/// Treating "not installed yet" like "installed but missing manifest.scm"
-/// would break the declare-then-:plum-install-plugins flow for every
-/// zero-trigger declare of a plugin that isn't installed yet.
+/// Treating "not installed yet" like "installed but empty" would break the
+/// load-then-:plum-install-plugins flow for every plugin that isn't installed
+/// yet.
 #[test]
-fn manifest_declare_absent_dir_soft_logs_and_records_declared_plugins() {
+fn load_plugin_absent_dir_soft_logs_and_records_declared_plugins() {
     use crate::{ScriptingHost, null_host::NullHost};
     use tempfile::TempDir;
 
@@ -664,12 +672,12 @@ fn manifest_declare_absent_dir_soft_logs_and_records_declared_plugins() {
     host.set_data_dir(dir.path().to_path_buf());
 
     let result = host.eval_source(
-        r#"(declare-plugin! "user/definitely-absent-mf")"#,
+        r#"(load-plugin! "user/definitely-absent-mf")"#,
         &mut NullHost,
     );
     assert!(
         result.is_ok(),
-        "absent-dir zero-trigger declare must not error; got {result:?}"
+        "load-plugin! of an absent directory must not error; got {result:?}"
     );
 
     let messages = host.peek_pending_messages();
@@ -686,7 +694,7 @@ fn manifest_declare_absent_dir_soft_logs_and_records_declared_plugins() {
             .any(|d| d == "user/definitely-absent-mf"),
         "declared_plugins must record the name for PLUM even though nothing was declared"
     );
-    let id = PluginId::parse("user/definitely-absent-mf").unwrap();
+    let id = EntryId::main(PluginId::parse("user/definitely-absent-mf").unwrap());
     assert!(
         !host.registries.lazy_registry.plugins.contains_key(&id),
         "no plugin state should be recorded when the directory is absent"
@@ -695,3 +703,6 @@ fn manifest_declare_absent_dir_soft_logs_and_records_declared_plugins() {
 
 #[cfg(unix)]
 mod unix;
+
+#[cfg(unix)]
+mod unix_entries;

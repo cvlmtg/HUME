@@ -2,25 +2,24 @@
 
 HUME ships some plugins under the `core:` namespace: a plugin and grammar manager, language server support, live git diff, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your [`init.scm`](configuration.md), so a default HUME is exactly what you see.
 
-There are two ways to bring a plugin in:
+Bring a plugin in with `load-plugin!`:
 
 ```scheme
-(declare-plugin! "core:plum")    ; lazy — loads the first time you use it
-(load-plugin! "core:plum")       ; eager — loads at startup
+(load-plugin! "core:plum")
 ```
 
-A plugin's key bindings only exist once its body has run, so a lazily declared plugin needs some other trigger (a command, an event, a language) to fire before you'd press one of its keys. The plugins marked below have no such trigger, so they're loaded eagerly instead. See [Plugins](plugins.md#how-plugins-are-loaded) for the difference in detail.
+A plugin that ships a manifest (stdlib, lsp, lsp-install, plum, git-diff and steel-server) loads lazily: its code runs the first time a command, event or language it lists comes up. The rest (buffer-words, classic-paste, helix-surround, pickers and vim-keybind) have no manifest and load at startup, because their key bindings only exist once their code has run. See [Plugins](plugins.md#how-plugins-are-loaded) for the difference in detail.
 
 ## core:stdlib
 
-A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, `core:lsp`, and `core:lsp-install` all depend on it, so declare or load it before them:
+A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, `core:lsp`, and `core:lsp-install` all depend on it, so load it before them:
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 ```
 
-::: warning Always declare it bare
-Don't pass `#:commands`/`#:events`/`#:languages` to `core:stdlib`'s own `declare-plugin!` call; leave it exactly as above. Every plugin that depends on `core:stdlib` relies on its default activation list; a custom one can leave out a helper a dependent plugin needs, and that dependent plugin will then misbehave instead of failing with a clear error.
+::: warning Keep its own triggers
+Don't declare custom `#:commands`/`#:events`/`#:languages` for `core:stdlib`; load it as shown above. Every plugin that depends on `core:stdlib` relies on the triggers its manifest lists; a custom list can leave out a helper a dependent plugin needs, and that dependent plugin will then misbehave instead of failing with a clear error.
 :::
 
 If you're writing a plugin yourself, see [Plugin API → Standard Library](plugin-api.md#standard-library) for every command it offers.
@@ -30,8 +29,8 @@ If you're writing a plugin yourself, see [Plugin API → Standard Library](plugi
 **PLUM** (the HUME **PLU**gin **M**anager) installs and updates third-party plugins and themes from GitHub, and installs the tree-sitter grammars that power syntax highlighting. Its install and cleanup commands depend on `core:stdlib`.
 
 ```scheme
-(declare-plugin! "core:stdlib")
-(declare-plugin! "core:plum")
+(load-plugin! "core:stdlib")
+(load-plugin! "core:plum")
 ```
 
 PLUM never installs anything on its own: the commands below do the work when you run them.
@@ -63,11 +62,11 @@ Leaving PLUM out only removes these commands. Already-installed plugins, grammar
 Language server support: hover, go-to-definition, references, diagnostics, rename, formatting, code actions, signature help, completions, and inlay hints, and manages the running server processes (`:lsp-status`, `:lsp-stop`, `:lsp-restart`). Downloading the servers is `core:lsp-install`'s job.
 
 ```scheme
-(declare-plugin! "core:stdlib")
-(declare-plugin! "core:lsp")
+(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")
 ```
 
-Requires `core:stdlib` declared or loaded first. `core:lsp` itself is still declared lazily here: it wakes up on the first buffer with a detected language, or the first `:lsp-*` command you type, and its key bindings go live at that same moment, before there's a buffer they'd need to act on.
+Requires `core:stdlib` loaded first. `core:lsp` loads lazily: it wakes up on the first buffer with a detected language, or the first `:lsp-*` command you type, and its key bindings go live at that same moment, before there's a buffer they'd need to act on.
 
 See [Language Servers](lsp.md) for setup, the full command and key tables, and settings.
 
@@ -76,11 +75,11 @@ See [Language Servers](lsp.md) for setup, the full command and key tables, and s
 Downloads, verifies and registers language servers: `:lsp-install`, `:lsp-uninstall`, `:lsp-servers` and `:lsp-rescan-servers`. It registers what it installed through `register-lsp-server!`, so `core:lsp` works the same with or without it, and a different installer can take its place by declaring that one instead.
 
 ```scheme
-(declare-plugin! "core:stdlib")
-(declare-plugin! "core:lsp-install")
+(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp-install")
 ```
 
-Requires `core:stdlib` declared or loaded first. Wakes up on the first buffer with a detected language, or the first `:lsp-install`-family command you type. See [Language Servers](lsp.md#installing-servers) for the prerequisites and the commands.
+Requires `core:stdlib` loaded first. Loads lazily in two parts: `:lsp-rescan-servers` and the registration of installed servers wake on the first buffer with a detected language, and `:lsp-install`, `:lsp-uninstall` and `:lsp-servers` load on first use. See [Language Servers](lsp.md#installing-servers) for the prerequisites and the commands.
 
 ## core:steel-server
 
@@ -90,12 +89,12 @@ your HUME config. Requires `core:lsp`, which provides the editor-side features t
 registered server useful.
 
 ```scheme
-(declare-plugin! "core:stdlib")
-(declare-plugin! "core:lsp")
-(declare-plugin! "core:steel-server")
+(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")
+(load-plugin! "core:steel-server")
 ```
 
-Declared lazily like this, it activates on the first Scheme buffer or the first time you run
+It activates on the first Scheme buffer or the first time you run
 `:steel-server-install`. It's registered so HUME's own commands and configuration functions
 are recognized while you edit `init.scm` or a plugin file, so you won't see unknown-identifier
 warnings for anything HUME itself provides.
@@ -118,15 +117,15 @@ inside a repo, `fd`-backed otherwise), `z b` opens a buffer switcher, `z m` open
 over files with staged or unstaged git changes.
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "core:pickers")
 ```
 
-Must be loaded eagerly (`core:stdlib` only needs to be declared or loaded before it): its keys are the only way to reach its commands, so declared lazily it would have no trigger to ever wake it up. By
+Must be loaded eagerly (`core:stdlib` only needs to be loaded before it): its keys are the only way to reach its commands, so loaded lazily it would have no trigger to ever wake it up. By
 default the modified-files picker includes untracked files; turn them off with `#:config`:
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "core:pickers" #:config (hash "untracked" #f))
 ```
 
@@ -141,11 +140,11 @@ deletions, deleted lines as virtual lines, added/changed lines with a background
 word-level highlights inside changed lines.
 
 ```scheme
-(declare-plugin! "core:stdlib")
-(declare-plugin! "core:git-diff")
+(load-plugin! "core:stdlib")
+(load-plugin! "core:git-diff")
 ```
 
-Requires `core:stdlib` declared or loaded before it. Declared lazily like this, it wakes on the
+Requires `core:stdlib` loaded before it. It wakes on the
 first buffer opened (signs default on) or the first `:toggle-git-signs`/`:toggle-inline-diff`
 you type.
 
@@ -170,8 +169,8 @@ Both commands are typed commands, run from the `:` prompt; they have no key bind
 Configure with `#:config`:
 
 ```scheme
-(declare-plugin! "core:stdlib")
-(declare-plugin! "core:git-diff"
+(load-plugin! "core:stdlib")
+(load-plugin! "core:git-diff"
   #:config (hash "signs" #t "inline" #f "ref" "HEAD"))
 ```
 
@@ -190,13 +189,13 @@ Offers every identifier already in the buffer as an Insert-mode completion. Work
 buffer, including a scratch buffer or a `.txt` file where `core:lsp` has no server to ask.
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "core:buffer-words")
 ```
 
 Must be loaded eagerly: `Ctrl-Space` (or a completion source's own trigger char, if one
 applies) is the only thing that can ever invoke the completion source it registers, so a lazy
-`declare-plugin!` would have no other trigger to activate it. Requires `core:stdlib` declared
+plugin would have no other trigger to activate it. Requires `core:stdlib` loaded
 or loaded first.
 
 Keeps a per-buffer index of identifiers, refreshed as you type; `Ctrl-Space` reads it, it
@@ -225,11 +224,11 @@ Configure with `#:config`:
 Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `Ctrl-6` (alternate buffer, kitty only), and `o` in Extend mode to swap the selection's ends. It does not bind `G`: that key is HUME's own prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`), and `g e` already goes to the last line.
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "core:vim-keybind")
 ```
 
-Must be loaded eagerly (`core:stdlib` only needs to be declared or loaded before it): it replaces keys HUME already binds, and most of what it rebinds (`goto-line-start`, `goto-line-end`, and the rest) are built-in commands, not plugin commands, so there's no first dispatch to trigger loading. Declared lazily, `$`/`^`/`0` would keep doing HUME's default thing until something unrelated woke the plugin up.
+Must be loaded eagerly (`core:stdlib` only needs to be loaded before it): it replaces keys HUME already binds, and most of what it rebinds (`goto-line-start`, `goto-line-end`, and the rest) are built-in commands, not plugin commands, so there's no first dispatch to trigger loading. Loaded lazily, `$`/`^`/`0` would keep doing HUME's default thing until something unrelated woke the plugin up.
 
 By default (`'smart`), `C` is context-sensitive: on a bare cursor with no count it changes to end of line as in vim, but with a real selection, or any count prefix (e.g. `3C`), it runs HUME's own `copy-selection-on-next-line`, so that command stays fully reachable. Change this with `#:config`:
 
@@ -248,7 +247,7 @@ Helix-style surround keys: `m s` wraps the selection, `m d` deletes a surroundin
 (load-plugin! "core:helix-surround")
 ```
 
-Must be loaded eagerly: it takes over `m s` (which by default *selects* a surrounding pair) and removes `m w` outright, so wrapping lives on `m s` alone once it's loaded. Declared lazily, `m s` would silently keep selecting instead of wrapping until something else triggered the plugin.
+Must be loaded eagerly: it takes over `m s` (which by default *selects* a surrounding pair) and removes `m w` outright, so wrapping lives on `m s` alone once it's loaded. Loaded lazily, `m s` would keep selecting instead of wrapping until something else triggered the plugin.
 
 ## core:classic-paste
 

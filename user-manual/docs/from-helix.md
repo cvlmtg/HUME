@@ -14,20 +14,20 @@ The fuzzy finder is a plugin, not built in. Helix's `Space f` and `Space b` beco
 
 ### Editing
 
-Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 20 with `hume ~/.config/hume/init.scm:20`. Then make the same edits you would in Helix:
+Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 21 with `hume ~/.config/hume/init.scm:21`. Then make the same edits you would in Helix:
 
 | Edit | Helix | HUME |
 |------|-------|------|
-| Uncomment line 20 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
-| Delete lines 17 and 18 (`core:plum`, `core:git-diff`) | `:17` `x` `x` `d` | `:17` `Ctrl-x` `Ctrl-x` `d` |
-| Turn `declare-plugin!` into `load-plugin!` on line 16 | `:16` `l` `m i w` `c` `load` `Esc` | `:16` `l` `m m` `c` `load` `Esc` |
+| Uncomment line 21 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
+| Delete lines 18 and 19 (`core:plum`, `core:git-diff`) | `:18` `x` `x` `d` | `:18` `Ctrl-x` `Ctrl-x` `d` |
+| Change `load` to `declare` on line 16, then undo it with `u` | `:16` `l` `m i w` `c` `declare` `Esc` | `:16` `l` `m m` `c` `declare` `Esc` |
 | Copy line 16 to another application | `x` `Space y` | `x` `y` |
 
 What each step shows:
 
 - **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Helix selects up to the target. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it. For longer selections, `e` toggles Extend mode (Helix's `v`). The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection-x-vs-extend-mode-e).
-- **`Esc` keeps what you typed selected.** After the change, `load` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it. One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
+- **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it. One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
 - **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring. `p` pastes your last yank or delete while you haven't edited since, and the system clipboard once you have. See [Copy & Paste](copy-and-paste.md).
 
 ### Saving and quitting
@@ -108,7 +108,7 @@ A theme editor is also available online: a single-file HTML tool you download an
 Helix's Steel plugin system is still an unmerged branch; HUME's ships in every release. HUME's plugins are Steel too, the same Scheme dialect, but plugins written for Helix's Steel branch won't run in HUME: the two editors expose different functions to scripts. [PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. Declare the plugin in your [`init.scm`](configuration.md#example-init-scm), then run `:plum-install-plugins` to fetch it. Here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "cvlmtg/grep.hume")
 ```
 

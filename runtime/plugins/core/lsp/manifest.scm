@@ -1,5 +1,4 @@
-; Default activation for `(declare-plugin! "core:lsp")` with no explicit
-; #:commands/#:typed-commands/#:events/#:languages — see README.md "Usage".
+;;; core:lsp/manifest.scm — see README.md.
 (declare-plugin! "core:lsp"
   #:languages '("*")
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"

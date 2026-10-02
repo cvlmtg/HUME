@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::BufferId;
 
-use crate::attribution::PluginId;
+use crate::attribution::EntryId;
 use crate::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
     OutputHost, SelectionInfo, SettingsHost,
@@ -203,23 +203,23 @@ impl CommandHost for NullHost {
         Ok(())
     }
     fn unregister_command(&mut self, _name: &str) {}
-    fn register_lazy_command(&mut self, _name: &str, _plugin: &PluginId) -> Result<(), String> {
+    fn register_lazy_command(&mut self, _name: &str, _plugin: &EntryId) -> Result<(), String> {
         Ok(())
     }
     fn register_lazy_typed_command(
         &mut self,
         _name: &str,
-        _plugin: &PluginId,
+        _plugin: &EntryId,
     ) -> Result<(), String> {
         Ok(())
     }
-    fn lazy_command_owner(&self, _name: &str) -> Option<PluginId> {
+    fn lazy_command_owner(&self, _name: &str) -> Option<EntryId> {
         None
     }
-    fn lazy_mappable_command_owner(&self, _name: &str) -> Option<PluginId> {
+    fn lazy_mappable_command_owner(&self, _name: &str) -> Option<EntryId> {
         None
     }
-    fn unregister_lazy_stubs_of(&mut self, _plugin: &PluginId) {}
+    fn unregister_lazy_stubs_of(&mut self, _plugin: &EntryId) {}
 }
 
 impl CursorHost for NullHost {
@@ -308,19 +308,19 @@ impl CommandHost for FailingRegisterHost {
     fn unregister_command(&mut self, name: &str) {
         self.inner.unregister_command(name)
     }
-    fn register_lazy_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
+    fn register_lazy_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
         self.inner.register_lazy_command(name, plugin)
     }
-    fn register_lazy_typed_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
+    fn register_lazy_typed_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
         self.inner.register_lazy_typed_command(name, plugin)
     }
-    fn lazy_command_owner(&self, name: &str) -> Option<PluginId> {
+    fn lazy_command_owner(&self, name: &str) -> Option<EntryId> {
         self.inner.lazy_command_owner(name)
     }
-    fn lazy_mappable_command_owner(&self, name: &str) -> Option<PluginId> {
+    fn lazy_mappable_command_owner(&self, name: &str) -> Option<EntryId> {
         self.inner.lazy_mappable_command_owner(name)
     }
-    fn unregister_lazy_stubs_of(&mut self, plugin: &PluginId) {
+    fn unregister_lazy_stubs_of(&mut self, plugin: &EntryId) {
         self.inner.unregister_lazy_stubs_of(plugin)
     }
 }
@@ -410,7 +410,7 @@ impl OutputHost for RecordingInlineOutputHost {
 pub(crate) struct LazyStubHost {
     inner: NullHost,
     defined: rustc_hash::FxHashSet<String>,
-    lazy: rustc_hash::FxHashMap<String, PluginId>,
+    lazy: rustc_hash::FxHashMap<String, EntryId>,
 }
 
 impl EditorHost for LazyStubHost {
@@ -451,7 +451,7 @@ impl LazyStubHost {
     }
 
     /// Shared body behind `register_lazy_command`/`register_lazy_typed_command`.
-    fn register_lazy(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
+    fn register_lazy(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
         if self.defined.contains(name) {
             return Err(format!("'{name}' conflicts with an existing command"));
         }
@@ -494,13 +494,13 @@ impl CommandHost for LazyStubHost {
     fn unregister_command(&mut self, name: &str) {
         self.defined.remove(name);
     }
-    fn register_lazy_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
+    fn register_lazy_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
         self.register_lazy(name, plugin)
     }
-    fn register_lazy_typed_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
+    fn register_lazy_typed_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
         self.register_lazy(name, plugin)
     }
-    fn lazy_command_owner(&self, name: &str) -> Option<PluginId> {
+    fn lazy_command_owner(&self, name: &str) -> Option<EntryId> {
         self.lazy.get(name).cloned()
     }
     // `lazy` tracks no kind (see the field doc). This test double can't
@@ -509,10 +509,10 @@ impl CommandHost for LazyStubHost {
     // `hume-scripting` test dispatches `call!` against a typed-only lazy
     // stub through this host (that scenario needs the real `EditorHostImpl`;
     // see `lazy_mappable_command_owner`'s own doc).
-    fn lazy_mappable_command_owner(&self, name: &str) -> Option<PluginId> {
+    fn lazy_mappable_command_owner(&self, name: &str) -> Option<EntryId> {
         self.lazy.get(name).cloned()
     }
-    fn unregister_lazy_stubs_of(&mut self, plugin: &PluginId) {
+    fn unregister_lazy_stubs_of(&mut self, plugin: &EntryId) {
         self.lazy.retain(|_, p| p != plugin);
     }
 }

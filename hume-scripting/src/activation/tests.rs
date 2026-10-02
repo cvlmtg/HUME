@@ -4,7 +4,7 @@ use std::io::Write as _;
 use tempfile::TempDir;
 
 use crate::ScriptingHost;
-use crate::attribution::PluginId;
+use crate::attribution::{EntryId, PluginId};
 use crate::lazy::PluginState;
 use crate::null_host::NullHost;
 
@@ -16,8 +16,8 @@ fn write_plugin(dir: &TempDir, name: &str, src: &str) -> std::path::PathBuf {
     path
 }
 
-fn plugin_id(name: &str) -> PluginId {
-    PluginId::parse(name).unwrap()
+fn plugin_id(name: &str) -> EntryId {
+    EntryId::main(PluginId::parse(name).unwrap())
 }
 
 fn no_builtins() -> FxHashSet<String> {
@@ -297,7 +297,7 @@ fn begin_lazy_activation_declared_returns_require_string() {
         .plugins
         .insert(id.clone(), PluginState::Declared { path: path.clone() });
 
-    let program = r#"(define result (%begin-lazy-activation! "core:p"))"#;
+    let program = r#"(define result (%begin-lazy-activation! "core:p" "plugin.scm"))"#;
     host.eval_source(program, &mut NullHost).unwrap();
 
     // Plugin must be in Loading state.
@@ -329,7 +329,7 @@ fn begin_lazy_activation_loading_returns_false() {
     // The result `#f` means the (when prog ...) in %activate-plugin-inline!
     // does nothing: activation is a no-op.
     let program = r#"
-(define result (%begin-lazy-activation! "core:cycling"))
+(define result (%begin-lazy-activation! "core:cycling" "plugin.scm"))
 (when result (error "cycle guard must return #f!"))
 "#;
     host.eval_source(program, &mut NullHost).unwrap();
@@ -356,7 +356,7 @@ fn finish_lazy_activation_success_transitions_to_loaded() {
     // Seed the stack as begin_lazy_activation would have done.
     host.push_plugin_for_test(id.clone());
 
-    let program = r#"(%finish-lazy-activation! "core:finishing" #f)"#;
+    let program = r#"(%finish-lazy-activation! "core:finishing" "plugin.scm" #f)"#;
     host.eval_source(program, &mut NullHost).unwrap();
 
     assert!(
@@ -391,7 +391,7 @@ fn finish_lazy_activation_failure_transitions_to_failed() {
 
     let program = r#"
 (define err-val (with-handler (lambda (e) e) (error "intentional")))
-(%finish-lazy-activation! "core:failing" err-val)
+(%finish-lazy-activation! "core:failing" "plugin.scm" err-val)
 "#;
     host.eval_source(program, &mut NullHost).unwrap();
 
@@ -836,7 +836,7 @@ fn lazy_plugin_can_define_its_own_activation_command() {
 /// `EvalWatchdog`): A's own activation is contained exactly as any other
 /// body error (Failed, rolled back), but the interrupt itself must not be:
 /// it must abort the whole eval before B ever loads. Without that,
-/// `%dispatch-command!`'s later `(load-plugin! "core:b")` would run past an
+/// `%dispatch-command!`'s later `(%activate-plugin-inline! "core:b" #f)` would run past an
 /// exhausted budget, and B would falsely be blamed as "failed to load" for
 /// hitting the same still-set flag on its own first `(hume/yield!)`.
 ///
@@ -869,7 +869,7 @@ fn interrupt_during_activation_aborts_before_next_plugin_loads() {
     host.interrupt_flag_for_test()
         .store(true, Ordering::Relaxed);
 
-    let src = r#"(load-plugin! "core:a") (load-plugin! "core:b")"#;
+    let src = r##"(%activate-plugin-inline! "core:a" #f) (%activate-plugin-inline! "core:b" #f)"##;
     let result = host.eval_source(src, &mut LazyStubHost::default());
 
     assert!(
@@ -936,12 +936,12 @@ fn call_of_command_owned_by_newly_failed_plugin_errors() {
 // ── Manifest-declare rollback on a later error ─────────────────────────────
 
 /// `manifest.scm` successfully declares itself with `#:commands` (a real,
-/// direct `%declare-plugin!` call, not the zero-trigger path) and then a
+/// direct `%declare-plugin!` call) and then a
 /// later top-level form in the same file raises. The plugin must end up
 /// `Failed` with no live command stub, not left half-`Declared` with a
 /// callable stub for a plugin whose manifest never finished evaluating.
 ///
-/// `finish_manifest_declare`'s error branch performs that rollback to
+/// `finish_manifest_load`'s error branch performs that rollback to
 /// `Failed`.
 #[test]
 fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
@@ -951,7 +951,7 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     let dir = TempDir::new().unwrap();
     let plugin_dir = dir.path().join("plugins").join("user").join("selfdecl");
     std::fs::create_dir_all(&plugin_dir).unwrap();
-    // The full (non-zero-trigger) `declare-plugin!` inside manifest.scm only
+    // `declare-plugin!` inside manifest.scm only
     // registers `Declared` state once `plugin.scm` resolves on disk. Absent,
     // it soft-logs and no-ops, which would make this test pass for the wrong
     // reason (never-declared, not rolled-back-after-declared).
@@ -967,7 +967,7 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     host.set_data_dir(dir.path().to_path_buf());
     let mut editor_host = LazyStubHost::default();
 
-    let result = host.eval_source(r#"(declare-plugin! "user/selfdecl")"#, &mut editor_host);
+    let result = host.eval_source(r#"(load-plugin! "user/selfdecl")"#, &mut editor_host);
 
     assert!(
         result.is_ok(),
@@ -1018,9 +1018,9 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
         .insert(id.clone(), PluginState::Declared { path });
 
     let program = r#"
-        (%begin-lazy-activation! "core:badvalue")
+        (%begin-lazy-activation! "core:badvalue" "plugin.scm")
         (register-lsp-server! "badvalue-lang" #:command "bv")
-        (%finish-lazy-activation! "core:badvalue" 42)
+        (%finish-lazy-activation! "core:badvalue" "plugin.scm" 42)
     "#;
     host.eval_source(program, &mut NullHost)
         .expect("a bad error value must be folded into the failure, not raised");

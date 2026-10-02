@@ -14,13 +14,13 @@ A fuzzy finder ships as a plugin. Load `core:pickers` (the [starter config](conf
 
 ### Editing
 
-Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 20 with `hume ~/.config/hume/init.scm:20`. Then make the same edits you would in Kakoune:
+Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 21 with `hume ~/.config/hume/init.scm:21`. Then make the same edits you would in Kakoune:
 
 | Edit | Kakoune | HUME |
 |------|---------|------|
-| Uncomment line 20 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
-| Delete lines 17 and 18 (`core:plum`, `core:git-diff`) | `17g` `x` `x` `d` | `:17` `Ctrl-x` `Ctrl-x` `d` |
-| Turn `declare-plugin!` into `load-plugin!` on line 16 | `16g` `l` `<a-i>w` `c` `load` `Esc` | `:16` `l` `m m` `c` `load` `Esc` |
+| Uncomment line 21 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
+| Delete lines 18 and 19 (`core:plum`, `core:git-diff`) | `18g` `x` `x` `d` | `:18` `Ctrl-x` `Ctrl-x` `d` |
+| Change `load` to `declare` on line 16, then undo it with `u` | `16g` `l` `<a-i>w` `c` `declare` `Esc` | `:16` `l` `m m` `c` `declare` `Esc` |
 | Copy line 16 to another application | `x` `<a-\|>` + your clipboard tool | `x` `y` |
 
 What each step shows:
@@ -28,7 +28,7 @@ What each step shows:
 - **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Kakoune selects up to the target. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it: `Ctrl` does the job Shift does in Kakoune. For longer selections, `e` toggles Extend mode. The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection).
 - **Text objects live behind `m`.** `m i w` is `<a-i>w`. To jump to a line, type its number at the `:` prompt: `:16` instead of `16g`.
-- **`Esc` keeps what you typed selected.** After the change, `load` is still selected instead of reduced to a cursor, ready to act on again. One consequence: `i` re-enters *before* that selection, so use `a` to keep typing after it. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
+- **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of reduced to a cursor, ready to act on again. One consequence: `i` re-enters *before* that selection, so use `a` to keep typing after it. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
 - **The system clipboard needs no wiring.** `y` copies to it as well as to HUME's own kill ring. `p` pastes your last yank or delete while you haven't edited since, and the clipboard once you have.
 
 Shift does not extend a selection: `W`, `H`, `J`, `K`, `L` do something else here, so read [Extending selections](#extending-selections) before reaching for them.
@@ -220,7 +220,7 @@ Kakoune has neither a package manager nor LSP support in the core; both come fro
 Both ship with HUME. [PLUM](core-plugins.md#core-plum) is the built-in plugin manager: declare a plugin in `init.scm`, run `:plum-install-plugins`, and it is fetched from GitHub. Here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 (load-plugin! "cvlmtg/grep.hume")
 ```
 

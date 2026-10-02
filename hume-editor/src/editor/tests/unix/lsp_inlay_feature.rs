@@ -68,7 +68,7 @@ fn setup(
         &mut ed,
         &mut host,
         r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp")"#,
+(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp,
     );
     ed.scripting = Some(host);
@@ -606,7 +606,7 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
         &mut ed,
         &mut host,
         r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp")"#,
+(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -714,7 +714,7 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
         &mut ed,
         &mut host,
         r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp")"#,
+(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

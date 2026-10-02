@@ -5,13 +5,13 @@ HUME colors your code with **tree-sitter**: accurate highlighting that stays cor
 Highlighting is **opt-in per language**: HUME knows how to recognize many languages out of the box, but it doesn't ship pre-compiled parsers. For a language to light up, you install a **grammar**, a small package tree-sitter uses to parse that language. [PLUM](core-plugins.md#core-plum) handles this for you.
 
 PLUM is a plugin like any other, and it doesn't load by itself. Everything on this page
-(installing, listing, and cleaning up grammars) needs it declared in your
+(installing, listing, and cleaning up grammars) needs it loaded in your
 [`init.scm`](configuration.md) first, along with `core:stdlib`, which its install and
 cleanup commands depend on:
 
 ```scheme
-(declare-plugin! "core:stdlib")
-(declare-plugin! "core:plum")
+(load-plugin! "core:stdlib")
+(load-plugin! "core:plum")
 ```
 
 Once a grammar is installed, though, PLUM is no longer in the picture: HUME registers every

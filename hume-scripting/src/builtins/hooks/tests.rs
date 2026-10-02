@@ -112,11 +112,11 @@ fn register_hook_valid_in_init_mode() {
 /// `register-hook!` is also valid during plugin activation (plugin_stack non-empty).
 #[test]
 fn register_hook_valid_during_plugin_load() {
-    use crate::attribution::PluginId;
+    use crate::attribution::{EntryId, PluginId};
     let mut h = SteelCtxTestHarness::new();
     // Simulate being inside a plugin body.
     h.plugin_stack
-        .push(PluginId::parse("core:myplugin").unwrap());
+        .push(EntryId::main(PluginId::parse("core:myplugin").unwrap()));
     {
         let mut ctx = h.ctx(); // EvalMode::PluginActivation → allowed
         let result = register_hook(
@@ -132,7 +132,7 @@ fn register_hook_valid_during_plugin_load() {
     assert!(h.registries.hooks.has_match("on-buffer-open", None));
     assert_eq!(
         h.registries.hooks.handlers_for("on-buffer-open")[0].owner,
-        Some(PluginId::parse("core:myplugin").unwrap()),
+        Some(EntryId::main(PluginId::parse("core:myplugin").unwrap())),
         "a plugin-body registration must be attributed to the currently-executing plugin"
     );
 }

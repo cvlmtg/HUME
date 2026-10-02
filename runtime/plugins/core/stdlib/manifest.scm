@@ -1,5 +1,4 @@
-; Default activation for `(declare-plugin! "core:stdlib")` with no explicit
-; #:commands/#:typed-commands/#:events/#:languages — see README.md "Usage".
+;;; core:stdlib/manifest.scm — see README.md.
 (declare-plugin! "core:stdlib"
   #:commands '("stdlib/selection-anchor" "stdlib/selection-head" "stdlib/selection-start"
                "stdlib/selection-end" "stdlib/selection-primary?"

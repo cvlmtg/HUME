@@ -36,7 +36,7 @@ fn core_stdlib_plugin_loads_eagerly() {
 
     let id = PluginId::parse("core:stdlib").expect("valid plugin name");
     assert_eq!(
-        host.plugin_status(&id),
+        host.plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
         Some(PluginStatus::Loaded),
         "core:stdlib must be Loaded after eager load-plugin!"
     );

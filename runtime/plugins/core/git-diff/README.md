@@ -9,15 +9,16 @@ focused buffer; add that element to your own `configure-statusline!` call to sho
 ## Usage
 
 ```scheme
-(declare-plugin! "core:stdlib")
-(declare-plugin! "core:git-diff"
+(load-plugin! "core:stdlib")
+(load-plugin! "core:git-diff"
   #:config (hash "signs" #t "inline" #f "ref" "HEAD"))
 ```
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean`/
   `stdlib/config-string` at load time.
 - **Activates on:** the first buffer opened, or the first `:toggle-git-signs`/
-  `:toggle-inline-diff` typed. `"signs"` defaults on (cheap, no line-shifting side
+  `:toggle-inline-diff` typed. Its `manifest.scm` has one entry for `plugin.scm` with
+  `#:events '(on-buffer-open)` and those two typed commands. `"signs"` defaults on (cheap, no line-shifting side
   effects); `"inline"` defaults off (it moves virtual lines into the buffer's visual
   flow).
 - **Branch tracking has no config flag; placement is the switch.** It does not fetch until

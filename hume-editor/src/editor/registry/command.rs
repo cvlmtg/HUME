@@ -425,7 +425,7 @@ pub(in crate::editor) enum MappableCommand {
     /// `SteelBacked` command, and dispatch re-runs.
     Lazy {
         name: Cow<'static, str>,
-        plugin: hume_scripting::attribution::PluginId,
+        plugin: hume_scripting::attribution::EntryId,
     },
 }
 
@@ -674,5 +674,5 @@ pub(in crate::editor) enum TypedBody {
     },
     /// A placeholder for a lazy plugin's typed command that has not yet been
     /// loaded. Mirrors [`MappableCommand::Lazy`]; see its doc.
-    Lazy(hume_scripting::attribution::PluginId),
+    Lazy(hume_scripting::attribution::EntryId),
 }

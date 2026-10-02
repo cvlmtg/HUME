@@ -9,9 +9,9 @@ Mason registry, the two sources `core:lsp-install`'s catalog is generated from, 
 ## Usage
 
 ```scheme
-(declare-plugin! "core:stdlib")
-(declare-plugin! "core:lsp")
-(declare-plugin! "core:steel-server")
+(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")
+(load-plugin! "core:steel-server")
 ```
 
 - **Depends on:** nothing at load time. The plugin only calls `register-lsp-server!` and
@@ -19,7 +19,8 @@ Mason registry, the two sources `core:lsp-install`'s catalog is generated from, 
   that make the registered server useful (hover, goto, diagnostics) come from `core:lsp`,
   which in turn needs `core:stdlib`.
 - **Activates on:** the first Scheme buffer, or `:steel-server-install`, whichever comes
-  first. `(load-plugin! "core:steel-server")` loads it eagerly instead.
+  first. Its `manifest.scm` has one entry for `plugin.scm` with `#:languages '("scheme")`
+  and `#:typed-commands '("steel-server-install")`.
 - **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-steel-server)
   for the install walkthrough.
 

@@ -138,7 +138,7 @@ fn fresh_raise_after_handler_return_propagates_cleanly_through_nested_levels() {
 /// outer `with-handler`. Reproduces the panic-pinning test's failure,
 /// wrapped in `dynamic-wind` instead of catch-and-reraise. This would
 /// otherwise be a safe way to guarantee `declare-plugin!`'s manifest
-/// cleanup (`%finish-manifest-declare!`) runs without an inner handler,
+/// cleanup (`%finish-manifest-load!`) runs without an inner handler,
 /// but `cleanup-ran` never fires, which confirms cleanup-on-unwind stays in
 /// Rust (explicit push/pop), never Steel `dynamic-wind`. Pinned like the
 /// test above: a steel-core fix flips `cleanup-ran` to `#t` and this

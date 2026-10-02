@@ -154,7 +154,7 @@ fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
         "colliding entry must log an Error naming it; messages: {messages:?}"
     );
 
-    let id = PluginId::parse("user/tp").unwrap();
+    let id = EntryId::main(PluginId::parse("user/tp").unwrap());
     assert_eq!(
         editor_host.commands().lazy_command_owner("existing-typed"),
         None,
@@ -167,12 +167,11 @@ fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
     );
 }
 
-/// `#:config` passed to `(declare-plugin! …)` at declare time must be observable
-/// by the plugin body via `(plugin-config)` whenever activation eventually runs
-/// it. This is the general mechanism this feature relies on, exercised on the lazy
-/// path where declare and activation are separated in time.
+/// `#:config` passed to `(load-plugin! …)` must be observable by the body of an
+/// entry declared earlier, via `(plugin-config)`, whenever activation
+/// eventually runs it: declare and activation are separated in time.
 ///
-/// This depends on `declare_plugin` storing `config` into `plugin_configs`
+/// This depends on `load_plugin` storing `config` into `plugin_configs`
 /// and on `plugin_config` resolving the right `PluginId` from
 /// `plugin_stack`.
 #[test]
@@ -193,15 +192,16 @@ fn plugin_config_survives_lazy_declare_to_activation() {
     host.set_data_dir(dir.path().to_path_buf());
 
     host.eval_source(
-        r#"(declare-plugin! "user/cfgtest" #:commands '("probe") #:config (hash "key" "val"))"#,
+        r#"(declare-plugin! "user/cfgtest" #:commands '("probe"))
+           (load-plugin! "user/cfgtest" #:config (hash "key" "val"))"#,
         &mut NullHost,
     )
-    .expect("declare-plugin! with #:config must succeed");
+    .expect("declare then load with #:config must succeed");
 
     // Activation happens later, decoupled from declare: exactly the lazy
     // scenario the config channel must survive.
     host.eval_source(
-        r#"(%activate-plugin-inline! "user/cfgtest")"#,
+        r#"(%activate-plugin-inline! "user/cfgtest" "plugin.scm")"#,
         &mut NullHost,
     )
     .expect("lazy activation must succeed");
@@ -209,19 +209,16 @@ fn plugin_config_survives_lazy_declare_to_activation() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(_, msg)| msg == "val"),
-        "plugin body must observe #:config passed at declare-plugin! time; messages: {messages:?}"
+        "plugin body must observe #:config passed to load-plugin!; messages: {messages:?}"
     );
 }
 
-// ── manifest.scm (zero-trigger declare-plugin!) ─────────────────────────────
+// ── manifest.scm (load-plugin!) ─────────────────────────────────────────────
 
-/// A zero-trigger `(declare-plugin! "id")` with a `manifest.scm` present resolves
-/// and evaluates it, registering whatever the manifest declares for itself.
-///
-/// The Scheme wrapper routes empty lists to `%begin-manifest-declare!`, which
-/// keeps this call clear of the "could never be activated" backstop error.
+/// `(load-plugin! "id")` with a `manifest.scm` present evaluates it, registering
+/// whatever the manifest declares for itself.
 #[test]
-fn manifest_declare_resolves_and_evaluates_manifest_scm() {
+fn load_plugin_evaluates_manifest_scm() {
     use crate::ScriptingHost;
     use crate::host::EditorHost;
     use crate::null_host::LazyStubHost;
@@ -241,10 +238,10 @@ fn manifest_declare_resolves_and_evaluates_manifest_scm() {
     host.set_data_dir(dir.path().to_path_buf());
     let mut editor_host = LazyStubHost::default();
 
-    host.eval_source(r#"(declare-plugin! "user/mftest")"#, &mut editor_host)
-        .expect("zero-trigger declare with a manifest.scm present must succeed");
+    host.eval_source(r#"(load-plugin! "user/mftest")"#, &mut editor_host)
+        .expect("load-plugin! with a manifest.scm present must succeed");
 
-    let id = PluginId::parse("user/mftest").unwrap();
+    let id = EntryId::main(PluginId::parse("user/mftest").unwrap());
     assert!(
         matches!(
             host.registries.lazy_registry.plugins.get(&id),
@@ -259,15 +256,10 @@ fn manifest_declare_resolves_and_evaluates_manifest_scm() {
     );
 }
 
-/// `#:config` on the outer zero-trigger `declare-plugin!` call wins over whatever
-/// the manifest's own `declare-plugin!` passes (the manifest here passes none,
-/// i.e. the empty-hash default). A plugin body reading `(plugin-config)` at
-/// activation must see the user's value.
-///
-/// `declare_plugin` stores the config with `or_insert` during manifest
-/// resolution, so the manifest's own default can't clobber the user's value.
+/// `#:config` on `load-plugin!` reaches an entry the manifest declared: a plugin
+/// body reading `(plugin-config)` at activation sees the user's value.
 #[test]
-fn manifest_declare_user_config_wins_over_manifest_default() {
+fn load_plugin_config_reaches_a_manifest_declared_entry() {
     use crate::{ScriptingHost, null_host::NullHost};
     use tempfile::TempDir;
 
@@ -289,13 +281,13 @@ fn manifest_declare_user_config_wins_over_manifest_default() {
     host.set_data_dir(dir.path().to_path_buf());
 
     host.eval_source(
-        r#"(declare-plugin! "user/cfgmftest" #:config (hash "key" "val"))"#,
+        r#"(load-plugin! "user/cfgmftest" #:config (hash "key" "val"))"#,
         &mut NullHost,
     )
-    .expect("zero-trigger declare with #:config must succeed");
+    .expect("load-plugin! with #:config must succeed");
 
     host.eval_source(
-        r#"(%activate-plugin-inline! "user/cfgmftest")"#,
+        r#"(%activate-plugin-inline! "user/cfgmftest" "plugin.scm")"#,
         &mut NullHost,
     )
     .expect("lazy activation must succeed");
@@ -303,34 +295,59 @@ fn manifest_declare_user_config_wins_over_manifest_default() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(_, msg)| msg == "val"),
-        "the outer #:config must win over the manifest's own default; messages: {messages:?}"
+        "the config passed to load-plugin! must reach the entry; messages: {messages:?}"
     );
 }
 
-/// A zero-trigger declare of a plugin whose directory exists but has no
-/// `manifest.scm` is a hard error, distinct from "not installed yet".
-///
-/// A silent no-op here would hide the fact that the plugin doesn't support
-/// default activation.
+/// A plugin directory without a `manifest.scm` has nothing to declare lazily,
+/// so `load-plugin!` loads its `plugin.scm` right away.
 #[test]
-fn manifest_declare_dir_present_without_manifest_scm_errors() {
+fn load_plugin_without_manifest_loads_eagerly() {
     use crate::{ScriptingHost, null_host::NullHost};
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
     let plugin_dir = dir.path().join("plugins").join("user").join("nomf");
     std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
-    // No manifest.scm written.
+    std::fs::write(plugin_dir.join("plugin.scm"), br#"(log! 'info "body-ran")"#).unwrap();
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
 
-    let result = host.eval_source(r#"(declare-plugin! "user/nomf")"#, &mut NullHost);
-    let err = result.expect_err("zero-trigger declare must hard-error without manifest.scm");
+    host.eval_source(r#"(load-plugin! "user/nomf")"#, &mut NullHost)
+        .unwrap();
+
+    let id = EntryId::main(PluginId::parse("user/nomf").unwrap());
+    assert!(matches!(
+        host.registries.lazy_registry.plugins.get(&id),
+        Some(PluginState::Loaded)
+    ));
     assert!(
-        err.contains("manifest.scm"),
-        "error must name the missing manifest.scm; got: {err}"
+        host.peek_pending_messages()
+            .iter()
+            .any(|(_, m)| m == "body-ran")
+    );
+}
+
+/// A plugin directory with neither `manifest.scm` nor `plugin.scm` is a
+/// misconfigured plugin, not a "not installed yet" state.
+#[test]
+fn load_plugin_dir_with_neither_manifest_nor_plugin_scm_errors() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("plugins").join("user").join("empty")).unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+
+    let err = host
+        .eval_source(r#"(load-plugin! "user/empty")"#, &mut NullHost)
+        .expect_err("a plugin directory with no entry file must error");
+    assert!(
+        err.contains("neither manifest.scm nor plugin.scm"),
+        "got: {err}"
     );
 }
 
@@ -357,7 +374,7 @@ fn manifest_declaring_different_plugin_name_errors() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
 
-    let result = host.eval_source(r#"(declare-plugin! "user/wrongname")"#, &mut NullHost);
+    let result = host.eval_source(r#"(load-plugin! "user/wrongname")"#, &mut NullHost);
     assert!(
         result.is_ok(),
         "a failed manifest resolution must be contained, not propagate; got: {result:?}"
@@ -372,7 +389,7 @@ fn manifest_declaring_different_plugin_name_errors() {
         "must log an Error naming both the expected and actual ids; messages: {messages:?}"
     );
 
-    let evil_id = PluginId::parse("user/somebody-else").unwrap();
+    let evil_id = EntryId::main(PluginId::parse("user/somebody-else").unwrap());
     assert!(
         !host.registries.lazy_registry.plugins.contains_key(&evil_id),
         "the smuggled-in plugin id must not be registered"
@@ -381,7 +398,7 @@ fn manifest_declaring_different_plugin_name_errors() {
 
 /// A malformed activation entry inside a manifest.scm's own `declare-plugin!`
 /// call must name `manifest.scm` and the plugin. The user's `init.scm` only
-/// contains the bare zero-trigger declare, so a bare `declare-plugin! #:events`
+/// contains the `load-plugin!` call, so a bare `declare-plugin! #:events`
 /// error would point at a line that doesn't exist in their config.
 #[test]
 fn manifest_bad_events_names_manifest_scm_and_plugin() {
@@ -401,7 +418,7 @@ fn manifest_bad_events_names_manifest_scm_and_plugin() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
 
-    let result = host.eval_source(r#"(declare-plugin! "user/badevt")"#, &mut NullHost);
+    let result = host.eval_source(r#"(load-plugin! "user/badevt")"#, &mut NullHost);
     assert!(
         result.is_ok(),
         "a failed manifest resolution must be contained, not propagate; got: {result:?}"
@@ -418,14 +435,10 @@ fn manifest_bad_events_names_manifest_scm_and_plugin() {
     );
 }
 
-/// A manifest.scm whose own `declare-plugin!` call is itself zero-trigger must
-/// error immediately instead of recursing into manifest resolution again.
-///
-/// The `manifest_resolving.is_some()` guard in `%begin-manifest-declare!`
-/// stops the recursion, which would otherwise run until the Steel VM's own
-/// stack gave out.
+/// A manifest.scm whose own `declare-plugin!` call names no triggers must error
+/// and be contained: the entry could never activate.
 #[test]
-fn manifest_with_zero_trigger_self_declare_errors_without_recursing() {
+fn manifest_whose_declare_has_no_triggers_errors_and_is_contained() {
     use crate::{ScriptingHost, null_host::NullHost};
     use tempfile::TempDir;
 
@@ -442,18 +455,19 @@ fn manifest_with_zero_trigger_self_declare_errors_without_recursing() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
 
-    let result = host.eval_source(r#"(declare-plugin! "user/selfmf")"#, &mut NullHost);
+    let result = host.eval_source(r#"(load-plugin! "user/selfmf")"#, &mut NullHost);
     assert!(
         result.is_ok(),
-        "a manifest.scm whose own declare-plugin! is zero-trigger must error but be contained, \
+        "a manifest.scm whose own declare-plugin! names no triggers must error but be contained, \
          not recurse or propagate; got: {result:?}"
     );
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Error) && msg.contains("cannot itself be")
+            matches!(level, crate::log::LogLevel::Error)
+                && msg.contains("declares no activation entries")
         }),
-        "must log an Error explaining the recursion guard; messages: {messages:?}"
+        "must log an Error naming the missing triggers; messages: {messages:?}"
     );
 }
 
@@ -461,7 +475,7 @@ fn manifest_with_zero_trigger_self_declare_errors_without_recursing() {
 /// must still be rejected. Otherwise the outer declare silently no-ops with no
 /// plugin ever registered.
 ///
-/// The post-eval check in `%finish-manifest-declare!` catches this case.
+/// The post-eval check in `%finish-manifest-load!` catches this case.
 #[test]
 fn manifest_that_never_declares_errors() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -476,7 +490,7 @@ fn manifest_that_never_declares_errors() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
 
-    let result = host.eval_source(r#"(declare-plugin! "user/nodeclare")"#, &mut NullHost);
+    let result = host.eval_source(r#"(load-plugin! "user/nodeclare")"#, &mut NullHost);
     assert!(
         result.is_ok(),
         "manifest.scm that never calls declare-plugin! must error but be contained, not \
@@ -492,13 +506,13 @@ fn manifest_that_never_declares_errors() {
     );
 }
 
-/// A second zero-trigger declare of an already-declared plugin is a silent
-/// no-op: `manifest.scm` is not re-evaluated.
+/// A second `load-plugin!` of an already-declared plugin is a silent no-op:
+/// `manifest.scm` is not re-evaluated.
 ///
-/// Without the pre-eval state check in `%begin-manifest-declare!`, the
-/// manifest would run twice and register its activation entries twice.
+/// Without the declared-entry check in `load_plugin`, the manifest would run
+/// twice and register its activation entries twice.
 #[test]
-fn manifest_declare_second_call_is_silent_noop() {
+fn load_plugin_second_call_is_silent_noop() {
     use crate::{ScriptingHost, null_host::NullHost};
     use tempfile::TempDir;
 
@@ -515,12 +529,10 @@ fn manifest_declare_second_call_is_silent_noop() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
 
-    host.eval_source(r#"(declare-plugin! "user/twicemf")"#, &mut NullHost)
-        .expect("first zero-trigger declare must succeed");
-    host.eval_source(r#"(declare-plugin! "user/twicemf")"#, &mut NullHost)
-        .expect(
-            "second zero-trigger declare of the same plugin must be a silent no-op, not an error",
-        );
+    host.eval_source(r#"(load-plugin! "user/twicemf")"#, &mut NullHost)
+        .expect("first load-plugin! must succeed");
+    host.eval_source(r#"(load-plugin! "user/twicemf")"#, &mut NullHost)
+        .expect("second load-plugin! of the same plugin must be a silent no-op, not an error");
 
     let ran_count = host
         .peek_pending_messages()
@@ -529,6 +541,6 @@ fn manifest_declare_second_call_is_silent_noop() {
         .count();
     assert_eq!(
         ran_count, 1,
-        "manifest.scm must be evaluated exactly once across repeated zero-trigger declares"
+        "manifest.scm must be evaluated once across repeated load-plugin! calls"
     );
 }

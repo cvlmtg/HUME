@@ -4,15 +4,15 @@ fn fake_path() -> PathBuf {
     PathBuf::from("/fake/plugin.scm")
 }
 
-fn id_core(name: &str) -> PluginId {
-    PluginId::Core(name.to_string())
+fn id_core(name: &str) -> EntryId {
+    EntryId::main(PluginId::Core(name.to_string()))
 }
 
-fn id_user(user: &str, repo: &str) -> PluginId {
-    PluginId::User {
+fn id_user(user: &str, repo: &str) -> EntryId {
+    EntryId::main(PluginId::User {
         user: user.to_string(),
         repo: repo.to_string(),
-    }
+    })
 }
 
 // ── PluginState inserted for resolved plugins ─────────────────────────

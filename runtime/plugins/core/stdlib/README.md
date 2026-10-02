@@ -14,14 +14,15 @@ this plugin.
 ## Usage
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 ```
 
 - **Depends on:** nothing.
-- **Activates on:** the first call to any command below. Its `manifest.scm` lists every
-  one of them as an activation trigger. `(load-plugin! "core:stdlib")` also works, loading
-  it eagerly instead.
-- **Overrides:** declaring it with an explicit `#:commands`/`#:events`/`#:languages` list
+- **Activates on:** the first call to any command below. Its `manifest.scm` has one
+  `declare-plugin!` entry for `plugin.scm` whose `#:commands` list names every one of them.
+  `load-plugin!` registers those stubs and does not run `plugin.scm` until one is called.
+- **Overrides:** declaring it before `load-plugin!` with an explicit
+  `#:commands`/`#:events`/`#:languages` list
   that omits a helper a dependent needs leaves that helper with no activation stub; see
   the [core plugins index](../README.md#depending-on-corestdlib).
 - **User docs:** [Standard Library](https://cvlmtg.github.io/HUME/standard-library.html)

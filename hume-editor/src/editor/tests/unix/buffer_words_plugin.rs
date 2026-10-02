@@ -542,7 +542,10 @@ fn an_invalid_match_config_fails_the_load() {
     let id = PluginId::Core("buffer-words".to_string());
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Failed)
         ),
         "core:buffer-words must be marked Failed after its body raises"
@@ -885,7 +888,7 @@ fn buffer_words_and_lsp_rank_together_lsp_first() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\")",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\") (%activate-plugin-inline! \"core:lsp\" #f)",
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -969,7 +972,7 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\")",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\") (%activate-plugin-inline! \"core:lsp\" #f)",
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1051,7 +1054,7 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
     eval_with_real_host(
         &mut ed,
         &mut host,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\")",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\") (%activate-plugin-inline! \"core:lsp\" #f)",
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1144,7 +1147,7 @@ fn once_something_is_typed_lsp_always_outranks_buffer_words() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\")",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\") (%activate-plugin-inline! \"core:lsp\" #f)",
         tmp.path(),
     );
     ed.scripting = Some(host);

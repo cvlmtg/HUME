@@ -10,9 +10,10 @@ use std::hash::{Hash, Hasher};
 /// A validated plugin identity: case-preserving for display and disk paths,
 /// case-insensitive for equality and hashing.
 ///
-/// Two valid forms:
+/// Three valid forms:
 /// - `Core(name)`: a bundled core plugin: `core:<name>`
 /// - `User { user, repo }`: a third-party plugin: `<user>/<repo>`
+/// - `Local(path)`: one `.scm` file beside `init.scm`: `./<path>.scm`, holding `<path>.scm`
 ///
 /// `"SomeUser/CoolPlugin"` and `"someuser/coolplugin"` are equal on
 /// case-insensitive filesystems (APFS, NTFS) while the original casing is
@@ -21,6 +22,7 @@ use std::hash::{Hash, Hasher};
 pub enum PluginId {
     Core(String),
     User { user: String, repo: String },
+    Local(String),
 }
 
 impl PluginId {
@@ -29,6 +31,7 @@ impl PluginId {
     /// Valid forms:
     /// - `core:<name>`: bundled core plugin
     /// - `<user>/<repo>`: third-party plugin (exactly one `/`)
+    /// - `./<path>.scm`: a local file, relative to `init.scm`'s directory
     ///
     /// Segments must be non-empty, must not be `.` or `..`, and must not
     /// contain `/`, `\`, `"`, `:`, or NUL, ensuring the components are safe
@@ -44,6 +47,27 @@ impl PluginId {
                 ));
             }
             return Ok(PluginId::Core(core_name.to_string()));
+        }
+        if let Some(rel) = name.strip_prefix("./") {
+            let mut segments = rel.split('/').peekable();
+            let mut last = "";
+            let mut safe = true;
+            while let Some(segment) = segments.next() {
+                safe &= hume_platform::path::is_safe_segment(segment);
+                if segments.peek().is_none() {
+                    last = segment;
+                }
+            }
+            let stem_ok = last
+                .strip_suffix(".scm")
+                .is_some_and(|stem| !stem.is_empty());
+            if !safe || !stem_ok {
+                return Err(format!(
+                    "invalid local plugin path '{name}': expected './<file>.scm' relative to \
+                     init.scm's directory, with no '.' or '..' segments"
+                ));
+            }
+            return Ok(PluginId::Local(rel.to_string()));
         }
         if let Some((user, repo)) = name.split_once('/') {
             if repo.contains('/') {
@@ -64,8 +88,24 @@ impl PluginId {
             });
         }
         Err(format!(
-            "invalid plugin name '{name}': expected 'core:<name>' or '<user>/<repo>'"
+            "invalid plugin name '{name}': expected 'core:<name>', '<user>/<repo>' or './<file>.scm'"
         ))
+    }
+
+    /// [`PluginId::parse`] for a plugin that lives in a plugin directory:
+    /// a local file is an error.
+    pub fn parse_installed(name: &str) -> Result<Self, String> {
+        match Self::parse(name)? {
+            PluginId::Local(_) => Err(format!(
+                "'{name}' is a local file, not an installed plugin; declare it with \
+                 (declare-plugin! \"{name}\" #:commands …)"
+            )),
+            id => Ok(id),
+        }
+    }
+
+    pub fn is_local(&self) -> bool {
+        matches!(self, PluginId::Local(_))
     }
 }
 
@@ -74,6 +114,7 @@ impl fmt::Display for PluginId {
         match self {
             PluginId::Core(name) => write!(f, "core:{name}"),
             PluginId::User { user, repo } => write!(f, "{user}/{repo}"),
+            PluginId::Local(path) => write!(f, "./{path}"),
         }
     }
 }
@@ -83,7 +124,7 @@ impl fmt::Display for Owner {
         match self {
             Owner::Core => f.write_str("hume"),
             Owner::User => f.write_str("user"),
-            Owner::Plugin(pid) => fmt::Display::fmt(pid, f),
+            Owner::Plugin(entry) => fmt::Display::fmt(&entry.plugin, f),
         }
     }
 }
@@ -99,6 +140,7 @@ impl PartialEq for PluginId {
             (PluginId::User { user: ua, repo: ra }, PluginId::User { user: ub, repo: rb }) => {
                 ua.eq_ignore_ascii_case(ub) && ra.eq_ignore_ascii_case(rb)
             }
+            (PluginId::Local(a), PluginId::Local(b)) => a.eq_ignore_ascii_case(b),
             _ => false,
         }
     }
@@ -130,6 +172,102 @@ impl Hash for PluginId {
                     c.to_ascii_lowercase().hash(state);
                 }
             }
+            PluginId::Local(path) => {
+                2u8.hash(state);
+                for c in path.chars() {
+                    c.to_ascii_lowercase().hash(state);
+                }
+            }
+        }
+    }
+}
+
+/// A validated file name inside a plugin directory that a plugin entry loads:
+/// one path segment ending in `.scm`. Case-insensitive for equality and
+/// hashing, like [`PluginId`], since the same filesystems fold the case of the
+/// file it names.
+#[derive(Debug, Clone)]
+pub struct EntryFile(String);
+
+impl EntryFile {
+    const MAIN: &'static str = "plugin.scm";
+
+    /// The entry every plugin has: `plugin.scm`.
+    pub fn main() -> Self {
+        Self(Self::MAIN.to_string())
+    }
+
+    /// Validate `name` as an entry file: a safe path segment with a non-empty
+    /// stem and a `.scm` extension.
+    pub fn parse(name: &str) -> Result<Self, String> {
+        let stem_ok = name
+            .strip_suffix(".scm")
+            .is_some_and(|stem| !stem.is_empty());
+        if !stem_ok || !hume_platform::path::is_safe_segment(name) {
+            return Err(format!(
+                "invalid plugin entry '{name}': expected a file name ending in .scm \
+                 with no path separators"
+            ));
+        }
+        Ok(Self(name.to_string()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn is_main(&self) -> bool {
+        self.0.eq_ignore_ascii_case(Self::MAIN)
+    }
+}
+
+impl PartialEq for EntryFile {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq_ignore_ascii_case(&other.0)
+    }
+}
+
+impl Eq for EntryFile {}
+
+impl Hash for EntryFile {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for c in self.0.chars() {
+            c.to_ascii_lowercase().hash(state);
+        }
+    }
+}
+
+/// One loadable entry of a plugin: the unit that has its own activation
+/// triggers, lifecycle state, and rollback scope.
+///
+/// Every plugin has a [`EntryFile::main`] entry; `#:entry` on
+/// `declare-plugin!` adds others that share the plugin's directory, config
+/// and identity. A local plugin has only its main entry, and that entry is
+/// the file the id names.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EntryId {
+    pub plugin: PluginId,
+    pub file: EntryFile,
+}
+
+impl EntryId {
+    pub fn new(plugin: PluginId, file: EntryFile) -> Self {
+        Self { plugin, file }
+    }
+
+    /// The `plugin.scm` entry of `plugin`.
+    pub fn main(plugin: PluginId) -> Self {
+        Self::new(plugin, EntryFile::main())
+    }
+}
+
+/// `core:p` for the main entry, `core:p (x.scm)` for a secondary one.
+impl fmt::Display for EntryId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.file.is_main() {
+            fmt::Display::fmt(&self.plugin, f)
+        } else {
+            write!(f, "{} ({})", self.plugin, self.file.as_str())
         }
     }
 }
@@ -144,7 +282,7 @@ impl Hash for PluginId {
 pub(crate) enum Owner {
     Core,
     User,
-    Plugin(PluginId),
+    Plugin(EntryId),
 }
 
 /// The `CURRENT_PLUGIN` attribution stack.
@@ -155,12 +293,12 @@ pub(crate) enum Owner {
 /// only ever a *prior*, never the active attribution.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct PluginStack {
-    stack: Vec<PluginId>,
+    stack: Vec<EntryId>,
 }
 
 impl PluginStack {
     /// Push `id` onto the stack when entering a plugin body (via `begin_lazy_activation`).
-    pub(crate) fn push(&mut self, id: PluginId) {
+    pub(crate) fn push(&mut self, id: EntryId) {
         self.stack.push(id);
     }
 
@@ -190,11 +328,11 @@ impl PluginStack {
         }
     }
 
-    /// The [`PluginId`] whose body is currently executing, if any.
+    /// The [`EntryId`] whose body is currently executing, if any.
     ///
     /// Valid during both eager (`load-plugin!`) and lazy (`declare-plugin!`,
     /// activated later) bodies, since both push here for the duration of the eval.
-    pub(crate) fn current(&self) -> Option<&PluginId> {
+    pub(crate) fn current(&self) -> Option<&EntryId> {
         self.stack.last()
     }
 }

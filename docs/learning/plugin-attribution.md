@@ -44,8 +44,8 @@ use the original casing.
 Command registrations are attributed at the time `(define-command! …)` is called: the
 current stack top is stored in an internal owner map (command name → owner string).
 
-For lazy plugins that declare commands in their manifest with `(declare-plugin! … #:commands …)`,
-the owner is pre-seeded immediately at declaration time — before the plugin body runs —
+For lazy plugins whose manifest lists commands, the owner is pre-seeded as soon as the
+plugin is brought in — before the plugin body runs —
 so `(command-plugin "cmd")` resolves correctly even when queried before the first
 activation.
 
@@ -73,8 +73,8 @@ plugin body. The plugin is marked as failed, any commands it partially registere
 rolled back, and the originally registered command stays live. There is no shadowing; the
 first registration wins unconditionally.
 
-The reverse is also caught: if `declare-plugin!` lists a `#:commands` entry that an eager
-command already occupies, that entry is dropped with a non-fatal error. If it was the
+The reverse is also caught: if a manifest or a declared entry lists a command that an
+eager command already occupies, that entry is dropped with a non-fatal error. If it was the
 sole activation entry, the declaration itself hard-errors (a plugin with no remaining
 activation entries can never load).
 

@@ -93,7 +93,7 @@ fn setup_diagnostics(file: &Path, tmp: &Path) -> (Editor, RealRuntimeGuard) {
         &mut ed,
         &mut host,
         r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp")"#,
+(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp,
     );
     ed.scripting = Some(host);
@@ -165,7 +165,7 @@ fn setup_refs(
         &mut ed,
         &mut host,
         r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp")"#,
+(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp,
     );
     ed.scripting = Some(host);

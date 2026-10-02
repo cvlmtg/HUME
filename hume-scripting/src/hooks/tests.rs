@@ -1,7 +1,8 @@
 use super::*;
+use crate::attribution::PluginId;
 
-fn pid(s: &str) -> PluginId {
-    PluginId::parse(s).unwrap()
+fn pid(s: &str) -> EntryId {
+    EntryId::main(PluginId::parse(s).unwrap())
 }
 
 fn keys(ks: &[&str]) -> Option<Box<[String]>> {

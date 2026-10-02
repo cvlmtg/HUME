@@ -24,6 +24,9 @@ pub(crate) struct ScriptDirs {
     pub(crate) data_dir_display: Option<PathBuf>,
     /// `<runtime>/` as a display path (same UNC reasoning).
     pub(crate) runtime_dir_display: Option<PathBuf>,
+    /// The directory holding the `init.scm` being evaluated; a local plugin's
+    /// `./file.scm` resolves against it. `None` until `eval_init` sets it.
+    pub(crate) init_dir: Option<PathBuf>,
 }
 
 impl ScriptDirs {
@@ -49,6 +52,7 @@ impl ScriptDirs {
             runtime_dir,
             data_dir_display,
             runtime_dir_display,
+            init_dir: None,
         }
     }
 }

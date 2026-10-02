@@ -7,31 +7,39 @@ For ownership and conflict rules see [Plugin Attribution: Who Owns What](plugin-
 
 ---
 
-## Two verbs, two timings
+## Lazy and eager plugins
 
-There are two ways to bring a plugin into the editor from `init.scm`:
+A plugin gets into the editor with one call from `init.scm`:
 
 ```scheme
-(load-plugin! "alice/my-theme")           ; eager — body runs now, at startup
-(declare-plugin! "alice/lazy-thing"       ; lazy — body deferred until first use
-  #:commands '("my-cmd"))
+(load-plugin! "alice/my-theme")
+(load-plugin! "alice/lazy-thing")
 ```
 
-**Eager plugins** (`load-plugin!`) evaluate their body immediately. Use this for a plugin
-whose only possible trigger is something its own body sets up — a key binding it adds or
-overrides, an option, a hook — since nothing outside the plugin could ever fire first and
-wake it.
+What happens next depends on what the plugin ships, not on how `init.scm` names it.
 
-**Lazy plugins** (`declare-plugin!`) don't evaluate their body until the first activation
-entry is exercised. This keeps startup fast: a Rust formatting plugin whose commands you
-might never actually call in a session costs nothing until you do.
+**A plugin with a manifest is lazy.** The manifest lists the entry points that should
+wake the plugin: commands, events, languages. The editor records them and leaves the
+plugin's code alone until the first one is exercised. This keeps startup fast: a Rust
+formatting plugin whose commands you might never actually call in a session costs nothing
+until you do. Naming the plugin in `init.scm` never forces it to load early.
+
+**A plugin without a manifest is eager.** Its code runs during startup. This suits a
+plugin whose only possible trigger is something its own code sets up — a key binding it
+adds or overrides, an option, a hook — since nothing outside the plugin could ever fire
+first and wake it.
+
+A config can also override a manifest. Declaring entry points for an installed plugin
+ahead of its load call replaces the manifest's list, and the plugin stays lazy. A script
+that sits beside `init.scm` can be declared the same way, so it loads lazily without being
+a full plugin.
 
 ---
 
 ## Passing configuration
 
-Both verbs accept an optional `#:config` value — typically a hash — that the plugin
-body can read back for itself:
+The load call accepts an optional config value — typically a hash — that the plugin
+code can read back for itself. It is the only way to pass configuration:
 
 ```scheme
 (load-plugin! "alice/my-theme" #:config (hash "variant" "dark"))
@@ -46,38 +54,34 @@ body can read back for itself:
     (load-light-palette))
 ```
 
-`(plugin-config)` returns the calling plugin's own config — never another plugin's —
-while its body is being evaluated: instantly for an eager plugin, or at activation
-time for a lazy one (the value recorded at `declare-plugin!` time is kept until then,
+The config is the calling plugin's own — never another plugin's — and it is readable
+only while the plugin's code is being evaluated: at startup for an eager plugin, or at
+activation time for a lazy one (the value recorded by the load call is kept until then,
 even much later in the session). Called from anywhere else, such as inside a command
-the plugin registers, it returns an empty hash — commands run after the body has
-already finished, outside that window. Read the config once at the top of the body,
-as `cfg` does above, and capture whatever a command needs from it in a `define`. A
-plugin author decides what keys their config hash understands and documents them for
-users.
+the plugin registers, it is an empty hash — commands run after the code has
+already finished, outside that window. Read the config once at the top, as `cfg` does
+above, and capture whatever a command needs from it in a `define`. A plugin author
+decides what keys their config hash understands and documents them for users.
 
-When the same plugin is mentioned more than once, the two verbs resolve differently:
-duplicate `declare-plugin!` calls keep the *first* config, while `load-plugin!` always
-overwrites whatever was recorded. So a bare `(load-plugin! "x")` after a configured
-declare runs the body with the empty default — the most recent explicit
-load wins.
+A plugin that activates before its load call has run sees an empty config, so a custom
+declaration belongs directly above the load call.
 
 ---
 
 ## The manifest and the body
 
-When HUME processes a `declare-plugin!` call with at least one activation entry, it
-records a *manifest* — a description of what the plugin offers — and nothing else. The
-plugin file is not read, no code runs. A `declare-plugin!` with *no* entries instead
-evaluates the plugin's own small manifest file, which declares the plugin with its
-author-chosen default activation entries — a bare declare lets the plugin supply its own
-triggers.
+A manifest is a description of what the plugin offers, and nothing else. Reading it does
+not read the plugin's code, so no plugin code runs. It sits in its own small file beside
+the plugin, written by the plugin's author, who chooses the default entry points. A plugin
+can have several entries, each naming a different file of the plugin with its own entry
+points, so a heavy part loads only when the feature that needs it is used.
 
-The manifest contains three optional lists:
+Each entry contains up to four optional lists:
 
 | Keyword | Meaning |
 |---------|---------|
 | `#:commands` | Command names the plugin will register |
+| `#:typed-commands` | Command-line (`:`) command names the plugin will register |
 | `#:events` | Lifecycle hooks that should trigger loading — a list of quoted symbols |
 | `#:languages` | Buffer language names that should trigger loading |
 
@@ -92,11 +96,11 @@ and `bind-key!` to wire everything up; after that, commands and hooks remain act
 ## Activation entries
 
 A lazy plugin needs at least one activation entry — with none, there is no moment that
-would ever trigger loading. You can supply the entries yourself, or omit them entirely
-and let the plugin's bundled manifest supply its author-chosen defaults (an error if the
-plugin ships none).
+would ever trigger loading. A plugin's manifest supplies its author-chosen defaults. You
+can replace them with your own entries; a directory with neither a manifest nor a main
+file is an error.
 
-The three entry types serve different loading patterns:
+The entry types serve different loading patterns:
 
 **`#:commands`** is the most common. Declare the command names the plugin will register;
 HUME creates placeholder stubs so those names appear in `:` command-line completion
@@ -106,6 +110,7 @@ implementation.
 
 ```scheme
 (declare-plugin! "alice/rust-tools" #:commands '("rust-check" "rust-fmt"))
+(load-plugin! "alice/rust-tools")
 (bind-key! 'normal "space r" "rust-check")
 ; pressing <space>r the first time loads alice/rust-tools, then runs rust-check
 ```
@@ -117,6 +122,7 @@ symbols, the same form `register-hook!` takes — not strings, unlike `#:command
 
 ```scheme
 (declare-plugin! "alice/autosave" #:events '(on-buffer-open))
+(load-plugin! "alice/autosave")
 ; body runs the first time any buffer is opened
 ```
 
@@ -126,6 +132,7 @@ named languages. This is the preferred pattern for language-specific plugins (se
 
 ```scheme
 (declare-plugin! "alice/rust-tools" #:languages '("rust"))
+(load-plugin! "alice/rust-tools")
 ; body runs the first time a buffer language is set to "rust"
 ```
 
@@ -183,6 +190,7 @@ so its identity exists from startup, then declare the tooling lazily:
 ; init.scm
 (define-language! "mylang" '("ml"))                           ; identity — eager
 (declare-plugin! "alice/mylang-tools" #:languages '("mylang")) ; behavior — lazy
+(load-plugin! "alice/mylang-tools")
 ```
 
 Once the body has run (on the first match), register `on-language-set` *inside the body*
@@ -247,25 +255,26 @@ before the plugin's own bindings exist. A plugin that rebinds a key which alread
 something is a sharper case of the same problem: until it activates, that key keeps doing
 whatever it did before, which is often worse than doing nothing. Either way, if a
 plugin's own bindings are the only path to its commands — nothing else can dispatch them,
-no event or language would ever fire first — it must use `load-plugin!` (eager).
+no event or language would ever fire first — it ships no manifest, so it loads eagerly.
 
 ---
 
 ## Declaring dependencies
 
-Plugins cannot load or declare other plugins from their own body. Every plugin needed —
+Plugins cannot load other plugins from their own body. Every plugin needed —
 including those that exist only to provide commands that other plugins call — must be
-declared at the top level of `init.scm`. The order matters: declare or load a dependency
+named at the top level of `init.scm`. The order matters: load a dependency
 before the plugin that calls its commands, so the command names exist by the time the
 dependent plugin is activated.
 
 ```scheme
-; init.scm — declare dependencies before dependents
+; init.scm — load dependencies before dependents
 (load-plugin! "alice/formatter")
 (declare-plugin! "bob/on-save-format" #:events '(on-buffer-save))
+(load-plugin! "bob/on-save-format")
 ```
 
-`:plugin-status` (alias `:plugins`) lists every declared plugin with its current state
+`:plugin-status` (alias `:plugins`) lists every plugin named in `init.scm` with its current state
 and any activation entries still pending — useful for checking whether dependencies are
 loaded before a dependent plugin activates.
 

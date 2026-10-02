@@ -91,7 +91,7 @@ fn setup_with(
         &mut ed,
         &mut host,
         r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp")"#,
+(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp,
     );
     ed.scripting = Some(host);

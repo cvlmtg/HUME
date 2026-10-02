@@ -100,14 +100,14 @@ fn plugin_stack_empty_is_user() {
 fn plugin_stack_push_makes_plugin_owner() {
     let mut stack = PluginStack::default();
     let x = pid("user/x");
-    stack.push(x.clone());
-    assert_eq!(stack.current_owner(), Owner::Plugin(x));
+    stack.push(EntryId::main(x.clone()));
+    assert_eq!(stack.current_owner(), Owner::Plugin(EntryId::main(x)));
 }
 
 #[test]
 fn plugin_stack_pop_returns_to_user() {
     let mut stack = PluginStack::default();
-    stack.push(pid("user/x"));
+    stack.push(EntryId::main(pid("user/x")));
     stack.pop();
     assert_eq!(stack.current_owner(), Owner::User);
 }
@@ -117,11 +117,14 @@ fn plugin_stack_nested_plugins() {
     let mut stack = PluginStack::default();
     let x = pid("user/x");
     let y = pid("user/y");
-    stack.push(x);
-    stack.push(y.clone());
-    assert_eq!(stack.current_owner(), Owner::Plugin(y));
+    stack.push(EntryId::main(x));
+    stack.push(EntryId::main(y.clone()));
+    assert_eq!(stack.current_owner(), Owner::Plugin(EntryId::main(y)));
     stack.pop();
-    assert_eq!(stack.current_owner(), Owner::Plugin(pid("user/x")));
+    assert_eq!(
+        stack.current_owner(),
+        Owner::Plugin(EntryId::main(pid("user/x")))
+    );
 }
 
 #[test]
@@ -129,4 +132,108 @@ fn plugin_stack_pop_on_empty_is_noop() {
     let mut stack = PluginStack::default();
     stack.pop(); // must not panic
     assert_eq!(stack.current_owner(), Owner::User);
+}
+
+// ── EntryFile / EntryId ───────────────────────────────────────────────────
+
+#[test]
+fn entry_file_main_is_plugin_scm() {
+    assert_eq!(EntryFile::main().as_str(), "plugin.scm");
+}
+
+#[test]
+fn entry_file_accepts_a_scm_segment() {
+    assert_eq!(
+        EntryFile::parse("commands.scm").unwrap().as_str(),
+        "commands.scm"
+    );
+}
+
+#[test]
+fn entry_file_rejects_non_segments_and_non_scm() {
+    for bad in [
+        "", ".scm", "../x.scm", "a/b.scm", "a\\b.scm", "x.txt", "x", "x\".scm",
+    ] {
+        assert!(EntryFile::parse(bad).is_err(), "{bad:?} must be rejected");
+    }
+}
+
+#[test]
+fn entry_file_equality_ignores_ascii_case() {
+    let a = EntryFile::parse("Install.scm").unwrap();
+    let b = EntryFile::parse("install.scm").unwrap();
+    assert_eq!(a, b);
+    let mut set = std::collections::HashSet::new();
+    set.insert(a);
+    assert!(set.contains(&b));
+}
+
+#[test]
+fn entry_id_distinguishes_entries_of_one_plugin() {
+    let main = EntryId::main(pid("core:p"));
+    let other = EntryId::new(pid("core:p"), EntryFile::parse("x.scm").unwrap());
+    assert_ne!(main, other);
+    assert_eq!(main.plugin, other.plugin);
+}
+
+#[test]
+fn entry_id_display_names_the_file_only_for_secondary_entries() {
+    let main = EntryId::main(pid("core:p"));
+    let other = EntryId::new(pid("core:p"), EntryFile::parse("x.scm").unwrap());
+    assert_eq!(main.to_string(), "core:p");
+    assert_eq!(other.to_string(), "core:p (x.scm)");
+}
+
+// ── PluginId::Local ───────────────────────────────────────────────────────
+
+#[test]
+fn parse_local_accepts_files_beside_init() {
+    for name in ["./a.scm", "./sub/a.scm", "./Sub/My-File.scm"] {
+        let id = PluginId::parse(name).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert!(id.is_local(), "{name}");
+        assert_eq!(
+            id.to_string(),
+            name,
+            "Display must round-trip through parse"
+        );
+    }
+}
+
+#[test]
+fn parse_local_rejects_unsafe_or_non_scm_paths() {
+    for name in [
+        "a.scm",
+        "/a.scm",
+        "./../a.scm",
+        "./sub/../a.scm",
+        "././a.scm",
+        ".//a.scm",
+        "./.scm",
+        "./a",
+        "./a.txt",
+        ".\\a.scm",
+        "./a\"b.scm",
+        "../a.scm",
+    ] {
+        assert!(PluginId::parse(name).is_err(), "{name} must be rejected");
+    }
+}
+
+#[test]
+fn local_ids_compare_case_insensitively_and_never_equal_installed_ids() {
+    assert_eq!(pid("./Foo.scm"), pid("./foo.scm"));
+    assert_ne!(pid("./a.scm"), pid("core:a"));
+    let hash = |id: &PluginId| {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        id.hash(&mut h);
+        h.finish()
+    };
+    assert_eq!(hash(&pid("./Foo.scm")), hash(&pid("./foo.scm")));
+}
+
+#[test]
+fn parse_installed_rejects_local_ids() {
+    assert!(PluginId::parse_installed("./a.scm").is_err());
+    assert!(PluginId::parse_installed("core:a").is_ok());
+    assert!(PluginId::parse_installed("alice/bar").is_ok());
 }

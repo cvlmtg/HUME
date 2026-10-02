@@ -10,15 +10,16 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 ## Usage
 
 ```scheme
-(declare-plugin! "core:stdlib")
-(declare-plugin! "core:plum")
+(load-plugin! "core:stdlib")
+(load-plugin! "core:plum")
 ```
 
 - **Depends on:** `core:stdlib`. PLUM calls `stdlib/find`, `stdlib/write-file!`,
   `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs`,
   `stdlib/safe-path-segment?` and `stdlib/resolve-lang-arg` through `call!`.
-- **Activates on:** the first `:plum-*` command typed. `(load-plugin! "core:plum")` also
-  works, loading it eagerly instead.
+- **Activates on:** the first `:plum-*` command typed, or the first call to
+  `plum-ensure-grammars`. Its `manifest.scm` has one entry for `plugin.scm` listing
+  `plum-ensure-grammars` in `#:commands` and every `:plum-*` command in `#:typed-commands`.
 - **Not required for what is already installed.** PLUM is a plugin like any other, so
   leaving it out removes only the management commands below. Installed plugins, grammars
   and themes keep working, including syntax highlighting: registering already-compiled

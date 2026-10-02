@@ -80,15 +80,15 @@ To use something newer that has not shipped in a release, check for it directly 
 
 | Call | Effect |
 |------|--------|
-| `(declare-plugin! name #:commands #:typed-commands #:events #:languages #:config)` | Lazy plugin registration |
-| `(load-plugin! name #:config)` | Eager plugin registration |
+| `(declare-plugin! name #:entry #:commands #:typed-commands #:events #:languages)` | Declares the triggers that load a plugin lazily. Used in a `manifest.scm`, or in `init.scm` for a local `./file.scm` or to give an installed plugin custom triggers; `#:entry` names another file of the plugin to load on its own triggers |
+| `(load-plugin! name #:config)` | Brings in a plugin. It loads lazily when the plugin ships a `manifest.scm` and at startup otherwise; `#:config` is the only way to pass configuration |
 | `(resolve-plugin-path name)` | The plugin's resolved file path if it exists on disk, else `#f`; raises for a malformed name |
-| `(loaded-plugins)` | List of plugin names that have finished activating |
-| `(declared-plugins)` | List of every declared plugin name, `core:*` included |
-| `(plugin-config)` | The calling plugin's own `#:config` value, or an empty hash |
+| `(loaded-plugins)` | List of plugin names whose code has finished loading, local files included |
+| `(declared-plugins)` | List of installed plugin names named by `load-plugin!` or `declare-plugin!`, `core:*` included; local `./file.scm` entries are not listed |
+| `(plugin-config)` | The `#:config` value the user passed to `load-plugin!`, or an empty hash |
 | `(plugin-dir)` | The directory holding the calling plugin's own files, or `#f` outside a plugin body |
 
-Full picture (activation timing, `#:config` semantics, dependency checks) in [Plugins](plugins.md), particularly [How plugins are loaded](plugins.md#how-plugins-are-loaded) and [Depending on another plugin](plugins.md#depending-on-another-plugin).
+Full picture (load timing, `#:config` semantics, dependency checks) in [Plugins](plugins.md), particularly [How plugins are loaded](plugins.md#how-plugins-are-loaded) and [Depending on another plugin](plugins.md#depending-on-another-plugin).
 
 ## Hooks
 

@@ -11,7 +11,7 @@
 use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 
-use super::attribution::PluginId;
+use super::attribution::{EntryId, PluginId};
 
 /// Lifecycle state of a declared plugin.
 #[derive(Debug)]
@@ -40,11 +40,11 @@ pub(crate) enum PluginState {
 pub(crate) struct LazyRegistry {
     /// Per-plugin lifecycle state.  Only plugins whose path was resolved at
     /// declaration time appear here; absent-path plugins are silently skipped.
-    pub(crate) plugins: FxHashMap<PluginId, PluginState>,
+    pub(crate) plugins: FxHashMap<EntryId, PluginState>,
     /// 1:many map: event name → plugins that activate on that event.
-    pub(crate) activation_events: FxHashMap<String, Vec<PluginId>>,
+    pub(crate) activation_events: FxHashMap<String, Vec<EntryId>>,
     /// 1:many map: language name → plugins that activate when the language is set.
-    pub(crate) activation_languages: FxHashMap<String, Vec<PluginId>>,
+    pub(crate) activation_languages: FxHashMap<String, Vec<EntryId>>,
 }
 
 impl LazyRegistry {
@@ -62,7 +62,7 @@ impl LazyRegistry {
     /// - All plugins are inserted as `Declared`; they activate when an entry is exercised.
     pub(crate) fn declare(
         &mut self,
-        id: PluginId,
+        id: EntryId,
         path: Option<PathBuf>,
         events: Vec<String>,
         languages: Vec<String>,
@@ -90,6 +90,20 @@ impl LazyRegistry {
         }
     }
 
+    /// Whether any entry of `plugin` has been declared.
+    pub(crate) fn declares_plugin(&self, plugin: &PluginId) -> bool {
+        self.plugins.keys().any(|entry| entry.plugin == *plugin)
+    }
+
+    /// Every declared entry of `plugin`.
+    pub(crate) fn entries_of(&self, plugin: &PluginId) -> Vec<EntryId> {
+        self.plugins
+            .keys()
+            .filter(|entry| entry.plugin == *plugin)
+            .cloned()
+            .collect()
+    }
+
     /// Drop all activation-map entries owned by `id` (called on load or fail).
     ///
     /// After `finish_lazy_activation` completes (success or error), the
@@ -97,7 +111,7 @@ impl LazyRegistry {
     /// Dangling activation entries would re-fire activation, so they must be
     /// removed unconditionally on both code paths. Command stubs are dropped
     /// separately via `CommandHost::unregister_lazy_stubs_of`.
-    pub(super) fn drop_activations_for(&mut self, id: &PluginId) {
+    pub(super) fn drop_activations_for(&mut self, id: &EntryId) {
         self.activation_events.retain(|_, plugins| {
             plugins.retain(|p| p != id);
             !plugins.is_empty()
@@ -110,19 +124,21 @@ impl LazyRegistry {
 
     /// Build a human-readable status table for `:plugin-status`.
     ///
-    /// Rows are sorted by plugin id for stable output.  For plugins still in
-    /// the `Declared` state (not yet loaded), the pending activation entries are
-    /// read from the live maps, exactly the entries the plugin is still waiting
-    /// on.  Once a plugin loads or fails, `finish_lazy_activation` drops its
-    /// entries from the maps, so `Loaded`/`Failed` rows show no activations.
+    /// One row per plugin entry, sorted by id for stable output: a secondary
+    /// entry reads `plugin (file)` and sorts right after its plugin's main
+    /// entry.  For entries still in the `Declared` state (not yet loaded), the
+    /// pending activation entries are read from the live maps: the
+    /// triggers the entry is still waiting on.  Once an entry loads or fails,
+    /// `finish_lazy_activation` drops its triggers from the maps, so
+    /// `Loaded`/`Failed` rows show no activations.
     ///
     /// `lazy_cmds` is the editor's current `Lazy`-stub list (`name`, owning
-    /// plugin, `is_typed`), the sole source of pending command activations;
+    /// entry, `is_typed`), the sole source of pending command activations;
     /// this registry does not track them itself.
     ///
     /// Returns `""` if no plugins are declared; the caller reports "No plugins
     /// declared" rather than opening an empty scratch view.
-    pub(crate) fn format_status(&self, lazy_cmds: &[(String, PluginId, bool)]) -> String {
+    pub(crate) fn format_status(&self, lazy_cmds: &[(String, EntryId, bool)]) -> String {
         if self.plugins.is_empty() {
             return String::new();
         }
@@ -186,7 +202,7 @@ impl LazyRegistry {
     /// Only meaningful for `Declared` plugins: on load/fail
     /// `finish_lazy_activation` drops the plugin's entries, so a non-`Declared`
     /// id yields nothing.
-    fn pending_activations(&self, id: &PluginId, lazy_cmds: &[(String, PluginId, bool)]) -> String {
+    fn pending_activations(&self, id: &EntryId, lazy_cmds: &[(String, EntryId, bool)]) -> String {
         let mut parts = Vec::new();
 
         // Split by kind: `cmd:` names are reachable once bound to a key,

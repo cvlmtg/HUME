@@ -25,7 +25,7 @@ regeneration run order, not repeated here). The LSP server catalogs live with th
 4. `grammars.scm`: reads `grammar-sources.scm` lazily, only once a grammar is actually
   installed or a `:plum-*-grammar` command runs, not at startup.
 5. the user's `init.scm`
-6. plugins declared from `init.scm`.
+6. plugins named by `load-plugin!`/`declare-plugin!` in `init.scm`.
 
 Each file is read via `host.runtime_dir()`; a missing runtime directory or a missing file is a
 silent no-op, not an error. Only a file that exists but fails to parse is reported.

@@ -1502,3 +1502,15 @@ churn.
 (group by caller, separate wrappers from real call sites) before putting a
 number in a report. Even a true number is not a reason to recommend the
 option that leaves wasted work or a convention-kept invariant in place.
+
+## L34 — A review finding was relayed before it was checked against the code (2026-10-02)
+
+**Root cause:** A code-review run reported that splitting `core:lsp-install`
+left `:lsp-install` undefined. The summary passed that finding to the user
+as stated. The default declaration goes through the manifest, which declares
+the commands entry, so the command was defined and completed. The finding
+only held for `load-plugin!` and for an explicit `#:typed-commands` declare.
+
+**Prevention rule:** Open the code a review finding names and trace the
+default path before presenting it. State which setups the finding applies to,
+and mark any finding not yet traced as unverified.

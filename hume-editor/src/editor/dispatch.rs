@@ -124,7 +124,7 @@ impl Editor {
     /// warning on failure.
     fn activate_lazy_and_report(
         &mut self,
-        plugin: &hume_scripting::attribution::PluginId,
+        plugin: &hume_scripting::attribution::EntryId,
         name: &str,
     ) -> bool {
         if self.activate_lazy_plugin(plugin, name) {
@@ -269,7 +269,7 @@ impl Editor {
     pub(super) fn run_typed_steel_command(
         &mut self,
         name: &str,
-        lazy_plugin: Option<hume_scripting::attribution::PluginId>,
+        lazy_plugin: Option<hume_scripting::attribution::EntryId>,
         arg: Option<String>,
         force: bool,
     ) -> bool {

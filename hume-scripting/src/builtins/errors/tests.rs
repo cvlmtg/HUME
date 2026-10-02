@@ -1,5 +1,5 @@
 use super::*;
-use crate::attribution::PluginId;
+use crate::attribution::{EntryId, PluginId};
 use crate::test_support::SteelCtxTestHarness;
 
 /// `require_cmd` rejects `Init` and `PluginLoad`, allows the other two.
@@ -12,7 +12,7 @@ fn require_cmd_gates_by_mode() {
     assert!(require_cmd(&h.ctx(), "x").is_ok(), "Command must pass");
 
     h.plugin_stack
-        .push(PluginId::parse("core:test-plugin").unwrap());
+        .push(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     assert!(
         require_cmd(&h.ctx_init(), "x").is_err(),
         "PluginLoad must reject"
@@ -34,7 +34,7 @@ fn require_config_gates_by_mode() {
     );
 
     h.plugin_stack
-        .push(PluginId::parse("core:test-plugin").unwrap());
+        .push(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     assert!(
         require_config(&h.ctx_init(), "x").is_ok(),
         "PluginLoad must pass"

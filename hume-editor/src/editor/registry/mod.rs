@@ -244,7 +244,7 @@ impl CommandRegistry {
     pub(in crate::editor) fn lazy_owner(
         &self,
         name: &str,
-    ) -> Option<&hume_scripting::attribution::PluginId> {
+    ) -> Option<&hume_scripting::attribution::EntryId> {
         lazy_owner_of(self.commands.get(name)?)
     }
 
@@ -259,7 +259,7 @@ impl CommandRegistry {
     pub(in crate::editor) fn lazy_mappable_owner(
         &self,
         name: &str,
-    ) -> Option<&hume_scripting::attribution::PluginId> {
+    ) -> Option<&hume_scripting::attribution::EntryId> {
         match self.commands.get(name)? {
             Command::Mappable(MappableCommand::Lazy { plugin, .. }) => Some(plugin),
             _ => None,
@@ -276,7 +276,7 @@ impl CommandRegistry {
     /// name will need a key binding or `:` once its plugin loads.
     pub(in crate::editor) fn lazy_stubs(
         &self,
-    ) -> Vec<(String, hume_scripting::attribution::PluginId, bool)> {
+    ) -> Vec<(String, hume_scripting::attribution::EntryId, bool)> {
         self.commands
             .iter()
             .filter_map(|(name, cmd)| {
@@ -298,7 +298,7 @@ impl CommandRegistry {
     /// just replaced a stub of the same name for this plugin.
     pub(in crate::editor) fn unregister_lazy_stubs_of(
         &mut self,
-        plugin: &hume_scripting::attribution::PluginId,
+        plugin: &hume_scripting::attribution::EntryId,
     ) {
         self.commands
             .retain(|_, cmd| lazy_owner_of(cmd) != Some(plugin));
@@ -307,7 +307,7 @@ impl CommandRegistry {
 
 /// A free function (not a `&self` method) so it can be called from inside
 /// `self.commands`'s own iterator/`retain` closures without a borrow conflict.
-fn lazy_owner_of(cmd: &Command) -> Option<&hume_scripting::attribution::PluginId> {
+fn lazy_owner_of(cmd: &Command) -> Option<&hume_scripting::attribution::EntryId> {
     match cmd {
         Command::Mappable(MappableCommand::Lazy { plugin, .. }) => Some(plugin),
         Command::Typed(TypedCommand {

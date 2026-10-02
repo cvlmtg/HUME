@@ -27,7 +27,10 @@ fn event_trigger_activates_on_first_fire() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Declared)
         ),
         "plugin must be Declared before first fire"
@@ -53,7 +56,10 @@ fn event_trigger_activates_on_first_fire() {
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin must be Loaded after first fire"
@@ -109,7 +115,10 @@ fn event_trigger_idempotent_on_second_fire() {
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin must remain Loaded after second fire (not re-enter Declared)"
@@ -169,14 +178,20 @@ fn event_trigger_one_to_many_activates_all() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_a.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin A must be Loaded after fire"
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_b.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin B must be Loaded after fire"
@@ -217,7 +232,10 @@ fn event_plugin_failure_marks_failed_no_retry() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Failed)
         ),
         "plugin must be Failed after body error"
@@ -244,7 +262,10 @@ fn event_plugin_failure_marks_failed_no_retry() {
 
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Failed)
         ),
         "plugin must remain Failed after second fire (no retry)"
@@ -374,14 +395,20 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     // After init: both Declared.
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_a.clone())),
             Some(PluginStatus::Declared)
         ),
         "dep A must be Declared after init"
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_b.clone())),
             Some(PluginStatus::Declared)
         ),
         "plugin B must be Declared after init"
@@ -399,14 +426,20 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_b.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin B must be Loaded after dispatch"
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_a.clone())),
             Some(PluginStatus::Loaded)
         ),
         "dep A must be Loaded after B calls (call! \"a-cmd\")"
@@ -501,14 +534,20 @@ fn nested_activation_multi_file_via_real_editor_host() {
     };
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_a),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_a.clone())),
             Some(PluginStatus::Loaded)
         ),
         "A must be Loaded: its multi-file require completed under nested activation"
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_b),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id_b.clone())),
             Some(PluginStatus::Loaded)
         ),
         "B must be Loaded: its own multi-file require completed despite nesting a call! mid-body"
@@ -550,8 +589,10 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin! \"user/tpa\" #:commands '(\"a-cmd\") #:config (hash \"x\" 1))\n\
-         (declare-plugin! \"user/tpb\" #:commands '(\"b-cmd\") #:config (hash \"y\" 2))",
+        "(declare-plugin! \"user/tpa\" #:commands '(\"a-cmd\"))\n\
+         (declare-plugin! \"user/tpb\" #:commands '(\"b-cmd\"))\n\
+         (load-plugin! \"user/tpa\" #:config (hash \"x\" 1))\n\
+         (load-plugin! \"user/tpb\" #:config (hash \"y\" 2))",
     )
     .unwrap();
 
@@ -600,7 +641,10 @@ fn native_command_survives_failed_shadowing_plugin() {
     };
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Failed)
         ),
         "plugin must be Failed after shadowing attempt"
@@ -667,7 +711,10 @@ fn plugin_keybinding_rolled_back_on_failed_activation() {
     };
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Failed)
         ),
         "plugin must be Failed after intentional error"
@@ -706,7 +753,10 @@ fn plugin_hook_rolled_back_on_failed_activation() {
     };
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Failed)
         ),
         "plugin must be Failed after intentional error"
@@ -784,7 +834,10 @@ fn on_lsp_notification_event_trigger_activates_on_first_fire() {
     );
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin must be Loaded after first fire"
@@ -825,7 +878,10 @@ fn lazy_plugin_activated_by_unlisted_method_traces_unhandled() {
     assert_eq!(state(&ed), before, "the m/y handler must not run for m/x");
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Loaded)
         ),
         "plugin must be Loaded after the activating notification"

@@ -13,7 +13,7 @@
 (require "inlay.scm")
 
 (unless (member "core:stdlib" (declared-plugins))
-  (error "core:lsp: requires core:stdlib — (declare-plugin! \"core:stdlib\") or (load-plugin! \"core:stdlib\") before (load-plugin! \"core:lsp\")"))
+  (error "core:lsp: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:lsp\")"))
 
 ;; ── Default keybindings ───────────────────────────────────────────────────────
 

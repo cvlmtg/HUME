@@ -125,7 +125,15 @@ macro_rules! builtins {
 /// (`known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack`
 /// in `tests/unix.rs`).
 //
-// %activate-plugin-inline!: %begin-lazy-activation! moves a Declared plugin to
+// A plugin is one or more entries: files in its directory, each with its own
+// triggers, state and rollback scope. `declare-plugin! #:entry` names the file
+// (default `plugin.scm`); `(plugin-config)` and `(plugin-dir)` belong to the
+// plugin, whose config comes from `load-plugin!` alone. `load-plugin!` takes
+// no `#:entry`: a plugin with a manifest.scm is lazy and the manifest declares
+// its entries; one without loads `plugin.scm` eagerly.
+//
+// %activate-plugin-inline!: takes the plugin and entry file as two strings.
+// %begin-lazy-activation! moves a Declared entry to
 // Loading and returns its `(require "<abs>")` string (#f otherwise: cycle
 // guard and idempotency), eval-string runs it in the live VM, and
 // %finish-lazy-activation! records the outcome. The handler hands the error to
@@ -135,9 +143,8 @@ macro_rules! builtins {
 // exhausted step budget must abort the whole eval, not be recorded as every
 // later plugin failing to load.
 //
-// declare-plugin!: with no triggers, evaluates <plugin-dir>/manifest.scm for
-// default entries (caller's #:config wins) under the same handler/yield
-// contract, %finish-manifest-declare! recording any error.
+// load-plugin!: with a manifest.scm, evaluates it under the same handler/yield
+// contract, %finish-manifest-load! recording any error.
 //
 // define-typed-command!: the `:` counterpart of define-command!, sharing its
 // collision guard (commands::check_definable) and bookkeeping but registering
@@ -254,7 +261,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "write-register!" registers::write_register(name: String, values: SteelVal);
 
         // Plugin lifecycle
-        open "%declare-plugin!" plugins::declare_plugin(name: String, commands: SteelVal, typed_commands: SteelVal, events: SteelVal, languages: SteelVal, config: SteelVal);
+        open "%declare-plugin!" plugins::declare_plugin(name: String, entry: SteelVal, commands: SteelVal, typed_commands: SteelVal, events: SteelVal, languages: SteelVal);
         open "resolve-plugin-path" plugins::resolve_plugin_path(name: String);
 
         // Plugin introspection and explicit activation
@@ -266,14 +273,14 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Inline activation primitives, called from the %activate-plugin-inline!
         // Scheme helper to drive mid-eval plugin loading without &mut Engine.
-        open "%begin-lazy-activation!" plugins::begin_lazy_activation(id_str: String);
-        open "%finish-lazy-activation!" plugins::finish_lazy_activation(id_str: String, error: SteelVal);
+        open "%begin-lazy-activation!" plugins::begin_lazy_activation(plugin: String, entry: SteelVal);
+        open "%finish-lazy-activation!" plugins::finish_lazy_activation(plugin: String, entry: SteelVal, error: SteelVal);
+        open "%entry-loaded?" plugins::entry_loaded(plugin: String, entry: SteelVal);
         open "%lazy-command-owner" plugins::lazy_command_owner(name: String);
 
-        // Manifest resolution: zero-trigger declare-plugin! routes here to eval
-        // <plugin-dir>/manifest.scm so the plugin can declare its own defaults.
-        open "%begin-manifest-declare!" plugins::begin_manifest_declare(name: String, config: SteelVal);
-        open "%finish-manifest-declare!" plugins::finish_manifest_declare(name: String, error: SteelVal);
+        // Manifest evaluation: %load-plugin! returns the require string of
+        // <plugin-dir>/manifest.scm, and the wrapper reports the outcome here.
+        open "%finish-manifest-load!" plugins::finish_manifest_load(name: String, error: SteelVal);
 
         // Hook registration (init-only)
         config "register-hook!" hooks::register_hook(name: SteelVal, proc: SteelVal);

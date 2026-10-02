@@ -63,7 +63,7 @@ fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> NavSetup {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin! "core:stdlib") (load-plugin! "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib") (load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp,
     );
     ed.scripting = Some(host);

@@ -13,7 +13,7 @@ impl Editor {
     /// returns, so the buffer that triggered activation isn't skipped.
     pub(in crate::editor::mappings::lazy) fn activate_and_register(
         &mut self,
-        plugin: &hume_scripting::attribution::PluginId,
+        plugin: &hume_scripting::attribution::EntryId,
     ) {
         let init_budget = self.state.settings.steel_init_budget_ms as u64;
         let result = {
@@ -36,7 +36,7 @@ impl Editor {
     /// human-readable activation description for the log line.
     pub(in crate::editor::mappings::lazy) fn activate_and_trace(
         &mut self,
-        plugin: &hume_scripting::attribution::PluginId,
+        plugin: &hume_scripting::attribution::EntryId,
         activation: &str,
     ) {
         let was_declared = self
@@ -68,7 +68,7 @@ impl Editor {
     /// "unknown command" warning.
     pub(in crate::editor) fn activate_lazy_plugin(
         &mut self,
-        plugin: &hume_scripting::attribution::PluginId,
+        plugin: &hume_scripting::attribution::EntryId,
         name: &str,
     ) -> bool {
         if self.scripting.is_none() {
@@ -131,7 +131,7 @@ impl Editor {
 
     fn activate_pending_plugins(
         &mut self,
-        pending: Vec<hume_scripting::attribution::PluginId>,
+        pending: Vec<hume_scripting::attribution::EntryId>,
         activation: &str,
     ) {
         for plugin in &pending {

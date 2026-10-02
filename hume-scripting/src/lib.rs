@@ -5,15 +5,20 @@
 //! operations where an IPC round-trip per keystroke would cost more.
 //!
 //! ## Plugin loading
-//! - `load-plugin!`: eager, init.scm/`:reload-config` only; runs the body at
-//!   once via `%activate-plugin-inline!`.
-//! - `declare-plugin!`: lazy manifest; records `Declared` plus activation
-//!   entries in `LazyRegistry`. The first entry exercised runs the body,
-//!   marks it `Loaded`, and drops all of that plugin's entries.
+//! - `load-plugin!`: init.scm/`:reload-config` only. A plugin with a
+//!   `manifest.scm` is lazy: the manifest's `declare-plugin!` calls record the
+//!   entries. One without runs `plugin.scm` at once via
+//!   `%activate-plugin-inline!`.
+//! - `declare-plugin!`: records `Declared` plus activation entries in
+//!   `LazyRegistry`, from a manifest or from init.scm (a `./file.scm` beside
+//!   init.scm, or an installed plugin with custom triggers). The first entry
+//!   exercised runs the body, marks it `Loaded`, and drops all of that
+//!   entry's triggers.
 //! - States: `Declared -> Loading -> Loaded | Failed`. `Loading` guards
 //!   re-entrant cycles; `Failed` doesn't retry until `:reload-config`.
-//! - `#:config` is opaque per-plugin data read back via `(plugin-config)`.
-//!   Both forms record the name in `declared_plugins` up front for PLUM.
+//! - `#:config` on `load-plugin!` is opaque per-plugin data read back via
+//!   `(plugin-config)`. Both forms record an installed plugin's name in
+//!   `declared_plugins` up front for PLUM; a local file is not recorded.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 
@@ -31,8 +36,12 @@ mod activation;
 mod context;
 #[cfg(test)]
 mod null_host;
+#[cfg(any(test, feature = "test-util"))]
+mod test_scm;
 #[cfg(test)]
 mod test_support;
+#[cfg(any(test, feature = "test-util"))]
+pub use test_scm::eager_load_scm;
 mod types;
 pub(crate) mod watchdog;
 
@@ -121,10 +130,10 @@ pub(crate) struct ScriptingRegistries {
     /// dispatch) checks both tables, since its caller has already resolved
     /// which kind `name` is through the editor's own registry.
     pub(crate) typed_command_table: rustc_hash::FxHashMap<String, SteelVal>,
-    /// Per-plugin config value passed via `#:config` on `(load-plugin! …)` /
-    /// `(declare-plugin! …)`. Read back by the plugin body through `(plugin-config)`,
-    /// resolved via the top of `plugin_stack`. Works identically whether the
-    /// plugin activates immediately (eager) or much later (lazy).
+    /// Per-plugin config value passed via `#:config` on `(load-plugin! …)`.
+    /// Read back by the plugin body through `(plugin-config)`, resolved via the
+    /// top of `plugin_stack`. Works identically whether the plugin activates
+    /// immediately or much later.
     pub(crate) plugin_configs: rustc_hash::FxHashMap<PluginId, SteelVal>,
 }
 
@@ -384,14 +393,12 @@ impl ScriptingHost {
     }
 
     /// A snapshot of the language activation entries declared during init (language → plugins).
-    pub fn activation_languages(
-        &self,
-    ) -> rustc_hash::FxHashMap<String, Vec<attribution::PluginId>> {
+    pub fn activation_languages(&self) -> rustc_hash::FxHashMap<String, Vec<attribution::EntryId>> {
         self.registries.lazy_registry.activation_languages.clone()
     }
 
     /// Plugin ids that should be activated when the event named `name` fires.
-    pub fn activation_event_plugins(&self, name: &str) -> Vec<attribution::PluginId> {
+    pub fn activation_event_plugins(&self, name: &str) -> Vec<attribution::EntryId> {
         self.registries
             .lazy_registry
             .activation_events
@@ -405,11 +412,11 @@ impl ScriptingHost {
     /// Unions entries keyed by `language` with entries keyed by the wildcard
     /// `"*"` (a manifest that can't enumerate every language it might ever
     /// support), deduped so a plugin listed under both activates once.
-    pub fn activation_language_plugins(&self, language: &str) -> Vec<attribution::PluginId> {
+    pub fn activation_language_plugins(&self, language: &str) -> Vec<attribution::EntryId> {
         let activation_languages = &self.registries.lazy_registry.activation_languages;
         let specific = activation_languages.get(language);
         let wildcard = activation_languages.get("*");
-        let mut plugins: Vec<attribution::PluginId> = specific.cloned().unwrap_or_default();
+        let mut plugins: Vec<attribution::EntryId> = specific.cloned().unwrap_or_default();
         if let Some(wildcard) = wildcard {
             for id in wildcard {
                 if !plugins.contains(id) {
@@ -421,7 +428,7 @@ impl ScriptingHost {
     }
 
     /// Status of a plugin in the lazy registry.
-    pub fn plugin_status(&self, id: &attribution::PluginId) -> Option<PluginStatus> {
+    pub fn plugin_status(&self, id: &attribution::EntryId) -> Option<PluginStatus> {
         self.registries
             .lazy_registry
             .plugins
@@ -455,10 +462,7 @@ impl ScriptingHost {
     /// `lazy_cmds` is the editor's current `Lazy`-stub list (`name`, owning
     /// plugin, `is_typed`). This crate doesn't track pending command
     /// activations itself, so the caller supplies its live registry snapshot.
-    pub fn lazy_status_string(
-        &self,
-        lazy_cmds: &[(String, attribution::PluginId, bool)],
-    ) -> String {
+    pub fn lazy_status_string(&self, lazy_cmds: &[(String, attribution::EntryId, bool)]) -> String {
         self.registries.lazy_registry.format_status(lazy_cmds)
     }
 
@@ -481,7 +485,9 @@ impl ScriptingHost {
     /// display form and install-lock root stay in sync with the override.
     #[cfg(any(test, feature = "test-util"))]
     pub fn set_data_dir(&mut self, dir: std::path::PathBuf) {
+        let init_dir = self.dirs.init_dir.take();
         self.dirs = builtins::dirs::ScriptDirs::new(Some(dir), self.dirs.runtime_dir.clone());
+        self.dirs.init_dir = init_dir;
     }
 
     #[cfg(any(test, feature = "test-util"))]
@@ -498,7 +504,7 @@ impl ScriptingHost {
 
     /// Push a fake plugin id onto the attribution stack.
     #[cfg(test)]
-    pub(crate) fn push_plugin_for_test(&mut self, id: attribution::PluginId) {
+    pub(crate) fn push_plugin_for_test(&mut self, id: attribution::EntryId) {
         self.plugin_stack.push(id);
     }
 
@@ -567,6 +573,7 @@ impl ScriptingHost {
         host: &mut dyn EditorHost,
         builtin_names: rustc_hash::FxHashSet<String>,
     ) -> Result<Vec<Effect>, EvalError> {
+        self.dirs.init_dir = path.parent().map(Path::to_path_buf);
         let source = match std::fs::read_to_string(path) {
             Ok(s) => s,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),

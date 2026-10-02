@@ -1,5 +1,4 @@
-; Default activation for `(declare-plugin! "core:plum")` with no explicit
-; #:commands/#:typed-commands/#:events/#:languages — see README.md "Usage".
+;;; core:plum/manifest.scm — see README.md.
 (declare-plugin! "core:plum"
   #:commands '("plum-ensure-grammars")
   #:typed-commands '("plum-install-plugins" "plum-cleanup-plugins" "plum-update-plugins" "plum-list-plugins"

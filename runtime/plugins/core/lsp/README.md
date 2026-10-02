@@ -9,19 +9,21 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 ## Usage
 
 ```scheme
-(declare-plugin! "core:stdlib")
+(load-plugin! "core:stdlib")
 
 (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
 
-(declare-plugin! "core:lsp")
+(load-plugin! "core:lsp")
 ```
 
 - **Depends on:** `core:stdlib`: diagnostics navigation, code actions and the other
   features call `stdlib/cursor-char-index`, `stdlib/primary-selection` and
   `stdlib/selection-start`/`-end` at runtime.
 - **Activates on:** the first buffer with a detected language, or the first of its
-  commands typed. Its `manifest.scm` declares `#:languages '("*")` plus every command
-  below. An explicit `#:commands`/`#:events`/`#:languages` bypasses the manifest. A
+  commands typed. Its `manifest.scm` declares one entry for `plugin.scm` with
+  `#:languages '("*")`, every editor command below in `#:commands` and the typed commands
+  in `#:typed-commands`. An explicit `#:commands`/`#:events`/`#:languages` declared before
+  `load-plugin!` replaces the manifest. A
   declaration keyed only on `#:events '(on-lsp-attach)` can never activate on its own,
   since nothing is registered yet for that event to fire on; `#:languages` or a command
   gives it a real trigger.

@@ -130,7 +130,10 @@ fn declared_but_undispatched_plugin_is_declared_not_loaded() {
 
     let id = PluginId::parse("core:lsp").unwrap();
     assert_eq!(
-        ed.scripting.as_ref().unwrap().plugin_status(&id),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
         Some(hume_scripting::PluginStatus::Declared)
     );
 }
@@ -176,7 +179,10 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
     assert_eq!(popup_lines(&ed), Some(vec!["fn main()".to_string()]));
     let id = PluginId::parse("core:lsp").unwrap();
     assert_eq!(
-        ed.scripting.as_ref().unwrap().plugin_status(&id),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
         Some(hume_scripting::PluginStatus::Loaded)
     );
 }
@@ -207,7 +213,10 @@ fn attach_event_alone_activates_the_declared_plugin() {
 
     let id = PluginId::parse("core:lsp").unwrap();
     assert_eq!(
-        ed.scripting.as_ref().unwrap().plugin_status(&id),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
         Some(hume_scripting::PluginStatus::Declared),
         "must still be Declared going into the drain: only the queued \
          on-lsp-attach hook can flip it here"
@@ -216,7 +225,10 @@ fn attach_event_alone_activates_the_declared_plugin() {
     ed.settle();
 
     assert_eq!(
-        ed.scripting.as_ref().unwrap().plugin_status(&id),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
         Some(hume_scripting::PluginStatus::Loaded),
         "on-lsp-attach firing (queued by setup_declared's handshake) must \
          activate the plugin with no command ever dispatched"
@@ -241,7 +253,10 @@ fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
 
     let id = PluginId::parse("core:lsp").unwrap();
     assert_eq!(
-        ed.scripting.as_ref().unwrap().plugin_status(&id),
+        ed.scripting
+            .as_ref()
+            .unwrap()
+            .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
         Some(hume_scripting::PluginStatus::Declared),
         "on-lsp-attach firing must not activate a plugin declared for a \
          different event (on-buffer-save)"
@@ -283,7 +298,7 @@ fn every_default_lsp_binding_dispatches_without_error() {
         &mut ed,
         &mut host,
         r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp")"#,
+(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -348,7 +363,11 @@ fn missing_stdlib_errors_at_load() {
     let guard = RealRuntimeGuard::new();
     let tmp = safe_tempdir();
     let init_path = tmp.path().join("init.scm");
-    std::fs::write(&init_path, r#"(load-plugin! "core:lsp")"#).unwrap();
+    std::fs::write(
+        &init_path,
+        r#"(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
+    )
+    .unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();

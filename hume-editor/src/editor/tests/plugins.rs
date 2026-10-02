@@ -26,7 +26,10 @@ fn lazy_stub_collision_rejected_and_stub_not_registered() {
     // "move-right" is a native built-in guaranteed to be in the registry.
     let result = {
         let mut host = init_host!(ed);
-        host.commands().register_lazy_command("move-right", &plugin)
+        host.commands().register_lazy_command(
+            "move-right",
+            &hume_scripting::attribution::EntryId::main(plugin.clone()),
+        )
     };
 
     assert!(

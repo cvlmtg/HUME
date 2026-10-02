@@ -1,7 +1,7 @@
 ;;; core:pickers
 
 (unless (member "core:stdlib" (declared-plugins))
-  (error "core:pickers: requires core:stdlib — (declare-plugin! \"core:stdlib\") or (load-plugin! \"core:stdlib\") before (load-plugin! \"core:pickers\")"))
+  (error "core:pickers: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:pickers\")"))
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 

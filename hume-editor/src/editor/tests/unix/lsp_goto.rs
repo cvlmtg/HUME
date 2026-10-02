@@ -78,7 +78,7 @@ fn setup(
         &mut ed,
         &mut host,
         r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp")"#,
+(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp,
     );
     ed.scripting = Some(host);
@@ -482,7 +482,7 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
         &mut ed,
         &mut host,
         r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp")"#,
+(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

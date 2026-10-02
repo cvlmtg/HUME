@@ -6,7 +6,7 @@
 (require "render.scm")
 
 (unless (member "core:stdlib" (declared-plugins))
-  (error "core:git-diff: requires core:stdlib — (declare-plugin! \"core:stdlib\") or (load-plugin! \"core:stdlib\") before (load-plugin! \"core:git-diff\")"))
+  (error "core:git-diff: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:git-diff\")"))
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 

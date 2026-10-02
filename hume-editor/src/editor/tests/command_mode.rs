@@ -689,7 +689,7 @@ fn colon_qa_lands_on_first_dirty_buffer_in_open_order() {
         ed.handle_key(key('i'));
         ed.handle_key(key('x'));
         ed.handle_key(key_esc());
-        assert!(focused_unsaved(&ed));
+        assert!(focused_unsaved(ed));
         id
     };
 
@@ -725,7 +725,7 @@ fn colon_qa_walk_through_dirty_buffers() {
         ed.handle_key(key('i'));
         ed.handle_key(key('x'));
         ed.handle_key(key_esc());
-        assert!(focused_unsaved(&ed));
+        assert!(focused_unsaved(ed));
         (id, tmp_path)
     };
 

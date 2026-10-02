@@ -1,29 +1,33 @@
 (require-builtin steel/meta as hm.)
 
-(define (declare-plugin! name #:commands       [commands       '()]
+(define (declare-plugin! name #:entry          [entry          #f]
+                             #:commands       [commands       '()]
                              #:typed-commands [typed-commands '()]
                              #:events         [events         '()]
                              #:languages      [languages      '()]
-                             #:config         [config         (hash)])
-  (if (and (null? commands) (null? typed-commands) (null? events) (null? languages))
-      (let ((prog (%begin-manifest-declare! name config)))
-        (when prog
-          (with-handler
-            (lambda (e) (%finish-manifest-declare! name e))
-            (begin (hm.eval-string prog) (%finish-manifest-declare! name #f)))
-          (hume/yield!)))
-      (%declare-plugin! name commands typed-commands events languages config)))
+                             #:config         [config         #f])
+  (when config
+    (error "declare-plugin!: takes no #:config; pass it with (load-plugin! name #:config ...)"))
+  (%declare-plugin! name entry commands typed-commands events languages))
 
-(define (load-plugin! name #:config [config (hash)])
-  (%load-plugin! name config)
-  (%activate-plugin-inline! name))
+(define (load-plugin! name #:entry [entry #f] #:config [config (hash)])
+  (when entry
+    (error "load-plugin!: takes no #:entry; a plugin's manifest.scm declares its entries"))
+  (let ((next (%load-plugin! name config)))
+    (cond
+      ((string? next)
+       (with-handler
+         (lambda (e) (%finish-manifest-load! name e))
+         (begin (hm.eval-string next) (%finish-manifest-load! name #f)))
+       (hume/yield!))
+      (next (%activate-plugin-inline! name #f)))))
 
-(define (%activate-plugin-inline! id)
-  (let ((prog (%begin-lazy-activation! id)))
+(define (%activate-plugin-inline! plugin entry)
+  (let ((prog (%begin-lazy-activation! plugin entry)))
     (when prog
       (with-handler
-        (lambda (e) (%finish-lazy-activation! id e))
-        (begin (hm.eval-string prog) (%finish-lazy-activation! id #f)))
+        (lambda (e) (%finish-lazy-activation! plugin entry e))
+        (begin (hm.eval-string prog) (%finish-lazy-activation! plugin entry #f)))
       (hume/yield!))))
 
 (define (define-command! name doc proc
@@ -48,16 +52,16 @@
         (%apply-command! proc name args)
         (let ((owner (%lazy-command-owner name)))
           (if owner
-              (begin
-                (%activate-plugin-inline! owner)
+              (let ((plugin (car owner)) (entry (cadr owner)) (label (caddr owner)))
+                (%activate-plugin-inline! plugin entry)
                 (let ((proc2 (%lookup-plugin-proc name)))
                   (cond
                     (proc2 (%apply-command! proc2 name args))
-                    ((member owner (loaded-plugins))
-                     (error (string-append "'" name "': plugin '" owner
+                    ((%entry-loaded? plugin entry)
+                     (error (string-append "'" name "': plugin '" label
                                            "' loaded but did not define it")))
                     (else
-                     (error (string-append "'" name "' unavailable: plugin '" owner
+                     (error (string-append "'" name "' unavailable: plugin '" label
                                            "' failed to load"))))))
               (%call-native! name args))))))
 

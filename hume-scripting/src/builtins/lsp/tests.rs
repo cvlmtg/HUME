@@ -182,8 +182,9 @@ fn queues_a_pending_registration_from_command_mode() {
 fn allowed_during_plugin_activation_even_though_is_init_is_false() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_activation();
-    ctx.plugin_stack
-        .push(crate::attribution::PluginId::Core("lsp".to_string()));
+    ctx.plugin_stack.push(crate::attribution::EntryId::main(
+        crate::attribution::PluginId::Core("lsp".to_string()),
+    ));
     let result = register_lsp_server(
         &mut ctx,
         "rust".into_steelval().unwrap(),
@@ -920,10 +921,10 @@ fn register_lsp_notification_hook_rejects_a_non_callable_proc() {
 /// rollback of a failed activation removes it.
 #[test]
 fn register_lsp_notification_hook_attributes_the_running_plugin() {
-    use crate::attribution::PluginId;
+    use crate::attribution::{EntryId, PluginId};
     let mut h = SteelCtxTestHarness::new();
     let id = PluginId::parse("core:myplugin").unwrap();
-    h.plugin_stack.push(id.clone());
+    h.plugin_stack.push(EntryId::main(id.clone()));
     register_lsp_notification_hook(
         &mut h.ctx(),
         SteelVal::StringV("a/b".into()),
@@ -932,7 +933,7 @@ fn register_lsp_notification_hook_attributes_the_running_plugin() {
     .expect("registration during plugin load must succeed");
     assert_eq!(
         h.registries.hooks.handlers_for("on-lsp-notification")[0].owner,
-        Some(id)
+        Some(EntryId::main(id))
     );
 }
 

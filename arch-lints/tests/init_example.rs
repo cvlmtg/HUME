@@ -1,8 +1,8 @@
 //! # `init.scm.example` core-plugin coverage drift
 //!
 //! `runtime/init.scm.example` is a hand-maintained list of core plugins:
-//! active `(load-plugin! ...)`/`(declare-plugin! ...)` calls for the ones on by
-//! default, commented-out samples for the rest. Nothing cross-checks it
+//! active `(load-plugin! ...)` calls for the ones on by default, commented-out
+//! samples for the rest. Nothing cross-checks it
 //! against `runtime/plugins/core/`. A new core plugin can ship and be fully
 //! documented in the user manual while the example a fresh install is told to
 //! copy never mentions it.
@@ -84,5 +84,25 @@ fn init_scm_example_lists_every_core_plugin() {
          Every core plugin must appear there, active or as a commented-out \
          sample. Violations:\n{}\n",
         violations.join("\n")
+    );
+}
+
+/// `load-plugin!` is how a user brings in a core plugin; `declare-plugin!` in
+/// init.scm is for local files and custom triggers.
+#[test]
+fn init_scm_example_loads_core_plugins_with_load_plugin() {
+    let example_path = workspace_root().join("runtime/init.scm.example");
+    let example = std::fs::read_to_string(&example_path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", example_path.display()));
+    let declared: Vec<&str> = example
+        .lines()
+        .filter(|line| {
+            let rest = line.trim_start().trim_start_matches(';').trim_start();
+            rest.starts_with("(declare-plugin! \"core:")
+        })
+        .collect();
+    assert!(
+        declared.is_empty(),
+        "runtime/init.scm.example must use (load-plugin! ...) for core plugins: {declared:?}"
     );
 }

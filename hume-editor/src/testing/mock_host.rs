@@ -46,7 +46,7 @@ pub struct MockHost {
     /// `run_command_sync`'s own doc.
     pub dispatched_native: Vec<DispatchedNativeCall>,
     /// Lazy activation stubs registered via `register_lazy_command`.
-    pub lazy_cmds: rustc_hash::FxHashMap<String, hume_scripting::attribution::PluginId>,
+    pub lazy_cmds: rustc_hash::FxHashMap<String, hume_scripting::attribution::EntryId>,
     /// Buffer ids `buffer_exists` answers `true` for. Empty by default, so
     /// every id (including `focused_pane()`'s own `BufferId::default()`)
     /// is "stale" from an explicit-`pane` builtin's point of view unless a
@@ -327,7 +327,7 @@ impl CommandHost for MockHost {
     fn register_lazy_command(
         &mut self,
         name: &str,
-        plugin: &hume_scripting::attribution::PluginId,
+        plugin: &hume_scripting::attribution::EntryId,
     ) -> Result<(), String> {
         // Permissive, like `register_command` above. Collision
         // detection is `CommandRegistry`'s decision; testing it here would be
@@ -341,12 +341,12 @@ impl CommandHost for MockHost {
     fn register_lazy_typed_command(
         &mut self,
         name: &str,
-        plugin: &hume_scripting::attribution::PluginId,
+        plugin: &hume_scripting::attribution::EntryId,
     ) -> Result<(), String> {
         self.lazy_cmds.insert(name.to_owned(), plugin.clone());
         Ok(())
     }
-    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::PluginId> {
+    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::EntryId> {
         self.lazy_cmds.get(name).cloned()
     }
     // `lazy_cmds` tracks no kind, so this mock can't tell a typed-only stub
@@ -357,10 +357,10 @@ impl CommandHost for MockHost {
     fn lazy_mappable_command_owner(
         &self,
         name: &str,
-    ) -> Option<hume_scripting::attribution::PluginId> {
+    ) -> Option<hume_scripting::attribution::EntryId> {
         self.lazy_cmds.get(name).cloned()
     }
-    fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::attribution::PluginId) {
+    fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::attribution::EntryId) {
         self.lazy_cmds.retain(|_, p| p != plugin);
     }
 }

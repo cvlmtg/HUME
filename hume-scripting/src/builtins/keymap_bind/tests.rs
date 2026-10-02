@@ -282,10 +282,10 @@ fn unbind_key_queues_unbind_effect() {
 /// builtins are permitted even in `EvalMode::PluginActivation`.
 #[test]
 fn bind_key_permitted_during_plugin_load() {
-    use crate::attribution::PluginId;
+    use crate::attribution::{EntryId, PluginId};
     let mut h = SteelCtxTestHarness::new();
     h.plugin_stack
-        .push(PluginId::parse("core:myplugin").unwrap());
+        .push(EntryId::main(PluginId::parse("core:myplugin").unwrap()));
     {
         let mut ctx = h.ctx(); // EvalMode::PluginActivation → allowed
         let result = bind_key(

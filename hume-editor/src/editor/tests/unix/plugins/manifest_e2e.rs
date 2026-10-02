@@ -7,15 +7,14 @@ use hume_scripting::PluginStatus;
 // ── End-to-end: real manifest.scm ─────────────────────────────────────────
 
 /// The real `core:lsp` plugin's own shipped `manifest.scm` (not a synthetic
-/// fixture) resolves and evaluates via a zero-trigger `(declare-plugin!
-/// "core:lsp")`, through the full production `init_scripting` path against the
+/// fixture) resolves and evaluates via `(load-plugin! "core:lsp")`, through the full production `init_scripting` path against the
 /// repo's actual `runtime/` tree.
 ///
 /// A syntax error, a wrong plugin name, or a stale command list in the real
 /// `runtime/plugins/core/lsp/manifest.scm` would fail this test even while
 /// every synthetic-fixture test elsewhere in this file still passes.
 #[test]
-fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
+fn core_lsp_real_manifest_scm_resolves_via_load_plugin() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
@@ -33,7 +32,7 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
     let (ed, _dirs) = setup_editor_with_init_scripting(
         r#"(load-plugin! "core:stdlib")
            (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
-           (declare-plugin! "core:lsp")"#,
+           (load-plugin! "core:lsp")"#,
         Some(&runtime_dir),
     );
 
@@ -52,10 +51,13 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
     let id = PluginId::Core("lsp".to_string());
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Declared)
         ),
-        "core:lsp must be Declared (not yet activated) once the zero-trigger \
+        "core:lsp must be Declared (not yet activated) once its \
          declare resolves its manifest.scm"
     );
     assert!(
@@ -81,11 +83,11 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
 }
 
 /// The real `core:lsp-install` plugin's own shipped `manifest.scm` resolves and
-/// evaluates via a zero-trigger `(declare-plugin! "core:lsp-install")`, through
+/// evaluates via a `(load-plugin! "core:lsp-install")`, through
 /// the full production `init_scripting` path against the repo's actual
 /// `runtime/` tree.
 #[test]
-fn core_lsp_install_real_manifest_scm_resolves_via_zero_trigger_declare() {
+fn core_lsp_install_real_manifest_scm_resolves_via_load_plugin() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
@@ -102,7 +104,7 @@ fn core_lsp_install_real_manifest_scm_resolves_via_zero_trigger_declare() {
 
     let (ed, _dirs) = setup_editor_with_init_scripting(
         r#"(load-plugin! "core:stdlib")
-           (declare-plugin! "core:lsp-install")"#,
+           (load-plugin! "core:lsp-install")"#,
         Some(&runtime_dir),
     );
 
@@ -121,10 +123,13 @@ fn core_lsp_install_real_manifest_scm_resolves_via_zero_trigger_declare() {
     let id = PluginId::Core("lsp-install".to_string());
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Declared)
         ),
-        "core:lsp-install must be Declared (not yet activated) once the zero-trigger \
+        "core:lsp-install must be Declared (not yet activated) once its \
          declare resolves its manifest.scm"
     );
     assert!(
@@ -150,14 +155,14 @@ fn core_lsp_install_real_manifest_scm_resolves_via_zero_trigger_declare() {
 }
 
 /// The real `core:stdlib` plugin's own shipped `manifest.scm` resolves and evaluates via a
-/// zero-trigger `(declare-plugin! "core:stdlib")`, through the full production
+/// `(load-plugin! "core:stdlib")`, through the full production
 /// `init_scripting` path against the repo's actual `runtime/` tree.
 ///
 /// The synthetic-fixture tests in this file cannot see breakage in the real
 /// `runtime/plugins/core/stdlib/manifest.scm` (a syntax error, a wrong plugin
 /// name, a stale command list); this one can.
 #[test]
-fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
+fn core_stdlib_real_manifest_scm_resolves_via_load_plugin() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
@@ -173,7 +178,7 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
 
     let (ed, _dirs) =
-        setup_editor_with_init_scripting(r#"(declare-plugin! "core:stdlib")"#, Some(&runtime_dir));
+        setup_editor_with_init_scripting(r#"(load-plugin! "core:stdlib")"#, Some(&runtime_dir));
 
     let errors: Vec<String> = ed
         .state
@@ -190,10 +195,13 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
     let id = PluginId::Core("stdlib".to_string());
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Declared)
         ),
-        "core:stdlib must be Declared (not yet activated) once the zero-trigger \
+        "core:stdlib must be Declared (not yet activated) once its \
          declare resolves its manifest.scm"
     );
     assert!(
@@ -209,7 +217,7 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
 }
 
-/// A bare `(declare-plugin! "core:stdlib")` leaves it `Declared` (proven
+/// A bare `(load-plugin! "core:stdlib")` leaves it `Declared` (proven
 /// above) with a live `Lazy` stub for every helper its own `manifest.scm`
 /// exports. Loading `core:pickers` next must still succeed: its body-time
 /// `call!` into `stdlib/config-boolean` hits that stub, and
@@ -230,7 +238,7 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
     let runtime_dir = repo_runtime_dir();
 
     let (ed, _dirs) = setup_editor_with_init_scripting(
-        "(declare-plugin! \"core:stdlib\")\n(load-plugin! \"core:pickers\")",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:pickers\")",
         Some(&runtime_dir),
     );
 
@@ -250,7 +258,9 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
     let id_stdlib = PluginId::Core("stdlib".to_string());
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_stdlib),
+            ed.scripting.as_ref().unwrap().plugin_status(
+                &hume_scripting::attribution::EntryId::main(id_stdlib.clone())
+            ),
             Some(PluginStatus::Loaded)
         ),
         "core:stdlib must be inline-activated to Loaded by core:pickers's \
@@ -260,7 +270,9 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
     let id_pickers = PluginId::Core("pickers".to_string());
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id_pickers),
+            ed.scripting.as_ref().unwrap().plugin_status(
+                &hume_scripting::attribution::EntryId::main(id_pickers.clone())
+            ),
             Some(PluginStatus::Loaded)
         ),
         "core:pickers must itself be Loaded: its own eager load-plugin! completed"
@@ -268,14 +280,14 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
 }
 
 /// The real `core:plum` plugin's own shipped `manifest.scm` resolves and evaluates via a
-/// zero-trigger `(declare-plugin! "core:plum")`, through the full production `init_scripting`
+/// `(load-plugin! "core:plum")`, through the full production `init_scripting`
 /// path against the repo's actual `runtime/` tree.
 ///
 /// Only this test would notice a syntax error, a wrong plugin name, or a stale
 /// command/language list in the real `runtime/plugins/core/plum/manifest.scm`;
 /// the other tests here use synthetic fixtures.
 #[test]
-fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
+fn core_plum_real_manifest_scm_resolves_via_load_plugin() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
@@ -291,7 +303,7 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
 
     let (ed, _dirs) =
-        setup_editor_with_init_scripting(r#"(declare-plugin! "core:plum")"#, Some(&runtime_dir));
+        setup_editor_with_init_scripting(r#"(load-plugin! "core:plum")"#, Some(&runtime_dir));
 
     let errors: Vec<String> = ed
         .state
@@ -308,10 +320,13 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     let id = PluginId::Core("plum".to_string());
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Declared)
         ),
-        "core:plum must be Declared (not yet activated) once the zero-trigger \
+        "core:plum must be Declared (not yet activated) once its \
          declare resolves its manifest.scm"
     );
     assert!(
@@ -374,7 +389,7 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
         hume_config.join("init.scm"),
         "(load-plugin! \"core:stdlib\")\n\
          (load-plugin! \"user/broken\")\n\
-         (declare-plugin! \"core:plum\")",
+         (load-plugin! \"core:plum\")",
     )
     .unwrap();
 
@@ -425,14 +440,14 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
 }
 
 /// The real `core:git-diff` plugin's own shipped `manifest.scm` resolves and evaluates via a
-/// zero-trigger `(declare-plugin! "core:git-diff")`, through the full production
+/// `(load-plugin! "core:git-diff")`, through the full production
 /// `init_scripting` path against the repo's actual `runtime/` tree.
 ///
 /// It guards the real `runtime/plugins/core/git-diff/manifest.scm` against a
 /// syntax error, a wrong plugin name, or a stale command/event list, none of
 /// which the synthetic-fixture tests in this file would catch.
 #[test]
-fn core_git_diff_real_manifest_scm_resolves_via_zero_trigger_declare() {
+fn core_git_diff_real_manifest_scm_resolves_via_load_plugin() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
@@ -447,10 +462,8 @@ fn core_git_diff_real_manifest_scm_resolves_via_zero_trigger_declare() {
         "sanity: the real manifest.scm must exist at the expected repo path"
     );
 
-    let (ed, _dirs) = setup_editor_with_init_scripting(
-        r#"(declare-plugin! "core:git-diff")"#,
-        Some(&runtime_dir),
-    );
+    let (ed, _dirs) =
+        setup_editor_with_init_scripting(r#"(load-plugin! "core:git-diff")"#, Some(&runtime_dir));
 
     let errors: Vec<String> = ed
         .state
@@ -467,10 +480,13 @@ fn core_git_diff_real_manifest_scm_resolves_via_zero_trigger_declare() {
     let id = PluginId::Core("git-diff".to_string());
     assert!(
         matches!(
-            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
             Some(PluginStatus::Declared)
         ),
-        "core:git-diff must be Declared (not yet activated) once the zero-trigger \
+        "core:git-diff must be Declared (not yet activated) once its \
          declare resolves its manifest.scm"
     );
     assert!(
@@ -502,7 +518,7 @@ fn core_git_diff_real_manifest_scm_resolves_via_zero_trigger_declare() {
             .as_ref()
             .unwrap()
             .activation_event_plugins("on-buffer-open")
-            .contains(&id),
+            .contains(&hume_scripting::attribution::EntryId::main(id.clone())),
         "manifest.scm's #:events '(on-buffer-open) must register the plugin to \
          activate on the first buffer opened"
     );
@@ -540,4 +556,28 @@ fn keymap_lint_silent_for_known_command() {
             .is_some(),
         "init.scm's bind-key! must land in the Normal trie specifically"
     );
+}
+
+/// A `./file.scm` declared from init.scm stays lazy through the production
+/// `init_scripting` path and loads when its typed command runs.
+#[test]
+fn local_plugin_declared_in_init_activates_on_its_typed_command() {
+    use hume_scripting::PluginStatus;
+    use hume_scripting::attribution::{EntryId, PluginId};
+
+    let (mut ed, _dirs) = setup_editor_with_init_files(
+        r#"(declare-plugin! "./hello.scm" #:typed-commands '("local-hello"))"#,
+        &[(
+            "hello.scm",
+            r#"(define-typed-command! "local-hello" "doc" (lambda () (+ 1 0)))"#,
+        )],
+        None,
+    );
+    let id = EntryId::main(PluginId::parse("./hello.scm").unwrap());
+    let status = |ed: &Editor| ed.scripting.as_ref().unwrap().plugin_status(&id);
+    assert_eq!(status(&ed), Some(PluginStatus::Declared));
+
+    type_cmd(&mut ed, ":local-hello");
+
+    assert_eq!(status(&ed), Some(PluginStatus::Loaded));
 }
