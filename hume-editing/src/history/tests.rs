@@ -877,3 +877,44 @@ fn change_seq_moves_on_every_navigation_and_record_only() {
     h.set_undo_levels(5);
     assert!(!moved(&h), "a zero-step walk and a cap change");
 }
+
+// ── Promotion age, reset counter ─────────────────────────────────────────────
+
+#[test]
+fn promotion_gives_the_root_the_age_of_the_promoted_state() {
+    let mut h = History::new();
+    h.set_undo_levels(1);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1));
+    backdate(&mut h, RevisionId(0), mins(60));
+    backdate(&mut h, RevisionId(1), mins(10));
+
+    let promoted = h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2));
+
+    assert_eq!(promoted, Some(RevisionId(1)));
+    let root = &h.nodes(SystemTime::now())[0];
+    assert_eq!(root.id, History::ROOT);
+    assert!(
+        root.age >= mins(10) && root.age < mins(11),
+        "the root holds the promoted revision's state, so it is that old: {:?}",
+        root.age
+    );
+}
+
+#[test]
+fn reset_keeps_change_seq_strictly_increasing() {
+    let mut h = History::new();
+    h.set_undo_levels(5);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1));
+    h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2));
+    let before = h.change_seq();
+
+    h.reset();
+
+    assert!(h.change_seq() > before);
+    assert_eq!(h.len(), 1);
+    assert_eq!(h.current_id(), History::ROOT);
+    assert_eq!(h.undo_levels(), 5);
+    let after_reset = h.change_seq();
+    h.record(insert_cs(6, "c"), delete_cs(7, 1), sel_at(0), sel_at(1));
+    assert!(h.change_seq() > after_reset);
+}

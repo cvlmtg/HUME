@@ -306,9 +306,7 @@ impl Buffer {
         content: &str,
     ) {
         let text = self.text.replaced_with(content);
-        let undo_levels = self.history.undo_levels();
-        self.history = History::new();
-        self.history.set_undo_levels(undo_levels);
+        self.history.reset();
         self.saved_revision = Some(self.history.current_id());
         self.search_pattern = None;
         self.search_matches = SearchMatches::default();

@@ -168,6 +168,17 @@ impl History {
         }
     }
 
+    /// Drop every revision and return to a fresh root, keeping `undo_levels`.
+    /// `change_seq` moves forward, never back, so an observer holding an
+    /// earlier read sees the replacement.
+    pub fn reset(&mut self) {
+        let undo_levels = self.undo_levels;
+        let change_seq = self.change_seq + 1;
+        *self = Self::new();
+        self.undo_levels = undo_levels;
+        self.change_seq = change_seq;
+    }
+
     /// Set the maximum number of non-root revisions to retain. `0` means
     /// unlimited.
     ///
@@ -296,6 +307,7 @@ impl History {
                 }
                 let root = self.revisions.get_mut(&Self::ROOT).expect("root exists");
                 root.children = c.children;
+                root.timestamp = c.timestamp;
                 last_promoted = Some(c_id);
             }
         }
