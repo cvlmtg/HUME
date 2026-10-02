@@ -8,8 +8,6 @@
 //   svlangserver (language "systemverilog"): npm, settings contain a real
 //     JSON array (systemverilog.includeIndexing)
 //   gopls (language "go"): golang, installable through `go install`
-//   ada-language-server (language "ada"): github, but every platform target
-//     is .tar.gz, so it is never installable in v1 regardless of host OS
 //   pest-language-server (language "pest"): cargo, crates.io semver,
 //     installable
 //   nil (language "nix"): cargo-git, a Mason git-tag pin, a stub: not
@@ -1256,9 +1254,9 @@ fn discovery_hint_does_not_fire_for_a_blocked_server() {
     load_lsp_install(&mut ed, data_tmp.path());
 
     let bid = ed.focused_buffer_id();
-    // gopls (golang stub) is never installable, so the hint must never
+    // nil (cargo-git stub) is never installable, so the hint must never
     // suggest a command that would fail.
-    let lang = ed.state.config.languages.intern("go");
+    let lang = ed.state.config.languages.intern("nix");
     ed.set_buffer_language(bid, Some(lang));
     ed.settle();
 
