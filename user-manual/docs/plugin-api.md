@@ -84,7 +84,7 @@ To use something newer that has not shipped in a release, check for it directly 
 | `(load-plugin! name #:config)` | Brings in a plugin. It loads lazily when the plugin ships a `manifest.scm` and at startup otherwise; `#:config` is the only way to pass configuration |
 | `(resolve-plugin-path name)` | The plugin's resolved file path if it exists on disk, else `#f`; raises for a malformed name |
 | `(loaded-plugins)` | List of plugin names whose code has finished loading, local files included |
-| `(declared-plugins)` | List of installed plugin names named by `load-plugin!` or `declare-plugin!`, `core:*` included; local `./file.scm` entries are not listed |
+| `(declared-plugins)` | List of plugin names named by `load-plugin!` or `declare-plugin!`, `core:*` included, whether or not they are installed; local `./file.scm` entries are not listed |
 | `(plugin-config)` | The `#:config` value the user passed to `load-plugin!`, or an empty hash |
 | `(plugin-dir)` | The directory holding the calling plugin's own files, or `#f` outside a plugin body |
 

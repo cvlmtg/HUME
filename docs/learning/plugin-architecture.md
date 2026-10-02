@@ -176,12 +176,13 @@ that hook queues too and drains in the same pass — you never need an extra
 keypress to see the cascade finish. Plugins always observe the editor in a
 stable state, not mid-edit.
 
-One caveat: the named language must already be known to the editor when a buffer is
+One caveat: the named language should already be known to the editor when a buffer is
 opened. If a plugin is the sole definer of its own activation language — registering it
-inside its own body with `define-language!` — it can never load. The body needs a buffer
-in that language to trigger activation, but the language can't be set on any buffer until
-the body runs. This is a permanent deadlock for the session; HUME will flag it at startup
-with a warning visible in `:messages`.
+inside its own body with `define-language!` — automatic detection can never pick that
+language, because detection only matches registered languages. The body needs a buffer in
+that language to trigger activation, but it has not run yet to register it. Only an explicit
+`:set buffer language=` can break the cycle. HUME flags the declaration at startup with a
+warning visible in `:messages`.
 
 The fix is to separate identity from behavior: define the language eagerly in `init.scm`
 so its identity exists from startup, then declare the tooling lazily:

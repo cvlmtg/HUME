@@ -217,14 +217,14 @@ See [Standard Library](standard-library.md#selections) for the full list of sele
 `call!` with an unknown command name logs an error and no-ops instead of aborting the command body: a missing plugin dependency shows up as an error in `:messages`, not as a crash, so check dependencies up front rather than relying on the error to be noticed.
 :::
 
-If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it. Whether that call sits at your plugin's own top level or inside a command a key press later fires makes no difference: `call!` activates a lazily-declared dependency on demand either way, so the usual check is `(declared-plugins)`, which lists the installed plugins named by `load-plugin!` or `declare-plugin!`:
+If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it. Whether that call sits at your plugin's own top level or inside a command a key press later fires makes no difference: `call!` activates a lazily-declared dependency on demand either way, so the usual check is `(declared-plugins)`, which lists every plugin named by `load-plugin!` or `declare-plugin!`:
 
 ```scheme
 (unless (member "core:stdlib" (declared-plugins))
   (error "my-plugin: requires core:stdlib — add (load-plugin! \"core:stdlib\") before it"))
 ```
 
-This is enough as long as the command you're calling is one of the dependency's own activation entries: the entries of its `manifest.scm`, or a custom list a user declared that includes it. If a user declared the dependency with a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#f` instead of raising, and the check above can't catch it, since the plugin is declared, just not for the command you need.
+The list includes a plugin that is named but not installed; that case is reported in `:messages` and shows as `absent` in `:plugin-status`. This is enough as long as the command you're calling is one of the dependency's own activation entries: the entries of its `manifest.scm`, or a custom list a user declared that includes it. If a user declared the dependency with a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#f` instead of raising, and the check above can't catch it, since the plugin is declared, just not for the command you need.
 
 `(loaded-plugins)` lists the plugins whose code has finished loading. It suits a dependency without a manifest, which loads at startup. A dependency with a manifest is lazy, so it is not in that list until something triggers it, and checking it there would fail for a plugin that works.
 
