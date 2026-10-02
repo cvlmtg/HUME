@@ -63,6 +63,7 @@ pub fn run_keys(
     // kitty_enabled is true (see handle_normal). The kitty-only default
     // binds are also installed to match interactive kitty.
     editor.set_kitty_support(true);
+    editor.set_headless();
     editor.set_config_source(config);
     editor.init_scripting(&mut Default::default());
 

@@ -36,6 +36,12 @@ impl Editor {
         self.state.config.keymap = super::default_keymap_for(kitty_enabled);
     }
 
+    /// Mark this editor as driven by scripted keys with no one to answer a
+    /// prompt, so `can_open_confirm` never lets a confirm open.
+    pub(crate) fn set_headless(&mut self) {
+        self.state.headless = true;
+    }
+
     /// Open a file from disk, or create a new empty scratch buffer.
     ///
     /// The cursor starts at position 0 in Normal mode. Terminal dimensions are

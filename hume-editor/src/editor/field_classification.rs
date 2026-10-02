@@ -51,6 +51,7 @@ fn editor_state_fields_are_classified() {
             paste_stamp: _,         // preserved
             should_quit: _,         // preserved
             terminate_exit_code: _, // preserved
+            headless: _,            // preserved
             worker_panics: _,       // preserved
             status_msg: _,          // preserved
             summary_ttl: _,         // preserved

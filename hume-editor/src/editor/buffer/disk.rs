@@ -237,6 +237,7 @@ impl Editor {
     ///   `Editor::enter_buffer_disk_check` already retires a confirm for a
     ///   buffer focus left, so this only guards against a different buffer's
     ///   check. A `Scrollable` popup does not block: it is evicted on landing.
+    /// - Not headless: scripted keys would be taken as the answer.
     /// - No pending keys or `wait_char`: the next keystroke is already spoken
     ///   for.
     /// - Not replaying a macro: replayed keys can't answer a prompt, so those
@@ -248,9 +249,11 @@ impl Editor {
     ///   flag is what caused the change it checks. `Explicit` runs before the
     ///   flag is set.
     pub(in crate::editor::buffer) fn can_open_confirm(&self, trigger: DiskCheckTrigger) -> bool {
-        self.state
-            .input
-            .is::<BaseLayer>(self.state.input.mode_layer())
+        !self.state.headless
+            && self
+                .state
+                .input
+                .is::<BaseLayer>(self.state.input.mode_layer())
             && self.state.input.confirm().is_none()
             && self.state.input.picker().is_none()
             && self.state.input.menu().is_none()

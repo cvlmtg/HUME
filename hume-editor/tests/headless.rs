@@ -48,3 +48,26 @@ fn write_failure_still_returns_err() {
          by the LSP shutdown that now runs alongside it"
     );
 }
+
+#[test]
+fn a_crash_dump_next_to_the_file_is_neither_offered_nor_touched() {
+    let run = |with_dump: bool| {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.txt");
+        let output = dir.path().join("out.txt");
+        std::fs::write(&input, "hello\nworld\n").unwrap();
+        let dump = dir.path().join("in.txt.dump");
+        if with_dump {
+            std::fs::write(&dump, "crashed\n").unwrap();
+        }
+        hume::run_keys(input, "xd", output.clone(), ConfigSource::Default).unwrap();
+        let dump_after = std::fs::read_to_string(&dump).ok();
+        (std::fs::read_to_string(&output).unwrap(), dump_after)
+    };
+
+    let (baseline, _) = run(false);
+    let (with_dump, dump_after) = run(true);
+
+    assert_eq!(with_dump, baseline);
+    assert_eq!(dump_after.as_deref(), Some("crashed\n"));
+}

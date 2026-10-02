@@ -287,6 +287,9 @@ pub(crate) struct EditorState {
     /// the single-threaded, in-editor quit path (dirty-buffer prompts, `:q`
     /// semantics); a signal bypasses all of that.
     pub(super) terminate_exit_code: Arc<AtomicI32>,
+    /// Set by headless `run_keys`, where no one can answer a prompt: a
+    /// confirm never opens, so scripted keys are not taken as answers.
+    pub(super) headless: bool,
     /// Panics on background threads, queued by the panic hook
     /// `hume_editor::run` installs. The run loop reports each new one as an
     /// Error; empty (and never filled) when no hook is installed.
@@ -506,6 +509,7 @@ impl Default for EditorState {
             paste_stamp: None,
             should_quit: false,
             terminate_exit_code: Arc::new(AtomicI32::new(0)),
+            headless: false,
             worker_panics: hume_platform::worker_panic::WorkerPanics::default(),
             status_msg: None,
             summary_ttl: 0,
