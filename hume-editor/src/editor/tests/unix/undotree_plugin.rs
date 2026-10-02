@@ -7,7 +7,6 @@
 // plugin README, never by calling the renderer.
 
 use super::*;
-use hume_scripting::ScriptingHost;
 
 const RENDER_SCM: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -54,8 +53,6 @@ fn scheme_nodes(nodes: &[Node]) -> String {
 fn rendered_rows(nodes: &[Node]) -> String {
     let guard = HumeRuntimeGuard::new();
     let plugin_dir = guard.runtime.path().join("plugins/core/undotree-probe");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("render.scm"), RENDER_SCM).unwrap();
     let probe = format!(
         r#"(require "render.scm")
 (define-command! "undotree-probe" "Show the rendered rows of a literal node list."
@@ -63,18 +60,16 @@ fn rendered_rows(nodes: &[Node]) -> String {
     (show-drawer-list! pane (hash-ref (undotree/render {}) 'rows) (lambda (i) (begin)))))"#,
         scheme_nodes(nodes)
     );
-    std::fs::write(plugin_dir.join("plugin.scm"), probe).unwrap();
+    write_core_plugin(&guard, "undotree-probe", &probe);
+    std::fs::write(plugin_dir.join("render.scm"), RENDER_SCM).unwrap();
 
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[h]>ello\n");
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
+    run(
         &mut ed,
-        &mut host,
-        "(load-plugin! \"core:undotree-probe\")",
         tmp.path(),
+        "(load-plugin! \"core:undotree-probe\")",
     );
-    ed.scripting = Some(host);
     ed.execute_keymap_command("undotree-probe".to_string().into(), None, false);
     ed.settle();
     drawer_rows(&ed).join("\n")
@@ -134,14 +129,11 @@ use std::time::Duration;
 fn setup(tmp: &Path) -> (Editor, RealRuntimeGuard) {
     let guard = RealRuntimeGuard::new();
     let mut ed = editor_from("-[h]>ello\n");
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
+    run(
         &mut ed,
-        &mut host,
-        &hume_scripting::eager_load_scm("core:undotree", None),
         tmp,
+        &hume_scripting::eager_load_scm("core:undotree", None),
     );
-    ed.scripting = Some(host);
     ed.settle();
     (ed, guard)
 }
@@ -374,28 +366,24 @@ const MANIFEST_SCM: &str = include_str!(concat!(
 #[test]
 fn undotree_ages_refresh_while_the_drawer_is_open() {
     let guard = HumeRuntimeGuard::new();
-    let plugin_dir = guard.runtime.path().join("plugins/core/undotree");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("render.scm"), RENDER_SCM).unwrap();
-    std::fs::write(plugin_dir.join("manifest.scm"), MANIFEST_SCM).unwrap();
-    std::fs::write(
-        plugin_dir.join("plugin.scm"),
-        PLUGIN_SCM.replace(
+    write_core_plugin(
+        &guard,
+        "undotree",
+        &PLUGIN_SCM.replace(
             "(define undotree/age-refresh-ms 60000)",
             "(define undotree/age-refresh-ms 100)",
         ),
-    )
-    .unwrap();
+    );
+    let plugin_dir = guard.runtime.path().join("plugins/core/undotree");
+    std::fs::write(plugin_dir.join("render.scm"), RENDER_SCM).unwrap();
+    std::fs::write(plugin_dir.join("manifest.scm"), MANIFEST_SCM).unwrap();
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[h]>ello\n");
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
+    run(
         &mut ed,
-        &mut host,
-        &hume_scripting::eager_load_scm("core:undotree", None),
         tmp.path(),
+        &hume_scripting::eager_load_scm("core:undotree", None),
     );
-    ed.scripting = Some(host);
     ed.settle();
     toggle(&mut ed);
     assert!(

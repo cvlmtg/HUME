@@ -8,6 +8,7 @@ use termina::event::KeyEvent;
 use super::EditorHostImpl;
 use crate::editor::Mode;
 use crate::editor::commands::{self, FocusedPane};
+use crate::editor::doc_ops::HistoryWalk;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::EditHost;
 
@@ -138,10 +139,8 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         match commands::goto_revision(self.state, self.view, t, revision)
             .map_err(|e| e.message().to_string())?
         {
-            crate::editor::doc_ops::HistoryWalk::Took(_) => Ok(()),
-            crate::editor::doc_ops::HistoryWalk::RefusedReadOnly => {
-                Err("goto-revision!: buffer is read-only".to_string())
-            }
+            HistoryWalk::Took(_) => Ok(()),
+            HistoryWalk::RefusedReadOnly => Err("goto-revision!: buffer is read-only".to_string()),
         }
     }
 

@@ -17,8 +17,7 @@
           (range 0 (length lanes))))
 
 (define (undotree/first-free-lane lanes)
-  (let ([free (filter (lambda (i) (not (list-ref lanes i)))
-                      (range 0 (length lanes)))])
+  (let ([free (undotree/lanes-waiting-for lanes #f)])
     (if (null? free) (length lanes) (car free))))
 
 (define (undotree/trim-reversed rev)
@@ -56,7 +55,7 @@
                                  (if (< i end) (undotree/graph-gap i column merging) "")))
                 (range 0 (length lanes))))))
 
-;;; `nodes` newest first. Returns one `(hash 'node 'graph)` per node, same order.
+;;; See README.md's "Graph".
 (define (undotree/layout nodes lanes laid-out)
   (if (null? nodes)
       (reverse laid-out)
@@ -69,19 +68,20 @@
          (cdr nodes)
          (undotree/advance-lanes wide column merging (hash-ref node 'parent))
          (cons (hash 'node node
-                     'graph (undotree/graph-row wide column merging))
+                     'graph (undotree/graph-row wide column merging)
+                     'age (undotree/format-age (hash-ref node 'age-secs)))
                laid-out)))))
 
 ;; ── Rows ─────────────────────────────────────────────────────────────────────
 
-(define (undotree/spaces n)
-  (if (<= n 0) "" (string-append " " (undotree/spaces (- n 1)))))
+(define (undotree/spaces s width)
+  (make-string (max 0 (- width (string-length s))) #\space))
 
 (define (undotree/pad-right s width)
-  (string-append s (undotree/spaces (- width (string-length s)))))
+  (string-append s (undotree/spaces s width)))
 
 (define (undotree/pad-left s width)
-  (string-append (undotree/spaces (- width (string-length s))) s))
+  (string-append (undotree/spaces s width) s))
 
 (define (undotree/max-width strings)
   (apply max (map string-length strings)))
@@ -94,7 +94,7 @@
      (if (hash-ref node 'current?) "@" " ")
      (if (hash-ref node 'saved?) "S" " ")
      " "
-     (undotree/pad-left (undotree/format-age (hash-ref node 'age-secs)) age-width))))
+     (undotree/pad-left (hash-ref row 'age) age-width))))
 
 (define (undotree/row-index pred rows i)
   (cond
@@ -108,9 +108,7 @@
          [node-of (lambda (row) (hash-ref row 'node))]
          [ids (map (lambda (row) (hash-ref (node-of row) 'id)) laid-out)]
          [graph-width (undotree/max-width (map (lambda (row) (hash-ref row 'graph)) laid-out))]
-         [age-width (undotree/max-width
-                     (map (lambda (row) (undotree/format-age (hash-ref (node-of row) 'age-secs)))
-                          laid-out))])
+         [age-width (undotree/max-width (map (lambda (row) (hash-ref row 'age)) laid-out))])
     (hash 'rows (map (lambda (row) (undotree/format-row row graph-width age-width))
                      laid-out)
           'ids ids

@@ -175,15 +175,14 @@ fn goto_revision_on_read_only_buffer_is_refused() {
     assert_eq!(ed.doc().revision_id().index(), br.b.1);
 }
 
-#[test]
-fn goto_revision_carries_other_pane_selections() {
-    let mut ed = editor_from("-[a]>bcdef\n");
+/// Deletes the first char of `abcdef` (revision 1), splits the pane, and moves
+/// the new pane's cursor three right. Returns `(original pane, new pane,
+/// buffer)`; focus is on the new pane.
+fn split_with_moved_cursor(ed: &mut Editor) -> (PaneId, PaneId, BufferId) {
     let pane_a = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
     ed.feed_key(key('d'));
-    assert_eq!(state(&ed), "-[b]>cdef\n");
-
-    let handle = focused_pane(&ed);
+    let handle = focused_pane(ed);
     live_host!(ed)
         .run_command_sync("pane-vsplit", handle, Some(1), false, None)
         .expect("pane-vsplit must succeed");
@@ -192,6 +191,13 @@ fn goto_revision_carries_other_pane_selections() {
     for _ in 0..3 {
         ed.feed_key(key('l'));
     }
+    (pane_a, pane_b, bid)
+}
+
+#[test]
+fn goto_revision_carries_other_pane_selections() {
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let (pane_a, pane_b, bid) = split_with_moved_cursor(&mut ed);
     assert_eq!(state(&ed), "bcd-[e]>f\n");
 
     ed.switch_focused_pane(pane_a);
@@ -284,17 +290,7 @@ fn goto_revision_host_acts_on_the_given_pane_not_focus() {
     use hume_scripting::host::EditHost;
 
     let mut ed = editor_from("-[a]>bcdef\n");
-    let pane_a = ed.state.focus.id();
-    let bid = ed.focused_buffer_id();
-    ed.feed_key(key('d'));
-    let handle = focused_pane(&ed);
-    live_host!(ed)
-        .run_command_sync("pane-vsplit", handle, Some(1), false, None)
-        .expect("pane-vsplit must succeed");
-    let pane_b = ed.state.focus.id();
-    for _ in 0..3 {
-        ed.feed_key(key('l'));
-    }
+    let (pane_a, pane_b, bid) = split_with_moved_cursor(&mut ed);
 
     let target_a = hume_scripting::PaneHandle::with_pane(bid, pane_a);
     live_host!(ed)

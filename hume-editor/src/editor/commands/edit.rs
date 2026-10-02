@@ -222,7 +222,7 @@ fn walk_history(
 /// once per walk.
 fn history_step(
     state: &mut EditorState,
-    view: &mut EngineView,
+    view: &EngineView,
     t: CommandPane,
     count: usize,
     walk: fn(&mut Buffer, BufferId, &mut PositionStores<'_>, PaneId, usize) -> HistoryWalkResult,

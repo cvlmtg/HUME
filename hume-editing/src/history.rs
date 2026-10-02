@@ -249,8 +249,7 @@ impl History {
             .expect("parent exists")
             .children
             .push(new_id);
-        self.current = new_id;
-        self.change_seq += 1;
+        self.set_current(new_id);
 
         self.enforce_undo_levels()
     }
@@ -362,8 +361,7 @@ impl History {
         let rev = &self.revisions[&old_current];
         let link = rev.link.as_ref()?;
         let (parent, inverse) = (link.parent, link.inverse.clone());
-        self.current = parent;
-        self.change_seq += 1;
+        self.set_current(parent);
         Some(inverse)
     }
 
@@ -378,8 +376,7 @@ impl History {
     pub fn redo(&mut self) -> Option<Transaction> {
         // Copy out child_id before mutating current.
         let child_id = self.revisions[&self.current].children.redo()?;
-        self.current = child_id;
-        self.change_seq += 1;
+        self.set_current(child_id);
         Some(self.revisions[&child_id].link().forward.clone())
     }
 
@@ -534,7 +531,7 @@ impl History {
             .map(|(&id, revision)| RevisionNode {
                 id,
                 parent: revision.parent(),
-                age: self.age(id, now),
+                age: now.duration_since(revision.timestamp).unwrap_or_default(),
             })
             .collect();
         nodes.sort_by_key(|node| node.id.0);
@@ -550,16 +547,10 @@ impl History {
         self.revisions.get(&id)?.parent()
     }
 
-    /// Ancestor chain from `id` up to and including the root.
-    ///
-    /// Returns `[id, parent, grandparent, ..., root]`.
-    fn ancestors(&self, mut id: RevisionId) -> Vec<RevisionId> {
-        let mut chain = vec![id];
-        while let Some(parent) = self.revisions[&id].parent() {
-            chain.push(parent);
-            id = parent;
-        }
-        chain
+    /// Move `current` to `id`; the one place `change_seq` follows it.
+    fn set_current(&mut self, id: RevisionId) {
+        self.current = id;
+        self.change_seq += 1;
     }
 
     /// Jump to an arbitrary revision in the undo tree, the general case
@@ -598,36 +589,20 @@ impl History {
             return Some(Vec::new());
         }
 
-        let ancestors_from = self.ancestors(self.current);
-        let ancestors_to = self.ancestors(target);
-
-        // Put the "from" ancestor set in a HashSet for O(1) lookup.
-        // We need to find the first node in ancestors_to that also appears
-        // in ancestors_from; that is the LCA.
-        let from_set: rustc_hash::FxHashSet<RevisionId> = ancestors_from.iter().copied().collect();
-
-        // Find the LCA: walk ancestors_to until we hit a node in from_set.
-        let lca = *ancestors_to
-            .iter()
-            .find(|id| from_set.contains(id))
-            .expect("all revisions share at least the root ancestor");
-
-        // Up leg: nodes from `current` up to (not including) LCA.
-        // ancestors_from = [current, ..., lca, ...]
-        let up_path: Vec<RevisionId> = ancestors_from
-            .iter()
-            .copied()
-            .take_while(|&id| id != lca)
-            .collect();
-
-        // Down leg: nodes from LCA's child down to `target`.
-        // ancestors_to = [target, ..., lca_child, lca, ...]
-        // Take everything before lca, then reverse so it goes lca_child → target.
-        let mut down_path: Vec<RevisionId> = ancestors_to
-            .iter()
-            .copied()
-            .take_while(|&id| id != lca)
-            .collect();
+        // A parent's id is always smaller than its child's (ids ascend and
+        // eviction re-points orphans to the root), so stepping the larger
+        // id up meets at the lowest common ancestor.
+        let (mut up_path, mut down_path) = (Vec::new(), Vec::new());
+        let (mut from, mut to) = (self.current, target);
+        while from != to {
+            if from.0 > to.0 {
+                up_path.push(from);
+                from = self.revisions[&from].link().parent;
+            } else {
+                down_path.push(to);
+                to = self.revisions[&to].link().parent;
+            }
+        }
         down_path.reverse();
 
         // Build the transaction list.
@@ -650,8 +625,7 @@ impl History {
                 .set_redo(id);
         }
 
-        self.current = target;
-        self.change_seq += 1;
+        self.set_current(target);
         Some(txns)
     }
 }
