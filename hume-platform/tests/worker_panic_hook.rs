@@ -11,10 +11,10 @@ use std::thread;
 /// Tests in this binary run in parallel threads and share the one hook.
 static HOOK_LOCK: Mutex<()> = Mutex::new(());
 
-/// Puts the hook that was current before the test back when dropped, so a
-/// failing assertion cannot leave a test's hook installed.
 type Hook = Box<dyn Fn(&panic::PanicHookInfo<'_>) + Send + Sync + 'static>;
 
+/// Puts the hook that was current before the test back when dropped, so a
+/// failing assertion cannot leave a test's hook installed.
 struct RestoreHook(Option<Hook>);
 
 impl RestoreHook {
