@@ -51,6 +51,18 @@ fn opening_a_file_with_a_dump_asks_what_to_do_with_it() {
 }
 
 #[test]
+fn offering_a_dump_for_a_closed_buffer_does_nothing() {
+    let (_dir, path) = file_with_dump(Some("disk\n"), "crashed\n");
+    let mut ed = editor_that_opened(&path);
+    let bid = ed.focused_buffer_id();
+    ed.close_buffer(bid);
+
+    ed.offer_dump_restore(bid);
+
+    assert!(ed.state.input.confirm().is_none());
+}
+
+#[test]
 fn opening_a_file_without_a_dump_opens_no_prompt() {
     let dir = safe_tempdir();
     let path = dir.path().join("foo.txt");

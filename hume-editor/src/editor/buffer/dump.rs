@@ -136,7 +136,9 @@ impl Editor {
     /// its file. Runs on every buffer-enter, so a prompt that could not open
     /// (another overlay was up) is offered again on the next one.
     pub(in crate::editor) fn offer_dump_restore(&mut self, bid: BufferId) {
-        let buf = self.state.buffers.get(bid);
+        let Some(buf) = self.state.buffers.try_get(bid) else {
+            return;
+        };
         if !buf.dump_pending
             || bid != self.focused_buffer_id()
             || !self.can_open_confirm(DiskCheckTrigger::BufferEnter)
