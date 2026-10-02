@@ -269,8 +269,10 @@ fn setup_trigger_char_feature(
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
+        &format!(
+            "(load-plugin! \"core:stdlib\")\n{}",
+            hume_scripting::eager_load_scm("core:lsp", None)
+        ),
         tmp,
     );
     ed.scripting = Some(host);
@@ -385,7 +387,10 @@ fn setup_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagSetup {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin! "core:stdlib") (load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
+        &format!(
+            "(load-plugin! \"core:stdlib\")\n{}",
+            hume_scripting::eager_load_scm("core:lsp", None)
+        ),
         tmp.path(),
     );
     ed.scripting = Some(host);

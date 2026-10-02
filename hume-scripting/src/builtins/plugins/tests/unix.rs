@@ -2,6 +2,34 @@
 //! `mod unix;` declaration in the parent.
 
 use super::*;
+use crate::ScriptingHost;
+use crate::attribution::EntryFile;
+use tempfile::TempDir;
+
+pub(super) fn main_entry(plugin: &str) -> EntryId {
+    EntryId::main(PluginId::parse(plugin).unwrap())
+}
+
+pub(super) fn secondary(plugin: &str, file: &str) -> EntryId {
+    EntryId::new(
+        PluginId::parse(plugin).unwrap(),
+        EntryFile::parse(file).unwrap(),
+    )
+}
+
+/// A `user/<repo>` plugin directory holding `files` (name, source), and a host
+/// whose data dir points at it.
+pub(super) fn host_with_plugin(repo: &str, files: &[(&str, &str)]) -> (TempDir, ScriptingHost) {
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join(repo);
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    for (name, src) in files {
+        std::fs::write(plugin_dir.join(name), src).unwrap();
+    }
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    (dir, host)
+}
 
 // ── Zero-entry error distinguishes collided vs not-supplied ────────────────
 
@@ -219,29 +247,25 @@ fn plugin_config_survives_lazy_declare_to_activation() {
 /// whatever the manifest declares for itself.
 #[test]
 fn load_plugin_evaluates_manifest_scm() {
-    use crate::ScriptingHost;
     use crate::host::EditorHost;
     use crate::null_host::LazyStubHost;
-    use tempfile::TempDir;
 
-    let dir = TempDir::new().unwrap();
-    let plugin_dir = dir.path().join("plugins").join("user").join("mftest");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
-    std::fs::write(
-        plugin_dir.join("manifest.scm"),
-        br#"(declare-plugin! "user/mftest" #:commands '("mf-cmd"))"#,
-    )
-    .unwrap();
-
-    let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());
+    let (_dir, mut host) = host_with_plugin(
+        "mftest",
+        &[
+            ("plugin.scm", ""),
+            (
+                "manifest.scm",
+                r#"(declare-plugin! "user/mftest" #:commands '("mf-cmd"))"#,
+            ),
+        ],
+    );
     let mut editor_host = LazyStubHost::default();
 
     host.eval_source(r#"(load-plugin! "user/mftest")"#, &mut editor_host)
         .expect("load-plugin! with a manifest.scm present must succeed");
 
-    let id = EntryId::main(PluginId::parse("user/mftest").unwrap());
+    let id = main_entry("user/mftest");
     assert!(
         matches!(
             host.registries.lazy_registry.plugins.get(&id),
@@ -260,25 +284,21 @@ fn load_plugin_evaluates_manifest_scm() {
 /// body reading `(plugin-config)` at activation sees the user's value.
 #[test]
 fn load_plugin_config_reaches_a_manifest_declared_entry() {
-    use crate::{ScriptingHost, null_host::NullHost};
-    use tempfile::TempDir;
+    use crate::null_host::NullHost;
 
-    let dir = TempDir::new().unwrap();
-    let plugin_dir = dir.path().join("plugins").join("user").join("cfgmftest");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(
-        plugin_dir.join("plugin.scm"),
-        br#"(log! 'info (hash-ref (plugin-config) "key"))"#,
-    )
-    .unwrap();
-    std::fs::write(
-        plugin_dir.join("manifest.scm"),
-        br#"(declare-plugin! "user/cfgmftest" #:commands '("probe"))"#,
-    )
-    .unwrap();
-
-    let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());
+    let (_dir, mut host) = host_with_plugin(
+        "cfgmftest",
+        &[
+            (
+                "plugin.scm",
+                r#"(log! 'info (hash-ref (plugin-config) "key"))"#,
+            ),
+            (
+                "manifest.scm",
+                r#"(declare-plugin! "user/cfgmftest" #:commands '("probe"))"#,
+            ),
+        ],
+    );
 
     host.eval_source(
         r#"(load-plugin! "user/cfgmftest" #:config (hash "key" "val"))"#,
@@ -303,21 +323,15 @@ fn load_plugin_config_reaches_a_manifest_declared_entry() {
 /// so `load-plugin!` loads its `plugin.scm` right away.
 #[test]
 fn load_plugin_without_manifest_loads_eagerly() {
-    use crate::{ScriptingHost, null_host::NullHost};
-    use tempfile::TempDir;
+    use crate::null_host::NullHost;
 
-    let dir = TempDir::new().unwrap();
-    let plugin_dir = dir.path().join("plugins").join("user").join("nomf");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), br#"(log! 'info "body-ran")"#).unwrap();
-
-    let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());
+    let (_dir, mut host) =
+        host_with_plugin("nomf", &[("plugin.scm", r#"(log! 'info "body-ran")"#)]);
 
     host.eval_source(r#"(load-plugin! "user/nomf")"#, &mut NullHost)
         .unwrap();
 
-    let id = EntryId::main(PluginId::parse("user/nomf").unwrap());
+    let id = main_entry("user/nomf");
     assert!(matches!(
         host.registries.lazy_registry.plugins.get(&id),
         Some(PluginState::Loaded)

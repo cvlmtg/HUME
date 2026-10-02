@@ -1,37 +1,13 @@
 //! Unix-only tests for `declare-plugin! #:entry`, gated once at the
 //! `mod unix_entries;` declaration in the parent.
 
+use super::unix::{host_with_plugin, main_entry, secondary};
 use crate::ScriptingHost;
-use crate::attribution::{EntryFile, EntryId, PluginId};
+use crate::attribution::{EntryId, PluginId};
 use crate::host::EditorHost;
 use crate::lazy::PluginState;
 use crate::null_host::{LazyStubHost, NullHost};
 use tempfile::TempDir;
-
-fn main_entry(plugin: &str) -> EntryId {
-    EntryId::main(PluginId::parse(plugin).unwrap())
-}
-
-fn secondary(plugin: &str, file: &str) -> EntryId {
-    EntryId::new(
-        PluginId::parse(plugin).unwrap(),
-        EntryFile::parse(file).unwrap(),
-    )
-}
-
-/// A `user/multi` plugin directory holding `files` (name, source), and a host
-/// whose data dir points at it.
-fn host_with_plugin(files: &[(&str, &str)]) -> (TempDir, ScriptingHost) {
-    let dir = TempDir::new().unwrap();
-    let plugin_dir = dir.path().join("plugins").join("user").join("multi");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    for (name, src) in files {
-        std::fs::write(plugin_dir.join(name), src).unwrap();
-    }
-    let mut host = ScriptingHost::new();
-    host.set_data_dir(dir.path().to_path_buf());
-    (dir, host)
-}
 
 fn state<'a>(host: &'a ScriptingHost, id: &EntryId) -> Option<&'a PluginState> {
     host.registries.lazy_registry.plugins.get(id)
@@ -44,7 +20,7 @@ const DECLARE_BOTH: &str = r#"
 
 #[test]
 fn secondary_entry_is_declared_beside_the_main_entry() {
-    let (_dir, mut host) = host_with_plugin(&[("plugin.scm", ""), ("extra.scm", "")]);
+    let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", ""), ("extra.scm", "")]);
     let mut editor_host = LazyStubHost::default();
 
     host.eval_source(DECLARE_BOTH, &mut editor_host).unwrap();
@@ -66,10 +42,13 @@ fn secondary_entry_is_declared_beside_the_main_entry() {
 
 #[test]
 fn activating_one_entry_leaves_the_other_declared() {
-    let (_dir, mut host) = host_with_plugin(&[
-        ("plugin.scm", r#"(log! 'info "main-ran")"#),
-        ("extra.scm", r#"(log! 'info "extra-ran")"#),
-    ]);
+    let (_dir, mut host) = host_with_plugin(
+        "multi",
+        &[
+            ("plugin.scm", r#"(log! 'info "main-ran")"#),
+            ("extra.scm", r#"(log! 'info "extra-ran")"#),
+        ],
+    );
     host.eval_source(DECLARE_BOTH, &mut LazyStubHost::default())
         .unwrap();
 
@@ -94,19 +73,22 @@ fn activating_one_entry_leaves_the_other_declared() {
 
 #[test]
 fn failed_secondary_entry_keeps_the_main_entrys_footprint() {
-    let (_dir, mut host) = host_with_plugin(&[
-        (
-            "plugin.scm",
-            r#"(define-command! "main-cmd" "doc" (lambda () 0))
+    let (_dir, mut host) = host_with_plugin(
+        "multi",
+        &[
+            (
+                "plugin.scm",
+                r#"(define-command! "main-cmd" "doc" (lambda () 0))
                (register-hook! 'on-buffer-save (lambda (bid) 0))"#,
-        ),
-        (
-            "extra.scm",
-            r#"(define-command! "extra-cmd" "doc" (lambda () 0))
+            ),
+            (
+                "extra.scm",
+                r#"(define-command! "extra-cmd" "doc" (lambda () 0))
                (register-hook! 'on-buffer-open (lambda (bid) 0))
                (error "extra fails")"#,
-        ),
-    ]);
+            ),
+        ],
+    );
     host.eval_source(DECLARE_BOTH, &mut LazyStubHost::default())
         .unwrap();
 
@@ -133,8 +115,10 @@ fn failed_secondary_entry_keeps_the_main_entrys_footprint() {
 
 #[test]
 fn redeclaring_an_entry_is_ignored_but_a_new_entry_is_added() {
-    let (_dir, mut host) =
-        host_with_plugin(&[("plugin.scm", ""), ("extra.scm", ""), ("more.scm", "")]);
+    let (_dir, mut host) = host_with_plugin(
+        "multi",
+        &[("plugin.scm", ""), ("extra.scm", ""), ("more.scm", "")],
+    );
     let mut editor_host = LazyStubHost::default();
     host.eval_source(DECLARE_BOTH, &mut editor_host).unwrap();
 
@@ -158,7 +142,7 @@ fn redeclaring_an_entry_is_ignored_but_a_new_entry_is_added() {
 
 #[test]
 fn declare_plugin_rejects_config_and_records_nothing() {
-    let (_dir, mut host) = host_with_plugin(&[("plugin.scm", ""), ("extra.scm", "")]);
+    let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", ""), ("extra.scm", "")]);
 
     let err = host
         .eval_source(
@@ -175,13 +159,16 @@ fn declare_plugin_rejects_config_and_records_nothing() {
 
 #[test]
 fn the_main_entrys_config_is_what_every_entry_reads() {
-    let (_dir, mut host) = host_with_plugin(&[
-        ("plugin.scm", ""),
-        (
-            "extra.scm",
-            r#"(log! 'info (hash-ref (plugin-config) "k"))"#,
-        ),
-    ]);
+    let (_dir, mut host) = host_with_plugin(
+        "multi",
+        &[
+            ("plugin.scm", ""),
+            (
+                "extra.scm",
+                r#"(log! 'info (hash-ref (plugin-config) "k"))"#,
+            ),
+        ],
+    );
     host.eval_source(
         r#"(declare-plugin! "user/multi" #:languages '("zlang"))
            (declare-plugin! "user/multi" #:entry "extra.scm" #:typed-commands '("extra-cmd"))
@@ -205,7 +192,7 @@ fn the_main_entrys_config_is_what_every_entry_reads() {
 
 #[test]
 fn invalid_entry_names_error() {
-    let (_dir, mut host) = host_with_plugin(&[("plugin.scm", "")]);
+    let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", "")]);
 
     for bad in ["../x.scm", "a/b.scm", "x.txt", ".scm"] {
         let src =
@@ -217,7 +204,7 @@ fn invalid_entry_names_error() {
 
 #[test]
 fn a_secondary_entry_with_no_trigger_errors() {
-    let (_dir, mut host) = host_with_plugin(&[("plugin.scm", ""), ("extra.scm", "")]);
+    let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", ""), ("extra.scm", "")]);
 
     let err = host
         .eval_source(
@@ -231,7 +218,7 @@ fn a_secondary_entry_with_no_trigger_errors() {
 
 #[test]
 fn a_missing_entry_file_in_an_installed_plugin_errors() {
-    let (_dir, mut host) = host_with_plugin(&[("plugin.scm", "")]);
+    let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", "")]);
 
     let err = host
         .eval_source(
@@ -245,7 +232,7 @@ fn a_missing_entry_file_in_an_installed_plugin_errors() {
 
 #[test]
 fn load_plugin_rejects_an_entry() {
-    let (_dir, mut host) = host_with_plugin(&[("plugin.scm", ""), ("extra.scm", "")]);
+    let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", ""), ("extra.scm", "")]);
 
     host.eval_source(
         r#"(load-plugin! "user/multi" #:entry "extra.scm")"#,
@@ -256,15 +243,18 @@ fn load_plugin_rejects_an_entry() {
 
 #[test]
 fn a_manifest_may_declare_several_entries() {
-    let (_dir, mut host) = host_with_plugin(&[
-        ("plugin.scm", ""),
-        ("extra.scm", ""),
-        (
-            "manifest.scm",
-            r#"(declare-plugin! "user/multi" #:languages '("zlang"))
+    let (_dir, mut host) = host_with_plugin(
+        "multi",
+        &[
+            ("plugin.scm", ""),
+            ("extra.scm", ""),
+            (
+                "manifest.scm",
+                r#"(declare-plugin! "user/multi" #:languages '("zlang"))
                (declare-plugin! "user/multi" #:entry "extra.scm" #:typed-commands '("extra-cmd"))"#,
-        ),
-    ]);
+            ),
+        ],
+    );
     let mut editor_host = LazyStubHost::default();
 
     host.eval_source(r#"(load-plugin! "user/multi")"#, &mut editor_host)
@@ -276,16 +266,19 @@ fn a_manifest_may_declare_several_entries() {
 
 #[test]
 fn a_failed_manifest_fails_every_entry_it_declared() {
-    let (_dir, mut host) = host_with_plugin(&[
-        ("plugin.scm", ""),
-        ("extra.scm", ""),
-        (
-            "manifest.scm",
-            r#"(declare-plugin! "user/multi" #:languages '("zlang"))
+    let (_dir, mut host) = host_with_plugin(
+        "multi",
+        &[
+            ("plugin.scm", ""),
+            ("extra.scm", ""),
+            (
+                "manifest.scm",
+                r#"(declare-plugin! "user/multi" #:languages '("zlang"))
                (declare-plugin! "user/multi" #:entry "extra.scm" #:typed-commands '("extra-cmd"))
                (error "manifest fails late")"#,
-        ),
-    ]);
+            ),
+        ],
+    );
     let mut editor_host = LazyStubHost::default();
 
     host.eval_source(r#"(load-plugin! "user/multi")"#, &mut editor_host)
@@ -304,16 +297,19 @@ fn a_failed_manifest_fails_every_entry_it_declared() {
 
 #[test]
 fn load_plugin_without_config_gives_the_body_an_empty_hash() {
-    let (_dir, mut host) = host_with_plugin(&[
-        (
-            "manifest.scm",
-            r#"(declare-plugin! "user/multi" #:languages '("zlang"))"#,
-        ),
-        (
-            "plugin.scm",
-            r#"(log! 'info (if (hash? (plugin-config)) "config-hash" "config-other"))"#,
-        ),
-    ]);
+    let (_dir, mut host) = host_with_plugin(
+        "multi",
+        &[
+            (
+                "manifest.scm",
+                r#"(declare-plugin! "user/multi" #:languages '("zlang"))"#,
+            ),
+            (
+                "plugin.scm",
+                r#"(log! 'info (if (hash? (plugin-config)) "config-hash" "config-other"))"#,
+            ),
+        ],
+    );
     host.eval_source(
         r#"(load-plugin! "user/multi")"#,
         &mut LazyStubHost::default(),
@@ -335,14 +331,17 @@ fn load_plugin_without_config_gives_the_body_an_empty_hash() {
 
 #[test]
 fn load_plugin_after_an_explicit_entry_declare_leaves_the_manifest_unread() {
-    let (_dir, mut host) = host_with_plugin(&[
-        (
-            "manifest.scm",
-            r#"(declare-plugin! "user/multi" #:languages '("zlang"))"#,
-        ),
-        ("plugin.scm", ""),
-        ("extra.scm", ""),
-    ]);
+    let (_dir, mut host) = host_with_plugin(
+        "multi",
+        &[
+            (
+                "manifest.scm",
+                r#"(declare-plugin! "user/multi" #:languages '("zlang"))"#,
+            ),
+            ("plugin.scm", ""),
+            ("extra.scm", ""),
+        ],
+    );
     host.eval_source(
         r#"(declare-plugin! "user/multi" #:entry "extra.scm" #:typed-commands '("extra-cmd"))
            (load-plugin! "user/multi")"#,
@@ -362,7 +361,7 @@ fn load_plugin_after_an_explicit_entry_declare_leaves_the_manifest_unread() {
 
 #[test]
 fn declaring_a_missing_entry_file_records_nothing() {
-    let (_dir, mut host) = host_with_plugin(&[("plugin.scm", "")]);
+    let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", "")]);
 
     let result = host.eval_source(
         r#"(declare-plugin! "user/multi" #:entry "gone.scm" #:typed-commands '("gone-cmd"))"#,
@@ -379,7 +378,7 @@ fn declaring_a_missing_entry_file_records_nothing() {
 
 #[test]
 fn main_entry_spelled_in_any_case_is_still_the_main_entry() {
-    let (_dir, mut host) = host_with_plugin(&[("plugin.scm", "")]);
+    let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", "")]);
 
     host.eval_source(
         r#"(declare-plugin! "user/multi" #:entry "Plugin.scm" #:languages '("zlang"))"#,
@@ -405,10 +404,13 @@ const LAZY_MANIFEST: &str = r#"(declare-plugin! "user/multi" #:typed-commands '(
 
 #[test]
 fn load_plugin_of_a_manifest_plugin_stays_lazy() {
-    let (_dir, mut host) = host_with_plugin(&[
-        ("manifest.scm", LAZY_MANIFEST),
-        ("plugin.scm", r#"(log! 'info "body-ran")"#),
-    ]);
+    let (_dir, mut host) = host_with_plugin(
+        "multi",
+        &[
+            ("manifest.scm", LAZY_MANIFEST),
+            ("plugin.scm", r#"(log! 'info "body-ran")"#),
+        ],
+    );
     let mut editor_host = LazyStubHost::default();
 
     host.eval_source(r#"(load-plugin! "user/multi")"#, &mut editor_host)
@@ -433,10 +435,13 @@ fn load_plugin_of_a_manifest_plugin_stays_lazy() {
 
 #[test]
 fn load_plugin_after_a_declare_keeps_the_declared_triggers_and_skips_the_manifest() {
-    let (_dir, mut host) = host_with_plugin(&[
-        ("manifest.scm", LAZY_MANIFEST),
-        ("plugin.scm", r#"(log! 'info "body-ran")"#),
-    ]);
+    let (_dir, mut host) = host_with_plugin(
+        "multi",
+        &[
+            ("manifest.scm", LAZY_MANIFEST),
+            ("plugin.scm", r#"(log! 'info "body-ran")"#),
+        ],
+    );
     let mut editor_host = LazyStubHost::default();
 
     host.eval_source(
@@ -463,10 +468,13 @@ fn load_plugin_after_a_declare_keeps_the_declared_triggers_and_skips_the_manifes
 
 #[test]
 fn load_plugin_inside_a_manifest_errors_and_is_contained() {
-    let (_dir, mut host) = host_with_plugin(&[
-        ("manifest.scm", r#"(load-plugin! "user/multi")"#),
-        ("plugin.scm", ""),
-    ]);
+    let (_dir, mut host) = host_with_plugin(
+        "multi",
+        &[
+            ("manifest.scm", r#"(load-plugin! "user/multi")"#),
+            ("plugin.scm", ""),
+        ],
+    );
 
     host.eval_source(r#"(load-plugin! "user/multi")"#, &mut NullHost)
         .unwrap();
@@ -479,7 +487,7 @@ fn load_plugin_inside_a_manifest_errors_and_is_contained() {
 
 #[test]
 fn load_plugin_rejects_a_local_path() {
-    let (_dir, mut host) = host_with_plugin(&[("plugin.scm", "")]);
+    let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", "")]);
 
     let err = host
         .eval_source(r#"(load-plugin! "./my.scm")"#, &mut NullHost)
