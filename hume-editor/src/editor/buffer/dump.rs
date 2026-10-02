@@ -21,13 +21,15 @@ pub(crate) fn dump_path_for(path: &Path) -> PathBuf {
 impl Editor {
     /// Write every dirty, writable buffer to its dump file. Dirty includes
     /// edits of an open Insert or paste session, which have no revision yet.
-    /// A buffer with a
-    /// path goes to [`dump_path_for`]; a pathless one goes into
+    /// A buffer with a path goes to [`dump_path_for`], and to `scratch_dir`
+    /// when that cannot be written; a pathless one goes straight to
     /// `scratch_dir` (created on demand) under a per-process, per-buffer
-    /// name, and fails when there is no such directory.
+    /// name. Without a `scratch_dir` a pathless buffer fails, and a file
+    /// buffer reports its error beside the file.
     ///
     /// Each buffer is written on its own, so one failure, including a panic,
-    /// leaves the rest dumped. Returns each buffer's display name with where it was written.
+    /// leaves the rest dumped. Returns each buffer's display name with where
+    /// it was written.
     pub(crate) fn dump_dirty_buffers(
         &self,
         scratch_dir: Option<&Path>,
@@ -45,17 +47,24 @@ impl Editor {
                 (buf.is_dirty() || in_open_session) && !buf.is_read_only()
             })
             .map(|(_, buf)| {
-                let dest = match buf.path() {
-                    Some(path) => Ok(dump_path_for(path)),
-                    None => {
-                        scratch_count += 1;
-                        scratch_dump_path(scratch_dir, scratch_count)
-                    }
-                };
                 let written = panic_to_error(|| {
-                    let dest = dest?;
-                    hume_platform::io::write_dump(&buf.serialized(), &dest)?;
-                    Ok(dest)
+                    let content = buf.serialized();
+                    let mut in_data_dir = |stem: &str| {
+                        scratch_count += 1;
+                        let dest = data_dir_dump_path(scratch_dir, stem, scratch_count)?;
+                        hume_platform::io::write_dump(&content, &dest)?;
+                        Ok(dest)
+                    };
+                    let Some(path) = buf.path() else {
+                        return in_data_dir("scratch");
+                    };
+                    let beside = dump_path_for(path);
+                    hume_platform::io::write_dump(&content, &beside)
+                        .map(|()| beside)
+                        .or_else(|beside_err| {
+                            let stem = path.file_name().unwrap_or_default().to_string_lossy();
+                            in_data_dir(&stem).map_err(|_| beside_err)
+                        })
                 });
                 (buf.display_name(), written)
             })
@@ -246,15 +255,15 @@ impl Editor {
     }
 }
 
-fn scratch_dump_path(scratch_dir: Option<&Path>, index: usize) -> io::Result<PathBuf> {
-    let dir = scratch_dir.ok_or_else(|| {
+fn data_dir_dump_path(dir: Option<&Path>, stem: &str, index: usize) -> io::Result<PathBuf> {
+    let dir = dir.ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
             "no data directory for scratch dumps",
         )
     })?;
     std::fs::create_dir_all(dir)?;
-    Ok(dir.join(format!("scratch-{}-{index}.dump", std::process::id())))
+    Ok(dir.join(format!("{stem}-{}-{index}.dump", std::process::id())))
 }
 
 #[cfg(test)]

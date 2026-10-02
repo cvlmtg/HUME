@@ -144,6 +144,39 @@ fn dump_writes_a_dirty_scratch_buffer_into_the_scratch_dir() {
 }
 
 #[test]
+fn dump_falls_back_to_the_scratch_dir_when_the_file_s_folder_is_unwritable() {
+    let dir = safe_tempdir();
+    let scratch_dir = dir.path().join("dumps");
+    let path = dir.path().join("missing").join("draft.md");
+    let mut ed = editor_with_path("hello\n", &path);
+    dirty_focused(&mut ed);
+
+    let outcomes = ed.dump_dirty_buffers(Some(&scratch_dir));
+
+    assert_eq!(outcomes.len(), 1);
+    let written = outcomes[0].1.as_ref().expect("fallback dump written");
+    assert_eq!(written.parent().unwrap(), scratch_dir);
+    let file_name = written.file_name().unwrap().to_string_lossy();
+    assert!(file_name.starts_with("draft.md-"), "{file_name}");
+    assert!(file_name.ends_with(".dump"), "{file_name}");
+    assert_eq!(std::fs::read_to_string(written).unwrap(), "xhello\n");
+}
+
+#[test]
+fn dump_reports_the_sibling_error_when_the_fallback_fails_too() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("missing").join("draft.md");
+    let mut ed = editor_with_path("hello\n", &path);
+    dirty_focused(&mut ed);
+
+    let outcomes = ed.dump_dirty_buffers(None);
+
+    assert_eq!(outcomes.len(), 1);
+    let err = outcomes[0].1.as_ref().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::NotFound);
+}
+
+#[test]
 fn dump_reports_a_dirty_scratch_buffer_it_cannot_place() {
     let mut ed = editor_from("-[h]>ello\n");
     dirty_focused(&mut ed);
