@@ -1283,7 +1283,7 @@ fn quit_with_multiple_panes_ignores_dirty_buffer() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty(), "sanity: buffer is dirty");
+    assert!(focused_unsaved(&ed), "sanity: buffer is dirty");
 
     let result = ed.execute_typed("quit", None);
     assert!(
@@ -1308,7 +1308,7 @@ fn wq_with_multiple_panes_closes_focused_pane_not_editor() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty(), "sanity: buffer is dirty");
+    assert!(focused_unsaved(&ed), "sanity: buffer is dirty");
 
     let expected_content = ed.doc().text().to_string();
     let result = ed.execute_typed("wq", None);
@@ -1327,7 +1327,7 @@ fn wq_with_multiple_panes_closes_focused_pane_not_editor() {
         pid_a,
         "focus returns to the surviving pane"
     );
-    assert!(!ed.doc().is_dirty(), "the write must have happened");
+    assert!(!focused_unsaved(&ed), "the write must have happened");
     assert_eq!(
         std::fs::read_to_string(&tmp).unwrap(),
         expected_content,

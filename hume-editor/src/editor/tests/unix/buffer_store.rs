@@ -66,7 +66,7 @@ fn p6_edit_force_reloads_current_file() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty());
+    assert!(focused_unsaved(&ed));
     // :e without force should fail.
     let r = ed.execute_typed("e", None);
     assert!(r.is_err(), ":e on dirty buffer should fail without !");
@@ -78,7 +78,7 @@ fn p6_edit_force_reloads_current_file() {
         "original\n",
         "reloaded from disk"
     );
-    assert!(!ed.doc().is_dirty(), "not dirty after reload");
+    assert!(!focused_unsaved(&ed), "not dirty after reload");
 }
 
 /// `:e!` reload records an undoable revision: one `u` reverts to the
@@ -93,20 +93,20 @@ fn p6_e_bang_undo_restores_pre_reload_buffer() {
     let mut ed = editor_from("-[o]>riginal\n");
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
     assert_eq!(ed.doc().text().to_string(), "original\n");
-    assert!(!ed.doc().is_dirty());
+    assert!(!focused_unsaved(&ed));
 
     // Edit the buffer (insert "X" at the cursor).
     ed.handle_key(key('i'));
     ed.handle_key(key('X'));
     ed.handle_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "Xoriginal\n");
-    assert!(ed.doc().is_dirty());
+    assert!(focused_unsaved(&ed));
 
     // Change the file on disk, then `:e!` reload.
     std::fs::write(&path, "changed\n").unwrap();
     ed.execute_typed("e!", None).unwrap();
     assert_eq!(ed.doc().text().to_string(), "changed\n");
-    assert!(!ed.doc().is_dirty(), "reload marks the buffer clean");
+    assert!(!focused_unsaved(&ed), "reload marks the buffer clean");
 
     // Single undo restores the pre-reload buffer ("Xoriginal\n"), NOT the
     // disk version "original\n", so the prior edit's undo tree is intact
@@ -118,7 +118,7 @@ fn p6_e_bang_undo_restores_pre_reload_buffer() {
         "undo after :e! restores the pre-reload buffer, not the disk file",
     );
     assert!(
-        ed.doc().is_dirty(),
+        focused_unsaved(&ed),
         "undoing the reload re-dirties the buffer",
     );
 
@@ -128,7 +128,7 @@ fn p6_e_bang_undo_restores_pre_reload_buffer() {
     ed.handle_key(key('u'));
     assert_eq!(ed.doc().text().to_string(), "original\n");
     assert!(
-        ed.doc().is_dirty(),
+        focused_unsaved(&ed),
         "root content differs from disk after reload"
     );
     assert!(!ed.doc().can_undo(), "back at the root after two undos");
@@ -138,7 +138,7 @@ fn p6_e_bang_undo_restores_pre_reload_buffer() {
     ed.handle_key(key_ctrl('r')); // → "changed\n"
     assert_eq!(ed.doc().text().to_string(), "changed\n");
     assert!(
-        !ed.doc().is_dirty(),
+        !focused_unsaved(&ed),
         "redo lands on the saved reload revision"
     );
 }

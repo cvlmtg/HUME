@@ -16,7 +16,7 @@ fn edit_existing_buffer_switches_without_reread() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty(), "buffer must be dirty before :e");
+    assert!(focused_unsaved(&ed), "buffer must be dirty before :e");
 
     // :e <same-path> on an already-open buffer must switch without re-reading.
     ed.execute_typed("e", Some(canonical.to_str().unwrap()))
@@ -27,7 +27,7 @@ fn edit_existing_buffer_switches_without_reread() {
         ":e same-path must stay on the buffer"
     );
     assert!(
-        ed.doc().is_dirty(),
+        focused_unsaved(&ed),
         "dirty flag must be preserved: buffer was not re-read"
     );
 }
@@ -110,7 +110,7 @@ fn edit_deleted_file_with_no_buffer_reopens_as_new_file() {
         "new-file buffer must start empty (just the structural trailing newline)"
     );
     assert!(
-        !ed.doc().is_dirty(),
+        !focused_unsaved(&ed),
         "an untouched new-file buffer is clean"
     );
     assert!(
@@ -170,7 +170,7 @@ fn edit_missing_file_then_write_creates_it() {
         !ed.doc().is_new_file(),
         "buffer must be a real file post-write"
     );
-    assert!(!ed.doc().is_dirty());
+    assert!(!focused_unsaved(&ed));
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello\n");
 
     // A second write (now a normal existing-file save) must still succeed.
@@ -222,7 +222,7 @@ fn edit_force_no_arg_on_dirty_new_file_buffer_is_noop() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty());
+    assert!(focused_unsaved(&ed));
 
     ed.execute_typed("e", None).unwrap(); // no `!`: the dirty gate must never trigger
 
@@ -888,7 +888,7 @@ fn wa_saves_all_dirty_buffers() {
     let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
     ed.doc_mut().file_meta = Some(meta);
     dirty_focused(&mut ed);
-    assert!(ed.doc().is_dirty());
+    assert!(focused_unsaved(&ed));
 
     let (_tmp2, bid2) = open_file_buffer(&mut ed, "two\n");
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid2);
@@ -899,7 +899,7 @@ fn wa_saves_all_dirty_buffers() {
 
     let msg = ed.state.status_msg.as_deref().unwrap_or("");
     assert!(msg.starts_with("Written"), "got: {msg}");
-    assert!(!ed.state.buffers.get(bid1).is_dirty());
+    assert!(!ed.state.has_unsaved_changes(bid1));
     assert_eq!(ed.focused_buffer_id(), bid1);
 }
 
@@ -924,14 +924,14 @@ fn wa_saves_new_file_buffers() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty());
+    assert!(focused_unsaved(&ed));
 
     ed.execute_typed("wa", None).unwrap();
 
     let msg = ed.state.status_msg.as_deref().unwrap_or("");
     assert!(msg.starts_with("Written 2"), "got: {msg}");
-    assert!(!ed.state.buffers.get(bid1).is_dirty());
-    assert!(!ed.state.buffers.get(bid2).is_dirty());
+    assert!(!ed.state.has_unsaved_changes(bid1));
+    assert!(!ed.state.has_unsaved_changes(bid2));
     assert!(!ed.state.buffers.get(bid2).is_new_file());
     assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "x\n");
 }
@@ -981,15 +981,15 @@ fn wa_skips_pathless_buffers() {
         dirty_focused(&mut ed);
         bid
     };
-    assert!(ed.state.buffers.get(scratch_bid).is_dirty());
+    assert!(ed.state.has_unsaved_changes(scratch_bid));
     assert!(ed.state.buffers.get(scratch_bid).path().is_none());
 
     ed.execute_typed("wa", None).unwrap();
 
     let msg = ed.state.status_msg.as_deref().unwrap_or("");
     assert!(msg.starts_with("Written 1"), "expected 1 file, got: {msg}");
-    assert!(ed.state.buffers.get(scratch_bid).is_dirty());
-    assert!(!ed.state.buffers.get(bid1).is_dirty());
+    assert!(ed.state.has_unsaved_changes(scratch_bid));
+    assert!(!ed.state.has_unsaved_changes(bid1));
 }
 
 #[test]
@@ -1035,7 +1035,7 @@ fn wa_preserves_focus_on_single_buffer() {
     let before = ed.focused_buffer_id();
     ed.execute_typed("wa", None).unwrap();
     assert_eq!(ed.focused_buffer_id(), before);
-    assert!(!ed.state.buffers.get(bid1).is_dirty());
+    assert!(!ed.state.has_unsaved_changes(bid1));
 }
 
 /// `:wa` must skip a read-only dirty buffer (e.g. one dirtied by set-text) and
@@ -1051,7 +1051,7 @@ fn wa_skips_read_only_dirty_buffer() {
     let (tmp1_path, bid1) = open_file_buffer(&mut ed, "one\n");
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid1);
     dirty_focused(&mut ed);
-    assert!(ed.state.buffers.get(bid1).is_dirty());
+    assert!(ed.state.has_unsaved_changes(bid1));
 
     // bid2: a buffer that's been made read-only while dirty.
     let (tmp2_path, bid2) = open_file_buffer(&mut ed, "two\n");
@@ -1059,7 +1059,7 @@ fn wa_skips_read_only_dirty_buffer() {
     dirty_focused(&mut ed);
     // Simulate the unusual case: set read_only after editing (e.g. set-text path).
     ed.state.buffers.get_mut(bid2).read_only = true;
-    assert!(ed.state.buffers.get(bid2).is_dirty());
+    assert!(ed.state.has_unsaved_changes(bid2));
     assert!(ed.state.buffers.get(bid2).is_read_only());
 
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid1);
@@ -1067,11 +1067,11 @@ fn wa_skips_read_only_dirty_buffer() {
 
     // bid1 must be saved; bid2 must remain dirty (was skipped, not aborted).
     assert!(
-        !ed.state.buffers.get(bid1).is_dirty(),
+        !ed.state.has_unsaved_changes(bid1),
         "writable buffer must be saved"
     );
     assert!(
-        ed.state.buffers.get(bid2).is_dirty(),
+        ed.state.has_unsaved_changes(bid2),
         "read-only buffer must remain dirty"
     );
     // File on disk: bid2 content unchanged.

@@ -190,7 +190,7 @@ impl Editor {
 
                 let buf = self.state.buffers.get(bid);
                 let name = buf.display_name();
-                let dirty = buf.is_dirty();
+                let dirty = self.state.has_unsaved_changes(bid);
                 let auto_read = buf.overrides.auto_read(&self.state.settings);
                 let focused = bid == self.focused_buffer_id();
                 let promptable = focused && auto_read;

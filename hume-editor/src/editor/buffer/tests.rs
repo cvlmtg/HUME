@@ -132,8 +132,8 @@ impl DocHelper {
     fn sels(&self) -> &SelectionSet {
         &self.sels
     }
-    fn is_dirty(&self) -> bool {
-        self.buf.is_dirty()
+    fn revision_dirty(&self) -> bool {
+        self.buf.revision_dirty()
     }
     fn mark_saved(&mut self) {
         self.buf.mark_saved();
@@ -633,23 +633,23 @@ fn grouped_edits_redo() {
 #[test]
 fn fresh_doc_is_not_dirty() {
     let d = doc("-[h]>ello\n");
-    assert!(!d.is_dirty());
+    assert!(!d.revision_dirty());
 }
 
 #[test]
 fn edit_makes_dirty() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'x'));
-    assert!(d.is_dirty());
+    assert!(d.revision_dirty());
 }
 
 #[test]
 fn mark_saved_clears_dirty() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'x'));
-    assert!(d.is_dirty());
+    assert!(d.revision_dirty());
     d.mark_saved();
-    assert!(!d.is_dirty());
+    assert!(!d.revision_dirty());
 }
 
 #[test]
@@ -658,9 +658,9 @@ fn undo_to_saved_revision_is_clean() {
     d.apply_edit(|s| insert_char(s, 'x'));
     d.mark_saved();
     d.apply_edit(|s| insert_char(s, 'y'));
-    assert!(d.is_dirty());
+    assert!(d.revision_dirty());
     d.undo();
-    assert!(!d.is_dirty());
+    assert!(!d.revision_dirty());
 }
 
 #[test]
@@ -669,7 +669,7 @@ fn undo_past_saved_revision_is_dirty() {
     d.apply_edit(|s| insert_char(s, 'x'));
     d.mark_saved();
     d.undo();
-    assert!(d.is_dirty());
+    assert!(d.revision_dirty());
 }
 
 // ── undo-levels ───────────────────────────────────────────────────────────
@@ -686,11 +686,11 @@ fn promotion_remaps_saved_revision_to_root() {
     d.mark_saved();
     d.set_undo_levels(1);
     d.apply_edit(|s| insert_char(s, 'y'));
-    assert!(d.is_dirty());
+    assert!(d.revision_dirty());
 
     d.undo();
     assert_eq!(state(&d), saved_state);
-    assert!(!d.is_dirty());
+    assert!(!d.revision_dirty());
 }
 
 #[test]
@@ -707,7 +707,7 @@ fn promotion_overwriting_root_invalidates_saved_revision() {
     d.apply_edit(|s| insert_char(s, 'y'));
 
     d.undo();
-    assert!(d.is_dirty());
+    assert!(d.revision_dirty());
 }
 
 #[test]
@@ -725,13 +725,13 @@ fn evicted_saved_revision_stays_dirty() {
     d.apply_edit(|s| insert_char(s, 'c'));
     d.set_undo_levels(1);
     d.apply_edit(|s| insert_char(s, 'd'));
-    assert!(d.is_dirty());
+    assert!(d.revision_dirty());
 
     d.apply_edit(|s| insert_char(s, 'e'));
-    assert!(d.is_dirty());
+    assert!(d.revision_dirty());
 
     d.mark_saved();
-    assert!(!d.is_dirty());
+    assert!(!d.revision_dirty());
 }
 
 #[test]
@@ -751,7 +751,7 @@ fn undo_after_eviction_stops_at_new_root() {
     d.undo();
     assert_eq!(state(&d), state_after_a);
     assert!(!d.can_undo());
-    assert!(d.is_dirty()); // never saved; promotion overwrote ROOT's content
+    assert!(d.revision_dirty()); // never saved; promotion overwrote ROOT's content
 
     d.undo(); // no-op at the new root, must not panic
     assert_eq!(state(&d), state_after_a);
@@ -764,7 +764,7 @@ fn grouped_edit_makes_dirty() {
     d.apply_edit_grouped(|s| insert_char(s, 'a'));
     d.apply_edit_grouped(|s| insert_char(s, 'b'));
     d.commit_edit_group();
-    assert!(d.is_dirty());
+    assert!(d.revision_dirty());
 }
 
 // ── yank + paste roundtrip ────────────────────────────────────────────────
@@ -922,9 +922,9 @@ fn text_generation_unchanged_when_undo_at_root() {
 #[test]
 fn reload_keeps_buffer_not_dirty() {
     let mut d = doc("-[a]>lpha\nbeta\ngamma\n");
-    assert!(!d.is_dirty());
+    assert!(!d.revision_dirty());
     d.reload_from(BufferText::from("alpha\nBETA\ngamma\n"));
-    assert!(!d.is_dirty(), "freshly reloaded buffer is clean");
+    assert!(!d.revision_dirty(), "freshly reloaded buffer is clean");
     assert_eq!(d.text().to_string(), "alpha\nBETA\ngamma\n");
 }
 
@@ -940,7 +940,10 @@ fn reload_is_undoable() {
     // Undo restores pre-reload text AND pre-reload selections.
     assert_eq!(state(&d), pre_state);
     assert!(!d.can_undo(), "undoing the reload reaches the root");
-    assert!(d.is_dirty(), "undo past the saved reload revision is dirty");
+    assert!(
+        d.revision_dirty(),
+        "undo past the saved reload revision is dirty"
+    );
 }
 
 #[test]
@@ -951,7 +954,10 @@ fn reload_redo_reapplies_reload() {
     assert_eq!(d.text().to_string(), "hello\n");
     d.redo();
     assert_eq!(d.text().to_string(), "hello world\n");
-    assert!(!d.is_dirty(), "redo lands on the saved reload revision");
+    assert!(
+        !d.revision_dirty(),
+        "redo lands on the saved reload revision"
+    );
 }
 
 #[test]
@@ -992,7 +998,7 @@ fn reload_noop_when_unchanged() {
     d.reload_from(BufferText::from("same\ncontent\n"));
     assert!(!d.can_undo(), "no-op reload records no undo step");
     assert_eq!(d.buf.history.current_id(), before, "revision unchanged");
-    assert!(!d.is_dirty());
+    assert!(!d.revision_dirty());
     assert_eq!(d.text().to_string(), "same\ncontent\n");
 }
 

@@ -93,7 +93,11 @@ pub(in crate::editor) fn typed_list_buffers(
         } else {
             ' '
         };
-        let dirty_marker = if buf.is_dirty() { '+' } else { ' ' };
+        let dirty_marker = if ed.state.has_unsaved_changes(id) {
+            '+'
+        } else {
+            ' '
+        };
 
         let name = buf.display_name();
         let path = buf.display_path().unwrap_or_default();

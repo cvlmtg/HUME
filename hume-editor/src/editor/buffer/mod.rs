@@ -515,7 +515,7 @@ impl Buffer {
     /// content-truthful would mean hashing the buffer on every dirty query
     /// (the statusline makes one every frame) for a case that self-corrects
     /// on the next real edit or save.
-    pub(crate) fn is_dirty(&self) -> bool {
+    pub(in crate::editor::buffer) fn revision_dirty(&self) -> bool {
         self.saved_revision != Some(self.history.current_id())
     }
 
@@ -886,6 +886,21 @@ impl Buffer {
         {
             *sels = new_sels;
         }
+    }
+}
+
+impl crate::editor::EditorState {
+    /// Whether `bid` has changes that are not on disk: a revision past the
+    /// saved one, or edits in the open Insert or paste session, which have
+    /// no revision until the session commits. Every "is this buffer
+    /// unsaved" question outside `buffer` asks this, never [`Buffer`]'s own
+    /// revision check.
+    pub(crate) fn has_unsaved_changes(&self, bid: BufferId) -> bool {
+        self.buffers.get(bid).revision_dirty()
+            || self
+                .active_session
+                .as_ref()
+                .is_some_and(|s| s.buffer() == bid && s.has_edits())
     }
 }
 

@@ -112,7 +112,7 @@ pub(in crate::editor) fn typed_edit(
             );
             return Ok(());
         }
-        if doc.is_dirty() && !force {
+        if ed.state.has_unsaved_changes(fp.bid(&ed.view)) && !force {
             return Err(CommandError::transient(
                 "unsaved changes (use :e! to force)",
             ));
@@ -199,7 +199,7 @@ pub(in crate::editor) fn typed_buffer_delete(
     force: bool,
 ) -> Result<(), CommandError> {
     let id = fp.bid(&ed.view);
-    if ed.state.buffers.get(id).is_dirty() && !force {
+    if ed.state.has_unsaved_changes(id) && !force {
         return Err(CommandError::transient(
             "unsaved changes (use :bd! to force)",
         ));

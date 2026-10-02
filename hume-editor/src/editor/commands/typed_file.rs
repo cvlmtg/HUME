@@ -58,7 +58,7 @@ pub(in crate::editor) fn typed_quit(
     }
 
     let current = fp.bid(&ed.view);
-    if !force && ed.state.buffers.get(current).is_dirty() {
+    if !force && ed.state.has_unsaved_changes(current) {
         return Err(CommandError::transient(
             "Unsaved changes (add ! to override)",
         ));
@@ -73,7 +73,9 @@ pub(in crate::editor) fn typed_quit(
         .buffers
         .iter()
         .filter(|(id, _)| *id != current)
-        .any(|(_, buf)| (buf.path().is_some() && !buf.is_read_only()) || buf.is_dirty());
+        .any(|(id, buf)| {
+            (buf.path().is_some() && !buf.is_read_only()) || ed.state.has_unsaved_changes(id)
+        });
 
     if !any_other_real {
         ed.state.should_quit = true;
@@ -95,14 +97,14 @@ pub(in crate::editor) fn typed_quit_all(
             .state
             .buffers
             .iter()
-            .find(|(_, buf)| buf.is_dirty())
+            .find(|(id, _)| ed.state.has_unsaved_changes(*id))
             .map(|(id, _)| id);
 
         if let Some(dirty_id) = dirty_id {
             // Jump to it only when the focused buffer is clean. If the user is
             // already sitting on an unsaved buffer, stay there so a save + :qa
             // cycle walks through dirty buffers one at a time.
-            if !super::doc(&ed.state, &ed.view, fp.pane()).is_dirty() {
+            if !ed.state.has_unsaved_changes(fp.bid(&ed.view)) {
                 ed.switch_to_buffer_with_jump(fp, dirty_id);
             }
             // `super::doc` reads the pane's buffer live: the dirty buffer if
@@ -485,7 +487,9 @@ pub(in crate::editor) fn typed_write_all(
         // excluding it here would make `:wa` silently skip a buffer it's
         // fully capable of writing. Only pathless buffers (scratch,
         // synthetic views) are excluded.
-        .filter(|(_, buf)| buf.is_dirty() && buf.path().is_some() && !buf.is_read_only())
+        .filter(|(id, buf)| {
+            ed.state.has_unsaved_changes(*id) && buf.path().is_some() && !buf.is_read_only()
+        })
         .map(|(id, _)| id)
         .collect();
 

@@ -1928,7 +1928,7 @@ fn insert_then_backspace_records_no_revision() {
         "the session must have made no net change"
     );
     assert!(
-        !ed.state.buffers.get(bid).is_dirty(),
+        !ed.state.has_unsaved_changes(bid),
         "a session that cancelled out to identity must not read dirty"
     );
     assert!(

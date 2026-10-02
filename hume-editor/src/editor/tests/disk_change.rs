@@ -312,7 +312,7 @@ fn confirm_reload_choice_reloads_and_clears_disk_stale() {
     assert!(ed.state.input.confirm().is_none());
     assert_eq!(ed.doc().text().to_string(), "HELLO!!\n");
     assert_eq!(state(&ed), "-[H]>ELLO!!\n");
-    assert!(!ed.doc().is_dirty());
+    assert!(!focused_unsaved(&ed));
     assert!(
         !ed.doc().is_disk_stale(),
         "reload must clear the stale flag, or :w would keep refusing forever"
@@ -508,7 +508,7 @@ fn write_recreates_a_vanished_file() {
         "xhello\n",
         "a plain :w must recreate a vanished file, not refuse"
     );
-    assert!(!ed.doc().is_dirty());
+    assert!(!focused_unsaved(&ed));
 }
 
 /// `:w %` (a save-as whose path resolves to the buffer's own file) must
@@ -658,11 +658,8 @@ fn write_all_skips_stale_buffer_but_writes_the_rest_bang_overrides() {
         "A must be skipped, not overwritten"
     );
     assert_eq!(std::fs::read_to_string(&tmp_b).unwrap(), "yworld\n");
-    assert!(
-        ed.state.buffers.get(bid_a).is_dirty(),
-        "A's write was skipped"
-    );
-    assert!(!ed.state.buffers.get(bid_b).is_dirty());
+    assert!(ed.state.has_unsaved_changes(bid_a), "A's write was skipped");
+    assert!(!ed.state.has_unsaved_changes(bid_b));
     assert_eq!(
         ed.state.status_msg.as_deref(),
         Some(format!("Skipped (changed on disk): {name_a}").as_str())
@@ -671,7 +668,7 @@ fn write_all_skips_stale_buffer_but_writes_the_rest_bang_overrides() {
     type_cmd(&mut ed, ":wa!");
 
     assert_eq!(std::fs::read_to_string(&tmp_a).unwrap(), "xhello\n");
-    assert!(!ed.state.buffers.get(bid_a).is_dirty());
+    assert!(!ed.state.has_unsaved_changes(bid_a));
 }
 
 // ── `disk_state` resets when the file matches its baseline again ─────────────────
@@ -1687,7 +1684,7 @@ fn quit_all_error_is_not_shadowed_by_a_disk_confirm() {
     ed.handle_key(key('i'));
     ed.handle_key(key('!'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty(), "setup: A is dirty");
+    assert!(focused_unsaved(&ed), "setup: A is dirty");
 
     let (tmp_b, _tmp_b_guard) = temp_file("world\n");
     type_cmd(&mut ed, &format!(":e {}", tmp_b.display()));

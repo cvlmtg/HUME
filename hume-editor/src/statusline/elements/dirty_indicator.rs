@@ -11,7 +11,7 @@ impl StatuslineElement for DirtyIndicatorElement {
     type Data = bool;
 
     fn read(editor: &HumeStatusline<'_>) -> Self::Data {
-        editor.doc().is_dirty()
+        editor.state.has_unsaved_changes(editor.focused_bid)
     }
 
     fn format(dirty: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {

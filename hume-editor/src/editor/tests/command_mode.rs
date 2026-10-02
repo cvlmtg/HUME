@@ -330,7 +330,7 @@ fn ctrl_w_at_start_of_search_minibuf_is_noop() {
 #[test]
 fn fresh_editor_is_not_dirty() {
     let ed = editor_from("-[h]>ello\n");
-    assert!(!ed.doc().is_dirty());
+    assert!(!focused_unsaved(&ed));
 }
 
 #[test]
@@ -339,7 +339,7 @@ fn typing_in_insert_mode_makes_dirty() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty());
+    assert!(focused_unsaved(&ed));
 }
 
 #[test]
@@ -349,13 +349,13 @@ fn colon_w_marks_buffer_clean() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty());
+    assert!(focused_unsaved(&ed));
     // Write: should clear dirty flag.
     for ch in ":w".chars() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert!(!ed.doc().is_dirty());
+    assert!(!focused_unsaved(&ed));
 }
 
 #[test]
@@ -458,7 +458,7 @@ fn colon_q_real_buffer_with_clean_scratch_quits() {
 fn colon_q_with_dirty_scratch_remaining_stays() {
     // A scratch buffer with unsaved edits is worth preserving: :q on the file
     // buffer must switch to the dirty scratch rather than discard it.
-    // Validity: drop the `|| buf.is_dirty()` clause and this test fails
+    // Validity: drop the `|| ed.state.has_unsaved_changes(id)` clause and this test fails
     // (should_quit becomes true, silently discarding the scratch content).
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
@@ -469,7 +469,7 @@ fn colon_q_with_dirty_scratch_remaining_stays() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty(), "scratch must be dirty");
+    assert!(focused_unsaved(&ed), "scratch must be dirty");
 
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), file_buf);
 
@@ -546,7 +546,7 @@ fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty(), "buffer must be dirty before :q!");
+    assert!(focused_unsaved(&ed), "buffer must be dirty before :q!");
 
     // Open a second real file-backed buffer.
     let other_buf = open_second_file_buffer(&mut ed);
@@ -595,7 +595,7 @@ fn colon_qa_quits_with_multiple_clean_buffers() {
 fn colon_qa_refused_when_a_background_buffer_is_dirty() {
     // :qa must check ALL buffers, not just the focused one, and it must switch
     // focus to the first unsaved buffer so the user knows where to look.
-    // Validity: swap `ed.state.buffers.iter().any(...)` for `ed.doc().is_dirty()` and
+    // Validity: swap `ed.state.buffers.iter().any(...)` for `focused_unsaved(&ed)` and
     // this test fails: the dirty background buffer would be silently ignored.
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
@@ -606,11 +606,11 @@ fn colon_qa_refused_when_a_background_buffer_is_dirty() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty(), "background buffer must be dirty");
+    assert!(focused_unsaved(&ed), "background buffer must be dirty");
 
     // Switch focus back to the clean file buffer.
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), file_buf);
-    assert!(!ed.doc().is_dirty(), "focused buffer must be clean");
+    assert!(!focused_unsaved(&ed), "focused buffer must be clean");
 
     type_cmd(&mut ed, ":qa");
 
@@ -638,7 +638,7 @@ fn colon_qa_bang_quits_despite_dirty_buffers() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty());
+    assert!(focused_unsaved(&ed));
 
     type_cmd(&mut ed, ":qa!");
 
@@ -649,7 +649,7 @@ fn colon_qa_bang_quits_despite_dirty_buffers() {
 fn colon_qa_stays_on_focused_dirty_buffer() {
     // When the focused buffer is already dirty, :qa must stay on it (not jump
     // to another buffer) and still refuse to quit.
-    // Validity: remove the `!ed.doc().is_dirty()` guard and the editor would
+    // Validity: remove the `!focused_unsaved(&ed)` guard and the editor would
     // jump away from the already-unsaved focused buffer.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let dirty_buf = ed.focused_buffer_id();
@@ -658,7 +658,7 @@ fn colon_qa_stays_on_focused_dirty_buffer() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty());
+    assert!(focused_unsaved(&ed));
 
     type_cmd(&mut ed, ":qa");
 
@@ -689,7 +689,7 @@ fn colon_qa_lands_on_first_dirty_buffer_in_open_order() {
         ed.handle_key(key('i'));
         ed.handle_key(key('x'));
         ed.handle_key(key_esc());
-        assert!(ed.doc().is_dirty());
+        assert!(focused_unsaved(&ed));
         id
     };
 
@@ -697,7 +697,7 @@ fn colon_qa_lands_on_first_dirty_buffer_in_open_order() {
     let _second_dirty = mk_dirty_buf(&mut ed);
 
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), clean_buf);
-    assert!(!ed.doc().is_dirty(), "focused buffer must be clean");
+    assert!(!focused_unsaved(&ed), "focused buffer must be clean");
 
     type_cmd(&mut ed, ":qa");
 
@@ -725,7 +725,7 @@ fn colon_qa_walk_through_dirty_buffers() {
         ed.handle_key(key('i'));
         ed.handle_key(key('x'));
         ed.handle_key(key_esc());
-        assert!(ed.doc().is_dirty());
+        assert!(focused_unsaved(&ed));
         (id, tmp_path)
     };
 
@@ -751,7 +751,7 @@ fn colon_qa_walk_through_dirty_buffers() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert!(!ed.doc().is_dirty(), "first buffer must be clean after :w");
+    assert!(!focused_unsaved(&ed), "first buffer must be clean after :w");
 
     type_cmd(&mut ed, ":qa");
     assert!(!ed.state.should_quit);
@@ -790,7 +790,7 @@ fn colon_w_path_creates_new_file() {
     // file_path should be updated.
     assert!(ed.doc_mut().path().is_some());
     // Text should now be clean.
-    assert!(!ed.doc().is_dirty());
+    assert!(!focused_unsaved(&ed));
 }
 
 #[test]
@@ -822,7 +822,7 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
             .unwrap_or("")
             .starts_with("Written")
     );
-    assert!(!ed.doc().is_dirty());
+    assert!(!focused_unsaved(&ed));
 }
 
 #[test]
@@ -838,7 +838,7 @@ fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty(), "pre-condition: buffer must be dirty");
+    assert!(focused_unsaved(&ed), "pre-condition: buffer must be dirty");
     ed.doc_mut().read_only = true;
 
     let tmp_dir = safe_tempdir();
@@ -852,7 +852,7 @@ fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
     assert!(new_path.exists(), "export target must be written");
     assert_eq!(std::fs::read_to_string(&new_path).unwrap(), "xhello\n");
     assert!(
-        ed.doc().is_dirty(),
+        focused_unsaved(&ed),
         "export must not mark the read-only source buffer saved"
     );
     assert_eq!(
@@ -915,7 +915,7 @@ fn colon_wq_single_pane_other_buffer_closes_buffer_and_stays() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty(), "buffer must be dirty before :wq");
+    assert!(focused_unsaved(&ed), "buffer must be dirty before :wq");
     let expected_content = ed.doc().text().to_string();
 
     // Open a second real file-backed buffer.
@@ -1575,10 +1575,10 @@ fn sort_on_already_sorted_input_leaves_buffer_clean() {
     // refusal with an always-successful edit and `is_dirty()` starts
     // reporting `true` here.
     let mut ed = editor_from("-{a}>\n-[b]>\n");
-    assert!(!ed.doc().is_dirty());
+    assert!(!focused_unsaved(&ed));
     submit(&mut ed, "sort");
     assert!(
-        !ed.doc().is_dirty(),
+        !focused_unsaved(&ed),
         "sorting already-sorted rows must not touch the undo history"
     );
 }

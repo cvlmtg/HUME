@@ -61,7 +61,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         self.buffer(id).map(|buf| buf.display_name())
     }
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
-        self.buffer(id).map(|buf| buf.is_dirty())
+        self.buffer(id).map(|_| self.state.has_unsaved_changes(id))
     }
     fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
         let lang_id = self.buffer(id)?.language?;

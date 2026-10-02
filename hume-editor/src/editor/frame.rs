@@ -331,7 +331,7 @@ impl Editor {
                 let bid = self.view.panes[pid].buffer_id;
                 bid.hash(&mut hasher);
                 let buf = self.state.buffers.get(bid);
-                buf.is_dirty().hash(&mut hasher);
+                self.state.has_unsaved_changes(bid).hash(&mut hasher);
                 buf.path().hash(&mut hasher);
             }
         }
@@ -393,7 +393,7 @@ impl Editor {
                 let bid = self.view.panes[pid].buffer_id;
                 let buf = self.state.buffers.get(bid);
                 let mut label = buf.display_name();
-                if buf.is_dirty() {
+                if self.state.has_unsaved_changes(bid) {
                     label.push('+');
                 }
                 crate::tabline::TabEntry::new(id, label)

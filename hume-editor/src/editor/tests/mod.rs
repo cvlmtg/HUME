@@ -1100,6 +1100,12 @@ pub(crate) fn safe_tempdir() -> tempfile::TempDir {
     tempfile::tempdir().expect("tempdir")
 }
 
+/// Whether the focused buffer has unsaved changes, an open Insert session's
+/// included.
+pub(crate) fn focused_unsaved(ed: &Editor) -> bool {
+    ed.state.has_unsaved_changes(ed.focused_buffer_id())
+}
+
 /// A temp dir holding `foo.txt` (`disk`) and its crash dump (`dump`), each
 /// only when given. Returns the dir and the path of `foo.txt`.
 pub(crate) fn file_with_dump(
@@ -1543,6 +1549,7 @@ mod timers;
 mod undo_levels;
 #[cfg(unix)]
 mod unix;
+mod unsaved;
 mod view_scroll;
 mod vim_keybind;
 mod virtual_line_scroll;

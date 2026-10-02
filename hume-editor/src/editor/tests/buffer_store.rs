@@ -244,7 +244,7 @@ fn p6_bd_force_closes_dirty_buffer() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty(), "buffer should be dirty after edit");
+    assert!(focused_unsaved(&ed), "buffer should be dirty after edit");
     // :bd without force should fail.
     let result = ed.execute_typed("bd", None);
     assert!(

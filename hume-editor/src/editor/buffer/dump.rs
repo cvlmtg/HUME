@@ -19,8 +19,7 @@ pub(crate) fn dump_path_for(path: &Path) -> PathBuf {
 }
 
 impl Editor {
-    /// Write every dirty, writable buffer to its dump file. Dirty includes
-    /// edits of an open Insert or paste session, which have no revision yet.
+    /// Write every writable buffer with unsaved changes to its dump file.
     /// A buffer with a path goes to [`dump_path_for`], and to `scratch_dir`
     /// when that cannot be written; a pathless one goes straight to
     /// `scratch_dir` (created on demand) under a per-process, per-buffer
@@ -38,14 +37,7 @@ impl Editor {
         self.state
             .buffers
             .iter()
-            .filter(|(id, buf)| {
-                let in_open_session = self
-                    .state
-                    .active_session
-                    .as_ref()
-                    .is_some_and(|s| s.buffer() == *id && s.has_edits());
-                (buf.is_dirty() || in_open_session) && !buf.is_read_only()
-            })
+            .filter(|(id, buf)| self.state.has_unsaved_changes(*id) && !buf.is_read_only())
             .map(|(_, buf)| {
                 let written = panic_to_error(|| dump_one(buf, scratch_dir, &mut scratch_count));
                 (buf.display_name(), written)

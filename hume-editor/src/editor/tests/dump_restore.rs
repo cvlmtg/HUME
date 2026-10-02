@@ -72,7 +72,7 @@ fn restore_loads_the_dump_as_a_dirty_undoable_edit_and_removes_it() {
 
     assert!(ed.state.input.confirm().is_none());
     assert_eq!(ed.doc().text().to_string(), "crashed\n");
-    assert!(ed.doc().is_dirty());
+    assert!(focused_unsaved(&ed));
     assert_eq!(
         ed.doc().path().map(std::path::Path::to_path_buf),
         path_before
@@ -151,7 +151,7 @@ fn restoring_a_dump_equal_to_the_file_leaves_the_buffer_clean() {
 
     ed.handle_key(key('r'));
 
-    assert!(!ed.doc().is_dirty());
+    assert!(!focused_unsaved(&ed));
     assert!(!dump_file(&dir).exists());
 }
 
@@ -164,7 +164,7 @@ fn restore_works_for_a_file_that_does_not_exist_yet() {
     ed.handle_key(key('r'));
 
     assert_eq!(ed.doc().text().to_string(), "crashed\n");
-    assert!(ed.doc().is_dirty());
+    assert!(focused_unsaved(&ed));
     assert!(ed.doc().is_new_file());
     assert!(!dump_file(&dir).exists());
 }
@@ -178,7 +178,7 @@ fn discard_removes_the_dump_and_leaves_the_buffer_as_on_disk() {
 
     assert!(ed.state.input.confirm().is_none());
     assert_eq!(ed.doc().text().to_string(), "disk\n");
-    assert!(!ed.doc().is_dirty());
+    assert!(!focused_unsaved(&ed));
     assert!(!dump_file(&dir).exists());
 }
 

@@ -90,7 +90,7 @@ fn ls_dirty_buffer_shows_plus() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert!(ed.doc().is_dirty(), "buffer must be dirty after edit");
+    assert!(focused_unsaved(&ed), "buffer must be dirty after edit");
     let out = ls_output(&mut ed);
     assert!(out.contains('+'), ":ls must show '+' for dirty buffers");
 }
