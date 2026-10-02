@@ -12,7 +12,6 @@
 (define (lsp-install/row-covers? row target)
   (or (equal? (car row) '*) (member target (car row))))
 
-;; The requirements row `name` has for this platform, or #f.
 (define (lsp-install/target-row name)
   (let ((fields (lsp-install/requirement name)))
     (and fields lsp-install/target (assoc 'targets fields)
@@ -23,7 +22,6 @@
 (define (lsp-install/missing-tool row)
   (call! "stdlib/find" (lambda (tool) (not (which tool))) (lsp-install/row-tools row)))
 
-;; A string naming what blocks installing `name` here, or #f.
 (define (lsp-install/install-blocker name)
   (let ((fields (lsp-install/requirement name)))
     (cond

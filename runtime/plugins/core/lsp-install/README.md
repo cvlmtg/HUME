@@ -48,8 +48,22 @@ Helix and Mason, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 | `discovery.scm` | `:lsp-rescan-servers` and the discovery hint |
 | `commands.scm` | `:lsp-install`, `:lsp-uninstall`, `:lsp-servers`, completion sources |
 | `lock.scm` | Cross-process install lock |
-| `sha256.scm`, `unpack.scm`, `platform.scm` | Hashing, unpacking and chmod through system tools; the Mason target name and the tool that opens an archive |
+| `sha256.scm`, `unpack.scm` | Hashing, unpacking and chmod through system tools |
+| `platform.scm` | This platform's Mason target name, and whether it is Windows |
 | `servers.scm`, `requirements.scm`, `sources.scm`, `mason-pin.scm` | Generated catalogs and the Mason pin, described below |
+
+## Internals
+
+- `lsp-install/install-blocker` (`blocker.scm`) returns the reason a server cannot be installed
+  here, or `#f`.
+- `lsp-install/target-row` (`blocker.scm`) returns the server's `requirements.scm` row for this
+  platform, or `#f`.
+- `lsp-install/package-installers` (`install.scm`) holds one `(kind installer env-dirs)` row per
+  package manager; an installer takes `(name fields dir)`.
+- `lsp-install/download-row` (`install.scm`) returns this platform's download as
+  `(asset url sha bin)`.
+- `lsp-install/run-install!` (`install.scm`) installs a server into its directory and returns
+  the binary's path inside it.
 
 ## Catalogs
 

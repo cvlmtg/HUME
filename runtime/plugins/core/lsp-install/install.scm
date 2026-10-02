@@ -106,7 +106,6 @@
 
 ;; ── Running an install ────────────────────────────────────────────────────────
 
-;; Rows: (kind installer env-dirs), installer taking (name fields dir).
 (define lsp-install/package-installers
   (list (list 'npm    lsp-install/install-npm!    '())
         (list 'cargo  lsp-install/install-cargo!  '())
@@ -118,7 +117,6 @@
 (define (lsp-install/download-kind? source)
   (member (lsp-install/ref source 'kind) '(github generic)))
 
-;; This platform's download as (asset url sha bin).
 (define (lsp-install/download-row source)
   (let* ((want   (string->symbol lsp-install/target))
          (target (call! "stdlib/find" (lambda (t) (equal? (list-ref t 0) want))
@@ -133,7 +131,6 @@
               (list-ref target 2)
               (list-ref target 3)))))
 
-;; Installs `name` into `dir` and returns the binary's path inside it.
 (define (lsp-install/run-install! name source dir)
   (if (lsp-install/download-kind? source)
       (let* ((download (lsp-install/download-row source))
