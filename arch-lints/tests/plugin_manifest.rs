@@ -56,16 +56,9 @@ const KINDS: [CommandKind; 2] = [
 /// does not contain `"#:commands"` as a substring, so searching for either
 /// literal independently can't cross-match the other's clause. Empty (not a
 /// violation by itself) if the manifest declares no such clause at all.
-/// Comment lines are stripped first: every `manifest.scm` opens with a
-/// `;`-comment header that mentions both clauses in prose, which would
-/// otherwise be the *first* (wrong) match.
+/// `src` must be comment-free (see `code_only`): every `manifest.scm` opens
+/// with a `;`-comment header that mentions both clauses in prose.
 fn manifest_clause_names(src: &str, clause: &str) -> Vec<String> {
-    let code_only: String = src
-        .lines()
-        .filter(|line| !line.trim_start().starts_with(';'))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let src = &code_only;
     let Some(after) = src.find(clause) else {
         return Vec::new();
     };
@@ -73,25 +66,29 @@ fn manifest_clause_names(src: &str, clause: &str) -> Vec<String> {
     let Some(open) = after.find('(') else {
         return Vec::new();
     };
+    let Some(form) = balanced_form(after, open) else {
+        return Vec::new();
+    };
+    quoted_strings(form)
+}
+
+/// The balanced parenthesised form of `src` that opens at byte `open`, `None`
+/// when it never closes.
+fn balanced_form(src: &str, open: usize) -> Option<&str> {
     let mut depth = 0i32;
-    let mut end = None;
-    for (i, c) in after[open..].char_indices() {
+    for (i, c) in src[open..].char_indices() {
         match c {
             '(' => depth += 1,
             ')' => {
                 depth -= 1;
                 if depth == 0 {
-                    end = Some(open + i + 1);
-                    break;
+                    return Some(&src[open..open + i + 1]);
                 }
             }
             _ => {}
         }
     }
-    let Some(end) = end else {
-        return Vec::new();
-    };
-    quoted_strings(&after[open..end])
+    None
 }
 
 /// `src` without its `;`-comment lines: a doc comment mentioning a
@@ -174,24 +171,9 @@ fn entry_closure(dir: &std::path::Path, entry: &str) -> Vec<String> {
 /// The text of every balanced `(declare-plugin! ...)` form in comment-free
 /// `src`.
 fn declare_forms(src: &str) -> Vec<String> {
-    let mut forms = Vec::new();
-    for (start, _) in src.match_indices("(declare-plugin!") {
-        let mut depth = 0i32;
-        for (i, c) in src[start..].char_indices() {
-            match c {
-                '(' => depth += 1,
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        forms.push(src[start..start + i + 1].to_string());
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    forms
+    src.match_indices("(declare-plugin!")
+        .filter_map(|(start, _)| balanced_form(src, start).map(str::to_string))
+        .collect()
 }
 
 /// The file a `declare-plugin!` form's `#:entry` names, `plugin.scm` when it
@@ -275,16 +257,23 @@ fn plugin_manifest_commands_match_defined_commands() {
             })
             .collect();
 
+        let closures: Vec<(String, Vec<String>)> = forms
+            .iter()
+            .map(|form| {
+                let entry = form_entry(form);
+                let closure = entry_closure(&dir, &entry);
+                (entry, closure)
+            })
+            .collect();
+
         for (i, kind) in KINDS.iter().enumerate() {
-            let per_entry: Vec<(String, std::collections::BTreeSet<String>)> = forms
+            let per_entry: Vec<(String, std::collections::BTreeSet<String>)> = closures
                 .iter()
-                .map(|form| {
-                    let entry = form_entry(form);
-                    let closure = entry_closure(&dir, &entry);
-                    let in_entry = defined_commands(&dir, &closure, kind.definer)
+                .map(|(entry, closure)| {
+                    let in_entry = defined_commands(&dir, closure, kind.definer)
                         .into_iter()
                         .collect();
-                    (entry, in_entry)
+                    (entry.clone(), in_entry)
                 })
                 .collect();
             for (form, (entry, in_entry)) in forms.iter().zip(&per_entry) {
