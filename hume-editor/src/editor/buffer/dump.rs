@@ -83,9 +83,17 @@ impl Editor {
         self.dump_dirty_buffers(scratch_dir)
     }
 
-    /// Run `run` on this editor. If it panics, dump the dirty buffers
-    /// ([`Editor::dump_dirty_buffers`]), name each result on stderr, then
-    /// resume the panic.
+    /// Dump the dirty buffers ([`Editor::dump_dirty_buffers`]) and write
+    /// each result to `out`, then each queued worker-thread panic. The
+    /// default panic hook never printed those, so the main-thread panic that
+    /// follows one would otherwise hide its cause.
+    pub(crate) fn write_crash_report(&self, out: &mut impl io::Write, scratch_dir: Option<&Path>) {
+        report_dumps_to(out, &self.dump_dirty_buffers(scratch_dir));
+        crate::report_worker_panics_to(out, &self.state.worker_panics.all());
+    }
+
+    /// Run `run` on this editor. If it panics, write the crash report
+    /// ([`Editor::write_crash_report`]) to stderr, then resume the panic.
     pub(crate) fn run_dumping_on_panic<R>(
         &mut self,
         scratch_dir: Option<&Path>,
@@ -94,7 +102,7 @@ impl Editor {
         match catch_unwind(AssertUnwindSafe(|| run(self))) {
             Ok(result) => result,
             Err(payload) => {
-                report_dumps(&self.dump_dirty_buffers(scratch_dir));
+                self.write_crash_report(&mut io::stderr().lock(), scratch_dir);
                 resume_unwind(payload)
             }
         }

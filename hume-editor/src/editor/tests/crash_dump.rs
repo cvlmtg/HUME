@@ -66,6 +66,36 @@ fn panic_dump_keeps_crlf_line_endings() {
 }
 
 #[test]
+fn the_crash_report_names_dumps_then_queued_worker_panics() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("foo.txt");
+    let mut ed = editor_with_path("hello\n", &path);
+    dirty_focused(&mut ed);
+    let panics = hume_platform::worker_panic::WorkerPanics::default();
+    ed.attach_worker_panics(panics.clone());
+    panics.record(hume_platform::worker_panic::WorkerPanic {
+        thread: "hume-lsp-reader".into(),
+        location: Some("hume-lsp/src/transport.rs:150:9".into()),
+        message: "bad frame".into(),
+    });
+
+    let mut out = Vec::new();
+    ed.write_crash_report(&mut out, None);
+
+    let out = String::from_utf8(out).unwrap();
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 2, "{out}");
+    assert!(
+        lines[0].starts_with("hume: unsaved foo.txt saved to "),
+        "{out}"
+    );
+    assert_eq!(
+        lines[1],
+        "hume: thread 'hume-lsp-reader' panicked at hume-lsp/src/transport.rs:150:9: bad frame"
+    );
+}
+
+#[test]
 fn panic_does_not_dump_a_clean_buffer() {
     let dir = safe_tempdir();
     let path = dir.path().join("foo.txt");

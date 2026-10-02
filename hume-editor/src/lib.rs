@@ -293,8 +293,14 @@ pub fn run(
 /// Writes each worker-thread panic to stderr, ignoring write errors: after a
 /// hangup there is no stderr to write to.
 fn report_worker_panics(panics: &[hume_platform::worker_panic::WorkerPanic]) {
-    use std::io::Write as _;
+    report_worker_panics_to(&mut std::io::stderr().lock(), panics);
+}
+
+fn report_worker_panics_to(
+    out: &mut impl std::io::Write,
+    panics: &[hume_platform::worker_panic::WorkerPanic],
+) {
     for panic in panics {
-        let _ = writeln!(std::io::stderr().lock(), "hume: {panic}");
+        let _ = writeln!(out, "hume: {panic}");
     }
 }
