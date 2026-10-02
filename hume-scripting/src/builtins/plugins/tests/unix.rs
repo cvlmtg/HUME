@@ -199,7 +199,7 @@ fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
 /// entry declared earlier, via `(plugin-config)`, whenever activation
 /// eventually runs it: declare and activation are separated in time.
 ///
-/// This depends on `load_plugin` storing `config` into `plugin_configs`
+/// This depends on `load_plugin` storing `config` in the plugin's record
 /// and on `plugin_config` resolving the right `PluginId` from
 /// `plugin_stack`.
 #[test]
@@ -557,4 +557,70 @@ fn load_plugin_second_call_is_silent_noop() {
         ran_count, 1,
         "manifest.scm must be evaluated once across repeated load-plugin! calls"
     );
+}
+
+// ── plugin-level state: absent and failed plugins ──────────────────────────
+
+/// Two `declare-plugin!` calls for a plugin that is not installed report the
+/// absence once.
+#[test]
+fn repeated_declare_of_an_absent_plugin_reports_it_once() {
+    use crate::null_host::NullHost;
+
+    let (_dir, mut host) = host_with_plugin("present", &[("plugin.scm", "")]);
+    host.eval_source(
+        r#"(declare-plugin! "user/gone" #:commands '("a"))
+(declare-plugin! "user/gone" #:commands '("b"))"#,
+        &mut NullHost,
+    )
+    .expect("an absent user plugin is not an error");
+
+    let absent = host
+        .peek_pending_messages()
+        .iter()
+        .filter(|(_, msg)| msg.contains("user/gone") && msg.contains("not found on disk"))
+        .count();
+    assert_eq!(absent, 1, "got: {:?}", host.peek_pending_messages());
+}
+
+/// `:plugin-status` lists a plugin that is not installed, with its own state.
+#[test]
+fn status_lists_an_absent_plugin() {
+    use crate::null_host::NullHost;
+
+    let (_dir, mut host) = host_with_plugin("present", &[("plugin.scm", "")]);
+    host.eval_source(r#"(load-plugin! "user/gone")"#, &mut NullHost)
+        .unwrap();
+
+    let status = host.lazy_status_string(&[]);
+    let row = status
+        .lines()
+        .find(|l| l.contains("user/gone"))
+        .unwrap_or_else(|| panic!("no row for user/gone in:\n{status}"));
+    assert!(row.contains("absent"), "row: {row}");
+}
+
+/// A manifest that raises before declaring anything leaves no entry row, and
+/// `:plugin-status` still shows the plugin as failed.
+#[test]
+fn failed_manifest_without_entries_is_listed_and_has_no_entry_row() {
+    use crate::null_host::NullHost;
+
+    let (_dir, mut host) = host_with_plugin(
+        "badmf",
+        &[("plugin.scm", ""), ("manifest.scm", r#"(error "boom")"#)],
+    );
+    host.eval_source(r#"(load-plugin! "user/badmf")"#, &mut NullHost)
+        .expect("a failing manifest is contained");
+
+    assert!(
+        host.plugin_status(&main_entry("user/badmf")).is_none(),
+        "a manifest that declared nothing must not leave an entry row"
+    );
+    let status = host.lazy_status_string(&[]);
+    let row = status
+        .lines()
+        .find(|l| l.contains("user/badmf"))
+        .unwrap_or_else(|| panic!("no row for user/badmf in:\n{status}"));
+    assert!(row.contains("failed"), "row: {row}");
 }

@@ -87,7 +87,7 @@ fn load_plugin_missing_plugin_declared_not_loaded() {
         h.declared_plugins()
             .iter()
             .any(|d| d.eq_ignore_ascii_case("user/nonexistent-repo")),
-        "declared_plugins field does not contain the declared name: {:?}",
+        "declared plugins do not contain the declared name: {:?}",
         h.declared_plugins(),
     );
 
@@ -123,7 +123,7 @@ fn load_plugin_malformed_name_errors() {
 /// `(declared-plugins)` must include `core:*` names. PLUM's
 /// never-install-core filter lives in Steel (`plum/missing-plugins`), not in
 /// this builtin. No runtime dir is set, so the declare's own disk-resolution
-/// logs an absent-core error and no-ops the activation, but `declared_plugins`
+/// logs an absent-core error and no-ops the activation, but the plugin
 /// is recorded unconditionally before that check runs (see `declare_plugin`),
 /// which is exactly the persistence this test locks in.
 #[test]
@@ -141,7 +141,7 @@ fn declared_plugins_includes_core_plugins() {
         h.declared_plugins()
             .iter()
             .any(|d| d.eq_ignore_ascii_case("core:lsp")),
-        "declared_plugins field does not contain the declared core plugin: {:?}",
+        "declared plugins do not contain the declared core plugin: {:?}",
         h.declared_plugins(),
     );
 

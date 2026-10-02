@@ -17,8 +17,8 @@
 //! - States: `Declared -> Loading -> Loaded | Failed`. `Loading` guards
 //!   re-entrant cycles; `Failed` doesn't retry until `:reload-config`.
 //! - `#:config` on `load-plugin!` is opaque per-plugin data read back via
-//!   `(plugin-config)`. Both forms record an installed plugin's name in
-//!   `declared_plugins` up front for PLUM; a local file is not recorded.
+//!   `(plugin-config)`. Both forms record an installed plugin's name in its
+//!   plugin record up front for PLUM; a local file is not listed.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 
@@ -31,6 +31,7 @@ pub mod json;
 pub(crate) mod keys;
 pub(crate) mod lazy;
 mod log;
+mod plugin_record;
 // ── Private implementation details ────────────────────────────────────────────
 mod activation;
 mod context;
@@ -89,7 +90,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 
-use attribution::{PluginId, PluginStack};
+use attribution::PluginStack;
 use hooks::HookRegistry;
 use host::EditorHost;
 use lazy::{LazyRegistry, PluginState};
@@ -109,9 +110,9 @@ pub(crate) struct ScriptingRegistries {
     /// Lazy plugin registry: populated by `%declare-plugin!` during init;
     /// activation maps consulted by command dispatch, event firing, and language-set.
     pub(crate) lazy_registry: LazyRegistry,
-    /// Every plugin name passed to `(load-plugin! …)` or `(declare-plugin! …)`,
-    /// including plugins absent on disk.
-    pub(crate) declared_plugins: Vec<String>,
+    /// Plugin-level state of every plugin named by `(load-plugin! …)` or
+    /// `(declare-plugin! …)`, including plugins absent on disk.
+    pub(crate) plugin_records: plugin_record::PluginRecords,
     /// In-Steel dispatch table: maps activated plugin command name to its Steel
     /// closure for synchronous inline application by `%dispatch-command!`.
     ///
@@ -130,11 +131,6 @@ pub(crate) struct ScriptingRegistries {
     /// dispatch) checks both tables, since its caller has already resolved
     /// which kind `name` is through the editor's own registry.
     pub(crate) typed_command_table: rustc_hash::FxHashMap<String, SteelVal>,
-    /// Per-plugin config value passed via `#:config` on `(load-plugin! …)`.
-    /// Read back by the plugin body through `(plugin-config)`, resolved via the
-    /// top of `plugin_stack`. Works identically whether the plugin activates
-    /// immediately or much later.
-    pub(crate) plugin_configs: rustc_hash::FxHashMap<PluginId, SteelVal>,
 }
 
 /// Borrows of [`ScriptingHost`] fields needed to populate [`SteelCtx`].
@@ -453,8 +449,8 @@ impl ScriptingHost {
 
     /// All plugin names ever passed to `(load-plugin! …)` or `(declare-plugin! …)`.
     #[cfg(any(test, feature = "test-util"))]
-    pub fn declared_plugins(&self) -> &[String] {
-        &self.registries.declared_plugins
+    pub fn declared_plugins(&self) -> Vec<String> {
+        self.registries.plugin_records.plum_names().collect()
     }
 
     /// Format a human-readable plugin status table for `:plugin-status`.
@@ -463,7 +459,9 @@ impl ScriptingHost {
     /// plugin, `is_typed`). This crate doesn't track pending command
     /// activations itself, so the caller supplies its live registry snapshot.
     pub fn lazy_status_string(&self, lazy_cmds: &[(String, attribution::EntryId, bool)]) -> String {
-        self.registries.lazy_registry.format_status(lazy_cmds)
+        self.registries
+            .lazy_registry
+            .format_status(&self.registries.plugin_records, lazy_cmds)
     }
 
     /// Peek at pending messages without draining.  Only for test assertions.

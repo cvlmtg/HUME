@@ -34,7 +34,7 @@ pub(crate) struct SteelCtx<'a> {
     /// Plugin attribution stack; identifies whose mutation is being recorded.
     pub(crate) plugin_stack: &'a mut PluginStack,
     /// The persistent registries (`cmd_owners`, `hooks`, `lazy_registry`,
-    /// `declared_plugins`, `command_table`, `plugin_configs`). Borrowed as a
+    /// `plugin_records`, `command_table`, `typed_command_table`). Borrowed as a
     /// unit, disjoint from `steel`.
     pub(crate) registries: &'a mut ScriptingRegistries,
     /// Log messages accumulated by `(log! …)`.

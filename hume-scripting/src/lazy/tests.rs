@@ -153,7 +153,7 @@ fn loaded_plugins_derived_from_state() {
 fn format_status_empty_returns_empty_string() {
     let reg = LazyRegistry::default();
     assert_eq!(
-        reg.format_status(&[]),
+        reg.format_status(&PluginRecords::default(), &[]),
         "",
         "empty registry must return empty"
     );
@@ -170,7 +170,7 @@ fn format_status_waiting_with_triggers() {
         vec!["rust".to_string()],
     );
     let lazy_cmds = vec![("my-cmd".to_string(), id, false)];
-    let out = reg.format_status(&lazy_cmds);
+    let out = reg.format_status(&PluginRecords::default(), &lazy_cmds);
     assert!(out.contains("alice/lazy"), "plugin id must appear");
     assert!(out.contains("declared"), "state must be 'declared'");
     assert!(
@@ -196,7 +196,7 @@ fn format_status_waiting_with_triggers() {
 fn format_status_zero_trigger_shows_a_placeholder() {
     let mut reg = LazyRegistry::default();
     reg.declare(id_user("bob", "bare"), fake_path(), vec![], vec![]);
-    let out = reg.format_status(&[]);
+    let out = reg.format_status(&PluginRecords::default(), &[]);
     let row = out
         .lines()
         .find(|l| l.contains("bob/bare"))
@@ -222,7 +222,7 @@ fn format_status_loaded_shows_no_triggers() {
     // post-activation `:plugin-status` call would see.
     *reg.plugins.get_mut(&id).unwrap() = PluginState::Loaded;
 
-    let out = reg.format_status(&[]);
+    let out = reg.format_status(&PluginRecords::default(), &[]);
     assert!(out.contains("carol/eager"), "plugin id must appear");
     assert!(out.contains("loaded"), "state must be 'loaded'");
     assert!(
@@ -238,7 +238,7 @@ fn format_status_failed_shows_no_triggers() {
     reg.declare(id.clone(), fake_path(), vec![], vec![]);
     *reg.plugins.get_mut(&id).unwrap() = PluginState::Failed;
 
-    let out = reg.format_status(&[]);
+    let out = reg.format_status(&PluginRecords::default(), &[]);
     assert!(out.contains("core:broken"));
     assert!(out.contains("failed"));
     assert!(
@@ -252,8 +252,55 @@ fn format_status_sorts_by_id() {
     let mut reg = LazyRegistry::default();
     reg.declare(id_user("z", "last"), fake_path(), vec![], vec![]);
     reg.declare(id_user("a", "first"), fake_path(), vec![], vec![]);
-    let out = reg.format_status(&[]);
+    let out = reg.format_status(&PluginRecords::default(), &[]);
     let z_pos = out.find("z/last").expect("z/last must appear");
     let a_pos = out.find("a/first").expect("a/first must appear");
     assert!(a_pos < z_pos, "rows must be sorted alphabetically by id");
+}
+
+#[test]
+fn format_status_lists_a_plugin_without_entries_on_its_own_row() {
+    use crate::plugin_record::{Request, Resolution};
+
+    let mut reg = LazyRegistry::default();
+    reg.declare(id_user("m", "present"), fake_path(), vec![], vec![]);
+    let mut records = PluginRecords::default();
+    for (name, resolution) in [
+        ("z/gone", Resolution::Absent),
+        ("a/broken", Resolution::ManifestFailed),
+        ("m/present", Resolution::Declared),
+    ] {
+        let id = PluginId::parse(name).unwrap();
+        records.note(id.clone(), Request::Declared);
+        records.resolve(&id, resolution).unwrap();
+    }
+
+    let out = reg.format_status(&records, &[]);
+    let rows: Vec<(&str, &str)> = out
+        .lines()
+        .skip(1)
+        .map(|l| {
+            let mut cols = l.split_whitespace();
+            (cols.next().unwrap(), cols.next().unwrap())
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("a/broken", "failed"),
+            ("m/present", "declared"),
+            ("z/gone", "absent")
+        ]
+    );
+}
+
+#[test]
+fn format_status_with_only_resolved_records_and_no_entries_is_empty() {
+    use crate::plugin_record::{Request, Resolution};
+
+    let mut records = PluginRecords::default();
+    let id = PluginId::parse("a/b").unwrap();
+    records.note(id.clone(), Request::Declared);
+    records.resolve(&id, Resolution::Declared).unwrap();
+    assert_eq!(LazyRegistry::default().format_status(&records, &[]), "");
 }

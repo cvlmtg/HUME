@@ -273,12 +273,11 @@ fn declare_plugin_rejects_string_event_names() {
 }
 
 /// A `#:events` entry rejected for being unknown/malformed must leave no
-/// trace in `declared_plugins`/`plugin_configs`: PLUM reads the former to
-/// decide what to install, and a name that appears there with no matching
-/// `LazyRegistry` entry can never be reconciled short of a restart.
+/// trace in the plugin records: PLUM reads them to decide what to install, and
+/// a name that appears there with no matching `LazyRegistry` entry can never
+/// be reconciled short of a restart.
 ///
-/// The decode therefore has to run before the `plugin_configs` write and the
-/// `record_declared` call.
+/// The decode therefore has to run before the plugin is noted.
 #[test]
 fn declare_plugin_rejected_events_records_nothing() {
     use crate::ScriptingHost;
@@ -292,17 +291,13 @@ fn declare_plugin_rejected_events_records_nothing() {
     .expect_err("unknown hook name must be rejected");
 
     assert!(
-        !host
-            .registries
-            .declared_plugins
-            .iter()
-            .any(|d| d == "user/tp"),
+        !host.declared_plugins().iter().any(|d| d == "user/tp"),
         "a rejected declaration must not be recorded for PLUM: {:?}",
-        host.registries.declared_plugins
+        host.declared_plugins()
     );
     let id = PluginId::parse("user/tp").unwrap();
     assert!(
-        !host.registries.plugin_configs.contains_key(&id),
+        host.registries.plugin_records.config(&id).is_none(),
         "a rejected declaration must not leave a stored config behind"
     );
 }
@@ -657,7 +652,7 @@ fn declare_plugin_bang_direct_no_trigger_call_errors() {
 }
 
 /// `load-plugin!` of a plugin whose directory doesn't exist at all is a soft
-/// no-op: Info log, `declared_plugins` recorded for PLUM, no plugin state.
+/// no-op: Info log, the plugin recorded for PLUM, no entry state.
 ///
 /// Treating "not installed yet" like "installed but empty" would break the
 /// load-then-:plum-install-plugins flow for every plugin that isn't installed
@@ -688,11 +683,10 @@ fn load_plugin_absent_dir_soft_logs_and_records_declared_plugins() {
         "must log Info for an absent user/ plugin directory; messages: {messages:?}"
     );
     assert!(
-        host.registries
-            .declared_plugins
+        host.declared_plugins()
             .iter()
             .any(|d| d == "user/definitely-absent-mf"),
-        "declared_plugins must record the name for PLUM even though nothing was declared"
+        "the plugin must be recorded the name for PLUM even though nothing was declared"
     );
     let id = EntryId::main(PluginId::parse("user/definitely-absent-mf").unwrap());
     assert!(

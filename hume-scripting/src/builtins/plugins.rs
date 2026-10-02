@@ -13,6 +13,7 @@ use crate::{
     SteelCtx,
     attribution::{EntryFile, EntryId, Owner, PluginId},
     lazy::PluginState,
+    plugin_record::{Request, Resolution},
 };
 
 use super::SteelResult;
@@ -62,21 +63,24 @@ fn absent_plugin(
     Ok(())
 }
 
-/// Whether `name` is in `declared_plugins` (case-insensitive).
-fn is_declared(ctx: &SteelCtx, name: &str) -> bool {
-    ctx.registries
-        .declared_plugins
-        .iter()
-        .any(|d| d.eq_ignore_ascii_case(name))
-}
-
-/// PLUM compat: records `name` in `declared_plugins` if not already present,
-/// regardless of whether the plugin resolves on disk. PLUM reads this list to
-/// know what to install on `:plum-install-plugins`.
-fn record_declared(ctx: &mut SteelCtx, name: &str) {
-    if !is_declared(ctx, name) {
-        ctx.registries.declared_plugins.push(name.to_string());
+/// Records that `plugin_id` is not installed and reports it, unless it was
+/// already recorded as absent: both verbs and repeated calls share the one
+/// report.
+fn mark_absent(
+    ctx: &mut SteelCtx,
+    plugin_id: &PluginId,
+    name: &str,
+    verb: &str,
+) -> Result<(), SteelErr> {
+    let before = ctx
+        .registries
+        .plugin_records
+        .resolve(plugin_id, Resolution::Absent)
+        .map_err(generic_err)?;
+    if before != Some(Resolution::Absent) {
+        absent_plugin(ctx, plugin_id, name, verb)?;
     }
+    Ok(())
 }
 
 /// Idempotency rule for `declare-plugin!`: `Loaded` → soft error, else first
@@ -254,10 +258,10 @@ pub(crate) fn declare_plugin(
         )));
     }
 
-    // `plugin_configs` is written only by `load-plugin!`, so a key means the
-    // plugin was already loaded, and by now its manifest or `plugin.scm` has
-    // decided its entries.
-    if ctx.manifest_resolving.is_none() && ctx.registries.plugin_configs.contains_key(&plugin_id) {
+    // A plugin that `load-plugin!` already ran for has had its manifest or
+    // `plugin.scm` decide its entries. The manifest's own declare is the one
+    // exception.
+    if ctx.manifest_resolving.is_none() && ctx.registries.plugin_records.was_loaded(&plugin_id) {
         ctx.log(
             crate::log::LogLevel::Error,
             format!(
@@ -273,7 +277,7 @@ pub(crate) fn declare_plugin(
     }
 
     // Decode and validate every activation-entry list before recording any state
-    // below: a malformed entry must leave `declared_plugins` untouched, or PLUM
+    // below: a malformed entry must leave no plugin record behind, or PLUM
     // would list a plugin the lazy registry never learns about.
     let cmd_list = list_to_strings(commands, &declare_arg_label(ctx, "#:commands"))?;
     let typed_cmd_list =
@@ -327,9 +331,9 @@ pub(crate) fn declare_plugin(
         }
     }
 
-    if !plugin_id.is_local() {
-        record_declared(ctx, &name);
-    }
+    ctx.registries
+        .plugin_records
+        .note(plugin_id.clone(), Request::Declared);
 
     // When the plugin file is absent on disk, it can never be activated:
     // collision-checking (which claims the name in the editor's registry) would
@@ -337,10 +341,10 @@ pub(crate) fn declare_plugin(
     // via drop_activations_for's usual load/fail transition.  For user/ plugins,
     // log Info, since absent is expected before :plum-install-plugins.  For core: plugins,
     // absent means a typo or broken HUME_RUNTIME; PLUM never installs core:
-    // plugins, so it can't catch the error.  `declared_plugins` is already
-    // recorded above for PLUM.
+    // plugins, so it can't catch the error.  The plugin is already recorded
+    // above for PLUM.
     let Some(path) = path else {
-        absent_plugin(ctx, &plugin_id, &name, "declare-plugin!")?;
+        mark_absent(ctx, &plugin_id, &name, "declare-plugin!")?;
         return Ok(SteelVal::Void);
     };
 
@@ -384,6 +388,10 @@ pub(crate) fn declare_plugin(
     ctx.registries
         .lazy_registry
         .declare(entry_id, path, evt_list, lang_list);
+    ctx.registries
+        .plugin_records
+        .resolve(&plugin_id, Resolution::Declared)
+        .map_err(generic_err)?;
 
     Ok(SteelVal::Void)
 }
@@ -481,16 +489,20 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
     let plugin_id = PluginId::parse_installed(&name).map_err(generic_err)?;
 
     ctx.registries
-        .plugin_configs
-        .insert(plugin_id.clone(), config);
-    let named_before = is_declared(ctx, &name);
-    record_declared(ctx, &name);
+        .plugin_records
+        .note(plugin_id.clone(), Request::Loaded { config });
 
-    if ctx.registries.lazy_registry.declares_plugin(&plugin_id) {
+    if ctx
+        .registries
+        .plugin_records
+        .resolution(&plugin_id)
+        .is_some()
+    {
         return Ok(SteelVal::BoolV(false));
     }
     let Some(dir) = plugin_dir_for_id(&plugin_id, ctx.dirs) else {
-        return absent_load(ctx, &plugin_id, &name, named_before);
+        mark_absent(ctx, &plugin_id, &name, "load-plugin!")?;
+        return Ok(SteelVal::BoolV(false));
     };
 
     let manifest_path = dir.join("manifest.scm");
@@ -509,29 +521,20 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
         ctx.registries
             .lazy_registry
             .declare(main, path, Vec::new(), Vec::new());
+        ctx.registries
+            .plugin_records
+            .resolve(&plugin_id, Resolution::Declared)
+            .map_err(generic_err)?;
         return Ok(SteelVal::BoolV(true));
     }
     if !path_exists(&dir).map_err(generic_err)? {
-        return absent_load(ctx, &plugin_id, &name, named_before);
+        mark_absent(ctx, &plugin_id, &name, "load-plugin!")?;
+        return Ok(SteelVal::BoolV(false));
     }
     Err(generic_err(format!(
         "load-plugin!: '{name}' has neither manifest.scm nor plugin.scm in {}",
         dir.display()
     )))
-}
-
-/// `load-plugin!` for a plugin with no directory: reported once, unless an
-/// earlier `declare-plugin!` already named it.
-fn absent_load(
-    ctx: &mut SteelCtx,
-    plugin_id: &PluginId,
-    name: &str,
-    named_before: bool,
-) -> SteelResult {
-    if !named_before {
-        absent_plugin(ctx, plugin_id, name, "load-plugin!")?;
-    }
-    Ok(SteelVal::BoolV(false))
 }
 
 /// Maximum nesting depth for concurrent inline plugin activations.
@@ -744,9 +747,9 @@ pub(crate) fn entry_loaded(ctx: &mut SteelCtx, plugin: String, entry: SteelVal) 
 /// without error but never calls `declare-plugin!` would otherwise leave the
 /// plugin silently undeclared; that check's own failure is raised, caught by
 /// the same `with-handler` in `bootstrap.scm`, and reaches this function a
-/// second time as a genuine failure. On failure, rolls the plugin back to
-/// `Failed` via `fail_plugin_activation` (same helper a lazy activation
-/// failure uses), undoing the declarations manifest.scm committed before a
+/// second time as a genuine failure. On failure, marks the plugin's manifest
+/// failed and rolls its entries back to `Failed` via `fail_plugin_activation`
+/// (same helper a lazy activation failure uses), undoing the declarations manifest.scm committed before a
 /// later top-level form in the same file raised (see the `Some(err)` arm
 /// below), then records the failure the way a body error is into
 /// `ctx.failed_activations` (see `run_steel_session`).
@@ -767,7 +770,7 @@ pub(crate) fn finish_manifest_load(
     let id = PluginId::parse_installed(&name).map_err(generic_err)?;
 
     match error {
-        None if !ctx.registries.lazy_registry.declares_plugin(&id) => {
+        None if ctx.registries.plugin_records.resolution(&id) != Some(Resolution::Declared) => {
             return Err(generic_err(format!(
                 "load-plugin!: manifest.scm for '{name}' did not declare '{name}': a \
                  manifest.scm must call (declare-plugin! \"{name}\" …) with at least one \
@@ -780,19 +783,19 @@ pub(crate) fn finish_manifest_load(
             // some of which may commit before a *later* top-level form in the
             // same file raises. `hm.eval-string` runs manifest.scm as one program, so
             // that self-declare's `Declared` state is already committed, and
-            // rolling the whole manifest resolution back to `Failed` (the
-            // same helper a lazy activation failure uses) undoes it, so a
-            // half-evaluated manifest.scm never leaves a live command stub
-            // behind for a plugin the user was just told failed to load.
-            // `declared_plugins` (the flat PLUM-visible list) is untouched
-            // (`fail_plugin_activation` never touches it), so PLUM still
-            // offers to install/update the plugin.
-            let main = EntryId::main(id.clone());
-            let declared = ctx.registries.lazy_registry.entries_of(&id);
-            for entry in declared.iter().chain(std::iter::once(&main)) {
-                fail_plugin_activation(ctx, entry);
+            // rolling its entries back to `Failed` (the same helper a lazy
+            // activation failure uses) undoes it, so a half-evaluated
+            // manifest.scm never leaves a live command stub behind for a
+            // plugin the user was just told failed to load. The plugin stays
+            // in the PLUM list, so PLUM still offers to install/update it.
+            ctx.registries
+                .plugin_records
+                .resolve(&id, Resolution::ManifestFailed)
+                .map_err(generic_err)?;
+            for entry in ctx.registries.lazy_registry.entries_of(&id) {
+                fail_plugin_activation(ctx, &entry);
             }
-            ctx.failed_activations.push((main, err));
+            ctx.failed_activations.push((EntryId::main(id), err));
         }
     }
 
@@ -822,9 +825,9 @@ pub(crate) fn loaded_plugins(ctx: &mut SteelCtx) -> SteelResult {
 pub(crate) fn declared_plugins(ctx: &mut SteelCtx) -> SteelResult {
     let vals: Vec<SteelVal> = ctx
         .registries
-        .declared_plugins
-        .iter()
-        .map(|s| SteelVal::StringV(s.as_str().into()))
+        .plugin_records
+        .plum_names()
+        .map(|s| SteelVal::StringV(s.into()))
         .collect();
     vals.into_steelval().map_err(generic_err)
 }
@@ -847,7 +850,7 @@ pub(crate) fn plugin_config(ctx: &mut SteelCtx) -> SteelResult {
     let Some(id) = ctx.plugin_stack.current() else {
         return empty_config();
     };
-    match ctx.registries.plugin_configs.get(&id.plugin) {
+    match ctx.registries.plugin_records.config(&id.plugin) {
         Some(cfg) => Ok(cfg.clone()),
         None => empty_config(),
     }

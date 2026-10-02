@@ -12,6 +12,7 @@ use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 
 use super::attribution::{EntryId, PluginId};
+use super::plugin_record::{PluginRecords, Resolution};
 
 /// Lifecycle state of a declared plugin.
 #[derive(Debug)]
@@ -39,8 +40,9 @@ pub(crate) enum PluginState {
 #[derive(Debug, Default)]
 pub(crate) struct LazyRegistry {
     /// Per-entry lifecycle state. An entry appears once it is declared with its
-    /// file on disk, or as `Failed` when its activation or its plugin's manifest
-    /// fails; an entry whose file is absent has no row.
+    /// file on disk, or as `Failed` when its activation fails or its plugin's
+    /// manifest fails after declaring it; an entry whose file is absent has no
+    /// row (see `PluginRecords` for the plugin as a whole).
     pub(crate) plugins: FxHashMap<EntryId, PluginState>,
     /// 1:many map: event name → plugins that activate on that event.
     pub(crate) activation_events: FxHashMap<String, Vec<EntryId>>,
@@ -131,13 +133,13 @@ impl LazyRegistry {
     /// entry, `is_typed`), the sole source of pending command activations;
     /// this registry does not track them itself.
     ///
-    /// Returns `""` if no plugins are declared; the caller reports "No plugins
+    /// Returns `""` if there is nothing to list; the caller reports "No plugins
     /// declared" rather than opening an empty scratch view.
-    pub(crate) fn format_status(&self, lazy_cmds: &[(String, EntryId, bool)]) -> String {
-        if self.plugins.is_empty() {
-            return String::new();
-        }
-
+    pub(crate) fn format_status(
+        &self,
+        records: &PluginRecords,
+        lazy_cmds: &[(String, EntryId, bool)],
+    ) -> String {
         let mut rows: Vec<(String, &'static str, String)> = self
             .plugins
             .iter()
@@ -157,6 +159,22 @@ impl LazyRegistry {
                 (id_s, state_label, activations)
             })
             .collect();
+
+        // A plugin with no entry row (not installed, or a manifest that raised
+        // before declaring anything) gets a row of its own.
+        for (plugin, resolution) in records.unresolved_rows() {
+            if !self.declares_plugin(plugin) {
+                let state = match resolution {
+                    Resolution::Absent => "absent",
+                    Resolution::ManifestFailed => "failed",
+                    Resolution::Declared => continue,
+                };
+                rows.push((plugin.to_string(), state, "\u{2014}".to_string()));
+            }
+        }
+        if rows.is_empty() {
+            return String::new();
+        }
 
         rows.sort_by(|a, b| a.0.cmp(&b.0));
 

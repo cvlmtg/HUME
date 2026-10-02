@@ -154,7 +154,12 @@ fn declare_plugin_rejects_config_and_records_nothing() {
 
     assert!(err.contains("#:config"), "got: {err}");
     assert!(state(&host, &secondary("user/multi", "extra.scm")).is_none());
-    assert!(host.registries.plugin_configs.is_empty());
+    assert!(
+        host.registries
+            .plugin_records
+            .config(&PluginId::parse("user/multi").unwrap())
+            .is_none()
+    );
 }
 
 #[test]
@@ -370,9 +375,9 @@ fn declaring_a_missing_entry_file_records_nothing() {
 
     assert!(result.is_err(), "a missing entry file must be a hard error");
     assert!(
-        host.registries.declared_plugins.is_empty(),
+        host.declared_plugins().is_empty(),
         "a failed declare must not be listed for PLUM: {:?}",
-        host.registries.declared_plugins
+        host.declared_plugins()
     );
 }
 
@@ -598,7 +603,7 @@ fn a_local_plugin_is_loaded_but_never_listed_for_plum() {
         &mut editor_host,
     );
     result.unwrap();
-    assert!(host.registries.declared_plugins.is_empty());
+    assert!(host.declared_plugins().is_empty());
 
     host.eval_source(
         r#"(%activate-plugin-inline! "./my.scm" #f)
@@ -612,7 +617,7 @@ fn a_local_plugin_is_loaded_but_never_listed_for_plum() {
             .iter()
             .any(|(_, m)| m == "listed")
     );
-    assert!(host.registries.declared_plugins.is_empty());
+    assert!(host.declared_plugins().is_empty());
 }
 
 #[test]
