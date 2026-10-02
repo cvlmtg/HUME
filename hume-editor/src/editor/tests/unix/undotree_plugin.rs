@@ -218,7 +218,9 @@ fn undotree_enter_jumps_and_rerenders_current_marker() {
 
     ed.handle_key(key_shift_down());
     ed.handle_key(key_enter());
-    ed.settle();
+    drain_until(&mut ed, |ed| {
+        drawer_rows(ed).get(1).is_some_and(|row| row.contains('@'))
+    });
 
     assert_eq!(ed.doc().text().to_string(), "ello\n");
     insta::assert_snapshot!(masked_rows(&ed), @r"
@@ -358,4 +360,50 @@ fn undotree_typed_command_opens_the_drawer() {
 
     assert!(drawer_open(&ed));
     insta::assert_snapshot!(masked_rows(&ed), @"o  @S ##");
+}
+
+const PLUGIN_SCM: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../runtime/plugins/core/undotree/plugin.scm"
+));
+const MANIFEST_SCM: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../runtime/plugins/core/undotree/manifest.scm"
+));
+
+#[test]
+fn undotree_ages_refresh_while_the_drawer_is_open() {
+    let guard = HumeRuntimeGuard::new();
+    let plugin_dir = guard.runtime.path().join("plugins/core/undotree");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("render.scm"), RENDER_SCM).unwrap();
+    std::fs::write(plugin_dir.join("manifest.scm"), MANIFEST_SCM).unwrap();
+    std::fs::write(
+        plugin_dir.join("plugin.scm"),
+        PLUGIN_SCM.replace(
+            "(define undotree/age-refresh-ms 60000)",
+            "(define undotree/age-refresh-ms 100)",
+        ),
+    )
+    .unwrap();
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &hume_scripting::eager_load_scm("core:undotree", None),
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    ed.settle();
+    toggle(&mut ed);
+    assert!(
+        drawer_rows(&ed).iter().all(|row| row.ends_with(" 0s")),
+        "setup: a fresh tree reads 0s"
+    );
+
+    drain_until(&mut ed, |ed| {
+        drawer_rows(ed).iter().all(|row| row.ends_with(" 1s"))
+    });
 }

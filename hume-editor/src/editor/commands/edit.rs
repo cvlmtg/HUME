@@ -219,7 +219,7 @@ fn walk_history(
 
 /// Walk the undo/redo history `count` steps as one composed transform,
 /// reporting exhaustion when the walk fell short. Calls `finish_edit`
-/// exactly once per walk.
+/// once per walk.
 fn history_step(
     state: &mut EditorState,
     view: &mut EngineView,

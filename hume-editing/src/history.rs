@@ -518,8 +518,8 @@ impl History {
         self.current
     }
 
-    /// A counter that differs between two reads exactly when a revision was
-    /// recorded or evicted, or `current` moved, in between.
+    /// A counter that changes whenever a revision is recorded or evicted, or
+    /// `current` moves, and at no other time.
     pub fn change_seq(&self) -> u64 {
         self.change_seq
     }

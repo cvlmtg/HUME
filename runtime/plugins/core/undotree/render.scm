@@ -1,6 +1,6 @@
 ;;; core:undotree — render.scm. See README.md's "Graph".
 
-(provide undotree/format-age undotree/render)
+(provide undotree/format-age undotree/render undotree/row-index)
 
 ;;; See README.md's "Age".
 (define (undotree/format-age secs)

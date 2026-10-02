@@ -8,18 +8,19 @@
 (define undotree/*session* #f)
 (define undotree/*next-id* 0)
 
+;; The row ages are relative to the render, so an idle drawer re-renders on
+;; this period. See README.md's "Refresh".
+(define undotree/age-refresh-ms 60000)
+(define undotree/*age-timer* #f)
+
 (define (undotree/end-session!)
+  (when undotree/*age-timer*
+    (cancel-timer! undotree/*age-timer*)
+    (set! undotree/*age-timer* #f))
   (set! undotree/*session* #f))
 
 (define (undotree/session-is? id)
   (and undotree/*session* (equal? (hash-ref undotree/*session* 'id) id)))
-
-(define (undotree/index-of item items)
-  (let loop ([rest items] [i 0])
-    (cond
-      [(null? rest) #f]
-      [(equal? (car rest) item) i]
-      [else (loop (cdr rest) (+ i 1))])))
 
 ;; ── Drawer ───────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,8 @@
                [ids (hash-ref rendered 'ids)]
                [same-buffer? (equal? (buffer-key pane) (hash-ref session 'key))]
                [kept (and same-buffer?
-                          (undotree/index-of (list-ref (hash-ref session 'ids) selected) ids))]
+                          (let ([wanted (list-ref (hash-ref session 'ids) selected)])
+                            (undotree/row-index (lambda (id) (equal? id wanted)) ids 0)))]
                [highlight (or kept (hash-ref rendered 'current))])
           (if (update-drawer-list! drawer (hash-ref rendered 'rows)
                                    (undotree/on-select (hash-ref session 'id)) highlight)
@@ -52,10 +54,18 @@
   (let* ([session undotree/*session*]
          [pane (hash-ref session 'pane)])
     (if (pane-live? pane)
-        (begin
-          (goto-revision! pane (list-ref (hash-ref session 'ids) idx))
-          (undotree/show! pane))
+        (goto-revision! pane (list-ref (hash-ref session 'ids) idx))
         (undotree/show! (focused-pane)))))
+
+(define (undotree/arm-age-timer! id)
+  (set! undotree/*age-timer*
+        (after! undotree/age-refresh-ms
+                (lambda ()
+                  (when (undotree/session-is? id)
+                    (let ([pane (hash-ref undotree/*session* 'pane)])
+                      (undotree/show! (if (pane-live? pane) pane (focused-pane))))
+                    (when (undotree/session-is? id)
+                      (undotree/arm-age-timer! id)))))))
 
 (define (undotree/open! pane)
   (undotree/end-session!)
@@ -68,7 +78,8 @@
       (set! undotree/*session*
             (hash 'id id 'drawer drawer 'pane pane 'key (buffer-key pane)
                   'ids (hash-ref rendered 'ids)))
-      (update-drawer-list! drawer rows (undotree/on-select id) (hash-ref rendered 'current)))))
+      (update-drawer-list! drawer rows (undotree/on-select id) (hash-ref rendered 'current))
+      (undotree/arm-age-timer! id))))
 
 (define (undotree/toggle! pane)
   (let ([session undotree/*session*])

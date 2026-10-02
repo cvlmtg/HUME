@@ -60,8 +60,8 @@ otherwise. They sit in a column of their own so they stay visible next to a
 wide graph. Here the current revision is 4 and the saved one is 0:
 
 ```
-o          4m
-| o    @   2m
+o          2m
+| o    @   4m
 | | o      6m
 | | o      7m
 | o-'      9m
@@ -94,10 +94,13 @@ The rows are re-rendered in place, keeping the highlight on the same revision
 number, or on the current revision when that number is gone or the tree
 belongs to a different buffer.
 
-- After a jump, synchronously, so the `@` has moved when Enter returns.
+- After a jump, through the next item: the jump moves the current revision,
+  so the `@` follows within the debounce.
 - On `on-undo-history-changed` for the session's buffer, debounced 150 ms. That
   event also fires for an undo whose net change to the text is nothing, which
   `on-text-changed` would miss.
+- Every 60 seconds while the session is open, so the ages keep up with the
+  clock. The timer is cancelled when the session ends.
 - On `on-buffer-enter` for another buffer, which retargets the session to the
   buffer now shown. When the session's pane has closed or shows another
   buffer, the next refresh or Enter retargets to the focused pane the same way.

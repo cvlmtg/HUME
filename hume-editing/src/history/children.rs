@@ -3,7 +3,7 @@ use super::RevisionId;
 /// The revisions that branch from one revision, in creation order, plus the
 /// one redo continues along.
 ///
-/// `redo` is `Some` exactly when `ids` is non-empty, and is always a member
+/// `redo` is `Some` only when `ids` is non-empty, and is always a member
 /// of `ids`. The fields are private to this file, so every write goes through
 /// a method that keeps that true.
 #[derive(Default)]
