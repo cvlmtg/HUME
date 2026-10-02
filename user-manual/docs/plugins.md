@@ -106,7 +106,7 @@ The name must end in `.scm`, must not contain `..`, and the file must exist, or 
 
 ## Writing a plugin
 
-A plugin is a directory containing a `plugin.scm`; that file is the entry point HUME loads. An optional `manifest.scm` makes the plugin lazy (see [Shipping a manifest](#shipping-a-manifest)). For a plugin installed by PLUM, the directory is named after its GitHub owner and repo. The simplest `plugin.scm`:
+A plugin is a directory containing a `plugin.scm`; that file is the entry point HUME loads. A plugin without a `plugin.scm` is malformed, even if it ships a `manifest.scm`. HUME doesn't check for this: such a plugin may be reported as not installed, fail to load, or load only in part. An optional `manifest.scm` makes the plugin lazy (see [Shipping a manifest](#shipping-a-manifest)). For a plugin installed by PLUM, the directory is named after its GitHub owner and repo. The simplest `plugin.scm`:
 
 ```scheme
 (define-typed-command! "hello"
@@ -362,7 +362,7 @@ Keep `manifest.scm` to just the `declare-plugin!` calls. A manifest takes no `#:
 
 ### Splitting a plugin into entries
 
-A plugin can load in pieces. Give `declare-plugin!` an `#:entry` naming another `.scm` file in the plugin's directory, with its own activation entries, and that file loads only when one of them fires. The declaration without `#:entry` is the plugin's main file, `plugin.scm`.
+A plugin can load in pieces. Give `declare-plugin!` an `#:entry` naming another `.scm` file in the plugin's directory, with its own activation entries, and that file loads only when one of them fires. The declaration without `#:entry` is the plugin's main file, `plugin.scm`. Leave `#:entry` out for the main file: naming `plugin.scm` with it, in any casing, is malformed. Write every other `#:entry` exactly as the file is named on disk, case included. `"Commands.scm"` for a file named `commands.scm` is malformed even where the filesystem ignores case, because it may work on one system and fail on another.
 
 ```scheme
 ; manifest.scm

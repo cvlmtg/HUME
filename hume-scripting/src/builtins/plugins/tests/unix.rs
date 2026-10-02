@@ -83,6 +83,32 @@ fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
     );
 }
 
+/// A declare that fails because every command collided must not leave the
+/// plugin in PLUM's list.
+#[test]
+fn declare_plugin_all_on_command_collided_records_nothing() {
+    use crate::null_host::NullHost;
+    use rustc_hash::FxHashSet;
+
+    let (_dir, mut host) = host_with_plugin("collided", &[("plugin.scm", "")]);
+    let mut builtin_names = FxHashSet::default();
+    builtin_names.insert("insert-mode".to_string());
+
+    host.eval_source_raw(
+        r#"(declare-plugin! "user/collided" #:commands '("insert-mode"))"#.to_owned(),
+        builtin_names,
+        10_000,
+        &mut NullHost,
+    )
+    .expect_err("must error when all entries collide");
+
+    assert!(
+        !host.declared_plugins().iter().any(|d| d == "user/collided"),
+        "a failed declaration must not be recorded for PLUM: {:?}",
+        host.declared_plugins()
+    );
+}
+
 /// `declare-plugin!` drops `#:commands` entries that conflict with already-registered
 /// eager commands; when the dropped entry was the sole activation signal, it errors
 /// immediately (no orphan entry, no plugin stuck `Declared`).

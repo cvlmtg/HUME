@@ -4,7 +4,7 @@
 (require "platform.scm")
 
 (provide lsp-install/target-row lsp-install/row-fmt lsp-install/row-tools
-         lsp-install/install-blocker)
+         lsp-install/install-blocker lsp-install/row-blocker)
 
 (define (lsp-install/row-fmt row) (cadr row))
 (define (lsp-install/row-tools row) (cddr row))
@@ -22,7 +22,7 @@
 (define (lsp-install/missing-tool row)
   (call! "stdlib/find" (lambda (tool) (not (which tool))) (lsp-install/row-tools row)))
 
-(define (lsp-install/install-blocker name)
+(define (lsp-install/row-blocker name row)
   (let ((fields (lsp-install/requirement name)))
     (cond
       ((not lsp-install/target) "unsupported platform")
@@ -30,14 +30,14 @@
       ((assoc 'blocked fields)
        (string-append "not installable (kind " (symbol->string (lsp-install/ref fields 'blocked))
                       ") in v1"))
-      (else
-       (let ((row (lsp-install/target-row name)))
-         (cond
-           ((not row)
-            (if (equal? (lsp-install/ref fields 'missing) 'download)
-                "no prebuilt asset for this platform"
-                "not supported on this platform"))
-           ((lsp-install/missing-tool row)
-            => (lambda (tool)
-                 (string-append "requires '" tool "' on $PATH, which was not found")))
-           (else #f)))))))
+      ((not row)
+       (if (equal? (lsp-install/ref fields 'missing) 'download)
+           "no prebuilt asset for this platform"
+           "not supported on this platform"))
+      ((lsp-install/missing-tool row)
+       => (lambda (tool)
+            (string-append "requires '" tool "' on $PATH, which was not found")))
+      (else #f))))
+
+(define (lsp-install/install-blocker name)
+  (lsp-install/row-blocker name (lsp-install/target-row name)))

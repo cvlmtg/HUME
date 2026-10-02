@@ -55,7 +55,8 @@ Helix and Mason, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 ## Internals
 
 - `lsp-install/install-blocker` (`blocker.scm`) returns the reason a server cannot be installed
-  here, or `#f`.
+  here, or `#f`. `lsp-install/row-blocker` (`blocker.scm`) is the same check for a row the caller
+  already resolved.
 - `lsp-install/target-row` (`blocker.scm`) returns the server's `requirements.scm` row for this
   platform, or `#f`.
 - `lsp-install/package-installers` (`install.scm`) holds one `(kind installer env-dirs)` row per

@@ -331,19 +331,18 @@ pub(crate) fn declare_plugin(
         }
     }
 
-    ctx.registries
-        .plugin_records
-        .note(plugin_id.clone(), Request::Declared);
-
     // When the plugin file is absent on disk, it can never be activated:
     // collision-checking (which claims the name in the editor's registry) would
     // be pointless and would leave the name claimed with no path to clean it up
     // via drop_activations_for's usual load/fail transition.  For user/ plugins,
     // log Info, since absent is expected before :plum-install-plugins.  For core: plugins,
     // absent means a typo or broken HUME_RUNTIME; PLUM never installs core:
-    // plugins, so it can't catch the error.  The plugin is already recorded
-    // above for PLUM.
+    // plugins, so it can't catch the error.  The plugin is recorded here so
+    // PLUM lists it.
     let Some(path) = path else {
+        ctx.registries
+            .plugin_records
+            .note(plugin_id.clone(), Request::Declared);
         mark_absent(ctx, &plugin_id, &name, "declare-plugin!")?;
         return Ok(SteelVal::Void);
     };
@@ -375,6 +374,10 @@ pub(crate) fn declare_plugin(
              Fix the collision."
         )));
     }
+
+    ctx.registries
+        .plugin_records
+        .note(plugin_id.clone(), Request::Declared);
 
     // Pre-seed cmd_owners so (command-plugin "cmd") resolves correctly before
     // the plugin body is evaluated (before activation).  Only for accepted
@@ -742,12 +745,13 @@ pub(crate) fn entry_loaded(ctx: &mut SteelCtx, plugin: String, entry: SteelVal) 
 /// any-fallible-decode ordering; see that function's doc for why).
 ///
 /// Clears `manifest_resolving` and pops the effect mark `load_plugin`
-/// pushed unconditionally, before decoding `error`. On success, verifies the
-/// manifest actually declared the plugin: a `manifest.scm` that evaluates
-/// without error but never calls `declare-plugin!` would otherwise leave the
-/// plugin silently undeclared; that check's own failure is raised, caught by
-/// the same `with-handler` in `bootstrap.scm`, and reaches this function a
-/// second time as a genuine failure. On failure, marks the plugin's manifest
+/// pushed unconditionally, before decoding `error`. The mark's effects are
+/// committed only when the manifest evaluated without error and declared the
+/// plugin. A `manifest.scm` that evaluates without error but never calls
+/// `declare-plugin!` would otherwise leave the plugin undeclared with no error;
+/// that check's own failure is raised, caught by the same `with-handler` in
+/// `bootstrap.scm`, and reaches this function a second time as a genuine
+/// failure. On failure, marks the plugin's manifest
 /// failed and rolls its entries back to `Failed` via `fail_plugin_activation`
 /// (same helper a lazy activation failure uses), undoing the declarations manifest.scm committed before a
 /// later top-level form in the same file raised (see the `Some(err)` arm
@@ -765,12 +769,15 @@ pub(crate) fn finish_manifest_load(
     // reentrancy guard.
     ctx.manifest_resolving = None;
     let error = optional_steel_error_arg(error, "%finish-manifest-load!").unwrap_or_else(Some);
-    ctx.pop_effect_marks(error.is_none());
-
-    let id = PluginId::parse_installed(&name).map_err(generic_err)?;
+    let id = PluginId::parse_installed(&name);
+    let declared = id
+        .as_ref()
+        .is_ok_and(|id| ctx.registries.plugin_records.resolution(id) == Some(Resolution::Declared));
+    ctx.pop_effect_marks(error.is_none() && declared);
+    let id = id.map_err(generic_err)?;
 
     match error {
-        None if ctx.registries.plugin_records.resolution(&id) != Some(Resolution::Declared) => {
+        None if !declared => {
             return Err(generic_err(format!(
                 "load-plugin!: manifest.scm for '{name}' did not declare '{name}': a \
                  manifest.scm must call (declare-plugin! \"{name}\" …) with at least one \

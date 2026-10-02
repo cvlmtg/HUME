@@ -576,8 +576,9 @@ impl ScriptingHost {
     }
 
     /// Evaluate a bundled runtime Scheme file at `path` with `eval_init`'s
-    /// contract, except that it leaves the local-plugin directory unset: only
-    /// the user's `init.scm` resolves `./file.scm` plugins.
+    /// contract, except that it does not set the local-plugin directory: only
+    /// `eval_init` does, so a host resolves `./file.scm` plugins only after
+    /// the user's `init.scm` has been evaluated on it.
     pub fn eval_runtime(
         &mut self,
         path: &Path,

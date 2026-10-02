@@ -150,7 +150,8 @@
       (lsp-install/package-install! name source row dir)))
 
 (define (lsp-install/install-server! name)
-  (let ((blocker (lsp-install/install-blocker name)))
+  (let* ((row     (lsp-install/target-row name))
+         (blocker (lsp-install/row-blocker name row)))
     (when blocker
       (error (string-append "lsp-install/install-server!: " name ": " blocker)))
     (let ((server-fields (hash-ref lsp-install/servers name))
@@ -158,7 +159,7 @@
           (dir           (lsp-install/server-dir name)))
       (lsp-install/unregister-server-languages! name)
       (call! "stdlib/delete-dir!" dir)
-      (let* ((installed (lsp-install/run-install! name source (lsp-install/target-row name) dir))
+      (let* ((installed (lsp-install/run-install! name source row dir))
              (bin-rel   (car installed)))
         (lsp-install/write-receipt! name (lsp-install/ref source 'version)
                                     bin-rel (cdr installed))

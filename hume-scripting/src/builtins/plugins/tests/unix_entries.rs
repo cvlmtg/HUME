@@ -301,6 +301,34 @@ fn a_failed_manifest_fails_every_entry_it_declared() {
 }
 
 #[test]
+fn a_manifest_that_never_declares_its_plugin_applies_no_effects() {
+    let (_dir, mut host) = host_with_plugin(
+        "silent",
+        &[
+            ("plugin.scm", ""),
+            (
+                "manifest.scm",
+                r#"(register-lsp-server! "zlang" #:command "zls")"#,
+            ),
+        ],
+    );
+
+    let effects = host
+        .eval_source(
+            r#"(load-plugin! "user/silent")"#,
+            &mut LazyStubHost::default(),
+        )
+        .unwrap();
+
+    assert!(
+        !effects
+            .iter()
+            .any(|e| matches!(e, crate::types::Effect::LspServerOp(_))),
+        "a manifest that fails the plugin must not leave its LSP server queued: {effects:?}"
+    );
+}
+
+#[test]
 fn load_plugin_without_config_gives_the_body_an_empty_hash() {
     let (_dir, mut host) = host_with_plugin(
         "multi",
