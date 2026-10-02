@@ -10,7 +10,7 @@ use std::any::Any;
 use std::fmt;
 use std::panic::{self, PanicHookInfo};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::thread::{self, ThreadId};
+use std::thread;
 
 /// One panic on a background thread.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,8 +66,6 @@ pub struct WorkerPanics {
     queue: Arc<Mutex<Queue>>,
 }
 
-type Hook = Box<dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static>;
-
 impl WorkerPanics {
     /// Wrap the current panic hook so it runs only for the calling thread's
     /// panics. A panic on any other thread is queued and `wake` is called,
@@ -78,10 +76,8 @@ impl WorkerPanics {
     /// Call it on the main thread after the terminal is initialized, so the
     /// hook it wraps is the terminal's.
     pub fn install(wake: Arc<dyn Fn() + Send + Sync>) -> Self {
-        Self::install_over(panic::take_hook(), thread::current().id(), wake)
-    }
-
-    fn install_over(previous: Hook, main: ThreadId, wake: Arc<dyn Fn() + Send + Sync>) -> Self {
+        let previous = panic::take_hook();
+        let main = thread::current().id();
         let panics = Self::default();
         let sink = panics.clone();
         panic::set_hook(Box::new(move |info| {
