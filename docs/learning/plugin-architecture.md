@@ -275,8 +275,8 @@ dependent plugin is activated.
 ```
 
 `:plugin-status` (alias `:plugins`) lists every plugin named in `init.scm` with its current state
-and any activation entries still pending — useful for checking whether dependencies are
-loaded before a dependent plugin activates.
+and any activation entries still pending. A plugin that is not installed shows as `absent`.
+This is useful for checking whether dependencies are loaded before a dependent plugin activates.
 
 ---
 

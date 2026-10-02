@@ -39,7 +39,7 @@ See [Configuring a plugin](#configuring-a-plugin) for what a plugin does with th
 :plugin-status
 ```
 
-Shows one row per plugin entry: whether it is declared (waiting), loaded or failed, and for a declared entry the commands, events and languages still waiting to trigger it. A plugin that loads in pieces has a row for each file, and a local file shows under its `./` path.
+Shows one row per plugin entry: whether it is declared (waiting), loaded or failed, and for a declared entry the commands, events and languages still waiting to trigger it. A plugin that loads in pieces has a row for each file, and a local file shows under its `./` path. A plugin named in `init.scm` that is not installed shows as `absent`, so you can tell what `:plum-install-plugins` still has to fetch.
 
 ## Reloading configuration
 
@@ -51,7 +51,7 @@ Reloads `init.scm` from scratch. Useful after editing your config without restar
 
 ## Recovering from a failed plugin
 
-A plugin that fails to load doesn't stop the rest of `init.scm`: every plugin after it still loads, and every plugin named before it is unaffected. A lazy plugin loads when its first trigger fires, so its failure shows up then instead of at startup. Check `:messages` for the error; it names the plugin and points at the file and line the problem is in. `:plugin-status` shows it as failed alongside everything else.
+A plugin that fails to load doesn't stop the rest of `init.scm`: every plugin after it still loads, and every plugin named before it is unaffected. A lazy plugin loads when its first trigger fires, so its failure shows up then instead of at startup. Check `:messages` for the error; it names the plugin and points at the file and line the problem is in. `:plugin-status` shows it as failed alongside everything else, including a plugin whose `manifest.scm` failed before it declared anything.
 
 If the failing plugin came from a git repository (rather than one you're editing yourself), it may already have a fix upstream: run `:plum-update-plugins` to pull the latest version of every installed plugin, then `:reload-config` to try again. This works even for a plugin that failed on the very first line of your config, since loading it never depends on anything named after it.
 

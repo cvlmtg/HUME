@@ -29,6 +29,7 @@
 - The scripting functions `hume-target`, `sha256-file`, `unpack-gz!`, `unpack-zip!`, `unpack-tar!`, `mark-executable!`, `acquire-install-lock!` and `release-install-lock!` are removed; the installer now runs the system tools itself. `run-capture!` and `stdlib/run!` start their child in its own process group, so a Ctrl-c during an inline-output command no longer reaches it.
 
 ### Plugins
+- `:plugin-status` also lists a plugin that is not installed (state `absent`) and a plugin whose `manifest.scm` failed before declaring anything (state `failed`). A plugin that is not installed is reported once in `:messages`, however many times `init.scm` names it.
 - `declare-plugin!` takes `#:entry`, the name of another `.scm` file in the plugin's directory with its own `#:commands`, `#:typed-commands`, `#:events` and `#:languages`, so a plugin can load in pieces. The plugin's `#:config`, passed to `load-plugin!`, is shared by every file.
 - `declare-plugin!` can name a local `./file.scm` beside `init.scm`, which then loads lazily on its `#:commands`, `#:typed-commands`, `#:events` or `#:languages`.
 - `(plugin-dir)` returns the directory holding the calling plugin's own files, so a plugin can read data files that ship with it wherever it was installed.

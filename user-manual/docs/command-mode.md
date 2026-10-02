@@ -156,7 +156,7 @@ See [Configuration](configuration.md) for every option.
 
 | Command | Effect |
 |---------|--------|
-| `:plugins`, `:plugin-status` | Show each plugin entry's state (declared, loaded or failed) and what is still waiting to trigger it |
+| `:plugins`, `:plugin-status` | Show each plugin entry's state (declared, loaded or failed), what is still waiting to trigger it, and any plugin that is not installed (absent) |
 | `:reload-config` | Re-run `init.scm` from scratch |
 | `:ver`, `:version` | Show the editor version |
 | `:tutor` | Open the interactive tutorial |
