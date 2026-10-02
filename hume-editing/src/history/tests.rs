@@ -915,6 +915,12 @@ fn reset_keeps_change_seq_strictly_increasing() {
     assert_eq!(h.current_id(), History::ROOT);
     assert_eq!(h.undo_levels(), 5);
     let after_reset = h.change_seq();
+    h.reset();
+    assert_eq!(
+        h.change_seq(),
+        after_reset,
+        "resetting a root-only tree is not a change"
+    );
     h.record(insert_cs(6, "c"), delete_cs(7, 1), sel_at(0), sel_at(1));
     assert!(h.change_seq() > after_reset);
 }

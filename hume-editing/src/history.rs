@@ -169,11 +169,12 @@ impl History {
     }
 
     /// Drop every revision and return to a fresh root, keeping `undo_levels`.
-    /// `change_seq` moves forward, never back, so an observer holding an
-    /// earlier read sees the replacement.
+    /// `change_seq` never moves back, and moves forward only when a revision
+    /// was dropped: resetting a root-only tree changes nothing an observer
+    /// could see.
     pub fn reset(&mut self) {
         let undo_levels = self.undo_levels;
-        let change_seq = self.change_seq + 1;
+        let change_seq = self.change_seq + u64::from(self.len() > 1);
         *self = Self::new();
         self.undo_levels = undo_levels;
         self.change_seq = change_seq;
