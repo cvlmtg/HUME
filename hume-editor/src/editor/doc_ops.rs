@@ -316,14 +316,14 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
 ///
 /// Session handling lives here, as in [`apply_doc_edit`]: a Paste session open
 /// on this (pane, buffer) is committed first, so the walk sees its revision
-/// and its snapshot cannot go stale. An Insert session open there is an `Err`:
-/// its group is mid-composition, and a walk underneath it would desync the
-/// group from the text.
+/// and its snapshot cannot go stale. An Insert session or a Replay placeholder
+/// open there is an `Err`: its group is mid-composition, and a walk underneath
+/// it would desync the group from the text.
 ///
 /// Returns [`HistoryWalk::Took`] with the steps actually taken (fewer than
 /// requested at the root/leaf) or [`HistoryWalk::RefusedReadOnly`]. `Err`
 /// when [`check_no_conflicting_session`] finds another pane's session on this
-/// buffer, or this pane has an Insert session open on it.
+/// buffer, or this pane has an Insert or Replay session open on it.
 // Same non-collapsible-params shape as `finish_edit`'s own allow, above.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_history_walk(
@@ -343,19 +343,20 @@ pub(in crate::editor) fn apply_doc_history_walk(
         return Ok(HistoryWalk::RefusedReadOnly);
     }
     check_no_conflicting_session(active_session, pane_id, buf_id)?;
-    if active_session
+    match active_session
         .as_ref()
-        .is_some_and(|s| s.is_insert_at(pane_id, buf_id))
+        .filter(|s| s.owned_by(pane_id, buf_id))
+        .map(EditSession::kind)
     {
-        return Err(CommandError::transient(
-            "cannot move through undo history during an Insert session",
-        ));
-    }
-    if active_session
-        .as_ref()
-        .is_some_and(|s| s.is_paste_at(pane_id, buf_id))
-    {
-        commit_paste_group(buffers, stores.panes, active_session);
+        None => {}
+        Some(EditSessionKind::Paste { .. }) => {
+            commit_paste_group(buffers, stores.panes, active_session);
+        }
+        Some(EditSessionKind::Insert | EditSessionKind::Replay) => {
+            return Err(CommandError::transient(
+                "cannot move through undo history while an edit session is open",
+            ));
+        }
     }
     let text_pre = buffers.get(buf_id).text().clone();
     let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), buf_id, stores, pane_id)?

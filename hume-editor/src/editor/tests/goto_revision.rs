@@ -352,3 +352,33 @@ fn goto_revision_errors_when_the_paste_commit_evicts_the_target() {
     );
     assert_eq!(ed.doc().text().to_string(), before);
 }
+
+#[test]
+fn history_walk_refuses_own_replay_placeholder() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.feed_key(key('d'));
+    let (pane, buffer) = (ed.state.focus.id(), ed.focused_buffer_id());
+    let sels = ed.state.panes.state[pane][buffer].selections().clone();
+    crate::editor::edit_session::open_or_retarget(
+        &mut ed.state.active_session,
+        pane,
+        buffer,
+        crate::editor::edit_session::EditSessionKind::Replay,
+        || {
+            ed.state
+                .buffers
+                .get(buffer)
+                .begin_edit_group(sels.clone(), sels)
+        },
+    )
+    .expect("no session is open");
+    let before = ed.doc().text().to_string();
+
+    let walk = undo_through_funnel(&mut ed);
+
+    assert!(
+        walk.is_err(),
+        "a walk under a Replay placeholder must be refused"
+    );
+    assert_eq!(ed.doc().text().to_string(), before);
+}
