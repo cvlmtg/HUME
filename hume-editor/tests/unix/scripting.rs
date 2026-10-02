@@ -726,6 +726,33 @@ fn load_then_declare_on_lazy_plugin_is_reported() {
     );
 }
 
+/// `(declare-plugin! …)` then `(load-plugin! …)` for a plugin that is not
+/// installed reports the absence once, from the declare.
+#[test]
+fn declare_then_load_of_an_absent_plugin_reports_it_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        "(declare-plugin! \"user/gone\" #:commands '(\"x\"))\n(load-plugin! \"user/gone\")",
+    )
+    .unwrap();
+
+    let mut h = host();
+    h.set_data_dir(dir.path().to_path_buf());
+    let mut mock = MockHost::new();
+
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+        .expect("an absent user plugin is not an error");
+
+    let absent = h
+        .peek_pending_messages()
+        .iter()
+        .filter(|(_, msg)| msg.contains("user/gone") && msg.contains("not found on disk"))
+        .count();
+    assert_eq!(absent, 1, "got: {:?}", h.peek_pending_messages());
+}
+
 /// `(load-plugin! …)` inside an eager plugin body is rejected unconditionally,
 /// even when the dep is present on disk, the gate fires before path
 /// resolution. `pb`'s own activation is contained by the rejection (a body

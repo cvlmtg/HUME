@@ -64,16 +64,19 @@ fn absent_plugin(
     Ok(())
 }
 
-/// PLUM compat: records `name` in `declared_plugins` if not already present
-/// (case-insensitive), regardless of whether the plugin resolves on disk.
-/// PLUM reads this list to know what to install on `:plum-install-plugins`.
-fn record_declared(ctx: &mut SteelCtx, name: &str) {
-    if !ctx
-        .registries
+/// Whether `name` is in `declared_plugins` (case-insensitive).
+fn is_declared(ctx: &SteelCtx, name: &str) -> bool {
+    ctx.registries
         .declared_plugins
         .iter()
         .any(|d| d.eq_ignore_ascii_case(name))
-    {
+}
+
+/// PLUM compat: records `name` in `declared_plugins` if not already present,
+/// regardless of whether the plugin resolves on disk. PLUM reads this list to
+/// know what to install on `:plum-install-plugins`.
+fn record_declared(ctx: &mut SteelCtx, name: &str) {
+    if !is_declared(ctx, name) {
         ctx.registries.declared_plugins.push(name.to_string());
     }
 }
@@ -476,6 +479,7 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
     ctx.registries
         .plugin_configs
         .insert(plugin_id.clone(), config);
+    let named_before = is_declared(ctx, &name);
     record_declared(ctx, &name);
 
     if ctx.registries.lazy_registry.declares_plugin(&plugin_id) {
@@ -487,7 +491,9 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
         None => false,
     };
     let Some(dir) = dir.filter(|_| present) else {
-        absent_plugin(ctx, &plugin_id, &name, "load-plugin!")?;
+        if !named_before {
+            absent_plugin(ctx, &plugin_id, &name, "load-plugin!")?;
+        }
         return Ok(SteelVal::BoolV(false));
     };
 
