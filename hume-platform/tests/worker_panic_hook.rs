@@ -13,7 +13,9 @@ static HOOK_LOCK: Mutex<()> = Mutex::new(());
 
 /// Puts the hook that was current before the test back when dropped, so a
 /// failing assertion cannot leave a test's hook installed.
-struct RestoreHook(Option<Box<dyn Fn(&panic::PanicHookInfo<'_>) + Send + Sync + 'static>>);
+type Hook = Box<dyn Fn(&panic::PanicHookInfo<'_>) + Send + Sync + 'static>;
+
+struct RestoreHook(Option<Hook>);
 
 impl RestoreHook {
     fn take_current() -> Self {
