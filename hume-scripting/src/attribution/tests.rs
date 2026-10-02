@@ -159,13 +159,13 @@ fn entry_file_rejects_non_segments_and_non_scm() {
 }
 
 #[test]
-fn entry_file_equality_ignores_ascii_case() {
+fn entry_file_equality_is_case_sensitive() {
     let a = EntryFile::parse("Install.scm").unwrap();
     let b = EntryFile::parse("install.scm").unwrap();
-    assert_eq!(a, b);
+    assert_ne!(a, b);
     let mut set = std::collections::HashSet::new();
     set.insert(a);
-    assert!(set.contains(&b));
+    assert!(!set.contains(&b));
 }
 
 #[test]

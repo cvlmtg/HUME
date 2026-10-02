@@ -362,7 +362,7 @@ Keep `manifest.scm` to just the `declare-plugin!` calls. A manifest takes no `#:
 
 ### Splitting a plugin into entries
 
-A plugin can load in pieces. Give `declare-plugin!` an `#:entry` naming another `.scm` file in the plugin's directory, with its own activation entries, and that file loads only when one of them fires. The declaration without `#:entry` is the plugin's main file, `plugin.scm`. Leave `#:entry` out for the main file: naming `plugin.scm` with it, in any casing, is malformed. Write every other `#:entry` exactly as the file is named on disk, case included. `"Commands.scm"` for a file named `commands.scm` is malformed even where the filesystem ignores case, because it may work on one system and fail on another.
+A plugin can load in pieces. Give `declare-plugin!` an `#:entry` naming another `.scm` file in the plugin's directory, with its own activation entries, and that file loads only when one of them fires. The declaration without `#:entry` is the plugin's main file, `plugin.scm`. `#:entry "plugin.scm"` names the main file, the same as leaving `#:entry` out. Write every `#:entry` exactly as the file is named on disk, case included, and the file must exist or the declaration fails with an error. `"Commands.scm"` for a file named `commands.scm` is malformed even where the filesystem ignores case, because it may work on one system and fail on another.
 
 ```scheme
 ; manifest.scm

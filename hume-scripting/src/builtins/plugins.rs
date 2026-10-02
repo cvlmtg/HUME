@@ -314,11 +314,12 @@ pub(crate) fn declare_plugin(
 
     let path = entry_path(ctx.dirs, &entry_id).map_err(generic_err)?;
 
-    // A secondary entry naming a file that is missing from a plugin that is
-    // installed is a misconfigured plugin, not a "not installed yet" state.
+    // An entry naming a file that is missing from a plugin that is installed
+    // is a misconfigured plugin, not a "not installed yet" state. A local file
+    // has no entries; its absence is reported by `absent_plugin`.
     // Raised before anything is recorded so a failed declare leaves no trace.
     if path.is_none()
-        && !entry_id.file.is_main()
+        && !plugin_id.is_local()
         && installed_plugin_dir(&plugin_id, ctx.dirs)
             .map_err(generic_err)?
             .is_some()
@@ -453,7 +454,31 @@ fn entry_path(dirs: &ScriptDirs, entry: &EntryId) -> Result<Option<std::path::Pa
             None => return Ok(None),
         },
     };
-    Ok(path_exists(&path)?.then_some(path))
+    exact_file_exists(&path).map(|found| found.then_some(path))
+}
+
+/// Whether `path`'s directory holds an entry named exactly like `path`'s file
+/// name. A plain stat would match a differently-cased name on case-insensitive
+/// filesystems and not on others.
+fn exact_file_exists(path: &std::path::Path) -> Result<bool, String> {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+        return Err(format!(
+            "plugin entry '{}' has no file name",
+            path.display()
+        ));
+    };
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(format!("cannot read directory '{}': {e}", dir.display())),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("cannot read directory '{}': {e}", dir.display()))?;
+        if entry.file_name() == name {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// `(resolve-plugin-path name)`: return the resolved path string if the

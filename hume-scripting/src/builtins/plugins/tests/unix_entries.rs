@@ -410,11 +410,11 @@ fn declaring_a_missing_entry_file_records_nothing() {
 }
 
 #[test]
-fn main_entry_spelled_in_any_case_is_still_the_main_entry() {
+fn explicit_plugin_scm_entry_is_the_main_entry() {
     let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", "")]);
 
     host.eval_source(
-        r#"(declare-plugin! "user/multi" #:entry "Plugin.scm" #:languages '("zlang"))"#,
+        r#"(declare-plugin! "user/multi" #:entry "plugin.scm" #:languages '("zlang"))"#,
         &mut LazyStubHost::default(),
     )
     .unwrap();
@@ -424,11 +424,39 @@ fn main_entry_spelled_in_any_case_is_still_the_main_entry() {
     ));
 
     let no_triggers = host.eval_source(
-        r#"(declare-plugin! "user/other" #:entry "Plugin.scm")"#,
+        r#"(declare-plugin! "user/other" #:entry "plugin.scm")"#,
         &mut LazyStubHost::default(),
     );
     let err = format!("{:?}", no_triggers.unwrap_err());
     assert!(err.contains("declares no activation entries"), "{err}");
+}
+
+#[test]
+fn entry_spelled_in_another_case_is_an_error() {
+    let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", "")]);
+
+    let result = host.eval_source(
+        r#"(declare-plugin! "user/multi" #:entry "Plugin.scm" #:languages '("zlang"))"#,
+        &mut LazyStubHost::default(),
+    );
+
+    let err = format!("{:?}", result.unwrap_err());
+    assert!(err.contains("has no entry file 'Plugin.scm'"), "{err}");
+    assert!(host.declared_plugins().is_empty());
+}
+
+#[test]
+fn main_entry_missing_from_an_installed_plugin_is_an_error() {
+    let (_dir, mut host) = host_with_plugin("multi", &[("extra.scm", "")]);
+
+    let result = host.eval_source(
+        r#"(declare-plugin! "user/multi" #:languages '("zlang"))"#,
+        &mut LazyStubHost::default(),
+    );
+
+    let err = format!("{:?}", result.unwrap_err());
+    assert!(err.contains("has no entry file 'plugin.scm'"), "{err}");
+    assert!(host.declared_plugins().is_empty());
 }
 
 // ── load-plugin! decides lazy vs eager ────────────────────────────────────

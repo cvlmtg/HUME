@@ -173,10 +173,9 @@ impl Hash for PluginId {
 }
 
 /// A validated file name inside a plugin directory that a plugin entry loads:
-/// one path segment ending in `.scm`. Case-insensitive for equality and
-/// hashing, like [`PluginId`], since the same filesystems fold the case of the
-/// file it names.
-#[derive(Debug, Clone)]
+/// one path segment ending in `.scm`. Compared exactly, case included, because
+/// lookup requires the on-disk spelling on every filesystem.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EntryFile(String);
 
 impl EntryFile {
@@ -207,21 +206,7 @@ impl EntryFile {
     }
 
     pub fn is_main(&self) -> bool {
-        self.0.eq_ignore_ascii_case(Self::MAIN)
-    }
-}
-
-impl PartialEq for EntryFile {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq_ignore_ascii_case(&other.0)
-    }
-}
-
-impl Eq for EntryFile {}
-
-impl Hash for EntryFile {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        hash_folded(&self.0, state);
+        self.0 == Self::MAIN
     }
 }
 
