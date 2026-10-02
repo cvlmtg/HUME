@@ -7,6 +7,7 @@
 //! unchanged, every other thread's are queued for the editor to report.
 
 use std::any::Any;
+use std::backtrace::{Backtrace, BacktraceStatus};
 use std::fmt;
 use std::panic::{self, PanicHookInfo};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -19,14 +20,21 @@ pub struct WorkerPanic {
     /// `file:line:column` of the panic, when the runtime knows it.
     pub location: Option<String>,
     pub message: String,
+    /// The panicking thread's backtrace, present only when `RUST_BACKTRACE`
+    /// (or `RUST_LIB_BACKTRACE`) asks for one. Not part of `Display`, which
+    /// stays one line for the message log.
+    pub backtrace: Option<String>,
 }
 
 impl WorkerPanic {
     fn from_hook_info(info: &PanicHookInfo<'_>) -> Self {
+        let backtrace = Backtrace::capture();
         Self {
             thread: thread::current().name().unwrap_or("<unnamed>").to_owned(),
             location: info.location().map(ToString::to_string),
             message: payload_message(info.payload()).to_owned(),
+            backtrace: (backtrace.status() == BacktraceStatus::Captured)
+                .then(|| backtrace.to_string()),
         }
     }
 }

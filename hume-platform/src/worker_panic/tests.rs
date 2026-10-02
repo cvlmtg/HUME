@@ -5,6 +5,7 @@ fn panic_named(message: &str) -> WorkerPanic {
         thread: "w".into(),
         location: None,
         message: message.into(),
+        backtrace: None,
     }
 }
 

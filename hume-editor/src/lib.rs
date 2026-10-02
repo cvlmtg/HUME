@@ -303,5 +303,8 @@ fn report_worker_panics_to(
 ) {
     for panic in panics {
         let _ = writeln!(out, "hume: {panic}");
+        if let Some(backtrace) = &panic.backtrace {
+            let _ = writeln!(out, "{backtrace}");
+        }
     }
 }

@@ -9,6 +9,7 @@ fn lsp_reader_panic() -> WorkerPanic {
         thread: "hume-lsp-reader".into(),
         location: Some("hume-lsp/src/transport.rs:150:9".into()),
         message: "bad frame".into(),
+        backtrace: None,
     }
 }
 

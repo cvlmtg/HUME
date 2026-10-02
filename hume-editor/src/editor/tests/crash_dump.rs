@@ -77,6 +77,7 @@ fn the_crash_report_names_dumps_then_queued_worker_panics() {
         thread: "hume-lsp-reader".into(),
         location: Some("hume-lsp/src/transport.rs:150:9".into()),
         message: "bad frame".into(),
+        backtrace: None,
     });
 
     let mut out = Vec::new();
