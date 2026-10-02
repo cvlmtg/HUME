@@ -502,6 +502,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
         pane,
         vec!["one".to_string(), "two".to_string()],
         steel::rvals::SteelVal::Void,
+        0,
     )
     .unwrap();
     assert!(

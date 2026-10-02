@@ -42,14 +42,26 @@ impl DrawerLayer {
     /// an existing one's token in place, so a stale token a plugin is still
     /// holding can never alias a *different*, later drawer that happens to
     /// reuse the same stack slot.
-    pub(in crate::editor) fn new(items: Vec<String>, callback: steel::rvals::SteelVal) -> Self {
-        Self {
+    pub(in crate::editor) fn new(
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+        selected: usize,
+    ) -> Self {
+        let mut drawer = Self {
             items: Arc::new(items),
             selected: 0,
             scroll: 0,
             callback,
             token: host_token::mint(),
-        }
+        };
+        drawer.select_clamped(selected);
+        drawer
+    }
+
+    /// Selects row `selected`, or the last row when it is past the end.
+    /// `items` must be non-empty.
+    fn select_clamped(&mut self, selected: usize) {
+        self.selected = selected.min(self.items.len() - 1);
     }
 
     /// Identifies this drawer to Steel: `show-drawer-list!`'s return value,
@@ -171,7 +183,7 @@ impl EditorState {
             .expect("drawer_ref_with_token names a live DrawerLayer");
         drawer.items = Arc::new(items);
         drawer.callback = callback;
-        drawer.selected = selected.min(drawer.items.len() - 1);
+        drawer.select_clamped(selected);
         self.sync_drawer_view();
         true
     }
@@ -196,7 +208,9 @@ impl EditorState {
         };
         let len = drawer.items.len();
         let visible = drawer_visible_for(terminal_height, len);
-        drawer.scroll = drawer.scroll.min(len.saturating_sub(visible));
+        drawer.scroll =
+            hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, visible)
+                .min(len.saturating_sub(visible));
     }
 }
 

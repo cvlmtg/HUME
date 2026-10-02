@@ -97,9 +97,10 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(show-drawer-list! pane items on-select)`: no keyword defaults, so this
-/// registers directly (no `%`-prefix wrapper needed). Errors on empty
-/// `items`; callers close (or never open) instead. Returns a token scoping
+/// `(%show-drawer-list! pane items on-select selected)`, behind
+/// `show-drawer-list!`'s `#:selected` keyword wrapper. `selected` is clamped
+/// into `items`. Errors on empty `items`; callers close (or never open)
+/// instead. Returns a token scoping
 /// `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this
 /// drawer, same shape as `picker!`'s own return, or `#f` when the request
 /// was dropped as stale (the stack moved before it could open; see
@@ -110,10 +111,12 @@ pub(crate) fn show_drawer_list(
     pane: PaneHandle,
     items: SteelVal,
     on_select: SteelVal,
+    selected: SteelVal,
 ) -> SteelResult {
     let items = list_to_strings(items, "show-drawer-list! items")?;
+    let selected = usize_arg(selected, "show-drawer-list! selected")?;
     let token = require_cap(ctx.host.ui(), "show-drawer-list!")?
-        .show_drawer_list(pane, items, on_select)
+        .show_drawer_list(pane, items, on_select, selected)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
 }

@@ -33,6 +33,55 @@ fn show_drawer_list_populates_model_and_view() {
     assert_eq!(ed.state.views.drawer.read().as_ref().unwrap().selected, 0);
 }
 
+fn open_with_selected(ed: &mut Editor, tmp: &Path, rows: usize, selected: usize) {
+    run(
+        ed,
+        tmp,
+        &format!(
+            r#"(define-typed-command! "go" "" (lambda (pane)
+                 (show-drawer-list! pane (map to-string (range 0 {rows}))
+                   (lambda (idx) (begin)) #:selected {selected})))"#
+        ),
+    );
+    type_cmd(ed, ":go");
+}
+
+#[test]
+fn show_drawer_list_opens_on_the_selected_row() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    open_with_selected(&mut ed, tmp.path(), 3, 2);
+
+    assert_eq!(ed.state.views.drawer.read().as_ref().unwrap().selected, 2);
+}
+
+#[test]
+fn show_drawer_list_clamps_selected_past_the_end() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    open_with_selected(&mut ed, tmp.path(), 3, 9);
+
+    assert_eq!(ed.state.views.drawer.read().as_ref().unwrap().selected, 2);
+}
+
+#[test]
+fn drawer_scrolls_a_far_selected_row_into_view() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    ed.sync_viewport_dims(40, 12);
+    open_with_selected(&mut ed, tmp.path(), 30, 29);
+    let height = ed.view.last_terminal_area.height;
+
+    ed.state.clamp_drawer_scroll_to_terminal(height);
+
+    let visible = hume_ui::drawer::visible_rows(
+        30,
+        hume_engine::pipeline::EngineView::bottom_band_max(height),
+    );
+    assert!(visible < 30, "setup: the band cannot show every row");
+    assert_eq!(ed.state.input.drawer().unwrap().scroll, 30 - visible);
+}
+
 /// A drawer opening while a `Scrollable` popup is up must retire the popup
 /// first: `DrawerLayer::setup` runs `InputStack::clear_popups` before
 /// landing, keeping `PopupLayer`'s "never buried" invariant true. A
@@ -63,6 +112,7 @@ fn show_drawer_list_over_a_live_popup_clears_it() {
         pane,
         vec!["one".to_string()],
         steel::rvals::SteelVal::BoolV(false),
+        0,
     )
     .expect("show-drawer-list! must succeed");
 
@@ -100,7 +150,8 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
 
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_drawer_list(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    let result =
+        host.show_drawer_list(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void, 0);
     assert!(
         result.is_ok(),
         "a stale async response must never error: it would abort the whole call batch"
@@ -187,7 +238,8 @@ fn show_drawer_list_from_insert_warns_instead_of_opening() {
 
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_drawer_list(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    let result =
+        host.show_drawer_list(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void, 0);
     assert!(
         result.is_ok(),
         "a mode-layer race must never error: it would abort the whole call batch"
@@ -658,7 +710,7 @@ fn show_with_empty_items_errors_and_opens_nothing() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_drawer_list(pane, Vec::new(), steel::rvals::SteelVal::BoolV(false));
+    let result = host.show_drawer_list(pane, Vec::new(), steel::rvals::SteelVal::BoolV(false), 0);
     assert!(
         result.is_err(),
         "empty show must fail fast instead of opening a 0-row drawer"

@@ -446,7 +446,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "close-menu!" ui::close_menu(token: SteelVal);
 
         // Bottom drawer.
-        cmd "show-drawer-list!" ui::show_drawer_list(pane: args::LivePane, items: SteelVal, on_select: SteelVal);
+        cmd "%show-drawer-list!" ui::show_drawer_list(pane: args::LivePane, items: SteelVal, on_select: SteelVal, selected: SteelVal);
         cmd "close-drawer!" ui::close_drawer(token: SteelVal);
         cmd "update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: SteelVal, selected: SteelVal);
         cmd "drawer-selected-index" ui::drawer_selected_index(token: SteelVal);

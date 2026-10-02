@@ -204,13 +204,14 @@ pub trait UiHost {
     /// Closes a buried menu too (a scrollable popup can land above one).
     fn close_menu(&mut self, token: HostToken) -> Result<(), String>;
 
-    /// `(show-drawer-list! items on-select)` opens a scrolling pick-list
+    /// `(show-drawer-list! items on-select #:selected [0])` opens a scrolling pick-list
     /// in the bottom chrome band. `items` are pre-formatted display strings;
     /// the drawer never interprets their content; the jump (if any) is the
     /// caller's job, typically `(goto-location! ...)` inside `on-select`.
     /// `on-select` receives the chosen index and, unlike the popup/menu's
     /// one-shot callback, may fire more than once: the drawer stays open
     /// across `Enter` (Helix-style browse) until `Esc` or `close-drawer!`.
+    /// `selected` names the row to open on, clamped into `items`.
     /// Replaces any drawer already open (no stacking). Errors on empty
     /// `items`: a 0-row drawer would leave `Enter` firing `0` with no row
     /// behind it, so callers close (or never open) instead.
@@ -229,6 +230,7 @@ pub trait UiHost {
         pane: PaneHandle,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
+        selected: usize,
     ) -> Result<Option<HostToken>, String>;
 
     /// `(close-drawer! token)` dismisses the drawer *without* invoking its

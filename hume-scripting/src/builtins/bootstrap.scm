@@ -152,6 +152,9 @@
 (define (show-popup! pane text #:anchor [anchor 'cursor] #:kind [kind 'sticky] #:lang [lang #f])
   (%show-popup! pane text anchor kind lang))
 
+(define (show-drawer-list! pane items on-select #:selected [selected 0])
+  (%show-drawer-list! pane items on-select selected))
+
 (define (picker! pane items on-select #:prompt [prompt ""] #:pending [pending #f]
                                        #:query [query ""] #:truncate [truncate 'head]
                                        #:actions [actions '()])

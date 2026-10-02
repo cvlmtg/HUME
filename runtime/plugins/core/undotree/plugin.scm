@@ -76,11 +76,11 @@
   (set! undotree/*next-id* (+ undotree/*next-id* 1))
   (let* ([id undotree/*next-id*]
          [rendered (undotree/render (buffer-undo-tree pane))]
-         [rows (hash-ref rendered 'rows)]
-         [drawer (show-drawer-list! (focused-pane) rows (undotree/on-select id))])
+         [drawer (show-drawer-list! (focused-pane) (hash-ref rendered 'rows)
+                                    (undotree/on-select id)
+                                    #:selected (hash-ref rendered 'current))])
     (when drawer
       (undotree/start-session! id drawer pane (hash-ref rendered 'ids))
-      (update-drawer-list! drawer rows (undotree/on-select id) (hash-ref rendered 'current))
       (undotree/arm-age-timer! id))))
 
 (define (undotree/toggle! pane)

@@ -205,6 +205,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
+        selected: usize,
     ) -> Result<Option<HostToken>, String> {
         self.require_focused_pane(pane)?;
         // Fail fast on empty: a 0-row drawer leaves `selected` at 0 with no
@@ -233,7 +234,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         if let Some(r) = self.state.input.ref_of::<DrawerLayer>() {
             self.state.take_firing_false::<DrawerLayer>(self.view, r);
         }
-        let drawer = DrawerLayer::new(items, callback);
+        let drawer = DrawerLayer::new(items, callback, selected);
         let token = drawer.token();
         self.state.push_layer(self.view, drawer);
         self.state.sync_drawer_view();

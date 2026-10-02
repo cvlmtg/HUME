@@ -301,6 +301,7 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_scripting::host
             pane,
             items.iter().map(|s| s.to_string()).collect(),
             steel::rvals::SteelVal::Void,
+            0,
         )
         .unwrap()
         .expect("show-drawer-list! must open, not read as stale")

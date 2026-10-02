@@ -1041,6 +1041,7 @@ mod tests {
         stack.push(DrawerLayer::new(
             vec!["d".to_string()],
             SteelVal::BoolV(false),
+            0,
         ));
         assert!(stack.is_settled_for::<MenuLayer>());
     }

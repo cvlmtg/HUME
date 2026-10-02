@@ -34,6 +34,7 @@
 - `core:buffer-words` indexes 100 lines on each side of the cursor per step, down from 200.
 - New `core:undotree`: `:undotree` shows the buffer's undo tree as a graph in the bottom drawer, and `Enter` jumps to the highlighted revision, across branches. Bind `toggle-undotree` to a key.
 - New `buffer-undo-tree` and `goto-revision!` read the undo tree and jump to a revision, and the `on-undo-history-changed` hook fires when it changes.
+- `show-drawer-list!` takes `#:selected` to open on a given row. The drawer scrolls to keep the selected row visible, including after `update-drawer-list!`.
 
 ### Commands
 - `:e path:line[:col]` jumps to a position on open.
