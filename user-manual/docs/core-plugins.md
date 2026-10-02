@@ -1,6 +1,6 @@
 # Core Plugins
 
-HUME ships some plugins under the `core:` namespace: a plugin and grammar manager, language server support, live git diff, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your [`init.scm`](configuration.md), so a default HUME is exactly what you see.
+HUME ships some plugins under the `core:` namespace: a plugin and grammar manager, language server support, live git diff, an undo-history graph, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your [`init.scm`](configuration.md), so a default HUME is exactly what you see.
 
 Bring a plugin in with `load-plugin!`:
 
@@ -8,7 +8,7 @@ Bring a plugin in with `load-plugin!`:
 (load-plugin! "core:plum")
 ```
 
-A plugin that ships a manifest (stdlib, lsp, lsp-install, plum, git-diff and steel-server) loads lazily: its code runs the first time a command, event or language it lists comes up. The rest (buffer-words, classic-paste, helix-surround, pickers and vim-keybind) have no manifest and load at startup, because their key bindings only exist once their code has run. See [Plugins](plugins.md#how-plugins-are-loaded) for the difference in detail.
+A plugin that ships a manifest (stdlib, lsp, lsp-install, plum, git-diff, undotree and steel-server) loads lazily: its code runs the first time a command, event or language it lists comes up. The rest (buffer-words, classic-paste, helix-surround, pickers and vim-keybind) have no manifest and load at startup, because their key bindings only exist once their code has run. See [Plugins](plugins.md#how-plugins-are-loaded) for the difference in detail.
 
 ## core:stdlib
 
@@ -182,6 +182,42 @@ Configure with `#:config`:
 
 Inline rendering's background tint and word highlights depend on your theme defining colors
 for them; HUME's bundled themes do.
+
+## core:undotree
+
+A graph of the buffer's undo history in the bottom drawer, with a jump to any revision in it, including a revision on another branch.
+
+```scheme
+(load-plugin! "core:undotree")
+```
+
+It wakes on the first `:undotree` or `toggle-undotree`, and needs no other plugin.
+
+| Command | Effect |
+|---------|--------|
+| `:undotree` | Open the focused buffer's undo tree in the drawer, or close it if it is open |
+| `toggle-undotree` | The same, as a command you can bind to a key |
+
+The plugin ships no key. Bind one in your `init.scm`:
+
+```scheme
+(bind-key! 'normal "z u" "toggle-undotree")
+```
+
+Each row is one revision: the graph, a marker column, and how long ago it was made. `@` in the marker column is the revision the buffer is on, and `S` is the revision your file was last saved at. Newer revisions are on top, a branch is a column of its own, and `o-'` is a branch joining the revision it grew from:
+
+```
+o          4m
+| o    @   2m
+| | o      6m
+| | o      7m
+| o-'      9m
+o-'     S 12m
+```
+
+The drawer opens with the highlight on the current revision. `Shift-Down`/`Shift-Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it, as in the [language server lists](lsp.md). `Enter` moves the buffer to the highlighted revision and leaves the drawer open, so you can step through history one revision at a time, and `Esc` closes it. After a jump, `U` and `Ctrl-r` redo along the branch you jumped into.
+
+The drawer follows the buffer: it redraws after an edit, an undo or a redo, and switches to the new buffer when you switch buffers. Opening another drawer, such as the references list, replaces it. A read-only buffer can't be jumped, and `Enter` there reports an error. The history lives in memory only, so it starts fresh each time you open a file.
 
 ## core:buffer-words
 

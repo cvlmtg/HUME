@@ -715,4 +715,5 @@ mod scripting_theme_install;
 mod sync_dispatch;
 mod theme_dirs;
 mod tutor;
+mod undotree_plugin;
 mod vim_keybind;

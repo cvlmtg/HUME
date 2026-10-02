@@ -1,0 +1,10 @@
+---
+source: hume-editor/src/editor/tests/unix/undotree_plugin.rs
+expression: rows
+---
+o          4m
+| o    @   2m
+| | o      6m
+| | o      7m
+| o-'      9m
+o-'     S 12m

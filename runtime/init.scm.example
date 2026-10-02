@@ -17,6 +17,7 @@
 (load-plugin! "core:lsp-install")      ; :lsp-install / :lsp-uninstall for language servers
 (load-plugin! "core:plum")             ; plugin/grammar manager
 (load-plugin! "core:git-diff")         ; live inline git diff
+(load-plugin! "core:undotree")         ; undo history graph in the drawer
 
 ;; (load-plugin! "core:buffer-words")     ; identifiers already in the buffer, as completions
 ;; (load-plugin! "core:vim-keybind")      ; vim muscle memory

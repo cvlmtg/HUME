@@ -1,0 +1,12 @@
+---
+source: hume-editor/src/editor/tests/unix/undotree_plugin.rs
+expression: "rendered_rows(&nodes)"
+---
+o  @   0s
+o     59s
+o      1m
+o     59m
+o      1h
+o     23h
+o      1d
+o   S  2d
