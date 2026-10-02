@@ -1075,7 +1075,7 @@ fn serialized_restores_crlf_line_endings() {
     assert_eq!(buf.serialized(), "a\r\nb\r\n");
 }
 
-// ── dump_pending ──────────────────────────────────────────────────────────
+// ── pending_dump ──────────────────────────────────────────────────────────
 
 fn file_with_dump(dump: Option<&str>) -> (tempfile::TempDir, PathBuf) {
     let dir = crate::editor::tests::safe_tempdir();
@@ -1088,25 +1088,28 @@ fn file_with_dump(dump: Option<&str>) -> (tempfile::TempDir, PathBuf) {
 }
 
 #[test]
-fn opening_a_file_with_a_dump_marks_the_buffer_dump_pending() {
+fn opening_a_file_with_a_dump_records_the_pending_dump() {
     let (dir, path) = file_with_dump(Some("crashed\n"));
 
     let buf = Buffer::from_file_or_new(&path, dir.path()).unwrap();
 
-    assert!(buf.dump_pending);
+    assert_eq!(
+        buf.pending_dump.as_deref().and_then(Path::file_name),
+        Some(std::ffi::OsStr::new("foo.txt.dump"))
+    );
 }
 
 #[test]
-fn opening_a_file_without_a_dump_is_not_dump_pending() {
+fn opening_a_file_without_a_dump_has_no_pending_dump() {
     let (dir, path) = file_with_dump(None);
 
     let buf = Buffer::from_file_or_new(&path, dir.path()).unwrap();
 
-    assert!(!buf.dump_pending);
+    assert_eq!(buf.pending_dump, None);
 }
 
 #[test]
-fn opening_a_missing_file_with_a_dump_marks_the_new_file_dump_pending() {
+fn opening_a_missing_file_with_a_dump_records_the_pending_dump() {
     let dir = crate::editor::tests::safe_tempdir();
     let path = dir.path().join("gone.txt");
     std::fs::write(dir.path().join("gone.txt.dump"), "crashed\n").unwrap();
@@ -1114,14 +1117,17 @@ fn opening_a_missing_file_with_a_dump_marks_the_new_file_dump_pending() {
     let buf = Buffer::from_file_or_new(&path, dir.path()).unwrap();
 
     assert!(buf.is_new_file());
-    assert!(buf.dump_pending);
+    assert_eq!(
+        buf.pending_dump.as_deref().and_then(Path::file_name),
+        Some(std::ffi::OsStr::new("gone.txt.dump"))
+    );
 }
 
 #[test]
-fn rereading_a_file_does_not_mark_it_dump_pending() {
+fn rereading_a_file_has_no_pending_dump() {
     let (_dir, path) = file_with_dump(Some("crashed\n"));
 
     let buf = Buffer::from_file(&path).unwrap();
 
-    assert!(!buf.dump_pending);
+    assert_eq!(buf.pending_dump, None);
 }

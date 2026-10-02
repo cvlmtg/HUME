@@ -180,3 +180,29 @@ fn write_dump_is_private_to_the_owner() {
     let mode = std::fs::metadata(&path).unwrap().permissions().mode();
     assert_eq!(mode & 0o777, 0o600);
 }
+
+#[test]
+fn read_own_file_reads_a_regular_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("f.txt.dump");
+    std::fs::write(&path, "a\r\nb\n").unwrap();
+
+    check_own_file(&path).unwrap();
+    assert_eq!(read_own_file(&path).unwrap(), "a\r\nb\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn read_own_file_refuses_a_symlink() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("secret");
+    let link = dir.path().join("f.txt.dump");
+    std::fs::write(&target, "secret\n").unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+
+    assert_eq!(
+        check_own_file(&link).unwrap_err().kind(),
+        std::io::ErrorKind::PermissionDenied
+    );
+    assert!(read_own_file(&link).is_err());
+}

@@ -179,4 +179,6 @@ The next time you open `foo.txt` and `foo.txt.dump` exists, HUME asks what to do
 
 Any other key dismisses the prompt and still does its usual job. HUME asks again the next time you switch to the buffer. The prompt also appears for a file that doesn't exist yet but has a dump, and restoring it fills the new buffer.
 
+A dump that is a link, or that belongs to another user, is ignored with a warning and no prompt.
+
 A restored buffer is not saved: write it with `:w` once you've looked it over.

@@ -151,11 +151,11 @@ pub(crate) struct Buffer {
     /// a successful write. Always `InSync` for scratch/synthetic buffers,
     /// which the check skips.
     pub(in crate::editor) disk_state: disk::DiskState,
-    /// `true` while a crash dump sits next to this buffer's file and the
-    /// user has not answered the restore prompt for it. Set when the buffer
-    /// is opened (`from_file_or_new`), not when it is reloaded; the dump's
-    /// own path is always re-derived from `path` (`dump_path_for`).
-    pub(in crate::editor) dump_pending: bool,
+    /// The crash dump found next to this buffer's file when it was opened
+    /// (`from_file_or_new`, not a reload), until the user answers the
+    /// restore prompt for it. Kept as a path, not re-derived from `path`: a
+    /// save-as changes `path` but not which dump the prompt is about.
+    pub(in crate::editor) pending_dump: Option<PathBuf>,
 }
 
 /// How a new text relates to the one it replaces, for [`Buffer::install`].
@@ -196,7 +196,7 @@ impl Buffer {
             lsp_pending: Vec::new(),
             open_hook_pending: false,
             disk_state: disk::DiskState::InSync,
-            dump_pending: false,
+            pending_dump: None,
         }
     }
 
@@ -260,7 +260,10 @@ impl Buffer {
             }
             other => other?,
         };
-        buf.dump_pending = buf.path().is_some_and(|p| dump::dump_path_for(p).is_file());
+        buf.pending_dump = buf
+            .path()
+            .map(dump::dump_path_for)
+            .filter(|dump| std::fs::symlink_metadata(dump).is_ok());
         Ok(buf)
     }
 

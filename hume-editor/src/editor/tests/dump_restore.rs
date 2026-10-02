@@ -98,6 +98,54 @@ fn restore_loads_the_dump_as_a_dirty_undoable_edit_and_removes_it() {
 }
 
 #[test]
+fn a_save_as_does_not_redirect_the_pending_dump_to_the_new_path() {
+    let (dir, path) = file_with_dump(Some("disk\n"), "crashed\n");
+    std::fs::write(dir.path().join("other.txt.dump"), "unrelated\n").unwrap();
+    let mut ed = editor_that_opened(&path);
+    ed.handle_key(key('j'));
+    type_cmd_event(
+        &mut ed,
+        &format!(":w {}", dir.path().join("other.txt").display()),
+    );
+
+    leave_and_return(&mut ed);
+
+    let confirm = ed.state.input.confirm().expect("restore prompt is open");
+    assert!(
+        confirm.prompt.contains("(foo.txt.dump)"),
+        "{}",
+        confirm.prompt
+    );
+    ed.handle_key(key('r'));
+    assert_eq!(ed.doc().text().to_string(), "crashed\n");
+    assert!(!dump_file(&dir).exists());
+    assert!(dir.path().join("other.txt.dump").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_dump_that_is_a_symlink_is_ignored_with_a_warning() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("foo.txt");
+    std::fs::write(&path, "disk\n").unwrap();
+    let secret = dir.path().join("secret");
+    std::fs::write(&secret, "private\n").unwrap();
+    std::os::unix::fs::symlink(&secret, dir.path().join("foo.txt.dump")).unwrap();
+
+    let ed = editor_that_opened(&path);
+
+    assert!(ed.state.input.confirm().is_none());
+    assert_eq!(ed.doc().text().to_string(), "disk\n");
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|m| m.text.contains("foo.txt.dump")),
+        "a warning names the ignored dump"
+    );
+}
+
+#[test]
 fn restore_keeps_the_dumps_line_endings() {
     let (_dir, path) = file_with_dump(Some("disk\n"), "a\r\nb\r\n");
     let mut ed = editor_that_opened(&path);

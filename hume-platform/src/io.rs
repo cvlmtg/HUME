@@ -291,6 +291,57 @@ pub fn write_file_new(content: &str, path: &Path) -> io::Result<FileMeta> {
     read_file_meta(&target)
 }
 
+/// Fails with `PermissionDenied` unless `meta` describes a regular file that
+/// the current user owns. A symlink never passes: its own metadata is not a
+/// regular file's.
+fn require_own_regular_file(meta: &fs::Metadata) -> io::Result<()> {
+    #[cfg(unix)]
+    let owned = {
+        use std::os::unix::fs::MetadataExt;
+        meta.uid() == nix::unistd::geteuid().as_raw()
+    };
+    #[cfg(not(unix))]
+    let owned = true;
+    if meta.is_file() && owned {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "not a regular file owned by you",
+        ))
+    }
+}
+
+/// Check, without reading it, that `path` is a regular file the current user
+/// owns ([`read_own_file`]'s precondition), not following a symlink.
+pub fn check_own_file(path: &Path) -> io::Result<()> {
+    require_own_regular_file(&fs::symlink_metadata(path)?)
+}
+
+/// Read `path` as text, refusing anything but a regular file the current
+/// user owns. On Unix the open itself refuses a symlink and the ownership
+/// check runs on the opened handle, so the file cannot be swapped between
+/// the check and the read.
+pub fn read_own_file(path: &Path) -> io::Result<String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits())
+            .open(path)?;
+        require_own_regular_file(&file.metadata()?)?;
+        let mut content = String::new();
+        io::Read::read_to_string(&mut file, &mut content)?;
+        Ok(content)
+    }
+    #[cfg(not(unix))]
+    {
+        check_own_file(path)?;
+        fs::read_to_string(path)
+    }
+}
+
 /// Write `content` to `path` as a crash dump, replacing any existing file.
 ///
 /// Same temp-file-and-rename strategy as [`write_file_new`], plus an fsync

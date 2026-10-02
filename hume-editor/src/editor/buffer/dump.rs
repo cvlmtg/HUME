@@ -139,20 +139,26 @@ impl Editor {
         let Some(buf) = self.state.buffers.try_get(bid) else {
             return;
         };
-        if !buf.dump_pending
-            || bid != self.focused_buffer_id()
-            || !self.can_open_confirm(DiskCheckTrigger::BufferEnter)
+        let Some(dump) = buf.pending_dump.clone() else {
+            return;
+        };
+        if bid != self.focused_buffer_id() || !self.can_open_confirm(DiskCheckTrigger::BufferEnter)
         {
             return;
         }
-        let Some(dump) = buf.path().map(dump_path_for) else {
+        let name = buf.display_name();
+        if let Err(e) = hume_platform::io::check_own_file(&dump) {
+            self.take_pending_dump(bid);
+            if e.kind() != io::ErrorKind::NotFound {
+                self.report(
+                    Severity::Warning,
+                    format!("{name}: ignoring {}: {e}", dump.display()),
+                );
+            }
             return;
-        };
+        }
         let dump_name = dump.file_name().unwrap_or_default().to_string_lossy();
-        let prompt = format!(
-            "{}: recovered unsaved changes found ({dump_name}).",
-            buf.display_name()
-        );
+        let prompt = format!("{name}: recovered unsaved changes found ({dump_name}).");
         self.state.push_layer(
             &self.view,
             ConfirmLayer {
@@ -193,12 +199,11 @@ impl Editor {
             );
             return;
         }
-        let Some(dump) = buf.path().map(dump_path_for) else {
+        let Some(dump) = self.take_pending_dump(bid) else {
             return;
         };
-        self.clear_dump_pending(bid);
-        match hume_platform::io::read_file(&dump) {
-            Ok((content, _)) => {
+        match hume_platform::io::read_own_file(&dump) {
+            Ok(content) => {
                 let text = BufferText::from(content.as_str());
                 self.reload_buffer_in_place(fp, ReplaceSource::Dump(text));
                 self.remove_dump(&name, &dump);
@@ -217,23 +222,21 @@ impl Editor {
             return;
         };
         let name = buf.display_name();
-        let Some(dump) = buf.path().map(dump_path_for) else {
+        let Some(dump) = self.take_pending_dump(bid) else {
             return;
         };
-        self.clear_dump_pending(bid);
         self.remove_dump(&name, &dump);
     }
 
     /// Leave `bid`'s crash dump on disk and stop asking about it this
     /// session.
     pub(in crate::editor) fn keep_dump(&mut self, bid: BufferId) {
-        self.clear_dump_pending(bid);
+        self.take_pending_dump(bid);
     }
 
-    fn clear_dump_pending(&mut self, bid: BufferId) {
-        if let Some(buf) = self.state.buffers.try_get_mut(bid) {
-            buf.dump_pending = false;
-        }
+    /// Take `bid`'s pending dump path, so the prompt is not offered again.
+    fn take_pending_dump(&mut self, bid: BufferId) -> Option<PathBuf> {
+        self.state.buffers.try_get_mut(bid)?.pending_dump.take()
     }
 
     /// Delete `dump`; a dump that is already gone is the wanted end state.
