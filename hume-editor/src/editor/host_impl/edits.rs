@@ -133,6 +133,18 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         crate::editor::lsp::edits::goto_location(self.state, self.view, t, goto_target)
     }
 
+    fn goto_revision(&mut self, pane: PaneHandle, revision: usize) -> Result<(), String> {
+        let t = self.command_pane(pane)?;
+        match commands::goto_revision(self.state, self.view, t, revision)
+            .map_err(|e| e.message().to_string())?
+        {
+            crate::editor::doc_ops::HistoryWalk::Took(_) => Ok(()),
+            crate::editor::doc_ops::HistoryWalk::RefusedReadOnly => {
+                Err("goto-revision!: buffer is read-only".to_string())
+            }
+        }
+    }
+
     fn insert_key(&mut self, pane: PaneHandle, key: KeyEvent) -> Result<(), String> {
         let fp = FocusedPane::resolve(self.state, self.view, pane).map_err(|e| e.to_string())?;
         if self.state.mode() != Mode::Insert {

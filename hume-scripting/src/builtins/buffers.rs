@@ -9,7 +9,7 @@
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
-use super::args::{ArgPane, not_live_err, symbol_hash};
+use super::args::{ArgPane, list_of, not_live_err, symbol_hash};
 use super::errors::generic_err;
 use super::ids::{SteelBufferKey, SteelPane};
 use crate::SteelCtx;
@@ -166,6 +166,32 @@ pub(crate) fn buffer_generation(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
         .buffer_generation(bid)
         .ok_or_else(|| not_live_err("buffer-generation", bid))?;
     Ok(SteelVal::IntV(generation as isize))
+}
+
+/// `(buffer-undo-tree pane)` → a list with one `(hash 'id 'parent 'age-secs
+/// 'current? 'saved?)` per revision of `pane`'s buffer's undo history, in id
+/// order (every parent precedes its children). `'parent` is `#f` for the
+/// root; `'age-secs` is whole seconds since the revision was recorded.
+pub(crate) fn buffer_undo_tree(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+    let bid = pane.buffer();
+    let nodes = ctx
+        .host
+        .buffers()
+        .buffer_undo_tree(bid)
+        .ok_or_else(|| not_live_err("buffer-undo-tree", bid))?;
+    Ok(list_of(nodes.into_iter().map(|node| {
+        symbol_hash([
+            ("id", SteelVal::IntV(node.id as isize)),
+            (
+                "parent",
+                node.parent
+                    .map_or(SteelVal::BoolV(false), |p| SteelVal::IntV(p as isize)),
+            ),
+            ("age-secs", SteelVal::IntV(node.age_secs as isize)),
+            ("current?", SteelVal::BoolV(node.current)),
+            ("saved?", SteelVal::BoolV(node.saved)),
+        ])
+    })))
 }
 
 /// `(buffer-text pane)` → the buffer's full live (dirty) content, string,

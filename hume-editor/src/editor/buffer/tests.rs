@@ -106,13 +106,14 @@ impl DocHelper {
     }
 
     fn goto_revision(&mut self, target: hume_editing::history::RevisionId) {
-        self.buf.goto_revision(
+        if let Some((new_sels, _cs, _steps)) = self.buf.goto_revision(
             BufferId::default(),
             &mut DetachedStores::default().stores(),
             PaneId::default(),
-            &mut self.sels,
             target,
-        );
+        ) {
+            self.sels = new_sels;
+        }
     }
 
     /// Reload the buffer text in place, preserving history. The current

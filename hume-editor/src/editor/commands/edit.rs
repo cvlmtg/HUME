@@ -188,6 +188,30 @@ pub(in crate::editor) fn cmd_yank(
 const UNDO_EXHAUSTED_MSG: &str = "Already at oldest change";
 const REDO_EXHAUSTED_MSG: &str = "Already at newest change";
 
+/// Run one history walk on `t`'s buffer through `t`'s pane: the one place
+/// `PositionStores` is assembled for `doc_ops::apply_doc_history_walk`.
+fn walk_history(
+    state: &mut EditorState,
+    view: &EngineView,
+    t: CommandPane,
+    walk: impl FnOnce(&mut Buffer, BufferId, &mut PositionStores<'_>, PaneId) -> HistoryWalkResult,
+) -> Result<doc_ops::HistoryWalk, CommandError> {
+    let buf = t.bid(view);
+    doc_ops::apply_doc_history_walk(
+        &mut state.buffers,
+        &mut PositionStores::new(
+            &mut state.panes,
+            &mut state.input,
+            &mut state.buffer_positions,
+            &mut state.config.decorations,
+        ),
+        &mut state.active_session,
+        t.pid(),
+        buf,
+        walk,
+    )
+}
+
 /// Walk the undo/redo history `count` steps as one composed transform,
 /// reporting exhaustion when the walk fell short. Calls `finish_edit`
 /// exactly once per walk.
@@ -199,20 +223,9 @@ fn history_step(
     walk: fn(&mut Buffer, BufferId, &mut PositionStores<'_>, PaneId, usize) -> HistoryWalkResult,
     exhausted_msg: &str,
 ) -> Result<(), CommandError> {
-    let buf = t.bid(view);
-    let result = doc_ops::apply_doc_history_walk(
-        &mut state.buffers,
-        &mut PositionStores::new(
-            &mut state.panes,
-            &mut state.input,
-            &mut state.buffer_positions,
-            &mut state.config.decorations,
-        ),
-        &state.active_session,
-        t.pid(),
-        buf,
-        |b, id, stores, pane| walk(b, id, stores, pane, count),
-    )?;
+    let result = walk_history(state, view, t, |b, id, stores, pane| {
+        walk(b, id, stores, pane, count)
+    })?;
     // `RefusedReadOnly` stays a distinct arm rather than folding into
     // `Took(0)`. See `HistoryWalk`'s own doc for why.
     if let doc_ops::HistoryWalk::Took(taken) = result
@@ -221,6 +234,24 @@ fn history_step(
         state.report(Severity::Info, exhausted_msg.to_string());
     }
     Ok(())
+}
+
+/// Jump `t`'s buffer to revision `n` of its undo history, across branches,
+/// as one composed transform. `Err` when the buffer has no revision `n`;
+/// otherwise the walk's own result, so a caller can tell a read-only refusal
+/// from a jump to the revision it is already on (`Took(0)`).
+pub(in crate::editor) fn goto_revision(
+    state: &mut EditorState,
+    view: &EngineView,
+    t: CommandPane,
+    n: usize,
+) -> Result<doc_ops::HistoryWalk, CommandError> {
+    let target = doc(state, view, t).revision(n).ok_or_else(|| {
+        CommandError::transient(format!("no revision {n} in this buffer's undo history"))
+    })?;
+    walk_history(state, view, t, |b, id, stores, pane| {
+        b.goto_revision(id, stores, pane, target)
+    })
 }
 
 pub(in crate::editor) fn cmd_undo(

@@ -321,6 +321,9 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         self.inner.buffer_generation(id)
     }
+    fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<crate::host::UndoNode>> {
+        self.inner.buffer_undo_tree(id)
+    }
     fn buffer_text(&self, id: BufferId) -> Option<String> {
         self.inner.buffer_text(id)
     }

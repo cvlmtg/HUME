@@ -121,6 +121,9 @@ impl BufferHost for NullHost {
     fn buffer_generation(&self, _id: BufferId) -> Option<u64> {
         None
     }
+    fn buffer_undo_tree(&self, _id: BufferId) -> Option<Vec<crate::host::UndoNode>> {
+        None
+    }
     fn buffer_text(&self, _id: BufferId) -> Option<String> {
         None
     }

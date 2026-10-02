@@ -6,6 +6,9 @@ use crate::changeset::ChangeSet;
 use crate::selection::SelectionSet;
 use crate::transaction::Transaction;
 
+mod children;
+use children::Children;
+
 // ── Arena index ───────────────────────────────────────────────────────────────
 
 /// A stable key into the History revision arena.
@@ -18,6 +21,46 @@ use crate::transaction::Transaction;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RevisionId(pub(crate) usize);
 
+impl RevisionId {
+    /// The id numbered `n` in `history`, `None` when no such revision exists
+    /// (never recorded, or evicted by `undo-levels` trimming). The only way
+    /// to mint an id from a raw number.
+    pub fn checked(history: &History, n: usize) -> Option<Self> {
+        let id = Self(n);
+        history.revisions.contains_key(&id).then_some(id)
+    }
+
+    /// The raw number, for a foreign coordinate system (a Steel integer).
+    pub fn index(self) -> usize {
+        self.0
+    }
+}
+
+/// One revision as seen from outside the crate: where it sits in the tree
+/// and how old it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RevisionNode {
+    id: RevisionId,
+    parent: Option<RevisionId>,
+    age: Duration,
+}
+
+impl RevisionNode {
+    pub fn id(&self) -> RevisionId {
+        self.id
+    }
+
+    /// `None` only for the root.
+    pub fn parent(&self) -> Option<RevisionId> {
+        self.parent
+    }
+
+    /// Wall-clock age as of the `now` the enumeration was taken at.
+    pub fn age(&self) -> Duration {
+        self.age
+    }
+}
+
 /// A single node in the undo tree.
 ///
 /// Every revision but the root links to its parent with a forward
@@ -25,16 +68,14 @@ pub struct RevisionId(pub(crate) usize);
 /// (this state → parent, for undo). No buffer snapshot is stored: undo
 /// reconstructs the previous state by applying the inverse Transaction.
 ///
-/// The `children` vec records all revisions that branch from this one. The
-/// **last** child (highest index) is the most recently created branch and is
-/// the default redo target: after undoing and making a new edit, redo goes
-/// to the most recent edit.
+/// `children` records all revisions that branch from this one and which of
+/// them redo continues along: the child most recently created or walked
+/// through, so redo stays on the branch the user is on.
 struct Revision {
     /// `None` only for the root.
     link: Option<Link>,
     /// Child revisions: branches created from this state.
-    /// The last entry is the most recently created child (default redo target).
-    children: Vec<RevisionId>,
+    children: Children,
     /// When this revision was created. Read by the `:earlier`/`:later`
     /// step-resolution queries below via [`History::age`]: a wall-clock
     /// [`SystemTime`], not a monotonic [`std::time::Instant`], because
@@ -80,8 +121,8 @@ impl Revision {
 /// iteration order.
 ///
 /// Editing after an undo adds a sibling branch, so no redo path is discarded;
-/// the newest child is the redo target. History stores only transactions,
-/// never buffers: the caller owns the current buffer.
+/// redo continues along the child last walked through. History stores only
+/// transactions, never buffers: the caller owns the current buffer.
 pub struct History {
     /// Arena of all revisions, keyed by stable `RevisionId`.
     revisions: FxHashMap<RevisionId, Revision>,
@@ -93,6 +134,10 @@ pub struct History {
     /// Maximum non-root revisions to retain. `0` means unlimited (no
     /// trimming). Enforced lazily in `record`, not the moment it is set.
     undo_levels: usize,
+    /// Bumped whenever `current` moves or the tree gains or loses a
+    /// revision, so an observer can tell the tree changed without comparing
+    /// it.
+    change_seq: u64,
 }
 
 impl Default for History {
@@ -107,7 +152,7 @@ impl History {
     pub fn new() -> Self {
         let root = Revision {
             link: None,
-            children: Vec::new(),
+            children: Children::default(),
             timestamp: SystemTime::now(),
         };
 
@@ -119,6 +164,7 @@ impl History {
             current: Self::ROOT,
             next_id: 1,
             undo_levels: 0,
+            change_seq: 0,
         }
     }
 
@@ -181,7 +227,7 @@ impl History {
                 // forward carries post-edit sels: after redoing, cursors land there.
                 forward: Transaction::new(forward_cs, post_edit_sels),
             }),
-            children: Vec::new(),
+            children: Children::default(),
             timestamp: SystemTime::now(),
         };
 
@@ -192,6 +238,7 @@ impl History {
             .children
             .push(new_id);
         self.current = new_id;
+        self.change_seq += 1;
 
         self.enforce_undo_levels()
     }
@@ -203,7 +250,7 @@ impl History {
     /// is a freshly recorded leaf, and `undo_levels` (when enforced) is at
     /// least 1, so it is never a candidate for eviction.
     ///
-    /// Each iteration looks at the root's children (chronological, oldest
+    /// Each iteration looks at the root's children (creation order, oldest
     /// first):
     /// - More than one child: the root has old alternate branches. The
     ///   oldest branch *not* on the path to `current` is discarded whole
@@ -229,17 +276,19 @@ impl History {
                 let protected = self.root_child_on_current_path();
                 let victim = root_children
                     .iter()
-                    .copied()
                     .find(|&c| c != protected)
                     .expect("more than one child, at most one is protected");
                 self.remove_subtree(victim);
             } else {
-                let c_id = root_children[0];
+                let c_id = root_children
+                    .iter()
+                    .next()
+                    .expect("the cap is exceeded, so the root has a child");
                 let c = self.revisions.remove(&c_id).expect("child exists");
-                for child in &c.children {
+                for child in c.children.iter() {
                     let link = self
                         .revisions
-                        .get_mut(child)
+                        .get_mut(&child)
                         .expect("child exists")
                         .link
                         .as_mut();
@@ -274,13 +323,13 @@ impl History {
                 .get_mut(&parent)
                 .expect("parent exists")
                 .children
-                .retain(|&c| c != id);
+                .remove(id);
         }
 
         let mut stack = vec![id];
         while let Some(next) = stack.pop() {
             if let Some(revision) = self.revisions.remove(&next) {
-                stack.extend(revision.children);
+                stack.extend(revision.children.iter());
             }
         }
     }
@@ -301,22 +350,23 @@ impl History {
         let link = rev.link.as_ref()?;
         let (parent, inverse) = (link.parent, link.inverse.clone());
         self.current = parent;
+        self.change_seq += 1;
         Some(inverse)
     }
 
-    /// Redo one step: return the forward Transaction of the most recent child
-    /// and move to it. Returns `None` if the current revision has no
-    /// children.
+    /// Redo one step: return the forward Transaction of the redo child and
+    /// move to it. Returns `None` if the current revision has no children.
     ///
-    /// The most recent child (last in `children`) is chosen to match
-    /// Vim/Helix behaviour: after undoing and making a new edit, redo goes
-    /// to the most recent edit, not the historically first one.
+    /// The redo child is the one most recently created or walked through, as
+    /// in Vim: after undoing and making a new edit, redo goes to that edit,
+    /// and after jumping into an older branch, redo stays on it.
     ///
     /// Returns an owned `Transaction` for the same reason as [`Self::undo`].
     pub fn redo(&mut self) -> Option<Transaction> {
         // Copy out child_id before mutating current.
-        let child_id = *self.revisions[&self.current].children.last()?;
+        let child_id = self.revisions[&self.current].children.redo()?;
         self.current = child_id;
+        self.change_seq += 1;
         Some(self.revisions[&child_id].link().forward.clone())
     }
 
@@ -337,8 +387,8 @@ impl History {
         txns
     }
 
-    /// Redo up to `count` steps forward along the most-recent-child chain;
-    /// loops [`Self::redo`]. See [`Self::undo_n`] for the caller-side
+    /// Redo up to `count` steps forward along the redo chain (each revision's
+    /// redo child); loops [`Self::redo`]. See [`Self::undo_n`] for the caller-side
     /// composition contract.
     pub fn redo_n(&mut self, count: usize) -> Vec<Transaction> {
         let mut txns = Vec::new();
@@ -358,7 +408,7 @@ impl History {
 
     /// True if the current revision has at least one child.
     pub fn can_redo(&self) -> bool {
-        !self.revisions[&self.current].children.is_empty()
+        self.revisions[&self.current].children.redo().is_some()
     }
 
     /// Wall-clock age of revision `id` as of `now`. Every step-resolution
@@ -412,8 +462,8 @@ impl History {
     /// still older than `age`, so the request is unsatisfiable, and `n` is
     /// every step `redo_n` can actually take along this chain.
     ///
-    /// Walks down the most-recent-child chain (the same path [`Self::redo_n`]
-    /// takes) while the next child is still at least `age` old, stopping
+    /// Walks down the redo chain (the same path [`Self::redo_n`] takes) while
+    /// the next child is still at least `age` old, stopping
     /// before the first child young enough to postdate it. Strict `>` keeps
     /// an exact hit un-counted as unsatisfiable, same boundary as
     /// `undo_steps_older_than`'s `<`.
@@ -421,7 +471,7 @@ impl History {
         let now = SystemTime::now();
         let mut steps = 0;
         let mut id = self.current;
-        while let Some(&child) = self.revisions[&id].children.last() {
+        while let Some(child) = self.revisions[&id].children.redo() {
             // Single `age()` call per child: doubles as the step decision
             // and, when this turns out to be the last child, the check for
             // whether the walk ended satisfied or not.
@@ -431,7 +481,7 @@ impl History {
             }
             id = child;
             steps += 1;
-            if self.revisions[&id].children.is_empty() && child_age > age {
+            if self.revisions[&id].children.redo().is_none() && child_age > age {
                 return Err(steps);
             }
         }
@@ -454,6 +504,28 @@ impl History {
     /// The currently active revision.
     pub fn current_id(&self) -> RevisionId {
         self.current
+    }
+
+    /// A counter that differs between two reads exactly when a revision was
+    /// recorded or evicted, or `current` moved, in between.
+    pub fn change_seq(&self) -> u64 {
+        self.change_seq
+    }
+
+    /// Every revision, in id order, aged as of `now`. One `now` for the whole
+    /// enumeration, so every node is measured against the same instant.
+    pub fn nodes(&self, now: SystemTime) -> Vec<RevisionNode> {
+        let mut nodes: Vec<_> = self
+            .revisions
+            .iter()
+            .map(|(&id, revision)| RevisionNode {
+                id,
+                parent: revision.parent(),
+                age: self.age(id, now),
+            })
+            .collect();
+        nodes.sort_by_key(|node| node.id.0);
+        nodes
     }
 
     /// Parent of a revision. `None` for the root or for an id that is out of
@@ -493,8 +565,8 @@ impl History {
     /// and applies that once: same end state, one text mutation instead
     /// of N.
     ///
-    /// Returns `None` if `target` equals the current revision (no-op) or is
-    /// out of bounds.
+    /// Returns `None` if `target` is not in the tree (never recorded, or
+    /// evicted). A `target` equal to the current revision is an empty walk.
     ///
     /// ## How it works
     ///
@@ -506,11 +578,11 @@ impl History {
     /// - **Down leg** (LCA → `target`): for each node stepped into, use its
     ///   `forward` transaction (same as [`Self::redo`]).
     pub fn goto_revision(&mut self, target: RevisionId) -> Option<Vec<Transaction>> {
-        if target == self.current {
-            return None;
-        }
         if !self.revisions.contains_key(&target) {
             return None;
+        }
+        if target == self.current {
+            return Some(Vec::new());
         }
 
         let ancestors_from = self.ancestors(self.current);
@@ -554,7 +626,19 @@ impl History {
             txns.push(self.revisions[id].link().forward.clone());
         }
 
+        // The up leg needs no marking: every ancestor of `current` already
+        // names the next revision toward it as its redo child.
+        for &id in &down_path {
+            let parent = self.revisions[&id].link().parent;
+            self.revisions
+                .get_mut(&parent)
+                .expect("parent exists")
+                .children
+                .set_redo(id);
+        }
+
         self.current = target;
+        self.change_seq += 1;
         Some(txns)
     }
 }

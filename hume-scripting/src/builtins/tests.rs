@@ -73,6 +73,8 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
         ("buffer-line-count", "(buffer-line-count (focused-pane))"),
         ("buffer-lines", "(buffer-lines (focused-pane))"),
         ("buffer-generation", "(buffer-generation (focused-pane))"),
+        ("buffer-undo-tree", "(buffer-undo-tree (focused-pane))"),
+        ("goto-revision!", "(goto-revision! (focused-pane) 0)"),
         ("buffer-cursor-line", "(buffer-cursor-line (focused-pane))"),
         ("buffer-selections", "(buffer-selections (focused-pane))"),
         (

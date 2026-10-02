@@ -1,9 +1,9 @@
 //! LSP-driven text edits, workspace edits, and go-to-location, plus
-//! `insert-key!`, which edits too (Insert mode's default per-key behaviour)
-//! but isn't LSP-driven; it lives here rather than in its own trait because
-//! one capability accessor (`EditorHost::edits`) already gates every
+//! `goto-revision!` (undo-history navigation) and `insert-key!`, which edit
+//! too but aren't LSP-driven. They live here rather than in their own trait
+//! because one capability accessor (`EditorHost::edits`) already gates every
 //! buffer-mutating builtin that isn't a named editor command, and a second
-//! accessor for exactly one more method would only duplicate that gate.
+//! accessor for them would only duplicate that gate.
 
 use hume_engine::pipeline::BufferId;
 use hume_rope::position_encoding::PositionEncoding;
@@ -109,6 +109,14 @@ pub trait EditHost {
         line: hume_rope::line::RopeyLine,
         char_col: usize,
     ) -> Result<(), String>;
+
+    /// `(goto-revision! pane revision)`: moves `pane`'s buffer to revision
+    /// number `revision` of its undo history, across branches, as one undo
+    /// walk. `revision` is a raw number from `(buffer-undo-tree pane)`,
+    /// validated here. `Err` for a number the buffer has no revision for
+    /// (never recorded, or trimmed away), or for a read-only buffer, so a
+    /// refusal is never mistaken for a jump that happened.
+    fn goto_revision(&mut self, pane: PaneHandle, revision: usize) -> Result<(), String>;
 
     /// `(insert-key! pane key)`: runs `key`'s Insert-mode default
     /// behaviour (tab-style-aware Tab, auto-pairs, auto-indented Enter, …)

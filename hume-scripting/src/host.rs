@@ -25,7 +25,7 @@ mod token;
 mod ui;
 
 pub use async_process::AsyncProcessHost;
-pub use buffers::BufferHost;
+pub use buffers::{BufferHost, UndoNode};
 pub use commands::CommandHost;
 pub use completion::{CompletionHost, CompletionSourceTarget, MatchKind, PendingCompletionSource};
 pub use cursor::{CursorHost, SelectionInfo};

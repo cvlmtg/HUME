@@ -199,27 +199,15 @@ fn p6_e_bang_undo_then_edit_branches_off_old_tree() {
     );
 
     // The reload revision survives as a reachable sibling (tree-monotonicity).
-    let mut sels = ed.current_selections().clone();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).goto_revision(
-        bid,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
-        PaneId::default(),
-        &mut sels,
-        r_reload,
-    );
+    let pane = crate::editor::commands::CommandPane::existing(&ed.view, ed.state.focus.id())
+        .expect("the focused pane exists");
+    crate::editor::commands::goto_revision(&mut ed.state, &ed.view, pane, r_reload.index())
+        .expect("the reload revision is live");
     assert_eq!(
         ed.doc().text().to_string(),
         "changed\n",
         "old reload branch is still reachable via goto_revision",
     );
-    // Restore pane selections so the editor state is consistent post-test.
-    ed.set_current_selections(sels);
 }
 
 /// The reload inverse `ChangeSet` is fine-grained, not a coarse delete-all +

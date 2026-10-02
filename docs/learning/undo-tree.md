@@ -24,14 +24,17 @@ new edit, a new branch grows from that point:
      C   D   ←── D is the branch you undid past; it's still there
 ```
 
-`D` is still reachable — you can undo `C` and then redo to reach `D`. Undoing
-and redoing never throws an edit away; branches only disappear when the tree
-is bounded (see "Bounding the tree" below).
+`D` is still reachable: it is a branch from `B`, and you can jump straight to
+it (see "Jumping to an arbitrary revision" below). Undoing and redoing never
+throws an edit away; branches only disappear when the tree is bounded (see
+"Bounding the tree" below).
 
-When you redo from a branch point, the most recent child is chosen — after
-undoing and making a new edit, subsequent redo takes you along the new branch,
-which is usually what you want. The old branch remains accessible via the
-branch point.
+When you redo from a branch point, redo follows the branch you last moved
+along: each node remembers which of its children that was. A new edit makes
+its branch the one to follow, so after undoing and making a new edit,
+subsequent redo takes you along the new branch. Jumping into an older branch
+makes that branch the one to follow, so redo stays on it. The other branches
+remain accessible by jumping.
 
 ## What each node stores
 
@@ -134,10 +137,10 @@ the saved-id pointer is just re-anchored to the current position.
 
 ## Jumping to an arbitrary revision
 
-The history can jump from the current node to any node in the tree. No user
-command exposes that jump; `:earlier` and `:later` follow the chain of most
-recent children instead. Given a target node anywhere in the tree, the
-algorithm:
+The history can jump from the current node to any node in the tree. The
+`core:undotree` plugin exposes that jump: Enter on a row of its graph moves the
+buffer to that revision. `:earlier` and `:later` follow the chain redo follows
+instead. Given a target node anywhere in the tree, the algorithm:
 
 1. Walks up from the current node and from the target node to collect their
    respective ancestor chains.

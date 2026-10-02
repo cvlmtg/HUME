@@ -1440,6 +1440,109 @@ fn undo_fires_but_a_no_op_undo_at_root_does_not() {
     );
 }
 
+// ── OnUndoHistoryChanged ─────────────────────────────────────────────────────
+
+/// An editor with `on-text-changed` and `on-undo-history-changed` hooks that
+/// each log one trace line, plus a counter for either.
+fn editor_with_history_hooks(input: &str) -> Editor {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from(input);
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "text")))
+           (register-hook! 'on-undo-history-changed (lambda (bid) (log! 'trace "history")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+    ed
+}
+
+fn trace_count(ed: &Editor, line: &str) -> usize {
+    ed.state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace && e.text == line)
+        .count()
+}
+
+/// An edit, its undo and its redo each fire once; an undo at the root, which
+/// moves nothing, does not.
+#[test]
+fn undo_history_hook_fires_once_per_edit_undo_and_redo() {
+    let mut ed = editor_with_history_hooks("-[a]>b\n");
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    assert_eq!(
+        trace_count(&ed, "history"),
+        0,
+        "an open insert session has recorded no revision yet"
+    );
+    ed.feed_key(key_esc());
+    ed.settle();
+    assert_eq!(trace_count(&ed, "history"), 1, "the edit");
+
+    ed.feed_key(key('u'));
+    ed.settle();
+    assert_eq!(trace_count(&ed, "history"), 2, "the undo");
+
+    ed.feed_key(key('U'));
+    ed.settle();
+    assert_eq!(trace_count(&ed, "history"), 3, "the redo");
+
+    ed.feed_key(key('U'));
+    ed.settle();
+    assert_eq!(
+        trace_count(&ed, "history"),
+        3,
+        "a redo at the tip moves nothing"
+    );
+}
+
+/// Undoing an insert together with its later delete nets to no text change:
+/// `on-text-changed` stays quiet, `on-undo-history-changed` does not.
+#[test]
+fn net_identity_undo_fires_history_hook_but_not_text_hook() {
+    let mut ed = editor_with_history_hooks("-[h]>ello\n");
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_esc());
+    ed.feed_key(key('d'));
+    ed.settle();
+    let (text, history) = (trace_count(&ed, "text"), trace_count(&ed, "history"));
+    let before = ed.doc().text().to_string();
+
+    ed.feed_key(key('2'));
+    ed.feed_key(key('u'));
+    ed.settle();
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "setup: the walk nets to no change"
+    );
+    assert_eq!(trace_count(&ed, "text"), text);
+    assert_eq!(trace_count(&ed, "history"), history + 1);
+}
+
+/// Several revisions recorded or walked before one `settle()` announce once.
+#[test]
+fn several_history_changes_before_one_settle_coalesce_into_one_event() {
+    let mut ed = editor_with_history_hooks("-[a]>bc\n");
+
+    ed.feed_key(key('d'));
+    ed.feed_key(key('d'));
+    ed.feed_key(key('u'));
+    ed.settle();
+
+    assert_eq!(trace_count(&ed, "history"), 1);
+}
+
 /// `:e!` reload (`Editor::reload_buffer_in_place`) fires `on-text-changed`:
 /// the case a raise site at `doc_ops::finish_edit` would have missed, since
 /// reload never goes through `doc_ops` (see `BufferStore::edit_seq`'s doc).

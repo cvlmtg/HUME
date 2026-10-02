@@ -398,6 +398,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "lsp-locations->display-parts" lsp::lsp_locations_to_display_parts(locs: SteelVal);
         cmd "viewport-range" buffers::viewport_range(pane: args::LivePane);
         cmd "buffer-generation" buffers::buffer_generation(pane: args::LivePane);
+        cmd "buffer-undo-tree" buffers::buffer_undo_tree(pane: args::LivePane);
         cmd "buffer-live?" buffers::buffer_live(pane: args::ArgPane);
         cmd "pane-live?" buffers::pane_live(pane: args::ArgPane);
         open "set-hook-triggers!" completion::set_hook_triggers(source: SteelVal, language: SteelVal, chars: SteelVal);
@@ -418,6 +419,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%apply-text-edits!" edits::apply_text_edits(pane: args::LivePane, edits: SteelVal, expect_gen: SteelVal);
         cmd "%apply-workspace-edit!" edits::apply_workspace_edit(pane: args::LivePane, wsedit: SteelVal, expect_gen: SteelVal);
         cmd "goto-location!" edits::goto_location(pane: args::LivePane, loc: SteelVal);
+        cmd "goto-revision!" edits::goto_revision(pane: args::LivePane, revision: args::Usize);
         cmd "insert-key!" edits::insert_key(pane: args::LivePane, key: SteelVal);
         cmd "selections-linewise?" buffers::selections_linewise(pane: args::LivePane);
         cmd "selections-charwise?" buffers::selections_charwise(pane: args::LivePane);

@@ -105,6 +105,24 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         Ok(())
     }
 
+    fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<hume_scripting::host::UndoNode>> {
+        let buf = self.buffer(id)?;
+        let (current, saved) = (buf.revision_id(), buf.saved_revision());
+        let nodes = buf.revision_nodes(std::time::SystemTime::now());
+        Some(
+            nodes
+                .into_iter()
+                .map(|node| hume_scripting::host::UndoNode {
+                    id: node.id().index(),
+                    parent: node.parent().map(hume_editing::history::RevisionId::index),
+                    age_secs: node.age().as_secs(),
+                    current: node.id() == current,
+                    saved: Some(node.id()) == saved,
+                })
+                .collect(),
+        )
+    }
+
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         Some(self.buffer(id)?.text().generation())
     }

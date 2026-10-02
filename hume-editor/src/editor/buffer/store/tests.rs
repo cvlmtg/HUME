@@ -208,6 +208,58 @@ fn take_text_changed_coalesces_multiple_mutations_into_one_report() {
     assert_eq!(store.take_text_changed(), vec![id]);
 }
 
+// ── take_history_changed ────────────────────────────────────────────────────
+
+/// Record one revision on `id` by replacing its text, the way `:e!` does.
+fn record_revision(store: &mut BufferStore, id: BufferId, text: &str) {
+    let buf = store.get_mut(id);
+    let sels = crate::editor::pane_state::fresh_from_buf(buf)
+        .selections()
+        .clone();
+    let (mut stores, pane, stores_id) =
+        crate::editor::position_stores::DetachedStores::with_pane(buf, sels);
+    buf.replace_text_recorded(
+        stores_id,
+        &mut stores.stores(),
+        BufferText::from(text),
+        pane,
+    );
+}
+
+#[test]
+fn take_history_changed_reports_nothing_for_an_untouched_store() {
+    let (mut store, mut ev) = store_with_engine();
+    let id = make_id(&mut ev);
+    store.open(id, make_buf());
+    assert_eq!(store.take_history_changed(), Vec::new());
+}
+
+/// A recorded revision is reported once and several coalesce into that one
+/// report; a text refresh that records no revision is not a history change.
+#[test]
+fn take_history_changed_reports_recorded_revisions_once() {
+    let (mut store, mut ev) = store_with_engine();
+    let id = make_id(&mut ev);
+    let sibling = make_id(&mut ev);
+    store.open(id, make_buf());
+    store.open(sibling, make_buf());
+    store.get_mut(sibling).set_view_content(
+        BufferId::default(),
+        &mut crate::editor::position_stores::DetachedStores::default().stores(),
+        "refreshed\n",
+    );
+
+    record_revision(&mut store, id, "first\n");
+    record_revision(&mut store, id, "second\n");
+
+    assert_eq!(store.take_history_changed(), vec![id]);
+    assert_eq!(
+        store.take_history_changed(),
+        Vec::new(),
+        "the baseline advanced with the report"
+    );
+}
+
 /// Only a buffer that actually mutated is reported. A sibling buffer left
 /// untouched must not appear.
 #[test]

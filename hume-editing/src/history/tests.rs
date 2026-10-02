@@ -1,5 +1,6 @@
 use hume_rope::offset::CharOffset;
 
+use super::children::Children;
 use super::*;
 use crate::changeset::ChangeSetBuilder;
 use crate::selection::SelectionSet;
@@ -236,10 +237,10 @@ fn redo_n_clamps_at_leaf_short_of_the_requested_count() {
 }
 
 #[test]
-fn redo_n_follows_most_recent_child_through_multiple_hops() {
+fn redo_n_follows_last_walked_child_through_multiple_hops() {
     // branching_history: root → rev1 → rev2 → rev3, then rev1 gains a second
-    // child rev4 (the most recent, so the default redo target). Current is
-    // rev4 after construction.
+    // child rev4 (the newest, so rev1's redo target). Current is rev4 after
+    // construction.
     let mut h = branching_history();
     h.undo(); // rev4 -> rev1
     h.undo(); // rev1 -> root
@@ -250,7 +251,7 @@ fn redo_n_follows_most_recent_child_through_multiple_hops() {
     assert_eq!(
         h.current,
         RevisionId(4),
-        "must follow rev1's most-recent child (rev4), not the older rev2"
+        "must follow rev1's redo child (rev4), not the older rev2"
     );
 }
 
@@ -282,10 +283,15 @@ fn branching_history() -> History {
 }
 
 #[test]
-fn goto_same_revision_is_none() {
+fn goto_current_revision_walks_nothing() {
     let mut h = History::new();
     h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1));
-    assert!(h.goto_revision(h.current).is_none());
+    let current = h.current;
+    let txns = h
+        .goto_revision(current)
+        .expect("the current revision is a known id");
+    assert!(txns.is_empty());
+    assert_eq!(h.current, current);
 }
 
 #[test]
@@ -656,19 +662,19 @@ fn redo_steps_newer_than_at_the_tip_is_satisfied_regardless_of_the_tip_s_own_age
 }
 
 #[test]
-fn redo_steps_newer_than_follows_most_recent_child() {
+fn redo_steps_newer_than_follows_last_walked_child() {
     let mut h = aged_chain();
     h.undo();
     h.undo(); // back to rev1
     h.record(insert_cs(7, "d"), delete_cs(8, 1), sel_at(1), sel_at(9)); // rev4, last child of rev1
     backdate(&mut h, RevisionId(4), mins(2));
     h.undo(); // back to rev1, the fork point the queries run from
-    // Sibling rev2 is 8m old but no longer the redo target; the count must
+    // Sibling rev2 is 8m old but is not rev1's redo target; the count must
     // follow rev4 (2m), so `:later 5m` takes no steps.
     assert_eq!(
         h.redo_steps_newer_than(mins(5)),
         Ok(0),
-        ":later must follow the most-recent child (rev4, 2m), not the older sibling"
+        ":later must follow the redo child (rev4, 2m), not the older sibling"
     );
     assert_eq!(
         h.redo_steps_newer_than(Duration::ZERO),
@@ -680,6 +686,194 @@ fn redo_steps_newer_than_follows_most_recent_child() {
     assert_eq!(
         h.current,
         RevisionId(4),
-        "the counted step must land on the most-recent child"
+        "the counted step must land on the redo child"
     );
+}
+
+// ── Redo follows the last-walked child ───────────────────────────────────────
+
+#[test]
+fn undo_makes_the_undone_child_the_redo_target() {
+    let mut h = History::new();
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev1
+    h.undo();
+    h.record(insert_cs(6, "c"), delete_cs(7, 1), sel_at(0), sel_at(2)); // rev2, newer sibling
+    h.goto_revision(RevisionId(1));
+    h.undo();
+    assert_eq!(h.current, History::ROOT);
+
+    h.redo();
+    assert_eq!(h.current, RevisionId(1));
+}
+
+#[test]
+fn goto_into_older_branch_redirects_redo_along_it() {
+    // branching_history: rev1 has children rev2 (→ rev3) and rev4; current is rev4.
+    let mut h = branching_history();
+    h.goto_revision(RevisionId(3));
+    h.undo_n(2);
+    assert_eq!(h.current, RevisionId(1));
+
+    let txns = h.redo_n(2);
+    assert_eq!(txns.len(), 2);
+    assert_eq!(h.current, RevisionId(3));
+}
+
+#[test]
+fn redo_steps_newer_than_follows_the_walked_branch() {
+    let mut h = aged_chain();
+    h.undo();
+    h.undo(); // rev1
+    h.record(insert_cs(7, "d"), delete_cs(8, 1), sel_at(1), sel_at(9)); // rev4
+    backdate(&mut h, RevisionId(4), mins(2));
+    h.goto_revision(RevisionId(2));
+    h.undo(); // rev1, redo target now rev2 (8m), not rev4 (2m)
+
+    assert_eq!(
+        h.redo_steps_newer_than(mins(5)),
+        Ok(1),
+        ":later 5m must step onto rev2 (8m) and stop before rev3 (1m)"
+    );
+    h.redo();
+    assert_eq!(h.current, RevisionId(2));
+}
+
+#[test]
+fn promotion_carries_the_redo_target_into_the_root() {
+    let mut h = History::new();
+    h.set_undo_levels(3);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev1
+    h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2)); // rev2
+    h.undo();
+    h.record(insert_cs(7, "c"), delete_cs(8, 1), sel_at(1), sel_at(3)); // rev3
+    h.goto_revision(RevisionId(2));
+    let promoted = h.record(insert_cs(8, "d"), delete_cs(9, 1), sel_at(2), sel_at(4)); // rev4
+    assert_eq!(promoted, Some(RevisionId(1)));
+    h.undo_n(2);
+    assert_eq!(h.current, History::ROOT);
+
+    h.redo();
+    assert_eq!(h.current, RevisionId(2));
+}
+
+#[test]
+fn children_push_makes_newest_the_redo_target() {
+    let mut c = Children::default();
+    assert_eq!(c.redo(), None);
+    c.push(RevisionId(1));
+    c.push(RevisionId(2));
+    assert_eq!(c.redo(), Some(RevisionId(2)));
+    assert_eq!(c.iter().collect::<Vec<_>>(), [RevisionId(1), RevisionId(2)]);
+    assert_eq!(c.len(), 2);
+}
+
+#[test]
+fn children_remove_of_redo_target_falls_back_to_newest_remaining() {
+    let mut c = Children::default();
+    c.push(RevisionId(1));
+    c.push(RevisionId(2));
+    c.push(RevisionId(3));
+    c.set_redo(RevisionId(2));
+
+    c.remove(RevisionId(1));
+    assert_eq!(
+        c.redo(),
+        Some(RevisionId(2)),
+        "a non-target removal keeps the target"
+    );
+
+    c.remove(RevisionId(2));
+    assert_eq!(c.redo(), Some(RevisionId(3)));
+
+    c.remove(RevisionId(3));
+    assert_eq!(c.redo(), None);
+    assert_eq!(c.len(), 0);
+}
+
+#[test]
+#[should_panic(expected = "redo target must be a child")]
+fn children_set_redo_rejects_a_non_child() {
+    let mut c = Children::default();
+    c.push(RevisionId(1));
+    c.set_redo(RevisionId(7));
+}
+
+// ── Enumeration and ids ──────────────────────────────────────────────────────
+
+#[test]
+fn revision_id_checked_accepts_live_and_rejects_evicted_ids() {
+    let mut h = History::new();
+    h.set_undo_levels(1);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev1
+    h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2)); // rev2, promotes rev1
+
+    assert_eq!(RevisionId::checked(&h, 0), Some(History::ROOT));
+    assert_eq!(RevisionId::checked(&h, 1), None, "rev1 was promoted away");
+    let live = RevisionId::checked(&h, 2).expect("rev2 is live");
+    assert_eq!(live.index(), 2);
+    assert_eq!(RevisionId::checked(&h, 99), None);
+}
+
+#[test]
+fn nodes_enumerate_every_revision_in_id_order_with_parent_and_age() {
+    let mut h = branching_history(); // rev1 → rev2 → rev3, rev1 → rev4
+    for i in 0..=4 {
+        backdate(&mut h, RevisionId(i), mins(20 - 4 * i as u64));
+    }
+    let nodes = h.nodes(SystemTime::now());
+
+    let shape: Vec<_> = nodes
+        .iter()
+        .map(|n| (n.id().index(), n.parent().map(RevisionId::index)))
+        .collect();
+    assert_eq!(
+        shape,
+        [
+            (0, None),
+            (1, Some(0)),
+            (2, Some(1)),
+            (3, Some(2)),
+            (4, Some(1))
+        ]
+    );
+    for (i, node) in nodes.iter().enumerate() {
+        let want = mins(20 - 4 * i as u64);
+        assert!(
+            node.age() >= want && node.age() < want + Duration::from_secs(5),
+            "rev{i} age {:?} should be about {want:?}",
+            node.age()
+        );
+    }
+}
+
+#[test]
+fn change_seq_moves_on_every_navigation_and_record_only() {
+    let mut h = History::new();
+    let mut seen = h.change_seq();
+    let mut moved = |h: &History| {
+        let now = h.change_seq();
+        let changed = now != seen;
+        seen = now;
+        changed
+    };
+
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1));
+    assert!(moved(&h), "record");
+    h.undo();
+    assert!(moved(&h), "undo");
+    assert!(h.undo().is_none());
+    assert!(!moved(&h), "undo at the root");
+    h.redo();
+    assert!(moved(&h), "redo");
+    assert!(h.redo().is_none());
+    assert!(!moved(&h), "redo at a leaf");
+    h.goto_revision(h.current);
+    assert!(!moved(&h), "goto the current revision");
+    h.undo();
+    moved(&h);
+    h.goto_revision(RevisionId(1));
+    assert!(moved(&h), "goto another revision");
+    h.undo_n(0);
+    h.set_undo_levels(5);
+    assert!(!moved(&h), "a zero-step walk and a cap change");
 }

@@ -298,10 +298,13 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 | `on-completion-accept` | A completion entry is accepted | `(pane item)` |
 | `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)`: `key` is a string, `value` the option's new value as `get-option` returns it |
 | `on-text-changed` | A buffer's text changes | `(pane)` |
+| `on-undo-history-changed` | A buffer's undo history changes: an edit is recorded, or an undo, redo or jump moves to another revision | `(pane)`: pull the tree with `buffer-undo-tree` |
 
 `on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within the same command never announces either one.
 
 `on-text-changed` covers edits, undo, redo, `:e!` reload, and refreshes of read-only view buffers (`:messages`, `:ls`, `:plugin-status`) alike. Those buffers have no file, so a handler that looks up a path must handle it being absent. It coalesces multiple mutations made by a single command (a multi-cursor edit, a macro, a paste) into one fire, but each keystroke while typing is its own command and so fires on its own. Pair it with `debounce` if you want to react only after typing settles rather than on every character.
+
+`on-undo-history-changed` fires once per command in the same way, but only when the undo history moves, so typing in an insert session announces once, when the session ends. It also fires for an undo whose net change to the text is nothing (undoing an insert together with its later delete), which `on-text-changed` does not.
 
 For lazy plugins, declare the events that should trigger activation via `#:events` in your `manifest.scm` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry: a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it. The same caveat applies to `on-text-changed`: gating a lazy plugin on it activates on the first edit in *any* buffer, not a buffer the plugin specifically cares about.
 

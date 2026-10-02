@@ -1,6 +1,6 @@
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use super::search::{SearchMatches, SearchPattern};
 use crate::editor::edit_session::EditGroup;
@@ -8,7 +8,7 @@ use crate::editor::position_stores::PositionStores;
 use crate::editor::settings::BufferOverrides;
 use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
 use hume_editing::edit::{Edited, TextChange};
-use hume_editing::history::{History, RevisionId};
+use hume_editing::history::{History, RevisionId, RevisionNode};
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
 use hume_editing::text::{BufferText, LineEnding};
@@ -114,6 +114,10 @@ pub(crate) struct Buffer {
     /// text's generation at a drain observation point (see
     /// `BufferStore::take_text_changed`) rather than at `install` itself.
     pub(in crate::editor) announced_generation: u64,
+    /// The undo history's `change_seq` most recently announced as an
+    /// `on-undo-history-changed` event, diffed the same way
+    /// `announced_generation` is (see `BufferStore::take_history_changed`).
+    pub(in crate::editor) announced_history_seq: u64,
     /// Per-buffer tree-sitter syntax attachment: grammar identity, committed
     /// parse layers, generation bookkeeping, and in-flight state, all in one
     /// place. `None` when no grammar is attached or the buffer exceeds
@@ -178,6 +182,7 @@ impl Buffer {
         let history = History::new();
         let saved_revision = Some(history.current_id());
         let announced_generation = text.generation();
+        let announced_history_seq = history.change_seq();
         Self {
             text,
             history,
@@ -191,6 +196,7 @@ impl Buffer {
             language: None,
             language_explicit: false,
             announced_generation,
+            announced_history_seq,
             syntax: None,
             read_only: false,
             label: None,
@@ -831,6 +837,11 @@ impl Buffer {
         self.apply_transactions(id, stores, acting, txns)
     }
 
+    /// The undo history's change counter. See `History::change_seq`.
+    pub(in crate::editor) fn history_change_seq(&self) -> u64 {
+        self.history.change_seq()
+    }
+
     /// The current buffer contents.
     pub(crate) fn text(&self) -> &BufferText {
         &self.text
@@ -845,7 +856,6 @@ impl Buffer {
     }
 
     /// The current revision in the undo history.
-    #[cfg(test)]
     pub(in crate::editor) fn revision_id(&self) -> RevisionId {
         self.history.current_id()
     }
@@ -870,22 +880,35 @@ impl Buffer {
         self.history.redo_steps_newer_than(age)
     }
 
-    /// Jump to an arbitrary revision in the undo tree.
-    #[cfg(test)]
+    /// Jump to an arbitrary revision in the undo tree as one composed
+    /// transform. See [`Self::apply_transactions`] for the return contract: a
+    /// `target` equal to the current revision walks nothing and is `None`.
     pub(in crate::editor) fn goto_revision(
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
         acting: PaneId,
-        sels: &mut SelectionSet,
-        target: hume_editing::history::RevisionId,
-    ) {
-        if let Some(transactions) = self.history.goto_revision(target)
-            && let Some((new_sels, _cs, _steps)) =
-                self.apply_transactions(id, stores, acting, transactions)
-        {
-            *sels = new_sels;
-        }
+        target: RevisionId,
+    ) -> HistoryWalkResult {
+        let txns = self.history.goto_revision(target)?;
+        self.apply_transactions(id, stores, acting, txns)
+    }
+
+    /// The revision numbered `n` in this buffer's history, `None` when it was
+    /// never recorded or has been evicted.
+    pub(in crate::editor) fn revision(&self, n: usize) -> Option<RevisionId> {
+        RevisionId::checked(&self.history, n)
+    }
+
+    /// Every revision of the undo history, in id order, aged as of `now`.
+    pub(in crate::editor) fn revision_nodes(&self, now: SystemTime) -> Vec<RevisionNode> {
+        self.history.nodes(now)
+    }
+
+    /// The revision the buffer was last saved at, `None` once an
+    /// `undo-levels` trim has removed it.
+    pub(in crate::editor) fn saved_revision(&self) -> Option<RevisionId> {
+        self.saved_revision
     }
 }
 

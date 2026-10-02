@@ -109,7 +109,7 @@ the rows underneath it reorder, but the selection itself still covers the
 same stretch of text afterward.
 
 `:earlier` and `:later` step through the undo history: back, then forward
-again along the most recent path. A bare number counts revisions; a number
+again along the path redo follows. A bare number counts revisions; a number
 with an `s`/`m`/`h`/`d` suffix names an age (`:earlier 90s`, `:later 2h`).
 Traveling past either end stops at the oldest/newest revision with a message.
 

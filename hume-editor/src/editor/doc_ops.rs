@@ -25,12 +25,12 @@ use hume_editing::text::BufferText;
 
 /// [`apply_doc_history_walk`]'s result: keeps a read-only refusal
 /// distinguishable from genuine root/leaf exhaustion. Collapsing both to
-/// `0` would be safe only because every current caller
-/// (`history_step`) already calls `refuse_if_read_only` first; a caller that
-/// leans on this function's own guard alone (the production `goto-revision`
-/// `docs/UNDOTREE.md` plans) would then report "Already at oldest
-/// change" for a read-only buffer, a wrong diagnosis sending the user to
-/// look for missing history that was never there to find.
+/// `0` would be safe only for a caller that already ran
+/// `refuse_if_read_only` (`history_step` does); one that leans on this
+/// function's own guard alone (`commands::edit::goto_revision`) would
+/// report "Already at oldest change" for a read-only buffer, a wrong
+/// diagnosis sending the user to look for missing history that was never
+/// there to find.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::editor) enum HistoryWalk {
     /// The buffer is read-only; nothing was attempted.
@@ -314,16 +314,22 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
 /// panes, jump lists, tree-sitter, and LSP see one edit. An unbounded
 /// `:earlier`/`:later` costs the same as one `u`.
 ///
+/// Session handling lives here, as in [`apply_doc_edit`]: a Paste session open
+/// on this (pane, buffer) is committed first, so the walk sees its revision
+/// and its snapshot cannot go stale. An Insert session open there is an `Err`:
+/// its group is mid-composition, and a walk underneath it would desync the
+/// group from the text.
+///
 /// Returns [`HistoryWalk::Took`] with the steps actually taken (fewer than
 /// requested at the root/leaf) or [`HistoryWalk::RefusedReadOnly`]. `Err`
 /// when [`check_no_conflicting_session`] finds another pane's session on this
-/// buffer.
+/// buffer, or this pane has an Insert session open on it.
 // Same non-collapsible-params shape as `finish_edit`'s own allow, above.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_history_walk(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
-    active_session: &Option<EditSession>,
+    active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
     walk: impl FnOnce(&mut Buffer, BufferId, &mut PositionStores<'_>, PaneId) -> HistoryWalkResult,
@@ -332,12 +338,20 @@ pub(in crate::editor) fn apply_doc_history_walk(
         return Ok(HistoryWalk::RefusedReadOnly);
     }
     check_no_conflicting_session(active_session, pane_id, buf_id)?;
-    debug_assert!(
-        !active_session
-            .as_ref()
-            .is_some_and(|s| s.owned_by(pane_id, buf_id)),
-        "apply_doc_history_walk called while a session is open on this (pane, buffer)"
-    );
+    if active_session
+        .as_ref()
+        .is_some_and(|s| s.is_insert_at(pane_id, buf_id))
+    {
+        return Err(CommandError::transient(
+            "cannot move through undo history during an Insert session",
+        ));
+    }
+    if active_session
+        .as_ref()
+        .is_some_and(|s| s.is_paste_at(pane_id, buf_id))
+    {
+        commit_paste_group(buffers, stores.panes, active_session);
+    }
     let text_pre = buffers.get(buf_id).text().clone();
     let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), buf_id, stores, pane_id) else {
         return Ok(HistoryWalk::Took(0));

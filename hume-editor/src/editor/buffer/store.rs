@@ -153,17 +153,36 @@ impl BufferStore {
     /// doc), this is per-buffer and fires for every text replacement
     /// `install` performs.
     pub(in crate::editor) fn take_text_changed(&mut self) -> Vec<BufferId> {
+        self.take_announced(|buf| {
+            let generation = buf.text().generation();
+            let changed = generation != buf.announced_generation;
+            buf.announced_generation = generation;
+            changed
+        })
+    }
+
+    /// Every open buffer whose undo history moved since the last call: the
+    /// observation-point source for `on-undo-history-changed`
+    /// (`EditorEvent::OnUndoHistoryChanged`'s doc has the contract). Same
+    /// advance-as-it-reports shape as [`Self::take_text_changed`], over
+    /// `History::change_seq`.
+    pub(in crate::editor) fn take_history_changed(&mut self) -> Vec<BufferId> {
+        self.take_announced(|buf| {
+            let seq = buf.history_change_seq();
+            let changed = seq != buf.announced_history_seq;
+            buf.announced_history_seq = seq;
+            changed
+        })
+    }
+
+    /// The open buffers, in open-order, for which `announce` returns `true`.
+    /// `announce` advances its own baseline, so each buffer is reported once
+    /// per change.
+    fn take_announced(&mut self, mut announce: impl FnMut(&mut Buffer) -> bool) -> Vec<BufferId> {
         let Self { order, buffers, .. } = self;
         order
             .iter()
-            .filter_map(|&id| {
-                let buf = buffers.get_mut(id)?;
-                if buf.text().generation() == buf.announced_generation {
-                    return None;
-                }
-                buf.announced_generation = buf.text().generation();
-                Some(id)
-            })
+            .filter_map(|&id| announce(buffers.get_mut(id)?).then_some(id))
             .collect()
     }
 

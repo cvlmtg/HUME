@@ -60,6 +60,12 @@ other walk gets the next generation, so what orders texts never goes back.
 `Edited::rebased` uses the same step to land a paste cycle's result on the
 live text.
 
+A revision keeps its children in creation order, which trimming relies on,
+and one of them as its redo target: the child most recently recorded or
+walked into. A new edit and a jump both move it, so redo stays on the branch
+the user is on. `RevisionId` has no public constructor from a number:
+`RevisionId::checked` takes the history it must belong to.
+
 ## Where each invariant is enforced
 
 | Invariant | Enforced by |
@@ -67,6 +73,8 @@ live text.
 | No selection end splits a cluster | `ClusterStart` has no public constructor; `Selection` holds only `ClusterStart`s |
 | A set is read only against its own text | The `TextVersion` tag, checked by `selection/fit.rs` from `EditState::bind` and `EditView::bind` |
 | Equal versions hold equal content | New versions come only from applying a changeset; an earlier one is given back only by `Transaction::apply`, from a changeset that reproduces its content |
+| A revision's redo target is one of its children | `Children` (`history/children.rs`) has private fields and writes the target only through `push`, `remove` and `set_redo`; `History` has no other way to touch it |
+| A revision number from outside names a revision of that history | `RevisionId::checked` is the only public mint |
 | Language servers, syntax and change announcements see texts in order | `BufferText::generation` only increases; `Buffer::install` asserts it |
 | A set is non-empty, sorted, non-overlapping, with a valid primary | `SelectionSet::from_parts` |
 | Commands do not compute extents | `SelectionView`: `covered`, `content`, `append_point`, `line_spans` |

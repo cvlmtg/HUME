@@ -76,7 +76,7 @@ You can align to the left or the right depending on which end of the selection i
 | `u` | Undo (accepts a count: `5u` undoes five steps) |
 | `U` / `Ctrl-r` | Redo (accepts a count: `5U` redoes five steps) |
 
-Undo history is a tree rather than a straight line, so redoing after new edits follows the most recent branch. The history lives in memory only and starts fresh each time you open a file.
+Undo history is a tree rather than a straight line. Redo follows the branch you last moved along: the newest edit, or the branch you jumped into with [`core:undotree`](core-plugins.md#core-undotree). The history lives in memory only and starts fresh each time you open a file.
 
 ## Repeat
 

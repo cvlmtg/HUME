@@ -348,6 +348,7 @@ impl Editor {
             // unlike `detect_buffer_enter`'s `last_entered_buffer = None`:
             // see `MAX_EVENT_DRAIN`'s doc for why.
             self.detect_text_changed();
+            self.detect_history_changed();
             if self.state.config.pending_work.is_empty() {
                 return true;
             }
@@ -448,6 +449,16 @@ impl Editor {
         for buffer in self.state.buffers.take_text_changed() {
             self.state
                 .queue_event(EditorEvent::OnTextChanged { buffer });
+        }
+    }
+
+    /// Observation point for `on-undo-history-changed`
+    /// (`EditorEvent::OnUndoHistoryChanged`'s doc), run beside
+    /// [`Self::detect_text_changed`] with the same coalescing.
+    fn detect_history_changed(&mut self) {
+        for buffer in self.state.buffers.take_history_changed() {
+            self.state
+                .queue_event(EditorEvent::OnUndoHistoryChanged { buffer });
         }
     }
 
@@ -584,7 +595,8 @@ impl Editor {
             | EditorEvent::OnCompletionAccept { .. }
             | EditorEvent::OnOptionChange { .. }
             | EditorEvent::OnLspNotification { .. }
-            | EditorEvent::OnTextChanged { .. } => {}
+            | EditorEvent::OnTextChanged { .. }
+            | EditorEvent::OnUndoHistoryChanged { .. } => {}
         }
     }
 

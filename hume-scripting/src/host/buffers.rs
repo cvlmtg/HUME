@@ -6,6 +6,25 @@ use hume_engine::pipeline::BufferId;
 
 use crate::types::PaneHandle;
 
+/// One revision of a buffer's undo history, as `(buffer-undo-tree pane)`
+/// reports it. `id` and `parent` are the raw integers Steel sees; the only
+/// way back to a revision is [`EditHost::goto_revision`], which validates the
+/// number against the buffer's history.
+///
+/// [`EditHost::goto_revision`]: super::EditHost::goto_revision
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UndoNode {
+    pub id: usize,
+    /// `None` only for the root.
+    pub parent: Option<usize>,
+    /// Wall-clock age in whole seconds when the tree was read.
+    pub age_secs: u64,
+    /// This revision matches the buffer's current text.
+    pub current: bool,
+    /// This revision is the one last saved (or first opened).
+    pub saved: bool,
+}
+
 /// Buffer/pane enumeration, reads, lifecycle, and viewport geometry,
 /// accessed through [`EditorHost::buffers`](super::EditorHost::buffers).
 pub trait BufferHost {
@@ -80,6 +99,11 @@ pub trait BufferHost {
     /// script can compare a saved value against a live read), but the LSP
     /// bridge's own `#:allow-stale` staleness check is what motivated it.
     fn buffer_generation(&self, id: BufferId) -> Option<u64>;
+
+    /// `(buffer-undo-tree pane)`: every revision in `id`'s undo history, in
+    /// id order, which is also parents-before-children. `None` if `id` is
+    /// unknown.
+    fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<UndoNode>>;
 
     /// `(buffer-text bid)`: the buffer's full live (dirty) in-memory
     /// content, always ending with the structural trailing `\n`. `None` if

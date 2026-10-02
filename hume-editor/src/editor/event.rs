@@ -179,6 +179,19 @@ pub(in crate::editor) enum EditorEvent {
     OnTextChanged {
         buffer: BufferId,
     },
+    /// Fires when a buffer's undo history changes: a revision recorded (an
+    /// edit, an Insert or paste session ending, an `:e!` reload), an undo,
+    /// redo or jump to another revision, or an `undo-levels` trim. Unlike
+    /// `OnTextChanged` it also fires for a walk whose net change to the text
+    /// is nothing, such as undoing an insert together with its later delete,
+    /// and never fires for text changes that record no revision (a view
+    /// buffer's refresh). Raised by diffing `History::change_seq` against a
+    /// per-buffer baseline at the same drain observation point as
+    /// `OnTextChanged` (`Editor::detect_history_changed`,
+    /// `BufferStore::take_history_changed`), so it coalesces the same way.
+    OnUndoHistoryChanged {
+        buffer: BufferId,
+    },
     /// Fires after a successful `:set global`/`set-option!`/`:theme` write.
     /// `settings::ops::apply_global` is the single production path every one
     /// of those funnels through, so this is the one place to raise it.
@@ -214,7 +227,10 @@ impl EditorEvent {
             | EditorEvent::OnLspAttach { buffer, .. }
             | EditorEvent::OnLspDetach { buffer, .. }
             | EditorEvent::OnDiagnosticsChanged { buffer }
-            | EditorEvent::OnTextChanged { buffer } => Some(PaneHandle::buffer_only(*buffer)),
+            | EditorEvent::OnTextChanged { buffer }
+            | EditorEvent::OnUndoHistoryChanged { buffer } => {
+                Some(PaneHandle::buffer_only(*buffer))
+            }
             EditorEvent::OnBufferEnter { target }
             | EditorEvent::OnViewportChange { target, .. }
             | EditorEvent::OnTriggerChar { target, .. }
@@ -247,7 +263,8 @@ impl EditorEvent {
             | EditorEvent::OnTriggerChar { .. }
             | EditorEvent::OnCompletionAccept { .. }
             | EditorEvent::OnOptionChange { .. }
-            | EditorEvent::OnTextChanged { .. } => None,
+            | EditorEvent::OnTextChanged { .. }
+            | EditorEvent::OnUndoHistoryChanged { .. } => None,
         }
     }
 
@@ -275,7 +292,8 @@ impl EditorEvent {
             | EditorEvent::OnTriggerChar { .. }
             | EditorEvent::OnCompletionAccept { .. }
             | EditorEvent::OnOptionChange { .. }
-            | EditorEvent::OnTextChanged { .. } => None,
+            | EditorEvent::OnTextChanged { .. }
+            | EditorEvent::OnUndoHistoryChanged { .. } => None,
         }
     }
 }
@@ -334,6 +352,7 @@ editor_event_names! {
     OnLspNotification => "on-lsp-notification",
     OnOptionChange => "on-option-change",
     OnTextChanged => "on-text-changed",
+    OnUndoHistoryChanged => "on-undo-history-changed",
 }
 
 impl EditorEvent {
@@ -348,7 +367,8 @@ impl EditorEvent {
             | EditorEvent::OnBufferClose { buffer }
             | EditorEvent::OnBufferSave { buffer }
             | EditorEvent::OnDiagnosticsChanged { buffer }
-            | EditorEvent::OnTextChanged { buffer } => {
+            | EditorEvent::OnTextChanged { buffer }
+            | EditorEvent::OnUndoHistoryChanged { buffer } => {
                 vec![SteelPane::new(PaneHandle::buffer_only(buffer)).into_steel_val()]
             }
             EditorEvent::OnBufferEnter { target } => {

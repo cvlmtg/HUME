@@ -383,7 +383,7 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
             &mut ed.state.buffer_positions,
             &mut ed.state.config.decorations,
         ),
-        &ed.state.active_session,
+        &mut ed.state.active_session,
         focused,
         bid,
         |b, id, stores, pane| b.undo_n(id, stores, pane, 1),

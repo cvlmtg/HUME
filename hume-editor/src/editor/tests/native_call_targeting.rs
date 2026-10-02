@@ -442,10 +442,9 @@ fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
     );
 }
 
-/// Same exclusivity check, `undo`/`redo` side: `apply_doc_history_walk`'s
-/// old `debug_assert!` only checked the *target* pane's own `edit_group`
-/// and only fired in debug builds, so a remote `undo` targeting a different
-/// pane than the one with an open insert session passed it silently.
+/// Same exclusivity check, `undo`/`redo` side: a remote `undo` targeting a
+/// different pane than the one with an open insert session on the buffer must
+/// be refused by `apply_doc_history_walk`, in release builds too.
 #[test]
 fn remote_undo_is_refused_while_another_pane_has_an_open_insert_session() {
     let mut ed = editor_from("-[a]>aaa\n");
