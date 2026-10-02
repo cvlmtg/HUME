@@ -167,6 +167,16 @@ fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
+/// Whether any activation-trigger list is non-empty.
+fn has_trigger(
+    commands: &[String],
+    typed_commands: &[String],
+    events: &[String],
+    languages: &[String],
+) -> bool {
+    !(commands.is_empty() && typed_commands.is_empty() && events.is_empty() && languages.is_empty())
+}
+
 /// Drops names that collide with a built-in and claims each remaining one as a
 /// `Lazy` stub via `register` (`register_lazy_command` or
 /// `register_lazy_typed_command`), logging a failed name instead of aborting.
@@ -291,11 +301,7 @@ pub(crate) fn declare_plugin(
     // plugin is confirmed present on disk (see below), so a non-empty
     // `cmd_list`/`typed_cmd_list` always skips this branch regardless of what
     // filtering later drops.
-    if cmd_list.is_empty()
-        && typed_cmd_list.is_empty()
-        && evt_list.is_empty()
-        && lang_list.is_empty()
-    {
+    if !has_trigger(&cmd_list, &typed_cmd_list, &evt_list, &lang_list) {
         return Err(generic_err(format!(
             "declare-plugin!: '{name}' declares no activation entries; it could never be activated. \
              Add #:commands/#:typed-commands/#:events/#:languages."
@@ -358,11 +364,7 @@ pub(crate) fn declare_plugin(
     // activation entry left. The all-empty case already returned above, so
     // reaching here means at least one list was non-empty before filtering, so
     // the message always names the collision, never "none were supplied".
-    if cmd_list.is_empty()
-        && typed_cmd_list.is_empty()
-        && evt_list.is_empty()
-        && lang_list.is_empty()
-    {
+    if !has_trigger(&cmd_list, &typed_cmd_list, &evt_list, &lang_list) {
         return Err(generic_err(format!(
             "declare-plugin!: '{name}' declares no activation entries; \
              all #:commands/#:typed-commands entries conflicted with existing commands. \
@@ -381,7 +383,7 @@ pub(crate) fn declare_plugin(
 
     ctx.registries
         .lazy_registry
-        .declare(entry_id, Some(path), evt_list, lang_list);
+        .declare(entry_id, path, evt_list, lang_list);
 
     Ok(SteelVal::Void)
 }
@@ -487,16 +489,8 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
     if ctx.registries.lazy_registry.declares_plugin(&plugin_id) {
         return Ok(SteelVal::BoolV(false));
     }
-    let dir = plugin_dir_for_id(&plugin_id, ctx.dirs);
-    let present = match &dir {
-        Some(dir) => path_exists(dir).map_err(generic_err)?,
-        None => false,
-    };
-    let Some(dir) = dir.filter(|_| present) else {
-        if !named_before {
-            absent_plugin(ctx, &plugin_id, &name, "load-plugin!")?;
-        }
-        return Ok(SteelVal::BoolV(false));
+    let Some(dir) = plugin_dir_for_id(&plugin_id, ctx.dirs) else {
+        return absent_load(ctx, &plugin_id, &name, named_before);
     };
 
     let manifest_path = dir.join("manifest.scm");
@@ -510,20 +504,34 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
         return Ok(SteelVal::StringV(require_program.into()));
     }
 
-    let main = EntryId::main(plugin_id);
-    match entry_path(ctx.dirs, &main).map_err(generic_err)? {
-        Some(path) => {
-            ctx.registries
-                .lazy_registry
-                .plugins
-                .insert(main, PluginState::Declared { path });
-            Ok(SteelVal::BoolV(true))
-        }
-        None => Err(generic_err(format!(
-            "load-plugin!: '{name}' has neither manifest.scm nor plugin.scm in {}",
-            dir.display()
-        ))),
+    let main = EntryId::main(plugin_id.clone());
+    if let Some(path) = entry_path(ctx.dirs, &main).map_err(generic_err)? {
+        ctx.registries
+            .lazy_registry
+            .declare(main, path, Vec::new(), Vec::new());
+        return Ok(SteelVal::BoolV(true));
     }
+    if !path_exists(&dir).map_err(generic_err)? {
+        return absent_load(ctx, &plugin_id, &name, named_before);
+    }
+    Err(generic_err(format!(
+        "load-plugin!: '{name}' has neither manifest.scm nor plugin.scm in {}",
+        dir.display()
+    )))
+}
+
+/// `load-plugin!` for a plugin with no directory: reported once, unless an
+/// earlier `declare-plugin!` already named it.
+fn absent_load(
+    ctx: &mut SteelCtx,
+    plugin_id: &PluginId,
+    name: &str,
+    named_before: bool,
+) -> SteelResult {
+    if !named_before {
+        absent_plugin(ctx, plugin_id, name, "load-plugin!")?;
+    }
+    Ok(SteelVal::BoolV(false))
 }
 
 /// Maximum nesting depth for concurrent inline plugin activations.

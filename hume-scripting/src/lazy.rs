@@ -57,23 +57,17 @@ impl LazyRegistry {
     /// records plugin lifecycle state and the event/language activation maps.
     ///
     /// - Duplicate `id` (case-insensitive) → no-op (first declaration wins).
-    /// - `path = None` → plugin absent on disk; skipped silently; activation
-    ///   entries NOT recorded (an absent plugin can never activate, so dangling
-    ///   entries would be dead weight until `:reload-config`).
     /// - All plugins are inserted as `Declared`; they activate when an entry is exercised.
     pub(crate) fn declare(
         &mut self,
         id: EntryId,
-        path: Option<PathBuf>,
+        path: PathBuf,
         events: Vec<String>,
         languages: Vec<String>,
     ) {
         if self.plugins.contains_key(&id) {
             return; // already declared: duplicate declare-plugin! call, ignore
         }
-        let Some(path) = path else {
-            return; // absent on disk: silently skip, no activation entries
-        };
         self.plugins
             .insert(id.clone(), PluginState::Declared { path });
 

@@ -175,7 +175,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
     let mut host = ScriptingHost::new();
     host.registries.lazy_registry.declare(
         id.clone(),
-        Some(path),
+        path,
         vec!["on-buffer-save".to_string()],
         vec!["rust".to_string()],
     );
