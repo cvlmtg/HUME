@@ -38,8 +38,9 @@ pub(crate) enum PluginState {
 /// plugin without any key-specific machinery or a parallel map here.
 #[derive(Debug, Default)]
 pub(crate) struct LazyRegistry {
-    /// Per-plugin lifecycle state.  Only plugins whose path was resolved at
-    /// declaration time appear here; absent-path plugins are silently skipped.
+    /// Per-entry lifecycle state. An entry appears once it is declared with its
+    /// file on disk, or as `Failed` when its activation or its plugin's manifest
+    /// fails; an entry whose file is absent has no row.
     pub(crate) plugins: FxHashMap<EntryId, PluginState>,
     /// 1:many map: event name → plugins that activate on that event.
     pub(crate) activation_events: FxHashMap<String, Vec<EntryId>>,
