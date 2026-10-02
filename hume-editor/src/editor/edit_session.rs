@@ -58,6 +58,11 @@ impl EditSession {
         self.kind
     }
 
+    /// `true` when committing this session now would record a revision.
+    pub(in crate::editor) fn has_edits(&self) -> bool {
+        self.group.cs.as_ref().is_some_and(|cs| !cs.is_identity())
+    }
+
     pub(in crate::editor) fn group_mut(&mut self) -> &mut EditGroup {
         &mut self.group
     }

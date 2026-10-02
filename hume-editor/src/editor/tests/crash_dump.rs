@@ -30,6 +30,25 @@ fn panic_dumps_a_dirty_file_buffer_next_to_its_file() {
 }
 
 #[test]
+fn panic_dumps_edits_of_an_open_insert_session() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("foo.txt");
+    let mut ed = editor_with_path("hello\n", &path);
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+
+    let outcome = catch_unwind(AssertUnwindSafe(|| {
+        ed.run_dumping_on_panic(None, |_| panic!("boom"))
+    }));
+
+    assert!(outcome.is_err(), "the panic must keep propagating");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("foo.txt.dump")).unwrap(),
+        "xhello\n"
+    );
+}
+
+#[test]
 fn panic_dump_keeps_crlf_line_endings() {
     let dir = safe_tempdir();
     let path = dir.path().join("foo.txt");
