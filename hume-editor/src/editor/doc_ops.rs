@@ -24,13 +24,11 @@ use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 
 /// [`apply_doc_history_walk`]'s result: keeps a read-only refusal
-/// distinguishable from genuine root/leaf exhaustion. Collapsing both to
-/// `0` would be safe only for a caller that already ran
-/// `refuse_if_read_only` (`history_step` does); one that leans on this
-/// function's own guard alone (`commands::edit::goto_revision`) would
-/// report "Already at oldest change" for a read-only buffer, a wrong
-/// diagnosis sending the user to look for missing history that was never
-/// there to find.
+/// distinguishable from genuine root/leaf exhaustion, so each caller reports
+/// it in its own way (`history_step` as a refused command, `goto-revision!` as
+/// an error). Collapsing both to `0` would report "Already at oldest change"
+/// for a read-only buffer, sending the user to look for missing history that
+/// was never there to find.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::editor) enum HistoryWalk {
     /// The buffer is read-only; nothing was attempted.

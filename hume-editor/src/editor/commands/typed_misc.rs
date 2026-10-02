@@ -662,8 +662,8 @@ fn parse_travel_spec(raw: &str) -> Result<TravelSpec, CommandError> {
 }
 
 /// `cmd_undo`/`cmd_redo` themselves, the same function `u`/`Ctrl-r` dispatch
-/// to, `refuse_if_read_only` guard and `history_step`'s own exhaustion report
-/// included, rather than a second hand-copied `(walk, exhausted_msg)` pair.
+/// to, read-only refusal and exhaustion report included, rather than a second
+/// hand-copied `(walk, exhausted_msg)` pair.
 type TravelStepFn = fn(
     &mut EditorState,
     &mut EngineView,
@@ -718,12 +718,6 @@ fn travel(
     }
     let spec = parse_travel_spec(arg.unwrap_or("1"))?;
     let t = fp.pane();
-    // Checked before resolving `spec` into a step count: an age spec walks
-    // the buffer's whole history, work `step` below would refuse anyway on
-    // a read-only buffer.
-    if super::refuse_if_read_only(&mut ed.state, &ed.view, t) {
-        return Ok(());
-    }
     let steps = match spec {
         TravelSpec::Steps(n) => n,
         TravelSpec::Age(age) => {

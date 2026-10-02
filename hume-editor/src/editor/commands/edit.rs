@@ -231,12 +231,12 @@ fn history_step(
     let result = walk_history(state, view, t, |b, id, stores, pane| {
         Ok(walk(b, id, stores, pane, count))
     })?;
-    // `RefusedReadOnly` stays a distinct arm rather than folding into
-    // `Took(0)`. See `HistoryWalk`'s own doc for why.
-    if let doc_ops::HistoryWalk::Took(taken) = result
-        && taken < count
-    {
-        state.report(Severity::Info, exhausted_msg.to_string());
+    match result {
+        doc_ops::HistoryWalk::RefusedReadOnly => super::report_read_only_refusal(state),
+        doc_ops::HistoryWalk::Took(taken) if taken < count => {
+            state.report(Severity::Info, exhausted_msg.to_string());
+        }
+        doc_ops::HistoryWalk::Took(_) => {}
     }
     Ok(())
 }
@@ -267,9 +267,6 @@ pub(in crate::editor) fn cmd_undo(
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if super::refuse_if_read_only(state, view, t) {
-        return Ok(());
-    }
     history_step(state, view, t, count, Buffer::undo_n, UNDO_EXHAUSTED_MSG)
 }
 
@@ -281,9 +278,6 @@ pub(in crate::editor) fn cmd_redo(
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if super::refuse_if_read_only(state, view, t) {
-        return Ok(());
-    }
     history_step(state, view, t, count, Buffer::redo_n, REDO_EXHAUSTED_MSG)
 }
 

@@ -314,12 +314,8 @@ fn ls_does_not_pollute_jump_list() {
     );
 }
 
-/// `u` and `Ctrl-r` on a read-only buffer must be no-ops.
-/// Validity: remove `cmd_undo`/`cmd_redo`'s `refuse_if_read_only` guard *and*
-/// `apply_doc_history_walk`'s own `is_read_only()` check (the layered second
-/// guard `:earlier`/`:later` also runs through, since both commands share
-/// this same path) and this test fails (undo reverts the edit, changing the
-/// buffer text).
+/// `u` and `Ctrl-r` on a read-only buffer leave the text alone, report why,
+/// and mark the command refused.
 #[test]
 fn read_only_buffer_blocks_undo_and_redo() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -332,7 +328,7 @@ fn read_only_buffer_blocks_undo_and_redo() {
     // somehow has undo history, e.g. from a future API path).
     ed.doc_mut().read_only = true;
 
-    // u (undo) must be a no-op, and must report why (refuse_if_read_only).
+    // u (undo) must be a no-op, and must report why.
     ed.handle_key(key('u'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -343,6 +339,10 @@ fn read_only_buffer_blocks_undo_and_redo() {
         ed.state.status_msg.as_deref(),
         Some("Buffer is read-only"),
         "u must report the refusal, same as :earlier does"
+    );
+    assert!(
+        ed.state.command_refused,
+        "a refused u marks the command refused"
     );
 
     // Ctrl-r (redo) must also be a no-op.

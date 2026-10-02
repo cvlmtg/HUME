@@ -176,10 +176,17 @@ pub(in crate::editor::commands) fn refuse_if_read_only(
     if !doc(state, view, t).is_read_only() {
         return false;
     }
+    report_read_only_refusal(state);
+    true
+}
+
+/// The refusal [`refuse_if_read_only`] applies, for a caller that learned the
+/// buffer is read-only from somewhere else (`history_step`, from the walk's
+/// own result).
+pub(in crate::editor::commands) fn report_read_only_refusal(state: &mut EditorState) {
     state.register_prefix = None;
     state.command_refused = true;
     state.report(Severity::Info, "Buffer is read-only".to_string());
-    true
 }
 
 /// `t`'s pane's selections for `t`'s buffer.
