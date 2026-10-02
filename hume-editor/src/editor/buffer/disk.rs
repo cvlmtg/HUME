@@ -10,7 +10,7 @@
 
 use hume_engine::pipeline::BufferId;
 
-use crate::editor::input_stack::{BaseLayer, ConfirmAction, ConfirmChoice, ConfirmLayer};
+use crate::editor::input_stack::{BaseLayer, ConfirmAction, ConfirmLayer};
 use crate::editor::{Editor, Severity};
 
 use super::{Buffer, ReplaceSource};
@@ -352,16 +352,6 @@ impl Editor {
             &self.view,
             ConfirmLayer {
                 prompt,
-                choices: vec![
-                    ConfirmChoice {
-                        key: 'r',
-                        label: "reload",
-                    },
-                    ConfirmChoice {
-                        key: 'k',
-                        label: "keep",
-                    },
-                ],
                 action: ConfirmAction::ReloadBuffer(bid),
             },
         );

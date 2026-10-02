@@ -926,7 +926,7 @@ mod tests {
     use super::*;
     use crate::editor::input_stack::PickerLayer;
     use crate::editor::input_stack::command::CommandLayer;
-    use crate::editor::input_stack::confirm::{ConfirmAction, ConfirmChoice, ConfirmLayer};
+    use crate::editor::input_stack::confirm::{ConfirmAction, ConfirmLayer};
     use crate::editor::input_stack::drawer::DrawerLayer;
     use crate::editor::input_stack::insert::InsertLayer;
     use crate::editor::input_stack::menu::MenuLayer;
@@ -939,10 +939,6 @@ mod tests {
     fn confirm() -> ConfirmLayer {
         ConfirmLayer {
             prompt: "test?".to_string(),
-            choices: vec![ConfirmChoice {
-                key: 'y',
-                label: "yes",
-            }],
             action: ConfirmAction::ReloadBuffer(hume_engine::pipeline::BufferId::default()),
         }
     }

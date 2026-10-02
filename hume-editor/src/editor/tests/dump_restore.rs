@@ -42,7 +42,7 @@ fn opening_a_file_with_a_dump_asks_what_to_do_with_it() {
     let bid = ed.focused_buffer_id();
     let confirm = ed.state.input.confirm().expect("restore prompt is open");
     assert!(matches!(confirm.action, ConfirmAction::RestoreDump(id) if id == bid));
-    let keys: Vec<char> = confirm.choices.iter().map(|c| c.key).collect();
+    let keys: Vec<char> = confirm.action.choices().iter().map(|c| c.key).collect();
     assert_eq!(keys, ['r', 'd', 'k']);
     insta::assert_snapshot!(
         confirm.render_line(),

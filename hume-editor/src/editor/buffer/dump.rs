@@ -7,7 +7,7 @@ use hume_engine::pipeline::BufferId;
 use hume_platform::worker_panic::payload_message;
 
 use super::{DiskCheckTrigger, ReplaceSource};
-use crate::editor::input_stack::{ConfirmAction, ConfirmChoice, ConfirmLayer};
+use crate::editor::input_stack::{ConfirmAction, ConfirmLayer};
 use crate::editor::{Editor, Severity};
 
 /// The crash-dump file for the buffer backed by `path`: the same path with
@@ -163,20 +163,6 @@ impl Editor {
             &self.view,
             ConfirmLayer {
                 prompt,
-                choices: vec![
-                    ConfirmChoice {
-                        key: 'r',
-                        label: "restore",
-                    },
-                    ConfirmChoice {
-                        key: 'd',
-                        label: "discard",
-                    },
-                    ConfirmChoice {
-                        key: 'k',
-                        label: "keep",
-                    },
-                ],
                 action: ConfirmAction::RestoreDump(bid),
             },
         );

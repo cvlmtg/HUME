@@ -12,12 +12,59 @@ use super::super::mouse::is_fresh_gesture;
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
-/// One key the user can press while a [`ConfirmLayer`] is open, and its
-/// display label (e.g. `"reload"` for key `'r'`).
+/// One key the user can press while a [`ConfirmLayer`] is open, its display
+/// label (e.g. `"reload"` for key `'r'`), and what pressing it does.
 pub(in crate::editor) struct ConfirmChoice {
     pub(in crate::editor) key: char,
     pub(in crate::editor) label: &'static str,
+    pub(in crate::editor) outcome: ConfirmOutcome,
 }
+
+/// What answering a confirm does, acted on in [`confirm_input`].
+#[derive(Clone, Copy)]
+pub(in crate::editor) enum ConfirmOutcome {
+    /// `Editor::reload_buffer_from_disk`.
+    Reload,
+    /// `Editor::decline_disk_change`.
+    DeclineDiskChange,
+    /// `Editor::restore_dump`.
+    RestoreDump,
+    /// `Editor::discard_dump`.
+    DiscardDump,
+    /// `Editor::keep_dump`.
+    KeepDump,
+}
+
+const RELOAD_CHOICES: &[ConfirmChoice] = &[
+    ConfirmChoice {
+        key: 'r',
+        label: "reload",
+        outcome: ConfirmOutcome::Reload,
+    },
+    ConfirmChoice {
+        key: 'k',
+        label: "keep",
+        outcome: ConfirmOutcome::DeclineDiskChange,
+    },
+];
+
+const RESTORE_DUMP_CHOICES: &[ConfirmChoice] = &[
+    ConfirmChoice {
+        key: 'r',
+        label: "restore",
+        outcome: ConfirmOutcome::RestoreDump,
+    },
+    ConfirmChoice {
+        key: 'd',
+        label: "discard",
+        outcome: ConfirmOutcome::DiscardDump,
+    },
+    ConfirmChoice {
+        key: 'k',
+        label: "keep",
+        outcome: ConfirmOutcome::KeepDump,
+    },
+];
 
 /// What the confirm is about; [`confirm_input`] maps each variant's choices
 /// to what they do.
@@ -36,6 +83,32 @@ pub(in crate::editor) enum ConfirmAction {
     RestoreDump(BufferId),
 }
 
+impl ConfirmAction {
+    /// The buffer this action acts on.
+    pub(in crate::editor) fn buffer(&self) -> BufferId {
+        match *self {
+            Self::ReloadBuffer(bid) | Self::RestoreDump(bid) => bid,
+        }
+    }
+
+    /// The keys this action offers, in display order.
+    pub(in crate::editor) fn choices(&self) -> &'static [ConfirmChoice] {
+        match self {
+            Self::ReloadBuffer(_) => RELOAD_CHOICES,
+            Self::RestoreDump(_) => RESTORE_DUMP_CHOICES,
+        }
+    }
+
+    /// What `Esc` answers. `None` dismisses without answering, leaving the
+    /// question open for the next buffer-enter.
+    fn on_escape(&self) -> Option<ConfirmOutcome> {
+        match self {
+            Self::ReloadBuffer(_) => None,
+            Self::RestoreDump(_) => Some(ConfirmOutcome::KeepDump),
+        }
+    }
+}
+
 /// A reusable native yes/no confirmation overlay, rendered in the
 /// statusline row.
 ///
@@ -45,9 +118,8 @@ pub(in crate::editor) enum ConfirmAction {
 /// Editor` and no round-trip through the scripting VM. It exists for
 /// editor-internal questions: a disk-change reload and a crash-dump restore.
 ///
-/// Each `action` variant owns its choices: [`confirm_input`] maps the index of
-/// the pressed choice to that variant's outcome, and decides what `Esc`
-/// means. `Esc` and any listed choice's key are *consumed*; any other stray
+/// Each `action` variant owns its choices ([`ConfirmAction::choices`]), each
+/// carrying its own outcome, and decides what `Esc` means. `Esc` and any listed choice's key are *consumed*; any other stray
 /// key dismisses without answering but is left to fall through to normal
 /// dispatch ([`confirm_input`]) rather than being swallowed. No separate
 /// view type: [`ConfirmLayer::render_line`] is painted directly by
@@ -57,7 +129,6 @@ pub(in crate::editor) enum ConfirmAction {
 /// descendant of it.
 pub(crate) struct ConfirmLayer {
     pub(in crate::editor) prompt: String,
-    pub(in crate::editor) choices: Vec<ConfirmChoice>,
     pub(in crate::editor) action: ConfirmAction,
 }
 
@@ -70,16 +141,14 @@ impl ConfirmLayer {
     /// variant this module gains is forced to decide here rather than
     /// defaulting to "unaffected".
     pub(in crate::editor) fn targets_buffer(&self, id: BufferId) -> bool {
-        match self.action {
-            ConfirmAction::ReloadBuffer(bid) | ConfirmAction::RestoreDump(bid) => bid == id,
-        }
+        self.action.buffer() == id
     }
 
     /// The line to paint in the statusline row: prompt text followed by
     /// each choice as `[key]label`.
     pub(crate) fn render_line(&self) -> String {
         let mut out = self.prompt.clone();
-        for choice in &self.choices {
+        for choice in self.action.choices() {
             out.push_str("  [");
             out.push(choice.key);
             out.push(']');
@@ -167,12 +236,11 @@ impl EditorState {
 /// Handles one input event while a native confirm overlay ([`ConfirmLayer`])
 /// is open. Every key retires the layer, matched or not.
 ///
-/// For `ReloadBuffer`, an unmodified `choices[0]` key reloads and an
-/// unmodified `choices[1]` key ("keep") records a decline via
+/// An unmodified key listed in the action's [`ConfirmAction::choices`] runs
+/// that choice's outcome. Keeping a changed file records a decline via
 /// `Editor::decline_disk_change` so `check_buffer_disk_state` doesn't ask
-/// again for the same on-disk signature. For `RestoreDump`, `choices[0]`,
-/// `[1]` and `[2]` restore, discard and keep the dump, and `Esc` also keeps
-/// it, so the prompt does not return this session.
+/// again for the same on-disk signature. `Esc` on `RestoreDump` also keeps
+/// the dump, so the prompt does not return this session.
 /// Modified keys never match: `Ctrl-k` targets its own binding, not `k`. Any
 /// other key, and `Esc` on `ReloadBuffer`, dismisses without answering,
 /// leaving the question open for the next `BufferEnter`. `Esc` is consumed;
@@ -200,31 +268,36 @@ pub(in crate::editor) fn confirm_input(ed: &mut Editor, r: LayerRef, ev: InputEv
     };
     let confirm = *ed.state.take_layer::<ConfirmLayer>(&ed.view, r);
 
-    let matched = (key.modifiers == Modifiers::NONE)
+    let pressed = (key.modifiers == Modifiers::NONE)
         .then(|| {
             confirm
-                .choices
+                .action
+                .choices()
                 .iter()
-                .position(|c| key.code == KeyCode::Char(c.key))
+                .find(|c| key.code == KeyCode::Char(c.key))
+                .map(|c| c.outcome)
         })
         .flatten();
+    let escaped = key.code == KeyCode::Escape;
 
-    match confirm.action {
-        ConfirmAction::ReloadBuffer(bid) => match matched {
-            Some(0) => ed.reload_buffer_from_disk(bid),
-            Some(1) => ed.decline_disk_change(bid),
-            _ => {}
-        },
-        ConfirmAction::RestoreDump(bid) => match matched {
-            Some(0) => ed.restore_dump(bid),
-            Some(1) => ed.discard_dump(bid),
-            Some(2) => ed.keep_dump(bid),
-            _ if key.code == KeyCode::Escape => ed.keep_dump(bid),
-            _ => {}
-        },
+    let bid = confirm.action.buffer();
+    let outcome = pressed.or_else(|| {
+        if escaped {
+            confirm.action.on_escape()
+        } else {
+            None
+        }
+    });
+    match outcome {
+        Some(ConfirmOutcome::Reload) => ed.reload_buffer_from_disk(bid),
+        Some(ConfirmOutcome::DeclineDiskChange) => ed.decline_disk_change(bid),
+        Some(ConfirmOutcome::RestoreDump) => ed.restore_dump(bid),
+        Some(ConfirmOutcome::DiscardDump) => ed.discard_dump(bid),
+        Some(ConfirmOutcome::KeepDump) => ed.keep_dump(bid),
+        None => {}
     }
 
-    if matched.is_none() && key.code != KeyCode::Escape {
+    if pressed.is_none() && !escaped {
         ed.fall_through(r, InputEvent::Key(key));
     }
 }

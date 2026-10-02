@@ -11,16 +11,6 @@ fn dummy_bid() -> BufferId {
 fn render_line_lists_prompt_then_each_choice_bracketed() {
     let model = ConfirmLayer {
         prompt: "foo.rs has changed on disk.".to_string(),
-        choices: vec![
-            ConfirmChoice {
-                key: 'r',
-                label: "reload",
-            },
-            ConfirmChoice {
-                key: 'k',
-                label: "keep",
-            },
-        ],
         action: ConfirmAction::ReloadBuffer(dummy_bid()),
     };
     insta::assert_snapshot!(
@@ -30,25 +20,11 @@ fn render_line_lists_prompt_then_each_choice_bracketed() {
 }
 
 #[test]
-fn render_line_with_a_single_choice_has_no_trailing_separator() {
-    let model = ConfirmLayer {
-        prompt: "proceed?".to_string(),
-        choices: vec![ConfirmChoice {
-            key: 'y',
-            label: "yes",
-        }],
-        action: ConfirmAction::ReloadBuffer(dummy_bid()),
-    };
-    insta::assert_snapshot!(model.render_line(), @"proceed?  [y]yes");
-}
-
-#[test]
 fn a_restore_confirm_targets_only_its_own_buffer() {
     let mut sm: slotmap::SlotMap<BufferId, ()> = slotmap::SlotMap::with_key();
     let (own, other) = (sm.insert(()), sm.insert(()));
     let model = ConfirmLayer {
         prompt: String::new(),
-        choices: Vec::new(),
         action: ConfirmAction::RestoreDump(own),
     };
 
