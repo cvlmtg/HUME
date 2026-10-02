@@ -46,9 +46,9 @@ pub(in crate::editor) enum ConfirmAction {
 /// editor-internal questions: a disk-change reload and a crash-dump restore.
 ///
 /// Each `action` variant owns its choices: [`confirm_input`] maps the index of
-/// the pressed choice to that variant's outcome. `Esc` and any listed
-/// choice's key are *consumed*; any other stray key also dismisses without
-/// answering but is left to fall through to normal
+/// the pressed choice to that variant's outcome, and decides what `Esc`
+/// means. `Esc` and any listed choice's key are *consumed*; any other stray
+/// key dismisses without answering but is left to fall through to normal
 /// dispatch ([`confirm_input`]) rather than being swallowed. No separate
 /// view type: [`ConfirmLayer::render_line`] is painted directly by
 /// `hume-editor`'s statusline, so `pub(crate)`, not `pub(in crate::editor)`
@@ -167,13 +167,16 @@ impl EditorState {
 /// Handles one input event while a native confirm overlay ([`ConfirmLayer`])
 /// is open. Every key retires the layer, matched or not.
 ///
-/// An unmodified `choices[0]` key runs `action`; an unmodified `choices[1]` key
-/// ("keep") records a decline via `Editor::decline_disk_change` so
-/// `check_buffer_disk_state` doesn't ask again for the same on-disk signature.
+/// For `ReloadBuffer`, an unmodified `choices[0]` key reloads and an
+/// unmodified `choices[1]` key ("keep") records a decline via
+/// `Editor::decline_disk_change` so `check_buffer_disk_state` doesn't ask
+/// again for the same on-disk signature. For `RestoreDump`, `choices[0]`,
+/// `[1]` and `[2]` restore, discard and keep the dump, and `Esc` also keeps
+/// it, so the prompt does not return this session.
 /// Modified keys never match: `Ctrl-k` targets its own binding, not `k`. Any
-/// other key dismisses without answering, leaving the question open for the
-/// next `BufferEnter`. `Esc` is consumed; other keys fall through so an
-/// unnoticed prompt never eats a keystroke.
+/// other key, and `Esc` on `ReloadBuffer`, dismisses without answering,
+/// leaving the question open for the next `BufferEnter`. `Esc` is consumed;
+/// other keys fall through so an unnoticed prompt never eats a keystroke.
 ///
 /// A fresh mouse press or wheel notch also dismisses and falls through. A
 /// release, drag, or move (see [`is_fresh_gesture`]) falls through and leaves
