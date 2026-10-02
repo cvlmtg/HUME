@@ -59,11 +59,11 @@ Helix and Mason, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 - `lsp-install/target-row` (`blocker.scm`) returns the server's `requirements.scm` row for this
   platform, or `#f`.
 - `lsp-install/package-installers` (`install.scm`) holds one `(kind installer env-dirs)` row per
-  package manager; an installer takes `(name fields dir)`.
+  package manager; an installer takes `(name fields row dir)`, where `row` is the server's `target-row`.
 - `lsp-install/download-row` (`install.scm`) returns this platform's download as
   `(asset url sha bin)`.
 - `lsp-install/run-install!` (`install.scm`) installs a server into its directory and returns
-  the binary's path inside it.
+  `(bin-rel . env-dirs)`: the binary's path inside it and the receipt's `env-dirs`.
 
 ## Catalogs
 

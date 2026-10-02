@@ -7,6 +7,4 @@
 (define lsp-install/sources (lsp-install/index-entries (lsp-install/read-data "sources.scm")))
 
 (define (lsp-install/source name)
-  (if (hash-contains? lsp-install/sources name)
-      (hash-ref lsp-install/sources name)
-      #f))
+  (lsp-install/lookup lsp-install/sources name))

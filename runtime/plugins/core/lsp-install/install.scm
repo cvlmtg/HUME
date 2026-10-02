@@ -49,13 +49,13 @@
                             ": expected binary not found after " who " install: " bin-rel)))
     bin-rel))
 
-(define (lsp-install/install-npm! name fields dir)
+(define (lsp-install/install-npm! name fields row dir)
   (run-inline-output! (if lsp-install/windows? "npm.cmd" "npm")
                       (append (list "install" "--ignore-scripts" "--prefix" dir "--")
                               (lsp-install/ref fields 'packages)))
   (lsp-install/managed-bin! "npm" name dir "node_modules/.bin" (lsp-install/ref fields 'bin) ".cmd"))
 
-(define (lsp-install/install-cargo! name fields dir)
+(define (lsp-install/install-cargo! name fields row dir)
   (let ((crate   (lsp-install/ref fields 'crate))
         (version (lsp-install/ref fields 'version)))
     (run-inline-output! "cargo"
@@ -63,7 +63,7 @@
                               (string-append crate "@" version)))
     (lsp-install/managed-bin! "cargo" name dir "bin" (lsp-install/ref fields 'bin) ".exe")))
 
-(define (lsp-install/install-golang! name fields dir)
+(define (lsp-install/install-golang! name fields row dir)
   (let ((module  (lsp-install/ref fields 'module))
         (version (lsp-install/ref fields 'version)))
     (run-inline-output! "go"
@@ -71,12 +71,12 @@
                         #:env (list (cons "GOBIN" (path-join dir "bin"))))
     (lsp-install/managed-bin! "go" name dir "bin" (lsp-install/ref fields 'bin) ".exe")))
 
-(define (lsp-install/install-pypi! name fields dir)
+(define (lsp-install/install-pypi! name fields row dir)
   (let* ((package     (lsp-install/ref fields 'package))
          (extras      (lsp-install/ref fields 'extras))
          (version     (lsp-install/ref fields 'version))
          (windows?    lsp-install/windows?)
-         (python      (car (lsp-install/row-tools (lsp-install/target-row name))))
+         (python      (car (lsp-install/row-tools row)))
          (venv        (path-join dir "venv"))
          (venv-bin    (if windows? "venv/Scripts" "venv/bin"))
          (requirement (string-append package
@@ -90,14 +90,14 @@
                               "--" requirement))
     (lsp-install/managed-bin! "pip" name dir venv-bin (lsp-install/ref fields 'bin) ".exe")))
 
-(define (lsp-install/install-nuget! name fields dir)
+(define (lsp-install/install-nuget! name fields row dir)
   (run-inline-output! "dotnet"
                       (list "tool" "install" (lsp-install/ref fields 'package)
                             "--tool-path" (path-join dir "bin")
                             "--version" (lsp-install/ref fields 'version)))
   (lsp-install/managed-bin! "dotnet" name dir "bin" (lsp-install/ref fields 'bin) ".exe"))
 
-(define (lsp-install/install-gem! name fields dir)
+(define (lsp-install/install-gem! name fields row dir)
   (run-inline-output! (if lsp-install/windows? "gem.cmd" "gem")
                       (append (list "install" "--no-document" "--install-dir" dir
                                     "--bindir" (path-join dir "bin"))
@@ -131,21 +131,23 @@
               (list-ref target 2)
               (list-ref target 3)))))
 
-(define (lsp-install/run-install! name source dir)
-  (if (lsp-install/download-kind? source)
-      (let* ((download (lsp-install/download-row source))
-             (row      (lsp-install/target-row name)))
-        (lsp-install/install-download! name (list-ref download 1) (list-ref download 0)
-                                       (list-ref download 2) (list-ref download 3)
-                                       (lsp-install/row-fmt row)
-                                       (car (lsp-install/row-tools row)) dir))
-      ((cadr (assoc (lsp-install/ref source 'kind) lsp-install/package-installers))
-       name source dir)))
+(define (lsp-install/download-install! name source row dir)
+  (let ((download (lsp-install/download-row source)))
+    (cons (lsp-install/install-download! name (list-ref download 1) (list-ref download 0)
+                                         (list-ref download 2) (list-ref download 3)
+                                         (lsp-install/row-fmt row)
+                                         (car (lsp-install/row-tools row)) dir)
+          '())))
 
-(define (lsp-install/env-dirs source)
+(define (lsp-install/package-install! name source row dir)
+  (let ((installer (assoc (lsp-install/ref source 'kind) lsp-install/package-installers)))
+    (cons ((cadr installer) name source row dir)
+          (list-ref installer 2))))
+
+(define (lsp-install/run-install! name source row dir)
   (if (lsp-install/download-kind? source)
-      '()
-      (list-ref (assoc (lsp-install/ref source 'kind) lsp-install/package-installers) 2)))
+      (lsp-install/download-install! name source row dir)
+      (lsp-install/package-install! name source row dir)))
 
 (define (lsp-install/install-server! name)
   (let ((blocker (lsp-install/install-blocker name)))
@@ -156,9 +158,10 @@
           (dir           (lsp-install/server-dir name)))
       (lsp-install/unregister-server-languages! name)
       (call! "stdlib/delete-dir!" dir)
-      (let ((bin-rel (lsp-install/run-install! name source dir)))
+      (let* ((installed (lsp-install/run-install! name source (lsp-install/target-row name) dir))
+             (bin-rel   (car installed)))
         (lsp-install/write-receipt! name (lsp-install/ref source 'version)
-                                    bin-rel (lsp-install/env-dirs source))
+                                    bin-rel (cdr installed))
         (let ((cmd (lsp-install/ref server-fields 'command)))
           (when (which cmd)
             (log! 'info (string-append "LSP: " cmd " is also on $PATH — the managed install at "

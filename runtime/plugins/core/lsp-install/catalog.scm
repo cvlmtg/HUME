@@ -5,6 +5,7 @@
          lsp-install/read-data
          lsp-install/index-entries
          lsp-install/servers
+         lsp-install/lookup
          lsp-install/requirement
          lsp-install/lang->server)
 
@@ -29,10 +30,13 @@
 (define (lsp-install/ref fields key)
   (cdr (assoc key fields)))
 
-(define (lsp-install/requirement name)
-  (if (hash-contains? lsp-install/requirements name)
-      (hash-ref lsp-install/requirements name)
+(define (lsp-install/lookup table name)
+  (if (hash-contains? table name)
+      (hash-ref table name)
       #f))
+
+(define (lsp-install/requirement name)
+  (lsp-install/lookup lsp-install/requirements name))
 
 (define lsp-install/lang->server
   (let loop ((names (hash-keys->list lsp-install/servers)) (index (hash)))
