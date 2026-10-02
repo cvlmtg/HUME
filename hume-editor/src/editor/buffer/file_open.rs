@@ -264,24 +264,25 @@ impl Editor {
         // Flush any didChange already queued for this buffer *before* the
         // whole-document one below. Otherwise, under macro replay (an edit
         // followed by `:e!` in the same drain window), the server would see
-        // the full reloaded text at the new version first and the queued
-        // incremental change (computed against the pre-reload text, at an
+        // the full replacement text at the new version first and the queued
+        // incremental change (computed against the replaced text, at an
         // *older* version) after it: a version regression the server can't
         // recover from, permanently desyncing its copy of the document.
         self.flush_lsp_pending_changes();
-        // Everything below discards state computed against the pre-reload
+        // Everything below discards state computed against the replaced
         // text: diagnostics/decorations char offsets, and sends a
         // whole-document didChange at a fresh version. A no-op
-        // reload (`mutated == false`) never touched `self.text` or
+        // replacement (`mutated == false`) never touched `self.text` or
         // the text generation, so that state is still valid against the
         // unchanged content and is kept.
         if mutated {
-            // `reload_from_text` moved the text generation but produced no
-            // *queued incremental* change the LSP pending-queue mechanism can
-            // consume, so send the reload as a whole-document didChange instead.
+            // The replacement (a disk reload or a restored dump) moved the text
+            // generation but produced no *queued incremental* change the LSP
+            // pending-queue mechanism can consume, so send it as a
+            // whole-document didChange instead.
             self.lsp_did_change_whole_document(id);
             // Diagnostics and LSP-sourced decorations were computed against the
-            // pre-reload text; their char offsets are meaningless (and
+            // replaced text; their char offsets are meaningless (and
             // potentially out-of-bounds, e.g. after a shrink) against the new
             // content. The server republishes diagnostics shortly after seeing
             // the didChange above; nothing republishes decorations on its own,
