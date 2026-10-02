@@ -345,16 +345,6 @@ pub(crate) fn optional_json_arg(
     }
 }
 
-/// An opaque Steel value that may be `#f` (not passed). `#f` decodes as
-/// `None`; anything else is kept as given. Used by `%declare-plugin!`'s
-/// `config` argument, whose shape belongs to the plugin.
-pub(crate) fn optional_value_arg(val: SteelVal) -> Option<SteelVal> {
-    match val {
-        SteelVal::BoolV(false) => None,
-        other => Some(other),
-    }
-}
-
 /// A caught `with-handler` exception value that may be `#f` (no exception:
 /// the activation succeeded). `#f` decodes as `None`; anything else decodes
 /// as the `SteelErr` `with-handler` caught (`with-handler`'s lambda receives

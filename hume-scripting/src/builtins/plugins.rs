@@ -16,9 +16,7 @@ use crate::{
 };
 
 use super::SteelResult;
-use super::args::{
-    list_items, list_to_strings, optional_steel_error_arg, optional_value_arg, string_arg,
-};
+use super::args::{list_items, list_to_strings, optional_steel_error_arg, optional_string_arg};
 use super::dirs::ScriptDirs;
 use super::errors::generic_err;
 
@@ -224,12 +222,16 @@ pub(crate) fn declare_plugin(
 ) -> SteelResult {
     ensure_top_level(ctx, "declare-plugin!")?;
     let plugin_id = PluginId::parse(&name).map_err(generic_err)?;
-    if plugin_id.is_local() && optional_value_arg(entry.clone()).is_some() {
+    let entry_file = entry_file_arg(entry)?;
+    if plugin_id.is_local() && entry_file.is_some() {
         return Err(generic_err(format!(
             "declare-plugin!: '{name}' is a single file; #:entry applies to installed plugins"
         )));
     }
-    let entry_id = EntryId::new(plugin_id.clone(), entry_file_arg(entry)?);
+    let entry_id = EntryId::new(
+        plugin_id.clone(),
+        entry_file.unwrap_or_else(EntryFile::main),
+    );
 
     // A manifest.scm being evaluated by load-plugin! may only declare the
     // plugin it belongs to. Otherwise a manifest for "foo/bar" could declare
@@ -550,20 +552,22 @@ fn fail_plugin_activation(ctx: &mut SteelCtx, id: &EntryId) {
     ctx.host.commands().unregister_lazy_stubs_of(id);
 }
 
-/// Decodes an entry-file argument: `#f` names the main entry, a string names
-/// that file.
-fn entry_file_arg(entry: SteelVal) -> Result<EntryFile, SteelErr> {
-    match optional_value_arg(entry) {
-        None => Ok(EntryFile::main()),
-        Some(file) => EntryFile::parse(&string_arg(file, "plugin entry")?).map_err(generic_err),
-    }
+/// Decodes an entry-file argument: `#f` is `None` (the main entry by
+/// default), a string names that file.
+fn entry_file_arg(entry: SteelVal) -> Result<Option<EntryFile>, SteelErr> {
+    optional_string_arg(entry, "plugin entry")?
+        .map(|file| EntryFile::parse(&file).map_err(generic_err))
+        .transpose()
 }
 
 /// Parses the `(plugin entry-file)` pair every inline-activation primitive
 /// takes into the entry it names.
 fn entry_id_from_args(plugin: &str, entry: SteelVal) -> Result<EntryId, SteelErr> {
     let plugin = PluginId::parse(plugin).map_err(generic_err)?;
-    Ok(EntryId::new(plugin, entry_file_arg(entry)?))
+    Ok(EntryId::new(
+        plugin,
+        entry_file_arg(entry)?.unwrap_or_else(EntryFile::main),
+    ))
 }
 
 /// `(%begin-lazy-activation! plugin entry)`: Rust primitive for inline activation.
