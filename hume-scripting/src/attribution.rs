@@ -49,19 +49,10 @@ impl PluginId {
             return Ok(PluginId::Core(core_name.to_string()));
         }
         if let Some(rel) = name.strip_prefix("./") {
-            let mut segments = rel.split('/').peekable();
-            let mut last = "";
-            let mut safe = true;
-            while let Some(segment) = segments.next() {
-                safe &= hume_platform::path::is_safe_segment(segment);
-                if segments.peek().is_none() {
-                    last = segment;
-                }
-            }
-            let stem_ok = last
-                .strip_suffix(".scm")
-                .is_some_and(|stem| !stem.is_empty());
-            if !safe || !stem_ok {
+            let mut segments = rel.rsplit('/');
+            let last = segments.next().unwrap_or_default();
+            let safe = segments.all(hume_platform::path::is_safe_segment);
+            if !safe || EntryFile::parse(last).is_err() {
                 return Err(format!(
                     "invalid local plugin path '{name}': expected './<file>.scm' relative to \
                      init.scm's directory, with no '.' or '..' segments"
@@ -148,6 +139,13 @@ impl PartialEq for PluginId {
 
 impl Eq for PluginId {}
 
+/// Hashes `s` with ASCII case folded, consistent with `eq_ignore_ascii_case`.
+fn hash_folded<H: Hasher>(s: &str, state: &mut H) {
+    for c in s.chars() {
+        c.to_ascii_lowercase().hash(state);
+    }
+}
+
 /// Hash must be consistent with `PartialEq`: equal IDs → equal hashes.
 impl Hash for PluginId {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -156,27 +154,19 @@ impl Hash for PluginId {
         match self {
             PluginId::Core(name) => {
                 0u8.hash(state);
-                for c in name.chars() {
-                    c.to_ascii_lowercase().hash(state);
-                }
+                hash_folded(name, state);
             }
             PluginId::User { user, repo } => {
                 1u8.hash(state);
-                for c in user.chars() {
-                    c.to_ascii_lowercase().hash(state);
-                }
+                hash_folded(user, state);
                 // Separator so ("ab","c") and ("a","bc") hash differently.
                 // '/' cannot appear in a segment, so no legal id collides.
                 '/'.hash(state);
-                for c in repo.chars() {
-                    c.to_ascii_lowercase().hash(state);
-                }
+                hash_folded(repo, state);
             }
             PluginId::Local(path) => {
                 2u8.hash(state);
-                for c in path.chars() {
-                    c.to_ascii_lowercase().hash(state);
-                }
+                hash_folded(path, state);
             }
         }
     }
@@ -231,9 +221,7 @@ impl Eq for EntryFile {}
 
 impl Hash for EntryFile {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        for c in self.0.chars() {
-            c.to_ascii_lowercase().hash(state);
-        }
+        hash_folded(&self.0, state);
     }
 }
 
