@@ -3,92 +3,77 @@
 ## Unreleased
 
 ### Breaking changes
-- Every scripting function that changes something now ends in `!`: `declare-plugin`, `load-plugin`, `lsp-request`, `lsp-notify`, `after`, `unpack-gz`, and `unpack-zip` are renamed `declare-plugin!`, `load-plugin!`, `lsp-request!`, `lsp-notify!`, `after!`, `unpack-gz!`, and `unpack-zip!`. `core:stdlib`'s `stdlib/run`, `stdlib/write-file`, `stdlib/delete-file`, and `stdlib/delete-dir` are renamed `stdlib/run!`, `stdlib/write-file!`, `stdlib/delete-file!`, and `stdlib/delete-dir!`.
-- `buffer-cursor-line` and `offset->line` now return 0-based lines, like every other position in the scripting API.
-- The `on-mode-change` hook now passes the old and new modes as symbols (`'insert`), not strings.
-- `spawn-async!` and `run-capture!` (and `stdlib/run!`) take the working directory as an optional `#:cwd` keyword instead of a required positional argument: `(spawn-async! cmd args callback #:cwd dir)`, `(run-capture! cmd args #:cwd dir)`.
-- `buffer-selections` entries are opaque: read them with `core:stdlib`'s `stdlib/selection-anchor`, `-head`, `-start`, `-end` and `-primary?`. `stdlib/selection-start` and `stdlib/selection-end` are new; they give what the selection covers, end exclusive.
-- `show-popup!` and `show-menu!` return a token, and `close-popup!`, `close-menu!`, and `picker-close!` now require one, matching `show-drawer-list!`/`close-drawer!`: `(close-popup! token)`, `(close-menu! token)`, `(picker-close! token)`. A token for a widget that already closed or was replaced is a no-op.
-- Decoration entries are symbol-keyed hashmaps instead of positional lists: `set-signs!`/`set-eol-text!` take `(hash 'line l 'text t 'scope s)`, `set-extra-highlights!` and `set-virtual-lines!`'s `'segments` take `(hash 'start s 'end e 'scope sc)`, `set-line-backgrounds!` takes `(hash 'line l 'scope s)`, and `set-inlay-hints!` takes `(hash 'offset o 'text t 'side 'before)`.
-- `diagnostics-for-buffer` entries, `lsp-server-status` entries, and `lsp-request!`'s `err` use symbol keys: `(hash-ref d 'message)`, not `(hash-ref d "message")`. A diagnostic's `'severity` is a symbol (`'error`), and a server status's `'state` is a lowercase symbol (`'running`).
-- Builtins that returned a positional list or pair now return a symbol-keyed hashmap, and `goto-location!` and `diagnostics-for-buffer #:range` take one:
-  - `diagnostic-counts` returns `(hash 'errors n 'warnings n)`.
-  - `run-capture!` and `stdlib/run!` return `(hash 'stdout s 'stderr s 'exit code)`.
-  - `viewport-range`, `lsp-range->offsets`, and the `#:range` of `diagnostics-for-buffer` use `(hash 'start s 'end e)`.
-  - `diff-lines` and `diff-buffer-lines` hunks are `(hash 'old-start 'old-count 'new-start 'new-count 'old-lines 'new-lines)`. `diff-words` returns `(hash 'hunks … 'deadline-hit …)`, each hunk `(hash 'old-start 'old-end 'new-start 'new-end 'old-text 'new-text)`.
-  - `lsp-locations->display-parts` entries are `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b)`, where `'buffer` is the open buffer the location is in, or `#f` when the file is not open.
-  - `goto-location!` takes `(hash 'target t 'line l 'char-col c)` instead of `(list t l c)`.
+- Every scripting function with an effect now ends in `!`: `declare-plugin!`, `load-plugin!`, `lsp-request!`, `lsp-notify!`, `after!`, `stdlib/run!`, `stdlib/write-file!`, `stdlib/delete-file!`, `stdlib/delete-dir!`.
+- `buffer-cursor-line` and `offset->line` return 0-based lines.
+- `on-mode-change` passes the old and new modes as symbols (`'insert`).
+- `spawn-async!`, `run-capture!` and `stdlib/run!` take the working directory as an optional `#:cwd` keyword. `run-capture!` and `stdlib/run!` start their child in its own process group, so Ctrl-c during an inline-output command no longer reaches it.
+- `buffer-selections` entries are opaque: read them with `stdlib/selection-anchor`, `-head`, `-start`, `-end` and `-primary?`. `stdlib/selection-start` and `-end` are new.
+- `show-popup!`, `show-menu!` return a token, and `close-popup!`, `close-menu!`, `picker-close!` take it. A token for a closed or replaced widget is a no-op.
+- Decoration entries are symbol-keyed hashmaps: `set-signs!`, `set-eol-text!`, `set-extra-highlights!`, `set-virtual-lines!`, `set-line-backgrounds!` and `set-inlay-hints!` take `(hash 'line l 'text t 'scope s)` and the like.
+- Builtins that returned a positional list or pair return a symbol-keyed hashmap: `diagnostic-counts`, `run-capture!`, `stdlib/run!`, `viewport-range`, `lsp-range->offsets`, `diff-lines`, `diff-buffer-lines`, `diff-words`, `lsp-locations->display-parts`. `goto-location!` and the `#:range` of `diagnostics-for-buffer` take one.
+- `diagnostics-for-buffer` and `lsp-server-status` entries and `lsp-request!`'s `err` use symbol keys. A diagnostic's `'severity` and a server's `'state` are symbols.
 - Options renamed: `scrolloff` → `scroll-margin`, `autoread` → `auto-read`, `mouse-enabled` → `mouse`, `auto-pairs-enabled` → `auto-pairs`.
-- `configure-statusline!` rejects an empty element name inside a section (`'("Mode" "")`); it was skipped before.
-- Options that take one of a fixed set of names return that name as a symbol from `get-option`/`get-buffer-option` (`(equal? (get-option "tab-style") 'soft)`), and `set-option!`/`set-buffer-option!` accept a symbol as well as a string. This covers `tab-style`, `line-number-style`, `tabline`, `object-jump-align`, `cursor-shape-insert`, `whitespace-space`, `whitespace-tab`, `whitespace-newline`, and `lsp.diagnostics-severity-floor`. The `on-option-change` hook's `value` is the new value as `get-option` returns it (a bool, integer, symbol, or string) instead of the text `:set` was given.
-- `register-trigger-chars!` is renamed `set-hook-triggers!`, and `completion-set-trigger-chars!` is renamed `set-completion-triggers!`.
-- `language` is an ordinary buffer option: set it with `(set-buffer-option! pane "language" "rust")` and read it with `(get-buffer-option pane "language")`, which returns `""` when no language is set. `set-buffer-language!` and `buffer-language` are gone. Setting an unregistered language from a script now reports it, as `:set buffer language=` already did, and `""` clears the language instead of setting one named `""`. `on-language-set` passes `""`, not `#f`, when the language is cleared.
-- `on-lsp-notification` is now a hook: `(register-hook! 'on-lsp-notification (lambda (server method params) ...))`, called for every notification HUME doesn't handle itself, with the method as a new second argument. Like any hook, a plugin that fails to load has its handlers removed. To handle only specific methods, use `(register-lsp-notification-hook! '("method/a" "method/b") (lambda (server method params) ...))`; a single method can be passed as a plain string.
-- `:lsp-install`, `:lsp-uninstall`, `:lsp-servers` and `:lsp-rescan-servers` moved out of `core:lsp` into a new plugin, `core:lsp-install`. Add `(load-plugin! "core:lsp-install")` next to `core:lsp` in your `init.scm` to keep them; `core:lsp` alone no longer scans or registers installed servers. Server catalogs moved from `runtime/scheme/` into the plugin's own directory.
-- The bare `(declare-plugin! "core:x")` form is removed, and `declare-plugin!` no longer takes `#:config`. Use `(load-plugin! "core:x")` instead; plugin configuration goes there: `(load-plugin! "core:git-diff" #:config (hash "signs" #f))`. `load-plugin!` loads a plugin lazily when it ships a `manifest.scm` and keeps a plugin you already declared lazy.
-- The scripting functions `hume-target`, `sha256-file`, `unpack-gz!`, `unpack-zip!`, `unpack-tar!`, `mark-executable!`, `acquire-install-lock!` and `release-install-lock!` are removed; the installer now runs the system tools itself. `run-capture!` and `stdlib/run!` start their child in its own process group, so a Ctrl-c during an inline-output command no longer reaches it.
+- Options that take one of a fixed set of names return a symbol from `get-option`/`get-buffer-option`, and `set-option!` accepts a symbol or a string. The `on-option-change` hook's `value` is typed like `get-option`'s.
+- `configure-statusline!` rejects an empty element name.
+- `register-trigger-chars!` is now `set-hook-triggers!`, and `completion-set-trigger-chars!` is now `set-completion-triggers!`.
+- `language` is a buffer option: use `set-buffer-option!`/`get-buffer-option`. `set-buffer-language!` and `buffer-language` are gone. `""` clears the language, and `on-language-set` passes `""` instead of `#f`.
+- `on-lsp-notification` is a hook, called with `(server method params)`. `register-lsp-notification-hook!` handles only chosen methods.
+- `:lsp-install`, `:lsp-uninstall`, `:lsp-servers` and `:lsp-rescan-servers` moved to the new `core:lsp-install` plugin. Add `(load-plugin! "core:lsp-install")` to keep them.
+- The bare `(declare-plugin! "core:x")` form is removed, and `declare-plugin!` no longer takes `#:config`. Use `(load-plugin! "core:x" #:config …)`. A plugin that ships a `manifest.scm` loads lazily.
+- `hume-target`, `sha256-file`, `unpack-gz`, `unpack-zip`, `unpack-tar`, `mark-executable!`, `acquire-install-lock!` and `release-install-lock!` are removed.
 
 ### Plugins
-- `:plugin-status` also lists a plugin that is not installed (state `absent`) and a plugin whose `manifest.scm` failed before declaring anything (state `failed`). A plugin that is not installed is reported once in `:messages`, however many times `init.scm` names it.
-- `declare-plugin!` takes `#:entry`, the name of another `.scm` file in the plugin's directory with its own `#:commands`, `#:typed-commands`, `#:events` and `#:languages`, so a plugin can load in pieces. The plugin's `#:config`, passed to `load-plugin!`, is shared by every file.
-- `declare-plugin!` can name a local `./file.scm` beside `init.scm`, which then loads lazily on its `#:commands`, `#:typed-commands`, `#:events` or `#:languages`.
-- `(plugin-dir)` returns the directory holding the calling plugin's own files, so a plugin can read data files that ship with it wherever it was installed.
-- `set-eol-text!` takes `#:hide-on-insert-line`: with `#t`, its text is hidden on the cursor's line while you type in Insert mode.
-- `(hume-version)` returns the running editor's version as `(major minor patch commit)`, and `(hume-version>=? major minor patch)` checks it against a release. `(command-exists? name)` tells a plugin whether a command or built-in function is available, so it can use newer ones when present and fall back when not.
-- `register-completion-source!` takes `#:token-chars`, extra characters that belong to a `'buffer` source's token on top of the buffer's `word-chars`: `#:token-chars "-"` makes `foo-ba` one token for that source, so its `prefix` argument holds it, typing `-` keeps the menu open, and accepting an item replaces it.
-- `track-position!`, `tracked-position-params` and `untrack-position!` let a plugin remember a position in a buffer through edits and ask for the language-server request params for where it is now. `lsp-request!`'s `#:tracked` hands a request such a position, forgotten once the request is done with it unless its callback calls `keep-tracked-position!`.
-- `buffer-selections` reports each `'anchor` and `'head` as the start of a character (a base letter with its combining marks, an emoji sequence, or a flag counts as one).
-- `core:buffer-words` now indexes 100 lines on each side of the cursor per background step by default, instead of 200, halving the pause a step can cause in a file with very long lines.
+- `:plugin-status` also lists plugins that are not installed (`absent`) or whose `manifest.scm` failed (`failed`). An absent plugin is reported once in `:messages`.
+- `declare-plugin!` takes `#:entry` to load a plugin in pieces, and can name a local `./file.scm` beside `init.scm` to load it lazily.
+- New `(plugin-dir)` returns the calling plugin's directory.
+- New `(hume-version)`, `(hume-version>=? major minor patch)` and `(command-exists? name)` let a plugin adapt to the running editor.
+- `set-eol-text!` takes `#:hide-on-insert-line`.
+- `register-completion-source!` takes `#:token-chars` for extra token characters in a `'buffer` source.
+- New `track-position!`, `tracked-position-params`, `untrack-position!` and `lsp-request!`'s `#:tracked` keep a position through edits.
+- `run-inline-output!` takes `#:env`.
+- `core:buffer-words` indexes 100 lines on each side of the cursor per step, down from 200.
 
 ### Commands
-- `:e path:line[:col]` jumps to a position on open, matching `hume path:line:col` on the command line.
-- A selection never ends between a letter and its combining mark, or inside an emoji sequence or a flag: text objects, motions, edits, search matches, `:sort`, join, paste and undo all keep whole characters. This fixes `mi(`/`mi"` next to a delimiter that carries a mark, `J` over an indent that carries a mark, `:sort` dropping a trailing mark from its key, and argument objects after a comma that carries a mark.
-- Undoing a smart paste that repeated the selected text restores the selection it was made from, not a cursor at its edge.
-- Reloading a file from disk keeps the cursor of a pane that showed it and has since moved to another buffer inside the reloaded text when that pane comes back.
-- Cancelling a search or sift after a language server edited the buffer restores the selection on the same text it started on.
-- A mouse drag extends from the current selection's anchor, so a key that changes the selection mid-drag moves where the drag extends from.
-- Backward search starts from the last character of the selection as a whole, so a selection ending in a letter with combining marks behaves like one ending in a plain letter. The matching-bracket highlight covers the whole character holding the bracket.
-- `f`/`t`/`F`/`T` match a typed character against both its composed and decomposed forms (`é` finds `e` followed by a combining accent), and a typed `e` skips an accented one.
-- `:sort` treats composed and decomposed text as equal.
-- `G C` capitalizes with title case (`ǆ` becomes `ǅ`, `ﬁ` becomes `Fi`).
-- `#` matches tags whose names contain non-ASCII letters, and tags with a no-break space before the closing `>`.
-- No-break and ideographic spaces count as indentation for `g s`, `J`, auto-indent, and `>`/`<`, which rewrite such an indent with spaces or tabs.
-- `d` and `y` put in the register the text `d` removes. A selection ending on the file's last line break leaves that line break out, unless it covers whole lines. A cursor on the last line break of a line with text removes and copies nothing, and leaves the register as it was.
-- `>`/`<` in front of a line that starts with a combining mark, `J` after a line ending in a prepend character, and pasting an empty register entry beside another paste keep the cursor on whole characters in the right place.
-- Search highlights follow a paste while it can still be cycled with `[`/`]`.
-- A yank remembers whether it took whole lines. A selection of whole lines pastes as lines and any other selection pastes inline, so `bc` plus its line break yanked from mid-line pastes inline. Text from the system clipboard or a script counts as lines when it ends with a newline.
-- With several cursors, `d`, Backspace, `Ctrl-w` and pair deletion remove the union of what each cursor would remove when their ranges overlap, so two cursors in one word or sharing a quote leave nothing behind. `d` on the last two lines leaves no blank line. Two cursors on one blank auto-indented line each open their own indented line on Enter. `J` with several selections on one line joins it once.
-- Pasting lines over a selection adds a line break in front only when the selection does not start its line, and a paste of text followed by a paste of lines over the range next to it are separated by a line break.
-- Surrounding a selection that ends on a line break closes before the break. `Tab` with several cursors, after a selection that spans lines, moves each to its own tab stop. Copying a selection to the next or previous line keeps a copied whole line whole. `:sort` keeps a whole-line selection whole.
-- A `d` that removes nothing no longer leaves a `"<register>` prefix armed, and a `c` that removes nothing no longer adds an empty entry to the kill ring.
-- `mii` selects the last insertion after other edits to the buffer, including a format on save.
-- Confirming a search records the position it started from in the pane the search started in, even if a click moved focus while it was open.
-- Leaving Insert by a jump that trims auto-indent (`goto-location!`, `:bnext`, `:e path:line`) records the right position in the jump list, and any jump from Insert ends the typed-text selection Esc would otherwise make.
-- A selection that ends on a line break no longer covers virtual text at the end of that line.
-- A script or timer that closes a pane while a search or sift is open in it ends that search or sift, instead of crashing on the next key.
-- `X` on a cursor at the start of a line selects that line instead of the one above, and `x` on a cursor on a line break selects that line instead of the one below.
-- `t`/`T` with a count stop against the counted match (`2ta` lands before the second `a`), and `=`/`-` after `t`/`T` go on to the next match instead of staying against the one they stopped at.
+- `:e path:line[:col]` jumps to a position on open.
+- Selections never split a character: text objects, motions, edits, search, `:sort`, join, paste and undo keep a letter with its combining marks, emoji sequences and flags whole.
+- `f`/`t`/`F`/`T` match composed and decomposed forms alike, and `:sort` treats them as equal.
+- `G C` capitalizes with title case.
+- `#` matches tags with non-ASCII names.
+- No-break and ideographic spaces count as indentation.
+- A yank remembers whether it took whole lines, and pastes as lines or inline to match. Clipboard text counts as lines when it ends with a newline.
+- `d` and `y` leave the file's last line break out of the register unless the selection covers whole lines. `d` or `c` that removes nothing leaves the register and kill ring alone.
+- With several cursors, `d`, Backspace, `Ctrl-w` and pair deletion remove the union of overlapping ranges, and `J` joins a line once.
+- Pasting lines over a selection adds a line break in front only when the selection does not start its line.
+- `Tab` with several cursors moves each to its own tab stop, and copying a selection to the next or previous line keeps whole lines whole.
+- `t`/`T` with a count stop against the counted match, and `=`/`-` after them move on to the next one.
+- `X` and `x` select the cursor's own line.
+- `mii` selects the last insertion after other edits.
+- Search highlights follow a paste while it can still be cycled.
+- Jumps from Insert mode record the right jump-list position and end the typed-text selection.
+- A mouse drag extends from the selection's current anchor.
+- Closing a pane that has a search or sift open ends it instead of crashing.
+- Cancelling a search after a language server edited the buffer restores the original selection.
+- A selection ending on a line break no longer covers virtual text at the end of that line.
 
 ### Editing
-- If HUME panics, is stopped by a signal, or loses its terminal, unsaved changes are written to `<file>.dump` next to each file (unsaved scratch buffers, and files whose folder can't be written to, go to the `dumps` folder of HUME's data directory), and opening a file that has one asks whether to restore it, discard it, or keep it. See "Crash recovery" in the manual.
-- A crash in a background thread (syntax highlighting, a language server connection) leaves the terminal as it was while HUME keeps running. It shows as an error in `:messages` and is printed after you quit.
-- Text typed in Insert mode counts as unsaved before you leave Insert mode: the `[+]` indicator, the tab marker, `:ls`, and `buffer-dirty?` show it, and `:q`, `:qa`, `:bd`, and `:e` refuse to drop it.
-- Yanks reach your clipboard over SSH and wherever no clipboard server is available: HUME asks the terminal to set it (OSC 52), when the terminal supports and allows that. `p` then pastes what HUME last yanked.
-- Typing a quote right after the same quote no longer opens a new pair, so ```` ``` ```` and `"""` come out as typed with auto-pairs on, with no stray closing quote.
+- If HUME panics, is stopped by a signal, or loses its terminal, unsaved changes are written to `<file>.dump` (or the `dumps` folder of HUME's data directory), and opening such a file asks whether to restore, discard or keep it. See "Crash recovery" in the manual.
+- A crash in a background thread leaves the terminal intact. It shows in `:messages` and is printed after you quit.
+- Text typed in Insert mode counts as unsaved at once: `[+]`, the tab marker, `:ls` and `buffer-dirty?` show it, and `:q`, `:qa`, `:bd` and `:e` refuse to drop it.
+- Yanks reach the clipboard over SSH through OSC 52 when the terminal allows it.
+- Typing a quote right after the same quote no longer opens a pair, so ```` ``` ```` and `"""` come out as typed.
 
 ### Language servers
-- `:lsp-install` installs many more servers: those distributed as tar archives or a single binary (lua-language-server, marksman, zls, texlab, tinymist, …), terraform-ls and jdtls, and servers installed through `go` (gopls), `pip` (ty, pylsp, …), `gem` (ruby-lsp) or `dotnet` (the C# and F# servers). Each needs its tool on your `$PATH`; see [Installing servers](user-manual/docs/lsp.md#installing-servers).
-- `:lsp-install` says "not supported on this platform" for a server that doesn't support your operating system.
-- `unpack-tar!` and `mark-executable!` are new scripting functions, and `run-inline-output!` takes an `#:env` keyword.
-- Diagnostics are hidden on the line you are typing on in Insert mode, both the underline and the end-of-line summary. `lsp.diagnostics-on-insert-line` set to `#t` keeps them showing.
-- `on-viewport-change` fires when the lines a pane shows change, including when an edit adds or removes lines in a buffer shorter than the pane. A resize or scroll that leaves the shown lines the same no longer fires it.
-- Completion items are filtered against the text their own edit range covers, and a list's default edit range is honored. A server whose completions replace more than the word before the cursor (`foo.ba`, `$ba`) keeps its items while you type, and accepting replaces that range. Such items need a `filterText` that includes the covered text, as the protocol expects.
-- The completion menu stays open when text elsewhere in the buffer changes (a script's edit, an auto-format) and still accepts at the cursor. It closes as soon as a character outside the completed word is typed, including right after the menu opens on nothing (a `(` typed after `.`); before, it stayed open with no matches.
-- The list `z r` (and a goto with several matches) opens follows your edits. When the number of lines in a file it lists changes, HUME asks the language server again about the same symbol once you pause typing, wherever your cursor is, and replaces the rows, so `Enter` lands on the right line. If nothing is found any more the list closes with a message.
+- `:lsp-install` supports many more servers: tar archives and single binaries, terraform-ls, jdtls, and servers installed through `go`, `pip`, `gem` or `dotnet`. See [Installing servers](user-manual/docs/lsp.md#installing-servers).
+- `:lsp-install` says so when a server doesn't support your platform.
+- Diagnostics are hidden on the line you are typing on in Insert mode. `lsp.diagnostics-on-insert-line` keeps them.
+- `on-viewport-change` fires when the lines a pane shows change, not on a resize or scroll that shows the same lines.
+- Completion items are filtered against the text their own edit range covers, a list's default edit range is honored, and accepting replaces that range.
+- The completion menu stays open when text elsewhere changes, and closes once a character outside the completed word is typed.
+- The `z r` list follows your edits: when a listed file's line count changes, HUME re-asks the server once you pause, so `Enter` lands on the right line.
 
 ### Theming
-- `gruvbox_light`'s picker cursor now matches upstream's reversed style, instead of the parent theme's explicit colors.
-- A reversed cursor stays visible when it lands on an indent guide.
+- `gruvbox_light`'s picker cursor matches upstream's reversed style.
+- A reversed cursor stays visible on an indent guide.
 
 ## [0.13.0] - 2026-09-28
 
