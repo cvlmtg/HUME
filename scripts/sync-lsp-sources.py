@@ -314,26 +314,22 @@ def load_sha256_cache(path: Path) -> dict[str, str]:
 
     cache: dict[str, str] = {}
     for rec in data:
-        fields = {str(f[0]): f[1] for f in rec[1:] if isinstance(f, tuple)}
+        fields = fields_of(rec)
         kind = fields.get("kind")
-        if kind not in ("github", "generic"):
+        if kind not in DOWNLOAD_KINDS:
             continue
         repo = fields.get("repo")
         version = fields.get("version")
-        targets_entry = next(
-            (f for f in rec[1:] if isinstance(f, list) and f and str(f[0]) == "targets"),
-            None,
-        )
-        if not targets_entry or (kind == "github" and not (repo and version)):
+        targets = fields.get("targets")
+        if not targets or (kind == "github" and not (repo and version)):
             continue
-        for target_row in targets_entry[1:]:
-            if kind == "github" and len(target_row) == 4:
-                _hume_target, asset_file, sha256, _bin_path = target_row
-                url = f"https://github.com/{repo}/releases/download/{version}/{asset_file}"
-            elif kind == "generic" and len(target_row) == 5:
-                _hume_target, _asset_file, url, sha256, _bin_path = target_row
-            else:
+        for row in targets:
+            parts = download_target(kind, row)
+            if parts is None:
                 continue
+            asset_file, url, sha256, _bin_path = parts
+            if url is None:
+                url = f"https://github.com/{repo}/releases/download/{version}/{asset_file}"
             cache[url] = sha256
     return cache
 
@@ -777,6 +773,19 @@ def download_tools(fmt: str, target: str, asset_file: str) -> list[str]:
     return tools
 
 
+def download_target(kind: str, row: list) -> tuple | None:
+    """A download target row as `(asset, url, sha256, bin)`, `url` being None
+    for a github row (derived from its repo and version); None for a row of
+    any other shape."""
+    if kind == "github" and len(row) == 4:
+        _target, asset, sha256, bin_path = row
+        return asset, None, sha256, bin_path
+    if kind == "generic" and len(row) == 5:
+        _target, asset, url, sha256, bin_path = row
+        return asset, url, sha256, bin_path
+    return None
+
+
 def fields_of(record: list) -> dict:
     """A record's `(key . value)` and `(key item ...)` fields by key."""
     fields = {}
@@ -798,7 +807,7 @@ def grouped_rows(per_target: dict[str, tuple]) -> list[str]:
     rows = []
     for (fmt, tools), targets in groups.items():
         covered = ALL_TARGETS if tuple(targets) == HUME_TARGETS else "(" + " ".join(targets) + ")"
-        rows.append(f"({covered} {fmt} {' '.join(scheme_str(t) for t in tools)})")
+        rows.append(f"({covered} {fmt} {scheme_str_list(tools)})")
     return rows
 
 
@@ -806,12 +815,10 @@ def download_rows(name: str, kind: str, targets: list) -> list[str]:
     by_target = {}
     for row in targets:
         target = str(row[0])
-        if kind == "github" and len(row) == 4:
-            asset, bin_path = row[1], row[3]
-        elif kind == "generic" and len(row) == 5:
-            asset, bin_path = row[1], row[4]
-        else:
+        parts = download_target(kind, row)
+        if parts is None:
             sys.exit(f"error: {name}: unexpected {kind} target row {row!r}")
+        asset, _url, _sha256, bin_path = parts
         fmt = asset_format(asset, bin_path)
         if fmt is None:
             sys.exit(f"error: {name} [{target}]: {asset} is not an installable download")
