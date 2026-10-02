@@ -332,7 +332,12 @@ pub(in crate::editor) fn apply_doc_history_walk(
     active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
-    walk: impl FnOnce(&mut Buffer, BufferId, &mut PositionStores<'_>, PaneId) -> HistoryWalkResult,
+    walk: impl FnOnce(
+        &mut Buffer,
+        BufferId,
+        &mut PositionStores<'_>,
+        PaneId,
+    ) -> Result<HistoryWalkResult, CommandError>,
 ) -> Result<HistoryWalk, CommandError> {
     if buffers.get(buf_id).is_read_only() {
         return Ok(HistoryWalk::RefusedReadOnly);
@@ -353,7 +358,8 @@ pub(in crate::editor) fn apply_doc_history_walk(
         commit_paste_group(buffers, stores.panes, active_session);
     }
     let text_pre = buffers.get(buf_id).text().clone();
-    let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), buf_id, stores, pane_id) else {
+    let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), buf_id, stores, pane_id)?
+    else {
         return Ok(HistoryWalk::Took(0));
     };
     finish_edit(

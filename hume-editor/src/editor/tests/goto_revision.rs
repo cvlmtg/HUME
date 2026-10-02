@@ -21,7 +21,7 @@ fn undo_through_funnel(
         &mut ed.state.active_session,
         pane,
         buffer,
-        |b, id, stores, acting| b.undo_n(id, stores, acting, 1),
+        |b, id, stores, acting| Ok(b.undo_n(id, stores, acting, 1)),
     )
 }
 
@@ -314,4 +314,41 @@ fn goto_revision_host_acts_on_the_given_pane_not_focus() {
         "abcd-[e]>f\n",
         "the focused pane's cursor is mapped"
     );
+}
+
+#[test]
+fn goto_revision_on_read_only_buffer_refuses_before_resolving_the_id() {
+    let mut ed = editor_from("-[h]>ello\n");
+    two_branches(&mut ed);
+    ed.doc_mut().read_only = true;
+
+    let walk = goto(&mut ed, 999).expect("a refusal is not an error");
+
+    assert_eq!(walk, doc_ops::HistoryWalk::RefusedReadOnly);
+}
+
+#[test]
+fn goto_revision_errors_when_the_paste_commit_evicts_the_target() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let br = two_branches(&mut ed);
+    ed.doc_mut().set_undo_levels(2);
+    ed.feed_key(key('y'));
+    ed.feed_key(key('p'));
+    let (pane, buffer) = (ed.state.focus.id(), ed.focused_buffer_id());
+    assert!(
+        ed.state
+            .active_session
+            .as_ref()
+            .is_some_and(|s| s.is_paste_at(pane, buffer)),
+        "setup: `p` leaves a paste session open"
+    );
+    let before = ed.doc().text().to_string();
+
+    let walk = goto(&mut ed, br.a.1);
+
+    assert!(
+        walk.is_err(),
+        "the paste commit evicts branch a, so the jump has no target: {walk:?}"
+    );
+    assert_eq!(ed.doc().text().to_string(), before);
 }

@@ -194,7 +194,12 @@ fn walk_history(
     state: &mut EditorState,
     view: &EngineView,
     t: CommandPane,
-    walk: impl FnOnce(&mut Buffer, BufferId, &mut PositionStores<'_>, PaneId) -> HistoryWalkResult,
+    walk: impl FnOnce(
+        &mut Buffer,
+        BufferId,
+        &mut PositionStores<'_>,
+        PaneId,
+    ) -> Result<HistoryWalkResult, CommandError>,
 ) -> Result<doc_ops::HistoryWalk, CommandError> {
     let buf = t.bid(view);
     doc_ops::apply_doc_history_walk(
@@ -224,7 +229,7 @@ fn history_step(
     exhausted_msg: &str,
 ) -> Result<(), CommandError> {
     let result = walk_history(state, view, t, |b, id, stores, pane| {
-        walk(b, id, stores, pane, count)
+        Ok(walk(b, id, stores, pane, count))
     })?;
     // `RefusedReadOnly` stays a distinct arm rather than folding into
     // `Took(0)`. See `HistoryWalk`'s own doc for why.
@@ -237,20 +242,21 @@ fn history_step(
 }
 
 /// Jump `t`'s buffer to revision `n` of its undo history, across branches,
-/// as one composed transform. `Err` when the buffer has no revision `n`;
-/// otherwise the walk's own result, so a caller can tell a read-only refusal
-/// from a jump to the revision it is already on (`Took(0)`).
+/// as one composed transform. `Err` when the buffer has no revision `n` once
+/// the walk's session handling has run; otherwise the walk's own result, so a
+/// caller can tell a read-only refusal from a jump to the revision it is
+/// already on (`Took(0)`).
 pub(in crate::editor) fn goto_revision(
     state: &mut EditorState,
     view: &EngineView,
     t: CommandPane,
     n: usize,
 ) -> Result<doc_ops::HistoryWalk, CommandError> {
-    let target = doc(state, view, t).revision(n).ok_or_else(|| {
-        CommandError::transient(format!("no revision {n} in this buffer's undo history"))
-    })?;
     walk_history(state, view, t, |b, id, stores, pane| {
-        b.goto_revision(id, stores, pane, target)
+        let target = b.revision(n).ok_or_else(|| {
+            CommandError::transient(format!("no revision {n} in this buffer's undo history"))
+        })?;
+        Ok(b.goto_revision(id, stores, pane, target))
     })
 }
 

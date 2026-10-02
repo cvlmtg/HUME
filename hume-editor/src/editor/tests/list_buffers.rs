@@ -386,7 +386,7 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
         &mut ed.state.active_session,
         focused,
         bid,
-        |b, id, stores, pane| b.undo_n(id, stores, pane, 1),
+        |b, id, stores, pane| Ok(b.undo_n(id, stores, pane, 1)),
     )
     .unwrap();
     assert_eq!(
