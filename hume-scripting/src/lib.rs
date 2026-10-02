@@ -574,23 +574,13 @@ impl ScriptingHost {
         builtin_names: rustc_hash::FxHashSet<String>,
     ) -> Result<Vec<Effect>, EvalError> {
         self.dirs.init_dir = path.parent().map(Path::to_path_buf);
-        self.eval_file(path, budget_ms, host, builtin_names)
+        self.eval_runtime(path, budget_ms, host, builtin_names)
     }
 
     /// Evaluate a bundled runtime Scheme file at `path` with `eval_init`'s
     /// contract, except that it leaves the local-plugin directory unset: only
     /// the user's `init.scm` resolves `./file.scm` plugins.
     pub fn eval_runtime(
-        &mut self,
-        path: &Path,
-        budget_ms: u64,
-        host: &mut dyn EditorHost,
-        builtin_names: rustc_hash::FxHashSet<String>,
-    ) -> Result<Vec<Effect>, EvalError> {
-        self.eval_file(path, budget_ms, host, builtin_names)
-    }
-
-    fn eval_file(
         &mut self,
         path: &Path,
         budget_ms: u64,
