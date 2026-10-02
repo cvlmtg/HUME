@@ -10,7 +10,7 @@
 
 use hume_engine::pipeline::BufferId;
 
-use crate::editor::input_stack::{BaseLayer, ConfirmAction, ConfirmLayer};
+use crate::editor::input_stack::{ConfirmAction, ConfirmLayer, ConfirmPermit};
 use crate::editor::{Editor, Severity};
 
 use super::{Buffer, ReplaceSource};
@@ -122,7 +122,7 @@ impl Editor {
     /// from, so never prompt, and a state already reported must not
     /// re-warn on every later trigger. `Changed` on the *focused* buffer
     /// opens a reload confirm when its `auto-read` setting is on and
-    /// [`Self::can_open_confirm`] allows one; every other case (a
+    /// [`Self::confirm_permit`] allows one; every other case (a
     /// non-focused buffer, `auto-read` off, or a blocked confirm) only warns.
     ///
     /// A `Changed`/`Vanished` state already reported stays silent on a
@@ -197,10 +197,10 @@ impl Editor {
                 let is_buffer_enter = trigger == DiskCheckTrigger::BufferEnter;
 
                 if promptable
-                    && self.can_open_confirm(trigger)
                     && (is_buffer_enter || !already_reported)
+                    && let Some(permit) = self.confirm_permit(bid, trigger)
                 {
-                    self.open_disk_change_confirm(bid, &name, dirty);
+                    self.open_disk_change_confirm(permit, bid, &name, dirty);
                 } else if !already_reported || (is_buffer_enter && promptable) {
                     self.report_disk_state(format!("{name}: file has changed on disk"));
                 }
@@ -211,7 +211,7 @@ impl Editor {
     /// Report a disk-state warning, honouring `message_logged_this_input`: if
     /// this same interactive event already logged its own warning or error
     /// (e.g. `:qa` naming the first dirty buffer, right before the focus move
-    /// that landed on it triggers this check; see `can_open_confirm`'s doc),
+    /// that landed on it triggers this check; see `confirm_permit`'s doc),
     /// that message already owns the status line, so this lands in
     /// `:messages` only rather than displacing it. Otherwise behaves exactly
     /// like `Editor::report`. Every disk-state warning goes through this, not
@@ -224,44 +224,6 @@ impl Editor {
         } else {
             self.report(Severity::Warning, text);
         }
-    }
-
-    /// `true` if opening a confirm right now can't steal a keystroke from
-    /// something already mid-interaction. Every condition must hold:
-    ///
-    /// - Mode layer is `Base`, so an unsubmitted `:`/`/` line is never hidden.
-    ///   `:e`/`:b`/`:checktime` can still open one, since `execute_command`
-    ///   truncates the `Command` layer before running the command body.
-    /// - No `confirm`/`picker`/`menu`/`drawer` anywhere on the stack: one modal
-    ///   owner at a time, and a second confirm would replace an unanswered one.
-    ///   `Editor::enter_buffer_disk_check` already retires a confirm for a
-    ///   buffer focus left, so this only guards against a different buffer's
-    ///   check. A `Scrollable` popup does not block: it is evicted on landing.
-    /// - Not headless: scripted keys would be taken as the answer.
-    /// - No pending keys or `wait_char`: the next keystroke is already spoken
-    ///   for.
-    /// - Not replaying a macro: replayed keys can't answer a prompt, so those
-    ///   checks warn and the prompt waits for the next real buffer-enter.
-    /// - For `BufferEnter` only, no warning or error logged by this input
-    ///   (`message_logged_this_input`), so a failing command's message (`:qa`
-    ///   naming a dirty buffer) stays on screen. The warn fallback still runs.
-    ///   `Ambient` is exempt because the inline-output command that set the
-    ///   flag is what caused the change it checks. `Explicit` runs before the
-    ///   flag is set.
-    pub(in crate::editor::buffer) fn can_open_confirm(&self, trigger: DiskCheckTrigger) -> bool {
-        !self.state.headless
-            && self
-                .state
-                .input
-                .is::<BaseLayer>(self.state.input.mode_layer())
-            && self.state.input.confirm().is_none()
-            && self.state.input.picker().is_none()
-            && self.state.input.menu().is_none()
-            && self.state.input.drawer().is_none()
-            && self.state.pending_keys.is_empty()
-            && self.state.wait_char.is_none()
-            && !self.state.is_replaying
-            && (trigger != DiskCheckTrigger::BufferEnter || !self.state.message_logged_this_input)
     }
 
     /// Check every open buffer against `trigger`: `Ambient` for terminal
@@ -304,7 +266,7 @@ impl Editor {
     /// `Confirm` layer's own dismiss arm to catch. Left alone, that confirm
     /// would be unanswerable
     /// (`reload_buffer_from_disk`'s focused-buffer guard would refuse it),
-    /// and would block `entered`'s own prompt via `can_open_confirm`'s
+    /// and would block `entered`'s own prompt via `confirm_permit`'s
     /// no-other-overlay check. Retiring it (not declining it) leaves the
     /// old buffer's `disk_state` exactly as `Changed` as it was, so the
     /// "asked about on its own next buffer-enter" promise still holds next
@@ -342,7 +304,13 @@ impl Editor {
     /// dirty buffer gets an extra note that the reload is undoable, since
     /// accepting it discards in-editor edits (recorded as one more undo
     /// step, not literally lost; see `Buffer::replace_text_recorded`).
-    fn open_disk_change_confirm(&mut self, bid: BufferId, name: &str, dirty: bool) {
+    fn open_disk_change_confirm(
+        &mut self,
+        permit: ConfirmPermit,
+        bid: BufferId,
+        name: &str,
+        dirty: bool,
+    ) {
         let prompt = if dirty {
             format!("{name} has changed on disk (unsaved edits will be replaced, undo with u).")
         } else {
@@ -350,10 +318,7 @@ impl Editor {
         };
         self.state.push_layer(
             &self.view,
-            ConfirmLayer {
-                prompt,
-                action: ConfirmAction::ReloadBuffer(bid),
-            },
+            ConfirmLayer::new(permit, prompt, ConfirmAction::ReloadBuffer(bid)),
         );
     }
 

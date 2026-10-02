@@ -37,7 +37,7 @@ impl Editor {
     }
 
     /// Mark this editor as driven by scripted keys with no one to answer a
-    /// prompt, so `can_open_confirm` never lets a confirm open.
+    /// prompt, so `confirm_permit` never lets a confirm open.
     pub(crate) fn set_headless(&mut self) {
         self.state.headless = true;
     }

@@ -442,7 +442,7 @@ impl Editor {
             // handler in `Editor::react_to_event`. That reaction runs inside
             // the next `settle()`, after `message_logged_this_input` has
             // already been set from this same dispatch's own message-log
-            // delta. `can_open_confirm`'s message-shadow clause is scoped to
+            // delta. `confirm_permit`'s message-shadow clause is scoped to
             // `DiskCheckTrigger::BufferEnter` for exactly this reason, so a
             // warning this command logged itself can't suppress the reload
             // confirm its own subprocess just caused.

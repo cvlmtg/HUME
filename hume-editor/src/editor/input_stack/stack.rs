@@ -937,10 +937,10 @@ mod tests {
     }
 
     fn confirm() -> ConfirmLayer {
-        ConfirmLayer {
-            prompt: "test?".to_string(),
-            action: ConfirmAction::ReloadBuffer(hume_engine::pipeline::BufferId::default()),
-        }
+        ConfirmLayer::for_test(
+            "test?".to_string(),
+            ConfirmAction::ReloadBuffer(hume_engine::pipeline::BufferId::default()),
+        )
     }
 
     fn popup_model(text: &str) -> PopupLayer {

@@ -10,7 +10,9 @@ use hume_engine::types::EditorMode;
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::{Editor, EditorState};
+use super::BaseLayer;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use crate::editor::buffer::DiskCheckTrigger;
 
 /// What answering a confirm does, for the buffer the confirm is about.
 type ConfirmAnswer = fn(&mut Editor, BufferId);
@@ -121,9 +123,82 @@ impl ConfirmAction {
 pub(crate) struct ConfirmLayer {
     pub(in crate::editor) prompt: String,
     pub(in crate::editor) action: ConfirmAction,
+    /// Private, so a literal outside this module doesn't compile: a confirm
+    /// is built through [`ConfirmLayer::new`], which asks for a permit.
+    _permit: ConfirmPermit,
+}
+
+/// Proof that [`Editor::confirm_permit`] allowed a confirm to open. Only
+/// that function mints one, and [`ConfirmLayer::new`] consumes it.
+pub(in crate::editor) struct ConfirmPermit(());
+
+impl Editor {
+    /// A [`ConfirmPermit`] for opening a confirm about `bid`, when doing so
+    /// can't steal a keystroke from something already mid-interaction. Every
+    /// condition must hold:
+    ///
+    /// - `bid` is the focused buffer.
+    /// - Mode layer is `Base`, so an unsubmitted `:`/`/` line is never hidden.
+    ///   `:e`/`:b`/`:checktime` can still open one, since `execute_command`
+    ///   truncates the `Command` layer before running the command body.
+    /// - No `confirm`/`picker`/`menu`/`drawer` anywhere on the stack: one modal
+    ///   owner at a time, and a second confirm would replace an unanswered one.
+    ///   `Editor::enter_buffer_disk_check` already retires a confirm for a
+    ///   buffer focus left, so this only guards against a different buffer's
+    ///   check. A `Scrollable` popup does not block: it is evicted on landing.
+    /// - Not headless: scripted keys would be taken as the answer.
+    /// - No pending keys or `wait_char`: the next keystroke is already spoken
+    ///   for.
+    /// - Not replaying a macro: replayed keys can't answer a prompt, so those
+    ///   checks warn and the prompt waits for the next real buffer-enter.
+    /// - For `BufferEnter` only, no warning or error logged by this input
+    ///   (`message_logged_this_input`), so a failing command's message (`:qa`
+    ///   naming a dirty buffer) stays on screen. The warn fallback still runs.
+    ///   `Ambient` is exempt because the inline-output command that set the
+    ///   flag is what caused the change it checks. `Explicit` runs before the
+    ///   flag is set.
+    pub(in crate::editor) fn confirm_permit(
+        &self,
+        bid: BufferId,
+        trigger: DiskCheckTrigger,
+    ) -> Option<ConfirmPermit> {
+        let open = bid == self.focused_buffer_id()
+            && !self.state.headless
+            && self
+                .state
+                .input
+                .is::<BaseLayer>(self.state.input.mode_layer())
+            && self.state.input.confirm().is_none()
+            && self.state.input.picker().is_none()
+            && self.state.input.menu().is_none()
+            && self.state.input.drawer().is_none()
+            && self.state.pending_keys.is_empty()
+            && self.state.wait_char.is_none()
+            && !self.state.is_replaying
+            && (trigger != DiskCheckTrigger::BufferEnter || !self.state.message_logged_this_input);
+        open.then_some(ConfirmPermit(()))
+    }
 }
 
 impl ConfirmLayer {
+    pub(in crate::editor) fn new(
+        permit: ConfirmPermit,
+        prompt: String,
+        action: ConfirmAction,
+    ) -> Self {
+        Self {
+            prompt,
+            action,
+            _permit: permit,
+        }
+    }
+
+    /// A confirm without the gate, for tests that exercise the layer itself.
+    #[cfg(test)]
+    pub(in crate::editor) fn for_test(prompt: String, action: ConfirmAction) -> Self {
+        Self::new(ConfirmPermit(()), prompt, action)
+    }
+
     /// Whether answering this confirm would act on `id`, i.e. whether `id`
     /// disappearing leaves the question unanswerable. Read by
     /// `buffer::lifecycle::forget_closed_buffer`, which retires such a
@@ -160,7 +235,7 @@ impl Layer for ConfirmLayer {
     }
     // No `setup`/`popup_eviction` override: the trait's own default
     // (`PopupEviction::Both`, evicted automatically by `push_layer`) is
-    // exactly right here: `can_open_confirm` (`buffer/disk.rs`)
+    // exactly right here: `Editor::confirm_permit`
     // does *not* gate on a popup being open (a `Scrollable` one owns no keys
     // beyond Ctrl-u/d and dies on the next one anyway), so a confirm lands
     // directly above one and must evict it on the way in, same as every

@@ -110,7 +110,7 @@ pub(in crate::editor) fn typed_quit_all(
             let name = super::doc(&ed.state, &ed.view, fp.pane()).display_name();
             // Stays Error, not transient: `EditorState::message_logged_this_input`
             // (lifecycle.rs) keys off `message_log.totals()` moving, and
-            // `can_open_confirm` (buffer/disk.rs) reads that flag to refuse a
+            // `Editor::confirm_permit` (input_stack/confirm.rs) reads that flag to refuse a
             // disk-change reload confirm from popping over this exact message
             // right after :qa's focus-move names the dirty buffer; a
             // transient report wouldn't move totals() and would let the

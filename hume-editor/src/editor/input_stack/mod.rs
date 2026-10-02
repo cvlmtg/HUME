@@ -36,7 +36,7 @@ pub(in crate::editor) use stack::{InputEvent, InputStack, Layer, LayerRef};
 pub(in crate::editor) use base::BaseLayer;
 pub(in crate::editor) use command::CommandLayer;
 pub(in crate::editor) use completion::{BufferCompletionLayer, MinibufCompletionLayer};
-pub(in crate::editor) use confirm::{ConfirmAction, ConfirmLayer};
+pub(in crate::editor) use confirm::{ConfirmAction, ConfirmLayer, ConfirmPermit};
 pub(in crate::editor) use drawer::DrawerLayer;
 pub(in crate::editor) use insert::InsertLayer;
 pub(in crate::editor) use menu::MenuLayer;

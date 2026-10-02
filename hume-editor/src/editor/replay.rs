@@ -674,7 +674,7 @@ impl Editor {
     /// on `on-buffer-open` (indent width, a language keymap) must see that
     /// reaction run before the macro's remaining keys type into the buffer,
     /// the same as it would if those keys were typed by hand. `is_replaying`
-    /// stays `true` across every one of these settles, so `can_open_confirm`'s
+    /// stays `true` across every one of these settles, so `confirm_permit`'s
     /// `!is_replaying` guard still blocks a confirm the macro would have no
     /// queued key left to answer; see that guard's "Macro replay" doc
     /// paragraph. The deferred prompt still arrives on the next real

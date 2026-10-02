@@ -753,7 +753,7 @@ fn vanished_file_recreated_with_different_content_rereports() {
 
 // ── Confirm can't open over another overlay or a pending key sequence ────────────
 
-/// A confirm must never open while a picker is on screen: `can_open_confirm`
+/// A confirm must never open while a picker is on screen: `confirm_permit`
 /// requires the stack to be at `Base`, so a picker on top blocks it outright
 /// rather than letting it push above the picker and eat every key it needs.
 /// The blocked change only warns, and the
@@ -871,7 +871,7 @@ fn stale_confirm_retirement_does_not_take_a_prompt_above_it_with_it() {
 /// no keys beyond Ctrl-u/d and dies on the very next one anyway, so it must
 /// not block the one prompt that actually needs the keyboard.
 ///
-/// For that reason `can_open_confirm` cannot gate on
+/// For that reason `confirm_permit` cannot gate on
 /// `is::<BaseLayer>(top())`. A `Popup` above `Base` would fail that check,
 /// and only the `Severity::Warning` fallback would fire.
 #[test]
@@ -1059,7 +1059,7 @@ fn statusline_seam_hides_a_confirm_buried_under_a_prompt() {
 /// multi-key sequence (e.g. `d` waiting for its motion) already owns the
 /// very next keystroke.
 ///
-/// `can_open_confirm` checks `pending_keys` for this.
+/// `confirm_permit` checks `pending_keys` for this.
 #[test]
 fn confirm_does_not_open_mid_pending_key_sequence() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1219,7 +1219,7 @@ fn multi_pane_quit_prompts_the_surviving_panes_buffer() {
 /// as a keymap `EditorCmd` with no `&mut Editor` at all to call the check on.
 /// Pins that the post-dispatch chokepoint covers a keymap command with no
 /// per-command plumbing. Also pins that `pending_keys` is cleared before the
-/// `c` leaf runs (`input_stack/base.rs`'s Leaf arm), so `can_open_confirm`
+/// `c` leaf runs (`input_stack/base.rs`'s Leaf arm), so `confirm_permit`
 /// isn't blocked by the still-just-consumed `Ctrl-p` prefix.
 #[test]
 fn ctrl_p_c_pane_close_prompts_the_surviving_panes_buffer() {
@@ -1425,7 +1425,7 @@ fn enter_buffer_disk_check_leaves_a_layer_stacked_above_the_confirm_untouched() 
 /// saw. B's deferred change stays a warning instead, same as any other
 /// blocked-confirm case.
 ///
-/// The `confirm.is_none()` check in `can_open_confirm` keeps a second
+/// The `confirm.is_none()` check in `confirm_permit` keeps a second
 /// `open_disk_change_confirm` call from replacing the live model with B's.
 #[test]
 fn a_second_confirm_never_replaces_a_live_one() {
@@ -1476,7 +1476,7 @@ fn a_second_confirm_never_replaces_a_live_one() {
 /// layer on top would consume the next replayed key, silently truncating
 /// the macro. Blocked during replay, deferred prompt still honoured afterward.
 ///
-/// Without `!self.state.is_replaying` in `can_open_confirm`, the confirm
+/// Without `!self.state.is_replaying` in `confirm_permit`, the confirm
 /// would open partway through `drain_replay_queue` and could eat the macro's
 /// remaining keys before focus reached B.
 #[test]
@@ -1671,7 +1671,7 @@ fn message_logged_before_a_macro_replay_survives_its_trailing_settle() {
 /// it, and must not steal the keystroke meant to answer the error (e.g.
 /// retrying with `:qa!`).
 ///
-/// The `message_logged_this_input` guard in `can_open_confirm` (set by
+/// The `message_logged_this_input` guard in `confirm_permit` (set by
 /// `Editor::handle_input` for the duration of its post-dispatch
 /// focus-change check) stops `check_buffer_disk_state` from opening a reload
 /// confirm over the "Unsaved changes" error after the focus diff
@@ -1888,7 +1888,7 @@ fn declined_change_then_vanished_file_still_warns() {
 ///
 /// `enter_buffer_disk_check` (`OnBufferEnter`'s Rust reaction) retires a
 /// confirm that no longer targets the newly focused buffer. Left in place,
-/// B's confirm would block A's own prompt via `can_open_confirm`'s
+/// B's confirm would block A's own prompt via `confirm_permit`'s
 /// `confirm.is_none()` gate.
 #[test]
 fn mouse_click_into_another_pane_retires_a_stale_confirm() {
@@ -2069,7 +2069,7 @@ fn focus_gained_sweeps_every_open_buffer_not_just_the_focused_one() {
 /// `:b <other>` onto a stale buffer must run the disk check exactly once,
 /// pinning against a double-check regression from a direct call surviving
 /// alongside `settle()`'s event-driven diff. A second run would
-/// find the confirm already open (`can_open_confirm`'s `confirm.is_none()`
+/// find the confirm already open (`confirm_permit`'s `confirm.is_none()`
 /// guard blocks it) and fall through to `report_disk_state`'s warn fallback
 /// instead: an extra `:messages` entry alongside the confirm.
 #[test]
@@ -2114,7 +2114,7 @@ fn switching_onto_a_stale_buffer_checks_disk_state_exactly_once() {
 /// non-zero exit, a lint note) must still open the reload confirm. Its own
 /// warning must not shadow the very disk change it caused.
 ///
-/// `can_open_confirm`'s message-shadow clause exists to protect the
+/// `confirm_permit`'s message-shadow clause exists to protect the
 /// `BufferEnter` case (`:qa` landing on a dirty buffer): a command's own
 /// failure message must survive an *unrelated* buffer-enter check that
 /// happens to run right after. The `Ambient` sweep this test exercises is

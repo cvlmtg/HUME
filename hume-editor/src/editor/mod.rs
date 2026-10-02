@@ -431,7 +431,7 @@ pub(crate) struct EditorState {
     /// input logged a new warning or error, cleared by `Editor::settle` once
     /// its drain (including the buffer-enter disk check) has run. The
     /// window spans "input dispatched" to "its consequences settled", not
-    /// one call. Read only by `can_open_confirm`, so a command's own failure
+    /// one call. Read only by `confirm_permit`, so a command's own failure
     /// message (`:qa` naming the first dirty buffer) can't be silently
     /// replaced by an unrelated disk-change confirm opened by the focus move
     /// that triggered it. Always `false` outside that window.

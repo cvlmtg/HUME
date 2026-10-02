@@ -140,12 +140,12 @@ impl Editor {
         let Some(buf) = self.state.buffers.try_get(bid) else {
             return;
         };
-        if buf.pending_dump.is_none()
-            || bid != self.focused_buffer_id()
-            || !self.can_open_confirm(DiskCheckTrigger::BufferEnter)
-        {
+        if buf.pending_dump.is_none() {
             return;
         }
+        let Some(permit) = self.confirm_permit(bid, DiskCheckTrigger::BufferEnter) else {
+            return;
+        };
         let name = buf.display_name();
         let Some(dump) = buf.pending_dump.clone() else {
             return;
@@ -164,10 +164,7 @@ impl Editor {
         let prompt = format!("{name}: recovered unsaved changes found ({dump_name}).");
         self.state.push_layer(
             &self.view,
-            ConfirmLayer {
-                prompt,
-                action: ConfirmAction::RestoreDump(bid),
-            },
+            ConfirmLayer::new(permit, prompt, ConfirmAction::RestoreDump(bid)),
         );
     }
 
