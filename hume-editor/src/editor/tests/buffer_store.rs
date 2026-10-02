@@ -334,7 +334,7 @@ fn p6_reload_preserves_cursor_same_content() {
     let replacement = Buffer::at_start(BufferText::from(content));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        ReplaceSource::Disk(Box::new(replacement)),
+        ReplaceSource::disk(replacement),
     );
 
     assert_eq!(
@@ -370,7 +370,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
     let replacement = Buffer::at_start(BufferText::from("short\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        ReplaceSource::Disk(Box::new(replacement)),
+        ReplaceSource::disk(replacement),
     );
 
     // last_line=0, target_line=0, col=0 → head=0.
@@ -391,7 +391,7 @@ fn p6_reload_cursor_follows_its_line_when_a_line_is_added_above() {
     let replacement = Buffer::at_start(BufferText::from("new\nabc\ndef\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        ReplaceSource::Disk(Box::new(replacement)),
+        ReplaceSource::disk(replacement),
     );
 
     assert_eq!(state(&ed), "new\nabc\nd-[e]>f\n");
@@ -406,7 +406,7 @@ fn p6_reload_cursor_on_a_rewritten_line_lands_at_its_start() {
     let replacement = Buffer::at_start(BufferText::from("abc\nhi\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        ReplaceSource::Disk(Box::new(replacement)),
+        ReplaceSource::disk(replacement),
     );
 
     assert_eq!(state(&ed), "abc\n-[h]>i\n");
@@ -421,7 +421,7 @@ fn p6_reload_keeps_every_selection() {
     let replacement = Buffer::at_start(BufferText::from("top\nline0\nline1\nline2\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        ReplaceSource::Disk(Box::new(replacement)),
+        ReplaceSource::disk(replacement),
     );
 
     assert_eq!(state(&ed), "top\nline0\n-{l}>ine1\n-[l]>ine2\n");

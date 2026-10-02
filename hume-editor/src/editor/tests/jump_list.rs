@@ -715,7 +715,7 @@ fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
     );
 }
 
-/// `:e!` reloads through a line-diff `ChangeSet` (`Buffer::reload_from_text`)
+/// `:e!` reloads through a line-diff `ChangeSet` (`Buffer::replace_text_recorded`)
 /// that bypasses the ordinary edit chokepoint. Jump entries must still be
 /// remapped through it, not just entries produced by in-editor edits.
 #[test]

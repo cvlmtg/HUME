@@ -168,7 +168,7 @@ pub(in crate::editor) enum EditorEvent {
     /// Never fires for: a no-op undo at the history root; an edit refused by
     /// the read-only guard; an edit, insert/paste session, or `:e!` reload
     /// whose composed `ChangeSet` is the identity transform
-    /// (`Buffer::apply_edit*`, `commit_edit_group`, and `reload_from_text` all
+    /// (`Buffer::apply_edit*`, `commit_edit_group`, and `replace_text_recorded` all
     /// skip the mutation (or the revision that would make undo replay one)
     /// entirely in that case, specifically so this doesn't fire for one).
     /// Does fire, unconditionally and with no identity check,

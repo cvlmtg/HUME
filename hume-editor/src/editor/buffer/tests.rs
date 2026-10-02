@@ -121,7 +121,8 @@ impl DocHelper {
     fn reload_from(&mut self, new_text: BufferText) {
         let (mut stores, pane, id) = DetachedStores::with_pane(&self.buf, self.sels.clone());
         self.buf
-            .reload_from_text(id, &mut stores.stores(), new_text, pane);
+            .replace_text_recorded(id, &mut stores.stores(), new_text, pane);
+        self.buf.mark_saved();
         self.sels = stores.selections(pane, id);
     }
 
@@ -916,10 +917,10 @@ fn text_generation_unchanged_when_undo_at_root() {
     );
 }
 
-// ── reload_from_text ────────────────────────────────────────────────────
+// ── reload ────────────────────────────────────────────────────
 
 #[test]
-fn reload_from_text_keeps_buffer_not_dirty() {
+fn reload_keeps_buffer_not_dirty() {
     let mut d = doc("-[a]>lpha\nbeta\ngamma\n");
     assert!(!d.is_dirty());
     d.reload_from(BufferText::from("alpha\nBETA\ngamma\n"));
@@ -928,7 +929,7 @@ fn reload_from_text_keeps_buffer_not_dirty() {
 }
 
 #[test]
-fn reload_from_text_is_undoable() {
+fn reload_is_undoable() {
     let mut d = doc("hel-[l]>o\n");
     let pre_state = state(&d);
     d.reload_from(BufferText::from("hello world\n"));
@@ -943,7 +944,7 @@ fn reload_from_text_is_undoable() {
 }
 
 #[test]
-fn reload_from_text_redo_reapplies_reload() {
+fn reload_redo_reapplies_reload() {
     let mut d = doc("hel-[l]>o\n");
     d.reload_from(BufferText::from("hello world\n"));
     d.undo();
@@ -954,7 +955,7 @@ fn reload_from_text_redo_reapplies_reload() {
 }
 
 #[test]
-fn reload_from_text_then_edit_branches_off_old_tree() {
+fn reload_then_edit_branches_off_old_tree() {
     // edit → reload → undo → new edit: the new edit must branch as a
     // sibling of the reload (tree-monotonicity invariant), reachable via
     // `current_id`/redo. Mirrors `branching_preserves_old_path` in
@@ -982,7 +983,7 @@ fn reload_from_text_then_edit_branches_off_old_tree() {
 }
 
 #[test]
-fn reload_from_text_noop_when_unchanged() {
+fn reload_noop_when_unchanged() {
     // Identical old/new → identity forward CS. Reload records NO revision
     // (a no-op `:e!` must not litter the undo tree) and leaves the buffer
     // clean and at the same revision it started on.
@@ -996,7 +997,7 @@ fn reload_from_text_noop_when_unchanged() {
 }
 
 #[test]
-fn reload_from_text_inverse_is_fine_grained() {
+fn reload_inverse_is_fine_grained() {
     // Pin the "fine-grained, not coarse" property at the Buffer layer: a
     // single-line change's inverse re-inserts only the changed line, not a
     // full-buffer delete-all. The inverse is what `undo` returns.
@@ -1077,19 +1078,9 @@ fn serialized_restores_crlf_line_endings() {
 
 // ── pending_dump ──────────────────────────────────────────────────────────
 
-fn file_with_dump(dump: Option<&str>) -> (tempfile::TempDir, PathBuf) {
-    let dir = crate::editor::tests::safe_tempdir();
-    let path = dir.path().join("foo.txt");
-    std::fs::write(&path, "disk\n").unwrap();
-    if let Some(content) = dump {
-        std::fs::write(dir.path().join("foo.txt.dump"), content).unwrap();
-    }
-    (dir, path)
-}
-
 #[test]
 fn opening_a_file_with_a_dump_records_the_pending_dump() {
-    let (dir, path) = file_with_dump(Some("crashed\n"));
+    let (dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), Some("crashed\n"));
 
     let buf = Buffer::from_file_or_new(&path, dir.path()).unwrap();
 
@@ -1101,7 +1092,7 @@ fn opening_a_file_with_a_dump_records_the_pending_dump() {
 
 #[test]
 fn opening_a_file_without_a_dump_has_no_pending_dump() {
-    let (dir, path) = file_with_dump(None);
+    let (dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), None);
 
     let buf = Buffer::from_file_or_new(&path, dir.path()).unwrap();
 
@@ -1125,7 +1116,7 @@ fn opening_a_missing_file_with_a_dump_records_the_pending_dump() {
 
 #[test]
 fn rereading_a_file_has_no_pending_dump() {
-    let (_dir, path) = file_with_dump(Some("crashed\n"));
+    let (_dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), Some("crashed\n"));
 
     let buf = Buffer::from_file(&path).unwrap();
 

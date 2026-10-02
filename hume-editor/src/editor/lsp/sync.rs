@@ -89,7 +89,7 @@ impl Editor {
     /// Whole-document `didChange` (no `range`, legal per spec regardless of
     /// the server's declared sync kind) for reload paths that replace the
     /// text outright (`:e!`) rather than applying a `ChangeSet`.
-    /// `Buffer::reload_from_text` computes a line-diff CS for *undo*, but the
+    /// `Buffer::replace_text_recorded` computes a line-diff CS for *undo*, but the
     /// wire message here is simplest as a full-text sync. Skipped entirely
     /// when `change_sync` reads `None`: a server that declared `NONE` (or
     /// nothing) asked for no change notifications, full-document or

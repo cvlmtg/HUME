@@ -33,7 +33,7 @@ pub(crate) struct BufferStore {
     /// Monotonic counter bumped once per user edit/undo/redo, in any open
     /// buffer. The `doc_ops` five-function chokepoint is the sole writer.
     /// Unlike a buffer text's version (per-buffer, and moved by system refreshes too:
-    /// `set_view_content`, `reload_from_text`), this is global
+    /// `set_view_content`, `replace_text_recorded`), this is global
     /// and edit-only: `PasteStamp` stamps it so a paste can tell "did
     /// anything change, anywhere" without caring which buffer, and a
     /// `:messages` refresh or `:e!` between a kill and a paste must not look

@@ -122,10 +122,10 @@ fn view_content_refresh_does_not_bump_edit_seq() {
     );
 }
 
-/// `Buffer::reload_from_text` (`:e!`) is likewise a system refresh, not a
+/// `Buffer::replace_text_recorded` (`:e!`) is likewise a system refresh, not a
 /// user edit, same rationale as `view_content_refresh_does_not_bump_edit_seq`.
 #[test]
-fn reload_from_text_does_not_bump_edit_seq() {
+fn recorded_replacement_does_not_bump_edit_seq() {
     let (mut store, mut ev) = store_with_engine();
     let id = make_id(&mut ev);
     store.open(id, make_buf());
@@ -134,7 +134,7 @@ fn reload_from_text_does_not_bump_edit_seq() {
         store.get(id),
         store.get(id).initial_sels(),
     );
-    assert!(store.get_mut(id).reload_from_text(
+    assert!(store.get_mut(id).replace_text_recorded(
         stored_as,
         &mut stores.stores(),
         BufferText::from("reloaded\n"),
@@ -143,7 +143,7 @@ fn reload_from_text_does_not_bump_edit_seq() {
     assert_eq!(
         store.edit_seq(),
         before,
-        "reload_from_text (:e!) is a system refresh, not a user edit: edit_seq must not move"
+        "replace_text_recorded (:e!) is a system refresh, not a user edit: edit_seq must not move"
     );
 }
 

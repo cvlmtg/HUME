@@ -31,7 +31,9 @@ mod dump;
 pub(in crate::editor) use disk::DiskCheckTrigger;
 #[cfg(test)]
 pub(in crate::editor) use disk::DiskState;
-pub(crate) use dump::report_dumps;
+#[cfg(test)]
+pub(in crate::editor) use dump::dump_path_for;
+pub(crate) use dump::{print_worker_panics, report_dumps};
 pub(in crate::editor) use file_open::ReplaceSource;
 mod file_open;
 pub(in crate::editor) mod lifecycle;
@@ -497,23 +499,6 @@ impl Buffer {
         let post_sels = recorded(stores);
         self.record_revision(forward, inverse, pre_sels, post_sels);
         true
-    }
-
-    /// [`replace_text_recorded`](Self::replace_text_recorded) for a reload
-    /// from disk: the buffer now matches the file, so `disk_state` is
-    /// `InSync` and `saved_revision` is the current revision, whether or not
-    /// the text changed. `u` still reverts to the pre-reload text.
-    pub(in crate::editor::buffer) fn reload_from_text(
-        &mut self,
-        id: BufferId,
-        stores: &mut PositionStores<'_>,
-        new_text: BufferText,
-        focused: PaneId,
-    ) -> bool {
-        self.disk_state = disk::DiskState::InSync;
-        let changed = self.replace_text_recorded(id, stores, new_text, focused);
-        self.saved_revision = Some(self.history.current_id());
-        changed
     }
 
     /// `true` if the buffer has unsaved changes.

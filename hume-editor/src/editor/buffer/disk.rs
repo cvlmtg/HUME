@@ -341,7 +341,7 @@ impl Editor {
     /// Open the reload confirm for `bid`. `dirty` selects the wording: a
     /// dirty buffer gets an extra note that the reload is undoable, since
     /// accepting it discards in-editor edits (recorded as one more undo
-    /// step, not literally lost; see `Buffer::reload_from_text`).
+    /// step, not literally lost; see `Buffer::replace_text_recorded`).
     fn open_disk_change_confirm(&mut self, bid: BufferId, name: &str, dirty: bool) {
         let prompt = if dirty {
             format!("{name} has changed on disk (unsaved edits will be replaced, undo with u).")
@@ -378,18 +378,10 @@ impl Editor {
     /// without going through either, this degrades to a silent no-op instead
     /// of a panic, since there is no buffer left to warn about.
     pub(in crate::editor) fn reload_buffer_from_disk(&mut self, bid: BufferId) {
-        let Some(buf) = self.state.buffers.try_get(bid) else {
+        let Some(fp) = self.focused_answer_target(bid, "reloading") else {
             return;
         };
-        let fp = crate::editor::commands::FocusedPane::current(&self.state);
-        if bid != fp.bid(&self.view) {
-            let name = buf.display_name();
-            self.report(
-                Severity::Warning,
-                format!("{name}: no longer focused, not reloading"),
-            );
-            return;
-        }
+        let buf = self.state.buffers.get(bid);
         let Some(path) = buf.path().map(std::path::Path::to_path_buf) else {
             return;
         };
@@ -400,6 +392,27 @@ impl Editor {
         if let Err(e) = self.reload_from_path(fp, &path) {
             self.report(Severity::Warning, format!("{display}: {e}"));
         }
+    }
+
+    /// The focused pane, when it views `bid`, for a confirm answer that
+    /// replaces the buffer's text. Warns and returns `None` when focus moved
+    /// off `bid` before the answer, naming `verb` as what was not done. `None` without a warning when
+    /// `bid` is gone.
+    pub(in crate::editor::buffer) fn focused_answer_target(
+        &mut self,
+        bid: BufferId,
+        verb: &str,
+    ) -> Option<crate::editor::commands::FocusedPane> {
+        let name = self.state.buffers.try_get(bid)?.display_name();
+        let fp = crate::editor::commands::FocusedPane::current(&self.state);
+        if bid != fp.bid(&self.view) {
+            self.report(
+                Severity::Warning,
+                format!("{name}: no longer focused, not {verb}"),
+            );
+            return None;
+        }
+        Some(fp)
     }
 
     /// Read `path` fresh, swap it into `fp`'s buffer in place (via
@@ -417,7 +430,7 @@ impl Editor {
     ) -> std::io::Result<()> {
         let doc = Buffer::from_file(path)?;
         let bid = fp.bid(&self.view);
-        self.reload_buffer_in_place(fp, ReplaceSource::Disk(Box::new(doc)));
+        self.reload_buffer_in_place(fp, ReplaceSource::disk(doc));
         let name = self.state.buffers.get(bid).display_name();
         self.report(Severity::Info, format!("Reloaded {name}"));
         Ok(())

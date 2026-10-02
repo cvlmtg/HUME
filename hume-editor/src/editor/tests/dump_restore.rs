@@ -4,19 +4,8 @@ use super::*;
 use crate::editor::input_stack::ConfirmAction;
 use pretty_assertions::assert_eq;
 
-/// A temp dir holding `foo.txt` (`disk`) and, when given, `foo.txt.dump`.
-fn file_with_dump(disk: Option<&str>, dump: &str) -> (tempfile::TempDir, std::path::PathBuf) {
-    let dir = safe_tempdir();
-    let path = dir.path().join("foo.txt");
-    if let Some(disk) = disk {
-        std::fs::write(&path, disk).unwrap();
-    }
-    std::fs::write(dir.path().join("foo.txt.dump"), dump).unwrap();
-    (dir, path)
-}
-
 fn dump_file(dir: &tempfile::TempDir) -> std::path::PathBuf {
-    dir.path().join("foo.txt.dump")
+    crate::editor::buffer::dump_path_for(&dir.path().join("foo.txt"))
 }
 
 /// An editor on a scratch buffer that has opened `path` with `:e`, so the
@@ -35,7 +24,7 @@ fn leave_and_return(ed: &mut Editor) {
 
 #[test]
 fn opening_a_file_with_a_dump_asks_what_to_do_with_it() {
-    let (_dir, path) = file_with_dump(Some("disk\n"), "crashed\n");
+    let (_dir, path) = file_with_dump(Some("disk\n"), Some("crashed\n"));
 
     let ed = editor_that_opened(&path);
 
@@ -52,7 +41,7 @@ fn opening_a_file_with_a_dump_asks_what_to_do_with_it() {
 
 #[test]
 fn offering_a_dump_for_a_closed_buffer_does_nothing() {
-    let (_dir, path) = file_with_dump(Some("disk\n"), "crashed\n");
+    let (_dir, path) = file_with_dump(Some("disk\n"), Some("crashed\n"));
     let mut ed = editor_that_opened(&path);
     let bid = ed.focused_buffer_id();
     ed.close_buffer(bid);
@@ -75,7 +64,7 @@ fn opening_a_file_without_a_dump_opens_no_prompt() {
 
 #[test]
 fn restore_loads_the_dump_as_a_dirty_undoable_edit_and_removes_it() {
-    let (dir, path) = file_with_dump(Some("disk\n"), "crashed\n");
+    let (dir, path) = file_with_dump(Some("disk\n"), Some("crashed\n"));
     let mut ed = editor_that_opened(&path);
     let path_before = ed.doc().path().map(std::path::Path::to_path_buf);
 
@@ -99,7 +88,7 @@ fn restore_loads_the_dump_as_a_dirty_undoable_edit_and_removes_it() {
 
 #[test]
 fn a_save_as_does_not_redirect_the_pending_dump_to_the_new_path() {
-    let (dir, path) = file_with_dump(Some("disk\n"), "crashed\n");
+    let (dir, path) = file_with_dump(Some("disk\n"), Some("crashed\n"));
     std::fs::write(dir.path().join("other.txt.dump"), "unrelated\n").unwrap();
     let mut ed = editor_that_opened(&path);
     ed.handle_key(key('j'));
@@ -147,7 +136,7 @@ fn a_dump_that_is_a_symlink_is_ignored_with_a_warning() {
 
 #[test]
 fn restore_keeps_the_dumps_line_endings() {
-    let (_dir, path) = file_with_dump(Some("disk\n"), "a\r\nb\r\n");
+    let (_dir, path) = file_with_dump(Some("disk\n"), Some("a\r\nb\r\n"));
     let mut ed = editor_that_opened(&path);
 
     ed.handle_key(key('r'));
@@ -157,7 +146,7 @@ fn restore_keeps_the_dumps_line_endings() {
 
 #[test]
 fn restoring_a_dump_equal_to_the_file_leaves_the_buffer_clean() {
-    let (dir, path) = file_with_dump(Some("same\n"), "same\n");
+    let (dir, path) = file_with_dump(Some("same\n"), Some("same\n"));
     let mut ed = editor_that_opened(&path);
 
     ed.handle_key(key('r'));
@@ -168,7 +157,7 @@ fn restoring_a_dump_equal_to_the_file_leaves_the_buffer_clean() {
 
 #[test]
 fn restore_works_for_a_file_that_does_not_exist_yet() {
-    let (dir, path) = file_with_dump(None, "crashed\n");
+    let (dir, path) = file_with_dump(None, Some("crashed\n"));
     let mut ed = editor_that_opened(&path);
     assert!(ed.doc().is_new_file(), "setup: the file is missing");
 
@@ -182,7 +171,7 @@ fn restore_works_for_a_file_that_does_not_exist_yet() {
 
 #[test]
 fn discard_removes_the_dump_and_leaves_the_buffer_as_on_disk() {
-    let (dir, path) = file_with_dump(Some("disk\n"), "crashed\n");
+    let (dir, path) = file_with_dump(Some("disk\n"), Some("crashed\n"));
     let mut ed = editor_that_opened(&path);
 
     ed.handle_key(key('d'));
@@ -195,7 +184,7 @@ fn discard_removes_the_dump_and_leaves_the_buffer_as_on_disk() {
 
 #[test]
 fn keep_leaves_the_dump_and_does_not_ask_again_this_session() {
-    let (dir, path) = file_with_dump(Some("disk\n"), "crashed\n");
+    let (dir, path) = file_with_dump(Some("disk\n"), Some("crashed\n"));
     let mut ed = editor_that_opened(&path);
 
     ed.handle_key(key('k'));
@@ -208,7 +197,7 @@ fn keep_leaves_the_dump_and_does_not_ask_again_this_session() {
 
 #[test]
 fn escape_counts_as_keep() {
-    let (dir, path) = file_with_dump(Some("disk\n"), "crashed\n");
+    let (dir, path) = file_with_dump(Some("disk\n"), Some("crashed\n"));
     let mut ed = editor_that_opened(&path);
 
     ed.handle_key(key_esc());
@@ -220,7 +209,7 @@ fn escape_counts_as_keep() {
 
 #[test]
 fn a_stray_key_leaves_the_question_open_for_the_next_buffer_enter() {
-    let (dir, path) = file_with_dump(Some("disk\n"), "crashed\n");
+    let (dir, path) = file_with_dump(Some("disk\n"), Some("crashed\n"));
     let mut ed = editor_that_opened(&path);
 
     ed.handle_key(key('l'));
@@ -236,7 +225,7 @@ fn a_stray_key_leaves_the_question_open_for_the_next_buffer_enter() {
 
 #[test]
 fn reloading_a_file_does_not_ask_about_its_kept_dump() {
-    let (_dir, path) = file_with_dump(Some("disk\n"), "crashed\n");
+    let (_dir, path) = file_with_dump(Some("disk\n"), Some("crashed\n"));
     let mut ed = editor_that_opened(&path);
     ed.handle_key(key('k'));
 

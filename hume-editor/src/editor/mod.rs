@@ -602,6 +602,14 @@ impl LayoutKey {
 }
 
 impl EditorState {
+    /// Whether a signal asked the editor to terminate
+    /// (`terminate_exit_code` is non-zero).
+    pub(super) fn terminate_requested(&self) -> bool {
+        self.terminate_exit_code
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0
+    }
+
     // ── Mode ──────────────────────────────────────────────────────────────────
 
     pub(crate) fn mode(&self) -> Mode {

@@ -522,7 +522,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     replacement.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        ReplaceSource::Disk(Box::new(replacement)),
+        ReplaceSource::disk(replacement),
     );
     assert!(
         ed.state
@@ -562,14 +562,14 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         "engine tree must be aligned to the reloaded content, not the stale pre-reload text"
     );
 
-    // A second reload with byte-identical content: `reload_from_text`'s
+    // A second reload with byte-identical content: `replace_text_recorded`'s
     // `forward.is_identity()` branch returns `false` (no mutation) without
     // touching the text version, and the tree installed above stays.
     let mut identical = Buffer::at_start(BufferText::from(new_text));
     identical.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        ReplaceSource::Disk(Box::new(identical)),
+        ReplaceSource::disk(identical),
     );
     ed.reparse_stale_buffers();
     ed.reparse_stale_buffers();

@@ -65,6 +65,9 @@ struct Queue {
     /// How many of `panics`, from the front, [`WorkerPanics::take_unreported`]
     /// has already handed out.
     reported: usize,
+    /// How many of `panics`, from the front, [`WorkerPanics::take_unprinted`]
+    /// has already handed out.
+    printed: usize,
 }
 
 /// The background-thread panics seen since [`WorkerPanics::install`]. Clones
@@ -107,7 +110,18 @@ impl WorkerPanics {
         fresh
     }
 
+    /// The panics not yet returned by an earlier call, oldest first. Counts
+    /// separately from [`WorkerPanics::take_unreported`]: one reader feeds
+    /// the message log, the other the terminal.
+    pub fn take_unprinted(&self) -> Vec<WorkerPanic> {
+        let mut queue = self.lock();
+        let fresh = queue.panics[queue.printed..].to_vec();
+        queue.printed = queue.panics.len();
+        fresh
+    }
+
     /// Every panic seen so far, oldest first.
+    #[cfg(any(test, feature = "test-util"))]
     pub fn all(&self) -> Vec<WorkerPanic> {
         self.lock().panics.clone()
     }

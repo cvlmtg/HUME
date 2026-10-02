@@ -64,7 +64,7 @@ fn one_saved_one_failed() -> Vec<(String, io::Result<PathBuf>)> {
 fn the_report_names_each_buffer_and_where_it_went() {
     let mut out = Vec::new();
 
-    report_dumps_to(&mut out, &one_saved_one_failed());
+    report_dumps(&mut out, &one_saved_one_failed());
 
     insta::assert_snapshot!(String::from_utf8(out).unwrap(), @r"
     hume: unsaved foo.txt saved to /w/foo.txt.dump
@@ -87,7 +87,7 @@ fn the_report_keeps_going_when_the_writer_fails() {
     let mut out = Broken(0);
     let outcomes = one_saved_one_failed();
 
-    report_dumps_to(&mut out, &outcomes);
+    report_dumps(&mut out, &outcomes);
 
     assert_eq!(out.0, outcomes.len(), "each line is attempted once");
 }

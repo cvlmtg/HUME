@@ -34,7 +34,7 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
     let replacement = Buffer::at_start(BufferText::from("short\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        ReplaceSource::Disk(Box::new(replacement)),
+        ReplaceSource::disk(replacement),
     );
 
     ed.feed_event(key_ctrl('p'));
@@ -224,7 +224,7 @@ fn a_tracked_position_follows_a_reload() {
     let replacement = Buffer::at_start(BufferText::from("zero\none\ntwo\nthree\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        ReplaceSource::Disk(Box::new(replacement)),
+        ReplaceSource::disk(replacement),
     );
 
     assert_eq!(

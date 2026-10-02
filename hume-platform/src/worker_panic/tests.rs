@@ -35,6 +35,29 @@ fn take_unreported_hands_out_each_panic_once_and_all_keeps_them() {
 }
 
 #[test]
+fn take_unprinted_counts_apart_from_take_unreported() {
+    let panics = WorkerPanics::default();
+    panics.record(panic_named("one"));
+    assert_eq!(panics.take_unreported().len(), 1);
+
+    let printed: Vec<_> = panics
+        .take_unprinted()
+        .into_iter()
+        .map(|p| p.message)
+        .collect();
+    assert_eq!(printed, ["one"]);
+    assert!(panics.take_unprinted().is_empty());
+
+    panics.record(panic_named("two"));
+    let printed: Vec<_> = panics
+        .take_unprinted()
+        .into_iter()
+        .map(|p| p.message)
+        .collect();
+    assert_eq!(printed, ["two"]);
+}
+
+#[test]
 fn payload_message_reads_str_and_string_payloads() {
     let from_str: Box<dyn std::any::Any + Send> = Box::new("literal");
     let from_string: Box<dyn std::any::Any + Send> = Box::new(String::from("formatted"));

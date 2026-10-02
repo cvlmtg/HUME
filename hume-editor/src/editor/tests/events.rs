@@ -1462,7 +1462,7 @@ fn e_bang_reload_fires_on_text_changed() {
     let replacement = Buffer::at_start(BufferText::from("reloaded\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        ReplaceSource::Disk(Box::new(replacement)),
+        ReplaceSource::disk(replacement),
     );
     ed.settle();
 
@@ -1958,7 +1958,7 @@ fn insert_then_backspace_records_no_revision() {
     );
 }
 
-/// A byte-identical `:e!` reload (`reload_from_text`'s `forward.is_identity()`
+/// A byte-identical `:e!` reload (`replace_text_recorded`'s `forward.is_identity()`
 /// case) must not bump the text version, so it must not fire `on-text-changed`.
 ///
 /// The identity guard sits above `install`. Below it, the text version would
@@ -1986,7 +1986,7 @@ fn identity_reload_fires_no_on_text_changed() {
     let replacement = Buffer::at_start(text_before);
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.state),
-        ReplaceSource::Disk(Box::new(replacement)),
+        ReplaceSource::disk(replacement),
     );
     ed.settle();
 

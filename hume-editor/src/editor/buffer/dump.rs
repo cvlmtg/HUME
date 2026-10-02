@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
-use hume_platform::worker_panic::payload_message;
+use hume_platform::worker_panic::{WorkerPanics, payload_message};
 
-use super::{DiskCheckTrigger, ReplaceSource};
+use super::{Buffer, DiskCheckTrigger, ReplaceSource};
 use crate::editor::input_stack::{ConfirmAction, ConfirmLayer};
 use crate::editor::{Editor, Severity};
 
@@ -47,25 +47,7 @@ impl Editor {
                 (buf.is_dirty() || in_open_session) && !buf.is_read_only()
             })
             .map(|(_, buf)| {
-                let written = panic_to_error(|| {
-                    let content = buf.serialized();
-                    let mut in_data_dir = |stem: &str| {
-                        scratch_count += 1;
-                        let dest = data_dir_dump_path(scratch_dir, stem, scratch_count)?;
-                        hume_platform::io::write_dump(&content, &dest)?;
-                        Ok(dest)
-                    };
-                    let Some(path) = buf.path() else {
-                        return in_data_dir("scratch");
-                    };
-                    let beside = dump_path_for(path);
-                    hume_platform::io::write_dump(&content, &beside)
-                        .map(|()| beside)
-                        .or_else(|beside_err| {
-                            let stem = path.file_name().unwrap_or_default().to_string_lossy();
-                            in_data_dir(&stem).map_err(|_| beside_err)
-                        })
-                });
+                let written = panic_to_error(|| dump_one(buf, scratch_dir, &mut scratch_count));
                 (buf.display_name(), written)
             })
             .collect()
@@ -81,24 +63,19 @@ impl Editor {
         result: &io::Result<()>,
         scratch_dir: Option<&Path>,
     ) -> Vec<(String, io::Result<PathBuf>)> {
-        let signalled = self
-            .state
-            .terminate_exit_code
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
-        if self.state.should_quit || !(signalled || result.is_err()) {
+        if self.state.should_quit || !(self.state.terminate_requested() || result.is_err()) {
             return Vec::new();
         }
         self.dump_dirty_buffers(scratch_dir)
     }
 
     /// Dump the dirty buffers ([`Editor::dump_dirty_buffers`]) and write
-    /// each result to `out`, then each queued worker-thread panic. The
-    /// default panic hook never printed those, so the main-thread panic that
-    /// follows one would otherwise hide its cause.
+    /// each result to `out`, then each worker-thread panic not yet printed.
+    /// The default panic hook never printed those, so the main-thread panic
+    /// that follows one would otherwise hide its cause.
     pub(crate) fn write_crash_report(&self, out: &mut impl io::Write, scratch_dir: Option<&Path>) {
-        report_dumps_to(out, &self.dump_dirty_buffers(scratch_dir));
-        crate::report_worker_panics_to(out, &self.state.worker_panics.all());
+        report_dumps(out, &self.dump_dirty_buffers(scratch_dir));
+        print_worker_panics(out, &self.state.worker_panics);
     }
 
     /// Run `run` on this editor. If it panics, write the crash report
@@ -130,21 +107,28 @@ fn panic_to_error<T>(write: impl FnOnce() -> io::Result<T>) -> io::Result<T> {
     })
 }
 
-/// Name each dump outcome on stderr.
-pub(crate) fn report_dumps(outcomes: &[(String, io::Result<PathBuf>)]) {
-    report_dumps_to(&mut io::stderr().lock(), outcomes);
-}
-
 /// Write one line per outcome to `out`. A failed write is skipped, not
 /// raised: the dump runs while the editor is going down, possibly with
 /// nothing left to write to (a closed terminal), and the outcomes after it
 /// still get their turn.
-fn report_dumps_to(out: &mut impl io::Write, outcomes: &[(String, io::Result<PathBuf>)]) {
+pub(crate) fn report_dumps(out: &mut impl io::Write, outcomes: &[(String, io::Result<PathBuf>)]) {
     for (name, outcome) in outcomes {
         let _ = match outcome {
             Ok(path) => writeln!(out, "hume: unsaved {name} saved to {}", path.display()),
             Err(e) => writeln!(out, "hume: could not save unsaved {name}: {e}"),
         };
+    }
+}
+
+/// Write each worker-thread panic not yet printed to `out`, with its
+/// backtrace when it has one. Failed writes are skipped like
+/// [`report_dumps`]'s.
+pub(crate) fn print_worker_panics(out: &mut impl io::Write, panics: &WorkerPanics) {
+    for panic in panics.take_unprinted() {
+        let _ = writeln!(out, "hume: {panic}");
+        if let Some(backtrace) = &panic.backtrace {
+            let _ = writeln!(out, "{backtrace}");
+        }
     }
 }
 
@@ -156,14 +140,16 @@ impl Editor {
         let Some(buf) = self.state.buffers.try_get(bid) else {
             return;
         };
-        let Some(dump) = buf.pending_dump.clone() else {
-            return;
-        };
-        if bid != self.focused_buffer_id() || !self.can_open_confirm(DiskCheckTrigger::BufferEnter)
+        if buf.pending_dump.is_none()
+            || bid != self.focused_buffer_id()
+            || !self.can_open_confirm(DiskCheckTrigger::BufferEnter)
         {
             return;
         }
         let name = buf.display_name();
+        let Some(dump) = buf.pending_dump.clone() else {
+            return;
+        };
         if let Err(e) = hume_platform::io::check_own_file(&dump) {
             self.take_pending_dump(bid);
             if e.kind() != io::ErrorKind::NotFound {
@@ -188,20 +174,12 @@ impl Editor {
     /// Replace `bid`'s text with its crash dump as one undoable edit, then
     /// delete the dump. The buffer keeps its path and file metadata and reads
     /// as dirty. Bails with a warning, leaving the question open, if `bid`
-    /// lost focus before the answer (same guard as `reload_buffer_from_disk`).
+    /// lost focus before the answer.
     pub(in crate::editor) fn restore_dump(&mut self, bid: BufferId) {
-        let Some(buf) = self.state.buffers.try_get(bid) else {
+        let Some(fp) = self.focused_answer_target(bid, "restoring") else {
             return;
         };
-        let name = buf.display_name();
-        let fp = crate::editor::commands::FocusedPane::current(&self.state);
-        if bid != fp.bid(&self.view) {
-            self.report(
-                Severity::Warning,
-                format!("{name}: no longer focused, not restoring"),
-            );
-            return;
-        }
+        let name = self.state.buffers.get(bid).display_name();
         let Some(dump) = self.take_pending_dump(bid) else {
             return;
         };
@@ -253,6 +231,33 @@ impl Editor {
             ),
         }
     }
+}
+
+/// Write `buf`'s dump beside its file, or under `scratch_dir` when that
+/// fails or the buffer has no path. `scratch_count` numbers the scratch
+/// files so two buffers never share a name.
+fn dump_one(
+    buf: &Buffer,
+    scratch_dir: Option<&Path>,
+    scratch_count: &mut usize,
+) -> io::Result<PathBuf> {
+    let content = buf.serialized();
+    let mut in_scratch_dir = |stem: &str| {
+        *scratch_count += 1;
+        let dest = data_dir_dump_path(scratch_dir, stem, *scratch_count)?;
+        hume_platform::io::write_dump(&content, &dest)?;
+        Ok(dest)
+    };
+    let Some(path) = buf.path() else {
+        return in_scratch_dir("scratch");
+    };
+    let beside = dump_path_for(path);
+    let beside_err = match hume_platform::io::write_dump(&content, &beside) {
+        Ok(()) => return Ok(beside),
+        Err(e) => e,
+    };
+    let stem = path.file_name().unwrap_or_default().to_string_lossy();
+    in_scratch_dir(&stem).map_err(|_| beside_err)
 }
 
 fn data_dir_dump_path(dir: Option<&Path>, stem: &str, index: usize) -> io::Result<PathBuf> {

@@ -381,12 +381,7 @@ impl Editor {
             // reset). Unlike `should_quit`, this bypasses dirty-buffer
             // prompts: a signal isn't a `:q`. `0` means "no termination
             // requested"; never a valid signal-termination exit code.
-            if self
-                .state
-                .terminate_exit_code
-                .load(std::sync::atomic::Ordering::Acquire)
-                != 0
-            {
+            if self.state.terminate_requested() {
                 break;
             }
 

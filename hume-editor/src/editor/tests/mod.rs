@@ -1100,6 +1100,33 @@ pub(crate) fn safe_tempdir() -> tempfile::TempDir {
     tempfile::tempdir().expect("tempdir")
 }
 
+/// A temp dir holding `foo.txt` (`disk`) and its crash dump (`dump`), each
+/// only when given. Returns the dir and the path of `foo.txt`.
+pub(crate) fn file_with_dump(
+    disk: Option<&str>,
+    dump: Option<&str>,
+) -> (tempfile::TempDir, PathBuf) {
+    let dir = safe_tempdir();
+    let path = dir.path().join("foo.txt");
+    if let Some(disk) = disk {
+        std::fs::write(&path, disk).unwrap();
+    }
+    if let Some(dump) = dump {
+        std::fs::write(crate::editor::buffer::dump_path_for(&path), dump).unwrap();
+    }
+    (dir, path)
+}
+
+/// A worker-thread panic as `hume-lsp`'s reader thread would raise it.
+pub(crate) fn lsp_reader_panic() -> hume_platform::worker_panic::WorkerPanic {
+    hume_platform::worker_panic::WorkerPanic {
+        thread: "hume-lsp-reader".into(),
+        location: Some("hume-lsp/src/transport.rs:150:9".into()),
+        message: "bad frame".into(),
+        backtrace: None,
+    }
+}
+
 /// [`safe_tempdir`]'s twin for a single named file, for a test that keeps
 /// the `NamedTempFile` itself alive (e.g. to reopen or persist it), rather
 /// than [`temp_file`]'s write-content-and-hand-back-a-path shape.

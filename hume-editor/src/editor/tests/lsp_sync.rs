@@ -424,7 +424,7 @@ fn reload_flushes_pending_change_before_the_whole_document_didchange() {
 }
 
 /// A byte-identical `:e!` reload (the file on disk hasn't actually changed)
-/// must send no `didChange` at all: `reload_from_text`'s identity branch
+/// must send no `didChange` at all: `replace_text_recorded`'s identity branch
 /// never changes the text version, so there is no new version to announce, and
 /// `reload_buffer_in_place` must not fall back to sending one at the
 /// buffer's unchanged version (which would be a version regression from the

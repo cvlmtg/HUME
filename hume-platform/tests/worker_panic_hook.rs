@@ -102,5 +102,5 @@ fn a_panic_on_the_main_thread_goes_to_the_previous_hook_only() {
     assert!(caught.is_err());
     assert_eq!(previous_seen.load(Ordering::SeqCst), 1);
     assert_eq!(wake_seen.load(Ordering::SeqCst), 0);
-    assert!(panics.all().is_empty());
+    assert!(panics.take_unreported().is_empty());
 }

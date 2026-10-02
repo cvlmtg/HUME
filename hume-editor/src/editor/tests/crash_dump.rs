@@ -11,22 +11,36 @@ fn dirty_focused(ed: &mut Editor) {
     ed.handle_key(key_esc());
 }
 
+fn dirty_file_editor(dir: &tempfile::TempDir, content: &str) -> Editor {
+    let mut ed = editor_with_path(content, &dir.path().join("foo.txt"));
+    dirty_focused(&mut ed);
+    ed
+}
+
+fn dump_path(dir: &tempfile::TempDir) -> std::path::PathBuf {
+    crate::editor::buffer::dump_path_for(&dir.path().join("foo.txt"))
+}
+
+fn dump_text(dir: &tempfile::TempDir) -> Option<String> {
+    std::fs::read_to_string(dump_path(dir)).ok()
+}
+
+/// Run a panicking `run_dumping_on_panic` on `ed`; `true` when the panic
+/// propagated out.
+fn panic_inside(ed: &mut Editor) -> bool {
+    catch_unwind(AssertUnwindSafe(|| {
+        ed.run_dumping_on_panic(None, |_| panic!("boom"))
+    }))
+    .is_err()
+}
+
 #[test]
 fn panic_dumps_a_dirty_file_buffer_next_to_its_file() {
     let dir = safe_tempdir();
-    let path = dir.path().join("foo.txt");
-    let mut ed = editor_with_path("hello\n", &path);
-    dirty_focused(&mut ed);
+    let mut ed = dirty_file_editor(&dir, "hello\n");
 
-    let outcome = catch_unwind(AssertUnwindSafe(|| {
-        ed.run_dumping_on_panic(None, |_| panic!("boom"))
-    }));
-
-    assert!(outcome.is_err(), "the panic must keep propagating");
-    assert_eq!(
-        std::fs::read_to_string(dir.path().join("foo.txt.dump")).unwrap(),
-        "xhello\n"
-    );
+    assert!(panic_inside(&mut ed), "the panic must keep propagating");
+    assert_eq!(dump_text(&dir).unwrap(), "xhello\n");
 }
 
 #[test]
@@ -37,48 +51,27 @@ fn panic_dumps_edits_of_an_open_insert_session() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
 
-    let outcome = catch_unwind(AssertUnwindSafe(|| {
-        ed.run_dumping_on_panic(None, |_| panic!("boom"))
-    }));
-
-    assert!(outcome.is_err(), "the panic must keep propagating");
-    assert_eq!(
-        std::fs::read_to_string(dir.path().join("foo.txt.dump")).unwrap(),
-        "xhello\n"
-    );
+    assert!(panic_inside(&mut ed), "the panic must keep propagating");
+    assert_eq!(dump_text(&dir).unwrap(), "xhello\n");
 }
 
 #[test]
 fn panic_dump_keeps_crlf_line_endings() {
     let dir = safe_tempdir();
-    let path = dir.path().join("foo.txt");
-    let mut ed = editor_with_path("a\r\nb\r\n", &path);
-    dirty_focused(&mut ed);
+    let mut ed = dirty_file_editor(&dir, "a\r\nb\r\n");
 
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        ed.run_dumping_on_panic(None, |_| panic!("boom"))
-    }));
+    panic_inside(&mut ed);
 
-    assert_eq!(
-        std::fs::read(dir.path().join("foo.txt.dump")).unwrap(),
-        b"xa\r\nb\r\n"
-    );
+    assert_eq!(std::fs::read(dump_path(&dir)).unwrap(), b"xa\r\nb\r\n");
 }
 
 #[test]
 fn the_crash_report_names_dumps_then_queued_worker_panics() {
     let dir = safe_tempdir();
-    let path = dir.path().join("foo.txt");
-    let mut ed = editor_with_path("hello\n", &path);
-    dirty_focused(&mut ed);
+    let mut ed = dirty_file_editor(&dir, "hello\n");
     let panics = hume_platform::worker_panic::WorkerPanics::default();
     ed.attach_worker_panics(panics.clone());
-    panics.record(hume_platform::worker_panic::WorkerPanic {
-        thread: "hume-lsp-reader".into(),
-        location: Some("hume-lsp/src/transport.rs:150:9".into()),
-        message: "bad frame".into(),
-        backtrace: None,
-    });
+    panics.record(lsp_reader_panic());
 
     let mut out = Vec::new();
     ed.write_crash_report(&mut out, None);
@@ -99,27 +92,22 @@ fn the_crash_report_names_dumps_then_queued_worker_panics() {
 #[test]
 fn panic_does_not_dump_a_clean_buffer() {
     let dir = safe_tempdir();
-    let path = dir.path().join("foo.txt");
-    let mut ed = editor_with_path("hello\n", &path);
+    let mut ed = editor_with_path("hello\n", &dir.path().join("foo.txt"));
 
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        ed.run_dumping_on_panic(None, |_| panic!("boom"))
-    }));
+    panic_inside(&mut ed);
 
-    assert!(!dir.path().join("foo.txt.dump").exists());
+    assert!(!dump_path(&dir).exists());
 }
 
 #[test]
 fn a_run_that_returns_normally_writes_no_dump_and_passes_its_value_through() {
     let dir = safe_tempdir();
-    let path = dir.path().join("foo.txt");
-    let mut ed = editor_with_path("hello\n", &path);
-    dirty_focused(&mut ed);
+    let mut ed = dirty_file_editor(&dir, "hello\n");
 
     let value = ed.run_dumping_on_panic(None, |_| 7);
 
     assert_eq!(value, 7);
-    assert!(!dir.path().join("foo.txt.dump").exists());
+    assert!(!dump_path(&dir).exists());
 }
 
 #[test]
@@ -215,24 +203,14 @@ fn one_failed_dump_does_not_skip_the_other_buffers() {
 
 // ── abnormal exits ────────────────────────────────────────────────────────
 
-fn dirty_file_editor(dir: &tempfile::TempDir) -> Editor {
-    let mut ed = editor_with_path("hello\n", &dir.path().join("foo.txt"));
-    dirty_focused(&mut ed);
-    ed
-}
-
 fn signalled(code: i32) -> std::sync::Arc<std::sync::atomic::AtomicI32> {
     std::sync::Arc::new(std::sync::atomic::AtomicI32::new(code))
-}
-
-fn dump_text(dir: &tempfile::TempDir) -> Option<String> {
-    std::fs::read_to_string(dir.path().join("foo.txt.dump")).ok()
 }
 
 #[test]
 fn a_signal_exit_dumps_the_dirty_buffers() {
     let dir = safe_tempdir();
-    let mut ed = dirty_file_editor(&dir);
+    let mut ed = dirty_file_editor(&dir, "hello\n");
     ed.attach_terminate_flag(signalled(143));
 
     let outcomes = ed.dump_if_abnormal_exit(&Ok(()), None);
@@ -244,7 +222,7 @@ fn a_signal_exit_dumps_the_dirty_buffers() {
 #[test]
 fn a_terminal_hangup_error_dumps_the_dirty_buffers() {
     let dir = safe_tempdir();
-    let ed = dirty_file_editor(&dir);
+    let ed = dirty_file_editor(&dir, "hello\n");
 
     ed.dump_if_abnormal_exit(&Err(io::ErrorKind::UnexpectedEof.into()), None);
 
@@ -254,7 +232,7 @@ fn a_terminal_hangup_error_dumps_the_dirty_buffers() {
 #[test]
 fn any_other_run_error_dumps_the_dirty_buffers() {
     let dir = safe_tempdir();
-    let ed = dirty_file_editor(&dir);
+    let ed = dirty_file_editor(&dir, "hello\n");
 
     ed.dump_if_abnormal_exit(&Err(io::ErrorKind::PermissionDenied.into()), None);
 
@@ -264,7 +242,7 @@ fn any_other_run_error_dumps_the_dirty_buffers() {
 #[test]
 fn a_deliberate_quit_is_not_dumped_even_if_a_signal_follows() {
     let dir = safe_tempdir();
-    let mut ed = dirty_file_editor(&dir);
+    let mut ed = dirty_file_editor(&dir, "hello\n");
     ed.attach_terminate_flag(signalled(143));
     ed.state.request_quit();
 
@@ -277,7 +255,7 @@ fn a_deliberate_quit_is_not_dumped_even_if_a_signal_follows() {
 #[test]
 fn a_normal_exit_is_not_dumped() {
     let dir = safe_tempdir();
-    let ed = dirty_file_editor(&dir);
+    let ed = dirty_file_editor(&dir, "hello\n");
 
     let outcomes = ed.dump_if_abnormal_exit(&Ok(()), None);
 

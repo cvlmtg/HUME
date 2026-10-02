@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
+use hume_platform::io::FileMeta;
 
 use crate::editor::buffer::Buffer;
 use crate::editor::commands::FocusedPane;
@@ -15,11 +16,25 @@ use crate::editor::{Editor, Severity};
 /// [`Editor::reload_buffer_in_place`].
 pub(in crate::editor) enum ReplaceSource {
     /// A fresh read of the buffer's file. The buffer matches disk afterwards
-    /// and takes the read's file metadata.
-    Disk(Box<Buffer>),
+    /// and takes the read's file metadata, so save-time permission and
+    /// ownership checks see the current on-disk values.
+    Disk {
+        text: BufferText,
+        file_meta: Option<FileMeta>,
+    },
     /// The text of a crash dump. The buffer keeps its file metadata and disk
     /// state and reads as dirty.
     Dump(BufferText),
+}
+
+impl ReplaceSource {
+    /// The text and file metadata of `read`, a buffer freshly read from disk.
+    pub(in crate::editor) fn disk(mut read: Buffer) -> Self {
+        Self::Disk {
+            text: read.text().clone(),
+            file_meta: read.file_meta.take(),
+        }
+    }
 }
 
 impl Editor {
@@ -234,18 +249,6 @@ impl Editor {
         // session whose group no longer matches the buffer.
         crate::editor::focus::end_focus_sessions(&mut self.state, &self.view);
 
-        // A disk read also refreshes `file_meta`, so save-time
-        // permission/ownership checks see the current on-disk metadata:
-        // `reload_from_text` only replaces the buffer's text, not its
-        // `file_meta`, so it is set explicitly below.
-        let (new_text, disk_file_meta) = match source {
-            ReplaceSource::Disk(mut new_doc) => {
-                let text = new_doc.text().clone();
-                (text, Some(std::mem::take(&mut new_doc.file_meta)))
-            }
-            ReplaceSource::Dump(text) => (text, None),
-        };
-
         let buf = self.state.buffers.get_mut(id);
         let mut stores = PositionStores::new(
             &mut self.state.panes,
@@ -253,13 +256,14 @@ impl Editor {
             &mut self.state.buffer_positions,
             &mut self.state.config.decorations,
         );
-        let mutated = match disk_file_meta {
-            Some(file_meta) => {
-                let mutated = buf.reload_from_text(id, &mut stores, new_text, fp.pid());
+        let mutated = match source {
+            ReplaceSource::Disk { text, file_meta } => {
+                let mutated = buf.replace_text_recorded(id, &mut stores, text, fp.pid());
+                buf.mark_saved();
                 buf.file_meta = file_meta;
                 mutated
             }
-            None => buf.replace_text_recorded(id, &mut stores, new_text, fp.pid()),
+            ReplaceSource::Dump(text) => buf.replace_text_recorded(id, &mut stores, text, fp.pid()),
         };
         // Flush any didChange already queued for this buffer *before* the
         // whole-document one below. Otherwise, under macro replay (an edit

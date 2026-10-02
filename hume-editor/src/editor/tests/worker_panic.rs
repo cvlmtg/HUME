@@ -1,17 +1,8 @@
 //! Reporting panics from background threads.
 
 use super::*;
-use hume_platform::worker_panic::{WorkerPanic, WorkerPanics};
+use hume_platform::worker_panic::WorkerPanics;
 use pretty_assertions::assert_eq;
-
-fn lsp_reader_panic() -> WorkerPanic {
-    WorkerPanic {
-        thread: "hume-lsp-reader".into(),
-        location: Some("hume-lsp/src/transport.rs:150:9".into()),
-        message: "bad frame".into(),
-        backtrace: None,
-    }
-}
 
 fn error_texts(ed: &Editor) -> Vec<String> {
     ed.state
