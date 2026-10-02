@@ -83,11 +83,6 @@ fn record_declared(ctx: &mut SteelCtx, name: &str) {
 fn already_declared(ctx: &mut SteelCtx, entry: &EntryId, name: &str) -> bool {
     match ctx.registries.lazy_registry.plugins.get(entry) {
         Some(PluginState::Loaded) => {
-            // Stays Error, not Info: `hume-editor/tests/unix/scripting.rs`'s
-            // `load_then_declare_ignored_with_soft_error` pins this as a
-            // logged contradiction (load-then-declare), not an
-            // ordinary idempotent no-op, and that test fails if the log
-            // entry goes away.
             ctx.log(
                 crate::log::LogLevel::Error,
                 format!("declare-plugin!: '{name}' is already loaded; ignoring declare"),
@@ -244,13 +239,27 @@ pub(crate) fn declare_plugin(
         )));
     }
 
+    // `plugin_configs` is written only by `load-plugin!`, so a key means the
+    // plugin was already loaded, and by now its manifest or `plugin.scm` has
+    // decided its entries.
+    if ctx.manifest_resolving.is_none() && ctx.registries.plugin_configs.contains_key(&plugin_id) {
+        ctx.log(
+            crate::log::LogLevel::Error,
+            format!(
+                "declare-plugin!: '{name}' comes after its load-plugin!; \
+                 put declare-plugin! first. Declaration ignored."
+            ),
+        );
+        return Ok(SteelVal::Void);
+    }
+
     if already_declared(ctx, &entry_id, &name) {
         return Ok(SteelVal::Void);
     }
 
     // Decode and validate every activation-entry list before recording any state
-    // below: a malformed entry must leave `declared_plugins`/`plugin_configs`
-    // untouched, or PLUM would list a plugin the lazy registry never learns about.
+    // below: a malformed entry must leave `declared_plugins` untouched, or PLUM
+    // would list a plugin the lazy registry never learns about.
     let cmd_list = list_to_strings(commands, &declare_arg_label(ctx, "#:commands"))?;
     let typed_cmd_list =
         list_to_strings(typed_commands, &declare_arg_label(ctx, "#:typed-commands"))?;

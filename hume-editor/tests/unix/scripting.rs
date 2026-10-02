@@ -639,7 +639,7 @@ fn declare_then_load_keeps_the_plugin_lazy() {
 /// plugin is `Loaded`; the declare is ignored with a soft error.
 ///
 /// That error comes from the load-then-declare guard in `declare_plugin`. Without
-/// it the declare would fall through to the generic duplicate guard and no-op with
+/// it the declare would fall through to the first-wins guard and no-op with
 /// nothing logged.
 #[test]
 fn load_then_declare_ignored_with_soft_error() {
@@ -671,12 +671,55 @@ fn load_then_declare_ignored_with_soft_error() {
         h.peek_pending_messages().iter().any(|(sev, msg)| {
             matches!(sev, hume_scripting::LogLevel::Error)
                 && msg.contains("user/tp")
-                && msg.contains("already loaded")
+                && msg.contains("comes after its load-plugin!")
         }),
         "expected a soft error about load-then-declare contradiction; got: {:?}",
         h.peek_pending_messages()
     );
     // The declare was ignored: no Lazy stub for "my-cmd" should be registered.
+    assert!(
+        mock.lazy_command_owner("my-cmd").is_none(),
+        "my-cmd must not be registered as a Lazy stub, declare was ignored"
+    );
+}
+
+/// `(load-plugin! "x")` then `(declare-plugin! "x" …)` for a plugin that ships a
+/// manifest: the manifest's entries are already declared, the user's declare is
+/// ignored, and the ignored declare is reported.
+#[test]
+fn load_then_declare_on_lazy_plugin_is_reported() {
+    use hume_scripting::host::CommandHost;
+
+    let (dir, init_path) = plugin_fixture(
+        "(load-plugin! \"user/tp\")\n(declare-plugin! \"user/tp\" #:commands '(\"my-cmd\"))",
+        r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+    std::fs::write(
+        dir.path()
+            .join("plugins")
+            .join("user")
+            .join("tp")
+            .join("manifest.scm"),
+        "(declare-plugin! \"user/tp\" #:commands '(\"tp-cmd\"))",
+    )
+    .unwrap();
+
+    let mut h = host();
+    h.set_data_dir(dir.path().to_path_buf());
+    let mut mock = MockHost::new();
+
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+        .expect("load-then-declare must succeed (soft error, not hard)");
+
+    assert!(
+        h.peek_pending_messages().iter().any(|(sev, msg)| {
+            matches!(sev, hume_scripting::LogLevel::Error)
+                && msg.contains("user/tp")
+                && msg.contains("comes after its load-plugin!")
+        }),
+        "expected an error about the declare after load-plugin!; got: {:?}",
+        h.peek_pending_messages()
+    );
     assert!(
         mock.lazy_command_owner("my-cmd").is_none(),
         "my-cmd must not be registered as a Lazy stub, declare was ignored"

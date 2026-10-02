@@ -92,7 +92,7 @@ A directory with neither `manifest.scm` nor `plugin.scm` is an error. A missing 
 - **`#:events`**: lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
 - **`#:languages`**: buffer language names that trigger loading. Triggers on the name being *set* on a buffer (by detection, `:set buffer language=`, or another plugin's `define-language!`), not on the name being a known language yet — so a plugin can't use `#:languages '("foo")` to lazily define `"foo"` itself: HUME sets the buffer's language and reports it as unregistered before your plugin's activation runs, then activates you anyway. The message is informational; call `define-language!` in your activation body and everything downstream (highlighting, LSP) still works from there.
 
-A plugin that already has a declared entry keeps those triggers when `load-plugin!` runs: the manifest is not read and the plugin stays lazy. Put `load-plugin!` right after the `declare-plugin!`, because a plugin that activates during startup before its `load-plugin!` line sees an empty config.
+A plugin that already has a declared entry keeps those triggers when `load-plugin!` runs: the manifest is not read and the plugin stays lazy. Put `load-plugin!` right after the `declare-plugin!`, because a plugin that activates during startup before its `load-plugin!` line sees an empty config. A `declare-plugin!` placed after the plugin's `load-plugin!` is ignored, and `:messages` reports it.
 
 ### Lazy local files
 
