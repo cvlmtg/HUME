@@ -344,16 +344,18 @@ pub fn read_own_file(path: &Path) -> io::Result<String> {
 
 /// Write `content` to `path` as a crash dump, replacing any existing file.
 ///
-/// Same temp-file-and-rename strategy as [`write_file_new`], plus an fsync
-/// before the rename. The temp file keeps `tempfile`'s owner-only mode: a
-/// dump holds a copy of a possibly private file, so it must not come out
-/// world-readable like a freshly created user file.
+/// Same temp-file-and-rename strategy as [`write_file_new`]. There is no
+/// fsync: a dump has to survive the process ending, which the OS cache
+/// guarantees, and a dump per buffer inside the terminator's grace period
+/// cannot afford one flush each. A machine crash can still lose it. On Unix
+/// the temp file keeps `tempfile`'s owner-only mode: a dump holds a copy of a
+/// possibly private file, so it must not come out world-readable like a
+/// freshly created user file.
 pub fn write_dump(content: &str, path: &Path) -> io::Result<()> {
     let dir = path.parent().unwrap_or(Path::new("."));
 
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
     io::Write::write_all(&mut tmp, content.as_bytes())?;
-    tmp.as_file().sync_all()?;
     tmp.persist(path).map_err(|e| e.error)?;
     Ok(())
 }

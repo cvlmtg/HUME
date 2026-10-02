@@ -199,8 +199,9 @@ pub fn run(
     let result = editor.run_dumping_on_panic(scratch_dumps.as_deref(), |editor| {
         editor.run(&shared, &mut term)
     });
-    // Before any terminal write or teardown: the dump is cheap, and the
-    // terminator thread forces the process down `QUIT_GRACE` after a signal.
+    // Before any terminal write or teardown: the terminator thread forces
+    // the process down `QUIT_GRACE` after a signal, and each dump is one
+    // write and one rename.
     let dumps = editor.dump_if_abnormal_exit(&result, scratch_dumps.as_deref());
     // Restore the terminal (cursor shape/colour, leave alt-screen, cooked
     // mode) before the LSP grace window below, not after: `lsp_shutdown_all`
