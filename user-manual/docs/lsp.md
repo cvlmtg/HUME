@@ -22,7 +22,7 @@ instead. See [Registering a language server](#registering-a-language-server).
 (load-plugin! "core:lsp-install")  ; :lsp-install and friends; leave it out to manage servers yourself
 ```
 
-Both plugins load lazily, which keeps startup fast: `core:lsp` activates the first time any file with a recognized language opens, or you run one of its commands directly.
+Both plugins load lazily, which keeps startup fast: `core:lsp` activates the first time any file with a recognized language opens, or you run one of its commands directly. `core:lsp-install` registers servers you already installed when a file with a recognized language opens, and loads the rest of itself the first time you run `:lsp-install`, `:lsp-uninstall` or `:lsp-servers`.
 
 Want activation to only trigger for specific languages, or a smaller set of commands?
 Pass `#:languages`/`#:commands`/`#:typed-commands`/`#:events` to `declare-plugin!` before the
@@ -161,11 +161,7 @@ through a package manager not yet supported (`opam`, `luarocks`, …). Install i
 and register it manually as described in [Registering a language server](#registering-a-language-server)
 below.
 
-**A server is on disk but nothing attaches.** This means `core:lsp-install`'s scan hasn't
-(yet) seen it: either `core:lsp-install` hasn't loaded or activated this session at all
-(a lazy plugin whose trigger hasn't fired yet), or the server appeared on disk
-after the scan already ran (installed outside `:lsp-install`, copied in or installed by an
-earlier HUME version). Run `:lsp-rescan-servers`, or add `(load-plugin! "core:lsp-install")` to your `init.scm`.
+**A server is on disk but nothing attaches.** Either `core:lsp-install` is not loaded from your `init.scm`, or the server appeared on disk after its scan already ran (installed outside `:lsp-install`, copied in, or installed by an earlier HUME version). Add `(load-plugin! "core:lsp-install")` to your `init.scm`, or run `:lsp-rescan-servers`.
 
 **A server on your `$PATH` isn't the one HUME runs.** `:lsp-install` always spawns the managed
 copy, even when the same command name also resolves on `$PATH`. You'll see a note about this

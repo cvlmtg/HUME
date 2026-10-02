@@ -433,7 +433,9 @@ A complete starting config. Copy it to `~/.config/hume/init.scm` and edit:
 (load-plugin! "core:stdlib")           ; helper toolkit other plugins depend on
 (load-plugin! "core:pickers")          ; fuzzy file/buffer finders
 (load-plugin! "core:lsp")              ; language server features
+(load-plugin! "core:lsp-install")      ; :lsp-install / :lsp-uninstall for language servers
 (load-plugin! "core:plum")             ; plugin/grammar manager
+(load-plugin! "core:git-diff")         ; live inline git diff
 ```
 
 Before your `init.scm` runs, HUME loads its own prelude (which defines `bind-keys!`, `define-language!` and friends) and its built-in language definitions, so those are always available to you.

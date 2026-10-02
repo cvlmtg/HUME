@@ -37,10 +37,10 @@ PLUM never installs anything on its own: the commands below do the work when you
 
 | Command | Effect |
 |---------|--------|
-| `:plum-install-plugins` | Install all declared plugins not yet on disk |
-| `:plum-cleanup-plugins` | Remove on-disk plugins no longer declared |
+| `:plum-install-plugins` | Install every plugin named in `init.scm` that is not yet on disk |
+| `:plum-cleanup-plugins` | Remove on-disk plugins that `init.scm` does not name |
 | `:plum-update-plugins` | Pull the latest version of every installed third-party plugin |
-| `:plum-list-plugins` | Show declared / installed / orphan / missing plugins |
+| `:plum-list-plugins` | Show named / installed / orphan / missing plugins |
 | `:plum-install-grammar <lang>` | Install and compile one grammar; Tab-completes declared grammar names |
 | `:plum-list-grammars` | Show the grammar catalog and what's installed |
 | `:plum-cleanup-grammars` | Remove compiled grammars you no longer need |
@@ -121,7 +121,7 @@ over files with staged or unstaged git changes.
 (load-plugin! "core:pickers")
 ```
 
-Must be loaded eagerly (`core:stdlib` only needs to be loaded before it): its keys are the only way to reach its commands, so loaded lazily it would have no trigger to ever wake it up. By
+It has no manifest, so it loads at startup (`core:stdlib` only needs to be loaded before it): its keys are the only way to reach its commands, and nothing else could wake it. By
 default the modified-files picker includes untracked files; turn them off with `#:config`:
 
 ```scheme
@@ -193,10 +193,9 @@ buffer, including a scratch buffer or a `.txt` file where `core:lsp` has no serv
 (load-plugin! "core:buffer-words")
 ```
 
-Must be loaded eagerly: `Ctrl-Space` (or a completion source's own trigger char, if one
-applies) is the only thing that can ever invoke the completion source it registers, so a lazy
-plugin would have no other trigger to activate it. Requires `core:stdlib` loaded
-or loaded first.
+It has no manifest, so it loads at startup: `Ctrl-Space` (or a completion source's own trigger char, if one
+applies) is the only thing that can ever invoke the completion source it registers, and nothing else could wake it. Requires `core:stdlib` loaded
+first.
 
 Keeps a per-buffer index of identifiers, refreshed as you type; `Ctrl-Space` reads it, it
 never scans the buffer itself. Ranks alongside `core:lsp`'s own completions in the same menu
@@ -228,7 +227,7 @@ Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `C
 (load-plugin! "core:vim-keybind")
 ```
 
-Must be loaded eagerly (`core:stdlib` only needs to be loaded before it): it replaces keys HUME already binds, and most of what it rebinds (`goto-line-start`, `goto-line-end`, and the rest) are built-in commands, not plugin commands, so there's no first dispatch to trigger loading. Loaded lazily, `$`/`^`/`0` would keep doing HUME's default thing until something unrelated woke the plugin up.
+It has no manifest, so it loads at startup (`core:stdlib` only needs to be loaded before it): it replaces keys HUME already binds, and most of what it rebinds (`goto-line-start`, `goto-line-end`, and the rest) are built-in commands, not plugin commands, so there's no first dispatch to trigger loading.
 
 By default (`'smart`), `C` is context-sensitive: on a bare cursor with no count it changes to end of line as in vim, but with a real selection, or any count prefix (e.g. `3C`), it runs HUME's own `copy-selection-on-next-line`, so that command stays fully reachable. Change this with `#:config`:
 
@@ -247,7 +246,7 @@ Helix-style surround keys: `m s` wraps the selection, `m d` deletes a surroundin
 (load-plugin! "core:helix-surround")
 ```
 
-Must be loaded eagerly: it takes over `m s` (which by default *selects* a surrounding pair) and removes `m w` outright, so wrapping lives on `m s` alone once it's loaded. Loaded lazily, `m s` would keep selecting instead of wrapping until something else triggered the plugin.
+It has no manifest, so it loads at startup: it takes over `m s` (which by default *selects* a surrounding pair) and removes `m w` outright, so wrapping lives on `m s` alone once it's loaded.
 
 ## core:classic-paste
 
@@ -257,4 +256,4 @@ GUI-style paste, if you'd rather not have `p` choose a source for you: `p` / `P`
 (load-plugin! "core:classic-paste")
 ```
 
-Must be loaded eagerly: it replaces `p`/`P`/`Ctrl-v`/`Ctrl-Shift-v`'s default behavior, so until it loads `p` keeps pasting the default way instead of erroring or doing nothing.
+It has no manifest, so it loads at startup: it replaces `p`/`P`/`Ctrl-v`/`Ctrl-Shift-v`'s default behavior.

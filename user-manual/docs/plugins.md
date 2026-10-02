@@ -39,7 +39,7 @@ See [Configuring a plugin](#configuring-a-plugin) for what a plugin does with th
 :plugin-status
 ```
 
-Shows all declared plugins, whether they loaded successfully, and which commands they registered.
+Shows one row per plugin entry: whether it is declared (waiting), loaded or failed, and for a declared entry the commands, events and languages still waiting to trigger it. A plugin that loads in pieces has a row for each file, and a local file shows under its `./` path.
 
 ## Reloading configuration
 
@@ -51,9 +51,9 @@ Reloads `init.scm` from scratch. Useful after editing your config without restar
 
 ## Recovering from a failed plugin
 
-A plugin that fails to load doesn't stop the rest of `init.scm`: every plugin after it still loads, and every plugin declared or loaded before it is unaffected. Check `:messages` for the error; it names the plugin and points at the file and line the problem is in. `:plugin-status` shows it as failed alongside everything else.
+A plugin that fails to load doesn't stop the rest of `init.scm`: every plugin after it still loads, and every plugin named before it is unaffected. A lazy plugin loads when its first trigger fires, so its failure shows up then instead of at startup. Check `:messages` for the error; it names the plugin and points at the file and line the problem is in. `:plugin-status` shows it as failed alongside everything else.
 
-If the failing plugin came from a git repository (rather than one you're editing yourself), it may already have a fix upstream: run `:plum-update-plugins` to pull the latest version of every installed plugin, then `:reload-config` to try again. This works even for a plugin that failed on the very first line of your config, since loading it never depends on anything declared or loaded after it.
+If the failing plugin came from a git repository (rather than one you're editing yourself), it may already have a fix upstream: run `:plum-update-plugins` to pull the latest version of every installed plugin, then `:reload-config` to try again. This works even for a plugin that failed on the very first line of your config, since loading it never depends on anything named after it.
 
 ## How plugins are loaded
 
@@ -106,7 +106,7 @@ The name must end in `.scm`, must not contain `..`, and the file must exist, or 
 
 ## Writing a plugin
 
-A plugin is a directory containing a `plugin.scm`; that file is the entry point HUME loads. For a plugin installed by PLUM, the directory is named after its GitHub owner and repo. The simplest `plugin.scm`:
+A plugin is a directory containing a `plugin.scm`; that file is the entry point HUME loads. An optional `manifest.scm` makes the plugin lazy (see [Shipping a manifest](#shipping-a-manifest)). For a plugin installed by PLUM, the directory is named after its GitHub owner and repo. The simplest `plugin.scm`:
 
 ```scheme
 (define-typed-command! "hello"
@@ -217,21 +217,18 @@ See [Standard Library](standard-library.md#selections) for the full list of sele
 `call!` with an unknown command name logs an error and no-ops instead of aborting the command body: a missing plugin dependency shows up as an error in `:messages`, not as a crash, so check dependencies up front rather than relying on the error to be noticed.
 :::
 
-If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it. Whether that call sits at your plugin's own top level or inside a command a key press later fires makes no difference: `call!` activates a lazily-declared dependency on demand either way, so the usual check is `(declared-plugins)`, which lists installed plugins named by `load-plugin!` or `declare-plugin!`:
+If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it. Whether that call sits at your plugin's own top level or inside a command a key press later fires makes no difference: `call!` activates a lazily-declared dependency on demand either way, so the usual check is `(declared-plugins)`, which lists the installed plugins named by `load-plugin!` or `declare-plugin!`:
 
 ```scheme
 (unless (member "core:stdlib" (declared-plugins))
   (error "my-plugin: requires core:stdlib — add (load-plugin! \"core:stdlib\") before it"))
 ```
 
-This is enough as long as the command you're calling is one of the dependency's own activation entries: the entries of its `manifest.scm`, or an explicit `#:commands`/`#:events`/`#:languages` list that includes it. If whoever declared the dependency wrote a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#f` instead of raising, and the check above can't catch it, since the plugin is declared, just not for the command you need. When you don't control how a dependency gets declared and want a stronger guarantee, check `(loaded-plugins)` instead: it only lists plugins that have actually finished activating, so a missed-activation `#f` on the specific command name never happens. The trade-off is that this forces the dependency to be loaded eagerly, not just declared.
+This is enough as long as the command you're calling is one of the dependency's own activation entries: the entries of its `manifest.scm`, or a custom list a user declared that includes it. If a user declared the dependency with a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#f` instead of raising, and the check above can't catch it, since the plugin is declared, just not for the command you need.
 
-```scheme
-(unless (member "core:stdlib" (loaded-plugins))
-  (error "my-plugin: requires core:stdlib loaded eagerly — add (load-plugin! \"core:stdlib\") before it"))
-```
+`(loaded-plugins)` lists the plugins whose code has finished loading. It suits a dependency without a manifest, which loads at startup. A dependency with a manifest is lazy, so it is not in that list until something triggers it, and checking it there would fail for a plugin that works.
 
-Either check fails loudly at load time (startup or `:reload-config`), naming exactly what's missing, instead of leaving the bug to surface later at whatever moment the dependent command actually runs.
+The check fails loudly at load time (startup or `:reload-config`), naming what's missing, instead of leaving the bug to surface later at whatever moment the dependent command actually runs.
 
 ### Pending character input
 

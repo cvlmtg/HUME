@@ -10,7 +10,7 @@ keyboard: type a few characters, watch the list narrow, `Enter` to go there.
 (load-plugin! "core:pickers")
 ```
 
-Must be loaded eagerly: `z f` and `z b` are the only way to reach its commands, so loaded lazily it would have no trigger to ever wake it up. `core:stdlib` only needs to be loaded before it.
+It has no manifest, so it loads at startup: `z f` and `z b` are the only way to reach its commands, and nothing else could wake it. `core:stdlib` only needs to be loaded before it.
 
 ## Picking files
 
