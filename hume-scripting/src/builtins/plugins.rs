@@ -13,7 +13,7 @@ use crate::{
     SteelCtx,
     attribution::{EntryFile, EntryId, Owner, PluginId},
     lazy::PluginState,
-    plugin_record::{Request, Resolution},
+    plugin_record::Resolution,
 };
 
 use super::SteelResult;
@@ -317,18 +317,16 @@ pub(crate) fn declare_plugin(
     // A secondary entry naming a file that is missing from a plugin that is
     // installed is a misconfigured plugin, not a "not installed yet" state.
     // Raised before anything is recorded so a failed declare leaves no trace.
-    if path.is_none() && !entry_id.file.is_main() {
-        let plugin_installed = plugin_dir_for_id(&plugin_id, ctx.dirs)
-            .map(|dir| path_exists(&dir))
-            .transpose()
+    if path.is_none()
+        && !entry_id.file.is_main()
+        && installed_plugin_dir(&plugin_id, ctx.dirs)
             .map_err(generic_err)?
-            .unwrap_or(false);
-        if plugin_installed {
-            return Err(generic_err(format!(
-                "declare-plugin!: '{name}' has no entry file '{}'",
-                entry_id.file.as_str()
-            )));
-        }
+            .is_some()
+    {
+        return Err(generic_err(format!(
+            "declare-plugin!: '{name}' has no entry file '{}'",
+            entry_id.file.as_str()
+        )));
     }
 
     // When the plugin file is absent on disk, it can never be activated:
@@ -340,9 +338,7 @@ pub(crate) fn declare_plugin(
     // plugins, so it can't catch the error.  The plugin is recorded here so
     // PLUM lists it.
     let Some(path) = path else {
-        ctx.registries
-            .plugin_records
-            .note(plugin_id.clone(), Request::Declared);
+        ctx.registries.plugin_records.note(plugin_id.clone(), None);
         mark_absent(ctx, &plugin_id, &name, "declare-plugin!")?;
         return Ok(SteelVal::Void);
     };
@@ -375,9 +371,7 @@ pub(crate) fn declare_plugin(
         )));
     }
 
-    ctx.registries
-        .plugin_records
-        .note(plugin_id.clone(), Request::Declared);
+    ctx.registries.plugin_records.note(plugin_id.clone(), None);
 
     // Pre-seed cmd_owners so (command-plugin "cmd") resolves correctly before
     // the plugin body is evaluated (before activation).  Only for accepted
@@ -391,10 +385,6 @@ pub(crate) fn declare_plugin(
     ctx.registries
         .lazy_registry
         .declare(entry_id, path, evt_list, lang_list);
-    ctx.registries
-        .plugin_records
-        .resolve(&plugin_id, Resolution::Declared)
-        .map_err(generic_err)?;
 
     Ok(SteelVal::Void)
 }
@@ -419,6 +409,17 @@ fn plugin_dir_for_id(plugin_id: &PluginId, dirs: &ScriptDirs) -> Option<std::pat
             .init_dir
             .as_deref()
             .and_then(|d| d.join(path).parent().map(std::path::Path::to_path_buf)),
+    }
+}
+
+/// [`plugin_dir_for_id`] when that directory exists on disk.
+fn installed_plugin_dir(
+    plugin_id: &PluginId,
+    dirs: &ScriptDirs,
+) -> Result<Option<std::path::PathBuf>, String> {
+    match plugin_dir_for_id(plugin_id, dirs) {
+        Some(dir) => Ok(path_exists(&dir)?.then_some(dir)),
+        None => Ok(None),
     }
 }
 
@@ -493,17 +494,18 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
 
     ctx.registries
         .plugin_records
-        .note(plugin_id.clone(), Request::Loaded { config });
+        .note(plugin_id.clone(), Some(config));
 
     if ctx
         .registries
         .plugin_records
         .resolution(&plugin_id)
         .is_some()
+        || ctx.registries.lazy_registry.declares_plugin(&plugin_id)
     {
         return Ok(SteelVal::BoolV(false));
     }
-    let Some(dir) = plugin_dir_for_id(&plugin_id, ctx.dirs) else {
+    let Some(dir) = installed_plugin_dir(&plugin_id, ctx.dirs).map_err(generic_err)? else {
         mark_absent(ctx, &plugin_id, &name, "load-plugin!")?;
         return Ok(SteelVal::BoolV(false));
     };
@@ -524,15 +526,7 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
         ctx.registries
             .lazy_registry
             .declare(main, path, Vec::new(), Vec::new());
-        ctx.registries
-            .plugin_records
-            .resolve(&plugin_id, Resolution::Declared)
-            .map_err(generic_err)?;
         return Ok(SteelVal::BoolV(true));
-    }
-    if !path_exists(&dir).map_err(generic_err)? {
-        mark_absent(ctx, &plugin_id, &name, "load-plugin!")?;
-        return Ok(SteelVal::BoolV(false));
     }
     Err(generic_err(format!(
         "load-plugin!: '{name}' has neither manifest.scm nor plugin.scm in {}",
@@ -745,17 +739,14 @@ pub(crate) fn entry_loaded(ctx: &mut SteelCtx, plugin: String, entry: SteelVal) 
 /// any-fallible-decode ordering; see that function's doc for why).
 ///
 /// Clears `manifest_resolving` and pops the effect mark `load_plugin`
-/// pushed unconditionally, before decoding `error`. The mark's effects are
-/// committed only when the manifest evaluated without error and declared the
-/// plugin. A `manifest.scm` that evaluates without error but never calls
-/// `declare-plugin!` would otherwise leave the plugin undeclared with no error;
-/// that check's own failure is raised, caught by the same `with-handler` in
-/// `bootstrap.scm`, and reaches this function a second time as a genuine
-/// failure. On failure, marks the plugin's manifest
-/// failed and rolls its entries back to `Failed` via `fail_plugin_activation`
-/// (same helper a lazy activation failure uses), undoing the declarations manifest.scm committed before a
-/// later top-level form in the same file raised (see the `Some(err)` arm
-/// below), then records the failure the way a body error is into
+/// pushed unconditionally, before decoding `error`. A `manifest.scm` that
+/// evaluates without error but never declares its plugin fails with its own
+/// error, so the mark's effects are committed only for a manifest that
+/// evaluated cleanly and declared the plugin.
+///
+/// On failure, marks the plugin's manifest failed and rolls its entries back
+/// to `Failed` via `fail_plugin_activation` (the helper a lazy activation
+/// failure uses), then records the failure the way a body error is into
 /// `ctx.failed_activations` (see `run_steel_session`).
 pub(crate) fn finish_manifest_load(
     ctx: &mut SteelCtx,
@@ -767,43 +758,43 @@ pub(crate) fn finish_manifest_load(
     // Otherwise a decode failure would leave manifest resolution permanently
     // "in progress", and every later `load-plugin!` would hard-error on the
     // reentrancy guard.
-    ctx.manifest_resolving = None;
+    let resolving = ctx.manifest_resolving.take();
     let error = optional_steel_error_arg(error, "%finish-manifest-load!").unwrap_or_else(Some);
-    let id = PluginId::parse_installed(&name);
-    let declared = id
+    let declared = resolving
         .as_ref()
-        .is_ok_and(|id| ctx.registries.plugin_records.resolution(id) == Some(Resolution::Declared));
-    ctx.pop_effect_marks(error.is_none() && declared);
-    let id = id.map_err(generic_err)?;
-
-    match error {
-        None if !declared => {
-            return Err(generic_err(format!(
+        .is_some_and(|id| ctx.registries.lazy_registry.declares_plugin(id));
+    let error = error.or_else(|| {
+        (!declared).then(|| {
+            generic_err(format!(
                 "load-plugin!: manifest.scm for '{name}' did not declare '{name}': a \
                  manifest.scm must call (declare-plugin! \"{name}\" …) with at least one \
                  activation entry"
-            )));
+            ))
+        })
+    });
+    ctx.pop_effect_marks(error.is_none());
+    let id = resolving.ok_or_else(|| {
+        generic_err(format!(
+            "%finish-manifest-load!: no manifest is being resolved for '{name}'"
+        ))
+    })?;
+
+    if let Some(err) = error {
+        // A manifest declares its entries with `declare-plugin!` calls, some
+        // of which may commit before a *later* top-level form in the same
+        // file raises. `hm.eval-string` runs manifest.scm as one program, so
+        // rolling its entries back to `Failed` undoes them: a half-evaluated
+        // manifest.scm never leaves a live command stub behind for a plugin
+        // the user was just told failed to load. The plugin stays in the PLUM
+        // list, so PLUM still offers to install/update it.
+        ctx.registries
+            .plugin_records
+            .resolve(&id, Resolution::ManifestFailed)
+            .map_err(generic_err)?;
+        for entry in ctx.registries.lazy_registry.entries_of(&id) {
+            fail_plugin_activation(ctx, &entry);
         }
-        None => {}
-        Some(err) => {
-            // A manifest declares its entries with `declare-plugin!` calls,
-            // some of which may commit before a *later* top-level form in the
-            // same file raises. `hm.eval-string` runs manifest.scm as one program, so
-            // that self-declare's `Declared` state is already committed, and
-            // rolling its entries back to `Failed` (the same helper a lazy
-            // activation failure uses) undoes it, so a half-evaluated
-            // manifest.scm never leaves a live command stub behind for a
-            // plugin the user was just told failed to load. The plugin stays
-            // in the PLUM list, so PLUM still offers to install/update it.
-            ctx.registries
-                .plugin_records
-                .resolve(&id, Resolution::ManifestFailed)
-                .map_err(generic_err)?;
-            for entry in ctx.registries.lazy_registry.entries_of(&id) {
-                fail_plugin_activation(ctx, &entry);
-            }
-            ctx.failed_activations.push((EntryId::main(id), err));
-        }
+        ctx.failed_activations.push((EntryId::main(id), err));
     }
 
     Ok(SteelVal::Void)

@@ -461,7 +461,7 @@ impl ScriptingHost {
     pub fn lazy_status_string(&self, lazy_cmds: &[(String, attribution::EntryId, bool)]) -> String {
         self.registries
             .lazy_registry
-            .format_status(&self.registries.plugin_records, lazy_cmds)
+            .format_status(self.registries.plugin_records.entryless_rows(), lazy_cmds)
     }
 
     /// Peek at pending messages without draining.  Only for test assertions.

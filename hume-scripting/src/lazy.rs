@@ -12,7 +12,9 @@ use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 
 use super::attribution::{EntryId, PluginId};
-use super::plugin_record::{PluginRecords, Resolution};
+
+/// The activations column of a row with nothing waiting to trigger it.
+const NO_ACTIVATIONS: &str = "\u{2014}";
 
 /// Lifecycle state of a declared plugin.
 #[derive(Debug)]
@@ -135,9 +137,9 @@ impl LazyRegistry {
     ///
     /// Returns `""` if there is nothing to list; the caller reports "No plugins
     /// declared" rather than opening an empty scratch view.
-    pub(crate) fn format_status(
+    pub(crate) fn format_status<'a>(
         &self,
-        records: &PluginRecords,
+        plugin_rows: impl IntoIterator<Item = (&'a PluginId, &'static str)>,
         lazy_cmds: &[(String, EntryId, bool)],
     ) -> String {
         let mut rows: Vec<(String, &'static str, String)> = self
@@ -160,18 +162,15 @@ impl LazyRegistry {
             })
             .collect();
 
-        // A plugin with no entry row (not installed, or a manifest that raised
-        // before declaring anything) gets a row of its own.
-        for (plugin, resolution) in records.unresolved_rows() {
-            if !self.declares_plugin(plugin) {
-                let state = match resolution {
-                    Resolution::Absent => "absent",
-                    Resolution::ManifestFailed => "failed",
-                    Resolution::Declared => continue,
-                };
-                rows.push((plugin.to_string(), state, "\u{2014}".to_string()));
-            }
-        }
+        // `plugin_rows` are plugins that may have no entry row (not installed,
+        // or a manifest that raised before declaring anything); one that does
+        // have entries is already listed above.
+        rows.extend(
+            plugin_rows
+                .into_iter()
+                .filter(|(plugin, _)| !self.declares_plugin(plugin))
+                .map(|(plugin, state)| (plugin.to_string(), state, NO_ACTIVATIONS.to_string())),
+        );
         if rows.is_empty() {
             return String::new();
         }
@@ -266,7 +265,7 @@ impl LazyRegistry {
         if parts.is_empty() {
             // Defensive fallback: policy in declare_plugin rejects zero-activation-entry
             // declarations, but the data layer does not enforce this invariant.
-            "\u{2014}".to_string()
+            NO_ACTIVATIONS.to_string()
         } else {
             parts.join("  ")
         }

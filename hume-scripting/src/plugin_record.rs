@@ -10,28 +10,30 @@ use steel::rvals::SteelVal;
 
 use super::attribution::PluginId;
 
-/// How `init.scm` has named a plugin so far.
-pub(crate) enum Request {
-    /// Only `declare-plugin!` has named it.
-    Declared,
-    /// `load-plugin!` has run. The config is the latest one passed.
-    Loaded { config: SteelVal },
-}
-
-/// What looking the plugin up on disk found. Absent until the first lookup.
+/// What looking the plugin up found, beyond the entries the lazy registry
+/// holds. Absent until the first lookup that found one of these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Resolution {
     /// Not installed. Reported when it is first set.
     Absent,
-    /// Installed, with its entries in the lazy registry.
-    Declared,
     /// Its `manifest.scm` raised.
     ManifestFailed,
 }
 
+impl Resolution {
+    /// The `:plugin-status` state column for a plugin with no entry row.
+    fn label(self) -> &'static str {
+        match self {
+            Self::Absent => "absent",
+            Self::ManifestFailed => "failed",
+        }
+    }
+}
+
 pub(crate) struct PluginRecord {
     id: PluginId,
-    request: Request,
+    /// Set once `load-plugin!` has run; the latest config it passed.
+    config: Option<SteelVal>,
     resolution: Option<Resolution>,
 }
 
@@ -44,19 +46,23 @@ impl PluginRecords {
         self.0.iter().find(|r| r.id == *id)
     }
 
-    /// Records that `init.scm` named `id`. The first spelling is kept, a
-    /// `Loaded` request replaces any earlier one, and a `Declared` request
-    /// never downgrades a `Loaded` one.
-    pub(crate) fn note(&mut self, id: PluginId, request: Request) {
-        match self.0.iter_mut().find(|r| r.id == id) {
+    fn find_mut(&mut self, id: &PluginId) -> Option<&mut PluginRecord> {
+        self.0.iter_mut().find(|r| r.id == *id)
+    }
+
+    /// Records that `init.scm` named `id`. The first spelling is kept. A
+    /// `Some` config (from `load-plugin!`) replaces any earlier one; `None`
+    /// (from `declare-plugin!`) never removes one.
+    pub(crate) fn note(&mut self, id: PluginId, config: Option<SteelVal>) {
+        match self.find_mut(&id) {
             Some(record) => {
-                if matches!(request, Request::Loaded { .. }) {
-                    record.request = request;
+                if config.is_some() {
+                    record.config = config;
                 }
             }
             None => self.0.push(PluginRecord {
                 id,
-                request,
+                config,
                 resolution: None,
             }),
         }
@@ -64,15 +70,11 @@ impl PluginRecords {
 
     /// The config `load-plugin!` last passed for `id`.
     pub(crate) fn config(&self, id: &PluginId) -> Option<&SteelVal> {
-        match &self.find(id)?.request {
-            Request::Loaded { config } => Some(config),
-            Request::Declared => None,
-        }
+        self.find(id)?.config.as_ref()
     }
 
     pub(crate) fn was_loaded(&self, id: &PluginId) -> bool {
-        self.find(id)
-            .is_some_and(|r| matches!(r.request, Request::Loaded { .. }))
+        self.config(id).is_some()
     }
 
     pub(crate) fn resolution(&self, id: &PluginId) -> Option<Resolution> {
@@ -86,19 +88,19 @@ impl PluginRecords {
         id: &PluginId,
         resolution: Resolution,
     ) -> Result<Option<Resolution>, String> {
-        let record = self.0.iter_mut().find(|r| r.id == *id).ok_or_else(|| {
+        let record = self.find_mut(id).ok_or_else(|| {
             format!("plugin '{id}' was never named by load-plugin! or declare-plugin!")
         })?;
         Ok(record.resolution.replace(resolution))
     }
 
-    /// Plugins that are absent or whose manifest failed. Neither has an entry
-    /// row, so `:plugin-status` lists each on a row of its own.
-    pub(crate) fn unresolved_rows(&self) -> impl Iterator<Item = (&PluginId, Resolution)> {
-        self.0.iter().filter_map(|r| match r.resolution {
-            Some(res @ (Resolution::Absent | Resolution::ManifestFailed)) => Some((&r.id, res)),
-            _ => None,
-        })
+    /// Plugins that are absent or whose manifest failed, with their
+    /// `:plugin-status` state. Neither need have an entry row, so the status
+    /// table lists each on a row of its own.
+    pub(crate) fn entryless_rows(&self) -> impl Iterator<Item = (&PluginId, &'static str)> {
+        self.0
+            .iter()
+            .filter_map(|r| Some((&r.id, r.resolution?.label())))
     }
 
     /// The names PLUM lists, in the order they were first typed. A local file

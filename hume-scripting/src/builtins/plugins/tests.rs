@@ -686,7 +686,7 @@ fn load_plugin_absent_dir_soft_logs_and_records_declared_plugins() {
         host.declared_plugins()
             .iter()
             .any(|d| d == "user/definitely-absent-mf"),
-        "the plugin must be recorded the name for PLUM even though nothing was declared"
+        "the plugin must be recorded for PLUM even though nothing was declared"
     );
     let id = EntryId::main(PluginId::parse("user/definitely-absent-mf").unwrap());
     assert!(

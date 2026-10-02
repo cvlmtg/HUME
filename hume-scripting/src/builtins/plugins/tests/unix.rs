@@ -31,6 +31,16 @@ pub(super) fn host_with_plugin(repo: &str, files: &[(&str, &str)]) -> (TempDir, 
     (dir, host)
 }
 
+/// The `:plugin-status` row for `plugin`.
+fn status_row(host: &ScriptingHost, plugin: &str) -> String {
+    let status = host.lazy_status_string(&[]);
+    status
+        .lines()
+        .find(|l| l.contains(plugin))
+        .unwrap_or_else(|| panic!("no row for {plugin} in:\n{status}"))
+        .to_string()
+}
+
 // ── Zero-entry error distinguishes collided vs not-supplied ────────────────
 
 /// When ALL provided `#:commands` entries collide with built-ins, the
@@ -618,11 +628,7 @@ fn status_lists_an_absent_plugin() {
     host.eval_source(r#"(load-plugin! "user/gone")"#, &mut NullHost)
         .unwrap();
 
-    let status = host.lazy_status_string(&[]);
-    let row = status
-        .lines()
-        .find(|l| l.contains("user/gone"))
-        .unwrap_or_else(|| panic!("no row for user/gone in:\n{status}"));
+    let row = status_row(&host, "user/gone");
     assert!(row.contains("absent"), "row: {row}");
 }
 
@@ -643,10 +649,6 @@ fn failed_manifest_without_entries_is_listed_and_has_no_entry_row() {
         host.plugin_status(&main_entry("user/badmf")).is_none(),
         "a manifest that declared nothing must not leave an entry row"
     );
-    let status = host.lazy_status_string(&[]);
-    let row = status
-        .lines()
-        .find(|l| l.contains("user/badmf"))
-        .unwrap_or_else(|| panic!("no row for user/badmf in:\n{status}"));
+    let row = status_row(&host, "user/badmf");
     assert!(row.contains("failed"), "row: {row}");
 }
