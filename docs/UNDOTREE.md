@@ -2,7 +2,8 @@
 
 Design hub for `core:undotree`: a navigable graph over HUME's undo history, in
 the spirit of `mbbill/undotree`. The graph and jumping to a node ship in the
-bottom drawer (Phase 1). The side-panel host (Phase 2) is open.
+bottom drawer (Phase 1). The side-panel host (Phase 2) and the revision diff
+are open.
 
 ## How to use this document
 
@@ -73,13 +74,75 @@ HUME's undo history is a tree, not a stack — see
   wall-clock `std::time::SystemTime`, not serializable across sessions — "5
   minutes ago" is free via `duration_since`; "saved at 14:02" would need
   formatting support, not a new field.
-- **Per-node diff is a real lift, not a small one.** Each node stores its
-  forward/inverse `ChangeSet`, but there is no way to obtain a revision's full
-  *text* without actually navigating to it — there's no snapshot cache.
+- **No revision text.** History stores transactions, never texts, so a
+  revision's full text exists only by walking the buffer to it. The revision
+  diff below never needs one.
 - **The tree is not persisted.** `hume-editing` has no `serde` dependency, so
   the undo tree dies with the session — there is no cross-session equivalent
   of Vim's `undofile`.
 - **One drawer at a time.** Opening any other drawer replaces the tree.
+
+## Revision diff
+
+While the drawer is open, the buffer shows what separates the current text
+from the previous revision, drawn inline the way `core:git-diff`'s inline mode
+draws a diff against a git ref: virtual deleted lines, word highlights and a
+line tint.
+
+### Hunks come from the changeset, not from a text diff
+
+`History::goto_revision` already finds the path between two revisions and
+returns its transactions. Composed with `ChangeSet::compose_all`, they are one
+changeset `C` that maps the current text to the target revision's text.
+Walking `C`'s ops (`Retain`, `Delete`, `Insert`) over the current text gives
+every changed span:
+
+- `Retain(n)`: text both sides share.
+- `Delete(n)`: current text the revision lacks, the plus side.
+- `Insert(s)`: revision text the current text lacks, the minus side, carried
+  in `s` itself.
+
+Touching or adjacent changed line ranges merge into one hunk. A hunk's new-side
+lines are read from the current buffer, and its old-side lines are those same
+lines with `C` spliced in. The old-side line number is the new-side one,
+corrected by the line breaks `C` deletes and inserts before it. No full text is
+rebuilt and no Myers pass runs, so the cost scales with the edit, not the
+buffer.
+
+The word spans are the `Delete` and `Insert` positions themselves, so a hunk
+carries them and needs no `diff-words` call. A revision recorded as
+whole-line replacements (`:e!`'s reload, through `changesets_from_line_diff`)
+has no word-level detail; for its paired lines the renderer falls back to
+`diff-words`.
+
+### Hunks cross the Steel boundary, changesets do not
+
+`(buffer-revision-diff pane id)` returns a list of hunks in the shape
+`diff-buffer-lines` returns, plus each hunk's word spans.
+
+- **One shape for every diff.** A git diff and a revision diff are both hunks,
+  so one renderer draws both.
+- **No raw offsets in plugins.** A changeset's ops are bare char counts, valid
+  only against the one text they were built for. Hunks are line-domain and
+  carry their own text.
+- **The changeset stays internal.** Its op encoding and how history stores it
+  remain free to change.
+- **No second edit path.** An exposed changeset invites an
+  `apply-changeset!`, which would bypass `EditBuilder` and
+  `edit::apply_keeping_final_break`. No plugin has a use for raw changesets
+  that the native side does not already cover (incremental LSP and tree-sitter
+  sync, `PositionStores`).
+
+### Decisions
+
+- **The diff is the current revision against its parent.** Enter jumps and
+  the drawer stays open, so after each jump the buffer shows what that
+  revision changed. The root has no parent and shows no diff.
+- **Inline in the buffer, under the plugin's own decoration source.** It never
+  overwrites `core:git-diff`'s decorations, and closing the drawer clears it.
+- **One renderer.** `core:git-diff`'s hunk renderers take the decoration
+  source as a parameter and move where both plugins can reach them. Where
+  that is stays open: `core:undotree` depends on no other plugin today.
 
 ## Roadmap
 
@@ -110,11 +173,27 @@ HUME's undo history is a tree, not a stack — see
 - [ ] Port the Phase 1 renderer unchanged — it is pure data to strings,
       independent of which host displays it
 
+### Revision diff
+
+- [ ] Read-only path query on `History`: the transactions from `current` to a
+      target without moving `current` or the redo targets. `goto_revision`
+      calls it, so the LCA walk has one implementation (`hume-editing`)
+- [ ] Changeset-to-hunks walk with word spans, tested on inserted and deleted
+      line breaks, edits at either end of the text, and the structural final
+      `\n` (`hume-editing`)
+- [ ] `DiffHost` method and `(buffer-revision-diff pane id)`, regenerated
+      `hume-globals.scm` (`hume-scripting`)
+- [ ] `core:git-diff`'s hunk renderers parameterized by decoration source and
+      shared, using a hunk's own word spans when present
+- [ ] `core:undotree` draws the diff on open, jump and history change, and
+      clears it on close
+
 ### Not planned
 
 - Absolute timestamps — needs a `SystemTime` field with no current use case
   beyond this
-- A `+N/-M` size summary or full per-node diff view — real lift for a
-  nice-to-have
+- A `+N/-M` size summary per row
+- Raw changesets in Steel — see "Hunks cross the Steel boundary, changesets do
+  not"
 - Cross-session persistence — `hume-editing` has no serialization story at all
   today; out of scope for this feature to introduce
