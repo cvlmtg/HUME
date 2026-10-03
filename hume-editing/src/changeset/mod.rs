@@ -826,5 +826,8 @@ pub use builder::ChangeSetBuilder;
 mod diff_cs;
 pub use diff_cs::changesets_from_line_diff;
 
+mod hunks;
+pub use hunks::{ChangeHunk, LineSpan, WordSpans, change_hunks};
+
 #[cfg(test)]
 mod tests;
