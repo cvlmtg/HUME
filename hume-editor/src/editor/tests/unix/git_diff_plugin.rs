@@ -54,6 +54,16 @@ fn commit_and_checkout(name: &str, content: &str, branch: &str) -> (tempfile::Te
 /// env var is what makes `git-diff`'s `manifest.scm`/`*.scm` siblings
 /// resolvable at all.
 fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeGuard) {
+    setup_with_source(tmp, config_expr, "")
+}
+
+/// [`setup`], then `extra` evaluated in the same Steel host, so it can define
+/// commands that call into the loaded plugin.
+fn setup_with_source(
+    tmp: &Path,
+    config_expr: Option<&str>,
+    extra: &str,
+) -> (Editor, RealRuntimeGuard) {
     let guard = RealRuntimeGuard::new();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let mut host = ScriptingHost::new();
@@ -63,7 +73,7 @@ fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeGuard) {
     };
     // core:git-diff's config validation depends on core:stdlib (see
     // plugin.scm's header); load it first, same as the shipped init.scm.example.
-    let load = format!("(load-plugin! \"core:stdlib\")\n{load_git_diff}");
+    let load = format!("(load-plugin! \"core:stdlib\")\n{load_git_diff}\n{extra}");
     eval_with_real_host(&mut ed, &mut host, &load, tmp);
     ed.scripting = Some(host);
     (ed, guard)
@@ -135,12 +145,16 @@ fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String)> {
 
 /// `line_backgrounds_for(SOURCE, bid)`, remapped to line numbers and sorted.
 fn line_bgs(ed: &Editor, bid: BufferId) -> Vec<(usize, String)> {
+    line_bgs_in(ed, bid, SOURCE)
+}
+
+fn line_bgs_in(ed: &Editor, bid: BufferId, source: &str) -> Vec<(usize, String)> {
     let text = ed.state.buffers.get(bid).text();
     let mut v: Vec<_> = ed
         .state
         .config
         .decorations
-        .line_backgrounds_for(SOURCE, bid)
+        .line_backgrounds_for(source, bid)
         .iter()
         .map(|e| {
             (
@@ -169,12 +183,16 @@ type VLine = (
 /// `Option` return shape is kept so a fixture asserting `None` would still
 /// be meaningful if one is ever added.
 fn vlines(ed: &Editor, bid: BufferId) -> Vec<VLine> {
+    vlines_in(ed, bid, SOURCE)
+}
+
+fn vlines_in(ed: &Editor, bid: BufferId, source: &str) -> Vec<VLine> {
     let text = ed.state.buffers.get(bid).text();
     let mut v: Vec<_> = ed
         .state
         .config
         .decorations
-        .virtual_lines_for(SOURCE, bid)
+        .virtual_lines_for(source, bid)
         .iter()
         .map(|e| {
             (
@@ -211,11 +229,24 @@ fn highlights(
     String,
     String,
 )> {
+    highlights_in(ed, bid, SOURCE)
+}
+
+fn highlights_in(
+    ed: &Editor,
+    bid: BufferId,
+    source: &str,
+) -> Vec<(
+    hume_rope::offset::CharOffset,
+    hume_rope::offset::CharOffset,
+    String,
+    String,
+)> {
     let text = ed.state.buffers.get(bid).text();
     ed.state
         .config
         .decorations
-        .extra_highlights_for(SOURCE, bid)
+        .extra_highlights_for(source, bid)
         .iter()
         .map(|e| {
             (
@@ -596,6 +627,149 @@ fn inline_pure_deletion_over_four_lines_renders_every_ghost_line() {
 }
 
 // ── Commands and shared state ────────────────────────────────────────────────
+
+// ── render-diff: another plugin's hunks under its own source ────────────────
+
+const OTHER_SOURCE: &str = "other-diff";
+
+/// `:render-probe` renders `hunks` (a Scheme list literal) for the focused
+/// buffer under `OTHER_SOURCE` through the public `git-diff/render-diff`
+/// command, the way a plugin that is not `core:git-diff` calls it, and
+/// `:render-clear` renders no hunks under the same source.
+fn render_probe_source(hunks: &str) -> String {
+    format!(
+        r#"(define-typed-command! "render-probe" ""
+             (lambda (bid) (call! "git-diff/render-diff" bid "{OTHER_SOURCE}" {hunks})))
+           (define-typed-command! "render-clear" ""
+             (lambda (bid) (call! "git-diff/render-diff" bid "{OTHER_SOURCE}" (list))))"#
+    )
+}
+
+/// A one-line change of "foo bar baz" to "foo QUX baz" at line 1 whose word
+/// spans mark the first word, which a word diff of the pair would never pick,
+/// so the drawing can only have come from the spans.
+const HUNK_WITH_WORDS: &str = r#"(list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
+    'old-lines (list "foo bar baz") 'new-lines (list "foo QUX baz")
+    'words (hash 'old (list (hash 'line 0 'start 0 'end 3))
+                 'new (list (hash 'line 0 'start 0 'end 3)))))"#;
+
+/// The same change with no `'words`, so the renderer word-diffs the pair.
+const HUNK_WITHOUT_WORDS: &str = r#"(list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
+    'old-lines (list "foo bar baz") 'new-lines (list "foo QUX baz")))"#;
+
+/// Asserts what `render-probe` drew: the removed line with `old_span` underlined,
+/// and `new_span` (a char range of the live buffer, with the text it covers)
+/// highlighted.
+fn render_probe_expectations(
+    ed: &Editor,
+    bid: BufferId,
+    old_span: (usize, usize),
+    new_span: (usize, usize, &str),
+) {
+    assert_eq!(
+        vlines_in(ed, bid, OTHER_SOURCE),
+        vec![(
+            0,
+            false,
+            "foo bar baz".to_string(),
+            Some("diff.minus.line".to_string()),
+            vec![(old_span.0, old_span.1, "diff.minus.word".to_string())],
+        )],
+        "the removed line anchors after line 0 and underlines the old span"
+    );
+    assert_eq!(
+        highlights_in(ed, bid, OTHER_SOURCE),
+        vec![(
+            co(new_span.0),
+            co(new_span.1),
+            "diff.plus.word".to_string(),
+            new_span.2.to_string()
+        )],
+        "the new-side span covers its range of the live buffer"
+    );
+    assert_eq!(
+        line_bgs_in(ed, bid, OTHER_SOURCE),
+        vec![(1, "diff.delta.line".to_string())]
+    );
+    assert!(
+        vlines(ed, bid).is_empty()
+            && highlights(ed, bid).is_empty()
+            && line_bgs(ed, bid).is_empty(),
+        "another source's rendering must never touch core:git-diff's own"
+    );
+}
+
+fn render_probe_buffer(hunks: &str) -> (Editor, RealRuntimeGuard, BufferId, tempfile::TempDir) {
+    let tmp = safe_tempdir();
+    let (mut ed, guard) = setup_with_source(tmp.path(), None, &render_probe_source(hunks));
+    let dir = safe_tempdir();
+    std::fs::write(dir.path().join("f.txt"), "one\nfoo QUX baz\nthree\n").unwrap();
+    let bid = open(&mut ed, &dir.path().join("f.txt"));
+    type_cmd(&mut ed, ":render-probe");
+    (ed, guard, bid, dir)
+}
+
+#[test]
+fn render_diff_draws_word_spans_from_the_hunk_under_the_callers_source() {
+    let (ed, _guard, bid, _dir) = render_probe_buffer(HUNK_WITH_WORDS);
+    render_probe_expectations(&ed, bid, (0, 3), (4, 7, "foo"));
+}
+
+#[test]
+fn render_diff_word_diffs_a_hunk_with_no_word_spans() {
+    let (ed, _guard, bid, _dir) = render_probe_buffer(HUNK_WITHOUT_WORDS);
+    render_probe_expectations(&ed, bid, (4, 7), (8, 11, "QUX"));
+}
+
+/// Two changed lines, with a span only on the second of each side: the old
+/// span lands on the second virtual line, the new one at the second line's
+/// own offset in the buffer.
+#[test]
+fn render_diff_places_each_span_on_the_line_it_names() {
+    let hunk = r#"(list (hash 'old-start 1 'old-count 2 'new-start 1 'new-count 2
+        'old-lines (list "foo bar baz" "thr33") 'new-lines (list "foo QUX baz" "three")
+        'words (hash 'old (list (hash 'line 1 'start 3 'end 5))
+                     'new (list (hash 'line 1 'start 2 'end 4)))))"#;
+    let (ed, _guard, bid, _dir) = render_probe_buffer(hunk);
+    assert_eq!(
+        vlines_in(&ed, bid, OTHER_SOURCE),
+        vec![
+            (
+                0,
+                false,
+                "foo bar baz".to_string(),
+                Some("diff.minus.line".to_string()),
+                vec![],
+            ),
+            (
+                0,
+                false,
+                "thr33".to_string(),
+                Some("diff.minus.line".to_string()),
+                vec![(3, 5, "diff.minus.word".to_string())],
+            ),
+        ]
+    );
+    assert_eq!(
+        highlights_in(&ed, bid, OTHER_SOURCE),
+        vec![(
+            co(18),
+            co(20),
+            "diff.plus.word".to_string(),
+            "re".to_string()
+        )]
+    );
+}
+
+#[test]
+fn render_diff_with_no_hunks_clears_the_callers_source() {
+    let (mut ed, _guard, bid, _dir) = render_probe_buffer(HUNK_WITH_WORDS);
+    assert!(!vlines_in(&ed, bid, OTHER_SOURCE).is_empty(), "setup");
+    type_cmd(&mut ed, ":render-clear");
+    assert!(vlines_in(&ed, bid, OTHER_SOURCE).is_empty());
+    assert!(highlights_in(&ed, bid, OTHER_SOURCE).is_empty());
+    assert!(line_bgs_in(&ed, bid, OTHER_SOURCE).is_empty());
+}
 
 #[test]
 fn bare_toggle_off_clears_only_that_rendering() {

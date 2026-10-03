@@ -58,6 +58,10 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
+(define-command! "git-diff/render-diff"
+  "Draw hunks inline in a buffer: deleted lines as virtual lines, word highlights and a line tint. Arguments: pane, a decoration source name, a list of hunks in the shape `diff-buffer-lines` and `buffer-revision-diff` return. The source keeps the drawing apart from every other source's; an empty list clears it."
+  git-diff/render-diff!)
+
 ;;; `:toggle-git-signs`/`:toggle-inline-diff`'s shared completion universe — see
 ;;; docs/architecture.md's "Ref handling".
 (register-completion-source! "git-diff:refs"

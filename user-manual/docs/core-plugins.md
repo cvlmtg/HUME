@@ -166,6 +166,12 @@ a buffer and when you save it; empty for a buffer outside any repo.
 
 Both commands are typed commands, run from the `:` prompt; they have no key bindings.
 
+A plugin that has its own hunks, such as a revision's diff from `buffer-revision-diff`, can
+draw them the same way with `(call! "git-diff/render-diff" pane source hunks)`. `hunks` is
+the list `diff-buffer-lines` or `buffer-revision-diff` returns and `source` is a name of the
+plugin's own, so its drawing never mixes with this plugin's. Each call replaces what `source`
+drew for that buffer, and an empty list clears it.
+
 Configure with `#:config`:
 
 ```scheme

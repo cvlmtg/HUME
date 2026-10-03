@@ -16,7 +16,7 @@ and a line tint).
 | `state.scm` | Per-buffer state (see below) |
 | `diff.scm` | Ref-content fetch and the native line-diff call, debounced per buffer (see `docs/pipeline.md`) |
 | `branch.scm` | Current-branch fetch, debounced per buffer, pushed to the statusline (see `docs/pipeline.md`) |
-| `render.scm` | Pure `hunks → decoration records` functions, one per rendering, and the `diff-words` calls that feed the inline records (see `docs/rendering.md`) |
+| `render.scm` | Pure `hunks → decoration records` functions, one per rendering, and the `diff-words` calls that feed the inline records. The inline renderers take their decoration source as a parameter, so `plugin.scm`'s `git-diff/render-diff` command can draw another plugin's hunks (see `docs/rendering.md`) |
 
 ## State (`state.scm`)
 

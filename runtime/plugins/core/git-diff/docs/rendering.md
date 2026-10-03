@@ -2,15 +2,17 @@
 
 Every function in this file is a pure `hunks → decoration records` view over the one hunk
 shape `state.scm` stores (see [One hunk store](architecture.md#one-hunk-store)), and ends in
-one setter call. `render-inline!` makes two. All setters share a feature-scoped source name,
-`"git-diff"`, not the `core:git-diff` plugin id, matching `core:lsp`'s own decoration
-sources (`"lsp-diagnostics"`, `"lsp-inlay-hints"`).
+one setter call. `render-inline!` makes two. The signs and the plugin's own inline rendering
+share a feature-scoped source name, `"git-diff"`, not the `core:git-diff` plugin id,
+matching `core:lsp`'s own decoration sources (`"lsp-diagnostics"`, `"lsp-inlay-hints"`).
+The inline renderers take the source name as a parameter, so another plugin's hunks draw
+under that plugin's own source (see [Rendering another plugin's hunks](#rendering-another-plugins-hunks)).
 
 ## Flag → renderer dispatch
 
 `render-for!` is the one place a flag key (`"signs?"` or `"inline?"`) maps to its
-renderers: `"signs?"` calls `render-signs!`, and any other key calls `render-inline!` then
-`render-line-bgs!`. Every caller that paints or clears a rendering goes through it:
+renderers: `"signs?"` calls `render-signs!`, and any other key calls `render-diff!` under
+the `"git-diff"` source. Every caller that paints or clears a rendering goes through it:
 `diff.scm`'s `apply-hunks!` on a live refresh and `plugin.scm`'s toggle command on enable
 and disable.
 
@@ -67,6 +69,22 @@ deletion adds nothing, since the inline pass's virtual lines cover the removed c
 carry `diff.minus.line` on their own scope. `set-line-backgrounds!` has no priority
 argument; this plugin is the only producer of these scopes.
 
+## Rendering another plugin's hunks
+
+`render-diff!` is `render-inline!` followed by `render-line-bgs!`, both under a `source`
+argument. The `git-diff/render-diff` command wraps it as the one entry point a plugin
+outside this one reaches through `call!`, since plugins never `require` each other's
+modules:
+
+```scheme
+(call! "git-diff/render-diff" pane "my-source" hunks)
+```
+
+`hunks` is a list in the shape `diff-buffer-lines` and `buffer-revision-diff` return.
+Each call replaces everything that `source` drew for the buffer, so an empty list clears
+it. The command is in this plugin's manifest, so calling it wakes the plugin even before
+its first buffer-open event. Signs are not part of it.
+
 ## Inline: deleted lines and word highlights
 
 `render-inline!` makes two setter calls, `set-virtual-lines!` and `set-extra-highlights!`.
@@ -97,6 +115,17 @@ A paired line's `'segments` come from the `diff-words` hunks (`'old-start`, `'ol
 `'new-start`, `'new-end`, `'old-text`, `'new-text`), filtered to `'old-start < 'old-end`.
 A pure insertion has nothing to underline on the old-side line, and a zero-width segment
 would raise on `set-virtual-lines!`'s `start < end` check.
+
+### Word spans from the hunk
+
+A hunk with a `'words` key, as `buffer-revision-diff` returns, carries its own spans, so no
+`diff-words` call runs for it. `'words` is `(hash 'old spans 'new spans)`, each span
+`(hash 'line 'start 'end)`, with `'line` counted from the hunk's first line on that side and
+`'start`/`'end` char columns in that line. Spans are in ascending line order. Each old-side
+line becomes one virtual line carrying the `'old` spans that name its line as segments. The
+`'new` spans become buffer-offset highlights, from one `line->offset` call for the hunk's
+first new-side line and a walk down `'new-lines` from there, like the paired-line walk
+below. A hunk without `'words` takes the paired `diff-words` path described above.
 
 ### New-side spans
 

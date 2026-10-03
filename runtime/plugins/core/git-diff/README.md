@@ -16,9 +16,10 @@ focused buffer; add that element to your own `configure-statusline!` call to sho
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean`/
   `stdlib/config-string` at load time.
-- **Activates on:** the first buffer opened, or the first `:toggle-git-signs`/
-  `:toggle-inline-diff` typed. Its `manifest.scm` has one entry for `plugin.scm` with
-  `#:events '(on-buffer-open)` and those two typed commands. `"signs"` defaults on (cheap, no line-shifting side
+- **Activates on:** the first buffer opened, the first `:toggle-git-signs`/
+  `:toggle-inline-diff` typed, or the first `git-diff/render-diff` call. Its `manifest.scm`
+  has one entry for `plugin.scm` with `#:events '(on-buffer-open)`, those two typed commands
+  and that command. `"signs"` defaults on (cheap, no line-shifting side
   effects); `"inline"` defaults off (it moves virtual lines into the buffer's visual
   flow).
 - **Branch tracking has no config flag; placement is the switch.** It does not fetch until
@@ -34,6 +35,7 @@ focused buffer; add that element to your own `configure-statusline!` call to sho
 |---|---|
 | `:toggle-git-signs [ref]` | Toggle gutter signs for the current buffer. Tab-completes branches/tags |
 | `:toggle-inline-diff [ref]` | Toggle inline rendering (virtual deleted lines, word highlights, background tint) for the current buffer. Tab-completes branches/tags |
+| `(call! "git-diff/render-diff" pane source hunks)` | Draw `hunks` inline under the decoration source `source`. Another plugin's entry point to the renderer, e.g. `core:undotree`'s revision diff. See [`docs/rendering.md`](docs/rendering.md#rendering-another-plugins-hunks) |
 
 ## Documentation
 

@@ -36,6 +36,7 @@
 - New `core:undotree`: `:undotree` shows the buffer's undo tree as a graph in the bottom drawer, and `Enter` jumps to the highlighted revision, across branches. Bind `toggle-undotree` to a key.
 - New `buffer-undo-tree` and `goto-revision!` read the undo tree and jump to a revision, and the `on-undo-history-changed` hook fires when it changes.
 - New `buffer-revision-diff` returns the line hunks, with word spans, between a revision of the undo history and the buffer's current content.
+- New `git-diff/render-diff` command in `core:git-diff` draws a list of hunks inline under a decoration source of the caller's choosing, for plugins that have hunks of their own.
 - `show-drawer-list!` takes `#:selected` to open on a given row. The drawer scrolls to keep the selected row visible, including after `update-drawer-list!`.
 
 ### Commands
