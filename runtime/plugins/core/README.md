@@ -21,7 +21,7 @@ plugin-authoring API (not core-specific), see
 | [`steel-server`](steel-server/README.md) | Registers a Scheme language server | lazy | `lsp` |
 | [`pickers`](pickers/README.md) | Fuzzy file/buffer/git pickers | eager | `stdlib` |
 | [`git-diff`](git-diff/README.md) | Inline git diff decorations | lazy | `stdlib` |
-| [`undotree`](undotree/README.md) | Undo history graph in the drawer | lazy | none |
+| [`undotree`](undotree/README.md) | Undo history graph in the drawer | lazy | none (draws a revision diff when `git-diff` is loaded) |
 | [`buffer-words`](buffer-words/README.md) | Buffer-text completion source | eager | `stdlib` |
 | [`vim-keybind`](vim-keybind/README.md) | Vim muscle-memory keys | eager | `stdlib` |
 | [`helix-surround`](helix-surround/README.md) | Helix-compat surround keys | eager | none |

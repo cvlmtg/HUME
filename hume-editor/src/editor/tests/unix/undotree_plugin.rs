@@ -291,6 +291,201 @@ fn undotree_refreshes_after_net_identity_undo() {
     ");
 }
 
+// ── Revision diff ────────────────────────────────────────────────────────────
+
+const DIFF_SOURCE: &str = "undotree";
+
+/// `setup`, with `core:git-diff` (and the `core:stdlib` it needs) loaded
+/// before `core:undotree`.
+fn setup_with_git_diff(tmp: &Path) -> (Editor, RealRuntimeGuard) {
+    let guard = RealRuntimeGuard::new();
+    let mut ed = editor_from("-[h]>ello\n");
+    let load = format!(
+        "(load-plugin! \"core:stdlib\")\n{}\n{}",
+        hume_scripting::eager_load_scm("core:git-diff", None),
+        hume_scripting::eager_load_scm("core:undotree", None),
+    );
+    run(&mut ed, tmp, &load);
+    ed.settle();
+    (ed, guard)
+}
+
+/// The undotree source's virtual lines on `bid`, as `(line, before, text,
+/// segment char ranges)`.
+fn diff_vlines(ed: &Editor, bid: BufferId) -> Vec<(usize, bool, String, Vec<(usize, usize)>)> {
+    let text = ed.state.buffers.get(bid).text();
+    ed.state
+        .config
+        .decorations
+        .virtual_lines_for(DIFF_SOURCE, bid)
+        .iter()
+        .map(|e| {
+            (
+                text.char_to_line(e.pos).index(),
+                e.before,
+                e.text.clone(),
+                e.segments
+                    .iter()
+                    .map(|(start, end, _)| (start.index(), end.index()))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+fn diff_line_bgs(ed: &Editor, bid: BufferId) -> usize {
+    ed.state
+        .config
+        .decorations
+        .line_backgrounds_for(DIFF_SOURCE, bid)
+        .len()
+}
+
+/// After `two_branches` the editor is on rev2 ("hllo"), whose parent is the
+/// root ("hello"): the diff shows the `e` rev2 removed, on the root's line.
+#[test]
+fn undotree_draws_the_current_revisions_diff_on_open() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_git_diff(tmp.path());
+    two_branches(&mut ed);
+    let bid = ed.focused_buffer_id();
+
+    toggle(&mut ed);
+
+    assert_eq!(
+        diff_vlines(&ed, bid),
+        vec![(0, true, "hello".to_string(), vec![(1, 2)])]
+    );
+    assert_eq!(diff_line_bgs(&ed, bid), 1);
+}
+
+#[test]
+fn undotree_enter_redraws_the_diff_for_the_revision_jumped_to() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_git_diff(tmp.path());
+    two_branches(&mut ed);
+    let bid = ed.focused_buffer_id();
+    toggle(&mut ed);
+
+    ed.handle_key(key_shift_down());
+    ed.handle_key(key_enter());
+    drain_until(&mut ed, |ed| {
+        diff_vlines(ed, bid) == vec![(0, true, "hello".to_string(), vec![(0, 1)])]
+    });
+
+    assert_eq!(ed.doc().text().to_string(), "ello\n");
+}
+
+#[test]
+fn undotree_root_has_no_diff() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_git_diff(tmp.path());
+    two_branches(&mut ed);
+    let bid = ed.focused_buffer_id();
+    toggle(&mut ed);
+    assert!(!diff_vlines(&ed, bid).is_empty(), "setup: a diff is drawn");
+
+    ed.handle_key(key_shift_down());
+    ed.handle_key(key_shift_down());
+    ed.handle_key(key_enter());
+    drain_until(&mut ed, |ed| diff_vlines(ed, bid).is_empty());
+
+    assert_eq!(ed.doc().text().to_string(), "hello\n");
+    assert_eq!(diff_line_bgs(&ed, bid), 0);
+}
+
+#[test]
+fn undotree_toggle_close_clears_the_diff() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_git_diff(tmp.path());
+    two_branches(&mut ed);
+    let bid = ed.focused_buffer_id();
+    toggle(&mut ed);
+    assert!(!diff_vlines(&ed, bid).is_empty(), "setup: a diff is drawn");
+
+    toggle(&mut ed);
+
+    assert!(diff_vlines(&ed, bid).is_empty());
+    assert_eq!(diff_line_bgs(&ed, bid), 0);
+}
+
+#[test]
+fn undotree_esc_clears_the_diff() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_git_diff(tmp.path());
+    two_branches(&mut ed);
+    let bid = ed.focused_buffer_id();
+    toggle(&mut ed);
+    assert!(!diff_vlines(&ed, bid).is_empty(), "setup: a diff is drawn");
+
+    ed.handle_key(key_esc());
+    ed.settle();
+
+    assert!(diff_vlines(&ed, bid).is_empty());
+    assert_eq!(diff_line_bgs(&ed, bid), 0);
+}
+
+/// Showing another buffer retargets the drawer to it, and the buffer it left
+/// stops showing a diff.
+#[test]
+fn undotree_buffer_switch_clears_the_diff_of_the_buffer_left() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_git_diff(tmp.path());
+    two_branches(&mut ed);
+    let first = ed.focused_buffer_id();
+    toggle(&mut ed);
+    assert!(
+        !diff_vlines(&ed, first).is_empty(),
+        "setup: a diff is drawn"
+    );
+
+    let other = tmp.path().join("other.txt");
+    std::fs::write(&other, "x\n").unwrap();
+    ed.execute_typed("e", Some(other.to_str().unwrap()))
+        .unwrap();
+    drain_until(&mut ed, |ed| diff_vlines(ed, first).is_empty());
+
+    assert_ne!(
+        ed.focused_buffer_id(),
+        first,
+        "setup: the other buffer is shown"
+    );
+    assert_eq!(diff_line_bgs(&ed, first), 0);
+}
+
+/// Without `core:git-diff` the drawer works as before, draws no diff and says
+/// once, in the status line, how to get one.
+#[test]
+fn undotree_without_git_diff_opens_with_a_notice_and_no_diff() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path());
+    two_branches(&mut ed);
+    let bid = ed.focused_buffer_id();
+
+    toggle(&mut ed);
+
+    assert!(drawer_open(&ed));
+    assert!(
+        ed.state
+            .status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("core:git-diff")),
+        "status: {:?}",
+        ed.state.status_msg
+    );
+    assert!(diff_vlines(&ed, bid).is_empty());
+    let errors: Vec<_> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == crate::editor::message_log::Severity::Error)
+        .collect();
+    assert!(errors.is_empty(), "no errors expected, got {errors:?}");
+
+    toggle(&mut ed);
+    assert!(!drawer_open(&ed), "closing still works without a renderer");
+}
+
 #[test]
 fn undotree_toggle_closes() {
     let tmp = safe_tempdir();

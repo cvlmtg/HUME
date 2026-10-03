@@ -197,7 +197,7 @@ A graph of the buffer's undo history in the bottom drawer, with a jump to any re
 (load-plugin! "core:undotree")
 ```
 
-It wakes on the first `:undotree` or `toggle-undotree`, and needs no other plugin.
+It wakes on the first `:undotree` or `toggle-undotree`. It needs no other plugin, but shows what each revision changed only when [`core:git-diff`](#coregit-diff) is loaded too (see below).
 
 | Command | Effect |
 |---------|--------|
@@ -222,6 +222,8 @@ o-'     S 12m
 ```
 
 The drawer opens with the highlight on the current revision. `Shift-Down`/`Shift-Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it, as in the [language server lists](lsp.md). `Enter` moves the buffer to the highlighted revision and leaves the drawer open, so you can step through history one revision at a time, and `Esc` closes it. After a jump, `U` and `Ctrl-r` redo along the branch you jumped into.
+
+With `core:stdlib` and `core:git-diff` loaded before it, the buffer also shows what the revision you are on changed: the text of its parent revision as deleted lines above the changed lines, the changed words highlighted, and a tint on the changed lines, drawn the way `core:git-diff`'s inline diff draws a diff against a git ref. It follows every jump and edit while the drawer is open, the root revision shows nothing, and closing the drawer clears it. Without `core:git-diff` the drawer works the same, and opening it shows a message saying to load the plugin. The diff does not depend on whether `core:git-diff`'s own inline diff is switched on.
 
 The drawer follows the buffer: it redraws after an edit, an undo or a redo, and switches to the new buffer when you switch buffers. The ages update once a minute while it is open. Opening another drawer, such as the references list, replaces it. A read-only buffer can't be jumped, and `Enter` there reports an error. The history lives in memory only, so it starts fresh each time you open a file.
 

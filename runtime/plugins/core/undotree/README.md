@@ -1,13 +1,14 @@
 # core:undotree
 
 A navigable graph of a buffer's undo history in the bottom drawer. Enter on a
-row jumps the buffer to that revision, across branches. Depends on no other
+row jumps the buffer to that revision, across branches. With `core:git-diff`
+loaded, the buffer also shows what the current revision changed. Needs no other
 plugin.
 
 | File | Role |
 |---|---|
 | `manifest.scm` | Lazy activation on `:undotree` and `toggle-undotree`. |
-| `plugin.scm` | The drawer session, the two commands, and the hooks that keep the drawer current. |
+| `plugin.scm` | The drawer session, the two commands, the revision diff, and the hooks that keep the drawer current. |
 | `render.scm` | Pure data to rows: `undotree/render`, `undotree/format-age`. Calls no editor builtin. |
 
 ## Usage
@@ -104,6 +105,28 @@ belongs to a different buffer.
 - On `on-buffer-enter` for another buffer, which retargets the session to the
   buffer now shown. When the session's pane has closed or shows another
   buffer, the next refresh or Enter retargets to the focused pane the same way.
+
+## Revision diff
+
+While the drawer is open the buffer shows what separates the current revision
+from its parent, drawn inline under the decoration source `"undotree"`:
+the parent's lines as deleted lines, word highlights and a line tint. The
+hunks come from `(buffer-revision-diff pane parent-id)`, so the parent's text
+is the old side and the buffer's text the new, and `core:git-diff` draws them
+through its `git-diff/render-diff` command (see its `docs/rendering.md`). The
+root has no parent and shows nothing.
+
+The plugin calls no other plugin's code unless `(command-exists?
+"git-diff/render-diff")` holds, which is true once `core:git-diff` is loaded,
+even before it has run. Without it nothing is drawn and no error is raised;
+opening the drawer shows one message in the status line saying to load it. A
+user who loaded `core:git-diff` with an activation list that leaves the command
+out gets the same message.
+
+The diff is redrawn wherever the rows are re-rendered: after a jump, on a
+history change, on the age timer and when the session retargets. Retargeting to
+another buffer first clears the diff of the buffer it leaves. Ending the
+session clears it too, for a buffer that is still open.
 
 ## Limits
 
