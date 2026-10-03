@@ -111,6 +111,9 @@ a plain whole-line virtual line, as does a pair whose `diff-words` call reports
 `'segments` key (it is omitted when empty and not set to `'()`). `set-virtual-lines!`
 accepts a literal tab and expands it.
 
+The engine wraps each virtual line under the pane's wrap mode, as it does the buffer line
+it sits beside, so a long old-side line occupies as many rows as its new-side twin.
+
 A paired line's `'segments` come from the `diff-words` hunks (`'old-start`, `'old-end`,
 `'new-start`, `'new-end`, `'old-text`, `'new-text`), filtered to `'old-start < 'old-end`.
 A pure insertion has nothing to underline on the old-side line, and a zero-width segment

@@ -155,7 +155,7 @@ fn virtual_display_line_resolves_grapheme_scope_and_falls_back_to_virtual_text()
 /// Emits one `Before(0)` display line whose four graphemes each carry a distinct
 /// scope, with `segments` built in the *reverse* of byte order. The engine
 /// contract (`VirtualLine::segments` doc) promises `DisplayLineMap::block` sorts
-/// this at intake, and `segment_virtual_line`'s cursor scan requires that:
+/// this at intake, and `format_virtual_lines`'s cursor scan requires that:
 /// without the sort, a monotonic cursor started against descending-start
 /// input never backs up, so every offset but the last resolves to `None`.
 struct UnsortedScopedVirtualLine {
@@ -240,6 +240,7 @@ fn virtual_display_line_resolves_scopes_from_unsorted_segments() {
 /// (`ProviderSet::add_decoration_source` → `render_pane`).
 struct FixedVirtualLineSource {
     anchor: VirtualLineAnchor,
+    text: &'static str,
 }
 
 impl DecorationSource for FixedVirtualLineSource {
@@ -254,7 +255,7 @@ impl DecorationSource for FixedVirtualLineSource {
             out.push(Decoration::VirtualLine(VirtualLine {
                 anchor: self.anchor,
                 provider_id: 0,
-                text: "V".to_string(),
+                text: self.text.to_string(),
                 segments: Vec::new(),
                 base_scope: None,
             }));
@@ -268,6 +269,15 @@ impl DecorationSource for FixedVirtualLineSource {
 /// exact column with no backtracking). `top_slot` controls how many of
 /// those wrap display lines are already scrolled past.
 fn render_wrapped_pane_with_virtual_line(top_slot: u16, anchor: VirtualLineAnchor) -> Grid {
+    render_wrapped_pane_with_virtual_text(top_slot, anchor, "V")
+}
+
+/// [`render_wrapped_pane_with_virtual_line`] with the virtual line's own text.
+fn render_wrapped_pane_with_virtual_text(
+    top_slot: u16,
+    anchor: VirtualLineAnchor,
+    text: &'static str,
+) -> Grid {
     let rope = ropey::Rope::from_str("aaaabbbbcccc\nz\n");
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
@@ -277,7 +287,7 @@ fn render_wrapped_pane_with_virtual_line(top_slot: u16, anchor: VirtualLineAncho
     pane.viewport
         .seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), top_slot as usize));
     pane.providers
-        .add_decoration_source(Box::new(FixedVirtualLineSource { anchor }));
+        .add_decoration_source(Box::new(FixedVirtualLineSource { anchor, text }));
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, 6);
@@ -368,6 +378,21 @@ fn before_virtual_line_renders_when_not_skipped() {
         "a",
         "wrap display line 0 pushed to screen row 1"
     );
+}
+
+#[test]
+fn long_after_virtual_line_wraps_onto_following_rows() {
+    // Line 0 occupies rows 0..=3 ("aaaa", "bbbb", "cccc", the sentinel's
+    // wrapped row). The 9-column After(0) text wraps at width 4 into
+    // "VVVV" / "VVVV" / "V" on rows 4..=6, then line 1 follows.
+    let buf = render_wrapped_pane_with_virtual_text(
+        0,
+        VirtualLineAnchor::After(ContentLine::new(0)),
+        "VVVVVVVVV",
+    );
+    let row = |y: u16| (0..5).map(|x| cell_symbol(&buf, x, y)).collect::<String>();
+    assert_eq!(row(4), "VVVV ");
+    assert_eq!(row(5), "VVVV ");
 }
 
 #[test]

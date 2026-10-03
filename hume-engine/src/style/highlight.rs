@@ -9,7 +9,7 @@ use hume_rope::column::ByteCol;
 /// Walks a sorted, non-overlapping slice of `(byte_start, byte_end, ScopeId)`
 /// intervals in order. Queries must be monotonically non-decreasing.
 ///
-/// `pub(crate)`: also used by `display_lines::segment_virtual_line` to resolve
+/// `pub(crate)`: also used by `format::format_virtual_lines` to resolve
 /// per-grapheme scopes for virtual lines, the same interval shape as
 /// `Decoration::Highlight`/`SyntaxSpans`.
 pub(crate) struct IntervalCursor<'a> {

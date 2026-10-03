@@ -5,15 +5,17 @@ use hume_rope::offset::ExclusiveRange;
 use ropey::Rope;
 
 use crate::pane::{WhitespaceConfig, WrapMode};
-use crate::providers::InlineInsert;
+use crate::providers::{InlineInsert, ProviderId};
 use crate::types::{CellContent, DisplayLine, DisplayLineKind, Grapheme};
 
 mod cells;
 mod scratch;
 mod virtual_cells;
+mod virtual_lines;
 
-pub use scratch::{FormatBound, LineFormat, VirtualLineScratch};
+pub use scratch::{FormatBound, LineFormat, VirtualFormat};
 pub(crate) use virtual_cells::{VirtualRun, push_arena_text, push_virtual_cells};
+pub(crate) use virtual_lines::format_virtual_lines;
 
 use cells::grapheme_display;
 
@@ -70,14 +72,7 @@ pub fn format_buffer_line(
     // that can exceed a `u16`. `None` means no wrap.
     let wrap_width: Option<u32> = wrap_mode.wrap_width().map(u32::from);
     // For indent-wrap, continuation display lines start at this column.
-    let indent_display_cols: DisplayLineCol = if matches!(wrap_mode, WrapMode::Indent { .. }) {
-        DisplayLineCol::new(hume_rope::width::indent_stop(
-            indent_depth as u32,
-            tab_width,
-        ))
-    } else {
-        DisplayLineCol::new(0)
-    };
+    let indent_display_cols = continuation_indent(wrap_mode, indent_depth, tab_width);
     // Word/Indent backtrack to the last whitespace on overflow; Soft splits at
     // the exact wrap column.
     let word_break = matches!(wrap_mode, WrapMode::Word { .. } | WrapMode::Indent { .. });
@@ -90,6 +85,7 @@ pub fn format_buffer_line(
 
     let mut insert_idx = 0usize;
     let mut wrap = WrapState {
+        owner: WrapOwner::Buffer(line_idx),
         current_display_col: DisplayLineCol::new(0),
         wrap_index: 0,
         line_g_start: graphemes_out.len(),
@@ -100,7 +96,7 @@ pub fn format_buffer_line(
 
     // Push the first display line.
     lines_out.push(DisplayLine {
-        kind: DisplayLineKind::LineStart { line_idx },
+        kind: wrap.owner.first(),
         graphemes: wrap.line_g_start..0, // closed later
     });
 
@@ -172,7 +168,6 @@ pub fn format_buffer_line(
                         ins_width,
                         wrap_width,
                         indent_display_cols,
-                        line_idx,
                         indent_depth,
                         lines_out,
                         graphemes_out,
@@ -242,7 +237,6 @@ pub fn format_buffer_line(
             width,
             wrap_width,
             indent_display_cols,
-            line_idx,
             indent_depth,
             lines_out,
             graphemes_out,
@@ -358,7 +352,6 @@ pub fn format_buffer_line(
                 1,
                 wrap_width,
                 indent_display_cols,
-                line_idx,
                 indent_depth,
                 lines_out,
                 graphemes_out,
@@ -418,14 +411,59 @@ pub fn format_buffer_line(
 }
 
 // ---------------------------------------------------------------------------
+// Wrap owner
+// ---------------------------------------------------------------------------
+
+/// What a run of wrapped display lines belongs to: a buffer line or one
+/// provider virtual line. Decides the kind of each display line the wrap
+/// pass opens, so both go through the same [`WrapState::maybe_wrap`].
+#[derive(Copy, Clone)]
+enum WrapOwner {
+    Buffer(hume_rope::line::RopeyLine),
+    Virtual {
+        provider_id: ProviderId,
+        anchor_line: hume_rope::line::RopeyLine,
+    },
+}
+
+impl WrapOwner {
+    fn first(self) -> DisplayLineKind {
+        match self {
+            WrapOwner::Buffer(line_idx) => DisplayLineKind::LineStart { line_idx },
+            WrapOwner::Virtual {
+                provider_id,
+                anchor_line,
+            } => DisplayLineKind::Virtual {
+                provider_id,
+                anchor_line,
+            },
+        }
+    }
+
+    /// The kind of the `wrap_index`th continuation display line.
+    fn continuation(self, wrap_index: u16) -> DisplayLineKind {
+        match self {
+            WrapOwner::Buffer(line_idx) => DisplayLineKind::Wrap {
+                line_idx,
+                wrap_index,
+            },
+            virtual_line => virtual_line.first(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Wrap state
 // ---------------------------------------------------------------------------
 
-/// Mutable state for the word-wrap / soft-wrap pass inside `format_buffer_line`.
+/// Mutable state for the word-wrap / soft-wrap pass inside `format_buffer_line`
+/// and `format_virtual_lines`.
 ///
-/// Grouping these four fields avoids threading them as separate `&mut`
+/// Grouping these fields avoids threading them as separate `&mut`
 /// parameters through `maybe_wrap`.
 struct WrapState {
+    /// The line whose display lines this pass is producing.
+    owner: WrapOwner,
     current_display_col: DisplayLineCol,
     wrap_index: u16,
     /// Index into `graphemes_out` where the current display line began.
@@ -454,7 +492,6 @@ impl WrapState {
         width: u8,
         wrap_width: Option<u32>,
         indent_display_cols: DisplayLineCol,
-        line_idx: hume_rope::line::RopeyLine,
         indent_depth: u8,
         lines_out: &mut Vec<DisplayLine>,
         graphemes_out: &mut [Grapheme],
@@ -503,12 +540,22 @@ impl WrapState {
         self.last_ws_g_idx = split_at;
 
         lines_out.push(DisplayLine {
-            kind: DisplayLineKind::Wrap {
-                line_idx,
-                wrap_index: self.wrap_index,
-            },
+            kind: self.owner.continuation(self.wrap_index),
             graphemes: self.line_g_start..0, // closed later
         });
+    }
+}
+
+/// The column continuation display lines start at: the line's indent under
+/// `Indent`, 0 under every other mode.
+fn continuation_indent(wrap_mode: &WrapMode, indent_depth: u8, tab_width: u8) -> DisplayLineCol {
+    if matches!(wrap_mode, WrapMode::Indent { .. }) {
+        DisplayLineCol::new(hume_rope::width::indent_stop(
+            indent_depth as u32,
+            tab_width,
+        ))
+    } else {
+        DisplayLineCol::new(0)
     }
 }
 

@@ -61,6 +61,7 @@
 - Closing a pane that has a search or sift open ends it instead of crashing.
 - Cancelling a search after a language server edited the buffer restores the original selection.
 - A selection ending on a line break no longer covers virtual text at the end of that line.
+- An inline diff's deleted lines wrap like the buffer line, so a word removed past the pane edge is visible.
 
 ### Editing
 - If HUME panics, is stopped by a signal, or loses its terminal, unsaved changes are written to `<file>.dump` (or the `dumps` folder of HUME's data directory), and opening such a file asks whether to restore, discard or keep it. See "Crash recovery" in the manual.

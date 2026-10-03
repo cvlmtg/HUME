@@ -72,6 +72,57 @@ fn render_display_line_segments_a_virtual_lines_text() {
 }
 
 #[test]
+fn render_display_line_word_wraps_a_virtual_line_at_whitespace() {
+    let rope = Rope::from_str("hi\n");
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
+        VirtualLineAnchor::Before(ContentLine::new(0)),
+        1,
+        "aaa bbb ccc",
+    )));
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::Word { width: 8 }, &providers, &mut s);
+
+    let first = dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));
+    let first_kind = first.display_line.kind;
+    assert_eq!(display_line_text(&first), "aaa bbb ");
+    let second = dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 1));
+    let second_kind = second.display_line.kind;
+    assert_eq!(display_line_text(&second), "ccc");
+    assert_eq!(
+        first_kind,
+        crate::types::DisplayLineKind::Virtual {
+            provider_id: 0,
+            anchor_line: RopeyLine::new(0),
+        }
+    );
+    assert_eq!(second_kind, first_kind);
+
+    let content = dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 2));
+    assert_eq!(display_line_text(&content), "hi");
+}
+
+#[test]
+fn render_display_line_indent_wraps_a_virtual_line_at_its_own_indent() {
+    let rope = Rope::from_str("hi\n");
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
+        VirtualLineAnchor::Before(ContentLine::new(0)),
+        1,
+        "    aaa bbb",
+    )));
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::Indent { width: 10 }, &providers, &mut s);
+
+    let second = dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 1));
+    assert_eq!(display_line_text(&second), "bbb");
+    assert_eq!(
+        second.graphemes[second.display_line.graphemes.start].display_col,
+        dc(4)
+    );
+}
+
+#[test]
 fn render_display_line_expands_a_tab_in_a_virtual_lines_text() {
     // A virtual display line must be tab-aware exactly like a real buffer line. This
     // is what lets `set-virtual-lines!` accept a literal `\t` in `'text`

@@ -23,9 +23,8 @@
 
 use rustc_hash::FxHashMap;
 
-use crate::format::{LineFormat, VirtualLineScratch};
+use crate::format::{LineFormat, VirtualFormat};
 use crate::pane::{WhitespaceConfig, WrapMode};
-use crate::providers::VirtualLine;
 use hume_rope::line::ContentLine;
 
 /// The caller's identification of a buffer *state* (which buffer, at which
@@ -89,10 +88,12 @@ pub struct LineEntry {
     /// line: every caller working from one reads the line back here rather
     /// than carrying it alongside and risking the two disagreeing.
     pub line: ContentLine,
-    /// This line's virtual display lines, `Before` ones first: the order
+    /// This line's virtual display lines, laid out under the store's wrap
+    /// mode, `Before` ones first: the order
     /// [`crate::providers::VirtualLineAnchor::sort_key`] imposes, so the
     /// `i`th `After` one is at index `before + i`.
-    pub virtual_lines: Vec<VirtualLine>,
+    pub virtual_format: VirtualFormat,
+    /// How many of `virtual_format`'s display lines are `Before`-anchored.
     pub before: usize,
     /// The line's content display lines. `format.extent` is `None` until
     /// something formats them.
@@ -103,35 +104,28 @@ impl LineEntry {
     fn new(line: ContentLine) -> Self {
         Self {
             line,
-            virtual_lines: Vec::new(),
+            virtual_format: VirtualFormat::new(),
             before: 0,
             format: LineFormat::new(),
         }
     }
 
     /// Virtual display lines anchored `After` this line: whatever `before`
-    /// doesn't claim, since `virtual_lines` holds the two groups back to back.
+    /// doesn't claim, since `virtual_format` holds the two groups back to back.
     pub fn after(&self) -> usize {
-        self.virtual_lines.len() - self.before
+        self.virtual_format.display_lines.len() - self.before
     }
 
     /// Reuse this entry for `line`, keeping the allocations behind it.
     ///
-    /// `format` needs no resetting here: the only way an entry becomes a
-    /// spare is through [`PaneLineStore::rewind`], which already reset (and,
-    /// past its ceiling, shrank) it. `virtual_lines` is different:
-    /// `rewind` leaves it alone (nothing there needs shrinking,
-    /// so touching it would only cost a pass over every spare for no
-    /// reason), so a slot can still be holding the *previous* line's
-    /// display lines from the last time it was live. [`super::DisplayLineMap::block_entry`]'s
-    /// intake takes this field as scratch and pushes the new line's display
-    /// lines onto whatever is already in it, and clearing here is what makes that
-    /// start from empty rather than appending onto a stale block. `before`
-    /// gets no such treatment: `block_entry` overwrites it unconditionally
-    /// right after this call returns, before anything reads it.
+    /// `format` and `virtual_format` need no resetting here: the only way an
+    /// entry becomes a spare is through [`PaneLineStore::rewind`], which
+    /// already reset (and, past its ceiling, shrank) both. `before` gets no
+    /// such treatment: [`super::DisplayLineMap::block_entry`] overwrites it
+    /// unconditionally right after this call returns, before anything reads
+    /// it.
     fn rebind(&mut self, line: ContentLine) {
         self.line = line;
-        self.virtual_lines.clear();
     }
 }
 
@@ -152,10 +146,6 @@ pub struct PaneLineStore {
     live: usize,
     /// Buffer line -> index into `entries`.
     index: FxHashMap<ContentLine, usize>,
-    /// The virtual display line currently being laid out. Separate from any
-    /// entry's `format`: a `Before` display line renders ahead of its
-    /// line's content display lines, so laying it out must not disturb them.
-    virtual_line: VirtualLineScratch,
 }
 
 impl PaneLineStore {
@@ -187,10 +177,10 @@ impl PaneLineStore {
     pub(crate) fn rewind(&mut self) {
         for entry in &mut self.entries[..self.live] {
             entry.format.reset_and_shrink();
+            entry.virtual_format.clear_and_shrink();
         }
         self.live = 0;
         self.index.clear();
-        self.virtual_line.clear_and_shrink();
     }
 
     /// The entry for `line`, if this store has one.
@@ -222,16 +212,5 @@ impl PaneLineStore {
 
     pub(super) fn entry_mut(&mut self, idx: usize) -> &mut LineEntry {
         &mut self.entries[idx]
-    }
-
-    /// An entry alongside the virtual-display-line scratch, which laying
-    /// one of its virtual display lines out needs at the same time. Split
-    /// here because they are disjoint fields of this struct and only this
-    /// struct can say so.
-    pub(super) fn entry_and_virtual_line(
-        &mut self,
-        idx: usize,
-    ) -> (&LineEntry, &mut VirtualLineScratch) {
-        (&self.entries[idx], &mut self.virtual_line)
     }
 }

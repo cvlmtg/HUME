@@ -101,7 +101,7 @@ fn virtual_line_segments_to_bytes_rejects_segment_splitting_a_grapheme_cluster()
     // "e" (1 byte) + combining acute accent U+0301 (2 bytes) is 2 chars but
     // one grapheme cluster spanning bytes 0..3. Char offset 1 falls between
     // the two chars but not on the cluster boundary. The engine
-    // (`display_lines.rs`'s `segment_virtual_line`) resolves scope once per cluster at
+    // (`format_virtual_lines`) resolves scope once per cluster at
     // its start byte, so a segment edge here would silently mis-apply
     // instead of erroring under a mere char-boundary check.
     let err = virtual_line_segments_to_bytes("e\u{301}", vec![seg(0, 1, "x")]).unwrap_err();

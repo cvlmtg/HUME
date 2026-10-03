@@ -1,0 +1,108 @@
+//! Lays a buffer line's provider virtual lines out into display lines.
+
+use hume_rope::column::{ByteCol, DisplayLineCol};
+use hume_rope::line::{ContentLine, RopeyLine};
+use unicode_segmentation::UnicodeSegmentation;
+
+use crate::pane::WrapMode;
+use crate::providers::{VirtualLine, VirtualLineAnchor};
+use crate::style::highlight::IntervalCursor;
+use crate::types::DisplayLine;
+
+use super::virtual_cells::{VirtualCells, VirtualRun};
+use super::{
+    VirtualFormat, WrapOwner, WrapState, close_display_line_at, continuation_indent,
+    is_whitespace_grapheme,
+};
+
+/// Lay `virtual_lines` (sorted `Before` ones first, all anchored to
+/// `anchor_line`) out into `out`, wrapping each under `wrap_mode` the way
+/// [`format_buffer_line`](super::format_buffer_line) wraps buffer text: one
+/// virtual line becomes as many display lines as it needs, all of the same
+/// `DisplayLineKind::Virtual`. `out` must be empty.
+///
+/// Returns how many of `out`'s display lines come from `Before`-anchored
+/// virtual lines.
+pub(crate) fn format_virtual_lines(
+    virtual_lines: &[VirtualLine],
+    anchor_line: ContentLine,
+    tab_width: u8,
+    wrap_mode: &WrapMode,
+    out: &mut VirtualFormat,
+) -> usize {
+    debug_assert!(out.display_lines.is_empty(), "`out` must start empty");
+    let wrap_width = wrap_mode.wrap_width().map(u32::from);
+    let word_break = matches!(wrap_mode, WrapMode::Word { .. } | WrapMode::Indent { .. });
+    let anchor_line = RopeyLine::from(anchor_line);
+
+    let mut before = 0;
+    for vl in virtual_lines {
+        let owner = WrapOwner::Virtual {
+            provider_id: vl.provider_id,
+            anchor_line,
+        };
+        let indent_display_cols = continuation_indent(
+            wrap_mode,
+            hume_rope::width::indent_depth(&vl.text, tab_width),
+            tab_width,
+        );
+        let mut wrap = WrapState {
+            owner,
+            current_display_col: DisplayLineCol::new(0),
+            wrap_index: 0,
+            line_g_start: out.graphemes.len(),
+            last_ws_g_idx: out.graphemes.len(),
+            word_break,
+        };
+        out.display_lines.push(DisplayLine {
+            kind: owner.first(),
+            graphemes: wrap.line_g_start..0, // closed later
+        });
+
+        // `vl.segments` was sorted at intake, and `grapheme_indices` yields
+        // byte offsets in ascending order, so a single monotonic cursor
+        // resolves every grapheme's scope in O(graphemes + segments).
+        let mut scope_cursor = IntervalCursor::new(&vl.segments);
+        let run = VirtualRun {
+            text: &vl.text,
+            byte_offset: 0, // no buffer position
+            pos: None,
+            indent_depth: 0,
+        };
+        let mut cells = VirtualCells::new(&mut out.texts, &mut out.graphemes, &run, tab_width);
+        let mut in_leading_ws = true;
+        for (byte_offset, cluster) in vl.text.grapheme_indices(true) {
+            let width = cells.width_at(cluster, wrap.current_display_col);
+            wrap.maybe_wrap(
+                width,
+                wrap_width,
+                indent_display_cols,
+                0,
+                &mut out.display_lines,
+                cells.graphemes_out,
+            );
+
+            let is_ws = is_whitespace_grapheme(cluster);
+            in_leading_ws &= is_ws;
+            let scope = scope_cursor
+                .scope_at(ByteCol::new(byte_offset))
+                .or(vl.base_scope);
+            cells.push_cluster(byte_offset, cluster, &mut wrap.current_display_col, scope);
+            if is_ws && !in_leading_ws {
+                wrap.last_ws_g_idx = cells.graphemes_out.len();
+            }
+        }
+
+        close_display_line_at(
+            &mut out.display_lines,
+            wrap.line_g_start,
+            out.graphemes.len(),
+        );
+        out.base_scopes
+            .resize(out.display_lines.len(), vl.base_scope);
+        if matches!(vl.anchor, VirtualLineAnchor::Before(_)) {
+            before = out.display_lines.len();
+        }
+    }
+    before
+}

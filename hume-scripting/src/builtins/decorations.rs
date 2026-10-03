@@ -158,7 +158,7 @@ fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
              single line)");
     }
     // A tab renders like a real buffer line's tab: the engine expands it to
-    // the next tab stop (`hume_engine::display_lines::segment_virtual_line`), so
+    // the next tab stop (`hume_engine`'s `format_virtual_lines`), so
     // callers pass it through unexpanded. Any other unrenderable character
     // (a control character, an invisible one) is left verbatim:
     // `push_virtual_cells` substitutes it with its codepoint placeholder,

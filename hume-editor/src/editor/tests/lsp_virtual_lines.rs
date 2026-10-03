@@ -367,7 +367,7 @@ fn virtual_line_with_empty_text_still_renders_its_background_bar() {
         .expect("set-virtual-lines! must have interned the scope");
     let expected_bg = ed.view.theme.resolve(scope).bg;
 
-    // No text means no graphemes at all (`segment_virtual_line` emits one
+    // No text means no graphemes at all (`format_virtual_lines` emits one
     // grapheme per cluster), so the row-fill is the only thing that can paint
     // this row, so its presence here proves the fill runs independently of
     // content.

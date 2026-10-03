@@ -27,8 +27,10 @@ use std::ops::Range;
 
 use ropey::Rope;
 
-use crate::format::{FormatBound, LineFormat, format_buffer_line};
-use crate::providers::{Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLineAnchor};
+use crate::format::{FormatBound, LineFormat, format_buffer_line, format_virtual_lines};
+use crate::providers::{
+    Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor,
+};
 use crate::types::{DisplayLine, Grapheme, ScopeId};
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
@@ -89,6 +91,10 @@ pub struct DisplayLineMap<'a> {
     /// Inline inserts for the line currently being formatted. Reused across
     /// the lines one map visits.
     inline_inserts: Vec<InlineInsert>,
+    /// Provider virtual lines for the line whose block shape is being built.
+    /// Reused across lines; laid out into the line's entry right after
+    /// intake.
+    virtual_lines: Vec<VirtualLine>,
     /// Scratch for one `DecorationSource::decorations_for_line` call at a
     /// time, drained into `virtual_lines`/`inline_inserts` immediately
     /// after, so this stays empty between calls. Reused across providers and
@@ -127,6 +133,7 @@ impl<'a> DisplayLineMap<'a> {
             h_window: None,
             store,
             inline_inserts: Vec::new(),
+            virtual_lines: Vec::new(),
             decorations: Vec::new(),
         }
     }
@@ -225,60 +232,53 @@ impl<'a> DisplayLineMap<'a> {
         }
 
         let idx = self.store.insert(line);
-        // `insert`'s `rebind` already cleared this entry's `virtual_lines`,
-        // keeping its allocation. It is taken out as scratch rather than building
-        // a separate `Vec` and overwriting it on return, which would throw
-        // that allocation away. Taken rather than borrowed because the
-        // provider intake below needs `&mut self` for `self.decorations`,
-        // which rules out holding a borrow of the store across it; put back
-        // once the intake is done.
-        let mut virtual_lines = std::mem::take(&mut self.store.entry_mut(idx).virtual_lines);
+        self.virtual_lines.clear();
         self.decorations.clear();
         for (id, provider) in self
             .providers
             .decoration_sources(DecorationKinds::VIRTUAL_LINE)
         {
-            let start = virtual_lines.len();
+            let start = self.virtual_lines.len();
             provider.decorations_for_line(line, &mut self.decorations);
             // A provider that declared VIRTUAL_LINE but emitted something
             // else is a provider bug: ignored, not a panic.
             for d in self.decorations.drain(..) {
                 if let Decoration::VirtualLine(vl) = d {
-                    virtual_lines.push(vl);
+                    self.virtual_lines.push(vl);
                 }
             }
             // Never trust a provider's self-reported id: it could name another
             // provider's display lines, which the gutter would then attribute wrongly.
-            for vl in &mut virtual_lines[start..] {
+            for vl in &mut self.virtual_lines[start..] {
                 vl.provider_id = id;
             }
         }
         // A display line anchored outside the queried line is a provider
         // bug. Drop it rather than count it against a line it does not
         // belong to.
-        virtual_lines.retain(|vl| match vl.anchor {
+        self.virtual_lines.retain(|vl| match vl.anchor {
             VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n == line,
         });
         // `Before` display lines ahead of `After` display lines; stable, so
         // provider registration order survives within each group.
-        virtual_lines.sort_by_key(|vl| vl.anchor.sort_key());
+        self.virtual_lines.sort_by_key(|vl| vl.anchor.sort_key());
         // Providers are plugin code and the trait makes no ordering promise
-        // enforceable at the boundary. Sort here so `segment_virtual_line`'s
+        // enforceable at the boundary. Sort here so `format_virtual_lines`'s
         // cursor scan (which requires sorted, non-overlapping input) never
         // has to trust it, same posture as `rebuild_line_decorations` takes
         // for highlight spans.
-        for vl in &mut virtual_lines {
+        for vl in &mut self.virtual_lines {
             vl.segments.sort_by_key(|(start, _, _)| *start);
         }
 
-        let before = virtual_lines
-            .iter()
-            .filter(|vl| matches!(vl.anchor, VirtualLineAnchor::Before(_)))
-            .count();
-
         let entry = self.store.entry_mut(idx);
-        entry.virtual_lines = virtual_lines;
-        entry.before = before;
+        entry.before = format_virtual_lines(
+            &self.virtual_lines,
+            line,
+            self.key.tab_width,
+            &self.key.wrap_mode,
+            &mut entry.virtual_format,
+        );
         idx
     }
 

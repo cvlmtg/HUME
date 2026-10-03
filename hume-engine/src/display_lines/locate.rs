@@ -211,8 +211,8 @@ impl<'a> DisplayLineMap<'a> {
                 let nearest = |admit_eol: bool| {
                     graphemes
                         .iter()
-                        // Virtual display line cells (segmented separately
-                        // by `segment_virtual_line`) have no buffer position
+                        // Virtual display line cells (laid out separately
+                        // by `format_virtual_lines`) have no buffer position
                         // at all; unreachable from `char_at`, which only
                         // ever formats content display lines, but guarded
                         // defensively.

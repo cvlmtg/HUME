@@ -181,9 +181,9 @@ impl VirtualLineAnchor {
 /// Providers supply plain `text` + scoped byte-range `segments` rather than
 /// pre-built `Grapheme`s: `display_lines::DisplayLineMap` does the grapheme segmentation and
 /// width/display-column bookkeeping itself, the same as it does for real buffer lines, so
-/// providers can't get that arithmetic wrong. Virtual
-/// lines own their own layout: `text` is not subject to the buffer's wrap
-/// mode or tab width.
+/// providers can't get that arithmetic wrong. Like a buffer line, `text` wraps
+/// under the pane's wrap mode and expands tabs against its tab width; every
+/// display line it wraps into carries this line's `base_scope`.
 #[derive(Clone)]
 pub struct VirtualLine {
     pub anchor: VirtualLineAnchor,
@@ -214,7 +214,7 @@ pub struct VirtualLine {
 // ---------------------------------------------------------------------------
 
 /// An inline decoration injected at a specific byte offset within a buffer
-/// line. Participates in wrapping (unlike virtual lines). Used for inlay hints,
+/// line. Participates in wrapping, as a unit. Used for inlay hints,
 /// ghost text, and inline type annotations.
 ///
 /// `scope` is an already-interned [`ScopeId`], not a [`Scope`] name: providers

@@ -83,6 +83,50 @@ fn block_counts_before_and_after_virtual_lines() {
 }
 
 #[test]
+fn block_wraps_virtual_lines_under_a_wrapping_mode() {
+    // 25 columns at width 10 → 10 / 10 / 5 = 3 display lines; the 5-column
+    // After line fits in one.
+    let rope = Rope::from_str("a\n");
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
+        VirtualLineAnchor::Before(ContentLine::new(0)),
+        1,
+        "xxxxxxxxxxxxxxxxxxxxxxxxx",
+    )));
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
+        VirtualLineAnchor::After(ContentLine::new(0)),
+        1,
+        "VVVVV",
+    )));
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::Soft { width: 10 }, &providers, &mut s);
+
+    assert_eq!(
+        dlm.block(ContentLine::new(0)),
+        BlockBreakdown {
+            before: 3,
+            content: 1,
+            after: 1,
+        }
+    );
+}
+
+#[test]
+fn block_keeps_a_virtual_line_whole_without_wrapping() {
+    let rope = Rope::from_str("a\n");
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
+        VirtualLineAnchor::Before(ContentLine::new(0)),
+        1,
+        "xxxxxxxxxxxxxxxxxxxxxxxxx",
+    )));
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(dlm.block(ContentLine::new(0)).before, 1);
+}
+
+#[test]
 fn block_ignores_virtual_lines_anchored_to_other_lines() {
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let mut providers = ProviderSet::new();

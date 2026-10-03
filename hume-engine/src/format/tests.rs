@@ -1211,7 +1211,7 @@ fn wrapping_modes_unaffected_by_h_window_none() {
 /// by filling it again) does not shrink.
 #[test]
 fn clear_and_shrink_reclaims_an_oversized_virtual_display_line() {
-    let mut vline = VirtualLineScratch::new();
+    let mut vline = VirtualFormat::new();
     vline.texts.push_str(&"x".repeat(50_000));
     let grown = vline.texts.capacity();
     assert!(grown >= 50_000, "sanity: the push must have grown it");
@@ -1235,7 +1235,7 @@ fn clear_and_shrink_reclaims_an_oversized_virtual_display_line() {
 /// whole point of holding one per pane rather than allocating per display line.
 #[test]
 fn clear_and_shrink_keeps_an_ordinary_virtual_display_line() {
-    let mut vline = VirtualLineScratch::new();
+    let mut vline = VirtualFormat::new();
     vline.texts.push_str(&"x".repeat(200));
     let grown = vline.texts.capacity();
 

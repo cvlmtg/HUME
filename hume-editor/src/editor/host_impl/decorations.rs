@@ -270,7 +270,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
 /// only decodes shape. See `VirtualLineSpec::segments`'s doc.
 ///
 /// Grapheme boundaries, not merely char boundaries: the engine
-/// (`hume-engine/src/display_lines.rs`'s `segment_virtual_line`) resolves each virtual
+/// (`hume-engine/src/format/virtual_lines.rs`'s `format_virtual_lines`) resolves each virtual
 /// grapheme's scope once per cluster, at the cluster's start byte. A segment
 /// edge that splits a multi-codepoint cluster (e.g. `e` + combining acute)
 /// would still pass a char-boundary check, but the engine's per-cluster

@@ -1,5 +1,5 @@
-//! The two per-line/per-frame formatting buffers ([`LineFormat`],
-//! [`VirtualLineScratch`]) and the scan-bound type ([`FormatBound`]) that
+//! The two per-line formatting buffers ([`LineFormat`],
+//! [`VirtualFormat`]) and the scan-bound type ([`FormatBound`]) that
 //! [`format_buffer_line`](super::format_buffer_line) reads and writes. Pure
 //! container/capacity types plus the bound enum; `format_buffer_line`
 //! itself stays in the parent.
@@ -10,7 +10,7 @@ use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::lines::LineText;
 use hume_rope::offset::ExclusiveRange;
 
-use crate::types::{DisplayLine, Grapheme};
+use crate::types::{DisplayLine, Grapheme, ScopeId};
 
 /// One buffer line's formatted display lines.
 ///
@@ -106,7 +106,7 @@ impl LineFormat {
 
     /// [`Self::reset`] plus reclaiming any buffer grown past its ceiling:
     /// the frame-boundary counterpart to `reset`, and the exact shape
-    /// [`VirtualLineScratch::clear_and_shrink`] takes for the same reason.
+    /// [`VirtualFormat::clear_and_shrink`] takes for the same reason.
     ///
     /// `reset` alone runs when the same line is about to be reformatted,
     /// where shrinking would only force an immediate re-grow. This one runs
@@ -158,29 +158,33 @@ impl Default for LineFormat {
     }
 }
 
-/// Scratch for laying out one virtual (non-buffer) display line.
+/// One buffer line's laid-out virtual display lines: every display line
+/// its provider virtual lines occupy, `Before`-anchored ones first.
 ///
 /// A dedicated buffer, not a reuse of `LineFormat`'s content-line fields:
 /// a `Before` virtual display line renders ahead of its line's content
-/// display lines, and those may already be formatted and cached
+/// display lines, which may already be formatted and cached
 /// (`display_lines::DisplayLineMap::block` runs the formatter in wrapping mode to count
-/// wrap display lines). Clobbering the shared buffers to lay out the
-/// virtual display line would destroy that cached format and force a
-/// redundant reformat of the content display lines that follow.
-pub struct VirtualLineScratch {
-    /// The one display line laid out here. `None` before the first use.
-    pub display_line: Option<DisplayLine>,
-    /// Graphemes for `display_line`.
+/// wrap display lines). Laying virtual display lines out over them would
+/// destroy that cached format and force a redundant reformat.
+pub struct VirtualFormat {
+    /// The laid-out display lines; each indexes `graphemes`.
+    pub display_lines: Vec<DisplayLine>,
+    /// Each display line's own background scope, parallel to `display_lines`:
+    /// every display line a virtual line wraps into carries that virtual
+    /// line's `base_scope`.
+    pub base_scopes: Vec<Option<ScopeId>>,
+    /// Graphemes for `display_lines`.
     pub graphemes: Vec<Grapheme>,
-    /// Arena backing this display line's `CellContent::Virtual` text ranges
-    /// (entirely the provider's `VirtualLine::text`), unlike
+    /// Arena backing these display lines' `CellContent::Virtual` text ranges
+    /// (entirely the providers' `VirtualLine::text`), unlike
     /// `LineFormat::virtual_texts` which backs a content line's inline
     /// decorations.
     pub texts: String,
 }
 
-/// Ceilings for [`VirtualLineScratch`], in the same sense as
-/// [`GRAPHEMES_CEILING`] and friends: a size a scratch may keep between
+/// Ceilings for [`VirtualFormat`], in the same sense as
+/// [`GRAPHEMES_CEILING`] and friends: a size a format may keep between
 /// frames, not one it starts at.
 ///
 /// Lower than the content-line ceilings because a virtual display line's
@@ -190,15 +194,16 @@ pub struct VirtualLineScratch {
 const VIRTUAL_LINE_GRAPHEMES_CEILING: usize = 2048;
 const VIRTUAL_LINE_TEXTS_CEILING: usize = 2048;
 
-impl VirtualLineScratch {
+impl VirtualFormat {
     /// Empty, with nothing allocated yet.
     ///
-    /// One of these exists per pane whether or not that pane has any virtual
+    /// Every line entry holds one whether or not that line has any virtual
     /// display lines at all, so it grows on first use rather than charging
-    /// every pane up front, the same reasoning as [`LineFormat::new`].
+    /// every entry up front, the same reasoning as [`LineFormat::new`].
     pub fn new() -> Self {
         Self {
-            display_line: None,
+            display_lines: Vec::new(),
+            base_scopes: Vec::new(),
             graphemes: Vec::new(),
             texts: String::new(),
         }
@@ -206,7 +211,8 @@ impl VirtualLineScratch {
 
     /// Reset to empty, retaining allocated capacity.
     pub fn clear(&mut self) {
-        self.display_line = None;
+        self.display_lines.clear();
+        self.base_scopes.clear();
         self.graphemes.clear();
         self.texts.clear();
     }
@@ -215,11 +221,11 @@ impl VirtualLineScratch {
     ///
     /// Split from `clear` on the same line `LineFormat` draws between
     /// [`LineFormat::reset`] and [`LineFormat::reset_and_shrink`]: `clear`
-    /// runs before laying out each virtual display line and is followed
-    /// immediately by filling it again, where shrinking would only force a
-    /// re-grow. This one runs at the frame boundary, when the next user may
-    /// be a different display line or no display line at all, which is the point
-    /// where an outsized allocation is worth paying to give back.
+    /// runs when an entry is rebound to a line and is followed immediately
+    /// by filling it again, where shrinking would only force a re-grow. This
+    /// one runs at the frame boundary, when the next user may be a different
+    /// line or no line at all, which is the point where an outsized
+    /// allocation is worth paying to give back.
     pub fn clear_and_shrink(&mut self) {
         self.clear();
         if self.graphemes.capacity() > VIRTUAL_LINE_GRAPHEMES_CEILING {
@@ -231,7 +237,7 @@ impl VirtualLineScratch {
     }
 }
 
-impl Default for VirtualLineScratch {
+impl Default for VirtualFormat {
     fn default() -> Self {
         Self::new()
     }

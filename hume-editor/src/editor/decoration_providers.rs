@@ -547,7 +547,7 @@ impl Editor {
     /// (`host_impl.rs`), becomes `VirtualLine::base_scope`: the engine
     /// falls back to it for bytes `segments` doesn't cover, and reads its
     /// `bg` to fill the row past the last grapheme (see
-    /// `segment_virtual_line`/`pane_render.rs`'s virtual-display-line `row_bg`).
+    /// `format_virtual_lines`/`pane_render.rs`'s virtual-display-line `row_bg`).
     /// Always `Some`, never left as the engine's own `None` fallback, so a
     /// theme that puts a `bg` on `ui.virtual` reaches the row fill exactly
     /// the same way an explicit `scope` would.

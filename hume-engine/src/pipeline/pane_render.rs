@@ -131,7 +131,7 @@ pub(crate) fn render_pane(
                 // highlight tiers, no cursor/selection), but each grapheme
                 // can still carry its own `scope` from the provider that
                 // produced it (already folded with `base_scope` in
-                // `segment_virtual_line`): `theme.default` layered with that
+                // `format_virtual_lines`): `theme.default` layered with that
                 // scope, or the themed `virtual_text` fallback for
                 // graphemes with none (matching the tilde-filler /
                 // no-decoration look).
