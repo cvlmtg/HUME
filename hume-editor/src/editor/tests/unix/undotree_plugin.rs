@@ -310,9 +310,11 @@ fn setup_with_git_diff(tmp: &Path) -> (Editor, RealRuntimeGuard) {
     (ed, guard)
 }
 
-/// The undotree source's virtual lines on `bid`, as `(line, before, text,
-/// segment char ranges)`.
-fn diff_vlines(ed: &Editor, bid: BufferId) -> Vec<(usize, bool, String, Vec<(usize, usize)>)> {
+/// `(line, before, text, segment char ranges)`.
+type DiffVline = (usize, bool, String, Vec<(usize, usize)>);
+
+/// The undotree source's virtual lines on `bid`.
+fn diff_vlines(ed: &Editor, bid: BufferId) -> Vec<DiffVline> {
     let text = ed.state.buffers.get(bid).text();
     ed.state
         .config
