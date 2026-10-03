@@ -214,9 +214,9 @@ impl<'a> DisplayLineMap<'a> {
         let content = self.content_display_lines(idx);
         let entry = self.store.entry(idx);
         BlockBreakdown {
-            before: entry.before,
+            before: entry.virtual_format.before,
             content,
-            after: entry.after(),
+            after: entry.virtual_format.after(),
         }
     }
 
@@ -273,7 +273,7 @@ impl<'a> DisplayLineMap<'a> {
         }
 
         let entry = self.store.entry_mut(idx);
-        entry.before = format_virtual_lines(
+        format_virtual_lines(
             &self.virtual_lines,
             line,
             self.key.tab_width,

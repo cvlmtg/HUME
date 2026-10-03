@@ -36,7 +36,7 @@ impl<'a> DisplayLineMap<'a> {
             // `resolve` already walked this line's block, so its `before`
             // count is on the entry it handed back, so no need to walk it again.
             BlockSlot::After(i) => {
-                let before = self.store.entry(idx).before;
+                let before = self.store.entry(idx).virtual_format.before;
                 self.virtual_display_line(idx, before + i)
             }
         }

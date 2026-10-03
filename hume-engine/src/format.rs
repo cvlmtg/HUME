@@ -67,14 +67,6 @@ pub fn format_buffer_line(
     let trailing_ws_start = line_str.trim_end().len();
     let indent_depth = hume_rope::width::indent_depth(line_str, tab_width);
 
-    // `WrapMode { width }` stays terminal-bounded (`u16`), widened here since
-    // it's compared against `current_display_col`, which now tracks a document column
-    // that can exceed a `u16`. `None` means no wrap.
-    let wrap_width: Option<u32> = wrap_mode.wrap_width().map(u32::from);
-    // For indent-wrap, continuation display lines start at this column.
-    let indent_display_cols = continuation_indent(wrap_mode, indent_depth, tab_width);
-    let word_break = wrap_mode.breaks_at_word();
-
     // ── Display line / column state ─────────────────────────────────────
     // Short aliases into the output buffers for the rest of the function.
     let lines_out = &mut out.display_lines;
@@ -84,9 +76,11 @@ pub fn format_buffer_line(
     let mut insert_idx = 0usize;
     let mut wrap = WrapState::start(
         WrapOwner::Buffer(line_idx),
+        wrap_mode,
+        indent_depth,
+        tab_width,
         lines_out,
         graphemes_out.len(),
-        word_break,
     );
 
     // Set when the scan stopped early: either `h_window` reached its right
@@ -111,7 +105,7 @@ pub fn format_buffer_line(
                 break 'lines;
             }
             let ins = &inline_inserts[insert_idx];
-            if wrap_width.is_none() && h_window.is_none() {
+            if wrap.wrap_width.is_none() && h_window.is_none() {
                 // No wrapping and no horizontal window: `maybe_wrap` below
                 // would be a no-op and the visibility check would
                 // short-circuit on `h_window`'s own `None`. The only thing
@@ -151,14 +145,7 @@ pub fn format_buffer_line(
                 )
                 .min(255) as u8;
                 if ins_width > 0 {
-                    wrap.maybe_wrap(
-                        ins_width,
-                        wrap_width,
-                        indent_display_cols,
-                        indent_depth,
-                        lines_out,
-                        graphemes_out,
-                    );
+                    wrap.maybe_wrap(ins_width, indent_depth, lines_out, graphemes_out);
                     let visible = h_window.as_ref().is_none_or(|w| {
                         wrap.current_display_col
                             .advance_saturating(ins_width as u32)
@@ -216,14 +203,7 @@ pub fn format_buffer_line(
         );
 
         // ── Wrap if necessary ─────────────────────────────────────────────
-        wrap.maybe_wrap(
-            width,
-            wrap_width,
-            indent_display_cols,
-            indent_depth,
-            lines_out,
-            graphemes_out,
-        );
+        wrap.maybe_wrap(width, indent_depth, lines_out, graphemes_out);
 
         // A tab deferred whole to a continuation display line expands from its new
         // (post-wrap) column, not the one `grapheme_display` computed it at:
@@ -329,14 +309,7 @@ pub fn format_buffer_line(
             // column past the pane's own right edge, where the cursor it
             // stands in for would render invisible or bleed into the divider
             // seam.
-            wrap.maybe_wrap(
-                1,
-                wrap_width,
-                indent_display_cols,
-                indent_depth,
-                lines_out,
-                graphemes_out,
-            );
+            wrap.maybe_wrap(1, indent_depth, lines_out, graphemes_out);
             graphemes_out.push(Grapheme {
                 byte_range: eol_bytes,
                 pos: break_pos,
@@ -454,6 +427,13 @@ struct WrapState {
     /// none has been seen yet, since a split resets both to the same value
     /// in the same `maybe_wrap` call.
     last_ws_g_idx: usize,
+    /// Wrap column, or `None` when wrapping is off. `WrapMode`'s width is
+    /// terminal-bounded (`u16`); widened because `current_display_col` tracks
+    /// a document column that can exceed one.
+    wrap_width: Option<u32>,
+    /// Column continuation display lines start at: the line's indent under
+    /// `Indent`, 0 under every other mode.
+    continuation_col: DisplayLineCol,
     /// Whether to backtrack to the last whitespace boundary on overflow.
     /// True for `Word`/`Indent`; false for `Soft`, which always splits at the
     /// exact wrap column even mid-word.
@@ -465,12 +445,15 @@ struct WrapState {
 
 impl WrapState {
     /// State for a line starting at `graphemes_len`, with its first display
-    /// line already pushed onto `lines_out` (closed later).
+    /// line already pushed onto `lines_out` (closed later). `indent_depth` is
+    /// the indent of the text being wrapped, which `Indent` mode continues at.
     fn start(
         owner: WrapOwner,
+        wrap_mode: &WrapMode,
+        indent_depth: u8,
+        tab_width: u8,
         lines_out: &mut Vec<DisplayLine>,
         graphemes_len: usize,
-        word_break: bool,
     ) -> Self {
         lines_out.push(DisplayLine {
             kind: owner.first(),
@@ -482,7 +465,16 @@ impl WrapState {
             wrap_index: 0,
             line_g_start: graphemes_len,
             last_ws_g_idx: graphemes_len,
-            word_break,
+            wrap_width: wrap_mode.wrap_width().map(u32::from),
+            continuation_col: if matches!(wrap_mode, WrapMode::Indent { .. }) {
+                DisplayLineCol::new(hume_rope::width::indent_stop(
+                    indent_depth as u32,
+                    tab_width,
+                ))
+            } else {
+                DisplayLineCol::new(0)
+            },
+            word_break: wrap_mode.breaks_at_word(),
             in_leading_ws: true,
         }
     }
@@ -497,23 +489,20 @@ impl WrapState {
         }
     }
 
-    /// If adding `width` columns to `current_display_col` would overflow `wrap_width`,
+    /// If adding `width` columns to `current_display_col` would overflow the wrap width,
     /// close the current display line and start a new one. Implements
     /// word-wrap backtracking: when `word_break` is set and a whitespace
     /// boundary has been seen in the current display line, the display line
     /// splits there; otherwise it splits at the current grapheme (soft
     /// break, may split a word).
-    #[allow(clippy::too_many_arguments)]
     fn maybe_wrap(
         &mut self,
         width: u8,
-        wrap_width: Option<u32>,
-        indent_display_cols: DisplayLineCol,
         indent_depth: u8,
         lines_out: &mut Vec<DisplayLine>,
         graphemes_out: &mut [Grapheme],
     ) {
-        let Some(wrap_width) = wrap_width else {
+        let Some(wrap_width) = self.wrap_width else {
             return;
         };
         if self
@@ -547,7 +536,7 @@ impl WrapState {
         self.line_g_start = split_at;
 
         // Recalculate `current_display_col` for graphemes in [split_at..] on the new display line.
-        let mut new_display_col = indent_display_cols;
+        let mut new_display_col = self.continuation_col;
         for g in &mut graphemes_out[split_at..] {
             g.display_col = new_display_col;
             g.indent_depth = indent_depth;
@@ -560,19 +549,6 @@ impl WrapState {
             kind: self.owner.continuation(self.wrap_index),
             graphemes: self.line_g_start..0, // closed later
         });
-    }
-}
-
-/// The column continuation display lines start at: the line's indent under
-/// `Indent`, 0 under every other mode.
-fn continuation_indent(wrap_mode: &WrapMode, indent_depth: u8, tab_width: u8) -> DisplayLineCol {
-    if matches!(wrap_mode, WrapMode::Indent { .. }) {
-        DisplayLineCol::new(hume_rope::width::indent_stop(
-            indent_depth as u32,
-            tab_width,
-        ))
-    } else {
-        DisplayLineCol::new(0)
     }
 }
 

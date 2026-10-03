@@ -90,12 +90,8 @@ pub struct LineEntry {
     /// than carrying it alongside and risking the two disagreeing.
     pub line: ContentLine,
     /// This line's virtual display lines, laid out under the store's wrap
-    /// mode, `Before` ones first: the order
-    /// [`crate::providers::VirtualLineAnchor::sort_key`] imposes, so the
-    /// `i`th `After` one is at index `before + i`.
+    /// mode.
     pub virtual_format: VirtualFormat,
-    /// How many of `virtual_format`'s display lines are `Before`-anchored.
-    pub before: usize,
     /// The line's content display lines. `format.extent` is `None` until
     /// something formats them.
     pub format: LineFormat,
@@ -106,25 +102,15 @@ impl LineEntry {
         Self {
             line,
             virtual_format: VirtualFormat::new(),
-            before: 0,
             format: LineFormat::new(),
         }
-    }
-
-    /// Virtual display lines anchored `After` this line: whatever `before`
-    /// doesn't claim, since `virtual_format` holds the two groups back to back.
-    pub fn after(&self) -> usize {
-        self.virtual_format.display_lines.len() - self.before
     }
 
     /// Reuse this entry for `line`, keeping the allocations behind it.
     ///
     /// `format` and `virtual_format` need no resetting here: the only way an
     /// entry becomes a spare is through [`PaneLineStore::rewind`], which
-    /// already reset (and, past its ceiling, shrank) both. `before` gets no
-    /// such treatment: [`super::DisplayLineMap::block_entry`] overwrites it
-    /// unconditionally right after this call returns, before anything reads
-    /// it.
+    /// already reset (and, past its ceiling, shrank) both.
     fn rebind(&mut self, line: ContentLine) {
         self.line = line;
     }

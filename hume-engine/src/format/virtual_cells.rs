@@ -8,7 +8,9 @@ use hume_rope::offset::ExclusiveRange;
 use hume_rope::width::Cluster;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::types::{CellContent, Grapheme, ScopeId};
+use crate::types::{CellContent, DisplayLine, Grapheme, ScopeId};
+
+use super::{WrapState, is_whitespace_grapheme};
 
 /// Push `text` into a per-frame text arena (`LineFormat::virtual_texts`
 /// or `VirtualFormat::texts`), returning a `(start, len)` range cheap
@@ -71,7 +73,7 @@ pub(crate) struct VirtualRun<'a> {
 /// once.
 pub(super) struct VirtualCells<'a> {
     arena: &'a mut String,
-    pub(super) graphemes_out: &'a mut Vec<Grapheme>,
+    graphemes_out: &'a mut Vec<Grapheme>,
     run: &'a VirtualRun<'a>,
     tab_width: u8,
     /// Where `run.text` starts in `arena`, so a cluster's `Virtual` range is
@@ -98,7 +100,7 @@ impl<'a> VirtualCells<'a> {
 
     /// How `cluster` classifies when pushed at `display_col`. Only a tab's
     /// width depends on the column.
-    pub(super) fn classify_at(&self, cluster: &str, display_col: DisplayLineCol) -> Cluster {
+    fn classify_at(&self, cluster: &str, display_col: DisplayLineCol) -> Cluster {
         hume_rope::width::classify(cluster, display_col.get() as usize, self.tab_width)
     }
 
@@ -114,12 +116,43 @@ impl<'a> VirtualCells<'a> {
         self.push_classified(byte_offset, cluster, classified, display_col, scope);
     }
 
+    /// Wrap `wrap` before `cluster` if it would overflow, then push it onto
+    /// the display line it lands on. A tab is classified again after a wrap
+    /// moved the column, so it expands to the stop it actually lands on.
+    pub(super) fn push_wrapping(
+        &mut self,
+        wrap: &mut WrapState,
+        lines_out: &mut Vec<DisplayLine>,
+        byte_offset: usize,
+        cluster: &str,
+        scope: Option<ScopeId>,
+    ) {
+        let measured_at = wrap.current_display_col;
+        let mut classified = self.classify_at(cluster, measured_at);
+        wrap.maybe_wrap(
+            classified.width() as u8,
+            self.run.indent_depth,
+            lines_out,
+            self.graphemes_out,
+        );
+        if wrap.current_display_col != measured_at {
+            classified = self.classify_at(cluster, wrap.current_display_col);
+        }
+        self.push_classified(
+            byte_offset,
+            cluster,
+            classified,
+            &mut wrap.current_display_col,
+            scope,
+        );
+        wrap.note_ws(is_whitespace_grapheme(cluster), self.graphemes_out.len());
+    }
+
     /// Push the cell(s) for `cluster`, which starts `byte_offset` bytes into
     /// `run.text` and was classified as `classified`, and advance
     /// `display_col` past it. `classified` must come from `display_col`'s
-    /// current value, so a caller that wrapped after classifying
-    /// re-classifies first and a tab expands to the stop it actually lands on.
-    pub(super) fn push_classified(
+    /// current value.
+    fn push_classified(
         &mut self,
         byte_offset: usize,
         cluster: &str,

@@ -170,6 +170,10 @@ impl Default for LineFormat {
 pub struct VirtualFormat {
     /// The laid-out display lines; each indexes `graphemes`.
     pub display_lines: Vec<DisplayLine>,
+    /// How many of `display_lines` are `Before`-anchored: the order
+    /// [`crate::providers::VirtualLineAnchor::sort_key`] imposes puts them
+    /// first, so the `i`th `After` one is at index `before + i`.
+    pub before: usize,
     /// Each display line's own background scope, parallel to `display_lines`:
     /// every display line a virtual line wraps into carries that virtual
     /// line's `base_scope`.
@@ -183,10 +187,6 @@ pub struct VirtualFormat {
     pub texts: String,
 }
 
-/// A `VirtualFormat` holds every virtual line anchored to one buffer line, so
-/// a multi-line deleted hunk lands in one. It shrinks to the content-line
-/// ceilings so such a hunk is not freed and re-grown every frame.
-
 impl VirtualFormat {
     /// Empty, with nothing allocated yet.
     ///
@@ -196,19 +196,31 @@ impl VirtualFormat {
     pub fn new() -> Self {
         Self {
             display_lines: Vec::new(),
+            before: 0,
             base_scopes: Vec::new(),
             graphemes: Vec::new(),
             texts: String::new(),
         }
     }
 
+    /// Display lines anchored `After` the line: whatever `before` doesn't
+    /// claim, since the two groups sit back to back.
+    pub fn after(&self) -> usize {
+        self.display_lines.len() - self.before
+    }
+
     /// Reset to empty, then reclaim a buffer grown past its ceiling.
+    ///
+    /// A multi-line deleted hunk lands in one `VirtualFormat`, so the ceilings
+    /// are the content-line ones: such a hunk is not freed and re-grown every
+    /// frame.
     ///
     /// Runs at the frame boundary, when the next user may be a different
     /// line or no line at all, which is where an outsized allocation is worth
     /// paying to give back.
     pub fn clear_and_shrink(&mut self) {
         self.display_lines.clear();
+        self.before = 0;
         self.base_scopes.clear();
         self.graphemes.clear();
         self.texts.clear();
