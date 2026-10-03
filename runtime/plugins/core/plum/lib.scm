@@ -1,7 +1,11 @@
 ;;; core:plum/lib.scm
 
-(provide plum/batch-run! plum/read-file plum/two-level-repos
+(provide plum/require-stdlib! plum/batch-run! plum/read-file plum/two-level-repos
          plum/clone-github! plum/git-pull!)
+
+(define (plum/require-stdlib!)
+  (unless (member "core:stdlib" (declared-plugins))
+    (error "core:plum: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:plum\")")))
 
 ;; ── Two-level repo discovery ──────────────────────────────────────────────────
 

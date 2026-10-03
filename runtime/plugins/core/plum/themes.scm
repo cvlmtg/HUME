@@ -3,6 +3,8 @@
 
 (require "lib.scm")
 
+(plum/require-stdlib!)
+
 ;; ── Path helpers ──────────────────────────────────────────────────────────────
 
 (define (plum/themes-dir)

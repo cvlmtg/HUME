@@ -25,6 +25,7 @@
 ### Plugins
 - `:plugin-status` also lists plugins that are not installed (`absent`) or whose `manifest.scm` failed (`failed`). An absent plugin is reported once in `:messages`.
 - `declare-plugin!` takes `#:entry` to load a plugin in pieces, and can name a local `./file.scm` beside `init.scm` to load it lazily.
+- `core:plum` loads its plugin, grammar and theme commands separately, each on first use.
 - New `(plugin-dir)` returns the calling plugin's directory.
 - New `(hume-version)`, `(hume-version>=? major minor patch)` and `(command-exists? name)` let a plugin adapt to the running editor.
 - `set-eol-text!` takes `#:hide-on-insert-line`.

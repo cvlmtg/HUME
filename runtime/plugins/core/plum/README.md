@@ -18,8 +18,10 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
   `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs`,
   `stdlib/safe-path-segment?` and `stdlib/resolve-lang-arg` through `call!`.
 - **Activates on:** the first `:plum-*` command typed, or the first call to
-  `plum-ensure-grammars`. Its `manifest.scm` has one entry for `plugin.scm` listing
-  `plum-ensure-grammars` in `#:commands` and every `:plum-*` command in `#:typed-commands`.
+  `plum-ensure-grammars`. Its `manifest.scm` has three entries, each loading on its own
+  commands: `plugin.scm` (the four plugin commands), `grammars.scm` (`#:entry`;
+  `plum-ensure-grammars` in `#:commands`, the grammar commands in `#:typed-commands`) and
+  `themes.scm` (`#:entry`; the theme commands).
 - **Not required for what is already installed.** PLUM is a plugin like any other, so
   leaving it out removes only the management commands below. Installed plugins, grammars
   and themes keep working, including syntax highlighting: registering already-compiled
@@ -56,15 +58,19 @@ prompt.
 
 ## How it works
 
-PLUM has three subsystems and a shared module:
+PLUM has three subsystems and a shared module. Each subsystem is its own manifest entry,
+so a `:plum-list-plugins` never reads the grammar pin or registers the theme completion
+source:
 
-- **`plugins.scm`**: third-party plugin install, update and cleanup.
-- **`grammars.scm`**: the tree-sitter grammar install pipeline. It builds on the source
+- **`plugins.scm`** (required by `plugin.scm`): third-party plugin install, update and
+  cleanup.
+- **`grammars.scm`** (`#:entry`): the tree-sitter grammar install pipeline. It builds on the source
   catalog and path helpers core registers at startup (see
   [Grammar sources and the Helix pin](#grammar-sources-and-the-helix-pin)).
-- **`themes.scm`**: third-party theme install, update, list and remove (see
+- **`themes.scm`** (`#:entry`): third-party theme install, update, list and remove (see
   [Theme install](#theme-install)).
-- **`lib.scm`**: `plum/clone-github!` and `plum/git-pull!` (the one GitHub clone URL shape
+- **`lib.scm`**: `plum/require-stdlib!` (the `core:stdlib` check each entry runs),
+  `plum/clone-github!` and `plum/git-pull!` (the one GitHub clone URL shape
   and its update counterpart, shared by every install command), `plum/batch-run!` (see
   [Output model](#output-model)), and `plum/two-level-repos` (the `<root>/<user>/<repo>/`
   walk behind plugin and theme-repo discovery). Directory listing, filesystem cleanup, list

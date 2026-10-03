@@ -224,9 +224,9 @@ as a command that other plugins invoke by name.
 
 A plugin *can* split its own body across multiple files using `require`. The
 main file pulls in siblings, and private helpers stay private to the
-combined module — `plum` itself is structured this way, with grammar
-management, plugin management, and shared helpers in separate files all
-required by one entry point. What still cannot cross plugin boundaries is
+combined module — `plum` is structured this way, with shared helpers in a
+file each of its parts requires. Its grammar, plugin and theme management
+are separate entries that each load on their own commands. What still cannot cross plugin boundaries is
 reaching into another plugin's private helpers by name.
 
 ---

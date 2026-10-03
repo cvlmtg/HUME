@@ -443,3 +443,45 @@ fn remove_theme_not_installed_is_a_noop() {
         error_log(&ed)
     );
 }
+
+// ── Lazy entries ──────────────────────────────────────────────────────────────
+
+/// Each plum subsystem loads on its own first command: the plugin commands
+/// load `plugin.scm`, the theme commands `themes.scm`, the grammar commands
+/// `grammars.scm`.
+#[test]
+fn plum_entries_load_on_their_own_commands() {
+    use hume_scripting::PluginStatus;
+    use hume_scripting::attribution::{EntryFile, EntryId, PluginId};
+
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:plum\")",
+    );
+    let plugin = PluginId::parse("core:plum").unwrap();
+    let entry = |file: &str| EntryId::new(plugin.clone(), EntryFile::parse(file).unwrap());
+    let main = EntryId::main(plugin.clone());
+    let grammars = entry("grammars.scm");
+    let themes = entry("themes.scm");
+    let status = |ed: &Editor, id: &EntryId| ed.scripting.as_ref().unwrap().plugin_status(id);
+
+    for id in [&main, &grammars, &themes] {
+        assert_eq!(status(&ed, id), Some(PluginStatus::Declared));
+    }
+
+    type_cmd(&mut ed, ":plum-list-plugins");
+    assert_eq!(status(&ed, &main), Some(PluginStatus::Loaded));
+    assert_eq!(status(&ed, &grammars), Some(PluginStatus::Declared));
+    assert_eq!(status(&ed, &themes), Some(PluginStatus::Declared));
+
+    type_cmd(&mut ed, ":plum-list-themes");
+    assert_eq!(status(&ed, &themes), Some(PluginStatus::Loaded));
+    assert_eq!(status(&ed, &grammars), Some(PluginStatus::Declared));
+
+    type_cmd(&mut ed, ":plum-list-grammars");
+    assert_eq!(status(&ed, &grammars), Some(PluginStatus::Loaded));
+}

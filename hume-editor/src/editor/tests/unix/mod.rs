@@ -576,7 +576,9 @@ fn load_plum(ed: &mut Editor, data_dir: &Path) {
         ed,
         data_dir,
         &format!(
-            "(load-plugin! \"core:stdlib\")\n{}",
+            "(load-plugin! \"core:stdlib\")\n{}\n\
+             (%activate-plugin-inline! \"core:plum\" \"grammars.scm\")\n\
+             (%activate-plugin-inline! \"core:plum\" \"themes.scm\")",
             hume_scripting::eager_load_scm("core:plum", None)
         ),
     );

@@ -33,7 +33,7 @@ If you're writing a plugin yourself, see [Plugin API → Standard Library](plugi
 (load-plugin! "core:plum")
 ```
 
-PLUM never installs anything on its own: the commands below do the work when you run them.
+PLUM never installs anything on its own: the commands below do the work when you run them. It loads lazily in three parts, the plugin, grammar and theme commands, each on the first command you run from that group.
 
 | Command | Effect |
 |---------|--------|
