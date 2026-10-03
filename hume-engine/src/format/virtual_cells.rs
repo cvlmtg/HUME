@@ -5,6 +5,7 @@
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::offset::ExclusiveRange;
+use hume_rope::width::Cluster;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::types::{CellContent, Grapheme, ScopeId};
@@ -95,24 +96,34 @@ impl<'a> VirtualCells<'a> {
         }
     }
 
-    /// The width `cluster` occupies if pushed at `display_col`.
-    pub(super) fn width_at(&self, cluster: &str, display_col: DisplayLineCol) -> u8 {
-        // One grapheme cluster's width is always <= tab_width (u8's own max
-        // 255), unlike a whole run's, so no `.min(255)` cap needed before
-        // narrowing.
-        hume_rope::width::classify(cluster, display_col.get() as usize, self.tab_width).width()
-            as u8
+    /// How `cluster` classifies when pushed at `display_col`. Only a tab's
+    /// width depends on the column.
+    pub(super) fn classify_at(&self, cluster: &str, display_col: DisplayLineCol) -> Cluster {
+        hume_rope::width::classify(cluster, display_col.get() as usize, self.tab_width)
     }
 
-    /// Push the cell(s) for `cluster`, which starts `byte_offset` bytes into
-    /// `run.text`, and advance `display_col` past it. Widths are measured
-    /// against the live `display_col`, so a tab expands to the stop it
-    /// actually lands on even when the caller wrapped onto a continuation
-    /// display line after measuring.
+    /// [`Self::push_classified`] after classifying at the live `display_col`.
     pub(super) fn push_cluster(
         &mut self,
         byte_offset: usize,
         cluster: &str,
+        display_col: &mut DisplayLineCol,
+        scope: Option<ScopeId>,
+    ) {
+        let classified = self.classify_at(cluster, *display_col);
+        self.push_classified(byte_offset, cluster, classified, display_col, scope);
+    }
+
+    /// Push the cell(s) for `cluster`, which starts `byte_offset` bytes into
+    /// `run.text` and was classified as `classified`, and advance
+    /// `display_col` past it. `classified` must come from `display_col`'s
+    /// current value, so a caller that wrapped after classifying
+    /// re-classifies first and a tab expands to the stop it actually lands on.
+    pub(super) fn push_classified(
+        &mut self,
+        byte_offset: usize,
+        cluster: &str,
+        classified: Cluster,
         display_col: &mut DisplayLineCol,
         scope: Option<ScopeId>,
     ) {
@@ -121,8 +132,6 @@ impl<'a> VirtualCells<'a> {
         // doc), so every cell this run produces reuses the same always-empty range.
         let byte_range =
             ExclusiveRange::new(ByteCol::new(run.byte_offset), ByteCol::new(run.byte_offset));
-        let classified =
-            hume_rope::width::classify(cluster, display_col.get() as usize, self.tab_width);
         // Cluster::width() reads classify()'s own decision, not a second raw measurement.
         let width = classified.width() as u8;
 
@@ -140,12 +149,12 @@ impl<'a> VirtualCells<'a> {
         // guarantee is enforced at this chokepoint rather than at each
         // producer.
         let content = match classified {
-            hume_rope::width::Cluster::Tab { .. } => CellContent::TabFill,
-            hume_rope::width::Cluster::Placeholder(p) => {
+            Cluster::Tab { .. } => CellContent::TabFill,
+            Cluster::Placeholder(p) => {
                 let (start, len) = push_arena_text(self.arena, p.as_str());
                 CellContent::Placeholder { start, len }
             }
-            hume_rope::width::Cluster::Plain { .. } => CellContent::Virtual {
+            Cluster::Plain { .. } => CellContent::Virtual {
                 start: self.text_start + byte_offset as u32,
                 len: cluster.len() as u16,
             },

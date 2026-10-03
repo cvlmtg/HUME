@@ -671,7 +671,7 @@ fn indent_guide_not_drawn_on_wrap_display_lines() {
         },
         graphemes: 4..8,
     }];
-    let styles = vec![ResolvedStyle::default(); 8];
+    let styles = vec![ResolvedStyle::default(); 4];
     let visible = PaneGeometry {
         content_height: 5,
         content_width: 20,

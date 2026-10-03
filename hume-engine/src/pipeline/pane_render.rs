@@ -136,7 +136,8 @@ pub(crate) fn render_pane(
                 // graphemes with none (matching the tilde-filler /
                 // no-decoration look).
                 style.styles.clear();
-                style.styles.extend(rendered.graphemes.iter().map(|g| {
+                let own = rendered.display_line.graphemes.clone();
+                style.styles.extend(rendered.graphemes[own].iter().map(|g| {
                     match g.scope {
                         Some(id) => compose_ctx
                             .theme
@@ -197,7 +198,7 @@ pub(crate) fn render_pane(
                     .or_else(|| line.tint.and_then(|scope| pane_ctx.theme.resolve(scope).bg));
                 render::compose_display_line(
                     &rendered,
-                    &style.styles,
+                    &style.styles[rendered.display_line.graphemes.clone()],
                     screen_row,
                     lane_widths,
                     &compose_ctx,

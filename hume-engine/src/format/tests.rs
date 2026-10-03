@@ -1204,25 +1204,15 @@ fn wrapping_modes_unaffected_by_h_window_none() {
     );
 }
 
-/// A virtual display line far wider than any ordinary one (a provider emitting a
-/// pathological string) must not pin its capacity in the pane's scratch for
-/// the rest of the session. The frame boundary is where that is given back;
-/// `clear` alone (run before laying out *each* display line, and followed immediately
-/// by filling it again) does not shrink.
+/// A line's virtual lines far wider than any ordinary set (a provider emitting
+/// a pathological string) must not pin their capacity for the rest of the
+/// session; the frame boundary gives it back.
 #[test]
-fn clear_and_shrink_reclaims_an_oversized_virtual_display_line() {
+fn clear_and_shrink_reclaims_an_oversized_virtual_format() {
     let mut vline = VirtualFormat::new();
     vline.texts.push_str(&"x".repeat(50_000));
     let grown = vline.texts.capacity();
     assert!(grown >= 50_000, "sanity: the push must have grown it");
-
-    vline.clear();
-    assert_eq!(
-        vline.texts.capacity(),
-        grown,
-        "clear runs mid-frame before an immediate refill; shrinking there \
-         would only force a re-grow"
-    );
 
     vline.clear_and_shrink();
     assert!(
@@ -1231,10 +1221,9 @@ fn clear_and_shrink_reclaims_an_oversized_virtual_display_line() {
     );
 }
 
-/// Below the ceiling, the scratch keeps its capacity across frames. That's the
-/// whole point of holding one per pane rather than allocating per display line.
+/// Below the ceiling, a `VirtualFormat` keeps its capacity across frames.
 #[test]
-fn clear_and_shrink_keeps_an_ordinary_virtual_display_line() {
+fn clear_and_shrink_keeps_an_ordinary_virtual_format() {
     let mut vline = VirtualFormat::new();
     vline.texts.push_str(&"x".repeat(200));
     let grown = vline.texts.capacity();
@@ -1244,6 +1233,6 @@ fn clear_and_shrink_keeps_an_ordinary_virtual_display_line() {
     assert_eq!(
         vline.texts.capacity(),
         grown,
-        "an ordinary virtual display line's capacity must survive the frame boundary"
+        "an ordinary virtual format's capacity must survive the frame boundary"
     );
 }

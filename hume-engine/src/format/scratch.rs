@@ -187,12 +187,11 @@ pub struct VirtualFormat {
 /// [`GRAPHEMES_CEILING`] and friends: a size a format may keep between
 /// frames, not one it starts at.
 ///
-/// Lower than the content-line ceilings because a virtual display line's
-/// text is a display string a provider *built* (an inlay hint, a blame line, a
-/// diagnostic), not a line read off disk. The megabytes-wide minified-JS
-/// case that sets the content-line ceilings has no counterpart here.
-const VIRTUAL_LINE_GRAPHEMES_CEILING: usize = 2048;
-const VIRTUAL_LINE_TEXTS_CEILING: usize = 2048;
+/// A `VirtualFormat` holds every virtual line anchored to one buffer line, so
+/// a multi-line deleted hunk lands in one. The ceilings match the
+/// content-line ones so such a hunk is not freed and re-grown every frame.
+const VIRTUAL_LINE_GRAPHEMES_CEILING: usize = GRAPHEMES_CEILING;
+const VIRTUAL_LINE_TEXTS_CEILING: usize = LINE_TEXT_CEILING;
 
 impl VirtualFormat {
     /// Empty, with nothing allocated yet.
@@ -209,25 +208,16 @@ impl VirtualFormat {
         }
     }
 
-    /// Reset to empty, retaining allocated capacity.
-    pub fn clear(&mut self) {
+    /// Reset to empty, then reclaim a buffer grown past its ceiling.
+    ///
+    /// Runs at the frame boundary, when the next user may be a different
+    /// line or no line at all, which is where an outsized allocation is worth
+    /// paying to give back.
+    pub fn clear_and_shrink(&mut self) {
         self.display_lines.clear();
         self.base_scopes.clear();
         self.graphemes.clear();
         self.texts.clear();
-    }
-
-    /// [`Self::clear`] plus reclaiming a buffer grown past its ceiling.
-    ///
-    /// Split from `clear` on the same line `LineFormat` draws between
-    /// [`LineFormat::reset`] and [`LineFormat::reset_and_shrink`]: `clear`
-    /// runs when an entry is rebound to a line and is followed immediately
-    /// by filling it again, where shrinking would only force a re-grow. This
-    /// one runs at the frame boundary, when the next user may be a different
-    /// line or no line at all, which is the point where an outsized
-    /// allocation is worth paying to give back.
-    pub fn clear_and_shrink(&mut self) {
-        self.clear();
         if self.graphemes.capacity() > VIRTUAL_LINE_GRAPHEMES_CEILING {
             self.graphemes.shrink_to(VIRTUAL_LINE_GRAPHEMES_CEILING);
         }

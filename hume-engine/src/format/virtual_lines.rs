@@ -1,13 +1,12 @@
 //! Lays a buffer line's provider virtual lines out into display lines.
 
-use hume_rope::column::{ByteCol, DisplayLineCol};
+use hume_rope::column::ByteCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::pane::WrapMode;
 use crate::providers::{VirtualLine, VirtualLineAnchor};
 use crate::style::highlight::IntervalCursor;
-use crate::types::DisplayLine;
 
 use super::virtual_cells::{VirtualCells, VirtualRun};
 use super::{
@@ -46,18 +45,12 @@ pub(crate) fn format_virtual_lines(
             hume_rope::width::indent_depth(&vl.text, tab_width),
             tab_width,
         );
-        let mut wrap = WrapState {
+        let mut wrap = WrapState::start(
             owner,
-            current_display_col: DisplayLineCol::new(0),
-            wrap_index: 0,
-            line_g_start: out.graphemes.len(),
-            last_ws_g_idx: out.graphemes.len(),
+            &mut out.display_lines,
+            out.graphemes.len(),
             word_break,
-        };
-        out.display_lines.push(DisplayLine {
-            kind: owner.first(),
-            graphemes: wrap.line_g_start..0, // closed later
-        });
+        );
 
         // `vl.segments` was sorted at intake, and `grapheme_indices` yields
         // byte offsets in ascending order, so a single monotonic cursor
@@ -70,11 +63,11 @@ pub(crate) fn format_virtual_lines(
             indent_depth: 0,
         };
         let mut cells = VirtualCells::new(&mut out.texts, &mut out.graphemes, &run, tab_width);
-        let mut in_leading_ws = true;
         for (byte_offset, cluster) in vl.text.grapheme_indices(true) {
-            let width = cells.width_at(cluster, wrap.current_display_col);
+            let measured_at = wrap.current_display_col;
+            let mut classified = cells.classify_at(cluster, measured_at);
             wrap.maybe_wrap(
-                width,
+                classified.width() as u8,
                 wrap_width,
                 indent_display_cols,
                 0,
@@ -83,14 +76,20 @@ pub(crate) fn format_virtual_lines(
             );
 
             let is_ws = is_whitespace_grapheme(cluster);
-            in_leading_ws &= is_ws;
             let scope = scope_cursor
                 .scope_at(ByteCol::new(byte_offset))
                 .or(vl.base_scope);
-            cells.push_cluster(byte_offset, cluster, &mut wrap.current_display_col, scope);
-            if is_ws && !in_leading_ws {
-                wrap.last_ws_g_idx = cells.graphemes_out.len();
+            if wrap.current_display_col != measured_at {
+                classified = cells.classify_at(cluster, wrap.current_display_col);
             }
+            cells.push_classified(
+                byte_offset,
+                cluster,
+                classified,
+                &mut wrap.current_display_col,
+                scope,
+            );
+            wrap.note_ws(is_ws, cells.graphemes_out.len());
         }
 
         close_display_line_at(

@@ -1,8 +1,9 @@
 //! What a [`DisplayLineMap`](super::DisplayLineMap) knows about the lines it is walking.
 //!
-//! One [`LineEntry`] per visited line: its block shape from creation, and its
-//! [`LineFormat`] once something formats it. Under `WrapMode::None` the shape
-//! is known without formatting; under wrapping they arrive together.
+//! One [`LineEntry`] per visited line: its block shape and laid-out virtual
+//! lines from creation, and its [`LineFormat`] once something formats it.
+//! Under `WrapMode::None` the content shape is known without formatting;
+//! under wrapping the content format arrives with the shape.
 //!
 //! A [`PaneLineStore`] lives on its [`Pane`](crate::pane::Pane), so the scroll
 //! pass, render pass and between-frame consumers (mouse, visual movement,

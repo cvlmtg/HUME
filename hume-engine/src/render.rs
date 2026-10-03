@@ -215,6 +215,9 @@ fn compose_gutter(
 /// index into (`line_text`/`virtual_texts`); see [`RenderDisplayLine`]'s own
 /// field docs for what each covers and why they're kept apart.
 ///
+/// `styles` holds one style per grapheme of `rendered.display_line`, indexed
+/// from the display line's own first grapheme.
+///
 /// `lane_widths` must already be populated by the caller (one entry per gutter
 /// column). Passed separately from `compose_ctx` because in the fused pipeline it lives
 /// in `FrameScratch`, which cannot be bundled into `ComposeCtx` without
@@ -271,9 +274,8 @@ pub(crate) fn compose_display_line(
     );
 
     let line_graphemes = &graphemes[display_line.graphemes.start..display_line.graphemes.end];
-    let line_styles = &styles[display_line.graphemes.start..display_line.graphemes.end];
 
-    for (g, style) in line_graphemes.iter().zip(line_styles.iter()) {
+    for (g, style) in line_graphemes.iter().zip(styles) {
         // Skip WidthContinuation: already handled by the primary cell.
         if matches!(g.content, CellContent::WidthContinuation) {
             continue;

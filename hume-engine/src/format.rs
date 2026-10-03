@@ -84,23 +84,12 @@ pub fn format_buffer_line(
     let virtual_texts_out = &mut out.virtual_texts;
 
     let mut insert_idx = 0usize;
-    let mut wrap = WrapState {
-        owner: WrapOwner::Buffer(line_idx),
-        current_display_col: DisplayLineCol::new(0),
-        wrap_index: 0,
-        line_g_start: graphemes_out.len(),
-        // Word-wrap state: remember the last whitespace position in the current display line.
-        last_ws_g_idx: graphemes_out.len(), // grapheme index of last ws boundary
+    let mut wrap = WrapState::start(
+        WrapOwner::Buffer(line_idx),
+        lines_out,
+        graphemes_out.len(),
         word_break,
-    };
-
-    // Push the first display line.
-    lines_out.push(DisplayLine {
-        kind: wrap.owner.first(),
-        graphemes: wrap.line_g_start..0, // closed later
-    });
-
-    let mut in_leading_ws = true;
+    );
 
     // Set when the scan stopped early: either `h_window` reached its right
     // edge, or `bound` was satisfied. Everything past that point (the EOL
@@ -215,11 +204,7 @@ pub fn format_buffer_line(
         }
         // NOTE: newline indicator is emitted after the main loop, below.
 
-        // ── Update leading-ws flag ─────────────────────────────────────────
         let is_ws = is_whitespace_grapheme(grapheme_str);
-        if !is_ws && in_leading_ws {
-            in_leading_ws = false;
-        }
         let is_trailing = byte_offset >= trailing_ws_start;
 
         // ── Compute display width and content ─────────────────────────────
@@ -304,9 +289,7 @@ pub fn format_buffer_line(
         // a split at this boundary stranding the continuation as the next
         // display line's first cell while the tab itself stayed on the
         // previous display line.
-        if is_ws && !in_leading_ws {
-            wrap.last_ws_g_idx = graphemes_out.len();
-        }
+        wrap.note_ws(is_ws, graphemes_out.len());
 
         // Checked here, at the very end of the iteration, so the grapheme that
         // satisfies the bound is emitted whole, with any inline inserts that
@@ -477,9 +460,45 @@ struct WrapState {
     /// True for `Word`/`Indent`; false for `Soft`, which always splits at the
     /// exact wrap column even mid-word.
     word_break: bool,
+    /// No non-whitespace grapheme seen yet; leading whitespace is never a
+    /// word-break boundary.
+    in_leading_ws: bool,
 }
 
 impl WrapState {
+    /// State for a line starting at `graphemes_len`, with its first display
+    /// line already pushed onto `lines_out` (closed later).
+    fn start(
+        owner: WrapOwner,
+        lines_out: &mut Vec<DisplayLine>,
+        graphemes_len: usize,
+        word_break: bool,
+    ) -> Self {
+        lines_out.push(DisplayLine {
+            kind: owner.first(),
+            graphemes: graphemes_len..0,
+        });
+        Self {
+            owner,
+            current_display_col: DisplayLineCol::new(0),
+            wrap_index: 0,
+            line_g_start: graphemes_len,
+            last_ws_g_idx: graphemes_len,
+            word_break,
+            in_leading_ws: true,
+        }
+    }
+
+    /// Record a grapheme just emitted. `graphemes_len` is the output length
+    /// after it, including a trailing `WidthContinuation` cell: a split at
+    /// this boundary must not strand that cell on the next display line.
+    fn note_ws(&mut self, is_ws: bool, graphemes_len: usize) {
+        self.in_leading_ws &= is_ws;
+        if is_ws && !self.in_leading_ws {
+            self.last_ws_g_idx = graphemes_len;
+        }
+    }
+
     /// If adding `width` columns to `current_display_col` would overflow `wrap_width`,
     /// close the current display line and start a new one. Implements
     /// word-wrap backtracking: when `word_break` is set and a whitespace

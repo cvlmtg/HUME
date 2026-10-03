@@ -223,9 +223,10 @@ impl<'a> DisplayLineMap<'a> {
     /// The store entry for `line`, building its block shape if this is the
     /// first time this store has seen it.
     ///
-    /// Only the *shape*. The format arrives separately, from whoever first
-    /// needs the line's display lines. Under `WrapMode::None` that may be
-    /// much later, or never.
+    /// Builds the block shape and lays out the line's virtual lines. The
+    /// content format arrives separately, from whoever first needs the
+    /// line's content display lines. Under `WrapMode::None` that may be much
+    /// later, or never.
     fn block_entry(&mut self, line: ContentLine) -> usize {
         if let Some(idx) = self.store.find(line) {
             return idx;
