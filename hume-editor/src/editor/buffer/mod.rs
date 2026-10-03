@@ -6,9 +6,10 @@ use super::search::{SearchMatches, SearchPattern};
 use crate::editor::edit_session::EditGroup;
 use crate::editor::position_stores::PositionStores;
 use crate::editor::settings::BufferOverrides;
+use hume_editing::changeset::{ChangeHunk, change_hunks};
 use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
 use hume_editing::edit::{Edited, TextChange};
-use hume_editing::history::{History, RevisionId, RevisionNode};
+use hume_editing::history::{History, RevisionId, RevisionNode, RevisionPath};
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
 use hume_editing::text::{BufferText, LineEnding};
@@ -896,6 +897,20 @@ impl Buffer {
     /// never recorded or has been evicted.
     pub(in crate::editor) fn revision(&self, n: usize) -> Option<RevisionId> {
         RevisionId::checked(&self.history, n)
+    }
+
+    /// What separates the live text from revision `n`, as hunks: the
+    /// revision's text is the old side. `Err` when `n` was never recorded or
+    /// has been evicted. The history is not moved.
+    pub(in crate::editor) fn revision_diff(&self, n: usize) -> Result<Vec<ChangeHunk>, String> {
+        let target = self
+            .revision(n)
+            .ok_or_else(|| format!("no revision {n} in this buffer's undo history"))?;
+        match self.history.changes_to(target) {
+            RevisionPath::Changes(cs) => Ok(change_hunks(&cs, &self.text)),
+            RevisionPath::Here => Ok(Vec::new()),
+            RevisionPath::Unknown => unreachable!("a checked revision is in the tree"),
+        }
     }
 
     /// Every revision of the undo history, in id order, aged as of `now`.

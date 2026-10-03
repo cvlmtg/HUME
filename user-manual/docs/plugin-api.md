@@ -312,6 +312,7 @@ Covered with examples in [Filesystem and processes](plugins.md#filesystem-and-pr
 |------|--------|
 | `(diff-lines old-text new-text)` | Line-level hunks where `old-text`/`new-text` differ |
 | `(diff-buffer-lines pane ref-text)` | Same, but against the buffer's current unsaved content; avoids pulling the whole buffer through `buffer-text` first |
+| `(buffer-revision-diff pane id)` | Hunks between revision `id` of the buffer's undo history, a number from `buffer-undo-tree`, and the buffer's current content, in the shape `diff-buffer-lines` returns with the revision as the old side. A hunk also has `'words`, `(hash 'old spans 'new spans)`, when the edit says which columns changed: each span is `(hash 'line 'start 'end)`, with `'line` counted from the hunk's first line on that side and `'start`/`'end` character columns in it, end exclusive. A span covering a whole line is left out, and a hunk with no span has no `'words`. Raises when the buffer has no such revision |
 | `(diff-words old-text new-text)` | `(hash 'hunks … 'deadline-hit …)`: word-level hunks within a single changed line |
 
 Covered with examples, including hunk shapes, in [Comparing text](plugins.md#comparing-text).

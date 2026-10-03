@@ -30,7 +30,7 @@ pub use commands::CommandHost;
 pub use completion::{CompletionHost, CompletionSourceTarget, MatchKind, PendingCompletionSource};
 pub use cursor::{CursorHost, SelectionInfo};
 pub use decorations::{DecorationHost, DiagnosticEntry};
-pub use diff::{DiffHost, DiffHunk, WordDiffHunk};
+pub use diff::{DiffHost, WordDiffHunk};
 pub use edits::{EditHost, WireTextEdit};
 pub use events::EventHost;
 pub use language::LanguageHost;

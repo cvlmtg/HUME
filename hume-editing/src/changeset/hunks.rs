@@ -5,12 +5,17 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 use super::{ChangeSet, EditedRegion};
 use crate::text::BufferText;
 
-/// One run of changed lines between a text (the new side) and the text a
-/// changeset turns it into (the old side). Lines carry no line break. A side
-/// with no lines marks the point the other side was inserted at or deleted from.
+/// One run of changed lines between two texts, 0-based so a start feeds
+/// `set-signs!` and `set-virtual-lines!` unchanged. Lines carry no line break,
+/// and `Equal` runs are never represented. A side with no lines marks the
+/// point the other side was inserted at or deleted from, so a start may equal
+/// that text's content line count, which is why starts are minted trusted
+/// (`ContentLine::new`) and not through `ContentLine::checked`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangeHunk {
+    /// Line in the old text where the hunk starts.
     pub old_start: ContentLine,
+    /// Line in the new text where the hunk starts.
     pub new_start: ContentLine,
     pub old_lines: Vec<String>,
     pub new_lines: Vec<String>,

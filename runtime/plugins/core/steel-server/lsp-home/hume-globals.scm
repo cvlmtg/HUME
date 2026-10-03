@@ -52,6 +52,7 @@
 (#%register-global "buffer-name")
 (#%register-global "buffer-panes")
 (#%register-global "buffer-path")
+(#%register-global "buffer-revision-diff")
 (#%register-global "buffer-selections")
 (#%register-global "buffer-text")
 (#%register-global "buffer-undo-tree")

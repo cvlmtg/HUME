@@ -5,12 +5,14 @@
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{DiffHunk, WordDiffHunk};
+use hume_editing::changeset::{ChangeHunk, LineSpan};
+
+use crate::host::WordDiffHunk;
 use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{list_of, not_live_err, string_arg, string_list, symbol_hash};
-use super::errors::require_cap;
+use super::errors::{generic_err, require_cap};
 
 /// `(diff-lines old-text new-text)` → list of hunk hashes, oldest side
 /// first. Each hunk is `(hash 'old-start 'old-count 'new-start 'new-count
@@ -49,20 +51,58 @@ pub(crate) fn diff_buffer_lines(
     Ok(hunks_to_steel(hunks))
 }
 
-fn hunks_to_steel(hunks: Vec<DiffHunk>) -> SteelVal {
+/// `(buffer-revision-diff pane id)` → the hunks that separate `pane`'s buffer's
+/// live text from revision `id` of its undo history (a number from
+/// `(buffer-undo-tree pane)`), in the shape `diff-lines` returns plus `'words`.
+/// The revision's text is the old side and the live text the new. Raises when
+/// the buffer has no such revision.
+pub(crate) fn buffer_revision_diff(
+    ctx: &mut SteelCtx,
+    pane: PaneHandle,
+    revision: usize,
+) -> SteelResult {
+    let hunks = require_cap(ctx.host.diff(), "buffer-revision-diff")?
+        .revision_diff(pane.buffer(), revision)
+        .map_err(generic_err)?;
+    Ok(hunks_to_steel(hunks))
+}
+
+fn hunks_to_steel(hunks: Vec<ChangeHunk>) -> SteelVal {
     list_of(hunks.into_iter().map(hunk_to_steel))
 }
 
-fn hunk_to_steel(hunk: DiffHunk) -> SteelVal {
+/// `'words`, present only when the hunk has word spans: `(hash 'old (list
+/// span …) 'new (list span …))`, each span `(hash 'line 'start 'end)`, `'line`
+/// counted from the hunk's first line on that side and `'start`/`'end` char
+/// columns in it, end exclusive.
+fn hunk_to_steel(hunk: ChangeHunk) -> SteelVal {
     let old_count = hunk.old_lines.len();
     let new_count = hunk.new_lines.len();
-    symbol_hash([
+    let mut fields = vec![
         ("old-start", SteelVal::IntV(hunk.old_start.index() as isize)),
         ("old-count", SteelVal::IntV(old_count as isize)),
         ("new-start", SteelVal::IntV(hunk.new_start.index() as isize)),
         ("new-count", SteelVal::IntV(new_count as isize)),
         ("old-lines", string_list(hunk.old_lines)),
         ("new-lines", string_list(hunk.new_lines)),
+    ];
+    if let Some(words) = hunk.words {
+        fields.push((
+            "words",
+            symbol_hash([
+                ("old", list_of(words.old.into_iter().map(span_to_steel))),
+                ("new", list_of(words.new.into_iter().map(span_to_steel))),
+            ]),
+        ));
+    }
+    symbol_hash(fields)
+}
+
+fn span_to_steel(span: LineSpan) -> SteelVal {
+    symbol_hash([
+        ("line", SteelVal::IntV(span.line as isize)),
+        ("start", SteelVal::IntV(span.start.index() as isize)),
+        ("end", SteelVal::IntV(span.end.index() as isize)),
     ])
 }
 

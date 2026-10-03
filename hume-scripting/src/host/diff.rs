@@ -1,50 +1,22 @@
 //! BufferText diffing.
 
+use hume_editing::changeset::ChangeHunk;
 use hume_engine::pipeline::BufferId;
-
-/// A single line-level change between two texts, 0-based and Steel-surface
-/// ready: `set-signs!`/`set-virtual-lines!` are 0-indexed at the Steel
-/// boundary, so no arithmetic is needed to feed a hunk into either. The
-/// count each side covers is `old_lines.len()`/`new_lines.len()`; there is
-/// no separate count field to keep in sync. A zero-length side needs no
-/// special anchoring case: its empty line list already sits exactly at the
-/// insertion/deletion point (`old_lines` empty for a pure insert, `new_lines`
-/// empty for a pure deletion). `Equal` runs are never represented:
-/// `DiffHost` methods drop them before returning.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DiffHunk {
-    /// Content line in the old text where this hunk starts. A pure insertion
-    /// (`old_lines` empty) names an *insertion position*, not a changed
-    /// line: it may legitimately equal the old text's content line count
-    /// (one past the last line), the same one-past-last-line value
-    /// `ContentLineCount::end_exclusive()` names, which is why this is
-    /// minted trusted (`ContentLine::new`) rather than through `::checked`,
-    /// which would reject exactly that value.
-    pub old_start: hume_rope::line::ContentLine,
-    /// Line index in the new text where this hunk starts; see `old_start`'s
-    /// doc; the same insertion-position case applies here for a pure
-    /// deletion (`new_lines` empty).
-    pub new_start: hume_rope::line::ContentLine,
-    /// The covered old-side lines, trailing newlines stripped.
-    pub old_lines: Vec<String>,
-    /// The covered new-side lines, trailing newlines stripped.
-    pub new_lines: Vec<String>,
-}
 
 /// A single word-level change between two texts, e.g. a single changed
 /// line's old/new text, as passed from a `diff-lines`/`diff-buffer-lines`
 /// `Replace` hunk. Ranges are 0-based **char offsets**, not byte offsets,
 /// matching `WordHunk`/`ExtraHighlightEntry`/`set-virtual-lines!`'s
-/// `'segments`. `Equal` runs are dropped, same as [`DiffHunk`].
+/// `'segments`. `Equal` runs are dropped, same as a [`ChangeHunk`].
 ///
-/// Unlike [`DiffHunk`] (line-index `start` into a rebuilt line list), a
+/// Unlike a [`ChangeHunk`] (line-index `start` into a rebuilt line list), a
 /// word hunk is one contiguous span of text per side, so it carries `end`
 /// (an exclusive char offset) and one `String` per side rather than a line
-/// list. Reusing `DiffHunk`'s shape here would force a fake
+/// list. Reusing `ChangeHunk`'s shape here would force a fake
 /// single-element `Vec<String>` that doesn't mean the same thing.
 ///
 /// A zero-width side (`start == end`) needs no special case, same
-/// rationale as `DiffHunk`'s empty-line-list side: it already sits exactly
+/// rationale as `ChangeHunk`'s empty-line-list side: it already sits exactly
 /// at the insertion/deletion point (pure insert: `old_start == old_end`,
 /// pure delete: `new_start == new_end`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,7 +45,7 @@ pub struct WordDiffHunk {
 /// at best.
 pub trait DiffHost {
     /// Line-level hunks between `old` and `new`, `Equal` runs dropped.
-    fn diff_lines(&self, old: &str, new: &str) -> Vec<DiffHunk>;
+    fn diff_lines(&self, old: &str, new: &str) -> Vec<ChangeHunk>;
 
     /// As [`diff_lines`](DiffHost::diff_lines), diffing `ref_text` against
     /// `bid`'s live (dirty) in-memory text, which avoids materializing the whole
@@ -82,7 +54,13 @@ pub trait DiffHost {
     /// (looking up the buffer's text also answers "does it exist"), so the
     /// Steel boundary maps `None` straight to an error rather than checking
     /// liveness a second time first.
-    fn diff_buffer_lines(&self, bid: BufferId, ref_text: &str) -> Option<Vec<DiffHunk>>;
+    fn diff_buffer_lines(&self, bid: BufferId, ref_text: &str) -> Option<Vec<ChangeHunk>>;
+
+    /// What separates `bid`'s live text from revision `revision` of its undo
+    /// history: the revision's text is the old side, the live text the new.
+    /// `Err` for a revision the history has no record of. Hunks carry the
+    /// word spans the history's own changesets give them.
+    fn revision_diff(&self, bid: BufferId, revision: usize) -> Result<Vec<ChangeHunk>, String>;
 
     /// Word-level hunks between `old` and `new`, `Equal` runs dropped. The
     /// returned `bool` mirrors `WordDiff::deadline_hit()`: `true` means the

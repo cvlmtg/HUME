@@ -1,5 +1,5 @@
 //! Translates `hume_editing::diff::{LineHunk, WordHunk}` into their
-//! Steel-facing [`DiffHunk`]/[`WordDiffHunk`] shapes.
+//! Steel-facing [`ChangeHunk`]/[`WordDiffHunk`] shapes.
 //!
 //! **Line diff** normalizes both sides through [`BufferText::from`] before
 //! tokenizing: every line ending becomes LF and a trailing newline is added
@@ -17,15 +17,16 @@ use std::ops::Range;
 
 use ropey::RopeSlice;
 
+use hume_editing::changeset::ChangeHunk;
 use hume_editing::diff::{LineHunk, LineHunkKind, WordDiff, WordHunkKind, diff_lines, diff_words};
 use hume_editing::text::BufferText;
 use hume_rope::lines::line_token_content;
 
-use hume_scripting::host::{DiffHunk, WordDiffHunk};
+use hume_scripting::host::WordDiffHunk;
 
 /// Line-level hunks between two texts, neither yet loaded as a HUME buffer:
 /// both sides go through [`BufferText::from`]'s normalization (see the module doc).
-pub(in crate::editor) fn line_hunks(old: &str, new: &str) -> Vec<DiffHunk> {
+pub(in crate::editor) fn line_hunks(old: &str, new: &str) -> Vec<ChangeHunk> {
     hunks(&BufferText::from(old), &BufferText::from(new))
 }
 
@@ -34,11 +35,11 @@ pub(in crate::editor) fn line_hunks(old: &str, new: &str) -> Vec<DiffHunk> {
 pub(in crate::editor) fn line_hunks_against_buffer(
     ref_text: &str,
     buffer: &BufferText,
-) -> Vec<DiffHunk> {
+) -> Vec<ChangeHunk> {
     hunks(&BufferText::from(ref_text), buffer)
 }
 
-/// `Equal` runs are dropped; each [`DiffHunk`]'s line lists are re-sliced
+/// `Equal` runs are dropped; each [`ChangeHunk`]'s line lists are re-sliced
 /// from the tokenized input, since `LineHunkKind` carries no payload to split
 /// (`hume-editing/src/diff.rs`).
 ///
@@ -49,10 +50,10 @@ pub(in crate::editor) fn line_hunks_against_buffer(
 /// doc's normalization guarantee), so it can only ever match as an `Equal`
 /// run (already filtered out above), never surface as a hunk's own start.
 /// A hunk's start is therefore always a real content line, *or* the
-/// legitimate one-past-last-line insertion/deletion position `DiffHunk`'s
+/// legitimate one-past-last-line insertion/deletion position `ChangeHunk`'s
 /// own doc describes (`ContentLineCount::end_exclusive()`'s value), never
 /// the phantom index itself.
-fn hunks(old: &BufferText, new: &BufferText) -> Vec<DiffHunk> {
+fn hunks(old: &BufferText, new: &BufferText) -> Vec<ChangeHunk> {
     let old_tokens: Vec<RopeSlice<'_>> = old.line_tokens().collect();
     let new_tokens: Vec<RopeSlice<'_>> = new.line_tokens().collect();
 
@@ -62,18 +63,19 @@ fn hunks(old: &BufferText, new: &BufferText) -> Vec<DiffHunk> {
         .filter(|hunk| hunk.kind != LineHunkKind::Equal)
         .map(|hunk| {
             let LineHunk { old, new, .. } = hunk;
-            DiffHunk {
+            ChangeHunk {
                 old_start: hume_rope::line::ContentLine::new(old.start),
                 new_start: hume_rope::line::ContentLine::new(new.start),
                 old_lines: strip_newlines(&old_tokens, old),
                 new_lines: strip_newlines(&new_tokens, new),
+                words: None,
             }
         })
         .collect()
 }
 
 /// Slices `tokens[range]` into owned lines with each token's trailing line
-/// break stripped (via [`line_token_content`]): a [`DiffHunk`]'s line
+/// break stripped (via [`line_token_content`]): a [`ChangeHunk`]'s line
 /// payloads never carry one, since a plugin may feed one straight into
 /// `set-virtual-lines!`'s row text. Only these surviving (non-`Equal`) lines
 /// are ever materialized.

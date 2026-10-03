@@ -101,6 +101,81 @@ fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
     );
 }
 
+/// `buffer-revision-diff` returns the hunk shape `diff-buffer-lines` returns,
+/// with the revision's text as the old side and the live buffer as the new,
+/// plus the char columns the edit itself touched under `'words`.
+///
+/// Deleting the `a` of "abc" makes revision 0 the text with the extra `a`, so
+/// the old line is "abc" and its inserted column range is 0..1.
+#[test]
+fn buffer_revision_diff_returns_hunks_with_word_spans() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), "bc\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(equal? (buffer-revision-diff bid 0)
+                   (list (hash 'old-start 0 'old-count 1 'new-start 0 'new-count 1
+                              'old-lines (list "abc") 'new-lines (list "bc")
+                              'words (hash 'old (list (hash 'line 0 'start 0 'end 1))
+                                           'new (list)))))"#,
+    );
+    assert!(
+        fired,
+        "buffer-revision-diff must return the expected hunk shape"
+    );
+}
+
+/// A hunk whose changed span covers a whole line has no `'words` key, so a
+/// renderer falls back to its own word diff.
+#[test]
+fn buffer_revision_diff_omits_words_when_a_span_covers_its_line() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\n");
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), "\n");
+
+    let verdict = log_probe(
+        &mut ed,
+        tmp.path(),
+        r#"(if (equal? (buffer-revision-diff bid 0)
+                       (list (hash 'old-start 0 'old-count 1 'new-start 0 'new-count 1
+                                  'old-lines (list "a") 'new-lines (list ""))))
+               "match"
+               "mismatch")"#,
+    );
+    assert_eq!(
+        verdict, "match",
+        "a whole-line span must leave 'words out of the hunk"
+    );
+}
+
+/// An id the buffer's history never recorded raises, never an empty diff.
+#[test]
+fn buffer_revision_diff_on_an_unknown_revision_raises() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    install_source(
+        &mut ed,
+        ScriptingHost::new(),
+        r#"(define-typed-command! "probe" "" (lambda (bid) (buffer-revision-diff bid 99)))"#,
+        tmp.path(),
+    );
+    type_cmd(&mut ed, ":probe");
+
+    let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.severity == Severity::Error && e.text.contains("no revision 99")),
+        "an unknown revision must surface as a Steel error, got: {entries:?}"
+    );
+}
+
 /// `diff-words` returns `(hash 'hunks … 'deadline-hit …)`, each hunk a hash of
 /// char offsets and texts.
 ///
