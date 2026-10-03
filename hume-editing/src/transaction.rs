@@ -55,6 +55,11 @@ impl Transaction {
         &self.selection
     }
 
+    /// The changes this transaction applies.
+    pub(crate) fn changes(&self) -> &ChangeSet {
+        &self.changes
+    }
+
     /// Consume this transaction and return just the `ChangeSet`.
     pub fn into_changes(self) -> ChangeSet {
         self.changes

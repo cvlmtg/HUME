@@ -591,6 +591,24 @@ impl History {
         Some((up_path, down_path))
     }
 
+    /// The transactions of a walk's two legs in the order they apply: the
+    /// inverse of each revision stepped out of, then the forward of each
+    /// stepped into.
+    fn steps<'a>(
+        &'a self,
+        up_path: &'a [RevisionId],
+        down_path: &'a [RevisionId],
+    ) -> impl Iterator<Item = &'a Transaction> {
+        up_path
+            .iter()
+            .map(|id| &self.revisions[id].link().inverse)
+            .chain(
+                down_path
+                    .iter()
+                    .map(|id| &self.revisions[id].link().forward),
+            )
+    }
+
     /// The one changeset that maps the current text to `target`'s text,
     /// without moving `current`, the redo targets or [`Self::change_seq`].
     /// It is the net of the walk [`Self::goto_revision`] performs.
@@ -598,15 +616,9 @@ impl History {
         let Some((up_path, down_path)) = self.path(target) else {
             return RevisionPath::Unknown;
         };
-        let steps = up_path
-            .iter()
-            .map(|id| self.revisions[id].link().inverse.clone())
-            .chain(
-                down_path
-                    .iter()
-                    .map(|id| self.revisions[id].link().forward.clone()),
-            )
-            .map(Transaction::into_changes);
+        let steps = self
+            .steps(&up_path, &down_path)
+            .map(|txn| txn.changes().clone());
         match ChangeSet::compose_all(steps) {
             Some(cs) => RevisionPath::Changes(cs),
             None => RevisionPath::Here,
@@ -647,14 +659,7 @@ impl History {
             return Some(Vec::new());
         }
 
-        // Build the transaction list.
-        let mut txns = Vec::with_capacity(up_path.len() + down_path.len());
-        for id in &up_path {
-            txns.push(self.revisions[id].link().inverse.clone());
-        }
-        for id in &down_path {
-            txns.push(self.revisions[id].link().forward.clone());
-        }
+        let txns = self.steps(&up_path, &down_path).cloned().collect();
 
         // The up leg needs no marking: every ancestor of `current` already
         // names the next revision toward it as its redo child.
