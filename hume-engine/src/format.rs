@@ -73,9 +73,7 @@ pub fn format_buffer_line(
     let wrap_width: Option<u32> = wrap_mode.wrap_width().map(u32::from);
     // For indent-wrap, continuation display lines start at this column.
     let indent_display_cols = continuation_indent(wrap_mode, indent_depth, tab_width);
-    // Word/Indent backtrack to the last whitespace on overflow; Soft splits at
-    // the exact wrap column.
-    let word_break = matches!(wrap_mode, WrapMode::Word { .. } | WrapMode::Indent { .. });
+    let word_break = wrap_mode.breaks_at_word();
 
     // ── Display line / column state ─────────────────────────────────────
     // Short aliases into the output buffers for the rest of the function.

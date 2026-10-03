@@ -309,6 +309,12 @@ impl WrapMode {
         }
     }
 
+    /// Whether an overflowing line backtracks to its last whitespace
+    /// (`Word`, `Indent`) rather than splitting at the exact wrap column.
+    pub fn breaks_at_word(&self) -> bool {
+        matches!(self, WrapMode::Word { .. } | WrapMode::Indent { .. })
+    }
+
     /// Replace the `width: 0` sentinel with a concrete column count.
     ///
     /// `WrapMode::None` and concrete non-zero widths pass through unchanged.

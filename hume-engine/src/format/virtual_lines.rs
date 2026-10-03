@@ -31,7 +31,7 @@ pub(crate) fn format_virtual_lines(
 ) -> usize {
     debug_assert!(out.display_lines.is_empty(), "`out` must start empty");
     let wrap_width = wrap_mode.wrap_width().map(u32::from);
-    let word_break = matches!(wrap_mode, WrapMode::Word { .. } | WrapMode::Indent { .. });
+    let word_break = wrap_mode.breaks_at_word();
     let anchor_line = RopeyLine::from(anchor_line);
 
     let mut before = 0;

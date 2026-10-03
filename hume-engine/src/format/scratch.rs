@@ -183,15 +183,9 @@ pub struct VirtualFormat {
     pub texts: String,
 }
 
-/// Ceilings for [`VirtualFormat`], in the same sense as
-/// [`GRAPHEMES_CEILING`] and friends: a size a format may keep between
-/// frames, not one it starts at.
-///
 /// A `VirtualFormat` holds every virtual line anchored to one buffer line, so
-/// a multi-line deleted hunk lands in one. The ceilings match the
-/// content-line ones so such a hunk is not freed and re-grown every frame.
-const VIRTUAL_LINE_GRAPHEMES_CEILING: usize = GRAPHEMES_CEILING;
-const VIRTUAL_LINE_TEXTS_CEILING: usize = LINE_TEXT_CEILING;
+/// a multi-line deleted hunk lands in one. It shrinks to the content-line
+/// ceilings so such a hunk is not freed and re-grown every frame.
 
 impl VirtualFormat {
     /// Empty, with nothing allocated yet.
@@ -218,11 +212,11 @@ impl VirtualFormat {
         self.base_scopes.clear();
         self.graphemes.clear();
         self.texts.clear();
-        if self.graphemes.capacity() > VIRTUAL_LINE_GRAPHEMES_CEILING {
-            self.graphemes.shrink_to(VIRTUAL_LINE_GRAPHEMES_CEILING);
+        if self.graphemes.capacity() > GRAPHEMES_CEILING {
+            self.graphemes.shrink_to(GRAPHEMES_CEILING);
         }
-        if self.texts.capacity() > VIRTUAL_LINE_TEXTS_CEILING {
-            self.texts.shrink_to(VIRTUAL_LINE_TEXTS_CEILING);
+        if self.texts.capacity() > LINE_TEXT_CEILING {
+            self.texts.shrink_to(LINE_TEXT_CEILING);
         }
     }
 }
