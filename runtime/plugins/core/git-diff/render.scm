@@ -128,14 +128,17 @@
 (define (git-diff/line-spans->new-side-spans pane new-start new-lines spans)
   (if (null? spans)
       '()
-      (let loop ([spans spans] [line 0] [offset (line->offset pane new-start)] [lines new-lines] [acc '()])
+      (let loop ([spans spans]
+                 [line 0]
+                 [offsets (git-diff/paired-line-offsets pane new-start new-lines (length new-lines))]
+                 [acc '()])
         (cond
           [(null? spans) (reverse acc)]
           [(< line (hash-ref (car spans) 'line))
-           (loop spans (+ line 1) (+ offset (string-length (car lines)) 1) (cdr lines) acc)]
+           (loop spans (+ line 1) (cdr offsets) acc)]
           [else
-           (let ([span (car spans)])
-             (loop (cdr spans) line offset lines
+           (let ([span (car spans)] [offset (car offsets)])
+             (loop (cdr spans) line offsets
                    (cons (hash 'start (+ offset (hash-ref span 'start))
                                'end (+ offset (hash-ref span 'end))
                                'scope "diff.plus.word")
