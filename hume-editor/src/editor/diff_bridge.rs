@@ -1,5 +1,5 @@
-//! Translates `hume_editing::diff::{LineHunk, WordHunk}` into their
-//! Steel-facing [`ChangeHunk`]/[`WordDiffHunk`] shapes.
+//! Translates `hume_editing::diff::{LineHunk, WordHunk}` into the
+//! [`ChangeHunk`]/[`WordDiffHunk`] shapes `DiffHost` returns.
 //!
 //! **Line diff** normalizes both sides through [`BufferText::from`] before
 //! tokenizing: every line ending becomes LF and a trailing newline is added
@@ -96,7 +96,7 @@ pub(in crate::editor) fn word_hunks(old: &str, new: &str) -> (Vec<WordDiffHunk>,
     convert_word_diff(diff_words(old, new))
 }
 
-/// Shared `WordDiff` → Steel-facing shape mapping for [`word_hunks`] (and,
+/// Shared `WordDiff` → [`WordDiffHunk`] mapping for [`word_hunks`] (and,
 /// under `#[cfg(test)]`, tests that force the Myers timeout path directly
 /// via `hume_editing::diff::diff_words_with_deadline`).
 fn convert_word_diff(diff: WordDiff) -> (Vec<WordDiffHunk>, bool) {

@@ -5,12 +5,12 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 use super::{ChangeSet, EditedRegion};
 use crate::text::BufferText;
 
-/// One run of changed lines between two texts, 0-based so a start feeds
-/// `set-signs!` and `set-virtual-lines!` unchanged. Lines carry no line break,
-/// and `Equal` runs are never represented. A side with no lines marks the
-/// point the other side was inserted at or deleted from, so a start may equal
-/// that text's content line count, which is why starts are minted trusted
-/// (`ContentLine::new`) and not through `ContentLine::checked`.
+/// One run of changed lines between two texts, with 0-based starts. Lines
+/// carry no line break, and `Equal` runs are never represented. A side with
+/// no lines marks the point the other side was inserted at or deleted from, so
+/// a start may equal that text's content line count, which is why starts are
+/// minted trusted (`ContentLine::new`) and not through
+/// `ContentLine::checked`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangeHunk {
     /// Line in the old text where the hunk starts.
@@ -180,8 +180,8 @@ fn split_lines(s: &str) -> Vec<&str> {
 
 /// The parts of `ranges` (char ranges of `lines` joined by one break each)
 /// that fall inside line contents, as spans of the lines `skip..skip + keep`
-/// numbered from `skip`. A span covering a whole line is dropped: the tint or
-/// virtual line already marks that line.
+/// numbered from `skip`. A span covering a whole line is dropped: the line
+/// already counts as changed.
 fn line_spans(
     lines: &[&str],
     ranges: &[(usize, usize)],
