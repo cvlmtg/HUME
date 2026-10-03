@@ -340,6 +340,63 @@ fn goto_across_branches_via_lca() {
     assert_eq!(h.current, RevisionId(3));
 }
 
+fn changes_of(path: RevisionPath) -> ChangeSet {
+    match path {
+        RevisionPath::Changes(cs) => cs,
+        RevisionPath::Here => panic!("expected a path, got Here"),
+        RevisionPath::Unknown => panic!("expected a path, got Unknown"),
+    }
+}
+
+#[test]
+fn changes_to_across_branches_maps_current_text_to_target_text() {
+    let h = branching_history();
+    // rev4's text is "dahello\n"; rev3's is "cbahello\n".
+    let cs = changes_of(h.changes_to(RevisionId(3)));
+    let at_rev4 = BufferText::from("dahello\n");
+    let at_rev3 = cs.apply(&at_rev4).expect("changeset fits rev4's text");
+    assert_eq!(at_rev3.to_string(), "cbahello\n");
+}
+
+#[test]
+fn changes_to_parent_undoes_the_last_edit() {
+    let h = branching_history();
+    let cs = changes_of(h.changes_to(RevisionId(1)));
+    let at_rev1 = cs
+        .apply(&BufferText::from("dahello\n"))
+        .expect("changeset fits rev4's text");
+    assert_eq!(at_rev1.to_string(), "ahello\n");
+}
+
+#[test]
+fn changes_to_leaves_current_redo_and_change_seq_alone() {
+    let mut h = branching_history();
+    let seq = h.change_seq();
+    let _ = h.changes_to(RevisionId(3));
+    assert_eq!(h.current_id(), RevisionId(4));
+    assert_eq!(h.change_seq(), seq);
+    // Redo from rev1 still follows rev4, the branch last walked, not rev3.
+    h.undo();
+    assert_eq!(h.current_id(), RevisionId(1));
+    h.redo();
+    assert_eq!(h.current_id(), RevisionId(4));
+}
+
+#[test]
+fn changes_to_current_is_here() {
+    let h = branching_history();
+    assert!(matches!(h.changes_to(h.current_id()), RevisionPath::Here));
+}
+
+#[test]
+fn changes_to_unknown_id_is_unknown() {
+    let h = branching_history();
+    assert!(matches!(
+        h.changes_to(RevisionId(999)),
+        RevisionPath::Unknown
+    ));
+}
+
 #[test]
 fn goto_distant_ancestor() {
     let mut h = History::new();

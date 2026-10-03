@@ -36,6 +36,17 @@ impl RevisionId {
     }
 }
 
+/// What separates the current text from another revision's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RevisionPath {
+    /// The revision is not in the tree: never recorded, or evicted.
+    Unknown,
+    /// The revision is the current one.
+    Here,
+    /// Maps the current text to the revision's text.
+    Changes(ChangeSet),
+}
+
 /// One revision as seen from outside the crate: where it sits in the tree
 /// and how old it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -553,6 +564,55 @@ impl History {
         self.change_seq += 1;
     }
 
+    /// The two legs of the walk from `current` to `target` through their
+    /// lowest common ancestor: the revisions to step out of, newest first,
+    /// then the revisions to step into, oldest first. `None` if `target` is
+    /// not in the tree; both legs are empty when it is `current`.
+    fn path(&self, target: RevisionId) -> Option<(Vec<RevisionId>, Vec<RevisionId>)> {
+        if !self.revisions.contains_key(&target) {
+            return None;
+        }
+
+        // A parent's id is always smaller than its child's (ids ascend and
+        // eviction re-points orphans to the root), so stepping the larger
+        // id up meets at the lowest common ancestor.
+        let (mut up_path, mut down_path) = (Vec::new(), Vec::new());
+        let (mut from, mut to) = (self.current, target);
+        while from != to {
+            if from.0 > to.0 {
+                up_path.push(from);
+                from = self.revisions[&from].link().parent;
+            } else {
+                down_path.push(to);
+                to = self.revisions[&to].link().parent;
+            }
+        }
+        down_path.reverse();
+        Some((up_path, down_path))
+    }
+
+    /// The one changeset that maps the current text to `target`'s text,
+    /// without moving `current`, the redo targets or [`Self::change_seq`].
+    /// It is the net of the walk [`Self::goto_revision`] performs.
+    pub fn changes_to(&self, target: RevisionId) -> RevisionPath {
+        let Some((up_path, down_path)) = self.path(target) else {
+            return RevisionPath::Unknown;
+        };
+        let steps = up_path
+            .iter()
+            .map(|id| self.revisions[id].link().inverse.clone())
+            .chain(
+                down_path
+                    .iter()
+                    .map(|id| self.revisions[id].link().forward.clone()),
+            )
+            .map(Transaction::into_changes);
+        match ChangeSet::compose_all(steps) {
+            Some(cs) => RevisionPath::Changes(cs),
+            None => RevisionPath::Here,
+        }
+    }
+
     /// Jump to an arbitrary revision in the undo tree, the general case
     /// [`Self::undo_n`]/[`Self::redo_n`] don't need, since each of those
     /// already walks a straight line of `parent`/`children` links with no
@@ -582,28 +642,10 @@ impl History {
     /// - **Down leg** (LCA → `target`): for each node stepped into, use its
     ///   `forward` transaction (same as [`Self::redo`]).
     pub fn goto_revision(&mut self, target: RevisionId) -> Option<Vec<Transaction>> {
-        if !self.revisions.contains_key(&target) {
-            return None;
-        }
+        let (up_path, down_path) = self.path(target)?;
         if target == self.current {
             return Some(Vec::new());
         }
-
-        // A parent's id is always smaller than its child's (ids ascend and
-        // eviction re-points orphans to the root), so stepping the larger
-        // id up meets at the lowest common ancestor.
-        let (mut up_path, mut down_path) = (Vec::new(), Vec::new());
-        let (mut from, mut to) = (self.current, target);
-        while from != to {
-            if from.0 > to.0 {
-                up_path.push(from);
-                from = self.revisions[&from].link().parent;
-            } else {
-                down_path.push(to);
-                to = self.revisions[&to].link().parent;
-            }
-        }
-        down_path.reverse();
 
         // Build the transaction list.
         let mut txns = Vec::with_capacity(up_path.len() + down_path.len());
