@@ -900,17 +900,30 @@ impl Buffer {
     }
 
     /// What separates the live text from revision `n`, as hunks: the
-    /// revision's text is the old side. `Err` when `n` was never recorded or
-    /// has been evicted. The history is not moved.
-    pub(in crate::editor) fn revision_diff(&self, n: usize) -> Result<Vec<ChangeHunk>, String> {
-        let target = self
-            .revision(n)
-            .ok_or_else(|| format!("no revision {n} in this buffer's undo history"))?;
-        match self.history.changes_to(target) {
-            RevisionPath::Changes(cs) => Ok(change_hunks(&cs, &self.text)),
-            RevisionPath::Here => Ok(Vec::new()),
-            RevisionPath::Unknown => unreachable!("a checked revision is in the tree"),
-        }
+    /// revision's text is the old side. `unrecorded` maps the live text back
+    /// to the history's current text when an open edit session holds edits
+    /// no revision records yet. `Err` when `n` was never recorded or has been
+    /// evicted. The history is not moved.
+    fn revision_diff(
+        &self,
+        n: usize,
+        unrecorded: Option<ChangeSet>,
+    ) -> Result<Vec<ChangeHunk>, String> {
+        let missing = || format!("no revision {n} in this buffer's undo history");
+        let target = self.revision(n).ok_or_else(missing)?;
+        let recorded = match self.history.changes_to(target) {
+            RevisionPath::Changes(cs) => Some(cs),
+            RevisionPath::Here => None,
+            RevisionPath::Unknown => return Err(missing()),
+        };
+        let net = match (unrecorded, recorded) {
+            (Some(live_to_current), Some(current_to_target)) => {
+                live_to_current.compose(current_to_target)
+            }
+            (Some(cs), None) | (None, Some(cs)) => cs,
+            (None, None) => return Ok(Vec::new()),
+        };
+        Ok(change_hunks(&net, &self.text))
     }
 
     /// Every revision of the undo history, in id order, aged as of `now`.
@@ -926,6 +939,17 @@ impl Buffer {
 }
 
 impl crate::editor::EditorState {
+    /// [`Buffer::revision_diff`] for `bid`, counting the edits of an open
+    /// Insert or paste session on it as part of the live text.
+    pub(crate) fn revision_diff(&self, bid: BufferId, n: usize) -> Result<Vec<ChangeHunk>, String> {
+        let unrecorded = self
+            .active_session
+            .as_ref()
+            .filter(|s| s.buffer() == bid)
+            .and_then(|s| s.unrecorded_inverse());
+        self.buffers.get(bid).revision_diff(n, unrecorded)
+    }
+
     /// Whether `bid` has changes that are not on disk: a revision past the
     /// saved one, or edits in the open Insert or paste session, which have
     /// no revision until the session commits. Every "is this buffer

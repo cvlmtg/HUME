@@ -63,6 +63,17 @@ impl EditSession {
         self.group.cs.as_ref().is_some_and(|cs| !cs.is_identity())
     }
 
+    /// The changeset that maps the live text back to the text the session
+    /// opened on, which is the text of the history's current revision.
+    /// `None` while the session has no edits.
+    pub(in crate::editor) fn unrecorded_inverse(&self) -> Option<ChangeSet> {
+        self.group
+            .cs
+            .as_ref()
+            .filter(|cs| !cs.is_identity())
+            .map(|cs| cs.invert(self.group.snapshot.text()))
+    }
+
     pub(in crate::editor) fn group_mut(&mut self) -> &mut EditGroup {
         &mut self.group
     }

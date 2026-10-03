@@ -154,6 +154,29 @@ fn buffer_revision_diff_omits_words_when_a_span_covers_its_line() {
     );
 }
 
+/// An open Insert session's unrecorded edits are part of the live text, so
+/// the diff against a recorded revision includes them.
+///
+/// Deleting the `a` of "abcdef" records revision 1; appending after the `b`
+/// and backspacing it leaves "cdef" live with that edit still unrecorded.
+/// Called on the state, as `:` cannot dispatch a probe while Insert is open.
+#[test]
+fn revision_diff_covers_an_open_insert_session() {
+    let mut ed = editor_from("-[a]>bcdef\n");
+    ed.feed_key(key('d'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key_backspace());
+    assert_eq!(ed.doc().text().to_string(), "cdef\n");
+
+    let hunks = ed
+        .state
+        .revision_diff(ed.focused_buffer_id(), 0)
+        .expect("revision 0 is recorded");
+    assert_eq!(hunks.len(), 1);
+    assert_eq!(hunks[0].old_lines, ["abcdef"]);
+    assert_eq!(hunks[0].new_lines, ["cdef"]);
+}
+
 /// An id the buffer's history never recorded raises, never an empty diff.
 #[test]
 fn buffer_revision_diff_on_an_unknown_revision_raises() {
