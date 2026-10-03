@@ -71,7 +71,7 @@ fn hunks_to_steel(hunks: Vec<ChangeHunk>) -> SteelVal {
     list_of(hunks.into_iter().map(hunk_to_steel))
 }
 
-/// `'words`, present only when the hunk has word spans: `(hash 'old (list
+/// `'words`, present only on a hunk that came from a changeset: `(hash 'old (list
 /// span …) 'new (list span …))`, each span `(hash 'line 'start 'end)`, `'line`
 /// counted from the hunk's first line on that side and `'start`/`'end` char
 /// columns in it, end exclusive.

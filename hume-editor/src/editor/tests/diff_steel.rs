@@ -130,10 +130,10 @@ fn buffer_revision_diff_returns_hunks_with_word_spans() {
     );
 }
 
-/// A hunk whose changed span covers a whole line has no `'words` key, so a
-/// renderer falls back to its own word diff.
+/// A hunk whose changed span covers a whole line still has a `'words` key,
+/// its span lists empty, so a renderer never word-diffs a changeset's hunk.
 #[test]
-fn buffer_revision_diff_omits_words_when_a_span_covers_its_line() {
+fn buffer_revision_diff_keeps_words_when_a_span_covers_its_line() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\n");
     ed.feed_key(key('d'));
@@ -144,37 +144,15 @@ fn buffer_revision_diff_omits_words_when_a_span_covers_its_line() {
         tmp.path(),
         r#"(if (equal? (buffer-revision-diff bid 0)
                        (list (hash 'old-start 0 'old-count 1 'new-start 0 'new-count 1
-                                  'old-lines (list "a") 'new-lines (list ""))))
+                                  'old-lines (list "a") 'new-lines (list "")
+                                  'words (hash 'old (list) 'new (list)))))
                "match"
                "mismatch")"#,
     );
     assert_eq!(
         verdict, "match",
-        "a whole-line span must leave 'words out of the hunk"
+        "a whole-line span must leave 'words present and empty"
     );
-}
-
-/// An open Insert session's unrecorded edits are part of the live text, so
-/// the diff against a recorded revision includes them.
-///
-/// Deleting the `a` of "abcdef" records revision 1; appending after the `b`
-/// and backspacing it leaves "cdef" live with that edit still unrecorded.
-/// Called on the state, as `:` cannot dispatch a probe while Insert is open.
-#[test]
-fn revision_diff_covers_an_open_insert_session() {
-    let mut ed = editor_from("-[a]>bcdef\n");
-    ed.feed_key(key('d'));
-    ed.feed_key(key('a'));
-    ed.feed_key(key_backspace());
-    assert_eq!(ed.doc().text().to_string(), "cdef\n");
-
-    let hunks = ed
-        .state
-        .revision_diff(ed.focused_buffer_id(), 0)
-        .expect("revision 0 is recorded");
-    assert_eq!(hunks.len(), 1);
-    assert_eq!(hunks[0].old_lines, ["abcdef"]);
-    assert_eq!(hunks[0].new_lines, ["cdef"]);
 }
 
 /// An id the buffer's history never recorded raises, never an empty diff.

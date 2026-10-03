@@ -118,15 +118,16 @@ and no Myers pass runs, so the cost scales with the edit, not the buffer.
 The word spans are the `Delete` and `Insert` positions themselves, cut at line
 breaks into char-column ranges per line, so a hunk carries them and needs no
 `diff-words` call. A span covering a whole line is dropped, since the tint or
-the virtual line already marks that line. A hunk with no span left has no
-`'words` key, and the renderer falls back to `diff-words` for its paired lines.
+the virtual line already marks that line. A hunk left with no span still
+carries an empty `'words`, so the renderer never word-diffs a changeset's
+hunk: the same replaced line draws the same way whatever else its hunk holds.
 A revision recorded as whole-line replacements (`:e!`'s reload, through
 `changesets_from_line_diff`) is always that case.
 
 ### Hunks cross the Steel boundary, changesets do not
 
 `(buffer-revision-diff pane id)` returns a list of hunks in the shape
-`diff-buffer-lines` returns, plus a `'words` key on a hunk that has word spans.
+`diff-buffer-lines` returns, plus a `'words` key on every hunk.
 The revision's text is the old side and the live buffer's the new. Both
 builtins return `hume-editing`'s `ChangeHunk`, the one hunk type behind
 `DiffHost`.

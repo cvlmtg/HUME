@@ -19,7 +19,9 @@ pub struct ChangeHunk {
     pub new_start: ContentLine,
     pub old_lines: Vec<String>,
     pub new_lines: Vec<String>,
-    /// `None` when no span lies strictly inside a line.
+    /// `None` for a hunk that came from a text diff, which knows no spans.
+    /// Every hunk of a changeset carries `Some`, its lists empty when no
+    /// span lies strictly inside a line.
     pub words: Option<WordSpans>,
 }
 
@@ -155,7 +157,7 @@ fn group_hunk(
         .expect("an old-side start is never negative");
     let old_spans = line_spans(&old_lines, &old_ranges, lead, old_kept.len());
     let new_spans = line_spans(&new_lines, &new_ranges, lead, new_kept.len());
-    let words = (!old_spans.is_empty() || !new_spans.is_empty()).then_some(WordSpans {
+    let words = Some(WordSpans {
         old: old_spans,
         new: new_spans,
     });

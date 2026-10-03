@@ -118,14 +118,14 @@ would raise on `set-virtual-lines!`'s `start < end` check.
 
 ### Word spans from the hunk
 
-A hunk with a `'words` key, as `buffer-revision-diff` returns, carries its own spans, so no
+A hunk with a `'words` key, as `buffer-revision-diff` returns, always carries its own spans, so no
 `diff-words` call runs for it. `'words` is `(hash 'old spans 'new spans)`, each span
 `(hash 'line 'start 'end)`, with `'line` counted from the hunk's first line on that side and
 `'start`/`'end` char columns in that line. Spans are in ascending line order. Each old-side
 line becomes one virtual line carrying the `'old` spans that name its line as segments. The
 `'new` spans become buffer-offset highlights, from one `line->offset` call for the hunk's
 first new-side line and a walk down `'new-lines` from there, like the paired-line walk
-below. A hunk without `'words` takes the paired `diff-words` path described above.
+below. A hunk without `'words`, as `diff-buffer-lines` returns, takes the paired `diff-words` path described above.
 
 ### New-side spans
 

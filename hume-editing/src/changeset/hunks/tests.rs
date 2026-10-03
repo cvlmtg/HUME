@@ -38,7 +38,10 @@ fn hunk(old_start: usize, new_start: usize, old: &[&str], new: &[&str]) -> Chang
         new_start: ContentLine::new(new_start),
         old_lines: strs(old),
         new_lines: strs(new),
-        words: None,
+        words: Some(WordSpans {
+            old: Vec::new(),
+            new: Vec::new(),
+        }),
     }
 }
 
