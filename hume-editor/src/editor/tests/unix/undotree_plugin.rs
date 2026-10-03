@@ -425,6 +425,78 @@ fn undotree_esc_clears_the_diff() {
     assert_eq!(diff_line_bgs(&ed, bid), 0);
 }
 
+/// Copies every `.scm` file of the shipped core plugin `name` into the
+/// guard's runtime.
+fn copy_core_plugin_files(guard: &HumeRuntimeGuard, name: &str) {
+    let from = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../runtime/plugins/core")
+        .join(name);
+    let to = guard.runtime.path().join("plugins/core").join(name);
+    std::fs::create_dir_all(&to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|ext| ext == "scm") {
+            std::fs::copy(&path, to.join(path.file_name().unwrap())).unwrap();
+        }
+    }
+}
+
+/// A refresh that finds the buffer on the same revision leaves the diff
+/// alone: the age timer re-renders the rows every 100ms here, and the diff
+/// the test cleared behind the plugin's back stays cleared until a jump moves
+/// the revision.
+#[test]
+fn undotree_redraws_the_diff_only_when_the_revision_changes() {
+    let guard = HumeRuntimeGuard::new();
+    copy_core_plugin_files(&guard, "stdlib");
+    copy_core_plugin_files(&guard, "git-diff");
+    copy_core_plugin_files(&guard, "undotree");
+    let plugin_scm = guard
+        .runtime
+        .path()
+        .join("plugins/core/undotree/plugin.scm");
+    let patched = std::fs::read_to_string(&plugin_scm).unwrap().replace(
+        "(define undotree/age-refresh-ms 60000)",
+        "(define undotree/age-refresh-ms 100)",
+    );
+    std::fs::write(&plugin_scm, patched).unwrap();
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    let load = format!(
+        "(load-plugin! \"core:stdlib\")\n{}\n{}\n{}",
+        hume_scripting::eager_load_scm("core:git-diff", None),
+        hume_scripting::eager_load_scm("core:undotree", None),
+        r#"(define-command! "clear-diff-probe" "Clear the undotree diff."
+             (lambda (pane) (set-virtual-lines! "undotree" pane (list))))"#,
+    );
+    run(&mut ed, tmp.path(), &load);
+    ed.settle();
+    two_branches(&mut ed);
+    let bid = ed.focused_buffer_id();
+    toggle(&mut ed);
+    assert!(!diff_vlines(&ed, bid).is_empty(), "setup: a diff is drawn");
+
+    ed.execute_keymap_command("clear-diff-probe".to_string().into(), None, false);
+    ed.settle();
+    assert!(
+        diff_vlines(&ed, bid).is_empty(),
+        "setup: the diff is cleared"
+    );
+
+    drain_until(&mut ed, |ed| {
+        drawer_rows(ed).iter().all(|row| row.ends_with(" 1s"))
+    });
+    assert!(
+        diff_vlines(&ed, bid).is_empty(),
+        "the timer refreshed the rows without a revision change, so no redraw"
+    );
+
+    ed.handle_key(key_shift_down());
+    ed.handle_key(key_enter());
+    drain_until(&mut ed, |ed| !diff_vlines(ed, bid).is_empty());
+}
+
 /// Showing another buffer retargets the drawer to it, and the buffer it left
 /// stops showing a diff.
 #[test]

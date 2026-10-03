@@ -123,10 +123,13 @@ opening the drawer shows one message in the status line saying to load it. A
 user who loaded `core:git-diff` with an activation list that leaves the command
 out gets the same message.
 
-The diff is redrawn wherever the rows are re-rendered: after a jump, on a
-history change, on the age timer and when the session retargets. Retargeting to
-another buffer first clears the diff of the buffer it leaves. Ending the
-session clears it too, for a buffer that is still open.
+The session remembers the buffer and revision it last drew. Wherever the rows
+are re-rendered (after a jump, on a history change, on the age timer, when the
+session retargets) the diff is redrawn only when the buffer or its current
+revision differs from that, since a revision's text never changes. So the age
+timer never redraws it. Retargeting to another buffer first clears the diff of
+the buffer it leaves. Ending the session clears it too, for a buffer that is
+still open.
 
 ## Limits
 
