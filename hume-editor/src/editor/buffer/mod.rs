@@ -916,14 +916,11 @@ impl Buffer {
             RevisionPath::Here => None,
             RevisionPath::Unknown => return Err(missing()),
         };
-        let net = match (unrecorded, recorded) {
-            (Some(live_to_current), Some(current_to_target)) => {
-                live_to_current.compose(current_to_target)
-            }
-            (Some(cs), None) | (None, Some(cs)) => cs,
-            (None, None) => return Ok(Vec::new()),
-        };
-        Ok(change_hunks(&net, &self.text))
+        Ok(
+            ChangeSet::compose_all(unrecorded.into_iter().chain(recorded))
+                .map(|net| change_hunks(&net, &self.text))
+                .unwrap_or_default(),
+        )
     }
 
     /// Every revision of the undo history, in id order, aged as of `now`.
@@ -947,7 +944,10 @@ impl crate::editor::EditorState {
             .as_ref()
             .filter(|s| s.buffer() == bid)
             .and_then(|s| s.unrecorded_inverse());
-        self.buffers.get(bid).revision_diff(n, unrecorded)
+        self.buffers
+            .try_get(bid)
+            .ok_or_else(|| format!("invalid buffer id {bid:?}"))?
+            .revision_diff(n, unrecorded)
     }
 
     /// Whether `bid` has changes that are not on disk: a revision past the

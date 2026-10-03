@@ -22,8 +22,6 @@ impl<'a> DiffHost for EditorHostImpl<'a> {
     }
 
     fn revision_diff(&self, bid: BufferId, revision: usize) -> Result<Vec<ChangeHunk>, String> {
-        self.buffer(bid)
-            .ok_or_else(|| format!("invalid buffer id {bid:?}"))?;
         self.state.revision_diff(bid, revision)
     }
 

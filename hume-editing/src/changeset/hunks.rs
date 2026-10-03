@@ -1,5 +1,6 @@
 use hume_rope::column::CharCol;
 use hume_rope::line::{ContentLine, RopeyLine};
+use hume_rope::lines::strip_line_break;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use super::{ChangeSet, EditedRegion};
@@ -77,15 +78,14 @@ fn affected_lines(region: &EditedRegion<'_>, text: &BufferText) -> (RopeyLine, R
     let first = text.ropey_char_to_line(region.old.start);
     let last = text.ropey_char_to_line(region.old.end);
     let ends_at_line_start = text.line_to_char(last) == region.old.end;
-    let before_end = match region.inserted.chars().next_back() {
-        Some(ch) => Some(ch),
-        None => region
+    let before_end = region.inserted.chars().next_back().or_else(|| {
+        region
             .old
             .start
             .index()
             .checked_sub(1)
-            .and_then(|i| text.char_at(CharOffset::new(i))),
-    };
+            .and_then(|i| text.char_at(CharOffset::new(i)))
+    });
     let line_start_intact = ends_at_line_start && before_end.is_none_or(|ch| ch == '\n');
     (
         first,
@@ -116,9 +116,10 @@ fn group_hunk(
     let mut cursor = start;
     let (mut old_ranges, mut new_ranges) = (Vec::new(), Vec::new());
     for region in regions {
-        let kept = slice(cursor, region.old.start).to_string();
-        old_chars += kept.chars().count();
-        old_text.push_str(&kept);
+        old_chars += region.old.start.chars_since(cursor);
+        slice(cursor, region.old.start)
+            .chunks()
+            .for_each(|c| old_text.push_str(c));
         let inserted_chars = region.inserted.chars().count();
         old_ranges.push((old_chars, old_chars + inserted_chars));
         old_chars += inserted_chars;
@@ -129,7 +130,9 @@ fn group_hunk(
         ));
         cursor = region.old.end;
     }
-    old_text.push_str(&slice(cursor, stop).to_string());
+    slice(cursor, stop)
+        .chunks()
+        .for_each(|c| old_text.push_str(c));
 
     let old_lines: Vec<&str> = split_lines(&old_text);
     let new_lines: Vec<&str> = split_lines(&new_text);
@@ -155,27 +158,22 @@ fn group_hunk(
     let old_start = new_start
         .checked_add_signed(skew)
         .expect("an old-side start is never negative");
-    let old_spans = line_spans(&old_lines, &old_ranges, lead, old_kept.len());
-    let new_spans = line_spans(&new_lines, &new_ranges, lead, new_kept.len());
-    let words = Some(WordSpans {
-        old: old_spans,
-        new: new_spans,
-    });
     Some(ChangeHunk {
         old_start: ContentLine::new(old_start),
         new_start: ContentLine::new(new_start),
         old_lines: old_kept.iter().map(|l| (*l).to_owned()).collect(),
         new_lines: new_kept.iter().map(|l| (*l).to_owned()).collect(),
-        words,
+        words: Some(WordSpans {
+            old: line_spans(&old_lines, &old_ranges, lead, old_kept.len()),
+            new: line_spans(&new_lines, &new_ranges, lead, new_kept.len()),
+        }),
     })
 }
 
 /// `s` split at its line breaks, without them. A trailing break ends the last
 /// line instead of starting an empty one.
 fn split_lines(s: &str) -> Vec<&str> {
-    s.split_inclusive('\n')
-        .map(|l| l.strip_suffix('\n').unwrap_or(l))
-        .collect()
+    s.split_inclusive('\n').map(strip_line_break).collect()
 }
 
 /// The parts of `ranges` (char ranges of `lines` joined by one break each)
@@ -190,10 +188,17 @@ fn line_spans(
 ) -> Vec<LineSpan> {
     let mut spans = Vec::new();
     let mut line_start = 0;
-    for (index, line) in lines.iter().enumerate() {
+    let mut first = 0;
+    for (index, line) in lines.iter().enumerate().take(skip + keep) {
         let len = line.chars().count();
-        if index >= skip && index < skip + keep {
-            for &(from, to) in ranges {
+        if index >= skip {
+            while first < ranges.len() && ranges[first].1 <= line_start {
+                first += 1;
+            }
+            for &(from, to) in ranges[first..]
+                .iter()
+                .take_while(|r| r.0 < line_start + len)
+            {
                 let (start, end) = (from.max(line_start), to.min(line_start + len));
                 let whole = start == line_start && end == line_start + len;
                 if start < end && !whole {
