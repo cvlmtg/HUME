@@ -10,20 +10,6 @@ Bring a plugin in with `load-plugin!`:
 
 A plugin that ships a manifest (stdlib, lsp, lsp-install, plum, git-diff, undotree and steel-server) loads lazily: its code runs the first time a command, event or language it lists comes up. The rest (buffer-words, classic-paste, helix-surround, pickers and vim-keybind) have no manifest and load at startup, because their key bindings only exist once their code has run. See [Plugins](plugins.md#how-plugins-are-loaded) for the difference in detail.
 
-## core:stdlib
-
-A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, `core:lsp`, and `core:lsp-install` all depend on it, so load it before them:
-
-```scheme
-(load-plugin! "core:stdlib")
-```
-
-::: warning Keep its own triggers
-Don't declare custom `#:commands`/`#:events`/`#:languages` for `core:stdlib`; load it as shown above. Every plugin that depends on `core:stdlib` relies on the triggers its manifest lists; a custom list can leave out a helper a dependent plugin needs, and that dependent plugin will then misbehave instead of failing with a clear error.
-:::
-
-If you're writing a plugin yourself, see [Plugin API → Standard Library](plugin-api.md#standard-library) for every command it offers.
-
 ## core:plum
 
 **PLUM** (the HUME **PLU**gin **M**anager) installs and updates third-party plugins and themes from GitHub, and installs the tree-sitter grammars that power syntax highlighting. Its install and cleanup commands depend on `core:stdlib`.
@@ -301,3 +287,17 @@ GUI-style paste, if you'd rather not have `p` choose a source for you: `p` / `P`
 ```
 
 It has no manifest, so it loads at startup: it replaces `p`/`P`/`Ctrl-v`/`Ctrl-Shift-v`'s default behavior.
+
+## core:stdlib
+
+A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, `core:lsp`, and `core:lsp-install` all depend on it, so load it before them:
+
+```scheme
+(load-plugin! "core:stdlib")
+```
+
+::: warning Keep its own triggers
+Don't declare custom `#:commands`/`#:events`/`#:languages` for `core:stdlib`; load it as shown above. Every plugin that depends on `core:stdlib` relies on the triggers its manifest lists; a custom list can leave out a helper a dependent plugin needs, and that dependent plugin will then misbehave instead of failing with a clear error.
+:::
+
+If you're writing a plugin yourself, see [Plugin API → Standard Library](plugin-api.md#standard-library) for every command it offers.
