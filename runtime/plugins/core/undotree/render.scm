@@ -96,11 +96,15 @@
      " "
      (undotree/pad-left (hash-ref row 'age) age-width))))
 
-(define (undotree/row-index pred rows i)
+(define (undotree/find-row pred rows i)
   (cond
     [(null? rows) #f]
-    [(pred (car rows)) i]
-    [else (undotree/row-index pred (cdr rows) (+ i 1))]))
+    [(pred (car rows)) (cons i (car rows))]
+    [else (undotree/find-row pred (cdr rows) (+ i 1))]))
+
+(define (undotree/row-index pred rows)
+  (let ([hit (undotree/find-row pred rows 0)])
+    (and hit (car hit))))
 
 ;;; See README.md's "Graph" for the input and result shapes.
 (define (undotree/render nodes)
@@ -108,10 +112,10 @@
          [node-of (lambda (row) (hash-ref row 'node))]
          [ids (map (lambda (row) (hash-ref (node-of row) 'id)) laid-out)]
          [graph-width (undotree/max-width (map (lambda (row) (hash-ref row 'graph)) laid-out))]
-         [age-width (undotree/max-width (map (lambda (row) (hash-ref row 'age)) laid-out))])
+         [age-width (undotree/max-width (map (lambda (row) (hash-ref row 'age)) laid-out))]
+         [current (undotree/find-row (lambda (row) (hash-ref (node-of row) 'current?)) laid-out 0)])
     (hash 'rows (map (lambda (row) (undotree/format-row row graph-width age-width))
                      laid-out)
           'ids ids
-          'current (undotree/row-index (lambda (row) (hash-ref (node-of row) 'current?))
-                                       laid-out
-                                       0))))
+          'current (car current)
+          'current-node (node-of (cdr current)))))

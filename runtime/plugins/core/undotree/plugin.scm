@@ -22,11 +22,10 @@
   (command-exists? undotree/diff-command))
 
 ;;; Returns the marker now on screen, `#f` without a renderer — see README.md's "Revision diff".
-(define (undotree/draw-diff! pane tree drawn)
+(define (undotree/draw-diff! pane node drawn)
   (if (not (undotree/diff-available?))
       #f
-      (let* ([node (list-ref tree (undotree/row-index (lambda (n) (hash-ref n 'current?)) tree 0))]
-             [marker (cons (buffer-key pane) (hash-ref node 'id))]
+      (let* ([marker (cons (buffer-key pane) (hash-ref node 'id))]
              [parent (hash-ref node 'parent)])
         (unless (equal? marker drawn)
           (call! undotree/diff-command pane undotree/*source*
@@ -49,10 +48,10 @@
 (define (undotree/session-is? id)
   (and undotree/*session* (equal? (hash-ref undotree/*session* 'id) id)))
 
-(define (undotree/start-session! id drawer pane ids tree drawn)
+(define (undotree/start-session! id drawer pane ids node drawn)
   (set! undotree/*session*
         (hash 'id id 'drawer drawer 'pane pane 'key (buffer-key pane) 'ids ids
-              'drawn (undotree/draw-diff! pane tree drawn))))
+              'drawn (undotree/draw-diff! pane node drawn))))
 
 (define (undotree/session-pane)
   (let ([pane (hash-ref undotree/*session* 'pane)])
@@ -72,19 +71,19 @@
          [selected (drawer-selected-index drawer)])
     (if (not selected)
         (undotree/end-session!)
-        (let* ([tree (buffer-undo-tree pane)]
-               [rendered (undotree/render tree)]
+        (let* ([rendered (undotree/render (buffer-undo-tree pane))]
                [ids (hash-ref rendered 'ids)]
                [same-buffer? (equal? (buffer-key pane) (hash-ref session 'key))]
                [kept (and same-buffer?
                           (let ([wanted (list-ref (hash-ref session 'ids) selected)])
-                            (undotree/row-index (lambda (id) (equal? id wanted)) ids 0)))]
+                            (undotree/row-index (lambda (id) (equal? id wanted)) ids)))]
                [highlight (or kept (hash-ref rendered 'current))])
           (if (update-drawer-list! drawer (hash-ref rendered 'rows)
                                    (undotree/on-select (hash-ref session 'id)) highlight)
               (begin
                 (unless same-buffer? (undotree/clear-diff! (hash-ref session 'pane)))
-                (undotree/start-session! (hash-ref session 'id) drawer pane ids tree
+                (undotree/start-session! (hash-ref session 'id) drawer pane ids
+                                         (hash-ref rendered 'current-node)
                                          (hash-ref session 'drawn)))
               (undotree/end-session!))))))
 
@@ -108,13 +107,13 @@
   (undotree/end-session!)
   (set! undotree/*next-id* (+ undotree/*next-id* 1))
   (let* ([id undotree/*next-id*]
-         [tree (buffer-undo-tree pane)]
-         [rendered (undotree/render tree)]
+         [rendered (undotree/render (buffer-undo-tree pane))]
          [drawer (show-drawer-list! (focused-pane) (hash-ref rendered 'rows)
                                     (undotree/on-select id)
                                     #:selected (hash-ref rendered 'current))])
     (when drawer
-      (undotree/start-session! id drawer pane (hash-ref rendered 'ids) tree #f)
+      (undotree/start-session! id drawer pane (hash-ref rendered 'ids)
+                               (hash-ref rendered 'current-node) #f)
       (undotree/arm-age-timer! id)
       (unless (undotree/diff-available?)
         (log! 'info "undotree: load core:git-diff to see what each revision changed")))))

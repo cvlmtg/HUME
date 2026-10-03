@@ -60,18 +60,14 @@ impl EditSession {
 
     /// `true` when committing this session now would record a revision.
     pub(in crate::editor) fn has_edits(&self) -> bool {
-        self.group.cs.as_ref().is_some_and(|cs| !cs.is_identity())
+        self.group.edits().is_some()
     }
 
     /// The changeset that maps the live text back to the text the session
     /// opened on, which is the text of the history's current revision.
     /// `None` while the session has no edits.
     pub(in crate::editor) fn unrecorded_inverse(&self) -> Option<ChangeSet> {
-        self.group
-            .cs
-            .as_ref()
-            .filter(|cs| !cs.is_identity())
-            .map(|cs| cs.invert(self.group.snapshot.text()))
+        self.group.inverse()
     }
 
     pub(in crate::editor) fn group_mut(&mut self) -> &mut EditGroup {
@@ -322,4 +318,17 @@ pub(in crate::editor) struct EditGroup {
     /// opened. `None` until the first keystroke (empty session = no revision
     /// recorded on commit).
     pub(in crate::editor) cs: Option<ChangeSet>,
+}
+
+impl EditGroup {
+    /// The changes applied since the group opened, `None` before the first
+    /// edit or once the edits cancel out.
+    pub(in crate::editor) fn edits(&self) -> Option<&ChangeSet> {
+        self.cs.as_ref().filter(|cs| !cs.is_identity())
+    }
+
+    /// The changeset that maps the live text back to `snapshot`'s text.
+    pub(in crate::editor) fn inverse(&self) -> Option<ChangeSet> {
+        self.edits().map(|cs| cs.invert(self.snapshot.text()))
+    }
 }

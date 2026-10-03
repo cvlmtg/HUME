@@ -43,12 +43,15 @@
   (let ([base (hash 'line (cdr anchor) 'text text 'anchor (car anchor) 'scope "diff.minus.line")])
     (if (null? segments) base (hash-insert base 'segments segments))))
 
+(define (git-diff/word-span start end scope)
+  (hash 'start start 'end end 'scope scope))
+
 (define (git-diff/plain-virtual-line old-line anchor)
   (git-diff/virtual-line-hash old-line anchor '()))
 
 (define (git-diff/virtual-line-with-segments old-line anchor word-hunks)
   (let* ([removals (filter (lambda (wh) (< (hash-ref wh 'old-start) (hash-ref wh 'old-end))) word-hunks)]
-         [segments (map (lambda (wh) (hash 'start (hash-ref wh 'old-start) 'end (hash-ref wh 'old-end) 'scope "diff.minus.word"))
+         [segments (map (lambda (wh) (git-diff/word-span (hash-ref wh 'old-start) (hash-ref wh 'old-end) "diff.minus.word"))
                         removals)])
     (git-diff/virtual-line-hash old-line anchor segments)))
 
@@ -56,9 +59,9 @@
 (define (git-diff/word-hunks->new-side-spans line-offset word-hunks)
   (let ([additions (filter (lambda (wh) (< (hash-ref wh 'new-start) (hash-ref wh 'new-end))) word-hunks)])
     (map (lambda (wh)
-           (hash 'start (+ line-offset (hash-ref wh 'new-start))
-                 'end (+ line-offset (hash-ref wh 'new-end))
-                 'scope "diff.plus.word"))
+           (git-diff/word-span (+ line-offset (hash-ref wh 'new-start))
+                               (+ line-offset (hash-ref wh 'new-end))
+                               "diff.plus.word"))
          additions)))
 
 ;;; Char offset where each of the first `paired-count` `new-lines` starts — see docs/rendering.md.
@@ -109,7 +112,7 @@
             pane new-start (hash-ref hunk 'new-lines) (hash-ref words 'new)))))
 
 (define (git-diff/line-span->segment span)
-  (hash 'start (hash-ref span 'start) 'end (hash-ref span 'end) 'scope "diff.minus.word"))
+  (git-diff/word-span (hash-ref span 'start) (hash-ref span 'end) "diff.minus.word"))
 
 ;;; One virtual line per old line, each carrying the `spans` that name its line — see docs/rendering.md.
 (define (git-diff/old-lines->virtual-lines old-lines spans anchor)
@@ -139,9 +142,9 @@
           [else
            (let ([span (car spans)] [offset (car offsets)])
              (loop (cdr spans) line offsets
-                   (cons (hash 'start (+ offset (hash-ref span 'start))
-                               'end (+ offset (hash-ref span 'end))
-                               'scope "diff.plus.word")
+                   (cons (git-diff/word-span (+ offset (hash-ref span 'start))
+                                             (+ offset (hash-ref span 'end))
+                                             "diff.plus.word")
                          acc)))]))))
 
 ;;; One hunk -> `(virtual-lines . spans)` for `render-inline!` — see docs/rendering.md.

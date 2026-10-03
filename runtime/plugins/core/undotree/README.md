@@ -37,8 +37,9 @@ as). After a jump, redo continues along the branch the jump entered.
 `(hash 'id 'parent 'age-secs 'current? 'saved?)` per revision, ascending by
 id, never empty. A revision's parent always has a smaller id, so walking the
 list newest first visits every child before its parent. It returns
-`(hash 'rows 'ids 'current)`: one row string per revision newest first, the
-revision id behind each row, and the index of the current revision's row.
+`(hash 'rows 'ids 'current 'current-node)`: one row string per revision newest
+first, the revision id behind each row, the index of the current revision's
+row, and that revision's input hash.
 
 The renderer keeps a list of lanes. A lane is the id of the parent a column of
 the graph is waiting to reach, or `#f` when the column is free. For each

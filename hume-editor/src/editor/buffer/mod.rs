@@ -686,13 +686,11 @@ impl Buffer {
         let new_cs = edited.changes().clone();
 
         // Build the propagation CS: maps current buffer text → the edit's
-        // result. On the first paste group.cs is None, meaning current ==
-        // snapshot, so propagation CS == new_cs.
-        let propagation_cs = match &group.cs {
+        // result. With no edits yet the live text is the snapshot's, so
+        // propagation CS == new_cs.
+        let propagation_cs = match group.inverse() {
             None => new_cs.clone(),
-            Some(prev_cs) => prev_cs
-                .invert(group.snapshot.text())
-                .compose(new_cs.clone()),
+            Some(to_snapshot) => to_snapshot.compose(new_cs.clone()),
         };
         group.cs = Some(new_cs);
 
@@ -748,23 +746,20 @@ impl Buffer {
         group: EditGroup,
         post_sels: SelectionSet,
     ) {
-        if let Some(cs) = group.cs {
-            // An identity `cs` moved no bytes: recording it would put a no-op
-            // revision on the undo stack, and undoing that revision would
-            // still consume a step and move `current`. `undo_n`/`redo_n`
-            // don't inspect the transaction they're walking, only whether a
-            // parent/child link exists, so `u` would consume a step, change
-            // no text, and print no exhaustion message either. See
-            // `apply_transactions`'s doc for why its own identity guard is a
-            // different one, protecting a different case.
-            if cs.is_identity() {
-                return;
-            }
-            let inverse_cs = cs.invert(group.snapshot.text());
-            let pre_sels = group.undo_sels;
-            let post_sels = EditState::bind(&self.text, post_sels).into_selections();
-            self.record_revision(cs, inverse_cs, pre_sels, post_sels);
-        }
+        // An identity `cs` moved no bytes: recording it would put a no-op
+        // revision on the undo stack, and undoing that revision would
+        // still consume a step and move `current`. `undo_n`/`redo_n`
+        // don't inspect the transaction they're walking, only whether a
+        // parent/child link exists, so `u` would consume a step, change
+        // no text, and print no exhaustion message either. See
+        // `apply_transactions`'s doc for why its own identity guard is a
+        // different one, protecting a different case.
+        let (Some(inverse_cs), Some(cs)) = (group.inverse(), group.cs) else {
+            return;
+        };
+        let pre_sels = group.undo_sels;
+        let post_sels = EditState::bind(&self.text, post_sels).into_selections();
+        self.record_revision(cs, inverse_cs, pre_sels, post_sels);
     }
 
     /// Apply an ordered Transaction list (from `History::undo_n`/`redo_n`/
