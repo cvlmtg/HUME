@@ -445,6 +445,47 @@ fn copy_core_plugin_files(guard: &HumeRuntimeGuard, name: &str) {
 /// alone: the age timer re-renders the rows every 100ms here, and the diff
 /// the test cleared behind the plugin's back stays cleared until a jump moves
 /// the revision.
+/// A renderer that raises while clearing still ends the session, so the next
+/// toggle opens the drawer again.
+#[test]
+fn undotree_session_ends_when_clearing_the_diff_raises() {
+    let guard = HumeRuntimeGuard::new();
+    copy_core_plugin_files(&guard, "stdlib");
+    copy_core_plugin_files(&guard, "git-diff");
+    copy_core_plugin_files(&guard, "undotree");
+    let plugin_scm = guard
+        .runtime
+        .path()
+        .join("plugins/core/git-diff/plugin.scm");
+    let patched = std::fs::read_to_string(&plugin_scm).unwrap().replace(
+        "  git-diff/render-diff!)",
+        "  (lambda (pane source hunks)
+    (if (null? hunks)
+        (error \"clear failed\")
+        (git-diff/render-diff! pane source hunks))))",
+    );
+    std::fs::write(&plugin_scm, patched).unwrap();
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    let load = format!(
+        "(load-plugin! \"core:stdlib\")\n{}\n{}",
+        hume_scripting::eager_load_scm("core:git-diff", None),
+        hume_scripting::eager_load_scm("core:undotree", None),
+    );
+    run(&mut ed, tmp.path(), &load);
+    ed.settle();
+    two_branches(&mut ed);
+    toggle(&mut ed);
+    assert!(drawer_open(&ed), "setup: the drawer is open");
+
+    toggle(&mut ed);
+    assert!(!drawer_open(&ed), "the failed toggle closed the drawer");
+
+    toggle(&mut ed);
+    assert!(drawer_open(&ed), "the next toggle opens it again");
+}
+
 #[test]
 fn undotree_redraws_the_diff_only_when_the_revision_changes() {
     let guard = HumeRuntimeGuard::new();

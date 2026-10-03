@@ -21,9 +21,7 @@
 (define (undotree/diff-available?)
   (command-exists? undotree/diff-command))
 
-;;; Draws the current revision's diff against its parent unless `drawn`, the marker of the
-;;; last draw, already names this buffer and revision. Returns the marker now on screen, or
-;;; `#f` when there is no renderer. See README.md's "Revision diff".
+;;; Returns the marker now on screen, `#f` without a renderer — see README.md's "Revision diff".
 (define (undotree/draw-diff! pane tree drawn)
   (if (not (undotree/diff-available?))
       #f
@@ -45,12 +43,13 @@
     (call! undotree/diff-command pane undotree/*source* '())))
 
 (define (undotree/end-session!)
-  (when undotree/*session*
-    (undotree/clear-diff! (hash-ref undotree/*session* 'pane)))
-  (when undotree/*age-timer*
-    (cancel-timer! undotree/*age-timer*)
-    (set! undotree/*age-timer* #f))
-  (set! undotree/*session* #f))
+  (let ([session undotree/*session*])
+    (when undotree/*age-timer*
+      (cancel-timer! undotree/*age-timer*)
+      (set! undotree/*age-timer* #f))
+    (set! undotree/*session* #f)
+    (when session
+      (undotree/clear-diff! (hash-ref session 'pane)))))
 
 (define (undotree/session-is? id)
   (and undotree/*session* (equal? (hash-ref undotree/*session* 'id) id)))
