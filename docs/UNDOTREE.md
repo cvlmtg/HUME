@@ -127,7 +127,7 @@ A revision recorded as whole-line replacements (`:e!`'s reload, through
 ### Hunks cross the Steel boundary, changesets do not
 
 `(buffer-revision-diff pane id)` returns a list of hunks in the shape
-`diff-buffer-lines` returns, plus a `'words` key on every hunk.
+`diff-buffer-lines` returns.
 The revision's text is the old side and the live buffer's the new. Both
 builtins return `hume-editing`'s `ChangeHunk`, the one hunk type behind
 `DiffHost`.
