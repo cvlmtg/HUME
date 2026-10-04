@@ -209,63 +209,106 @@ fn calls_fn(code: &str, name: &str) -> bool {
 }
 
 /// Every top-level, non-`#[test]`, non-`impl`-method free function anywhere
-/// in `paths`, as `(name, body)`. `body` is every line from the `fn` line
+/// in `paths`, as `(name, body)`. See [`helper_fns_in`].
+fn collect_helper_fns(paths: &[std::path::PathBuf]) -> Vec<(String, String)> {
+    paths
+        .iter()
+        .flat_map(|path| {
+            let src = std::fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+            helper_fns_in(&src)
+        })
+        .collect()
+}
+
+/// Every top-level, non-`#[test]`, non-`impl`-method free function in
+/// `src`, as `(name, body)`. `body` is every line from the `fn` line
 /// to its closing brace, joined back with `\n`, so a caller can ask "does
 /// this helper's body mention X" the same way the per-line scans elsewhere
-/// in this file do. `impl` blocks are skipped entirely. See this module's
-/// doc for why a bare method name (`new`) is unsafe to key on here.
-fn collect_helper_fns(paths: &[std::path::PathBuf]) -> Vec<(String, String)> {
+/// in this file do. A signature may span several lines, so a body ends only
+/// once its `{` has opened and closed again; a `fn` that reaches `;` first
+/// has no body and ends there. `impl` blocks are skipped entirely. See this
+/// module's doc for why a bare method name (`new`) is unsafe to key on here.
+fn helper_fns_in(src: &str) -> Vec<(String, String)> {
     let mut fns = Vec::new();
+    let mut saw_test_attr = false;
+    let mut cur_fn: Option<(String, i64, Vec<&str>, bool)> = None; // (name, entry_depth, body lines, opened)
+    let mut in_impl: Option<i64> = None; // entry_depth of the impl block we're inside, if any
+    let mut brace_depth: i64 = 0;
 
-    for path in paths {
-        let src = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    for line in src.lines() {
+        let trimmed = line.trim();
 
-        let mut saw_test_attr = false;
-        let mut cur_fn: Option<(String, i64, Vec<&str>)> = None; // (name, entry_depth, body lines)
-        let mut in_impl: Option<i64> = None; // entry_depth of the impl block we're inside, if any
-        let mut brace_depth: i64 = 0;
-
-        for line in src.lines() {
-            let trimmed = line.trim();
-
-            if trimmed == "#[test]" {
-                saw_test_attr = true;
-            } else if in_impl.is_none() && cur_fn.is_none() && trimmed.starts_with("impl ") {
-                in_impl = Some(brace_depth);
-                saw_test_attr = false;
-            } else if let Some(name) = fn_name(trimmed) {
-                if !saw_test_attr && cur_fn.is_none() && in_impl.is_none() {
-                    cur_fn = Some((name.to_string(), brace_depth, Vec::new()));
-                }
-                saw_test_attr = false;
-            } else if !trimmed.starts_with('#') && !trimmed.is_empty() {
-                saw_test_attr = false;
+        if trimmed == "#[test]" {
+            saw_test_attr = true;
+        } else if in_impl.is_none() && cur_fn.is_none() && trimmed.starts_with("impl ") {
+            in_impl = Some(brace_depth);
+            saw_test_attr = false;
+        } else if let Some(name) = fn_name(trimmed) {
+            if !saw_test_attr && cur_fn.is_none() && in_impl.is_none() {
+                cur_fn = Some((name.to_string(), brace_depth, Vec::new(), false));
             }
+            saw_test_attr = false;
+        } else if !trimmed.starts_with('#') && !trimmed.is_empty() {
+            saw_test_attr = false;
+        }
 
-            if let Some((_, _, body)) = &mut cur_fn {
-                body.push(line);
-            }
+        if let Some((_, _, body, _)) = &mut cur_fn {
+            body.push(line);
+        }
 
-            brace_depth += brace_delta(line);
+        brace_depth += brace_delta(line);
 
-            if let Some(entry_depth) = in_impl
-                && brace_depth <= entry_depth
-            {
-                in_impl = None;
-            }
+        if let Some(entry_depth) = in_impl
+            && brace_depth <= entry_depth
+        {
+            in_impl = None;
+        }
 
-            if let Some((name, entry_depth, body)) = cur_fn.take() {
-                if brace_depth <= entry_depth {
-                    fns.push((name, body.join("\n")));
-                } else {
-                    cur_fn = Some((name, entry_depth, body));
-                }
+        if let Some((name, entry_depth, body, opened)) = cur_fn.take() {
+            let opened = opened || trimmed.contains('{');
+            let ended = if opened {
+                brace_depth <= entry_depth
+            } else {
+                trimmed.ends_with(';')
+            };
+            if ended {
+                fns.push((name, body.join("\n")));
+            } else {
+                cur_fn = Some((name, entry_depth, body, opened));
             }
         }
     }
 
     fns
+}
+
+#[test]
+fn helper_fns_in_captures_the_body_after_a_multi_line_signature() {
+    let src = "fn setup_with(\n    tmp: &Path,\n) -> Guard {\n    let g = Guard::new();\n    g\n}\n\nfn after() {}\n";
+    assert_eq!(
+        helper_fns_in(src),
+        vec![
+            (
+                "setup_with".to_string(),
+                "fn setup_with(\n    tmp: &Path,\n) -> Guard {\n    let g = Guard::new();\n    g\n}"
+                    .to_string()
+            ),
+            ("after".to_string(), "fn after() {}".to_string()),
+        ]
+    );
+}
+
+#[test]
+fn helper_fns_in_ends_a_body_less_fn_at_its_semicolon() {
+    let src = "trait T {\n    fn method(&self);\n}\n\nfn after() {\n    x();\n}\n";
+    assert_eq!(
+        helper_fns_in(src),
+        vec![
+            ("method".to_string(), "    fn method(&self);".to_string()),
+            ("after".to_string(), "fn after() {\n    x();\n}".to_string()),
+        ]
+    );
 }
 
 /// Grow `seeded` (a name → its own body already known to have some property)
