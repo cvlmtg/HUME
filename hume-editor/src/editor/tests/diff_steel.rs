@@ -32,11 +32,9 @@ fn diff_lines_returns_zero_based_hunk_hashes() {
 /// `new-lines` is the buffer's.
 ///
 /// Swapping ref and buffer inside `DiffHost::diff_buffer_lines` would invert
-/// the hunk's old/new sides and stop the probe from firing. Also stands in
-/// for the doc's `diff-buffer-lines` ≡ `diff-lines` equivalence check,
-/// since both route through the same `diff_bridge::line_hunks`, this single
-/// assertion (same texts fed both ways) is structurally guaranteed rather
-/// than needing a matrix.
+/// the hunk's old/new sides and stop the probe from firing. Both builtins
+/// build their hunks with `text_hunks`, so this one case stands in for a
+/// `diff-buffer-lines` ≡ `diff-lines` matrix.
 #[test]
 fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
     let tmp = safe_tempdir();
@@ -59,7 +57,7 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
 
 /// `diff-buffer-lines` on a stale bid raises "invalid buffer id", not a
 /// silent "no differences": `bid`'s liveness is checked at argument-resolve
-/// time (`args::LiveBid`'s `BuiltinArg::resolve`, in the `builtins!`-
+/// time (`args::LivePane`'s `BuiltinArg::resolve`, in the `builtins!`-
 /// registered closure), before `diff_buffer_lines`'s body (and thus
 /// `DiffHost::diff_buffer_lines` itself) ever runs. Errors raised inside a
 /// `define-command!` body surface as a `Severity::Error` message-log entry
@@ -67,8 +65,8 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
 /// → `apply_script_result`), not as a Rust panic or a silent no-op. Hence
 /// checking the log instead of a `run_probe` boolean.
 ///
-/// If `diff-buffer-lines`'s `builtins!` table entry took `args::BidArg`
-/// instead of `args::LiveBid`, only this test would fail. No other test in
+/// If `diff-buffer-lines`'s `builtins!` table entry took `args::ArgPane`
+/// instead of `args::LivePane`, only this test would fail. No other test in
 /// this file passes a stale bid.
 #[test]
 fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {

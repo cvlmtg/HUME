@@ -1,31 +1,19 @@
 //! `EditorHostImpl`'s `BufferText` diffing.
 
-use hume_editing::changeset::ChangeHunk;
+use hume_editing::hunk::{ChangeHunk, text_hunks};
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 
-use crate::editor::diff_bridge;
-
 use super::EditorHostImpl;
-use hume_scripting::host::{DiffHost, WordDiffHunk};
+use hume_scripting::host::DiffHost;
 
 impl<'a> DiffHost for EditorHostImpl<'a> {
-    fn diff_lines(&self, old: &str, new: &str) -> Vec<ChangeHunk> {
-        diff_bridge::line_hunks(old, new)
-    }
-
     fn diff_buffer_lines(&self, bid: BufferId, ref_text: &str) -> Option<Vec<ChangeHunk>> {
-        let buffer_text = self.buffer(bid)?.text();
-        Some(diff_bridge::line_hunks_against_buffer(
-            ref_text,
-            buffer_text,
-        ))
+        let buffer = self.buffer(bid)?;
+        Some(text_hunks(&BufferText::from(ref_text), buffer.text()))
     }
 
     fn revision_diff(&self, bid: BufferId, revision: usize) -> Result<Vec<ChangeHunk>, String> {
         self.state.revision_diff(bid, revision)
-    }
-
-    fn diff_words(&self, old: &str, new: &str) -> (Vec<WordDiffHunk>, bool) {
-        diff_bridge::word_hunks(old, new)
     }
 }

@@ -1,11 +1,26 @@
+//! Line hunks between two texts, with the word spans inside them. Two
+//! producers fill the same shape: [`change_hunks`] from a changeset, and
+//! [`text_hunks`] from a line diff.
+
+use std::ops::Range;
+use std::time::{Duration, Instant};
+
+use ropey::RopeSlice;
+
 use hume_rope::column::CharCol;
 use hume_rope::line::{ContentLine, RopeyLine};
-use hume_rope::lines::strip_line_break;
+use hume_rope::lines::{line_token_content, strip_line_break};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-use super::{ChangeSet, EditedRegion};
-use crate::diff::{WordHunkKind, diff_words};
+use crate::changeset::{ChangeSet, EditedRegion};
+use crate::diff::{LineHunk, LineHunkKind, diff_lines, word_change_ranges};
 use crate::text::BufferText;
+
+/// Time [`text_hunks`] spends word-diffing all its hunks together. The call
+/// runs on the main thread after each debounced edit, and spans are only a
+/// highlight, so the budget is one 60 Hz frame. Hunks left when it runs out
+/// get no spans.
+const HUNK_WORDS_BUDGET: Duration = Duration::from_millis(16);
 
 /// One run of changed lines between two texts, with 0-based starts. Lines
 /// carry no line break, and `Equal` runs are never represented. A side with
@@ -25,8 +40,8 @@ pub struct ChangeHunk {
     pub words: WordSpans,
 }
 
-/// The text a changeset inserted (old side) and deleted (new side), by line.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The changed text inside a hunk's lines, per side.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WordSpans {
     pub old: Vec<LineSpan>,
     pub new: Vec<LineSpan>,
@@ -120,13 +135,10 @@ fn group_hunk(
             .chunks()
             .for_each(|c| old_text.push_str(c));
         let inserted_chars = region.inserted.chars().count();
-        old_ranges.push((old_chars, old_chars + inserted_chars));
+        old_ranges.push(old_chars..old_chars + inserted_chars);
         old_chars += inserted_chars;
         old_text.push_str(&region.inserted);
-        new_ranges.push((
-            region.old.start.chars_since(start),
-            region.old.end.chars_since(start),
-        ));
+        new_ranges.push(region.old.start.chars_since(start)..region.old.end.chars_since(start));
         cursor = region.old.end;
     }
     slice(cursor, stop)
@@ -169,39 +181,66 @@ fn group_hunk(
     })
 }
 
-/// Word spans for a hunk that came from a text diff: a word diff of the two
-/// sides joined by line breaks, so an edit is marked where it is whatever
-/// the line counts on either side. Empty when a side has no lines or the
-/// diff ran out of time.
-pub fn text_hunk_words(old_lines: &[String], new_lines: &[String]) -> WordSpans {
-    let none = WordSpans {
-        old: Vec::new(),
-        new: Vec::new(),
-    };
-    if old_lines.is_empty() || new_lines.is_empty() {
-        return none;
-    }
-    let diff = diff_words(&old_lines.join("\n"), &new_lines.join("\n"));
-    if diff.deadline_hit() {
-        return none;
-    }
-    let (mut old_ranges, mut new_ranges) = (Vec::new(), Vec::new());
-    for hunk in &diff.hunks {
-        match hunk.kind {
-            WordHunkKind::Equal => {}
-            WordHunkKind::Delete(_) => old_ranges.push((hunk.old.start, hunk.old.end)),
-            WordHunkKind::Insert(_) => new_ranges.push((hunk.new.start, hunk.new.end)),
-            WordHunkKind::Replace { .. } => {
-                old_ranges.push((hunk.old.start, hunk.old.end));
-                new_ranges.push((hunk.new.start, hunk.new.end));
+/// The line hunks of `new` against `old`, `Equal` runs dropped. Both texts
+/// are buffer content, so a caller holding a raw string normalizes it through
+/// [`BufferText::from`]: line endings become LF and a missing final newline
+/// is added, so a ref blob without one shows no phantom trailing hunk.
+///
+/// Word spans come from a word diff of each hunk's two sides joined by line
+/// breaks, so an edit is marked where it is whatever the line counts on
+/// either side. All hunks share [`HUNK_WORDS_BUDGET`].
+pub fn text_hunks(old: &BufferText, new: &BufferText) -> Vec<ChangeHunk> {
+    text_hunks_with_budget(old, new, HUNK_WORDS_BUDGET)
+}
+
+fn text_hunks_with_budget(old: &BufferText, new: &BufferText, budget: Duration) -> Vec<ChangeHunk> {
+    let old_tokens: Vec<RopeSlice<'_>> = old.line_tokens().collect();
+    let new_tokens: Vec<RopeSlice<'_>> = new.line_tokens().collect();
+    let deadline = Instant::now() + budget;
+    diff_lines(&old_tokens, &new_tokens)
+        .hunks
+        .into_iter()
+        .filter(|hunk| hunk.kind != LineHunkKind::Equal)
+        .map(|LineHunk { old, new, .. }| {
+            let old_lines = token_lines(&old_tokens, old.clone());
+            let new_lines = token_lines(&new_tokens, new.clone());
+            // The phantom trailing line is an empty token on both sides, so it
+            // only ever matches as `Equal`: a start is a content line or the
+            // one-past-last insertion point.
+            ChangeHunk {
+                old_start: ContentLine::new(old.start),
+                new_start: ContentLine::new(new.start),
+                words: text_hunk_words(&old_lines, &new_lines, deadline),
+                old_lines,
+                new_lines,
             }
-        }
+        })
+        .collect()
+}
+
+/// `tokens[range]` as owned lines without their line breaks.
+fn token_lines(tokens: &[RopeSlice<'_>], range: Range<usize>) -> Vec<String> {
+    tokens[range]
+        .iter()
+        .copied()
+        .map(line_token_content)
+        .collect()
+}
+
+/// Empty when a side has no lines or `deadline` passes first.
+fn text_hunk_words(old_lines: &[String], new_lines: &[String], deadline: Instant) -> WordSpans {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if old_lines.is_empty() || new_lines.is_empty() || left.is_zero() {
+        return WordSpans::default();
     }
-    let old_strs: Vec<&str> = old_lines.iter().map(String::as_str).collect();
-    let new_strs: Vec<&str> = new_lines.iter().map(String::as_str).collect();
+    let Some((old_ranges, new_ranges)) =
+        word_change_ranges(&old_lines.join("\n"), &new_lines.join("\n"), left)
+    else {
+        return WordSpans::default();
+    };
     WordSpans {
-        old: line_spans(&old_strs, &old_ranges, 0, old_strs.len()),
-        new: line_spans(&new_strs, &new_ranges, 0, new_strs.len()),
+        old: line_spans(old_lines, &old_ranges, 0, old_lines.len()),
+        new: line_spans(new_lines, &new_ranges, 0, new_lines.len()),
     }
 }
 
@@ -216,8 +255,8 @@ fn split_lines(s: &str) -> Vec<&str> {
 /// numbered from `skip`. A span covering a whole line is dropped: the line
 /// already counts as changed.
 fn line_spans(
-    lines: &[&str],
-    ranges: &[(usize, usize)],
+    lines: &[impl AsRef<str>],
+    ranges: &[Range<usize>],
     skip: usize,
     keep: usize,
 ) -> Vec<LineSpan> {
@@ -225,16 +264,16 @@ fn line_spans(
     let mut line_start = 0;
     let mut first = 0;
     for (index, line) in lines.iter().enumerate().take(skip + keep) {
-        let len = line.chars().count();
+        let len = line.as_ref().chars().count();
         if index >= skip {
-            while first < ranges.len() && ranges[first].1 <= line_start {
+            while first < ranges.len() && ranges[first].end <= line_start {
                 first += 1;
             }
-            for &(from, to) in ranges[first..]
+            for range in ranges[first..]
                 .iter()
-                .take_while(|r| r.0 < line_start + len)
+                .take_while(|r| r.start < line_start + len)
             {
-                let (start, end) = (from.max(line_start), to.min(line_start + len));
+                let (start, end) = (range.start.max(line_start), range.end.min(line_start + len));
                 let whole = start == line_start && end == line_start + len;
                 if start < end && !whole {
                     spans.push(LineSpan {

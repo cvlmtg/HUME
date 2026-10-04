@@ -97,7 +97,7 @@ transactions with `ChangeSet::compose_all` into one changeset `C` that maps the
 current text to the target revision's text. It moves nothing: not `current`, not
 the redo targets, not `change_seq`. It answers with a `RevisionPath`, so an
 unknown id and the current revision are not mistaken for an empty diff.
-`change_hunks` (`hume-editing/src/changeset/hunks.rs`) walks `C` over the
+`change_hunks` (`hume-editing/src/hunk.rs`) walks `C` over the
 current text through `ChangeSet::edited_regions`, which merges touching
 `Delete` and `Insert` ops into one region each. The ops mean:
 
@@ -118,11 +118,9 @@ and no Myers pass runs, so the cost scales with the edit, not the buffer.
 The word spans are the `Delete` and `Insert` positions themselves, cut at line
 breaks into char-column ranges per line, so a hunk carries them and needs no
 `diff-words` call. A span covering a whole line is dropped, since the tint or
-the virtual line already marks that line. A hunk left with no span still
-carries an empty `'words`, so the renderer never word-diffs a changeset's
-hunk: the same replaced line draws the same way whatever else its hunk holds.
-A revision recorded as whole-line replacements (`:e!`'s reload, through
-`changesets_from_line_diff`) is always that case.
+the virtual line already marks that line, so a revision recorded as
+whole-line replacements (`:e!`'s reload, through `changesets_from_line_diff`)
+carries an empty `'words`.
 
 ### Hunks cross the Steel boundary, changesets do not
 

@@ -38,10 +38,7 @@ fn hunk(old_start: usize, new_start: usize, old: &[&str], new: &[&str]) -> Chang
         new_start: ContentLine::new(new_start),
         old_lines: strs(old),
         new_lines: strs(new),
-        words: WordSpans {
-            old: Vec::new(),
-            new: Vec::new(),
-        },
+        words: WordSpans::default(),
     }
 }
 
@@ -214,36 +211,120 @@ fn a_whole_line_diff_revision_has_no_word_spans() {
     assert_eq!(hunks, vec![hunk(1, 1, &["xyz"], &["two"])]);
 }
 
+fn text_of(old: &str, new: &str) -> Vec<ChangeHunk> {
+    text_hunks(&BufferText::from(old), &BufferText::from(new))
+}
+
+/// The words of a text hunk with both sides, which must be its only hunk.
+fn words_of(old: &str, new: &str) -> WordSpans {
+    let hunks = text_of(old, new);
+    assert_eq!(hunks.len(), 1, "expected one hunk: {hunks:?}");
+    hunks[0].words.clone()
+}
+
 #[test]
-fn text_hunk_words_marks_the_edit_not_the_unpaired_line() {
-    let words = text_hunk_words(
-        &strs(&["## core:plum", "", "**PLUM** a commands b"]),
-        &strs(&["**PLUM** a b"]),
+fn text_hunks_drop_equal_runs() {
+    assert_eq!(text_of("a\nb\nc\n", "a\nb\nc\n"), Vec::new());
+}
+
+/// Starts are 0-based and a side with no lines keeps its anchor, so a
+/// plugin's sign or virtual line lands on the right line.
+#[test]
+fn text_hunks_pure_insert_is_zero_based_with_no_old_side() {
+    assert_eq!(
+        text_of("a\nb\n", "a\nx\nb\n"),
+        vec![hunk(1, 1, &[], &["x"])]
     );
+}
+
+#[test]
+fn text_hunks_pure_delete_is_zero_based_with_no_new_side() {
+    assert_eq!(
+        text_of("a\nx\nb\n", "a\nb\n"),
+        vec![hunk(1, 1, &["x"], &[])]
+    );
+}
+
+/// A changed whole line is one hunk with both sides, never a delete plus an
+/// insert.
+#[test]
+fn text_hunks_replace_carries_both_sides() {
+    assert_eq!(
+        text_of("a\nb\nc\n", "a\nB\nc\n"),
+        vec![hunk(1, 1, &["b"], &["B"])]
+    );
+}
+
+#[test]
+fn text_hunks_multi_line_delete_keeps_lines_apart() {
+    assert_eq!(
+        text_of("a\nx\ny\nb\n", "a\nb\n"),
+        vec![hunk(1, 1, &["x", "y"], &[])]
+    );
+}
+
+/// A `git show` blob routinely lacks its final newline.
+#[test]
+fn text_hunks_missing_trailing_newline_is_not_a_change() {
+    assert_eq!(text_of("a\nb", "a\nb\n"), Vec::new());
+}
+
+#[test]
+fn text_hunks_crlf_is_normalized_like_a_buffer() {
+    assert_eq!(text_of("a\r\nb\r\n", "a\nb\n"), Vec::new());
+}
+
+#[test]
+fn text_hunks_bare_cr_is_a_line_break() {
+    assert_eq!(
+        text_of("a\rb\n", "x\rb\n"),
+        vec![hunk(0, 0, &["a"], &["x"])]
+    );
+}
+
+/// `\n` is the only line break under this workspace's ropey config, so a
+/// form feed stays inside its line.
+#[test]
+fn text_hunks_treat_non_lf_unicode_breaks_as_content() {
+    assert_eq!(
+        text_of("a\u{0C}b\n", "x\u{0C}b\n"),
+        vec![with_words(
+            hunk(0, 0, &["a\u{0C}b"], &["x\u{0C}b"]),
+            vec![span(0, 0, 1)],
+            vec![span(0, 0, 1)],
+        )]
+    );
+}
+
+#[test]
+fn text_hunk_words_mark_the_edit_not_the_unpaired_line() {
+    let words = words_of("## core:plum\n\n**PLUM** a commands b\n", "**PLUM** a b\n");
     assert_eq!(words.old, vec![span(2, 10, 19)]);
     assert_eq!(words.new, Vec::new());
 }
 
 #[test]
-fn text_hunk_words_marks_both_sides_of_a_changed_word() {
-    let words = text_hunk_words(&strs(&["let x = 1;"]), &strs(&["let y = 1;"]));
+fn text_hunk_words_mark_both_sides_of_a_changed_word() {
+    let words = words_of("let x = 1;\n", "let y = 1;\n");
     assert_eq!(words.old, vec![span(0, 4, 5)]);
     assert_eq!(words.new, vec![span(0, 4, 5)]);
 }
 
 #[test]
-fn text_hunk_words_is_empty_for_a_pure_insertion_or_deletion() {
-    let empty = WordSpans {
-        old: Vec::new(),
-        new: Vec::new(),
-    };
-    assert_eq!(text_hunk_words(&[], &strs(&["a b"])), empty);
-    assert_eq!(text_hunk_words(&strs(&["a b"]), &[]), empty);
-}
-
-#[test]
-fn text_hunk_words_splits_a_span_across_lines() {
-    let words = text_hunk_words(&strs(&["a one", "two b"]), &strs(&["a|b"]));
+fn text_hunk_words_split_a_span_across_lines() {
+    let words = words_of("a one\ntwo b\n", "a|b\n");
     assert_eq!(words.old, vec![span(0, 1, 5), span(1, 0, 4)]);
     assert_eq!(words.new, vec![span(0, 1, 2)]);
+}
+
+/// Once the shared budget is spent, a replaced hunk keeps its lines but
+/// gets no spans.
+#[test]
+fn text_hunks_past_the_word_budget_have_no_spans() {
+    let hunks = text_hunks_with_budget(
+        &BufferText::from("let x = 1;\n"),
+        &BufferText::from("let y = 1;\n"),
+        std::time::Duration::ZERO,
+    );
+    assert_eq!(hunks, vec![hunk(0, 0, &["let x = 1;"], &["let y = 1;"])]);
 }

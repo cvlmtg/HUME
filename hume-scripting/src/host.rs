@@ -30,7 +30,7 @@ pub use commands::CommandHost;
 pub use completion::{CompletionHost, CompletionSourceTarget, MatchKind, PendingCompletionSource};
 pub use cursor::{CursorHost, SelectionInfo};
 pub use decorations::{DecorationHost, DiagnosticEntry};
-pub use diff::{DiffHost, WordDiffHunk};
+pub use diff::DiffHost;
 pub use edits::{EditHost, WireTextEdit};
 pub use events::EventHost;
 pub use language::LanguageHost;
@@ -126,8 +126,8 @@ pub trait EditorHost {
     fn async_process(&mut self) -> Option<&mut dyn AsyncProcessHost> {
         None
     }
-    /// `(diff-lines …)` / `(diff-buffer-lines …)`, or `None` for hosts with no
-    /// text-diffing backend (test stubs).
+    /// `(diff-buffer-lines …)` / `(buffer-revision-diff …)`, or `None` for
+    /// hosts with no buffers to diff (test stubs).
     fn diff(&mut self) -> Option<&mut dyn DiffHost> {
         None
     }

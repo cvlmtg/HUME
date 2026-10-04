@@ -1,9 +1,10 @@
 use super::*;
+use crate::builtins::args::{list_of, string_list, symbol_hash};
 use crate::test_support::SteelCtxTestHarness;
 
 // ── Gate (init mode rejection) ────────────────────────────────────────────
 //
-// All three builtins are `cmd`-gated in `builtins!`'s registration table:
+// All diff builtins are `cmd`-gated in `builtins!`'s registration table:
 // the gate lives in the registration wrapper closure, not the function
 // body, so these test the gate primitive directly rather than calling the
 // builtin (its body has no guard to hit).
@@ -87,66 +88,113 @@ fn diff_words_rejects_a_non_string_new_argument() {
     );
 }
 
-// ── Capability / buffer-id errors (NullHost: no DiffHost, buffer_exists=false) ──
+// ── NullHost: no DiffHost, buffer_exists=false ──────────────────────────────
 
-/// `diff-lines` on a host with no `DiffHost` capability raises an error
-/// naming the builtin.
-///
-/// Falling back with `ctx.host.diff().map(...).unwrap_or_default()` would
-/// have a host that cannot diff at all report "no differences" instead of
-/// failing.
+fn int(n: isize) -> SteelVal {
+    SteelVal::IntV(n)
+}
+
+fn word_hunk(old: (isize, isize, &str), new: (isize, isize, &str)) -> SteelVal {
+    symbol_hash([
+        ("old-start", int(old.0)),
+        ("old-end", int(old.1)),
+        ("new-start", int(new.0)),
+        ("new-end", int(new.1)),
+        ("old-text", SteelVal::StringV(old.2.into())),
+        ("new-text", SteelVal::StringV(new.2.into())),
+    ])
+}
+
+fn words_result(hunks: Vec<SteelVal>) -> SteelVal {
+    symbol_hash([
+        ("hunks", list_of(hunks)),
+        ("deadline-hit", SteelVal::BoolV(false)),
+    ])
+}
+
+fn run_diff_words(old: &str, new: &str) -> SteelVal {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    diff_words(
+        &mut ctx,
+        SteelVal::StringV(old.into()),
+        SteelVal::StringV(new.into()),
+    )
+    .expect("diff-words needs no host capability")
+}
+
+/// `diff-lines` diffs two strings with no editor state, so a host with no
+/// diff capability still answers.
 #[test]
-fn diff_lines_reports_an_unsupported_host() {
+fn diff_lines_needs_no_host_capability() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let result = diff_lines(
         &mut ctx,
         SteelVal::StringV("a\n".into()),
         SteelVal::StringV("b\n".into()),
+    )
+    .expect("diff-lines needs no host capability");
+    let expected = list_of([symbol_hash([
+        ("old-start", int(0)),
+        ("old-count", int(1)),
+        ("new-start", int(0)),
+        ("new-count", int(1)),
+        ("old-lines", string_list(vec!["a".to_owned()])),
+        ("new-lines", string_list(vec!["b".to_owned()])),
+        (
+            "words",
+            symbol_hash([("old", list_of([])), ("new", list_of([]))]),
+        ),
+    ])]);
+    assert_eq!(result, expected);
+}
+
+/// A changed word carries its text on both sides, at char offsets.
+#[test]
+fn diff_words_replace_carries_both_sides() {
+    assert_eq!(
+        run_diff_words("foo bar", "foo baz"),
+        words_result(vec![word_hunk((4, 7, "bar"), (4, 7, "baz"))])
     );
-    assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("not supported by this host")
+}
+
+/// A pure insert has a zero-width old side with empty text, the anchor a
+/// plugin draws its insert marker at.
+#[test]
+fn diff_words_pure_insert_has_zero_width_old_side() {
+    assert_eq!(
+        run_diff_words("foo bar", "foo big bar"),
+        words_result(vec![word_hunk((4, 4, ""), (4, 8, "big "))])
+    );
+}
+
+#[test]
+fn diff_words_pure_delete_has_zero_width_new_side() {
+    assert_eq!(
+        run_diff_words("foo big bar", "foo bar"),
+        words_result(vec![word_hunk((4, 8, "big "), (4, 4, ""))])
+    );
+}
+
+#[test]
+fn diff_words_drops_equal_runs() {
+    assert_eq!(
+        run_diff_words("foo bar", "foo bar"),
+        words_result(Vec::new())
     );
 }
 
 /// `diff-buffer-lines` on a host with no `DiffHost` capability raises an
-/// error naming the builtin, same as `diff-lines`/`diff-words`. `bid`'s
-/// own liveness is already checked at decode time (`LiveBid`, in the
-/// `builtins!`-registered closure, unreachable from this direct call), so
-/// `require_cap` is the first gate this call actually reaches.
+/// error naming the builtin. The pane's liveness is checked at decode time
+/// (`LivePane`, in the `builtins!`-registered closure, unreachable from this
+/// direct call), so `require_cap` is the first gate this call reaches.
 #[test]
 fn diff_buffer_lines_reports_an_unsupported_host() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let pane = crate::types::PaneHandle::buffer_only(hume_engine::pipeline::BufferId::default());
     let result = diff_buffer_lines(&mut ctx, pane, SteelVal::StringV("a\n".into()));
-    assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("not supported by this host")
-    );
-}
-
-/// `diff-words` on a host with no `DiffHost` capability raises an error
-/// naming the builtin.
-///
-/// A silent `unwrap_or_default()` fallback here would report "no
-/// differences" on a host that cannot diff.
-#[test]
-fn diff_words_reports_an_unsupported_host() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = diff_words(
-        &mut ctx,
-        SteelVal::StringV("foo bar".into()),
-        SteelVal::StringV("foo baz".into()),
-    );
     assert!(result.is_err());
     assert!(
         result

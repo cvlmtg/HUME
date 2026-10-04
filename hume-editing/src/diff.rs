@@ -247,22 +247,9 @@ pub fn diff_words(old: &str, new: &str) -> WordDiff {
 /// so we keep whatever it returns and report the timeout via
 /// [`WordDiff::deadline_hit`].
 pub fn diff_words_with_deadline(old: &str, new: &str, deadline: Duration) -> WordDiff {
-    // Tokenize into words (including whitespace runs as separate tokens, so
-    // the diff reconstructs the full input). Track each token's char offset;
-    // a trailing sentinel offset makes range ends O(1).
-    let (old_tokens, old_offsets) = tokenize_with_offsets(old);
-    let (new_tokens, new_offsets) = tokenize_with_offsets(new);
-
-    let start = Instant::now();
-    let deadline_instant = start + deadline;
-    let ops = capture_diff_slices_deadline(
-        Algorithm::Myers,
-        &old_tokens,
-        &new_tokens,
-        Some(deadline_instant),
-    );
-    let deadline_hit = start.elapsed() >= deadline;
-    let hunks = ops
+    let diff = word_ops(old, new, deadline);
+    let hunks = diff
+        .ops
         .iter()
         .map(|op| {
             let old_range = op.old_range();
@@ -270,25 +257,86 @@ pub fn diff_words_with_deadline(old: &str, new: &str, deadline: Duration) -> Wor
             let kind = match op {
                 DiffOp::Equal { .. } => WordHunkKind::Equal,
                 DiffOp::Delete { .. } => {
-                    WordHunkKind::Delete(old_tokens[old_range.clone()].join(""))
+                    WordHunkKind::Delete(diff.old_tokens[old_range.clone()].join(""))
                 }
                 DiffOp::Insert { .. } => {
-                    WordHunkKind::Insert(new_tokens[new_range.clone()].join(""))
+                    WordHunkKind::Insert(diff.new_tokens[new_range.clone()].join(""))
                 }
                 DiffOp::Replace { .. } => WordHunkKind::Replace {
-                    old: old_tokens[old_range.clone()].join(""),
-                    new: new_tokens[new_range.clone()].join(""),
+                    old: diff.old_tokens[old_range.clone()].join(""),
+                    new: diff.new_tokens[new_range.clone()].join(""),
                 },
             };
             WordHunk {
-                old: char_range(&old_offsets, &old_range),
-                new: char_range(&new_offsets, &new_range),
+                old: char_range(&diff.old_offsets, &old_range),
+                new: char_range(&diff.new_offsets, &new_range),
                 kind,
             }
         })
         .collect();
     WordDiff {
         hunks,
+        deadline_hit: diff.deadline_hit,
+    }
+}
+
+/// The char ranges of `old` and of `new` that a word diff marks as changed,
+/// with no text payloads, or `None` when Myers missed `deadline`. A pure
+/// insertion or deletion contributes a zero-width range to the side it
+/// leaves untouched.
+pub(crate) fn word_change_ranges(
+    old: &str,
+    new: &str,
+    deadline: Duration,
+) -> Option<(Vec<Range<usize>>, Vec<Range<usize>>)> {
+    let diff = word_ops(old, new, deadline);
+    if diff.deadline_hit {
+        return None;
+    }
+    Some(
+        diff.ops
+            .iter()
+            .filter(|op| !matches!(op, DiffOp::Equal { .. }))
+            .map(|op| {
+                (
+                    char_range(&diff.old_offsets, &op.old_range()),
+                    char_range(&diff.new_offsets, &op.new_range()),
+                )
+            })
+            .unzip(),
+    )
+}
+
+/// The tokens of both inputs, their offset tables, and the Myers ops between
+/// them.
+struct WordOps<'a> {
+    old_tokens: Vec<&'a str>,
+    old_offsets: Vec<usize>,
+    new_tokens: Vec<&'a str>,
+    new_offsets: Vec<usize>,
+    ops: Vec<DiffOp>,
+    deadline_hit: bool,
+}
+
+fn word_ops<'a>(old: &'a str, new: &'a str, deadline: Duration) -> WordOps<'a> {
+    // Whitespace runs are tokens of their own, so the ops cover all of both
+    // inputs.
+    let (old_tokens, old_offsets) = tokenize_with_offsets(old);
+    let (new_tokens, new_offsets) = tokenize_with_offsets(new);
+    let start = Instant::now();
+    let ops = capture_diff_slices_deadline(
+        Algorithm::Myers,
+        &old_tokens,
+        &new_tokens,
+        Some(start + deadline),
+    );
+    let deadline_hit = start.elapsed() >= deadline;
+    WordOps {
+        old_tokens,
+        old_offsets,
+        new_tokens,
+        new_offsets,
+        ops,
         deadline_hit,
     }
 }

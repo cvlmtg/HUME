@@ -23,7 +23,6 @@ use self::keymap::{Keymap, WaitCharPending};
 mod async_job;
 mod async_source;
 mod decoration_providers;
-mod diff_bridge;
 mod edit_session;
 mod error;
 mod focus;

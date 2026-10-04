@@ -27,6 +27,7 @@ pub mod diff;
 pub mod edit;
 pub mod error;
 pub mod history;
+pub mod hunk;
 #[cfg(any(test, feature = "test-util"))]
 pub mod marked;
 pub mod selection;

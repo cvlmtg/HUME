@@ -11,7 +11,7 @@
 //
 // Every expected sign/line/span below is derived by
 // hand from the committed-vs-buffer text each fixture sets up, never by
-// calling `diff-buffer-lines`/`diff-words` in the test itself.
+// calling `diff-buffer-lines` in the test itself.
 
 use super::*;
 
@@ -219,7 +219,7 @@ fn vlines_in(ed: &Editor, bid: BufferId, source: &str) -> Vec<VLine> {
 
 /// `extra_highlights_for(SOURCE, bid)`, paired with the live buffer
 /// substring each span covers. Lets a test assert "this span covers the
-/// changed word" without predicting `diff-words`' exact tokenization.
+/// changed word" without predicting the word diff's exact tokenization.
 fn highlights(
     ed: &Editor,
     bid: BufferId,
