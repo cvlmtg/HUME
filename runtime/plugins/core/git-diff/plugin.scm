@@ -58,9 +58,31 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
+;;; See docs/rendering.md's "Rendering another plugin's hunks".
+(define (git-diff/repaint-inline! pane)
+  (let ([entry (git-diff/buffer-entry pane)])
+    (when (and entry (hash-ref entry "inline?"))
+      (git-diff/render-for! "inline?" pane (hash-ref entry "hunks")))))
+
+(define (git-diff/draw-for-source! pane source hunks)
+  (when (equal? source git-diff/*source*)
+    (error (string-append "git-diff/render-diff: the source \"" source "\" is core:git-diff's own")))
+  (git-diff/render-diff! pane source hunks)
+  (git-diff/add-cover! pane source)
+  (git-diff/repaint-inline! pane))
+
+(define (git-diff/release-source! pane source)
+  (git-diff/render-diff! pane source '())
+  (git-diff/remove-cover! pane source)
+  (git-diff/repaint-inline! pane))
+
 (define-command! "git-diff/render-diff"
-  "Draw hunks inline in a buffer: deleted lines as virtual lines, word highlights and a line tint. Arguments: pane, a decoration source name, a list of hunks in the shape `diff-buffer-lines` and `buffer-revision-diff` return. The source keeps the drawing apart from every other source's; an empty list clears it."
-  git-diff/render-diff!)
+  "Draw hunks inline in a buffer: deleted lines as virtual lines, word highlights and a line tint. Arguments: pane, a decoration source name, a list of hunks in the shape `diff-buffer-lines` and `buffer-revision-diff` return. The source keeps the drawing apart from every other source's; an empty list draws nothing. Until `git-diff/release-diff` releases the source, the buffer's own inline git diff is hidden; its gutter signs stay."
+  git-diff/draw-for-source!)
+
+(define-command! "git-diff/release-diff"
+  "Clear what a source drew through `git-diff/render-diff` and stop hiding the buffer's own inline git diff for it. Arguments: pane, the decoration source name."
+  git-diff/release-source!)
 
 ;;; `:toggle-git-signs`/`:toggle-inline-diff`'s shared completion universe — see
 ;;; docs/architecture.md's "Ref handling".

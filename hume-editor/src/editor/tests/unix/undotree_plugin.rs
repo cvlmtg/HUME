@@ -460,11 +460,8 @@ fn undotree_session_ends_when_clearing_the_diff_raises() {
         .path()
         .join("plugins/core/git-diff/plugin.scm");
     let patched = std::fs::read_to_string(&plugin_scm).unwrap().replace(
-        "  git-diff/render-diff!)",
-        "  (lambda (pane source hunks)
-    (if (null? hunks)
-        (error \"clear failed\")
-        (git-diff/render-diff! pane source hunks))))",
+        "  git-diff/release-source!)",
+        "  (lambda (pane source) (error \"clear failed\")))",
     );
     std::fs::write(&plugin_scm, patched).unwrap();
 

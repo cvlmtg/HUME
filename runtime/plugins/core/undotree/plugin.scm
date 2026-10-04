@@ -17,9 +17,10 @@
 
 (define undotree/*source* "undotree")
 (define undotree/diff-command "git-diff/render-diff")
+(define undotree/release-command "git-diff/release-diff")
 
 (define (undotree/diff-available?)
-  (command-exists? undotree/diff-command))
+  (and (command-exists? undotree/diff-command) (command-exists? undotree/release-command)))
 
 ;;; Returns the marker now on screen, `#f` without a renderer — see README.md's "Revision diff".
 (define (undotree/draw-diff! pane node drawn)
@@ -34,7 +35,7 @@
 
 (define (undotree/clear-diff! pane)
   (when (and (undotree/diff-available?) (buffer-live? pane))
-    (call! undotree/diff-command pane undotree/*source* '())))
+    (call! undotree/release-command pane undotree/*source*)))
 
 (define (undotree/end-session!)
   (let ([session undotree/*session*])

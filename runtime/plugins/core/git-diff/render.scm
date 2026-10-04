@@ -1,6 +1,8 @@
 ;;; core:git-diff — render.scm. See docs/rendering.md.
 
-(provide git-diff/render-signs! git-diff/render-diff! git-diff/render-for!)
+(require "state.scm")
+
+(provide git-diff/*source* git-diff/render-signs! git-diff/render-diff! git-diff/render-for!)
 
 (define git-diff/*source* "git-diff")
 
@@ -137,4 +139,5 @@
 (define (git-diff/render-for! key pane hunks)
   (if (equal? key "signs?")
       (git-diff/render-signs! pane hunks)
-      (git-diff/render-diff! pane git-diff/*source* hunks)))
+      (git-diff/render-diff! pane git-diff/*source*
+                             (if (git-diff/inline-covered? pane) '() hunks))))

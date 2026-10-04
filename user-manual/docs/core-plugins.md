@@ -156,7 +156,10 @@ A plugin that has its own hunks, such as a revision's diff from `buffer-revision
 draw them the same way with `(call! "git-diff/render-diff" pane source hunks)`. `hunks` is
 the list `diff-buffer-lines` or `buffer-revision-diff` returns and `source` is a name of the
 plugin's own, so its drawing never mixes with this plugin's. Each call replaces what `source`
-drew for that buffer, and an empty list clears it.
+drew for that buffer, and an empty list draws nothing. While a plugin draws, the buffer's own
+inline diff is hidden so changed lines don't show twice; the gutter signs stay.
+`(call! "git-diff/release-diff" pane source)` clears the plugin's drawing and brings the inline
+diff back.
 
 Configure with `#:config`:
 

@@ -33,6 +33,7 @@ one `fresh-entry` and holds:
 | `"job"` | The in-flight diff-fetch `spawn-async!` id, or `#f` |
 | `"ref"` | `#f` (use the config default) or a runtime override string set via `:toggle-git-signs <ref>`/`:toggle-inline-diff <ref>` |
 | `"branch-job"` | The in-flight branch-fetch `spawn-async!` id, or `#f`; independent of `"job"` |
+| `"covered-by"` | The other plugins' decoration sources drawing through `git-diff/render-diff`, which hide the inline rendering (see `docs/rendering.md`) |
 
 ### One hunk store
 

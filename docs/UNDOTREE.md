@@ -153,6 +153,11 @@ builtins return `hume-editing`'s `ChangeHunk`, the one hunk type behind
 - **Inline in the buffer, under the plugin's own decoration source.** The
   source is `"undotree"`, so it never overwrites `core:git-diff`'s
   decorations, and closing the drawer clears it.
+- **`core:git-diff`'s own inline diff is hidden while the drawer is open.**
+  Both diffs would draw the same changed lines twice. Drawing through
+  `git-diff/render-diff` hides it, and `git-diff/release-diff`, called on
+  close, shows it again. The root's empty diff keeps it hidden, so a diff
+  against git never reads as the revision's own. The gutter signs stay.
 - **One renderer, owned by `core:git-diff`.** Its inline renderers take the
   decoration source as a parameter, and the `git-diff/render-diff` command is
   the entry point. Plugins never `require` each other's modules, so a command
@@ -160,7 +165,8 @@ builtins return `hume-editing`'s `ChangeHunk`, the one hunk type behind
   both plugins can `require` would give plugin code a shared home that the
   plugin model has no concept of.
 - **`core:git-diff` is optional.** `core:undotree` calls the renderer only when
-  `(command-exists? "git-diff/render-diff")` holds, which is true once
+  `git-diff/render-diff` and `git-diff/release-diff` both exist
+  (`command-exists?`), which is true once
   `core:git-diff` is loaded, even before it has run. Without it nothing is
   drawn and no error is raised; opening the drawer shows one status-line
   message saying to load it.

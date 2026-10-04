@@ -2,7 +2,8 @@
 
 (provide git-diff/init-buffer! git-diff/remove-buffer!
          git-diff/buffer-entry git-diff/entry-set! git-diff/ensure-entry!
-         git-diff/toggle-flag! git-diff/cancel-job!)
+         git-diff/toggle-flag! git-diff/cancel-job!
+         git-diff/add-cover! git-diff/remove-cover! git-diff/inline-covered?)
 
 ;;; Keyed by `(buffer-key pane)`, not `pane` itself — see docs/architecture.md's "State (`state.scm`)".
 (define git-diff/*buffers* (box (hash)))
@@ -10,7 +11,8 @@
 ;;; SSOT for a buffer's starting shape.
 (define (git-diff/fresh-entry signs? inline?)
   (hash "signs?" signs? "inline?" inline?
-        "ref-text" #f "hunks" '() "job" #f "ref" #f "branch-job" #f))
+        "ref-text" #f "hunks" '() "job" #f "ref" #f "branch-job" #f
+        "covered-by" '()))
 
 (define (git-diff/buffer-entry pane)
   (let ([table (unbox git-diff/*buffers*)]
@@ -45,6 +47,24 @@
   (let ([new? (not (hash-ref (git-diff/buffer-entry pane) key))])
     (git-diff/entry-set! pane key new?)
     new?))
+
+;;; See docs/rendering.md's "Rendering another plugin's hunks".
+(define (git-diff/add-cover! pane source)
+  (git-diff/ensure-entry! pane)
+  (let ([covers (hash-ref (git-diff/buffer-entry pane) "covered-by")])
+    (unless (member source covers)
+      (git-diff/entry-set! pane "covered-by" (cons source covers)))))
+
+(define (git-diff/remove-cover! pane source)
+  (let ([entry (git-diff/buffer-entry pane)])
+    (when entry
+      (git-diff/entry-set! pane "covered-by"
+                           (filter (lambda (s) (not (equal? s source)))
+                                   (hash-ref entry "covered-by"))))))
+
+(define (git-diff/inline-covered? pane)
+  (let ([entry (git-diff/buffer-entry pane)])
+    (and entry (not (null? (hash-ref entry "covered-by"))))))
 
 ;;; Shared by `diff.scm`'s and `branch.scm`'s cancel functions — see docs/architecture.md.
 (define (git-diff/cancel-job! pane key)

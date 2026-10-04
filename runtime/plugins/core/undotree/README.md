@@ -115,14 +115,18 @@ the parent's lines as deleted lines, word highlights and a line tint. The
 hunks come from `(buffer-revision-diff pane parent-id)`, so the parent's text
 is the old side and the buffer's text the new, and `core:git-diff` draws them
 through its `git-diff/render-diff` command (see its `docs/rendering.md`). The
-root has no parent and shows nothing.
+root has no parent and shows nothing. From the first draw until the session
+clears it through `git-diff/release-diff`, `core:git-diff` hides its own inline
+diff of the buffer, so changed lines are not drawn twice. On the root it stays
+hidden too, since a diff against git there would read as the revision's own.
 
 The plugin calls no other plugin's code unless `(command-exists?
-"git-diff/render-diff")` holds, which is true once `core:git-diff` is loaded,
-even before it has run. Without it nothing is drawn and no error is raised;
-opening the drawer shows one message in the status line saying to load it. A
-user who loaded `core:git-diff` with an activation list that leaves the command
-out gets the same message.
+"git-diff/render-diff")` and `(command-exists? "git-diff/release-diff")` hold,
+which is true once `core:git-diff` is loaded, even before it has run. Without
+it nothing is drawn and no error is raised; opening the drawer shows one
+message in the status line saying to load it. A user who loaded
+`core:git-diff` with an activation list that leaves either command out gets
+the same message.
 
 The session remembers the buffer and revision it last drew. Wherever the rows
 are re-rendered (after a jump, on a history change, on the age timer, when the

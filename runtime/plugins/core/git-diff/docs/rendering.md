@@ -12,7 +12,8 @@ under that plugin's own source (see [Rendering another plugin's hunks](#renderin
 
 `render-for!` is the one place a flag key (`"signs?"` or `"inline?"`) maps to its
 renderers: `"signs?"` calls `render-signs!`, and any other key calls `render-diff!` under
-the `"git-diff"` source. Every caller that paints or clears a rendering goes through it:
+the `"git-diff"` source, with no hunks while another plugin's source covers the buffer (see
+[Rendering another plugin's hunks](#rendering-another-plugins-hunks)). Every caller that paints or clears a rendering goes through it:
 `diff.scm`'s `apply-hunks!` on a live refresh and `plugin.scm`'s toggle command on enable
 and disable.
 
@@ -81,9 +82,28 @@ modules:
 ```
 
 `hunks` is a list in the shape `diff-buffer-lines` and `buffer-revision-diff` return.
-Each call replaces everything that `source` drew for the buffer, so an empty list clears
-it. The command is in this plugin's manifest, so calling it wakes the plugin even before
-its first buffer-open event. Signs are not part of it.
+Each call replaces everything that `source` drew for the buffer, so an empty list draws
+nothing. Signs are not part of it.
+
+Two inline diffs of the same lines would draw every changed line twice, so a drawing from
+another source covers the buffer's own inline rendering. The command adds `source` to the
+entry's `"covered-by"` list, and `render-for!` draws the `"git-diff"` inline source with no
+hunks while that list is not empty. Every refresh and toggle goes through `render-for!`, so
+an edit, such as the one a caller's own revision jump makes, cannot paint the own diff back
+over the caller's. The gutter signs stay. The caller hands the buffer back with
+`git-diff/release-diff`, which clears what `source` drew and removes it from the list:
+
+```scheme
+(call! "git-diff/release-diff" pane "my-source")
+```
+
+Covering follows the drawing and releasing is its own call, so an empty list stays covered.
+A caller with nothing to show for one state, like `core:undotree` on the root revision,
+keeps the own diff hidden instead of showing a diff against git that reads as its own. A
+caller passing `"git-diff"` as `source` raises, since it would cover itself.
+
+Both commands are in this plugin's manifest, so calling either wakes the plugin even before
+its first buffer-open event.
 
 ## Inline: deleted lines and word highlights
 

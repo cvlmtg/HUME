@@ -634,14 +634,17 @@ const OTHER_SOURCE: &str = "other-diff";
 
 /// `:render-probe` renders `hunks` (a Scheme list literal) for the focused
 /// buffer under `OTHER_SOURCE` through the public `git-diff/render-diff`
-/// command, the way a plugin that is not `core:git-diff` calls it, and
-/// `:render-clear` renders no hunks under the same source.
+/// command, the way a plugin that is not `core:git-diff` calls it,
+/// `:render-clear` renders no hunks under the same source, and
+/// `:render-release` releases it through `git-diff/release-diff`.
 fn render_probe_source(hunks: &str) -> String {
     format!(
         r#"(define-typed-command! "render-probe" ""
              (lambda (bid) (call! "git-diff/render-diff" bid "{OTHER_SOURCE}" {hunks})))
            (define-typed-command! "render-clear" ""
-             (lambda (bid) (call! "git-diff/render-diff" bid "{OTHER_SOURCE}" (list))))"#
+             (lambda (bid) (call! "git-diff/render-diff" bid "{OTHER_SOURCE}" (list))))
+           (define-typed-command! "render-release" ""
+             (lambda (bid) (call! "git-diff/release-diff" bid "{OTHER_SOURCE}")))"#
     )
 }
 
@@ -758,6 +761,101 @@ fn render_diff_with_no_hunks_clears_the_callers_source() {
     assert!(vlines_in(&ed, bid, OTHER_SOURCE).is_empty());
     assert!(highlights_in(&ed, bid, OTHER_SOURCE).is_empty());
     assert!(line_bgs_in(&ed, bid, OTHER_SOURCE).is_empty());
+}
+
+/// [`setup`] with `"inline"` on, then the [`render_probe_source`] commands.
+fn setup_inline_with_probes(tmp: &Path) -> (Editor, RealRuntimeGuard) {
+    let (mut ed, guard) = setup(tmp, Some(r#"(hash "signs" #t "inline" #t)"#));
+    let mut host = ed.scripting.take().expect("setup() installs a host");
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &render_probe_source(HUNK_WITH_WORDS),
+        tmp,
+    );
+    ed.scripting = Some(host);
+    (ed, guard)
+}
+
+/// Opens a dirty tracked file and waits for `core:git-diff`'s own inline diff.
+fn open_dirty_buffer(ed: &mut Editor) -> (BufferId, tempfile::TempDir) {
+    let repo = safe_tempdir();
+    git_init(repo.path());
+    commit_file(repo.path(), "f.txt", "one\nfoo bar baz\nthree\n", "v1");
+    std::fs::write(repo.path().join("f.txt"), "one\nfoo QUX baz\nthree\n").unwrap();
+    let bid = open(ed, &repo.path().join("f.txt"));
+    drain_until(ed, |ed| !vlines(ed, bid).is_empty());
+    (bid, repo)
+}
+
+fn own_inline_is_empty(ed: &Editor, bid: BufferId) -> bool {
+    vlines(ed, bid).is_empty() && highlights(ed, bid).is_empty() && line_bgs(ed, bid).is_empty()
+}
+
+#[test]
+fn another_sources_drawing_hides_the_own_inline_diff_until_released() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_inline_with_probes(tmp.path());
+    let (bid, _repo) = open_dirty_buffer(&mut ed);
+    let own_vlines = vlines(&ed, bid);
+
+    type_cmd(&mut ed, ":render-probe");
+    assert!(
+        own_inline_is_empty(&ed, bid),
+        "the caller's drawing replaces the own inline diff"
+    );
+    assert!(!signs(&ed, bid).is_empty(), "signs stay");
+
+    type_cmd(&mut ed, ":toggle-inline-diff");
+    type_cmd(&mut ed, ":toggle-inline-diff");
+    wait_for_refresh(&mut ed);
+    assert!(
+        own_inline_is_empty(&ed, bid),
+        "re-enabling and refreshing while hidden draws nothing"
+    );
+
+    type_cmd(&mut ed, ":render-release");
+    assert_eq!(vlines(&ed, bid), own_vlines, "release draws it back");
+    assert!(vlines_in(&ed, bid, OTHER_SOURCE).is_empty());
+    assert!(highlights_in(&ed, bid, OTHER_SOURCE).is_empty());
+    assert!(line_bgs_in(&ed, bid, OTHER_SOURCE).is_empty());
+}
+
+#[test]
+fn drawing_no_hunks_keeps_the_own_inline_diff_hidden() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_inline_with_probes(tmp.path());
+    let (bid, _repo) = open_dirty_buffer(&mut ed);
+
+    type_cmd(&mut ed, ":render-probe");
+    type_cmd(&mut ed, ":render-clear");
+
+    assert!(own_inline_is_empty(&ed, bid));
+}
+
+#[test]
+fn render_diff_under_the_own_source_raises_and_draws_nothing() {
+    let tmp = safe_tempdir();
+    let probe = format!(
+        r#"(define-typed-command! "render-own" ""
+             (lambda (bid) (call! "git-diff/render-diff" bid "{SOURCE}" {HUNK_WITH_WORDS})))"#
+    );
+    let (mut ed, _guard) = setup_with_source(tmp.path(), None, &probe);
+    let dir = safe_tempdir();
+    std::fs::write(dir.path().join("f.txt"), "one\nfoo QUX baz\nthree\n").unwrap();
+    let bid = open(&mut ed, &dir.path().join("f.txt"));
+
+    type_cmd(&mut ed, ":render-own");
+
+    assert!(own_inline_is_empty(&ed, bid));
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("core:git-diff's own")),
+        "log: {:?}",
+        ed.state.message_log.entries().collect::<Vec<_>>()
+    );
 }
 
 #[test]
