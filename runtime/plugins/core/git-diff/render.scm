@@ -46,63 +46,14 @@
 (define (git-diff/word-span start end scope)
   (hash 'start start 'end end 'scope scope))
 
-(define (git-diff/plain-virtual-line old-line anchor)
-  (git-diff/virtual-line-hash old-line anchor '()))
+;;; Char offset where each of `new-lines` starts — see docs/rendering.md.
+(define (git-diff/line-offsets pane new-start new-lines)
+  (let loop ([offset (line->offset pane new-start)] [lines new-lines] [acc '()])
+    (if (null? lines)
+        (reverse acc)
+        (loop (+ offset (string-length (car lines)) 1) (cdr lines) (cons offset acc)))))
 
-(define (git-diff/virtual-line-with-segments old-line anchor word-hunks)
-  (let* ([removals (filter (lambda (wh) (< (hash-ref wh 'old-start) (hash-ref wh 'old-end))) word-hunks)]
-         [segments (map (lambda (wh) (git-diff/word-span (hash-ref wh 'old-start) (hash-ref wh 'old-end) "diff.minus.word"))
-                        removals)])
-    (git-diff/virtual-line-hash old-line anchor segments)))
-
-;;; `(hash 'start 'end 'scope)` spans in *buffer* char offsets — see docs/rendering.md.
-(define (git-diff/word-hunks->new-side-spans line-offset word-hunks)
-  (let ([additions (filter (lambda (wh) (< (hash-ref wh 'new-start) (hash-ref wh 'new-end))) word-hunks)])
-    (map (lambda (wh)
-           (git-diff/word-span (+ line-offset (hash-ref wh 'new-start))
-                               (+ line-offset (hash-ref wh 'new-end))
-                               "diff.plus.word"))
-         additions)))
-
-;;; Char offset where each of the first `paired-count` `new-lines` starts — see docs/rendering.md.
-(define (git-diff/paired-line-offsets pane new-start new-lines paired-count)
-  (let ([base (line->offset pane new-start)])
-    (let loop ([i 0] [offset base] [lines new-lines] [acc '()])
-      (if (= i paired-count)
-          (reverse acc)
-          (loop (+ i 1) (+ offset (string-length (car lines)) 1) (cdr lines) (cons offset acc))))))
-
-;;; One paired (old-line . new-line) -> `(virtual-line . spans)` — see docs/rendering.md.
-(define (git-diff/paired-line->vl+spans old-line new-line line-offset anchor)
-  (let* ([result (diff-words old-line new-line)]
-         [word-hunks (hash-ref result 'hunks)]
-         [deadline-hit? (hash-ref result 'deadline-hit)])
-    (if deadline-hit?
-        (cons (git-diff/plain-virtual-line old-line anchor) '())
-        (cons (git-diff/virtual-line-with-segments old-line anchor word-hunks)
-              (git-diff/word-hunks->new-side-spans line-offset word-hunks)))))
-
-;;; One hunk's removed old-side lines -> `(virtual-lines . spans)` — see docs/rendering.md
-;;; for the paired/unpaired split.
-(define (git-diff/hunk-old-lines->virtual+spans pane old-lines new-lines new-start paired-count anchor)
-  (let* ([offsets (if (> paired-count 0)
-                       (git-diff/paired-line-offsets pane new-start new-lines paired-count)
-                       '())]
-         ;; `cdr`, not `list-ref` by index — see docs/rendering.md.
-         [paired (let loop ([olds old-lines] [news new-lines] [offs offsets] [n paired-count] [acc '()])
-                   (if (= n 0)
-                       (reverse acc)
-                       (loop (cdr olds) (cdr news) (cdr offs) (- n 1)
-                             (cons (git-diff/paired-line->vl+spans
-                                     (car olds) (car news) (car offs) anchor)
-                                   acc))))]
-         [unpaired (map (lambda (old-line)
-                          (cons (git-diff/plain-virtual-line old-line anchor) '()))
-                        (list-tail old-lines paired-count))]
-         [all (append paired unpaired)])
-    (cons (map car all) (apply append (map cdr all)))))
-
-;;; A hunk's own `'words` -> `(virtual-lines . spans)` — see docs/rendering.md's "Word spans from the hunk".
+;;; A hunk's own `'words` -> `(virtual-lines . spans)` — see docs/rendering.md's "Word spans".
 (define (git-diff/hunk-word-data pane hunk)
   (let* ([words (hash-ref hunk 'words)]
          [new-start (hash-ref hunk 'new-start)]
@@ -133,7 +84,7 @@
       '()
       (let loop ([spans spans]
                  [line 0]
-                 [offsets (git-diff/paired-line-offsets pane new-start new-lines (length new-lines))]
+                 [offsets (git-diff/line-offsets pane new-start new-lines)]
                  [acc '()])
         (cond
           [(null? spans) (reverse acc)]
@@ -149,18 +100,9 @@
 
 ;;; One hunk -> `(virtual-lines . spans)` for `render-inline!` — see docs/rendering.md.
 (define (git-diff/hunk-inline-data pane hunk)
-  (let* ([old-count (hash-ref hunk 'old-count)]
-         [new-start (hash-ref hunk 'new-start)]
-         [new-count (hash-ref hunk 'new-count)]
-         [old-lines (hash-ref hunk 'old-lines)]
-         [new-lines (hash-ref hunk 'new-lines)])
-    (cond
-      [(= old-count 0) (cons '() '())]
-      [(hash-contains? hunk 'words) (git-diff/hunk-word-data pane hunk)]
-      [else
-       (git-diff/hunk-old-lines->virtual+spans
-         pane old-lines new-lines new-start (min old-count new-count)
-         (git-diff/hunk-anchor new-start))])))
+  (if (= (hash-ref hunk 'old-count) 0)
+      (cons '() '())
+      (git-diff/hunk-word-data pane hunk)))
 
 ;;; Two setter calls, not one — see docs/rendering.md.
 (define (git-diff/render-inline! pane source hunks)

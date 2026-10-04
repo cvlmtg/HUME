@@ -88,8 +88,8 @@ its first buffer-open event. Signs are not part of it.
 ## Inline: deleted lines and word highlights
 
 `render-inline!` makes two setter calls, `set-virtual-lines!` and `set-extra-highlights!`.
-One `diff-words` pass produces two decoration kinds, old-side virtual lines and new-side
-highlight spans, and both come from the same call.
+A hunk's `'words` produce two decoration kinds, old-side virtual lines and new-side
+highlight spans.
 
 A pure addition (`old-count` 0) contributes nothing to this pass: there is nothing removed
 to show. The line-background pass alone tints its new-side lines.
@@ -102,45 +102,23 @@ start. `'after (- new-start 1)` renders where `'before new-start` would, and sta
 when `new-start` is the buffer's content line count, a deletion at end of file, where
 `'before new-start` would address the phantom trailing line and raise.
 
-### Virtual lines
+### Word spans
 
-Within a hunk, old-lines `[0, paired-count)` have a same-index new-line to word-diff
-against, with `paired-count` the smaller of `old-count` and `new-count`. Any remainder gets
-a plain whole-line virtual line, as does a pair whose `diff-words` call reports
-`deadline-hit`. A plain virtual line passes the old line through as `'text`, with no
-`'segments` key (it is omitted when empty and not set to `'()`). `set-virtual-lines!`
-accepts a literal tab and expands it.
+Every hunk carries `'words`, `(hash 'old spans 'new spans)`, each span
+`(hash 'line 'start 'end)`, with `'line` counted from the hunk's first line on that side
+and `'start`/`'end` char columns in that line. Spans are in ascending line order. For a
+hunk from a text diff, the Rust side word-diffs the whole old side against the whole new
+side, so a span marks the edit itself whatever the line counts are. Hunks from
+`buffer-revision-diff` carry the columns the edit changed.
 
-The engine wraps each virtual line under the pane's wrap mode, as it does the buffer line
-it sits beside, so a long old-side line occupies as many rows as its new-side twin.
+Each old-side line becomes one virtual line, passing the old line through as `'text` with
+the `'old` spans that name its line as `'segments` (the key is omitted when empty, not set
+to `'()`). `set-virtual-lines!` accepts a literal tab and expands it. The engine wraps each
+virtual line under the pane's wrap mode, as it does the buffer line it sits beside, so a
+long old-side line occupies as many rows as its new-side twin.
 
-A paired line's `'segments` come from the `diff-words` hunks (`'old-start`, `'old-end`,
-`'new-start`, `'new-end`, `'old-text`, `'new-text`), filtered to `'old-start < 'old-end`.
-A pure insertion has nothing to underline on the old-side line, and a zero-width segment
-would raise on `set-virtual-lines!`'s `start < end` check.
-
-### Word spans from the hunk
-
-A hunk with a `'words` key, as `buffer-revision-diff` returns, always carries its own spans, so no
-`diff-words` call runs for it. `'words` is `(hash 'old spans 'new spans)`, each span
-`(hash 'line 'start 'end)`, with `'line` counted from the hunk's first line on that side and
-`'start`/`'end` char columns in that line. Spans are in ascending line order. Each old-side
-line becomes one virtual line carrying the `'old` spans that name its line as segments. The
-`'new` spans become buffer-offset highlights, from one `line->offset` call for the hunk's
-first new-side line and a walk down `'new-lines` from there, like the paired-line walk
-below. A hunk without `'words`, as `diff-buffer-lines` returns, takes the paired `diff-words` path described above.
-
-### New-side spans
-
-The new-side counterpart is `(hash 'start 'end 'scope)` spans in buffer char offsets, since
-`set-extra-highlights!` addresses the whole buffer and not one line. They are filtered to
-`new-start < new-end` for the same reason.
-
-Offsets for a hunk's paired new-side lines come from one `line->offset` host call, for the
-hunk's first new-side line. Each later line starts at its predecessor's offset plus its
+The `'new` spans become `(hash 'start 'end 'scope)` highlights in buffer char offsets,
+since `set-extra-highlights!` addresses the whole buffer and not one line. Offsets come
+from one `line->offset` host call for the hunk's first new-side line and a walk down
+`'new-lines` from there: each later line starts at its predecessor's offset plus its
 length plus one `\n`.
-
-One paired `(old-line . new-line)` becomes a `(virtual-line . spans)` pair from a single
-`diff-words` call shared by both sides. The walk over old-lines, new-lines, offsets and the
-remaining count advances with `cdr`. Steel lists are linked, so `list-ref` by index would
-make it quadratic in `paired-count`.

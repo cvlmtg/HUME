@@ -646,16 +646,11 @@ fn render_probe_source(hunks: &str) -> String {
 }
 
 /// A one-line change of "foo bar baz" to "foo QUX baz" at line 1 whose word
-/// spans mark the first word, which a word diff of the pair would never pick,
-/// so the drawing can only have come from the spans.
+/// spans mark the first word, so the drawing can only have come from the spans.
 const HUNK_WITH_WORDS: &str = r#"(list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
     'old-lines (list "foo bar baz") 'new-lines (list "foo QUX baz")
     'words (hash 'old (list (hash 'line 0 'start 0 'end 3))
                  'new (list (hash 'line 0 'start 0 'end 3)))))"#;
-
-/// The same change with no `'words`, so the renderer word-diffs the pair.
-const HUNK_WITHOUT_WORDS: &str = r#"(list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
-    'old-lines (list "foo bar baz") 'new-lines (list "foo QUX baz")))"#;
 
 /// Asserts what `render-probe` drew: the removed line with `old_span` underlined,
 /// and `new_span` (a char range of the live buffer, with the text it covers)
@@ -713,12 +708,6 @@ fn render_probe_buffer(hunks: &str) -> (Editor, RealRuntimeGuard, BufferId, temp
 fn render_diff_draws_word_spans_from_the_hunk_under_the_callers_source() {
     let (ed, _guard, bid, _dir) = render_probe_buffer(HUNK_WITH_WORDS);
     render_probe_expectations(&ed, bid, (0, 3), (4, 7, "foo"));
-}
-
-#[test]
-fn render_diff_word_diffs_a_hunk_with_no_word_spans() {
-    let (ed, _guard, bid, _dir) = render_probe_buffer(HUNK_WITHOUT_WORDS);
-    render_probe_expectations(&ed, bid, (4, 7), (8, 11, "QUX"));
 }
 
 /// Two changed lines, with a span only on the second of each side: the old

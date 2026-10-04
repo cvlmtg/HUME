@@ -17,7 +17,7 @@ use std::ops::Range;
 
 use ropey::RopeSlice;
 
-use hume_editing::changeset::ChangeHunk;
+use hume_editing::changeset::{ChangeHunk, text_hunk_words};
 use hume_editing::diff::{LineHunk, LineHunkKind, WordDiff, WordHunkKind, diff_lines, diff_words};
 use hume_editing::text::BufferText;
 use hume_rope::lines::line_token_content;
@@ -63,12 +63,14 @@ fn hunks(old: &BufferText, new: &BufferText) -> Vec<ChangeHunk> {
         .filter(|hunk| hunk.kind != LineHunkKind::Equal)
         .map(|hunk| {
             let LineHunk { old, new, .. } = hunk;
+            let old_lines = strip_newlines(&old_tokens, old.clone());
+            let new_lines = strip_newlines(&new_tokens, new.clone());
             ChangeHunk {
                 old_start: hume_rope::line::ContentLine::new(old.start),
                 new_start: hume_rope::line::ContentLine::new(new.start),
-                old_lines: strip_newlines(&old_tokens, old),
-                new_lines: strip_newlines(&new_tokens, new),
-                words: None,
+                words: text_hunk_words(&old_lines, &new_lines),
+                old_lines,
+                new_lines,
             }
         })
         .collect()

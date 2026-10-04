@@ -38,10 +38,10 @@ fn hunk(old_start: usize, new_start: usize, old: &[&str], new: &[&str]) -> Chang
         new_start: ContentLine::new(new_start),
         old_lines: strs(old),
         new_lines: strs(new),
-        words: Some(WordSpans {
+        words: WordSpans {
             old: Vec::new(),
             new: Vec::new(),
-        }),
+        },
     }
 }
 
@@ -54,7 +54,7 @@ fn span(line: usize, start: usize, end: usize) -> LineSpan {
 }
 
 fn with_words(mut h: ChangeHunk, old: Vec<LineSpan>, new: Vec<LineSpan>) -> ChangeHunk {
-    h.words = Some(WordSpans { old, new });
+    h.words = WordSpans { old, new };
     h
 }
 
@@ -212,4 +212,38 @@ fn a_whole_line_diff_revision_has_no_word_spans() {
     let (forward, _) = changesets_from_line_diff(&old, &new);
     let hunks = change_hunks(&forward, &old);
     assert_eq!(hunks, vec![hunk(1, 1, &["xyz"], &["two"])]);
+}
+
+#[test]
+fn text_hunk_words_marks_the_edit_not_the_unpaired_line() {
+    let words = text_hunk_words(
+        &strs(&["## core:plum", "", "**PLUM** a commands b"]),
+        &strs(&["**PLUM** a b"]),
+    );
+    assert_eq!(words.old, vec![span(2, 10, 19)]);
+    assert_eq!(words.new, Vec::new());
+}
+
+#[test]
+fn text_hunk_words_marks_both_sides_of_a_changed_word() {
+    let words = text_hunk_words(&strs(&["let x = 1;"]), &strs(&["let y = 1;"]));
+    assert_eq!(words.old, vec![span(0, 4, 5)]);
+    assert_eq!(words.new, vec![span(0, 4, 5)]);
+}
+
+#[test]
+fn text_hunk_words_is_empty_for_a_pure_insertion_or_deletion() {
+    let empty = WordSpans {
+        old: Vec::new(),
+        new: Vec::new(),
+    };
+    assert_eq!(text_hunk_words(&[], &strs(&["a b"])), empty);
+    assert_eq!(text_hunk_words(&strs(&["a b"]), &[]), empty);
+}
+
+#[test]
+fn text_hunk_words_splits_a_span_across_lines() {
+    let words = text_hunk_words(&strs(&["a one", "two b"]), &strs(&["a|b"]));
+    assert_eq!(words.old, vec![span(0, 1, 5), span(1, 0, 4)]);
+    assert_eq!(words.new, vec![span(0, 1, 2)]);
 }

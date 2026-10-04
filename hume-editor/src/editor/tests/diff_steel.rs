@@ -21,7 +21,8 @@ fn diff_lines_returns_zero_based_hunk_hashes() {
         tmp.path(),
         r#"(equal? (diff-lines "a\nb\nc\n" "a\nB\nc\n")
                    (list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
-                              'old-lines (list "b") 'new-lines (list "B"))))"#,
+                              'old-lines (list "b") 'new-lines (list "B")
+                              'words (hash 'old (list) 'new (list)))))"#,
     );
     assert!(fired, "diff-lines must return the expected hunk shape");
 }
@@ -47,7 +48,8 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
         tmp.path(),
         r#"(equal? (diff-buffer-lines bid "a\nB\nc\n")
                    (list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
-                              'old-lines (list "B") 'new-lines (list "b"))))"#,
+                              'old-lines (list "B") 'new-lines (list "b")
+                              'words (hash 'old (list) 'new (list)))))"#,
     );
     assert!(
         fired,
@@ -200,4 +202,24 @@ fn diff_words_returns_a_hunks_and_deadline_hit_hash() {
                          'deadline-hit #f))"#,
     );
     assert!(fired, "diff-words must return the expected hunk/pair shape");
+}
+
+/// A replaced hunk with more old lines than new ones marks the edited words
+/// on the line that holds them, not on the old line sharing the new line's index.
+#[test]
+fn diff_lines_words_follow_the_edit_across_uneven_sides() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r##"(equal? (hash-ref (car (diff-lines "# h\n\nkeep one two\n" "keep two\n")) 'words)
+                   (hash 'old (list (hash 'line 2 'start 4 'end 8)) 'new (list)))"##,
+    );
+    assert!(
+        fired,
+        "diff-lines must return the edit's span on its own line"
+    );
 }

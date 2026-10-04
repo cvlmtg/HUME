@@ -1,8 +1,8 @@
 # core:git-diff — Architecture
 
 The plugin is orchestration: state, debounce, git process management and decoration
-construction over two native builtins, `diff-buffer-lines` (line diff against a ref blob)
-and `diff-words` (word diff inside a changed line pair). Signs and inline rendering share
+construction over one native builtin, `diff-buffer-lines` (line diff against a ref blob,
+each hunk carrying its changed-word spans). Signs and inline rendering share
 one hunk store and one fetch/diff pipeline: the repo probe, ref fetch, line diff, debounce,
 ref-cache invalidation and the hunk-equality check that skips no-op refreshes. They differ
 only in the decoration construction (a `set-signs!` call, versus virtual lines, word spans
@@ -16,7 +16,7 @@ and a line tint).
 | `state.scm` | Per-buffer state (see below) |
 | `diff.scm` | Ref-content fetch and the native line-diff call, debounced per buffer (see `docs/pipeline.md`) |
 | `branch.scm` | Current-branch fetch, debounced per buffer, pushed to the statusline (see `docs/pipeline.md`) |
-| `render.scm` | Pure `hunks → decoration records` functions, one per rendering, and the `diff-words` calls that feed the inline records. The inline renderers take their decoration source as a parameter, so `plugin.scm`'s `git-diff/render-diff` command can draw another plugin's hunks (see `docs/rendering.md`) |
+| `render.scm` | Pure `hunks → decoration records` functions, one per rendering, and the word spans that feed the inline records. The inline renderers take their decoration source as a parameter, so `plugin.scm`'s `git-diff/render-diff` command can draw another plugin's hunks (see `docs/rendering.md`) |
 
 ## State (`state.scm`)
 

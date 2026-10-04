@@ -481,10 +481,10 @@ Two functions compute a line-level diff, useful for anything that shows what cha
 Splits both `old-text` and `new-text` into lines the same way HUME treats file content (every line ending becomes LF, and a missing trailing newline doesn't count as a change), then returns the list of hunks where they differ. Unchanged lines are left out entirely. Each hunk is:
 
 ```scheme
-(hash 'old-start s 'old-count n 'new-start s 'new-count n 'old-lines lines 'new-lines lines)
+(hash 'old-start s 'old-count n 'new-start s 'new-count n 'old-lines lines 'new-lines lines 'words spans)
 ```
 
-`'old-start`/`'new-start` are 0-based line numbers, `'old-count`/`'new-count` are how many lines the hunk covers on each side, and `'old-lines`/`'new-lines` are the line contents themselves (no trailing newline). A pure insertion has `'old-count` `0`; a pure deletion has `'new-count` `0`. Either way, the zero-count side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
+`'old-start`/`'new-start` are 0-based line numbers, `'old-count`/`'new-count` are how many lines the hunk covers on each side, and `'old-lines`/`'new-lines` are the line contents themselves (no trailing newline). Each hunk also has a `'words` entry, `(hash 'old spans 'new spans)`, naming the words that changed: a span is `(hash 'line 'start 'end)`, with `'line` counted from the hunk's first line on that side and `'start`/`'end` character columns in it, end exclusive. A span covering a whole line is left out. A pure insertion has `'old-count` `0`; a pure deletion has `'new-count` `0`. Either way, the zero-count side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
 
 ```scheme
 (diff-buffer-lines pane ref-text)

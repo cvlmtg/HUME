@@ -4,6 +4,7 @@ use hume_rope::lines::strip_line_break;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use super::{ChangeSet, EditedRegion};
+use crate::diff::{WordHunkKind, diff_words};
 use crate::text::BufferText;
 
 /// One run of changed lines between two texts, with 0-based starts. Lines
@@ -20,10 +21,8 @@ pub struct ChangeHunk {
     pub new_start: ContentLine,
     pub old_lines: Vec<String>,
     pub new_lines: Vec<String>,
-    /// `None` for a hunk that came from a text diff, which knows no spans.
-    /// Every hunk of a changeset carries `Some`, its lists empty when no
-    /// span lies strictly inside a line.
-    pub words: Option<WordSpans>,
+    /// Lists are empty when no span lies strictly inside a line.
+    pub words: WordSpans,
 }
 
 /// The text a changeset inserted (old side) and deleted (new side), by line.
@@ -163,11 +162,47 @@ fn group_hunk(
         new_start: ContentLine::new(new_start),
         old_lines: old_kept.iter().map(|l| (*l).to_owned()).collect(),
         new_lines: new_kept.iter().map(|l| (*l).to_owned()).collect(),
-        words: Some(WordSpans {
+        words: WordSpans {
             old: line_spans(&old_lines, &old_ranges, lead, old_kept.len()),
             new: line_spans(&new_lines, &new_ranges, lead, new_kept.len()),
-        }),
+        },
     })
+}
+
+/// Word spans for a hunk that came from a text diff: a word diff of the two
+/// sides joined by line breaks, so an edit is marked where it is whatever
+/// the line counts on either side. Empty when a side has no lines or the
+/// diff ran out of time.
+pub fn text_hunk_words(old_lines: &[String], new_lines: &[String]) -> WordSpans {
+    let none = WordSpans {
+        old: Vec::new(),
+        new: Vec::new(),
+    };
+    if old_lines.is_empty() || new_lines.is_empty() {
+        return none;
+    }
+    let diff = diff_words(&old_lines.join("\n"), &new_lines.join("\n"));
+    if diff.deadline_hit() {
+        return none;
+    }
+    let (mut old_ranges, mut new_ranges) = (Vec::new(), Vec::new());
+    for hunk in &diff.hunks {
+        match hunk.kind {
+            WordHunkKind::Equal => {}
+            WordHunkKind::Delete(_) => old_ranges.push((hunk.old.start, hunk.old.end)),
+            WordHunkKind::Insert(_) => new_ranges.push((hunk.new.start, hunk.new.end)),
+            WordHunkKind::Replace { .. } => {
+                old_ranges.push((hunk.old.start, hunk.old.end));
+                new_ranges.push((hunk.new.start, hunk.new.end));
+            }
+        }
+    }
+    let old_strs: Vec<&str> = old_lines.iter().map(String::as_str).collect();
+    let new_strs: Vec<&str> = new_lines.iter().map(String::as_str).collect();
+    WordSpans {
+        old: line_spans(&old_strs, &old_ranges, 0, old_strs.len()),
+        new: line_spans(&new_strs, &new_ranges, 0, new_strs.len()),
+    }
 }
 
 /// `s` split at its line breaks, without them. A trailing break ends the last

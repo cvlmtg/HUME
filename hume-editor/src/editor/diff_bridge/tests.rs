@@ -1,4 +1,22 @@
+use hume_editing::changeset::{LineSpan, WordSpans};
+use hume_rope::column::CharCol;
+
 use super::*;
+
+fn no_words() -> WordSpans {
+    WordSpans {
+        old: Vec::new(),
+        new: Vec::new(),
+    }
+}
+
+fn span(line: usize, start: usize, end: usize) -> LineSpan {
+    LineSpan {
+        line,
+        start: CharCol::new(start),
+        end: CharCol::new(end),
+    }
+}
 
 /// `LineHunkKind::Equal` runs are filtered out. An all-equal hunk here would
 /// make every plugin decorate the whole file as changed.
@@ -19,7 +37,7 @@ fn pure_insert_is_zero_based_with_no_old_side() {
             new_start: hume_rope::line::ContentLine::new(1),
             old_lines: vec![],
             new_lines: vec!["x".to_string()],
-            words: None,
+            words: no_words(),
         }]
     );
 }
@@ -35,7 +53,7 @@ fn pure_delete_is_zero_based_with_no_new_side() {
             new_start: hume_rope::line::ContentLine::new(1),
             old_lines: vec!["x".to_string()],
             new_lines: vec![],
-            words: None,
+            words: no_words(),
         }]
     );
 }
@@ -51,7 +69,7 @@ fn replace_carries_both_sides() {
             new_start: hume_rope::line::ContentLine::new(1),
             old_lines: vec!["b".to_string()],
             new_lines: vec!["B".to_string()],
-            words: None,
+            words: no_words(),
         }]
     );
 }
@@ -68,7 +86,7 @@ fn multi_line_delete_rebuilds_lines_by_slicing_the_tokenized_input() {
             new_start: hume_rope::line::ContentLine::new(1),
             old_lines: vec!["x".to_string(), "y".to_string()],
             new_lines: vec![],
-            words: None,
+            words: no_words(),
         }]
     );
 }
@@ -102,7 +120,10 @@ fn line_hunks_treats_non_lf_unicode_breaks_as_content() {
             new_start: hume_rope::line::ContentLine::new(0),
             old_lines: vec!["a\u{0C}b".to_string()],
             new_lines: vec!["x\u{0C}b".to_string()],
-            words: None,
+            words: WordSpans {
+                old: vec![span(0, 0, 1)],
+                new: vec![span(0, 0, 1)],
+            },
         }]
     );
 }
@@ -120,7 +141,7 @@ fn line_hunks_normalizes_bare_cr_to_a_line_break() {
             new_start: hume_rope::line::ContentLine::new(0),
             old_lines: vec!["a".to_string()],
             new_lines: vec!["x".to_string()],
-            words: None,
+            words: no_words(),
         }]
     );
 }
@@ -231,4 +252,19 @@ fn word_hunks_with_deadline_forwards_the_timeout_flag() {
     assert!(forced, "a zero deadline must report deadline_hit");
     let (_, default) = word_hunks(&old, &new);
     assert!(!default, "the default deadline must complete on this input");
+}
+
+/// A text hunk's spans mark the edit itself, not the line it happens to
+/// share an index with on the other side.
+#[test]
+fn replace_hunk_spans_follow_the_edit_across_uneven_sides() {
+    let hunks = line_hunks("# h\n\nkeep one two\n", "keep two\n");
+    assert_eq!(hunks.len(), 1);
+    assert_eq!(
+        hunks[0].words,
+        WordSpans {
+            old: vec![span(2, 4, 8)],
+            new: Vec::new(),
+        }
+    );
 }

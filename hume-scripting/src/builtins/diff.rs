@@ -71,31 +71,33 @@ fn hunks_to_steel(hunks: Vec<ChangeHunk>) -> SteelVal {
     list_of(hunks.into_iter().map(hunk_to_steel))
 }
 
-/// `'words`, present only on a hunk that came from a changeset: `(hash 'old (list
-/// span …) 'new (list span …))`, each span `(hash 'line 'start 'end)`, `'line`
+/// `'words`: `(hash 'old (list span …) 'new (list span …))`, each span `(hash 'line 'start 'end)`, `'line`
 /// counted from the hunk's first line on that side and `'start`/`'end` char
 /// columns in it, end exclusive.
 fn hunk_to_steel(hunk: ChangeHunk) -> SteelVal {
     let old_count = hunk.old_lines.len();
     let new_count = hunk.new_lines.len();
-    let mut fields = vec![
+    symbol_hash([
         ("old-start", SteelVal::IntV(hunk.old_start.index() as isize)),
         ("old-count", SteelVal::IntV(old_count as isize)),
         ("new-start", SteelVal::IntV(hunk.new_start.index() as isize)),
         ("new-count", SteelVal::IntV(new_count as isize)),
         ("old-lines", string_list(hunk.old_lines)),
         ("new-lines", string_list(hunk.new_lines)),
-    ];
-    if let Some(words) = hunk.words {
-        fields.push((
+        (
             "words",
             symbol_hash([
-                ("old", list_of(words.old.into_iter().map(span_to_steel))),
-                ("new", list_of(words.new.into_iter().map(span_to_steel))),
+                (
+                    "old",
+                    list_of(hunk.words.old.into_iter().map(span_to_steel)),
+                ),
+                (
+                    "new",
+                    list_of(hunk.words.new.into_iter().map(span_to_steel)),
+                ),
             ]),
-        ));
-    }
-    symbol_hash(fields)
+        ),
+    ])
 }
 
 fn span_to_steel(span: LineSpan) -> SteelVal {

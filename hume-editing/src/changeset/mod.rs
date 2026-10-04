@@ -827,7 +827,7 @@ mod diff_cs;
 pub use diff_cs::changesets_from_line_diff;
 
 mod hunks;
-pub use hunks::{ChangeHunk, LineSpan, WordSpans, change_hunks};
+pub use hunks::{ChangeHunk, LineSpan, WordSpans, change_hunks, text_hunk_words};
 
 #[cfg(test)]
 mod tests;
