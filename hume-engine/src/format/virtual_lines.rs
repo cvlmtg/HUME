@@ -37,7 +37,7 @@ pub(crate) fn format_virtual_lines(
         let mut wrap = WrapState::start(
             owner,
             wrap_mode,
-            hume_rope::width::indent_depth(&vl.text, tab_width),
+            || hume_rope::width::indent_depth(&vl.text, tab_width),
             tab_width,
             &mut out.display_lines,
             out.graphemes.len(),

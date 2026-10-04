@@ -77,7 +77,7 @@ pub fn format_buffer_line(
     let mut wrap = WrapState::start(
         WrapOwner::Buffer(line_idx),
         wrap_mode,
-        indent_depth,
+        || indent_depth,
         tab_width,
         lines_out,
         graphemes_out.len(),
@@ -445,12 +445,13 @@ struct WrapState {
 
 impl WrapState {
     /// State for a line starting at `graphemes_len`, with its first display
-    /// line already pushed onto `lines_out` (closed later). `indent_depth` is
-    /// the indent of the text being wrapped, which `Indent` mode continues at.
+    /// line already pushed onto `lines_out` (closed later). `indent_depth` yields
+    /// the indent of the text being wrapped, which `Indent` mode continues at;
+    /// it runs only under that mode.
     fn start(
         owner: WrapOwner,
         wrap_mode: &WrapMode,
-        indent_depth: u8,
+        indent_depth: impl FnOnce() -> u8,
         tab_width: u8,
         lines_out: &mut Vec<DisplayLine>,
         graphemes_len: usize,
@@ -468,7 +469,7 @@ impl WrapState {
             wrap_width: wrap_mode.wrap_width().map(u32::from),
             continuation_col: if matches!(wrap_mode, WrapMode::Indent { .. }) {
                 DisplayLineCol::new(hume_rope::width::indent_stop(
-                    indent_depth as u32,
+                    indent_depth() as u32,
                     tab_width,
                 ))
             } else {
