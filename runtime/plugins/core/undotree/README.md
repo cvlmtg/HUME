@@ -96,11 +96,12 @@ The rows are re-rendered in place, keeping the highlight on the same revision
 number, or on the current revision when that number is gone or the tree
 belongs to a different buffer.
 
-- After a jump, through the next item: the jump moves the current revision,
-  so the `@` follows within the debounce.
-- On `on-undo-history-changed` for the session's buffer, debounced 150 ms. That
-  event also fires for an undo whose net change to the text is nothing, which
-  `on-text-changed` would miss.
+- After a jump, through the next item: the jump moves the current revision.
+- On `on-undo-history-changed` for the session's buffer. The editor runs that
+  hook before it draws the next frame, so the text change, the `@` and the
+  revision diff appear together. The event fires once per revision change, not
+  per typed key, and also for an undo whose net change to the text is nothing,
+  which `on-text-changed` would miss.
 - Every 60 seconds while the session is open, so the ages keep up with the
   clock. The timer is cancelled when the session ends.
 - On `on-buffer-enter` for another buffer, which retargets the session to the

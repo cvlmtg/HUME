@@ -378,6 +378,54 @@ fn undotree_enter_redraws_the_diff_for_the_revision_jumped_to() {
     assert_eq!(ed.doc().text().to_string(), "ello\n");
 }
 
+/// The jump's text change and its diff land in one settle, so no frame shows
+/// the new text under the previous revision's diff.
+#[test]
+fn undotree_enter_draws_the_jumped_to_revisions_diff_in_the_same_settle() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_git_diff(tmp.path());
+    two_branches(&mut ed);
+    let bid = ed.focused_buffer_id();
+    toggle(&mut ed);
+
+    ed.handle_key(key_shift_down());
+    ed.handle_key(key_enter());
+    ed.settle();
+
+    assert_eq!(ed.doc().text().to_string(), "ello\n");
+    assert_eq!(
+        diff_vlines(&ed, bid),
+        vec![(0, true, "hello".to_string(), vec![(0, 1)])]
+    );
+}
+
+/// From the root, `U` redoes into rev2 ("hllo"): its diff and the `@` on its
+/// row appear in the same settle as the redo.
+#[test]
+fn undotree_redo_in_buffer_redraws_diff_and_marker_in_the_same_settle() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_git_diff(tmp.path());
+    two_branches(&mut ed);
+    ed.feed_key(key('u'));
+    ed.settle();
+    let bid = ed.focused_buffer_id();
+    toggle(&mut ed);
+    assert!(
+        diff_vlines(&ed, bid).is_empty(),
+        "setup: the root has no diff"
+    );
+
+    ed.feed_key(key('U'));
+    ed.settle();
+
+    assert_eq!(ed.doc().text().to_string(), "hllo\n");
+    assert_eq!(
+        diff_vlines(&ed, bid),
+        vec![(0, true, "hello".to_string(), vec![(1, 2)])]
+    );
+    assert!(drawer_rows(&ed)[0].contains('@'));
+}
+
 #[test]
 fn undotree_root_has_no_diff() {
     let tmp = safe_tempdir();

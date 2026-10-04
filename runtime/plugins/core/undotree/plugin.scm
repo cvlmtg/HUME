@@ -139,17 +139,11 @@
 
 ;; ── Hooks ────────────────────────────────────────────────────────────────────
 
-(define undotree/refresh-later
-  (debounce 150
-            (lambda ()
-              (when undotree/*session*
-                (undotree/show! (undotree/session-pane))))))
-
 (register-hook! 'on-undo-history-changed
   (lambda (pane)
     (when (and undotree/*session*
                (equal? (buffer-key pane) (hash-ref undotree/*session* 'key)))
-      (undotree/refresh-later))))
+      (undotree/show! (undotree/session-pane)))))
 
 (register-hook! 'on-buffer-enter
   (lambda (pane)
