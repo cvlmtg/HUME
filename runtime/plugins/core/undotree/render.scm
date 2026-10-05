@@ -13,8 +13,11 @@
 ;; ── Lanes ────────────────────────────────────────────────────────────────────
 
 (define (undotree/lanes-waiting-for lanes id)
-  (filter (lambda (i) (equal? (list-ref lanes i) id))
-          (range 0 (length lanes))))
+  (let loop ([lanes lanes] [i 0] [found '()])
+    (cond
+      [(null? lanes) (reverse found)]
+      [(equal? (car lanes) id) (loop (cdr lanes) (+ i 1) (cons i found))]
+      [else (loop (cdr lanes) (+ i 1) found)])))
 
 (define (undotree/first-free-lane lanes)
   (let ([free (undotree/lanes-waiting-for lanes #f)])
@@ -26,34 +29,36 @@
       (reverse rev)))
 
 (define (undotree/advance-lanes lanes column merging parent)
-  (undotree/trim-reversed
-   (reverse
-    (map (lambda (i)
-           (cond
-             [(= i column) parent]
-             [(member i merging) #f]
-             [else (list-ref lanes i)]))
-         (range 0 (length lanes))))))
+  (let loop ([lanes lanes] [i 0] [rev '()])
+    (if (null? lanes)
+        (undotree/trim-reversed rev)
+        (loop (cdr lanes) (+ i 1)
+              (cons (cond
+                      [(= i column) parent]
+                      [(member i merging) #f]
+                      [else (car lanes)])
+                    rev)))))
 
 ;; ── Graph cells ──────────────────────────────────────────────────────────────
 
-(define (undotree/graph-cell lanes i column merging)
+(define (undotree/graph-cell lane i column merging)
   (cond
     [(= i column) "o"]
     [(member i merging) "'"]
-    [(list-ref lanes i) "|"]
+    [lane "|"]
     [else " "]))
 
-(define (undotree/graph-gap i column merging)
-  (if (and (pair? merging) (<= column i) (< i (apply max merging))) "-" " "))
-
 (define (undotree/graph-row lanes column merging)
-  (let ([end (- (length lanes) 1)])
-    (apply string-append
-           (map (lambda (i)
-                  (string-append (undotree/graph-cell lanes i column merging)
-                                 (if (< i end) (undotree/graph-gap i column merging) "")))
-                (range 0 (length lanes))))))
+  (let ([bus-end (if (pair? merging) (apply max merging) column)])
+    (let loop ([lanes lanes] [i 0] [rev '()])
+      (if (null? lanes)
+          (apply string-append (reverse rev))
+          (let ([cell (undotree/graph-cell (car lanes) i column merging)])
+            (loop (cdr lanes) (+ i 1)
+                  (cond
+                    [(null? (cdr lanes)) (cons cell rev)]
+                    [(and (<= column i) (< i bus-end)) (cons "-" (cons cell rev))]
+                    [else (cons " " (cons cell rev))])))))))
 
 ;;; See README.md's "Graph".
 (define (undotree/layout nodes lanes laid-out)
