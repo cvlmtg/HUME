@@ -10,7 +10,8 @@
 //! waker wraps `termina::PlatformWaker::wake`, which interrupts a blocked
 //! `EventReader::poll`), so there is nothing to poll for. The parse worker
 //! accordingly contributes no `AsyncSource`; it has no deadline of its
-//! own, only arrival-driven wakes. A picker's spawned line source follows
+//! own, only arrival-driven wakes, and its results are installed by
+//! `Editor::settle` after the pending-work drain, not here. A picker's spawned line source follows
 //! the same shape: `drain_picker_source` (`picker_source.rs`) has no
 //! matching `AsyncSource` entry, only a drain call from
 //! `drain_async_sources` below. `spawn-async!`'s jobs (`async_job.rs`) are
@@ -55,7 +56,6 @@ impl Editor {
     /// `Editor::settle`, once per call and outside its `pending_work`
     /// fixpoint; see that function's doc for why.
     pub(super) fn drain_async_sources(&mut self) {
-        self.reparse_stale_buffers();
         self.drain_due_timers();
         self.drain_lsp();
         self.drain_picker_source();

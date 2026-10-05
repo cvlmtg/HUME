@@ -114,8 +114,9 @@ impl Editor {
 
     /// Reparse any visible buffer whose text has changed since the last parse.
     ///
-    /// Called from `Editor::settle` (via `drain_async_sources`), which runs
-    /// before `prepare_frame` and thus before `update_highlight_providers`. Detaches
+    /// Called last in `Editor::settle`, after the pending-work drain, so a
+    /// text change a queued call made is carried into the tree before
+    /// `prepare_frame` and `update_highlight_providers` read it. Detaches
     /// syntax from a buffer that has grown past `syntax-highlight-max-bytes`.
     ///
     /// Non-blocking: drains any completed backend results, then for each
@@ -127,7 +128,7 @@ impl Editor {
     /// event): that one only runs on the `Ok(true)` branch of `poll`, i.e.
     /// when an actual event is about to be read. A parse-worker wake with
     /// *no* event pending takes `poll`'s `Ok(false)` branch straight back to
-    /// `settle()`. This function, via `drain_async_sources`, is the only
+    /// `settle()`. This function, via `settle`, is the only
     /// place that result ever gets installed. Skip the drain here and a
     /// buffer whose async parse finishes while the user is idle (a large
     /// file just opened, a slow injected-layer grammar, an LSP edit with no

@@ -265,9 +265,11 @@ impl Editor {
         });
     }
 
-    /// Advance editor state to quiescence: drain completed async work (parse
-    /// results, LSP responses, timer fires: `drain_async_sources`), then
-    /// drain `state.config.pending_work` to a fixpoint.
+    /// Advance editor state to quiescence: drain completed async work (LSP
+    /// responses, timer fires: `drain_async_sources`), drain
+    /// `state.config.pending_work` to a fixpoint, then install finished
+    /// parses and bring every visible buffer's syntax tree up to its text
+    /// (`reparse_stale_buffers`).
     ///
     /// This is the single consumer of the merged work queue: a
     /// `Call` (an `lsp-request!` callback, a timer thunk, a prompt/menu/
@@ -298,6 +300,11 @@ impl Editor {
             // doc.
             self.state.message_logged_this_input = false;
         }
+        // Last, after every queued call: one can change a buffer's text (a
+        // drawer's `on-select` running `goto-revision!`, a timer, an LSP
+        // callback), and the frame drawn next must not highlight that text
+        // at the old tree's offsets.
+        self.reparse_stale_buffers();
     }
 
     /// Fixpoint over `state.config.pending_work` only, with no async sources.

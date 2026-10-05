@@ -413,3 +413,47 @@ fn an_edit_spanning_several_text_versions_keeps_the_pending_edit_chain_linked() 
         "the chain must not break"
     );
 }
+
+/// A text change made by a queued Steel call (here a timer's) lands inside
+/// `settle` after the per-frame reparse already ran. The frame drawn after
+/// that `settle` must still see the committed tree carried to the new text,
+/// or every highlight past the edit is drawn at its old offset.
+#[test]
+fn an_edit_from_a_queued_steel_call_is_carried_into_the_tree_before_the_frame() {
+    require_grammars(&["json"]);
+    let original = "{\"x\": 1}\n";
+    let (mut ed, bid) = json_editor(original);
+    ed.feed_key(key('d'));
+    reparse_edit(&mut ed);
+    assert_ne!(
+        ed.doc().text().to_string(),
+        original,
+        "setup: an edit to undo"
+    );
+    let tmp = safe_tempdir();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "back" "" (lambda (pane)
+             (after! 0 (lambda () (goto-revision! pane 0)))))"#,
+    );
+    type_cmd(&mut ed, ":back");
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while ed.doc().text().to_string() != original {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the timer never fired"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        ed.settle();
+    }
+
+    let buf = ed.state.buffers.get(bid);
+    let syn = buf.syntax.as_ref().unwrap();
+    assert_eq!(
+        syn.tree_gen(),
+        buf.text().generation(),
+        "the committed tree is carried to the text the frame will draw"
+    );
+}
