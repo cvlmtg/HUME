@@ -1021,3 +1021,59 @@ fn undotree_ages_refresh_while_the_drawer_is_open() {
         drawer_rows(ed).iter().all(|row| row.ends_with(" 1s"))
     });
 }
+
+fn setup_with_foreign_drawer(tmp: &Path) -> (Editor, RealRuntimeGuard) {
+    let guard = RealRuntimeGuard::new();
+    let mut ed = editor_from("-[h]>ello\n");
+    let source = format!(
+        r#"{}
+(define-command! "foreign-drawer" "Open an unrelated drawer."
+  (lambda (pane)
+    (show-drawer-list! pane (list "foreign") (lambda (i) (begin)))))"#,
+        hume_scripting::eager_load_scm("core:undotree", None)
+    );
+    run(&mut ed, tmp, &source);
+    ed.settle();
+    (ed, guard)
+}
+
+fn open_foreign_drawer(ed: &mut Editor) {
+    ed.execute_keymap_command("foreign-drawer".to_string().into(), None, false);
+}
+
+/// Another feature's drawer replaces the tree's; the history change that
+/// follows must leave the foreign rows alone.
+#[test]
+fn undotree_session_ends_when_another_drawer_replaces_it() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_foreign_drawer(tmp.path());
+    toggle(&mut ed);
+    open_foreign_drawer(&mut ed);
+    ed.settle();
+    assert_eq!(drawer_rows(&ed), ["foreign"]);
+
+    ed.feed_key(key('d'));
+    ed.settle();
+    render(&mut ed);
+
+    assert_eq!(drawer_rows(&ed), ["foreign"]);
+}
+
+/// The replaced drawer's `#f` is still queued when the toggle opens a new
+/// tree: the new session must survive it and keep following history.
+#[test]
+fn undotree_new_session_survives_the_replaced_drawers_queued_close() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_foreign_drawer(tmp.path());
+    toggle(&mut ed);
+    open_foreign_drawer(&mut ed);
+    toggle(&mut ed);
+    ed.settle();
+    assert_eq!(drawer_rows(&ed).len(), 1, "setup: the new tree is open");
+
+    ed.feed_key(key('d'));
+    ed.settle();
+    render(&mut ed);
+
+    assert_eq!(drawer_rows(&ed).len(), 2, "the new session saw the edit");
+}

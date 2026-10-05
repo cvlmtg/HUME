@@ -6,7 +6,6 @@
 ;; See README.md's "Session".
 
 (define undotree/*session* #f)
-(define undotree/*next-id* 0)
 
 ;; See README.md's "Refresh".
 (define undotree/*age-timer* #f)
@@ -39,34 +38,34 @@
     (when session
       (undotree/clear-diff! (hash-ref session 'pane)))))
 
-(define (undotree/session-is? id)
-  (and undotree/*session* (equal? (hash-ref undotree/*session* 'id) id)))
+(define (undotree/session-drawer? drawer)
+  (and undotree/*session* (equal? (hash-ref undotree/*session* 'drawer) drawer)))
 
 (define (undotree/session-buffer? pane)
   (equal? (buffer-key pane) (buffer-key (hash-ref undotree/*session* 'pane))))
 
-(define (undotree/arm-age-timer! id secs)
+(define (undotree/arm-age-timer! drawer secs)
   (when undotree/*age-timer*
     (cancel-timer! undotree/*age-timer*))
   (set! undotree/*age-timer*
         (after! (* secs 1000)
                 (lambda ()
-                  (when (undotree/session-is? id)
+                  (when (undotree/session-drawer? drawer)
                     (undotree/show!))))))
 
 ;;; Makes `drawer`, which shows `pane`'s freshly rendered tree, the session.
 ;;; The session is stored before the diff is drawn, so a raising renderer
 ;;; leaves it matching the drawer.
-(define (undotree/commit! id drawer pane rendered)
+(define (undotree/commit! drawer pane rendered)
   (let* ([previous undotree/*session*]
          [node (hash-ref rendered 'current-node)]
          [revision (and (undotree/diff-available?) (hash-ref node 'id))]
          [same-buffer? (and previous
                             (equal? (buffer-key pane) (buffer-key (hash-ref previous 'pane))))])
     (set! undotree/*session*
-          (hash 'id id 'drawer drawer 'pane pane 'nodes (hash-ref rendered 'nodes)
+          (hash 'drawer drawer 'pane pane 'nodes (hash-ref rendered 'nodes)
                 'drawn revision))
-    (undotree/arm-age-timer! id (hash-ref rendered 'next-change-secs))
+    (undotree/arm-age-timer! drawer (hash-ref rendered 'next-change-secs))
     (when (and previous (not same-buffer?))
       (undotree/clear-diff! (hash-ref previous 'pane)))
     (when (and revision
@@ -78,10 +77,16 @@
 (define (undotree/row-id nodes idx)
   (hash-ref (list-ref nodes idx) 'id))
 
-(define (undotree/on-select id)
+;;; `key` is the buffer `nodes` were rendered for. A `#f` also arrives when
+;;; another drawer replaced this one, so it ends the session only once the
+;;; session's own drawer is gone.
+(define (undotree/on-select key nodes)
   (lambda (idx)
-    (when (undotree/session-is? id)
-      (if idx (undotree/jump! idx) (undotree/end-session!)))))
+    (when undotree/*session*
+      (cond
+        [idx (undotree/jump! key (list-ref nodes idx))]
+        [(not (drawer-selected-index (hash-ref undotree/*session* 'drawer)))
+         (undotree/end-session!)]))))
 
 ;;; Re-renders the focused pane's tree into the open drawer. See README.md's "Refresh".
 (define (undotree/show!)
@@ -98,28 +103,26 @@
                             (undotree/row-index (lambda (node) (equal? (hash-ref node 'id) wanted))
                                                 nodes)))]
                [highlight (or kept (hash-ref rendered 'current))])
-          (if (update-drawer-list! drawer nodes (undotree/on-select (hash-ref session 'id)) highlight
+          (if (update-drawer-list! drawer nodes (undotree/on-select (buffer-key pane) nodes) highlight
                                    #:render (hash-ref rendered 'render))
-              (undotree/commit! (hash-ref session 'id) drawer pane rendered)
+              (undotree/commit! drawer pane rendered)
               (undotree/end-session!))))))
 
-(define (undotree/jump! idx)
+(define (undotree/jump! key node)
   (let ([pane (focused-pane)])
-    (if (undotree/session-buffer? pane)
-        (goto-revision! pane (undotree/row-id (hash-ref undotree/*session* 'nodes) idx))
+    (if (equal? (buffer-key pane) key)
+        (goto-revision! pane (hash-ref node 'id))
         (undotree/show!))))
 
 (define (undotree/open! pane)
   (undotree/end-session!)
-  (set! undotree/*next-id* (+ undotree/*next-id* 1))
-  (let* ([id undotree/*next-id*]
-         [rendered (undotree/render (buffer-undo-tree pane))]
+  (let* ([rendered (undotree/render (buffer-undo-tree pane))]
          [drawer (show-drawer-list! (focused-pane) (hash-ref rendered 'nodes)
-                                    (undotree/on-select id)
+                                    (undotree/on-select (buffer-key pane) (hash-ref rendered 'nodes))
                                     #:selected (hash-ref rendered 'current)
                                     #:render (hash-ref rendered 'render))])
     (when drawer
-      (undotree/commit! id drawer pane rendered)
+      (undotree/commit! drawer pane rendered)
       (unless (undotree/diff-available?)
         (log! 'info "undotree: load core:git-diff to see what each revision changed")))))
 

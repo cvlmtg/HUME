@@ -22,7 +22,6 @@
 
 ;; The open list's session, or #f: one at a time, since the drawer is one slot.
 (define lsp/*locations* #f)
-(define lsp/*locations-next-id* 0)
 
 (define (lsp/end-locations-session!)
   (when lsp/*locations*
@@ -35,11 +34,12 @@
     (lsp/end-locations-session!)
     (log! 'info message)))
 
-(define (lsp/locations-on-select id locs)
+(define (lsp/locations-on-select locs)
   (lambda (idx)
     (cond
       (idx (goto-location! (focused-pane) (list-ref locs idx)))
-      ((and lsp/*locations* (equal? (hash-ref lsp/*locations* 'id) id))
+      ((and lsp/*locations*
+            (not (drawer-selected-index (hash-ref lsp/*locations* 'drawer))))
        (lsp/end-locations-session!)))))
 
 (define (lsp/location-line-counts pane parts)
@@ -57,15 +57,13 @@
 (define (lsp/show-locations! pane tracked locs method shape not-found)
   (lsp/end-locations-session!)
   (let ((parts (lsp-locations->display-parts locs)))
-    (set! lsp/*locations-next-id* (+ lsp/*locations-next-id* 1))
-    (let* ((id lsp/*locations-next-id*)
-           (drawer (show-drawer-list! (focused-pane) (map lsp/location-display parts)
-                                      (lsp/locations-on-select id locs))))
+    (let ((drawer (show-drawer-list! (focused-pane) (map lsp/location-display parts)
+                                     (lsp/locations-on-select locs))))
       (when drawer
         (let ((counts (lsp/location-line-counts pane parts)))
           (keep-tracked-position! tracked)
           (set! lsp/*locations*
-                (hash 'id id 'drawer drawer 'tracked tracked 'pane pane
+                (hash 'drawer drawer 'tracked tracked 'pane pane
                       'method method 'shape shape 'not-found not-found 'seq 0
                       'counts counts)))))))
 
@@ -79,15 +77,15 @@
         (let* ((parts (lsp-locations->display-parts locs))
                (idx (min selected (- (length parts) 1))))
           (if (update-drawer-list! drawer (map lsp/location-display parts)
-                                   (lsp/locations-on-select (hash-ref session 'id) locs) idx)
+                                   (lsp/locations-on-select locs) idx)
               (set! lsp/*locations*
                     (hash-insert session 'counts
                                  (lsp/location-line-counts (hash-ref session 'pane) parts)))
               (lsp/end-locations-session!))))))
 
-(define (lsp/apply-locations! id seq err res)
+(define (lsp/apply-locations! drawer seq err res)
   (let ((session lsp/*locations*))
-    (when (and session (equal? (hash-ref session 'id) id) (= (hash-ref session 'seq) seq))
+    (when (and session (equal? (hash-ref session 'drawer) drawer) (= (hash-ref session 'seq) seq))
       (cond
         (err (lsp/report-error! "locations" err))
         (else
@@ -104,11 +102,11 @@
       (if (not params)
           (lsp/end-locations-session!)
           (let ((seq (+ 1 (hash-ref session 'seq)))
-                (id (hash-ref session 'id)))
+                (drawer (hash-ref session 'drawer)))
             (set! lsp/*locations* (hash-insert session 'seq seq))
             (lsp-request! (hash-ref session 'pane) (hash-ref session 'method)
                           ((hash-ref session 'shape) params)
-                          (lambda (err res) (lsp/apply-locations! id seq err res))
+                          (lambda (err res) (lsp/apply-locations! drawer seq err res))
                           #:allow-stale #t #:supersede "lsp-locations"))))))
 
 (define lsp/refresh-locations (debounce 300 lsp/refresh-locations!))

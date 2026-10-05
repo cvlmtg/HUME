@@ -102,15 +102,14 @@ are the units `:earlier` and `:later` accept.
 
 ## Session
 
-One session at a time, since the drawer is one slot: a hash of an id, the
-drawer token, the pane the tree was last read from, the revision id behind each
-row, and the revision diff last drawn. Every refresh reads the focused pane and
+One session at a time, since the drawer is one slot: a hash of the drawer
+token, the pane the tree was last read from, the revision id behind each row,
+and the revision diff last drawn. Every refresh reads the focused pane and
 replaces the hash in one step, before it draws the diff, so an error from the
-renderer leaves a session that matches the drawer. The id guards every drawer
-callback. A
-callback from a drawer the session has since replaced finds a different id
-and does nothing. Esc, or another feature opening its own drawer, delivers
-`#f` to the callback and ends the session.
+renderer leaves a session that matches the drawer. Esc, or another feature
+opening its own drawer, delivers `#f` to the callback. The session ends only
+when its own drawer is no longer open, so the `#f` of a drawer this session
+replaced does nothing. Enter acts on the rows its drawer was last given.
 
 `goto-revision!` raises for a read-only buffer, and the error reaches the user
 as any Steel error does; the session stays open.

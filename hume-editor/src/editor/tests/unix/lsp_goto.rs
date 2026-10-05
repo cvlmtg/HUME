@@ -803,3 +803,26 @@ fn an_opened_drawer_keeps_the_tracked_position() {
     assert_eq!(drawer_rows(&ed).len(), 2);
     assert_eq!(ed.state.panes.tracked.len(), 1);
 }
+
+/// A second list replaces the first drawer, whose `#f` is delivered after
+/// the new session is stored: the new session keeps its tracked position.
+#[test]
+fn a_second_list_keeps_its_session_when_the_replaced_drawer_closes() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        for _ in 0..2 {
+            backend.respond_to(
+                "textDocument/definition",
+                serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4)]),
+            );
+        }
+    });
+
+    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, ":lsp-goto-definition");
+
+    assert_eq!(drawer_rows(&ed).len(), 2);
+    assert_eq!(ed.state.panes.tracked.len(), 1);
+}
