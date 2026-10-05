@@ -13,14 +13,16 @@ use termina::event::KeyEvent;
 use hume_engine::types::TruncateEnd;
 
 use crate::SteelCtx;
-use crate::host::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind};
+use crate::host::{
+    DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
+};
 use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, callable_arg, list_items, list_to_i32s, list_to_strings, optional_path_arg,
-    optional_string_arg, pair_fields, single_key_arg, string_arg, symbol_enum_arg, token_arg,
-    token_or_false, usize_arg,
+    bool_arg, callable_arg, list_items, list_to_i32s, list_to_strings, optional_callable_arg,
+    optional_path_arg, optional_string_arg, pair_fields, single_key_arg, string_arg,
+    symbol_enum_arg, token_arg, token_or_false, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -97,9 +99,9 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(%show-drawer-list! pane items on-select selected)`, behind
-/// `show-drawer-list!`'s `#:selected` keyword wrapper. `selected` is clamped
-/// into `items`. Errors on empty `items`; callers close (or never open)
+/// `(%show-drawer-list! pane items on-select selected render)`, behind
+/// `show-drawer-list!`'s `#:selected`/`#:render` keyword wrapper (see
+/// [`drawer_items`] for `render`). `selected` is clamped into `items`. Errors on empty `items`; callers close (or never open)
 /// instead. Returns a token scoping
 /// `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this
 /// drawer, same shape as `picker!`'s own return, or `#f` when the request
@@ -112,8 +114,9 @@ pub(crate) fn show_drawer_list(
     items: SteelVal,
     on_select: SteelVal,
     selected: SteelVal,
+    render: SteelVal,
 ) -> SteelResult {
-    let items = list_to_strings(items, "show-drawer-list! items")?;
+    let items = drawer_items(items, render, "show-drawer-list!")?;
     let selected = usize_arg(selected, "show-drawer-list! selected")?;
     let token = require_cap(ctx.host.ui(), "show-drawer-list!")?
         .show_drawer_list(pane, items, on_select, selected)
@@ -130,8 +133,9 @@ pub(crate) fn close_drawer(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(update-drawer-list! token items on-select selected)`: no keyword
-/// defaults, so this registers directly. Replaces the open drawer's rows in
+/// `(%update-drawer-list! token items on-select selected render)`, behind
+/// `update-drawer-list!`'s `#:render` keyword wrapper (see [`drawer_items`]
+/// for `render`). Replaces the open drawer's rows in
 /// place, keeping the browse session; `selected` is clamped into the new
 /// list. Returns whether the update applied: `#f` when no drawer is open
 /// or `token` doesn't match the open drawer's own (an expected-normal race,
@@ -143,13 +147,29 @@ pub(crate) fn update_drawer_list(
     items: SteelVal,
     on_select: SteelVal,
     selected: SteelVal,
+    render: SteelVal,
 ) -> SteelResult {
     let token = token_arg(token, "update-drawer-list! token")?;
-    let items = list_to_strings(items, "update-drawer-list! items")?;
+    let items = drawer_items(items, render, "update-drawer-list!")?;
     let selected = usize_arg(selected, "update-drawer-list! selected")?;
     let applied = require_cap(ctx.host.ui(), "update-drawer-list!")?
         .update_drawer_list(token, items, on_select, selected);
     Ok(SteelVal::BoolV(applied))
+}
+
+/// A drawer's `items`: strings when `render` is `#f`, otherwise opaque keys
+/// rendered on demand by the `render` proc.
+fn drawer_items(items: SteelVal, render: SteelVal, builtin: &str) -> Result<DrawerItems, SteelErr> {
+    let items_name = format!("{builtin} items");
+    Ok(
+        match optional_callable_arg(render, &format!("{builtin} render"))? {
+            None => DrawerItems::Rows(list_to_strings(items, &items_name)?),
+            Some(render) => DrawerItems::Keys {
+                keys: list_items(items, &items_name)?,
+                render,
+            },
+        },
+    )
 }
 
 /// `(drawer-selected-index token)`: the open drawer's selected row, or

@@ -966,7 +966,11 @@ fn click_under_drawer_falls_through_leaving_it_open() {
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
     ed.state.push_layer(
         &ed.view,
-        DrawerLayer::new(vec!["d0".to_string()], marker("drawer-cb"), 0),
+        DrawerLayer::new(
+            hume_scripting::host::DrawerItems::Rows(vec!["d0".to_string()]),
+            marker("drawer-cb"),
+            0,
+        ),
     );
 
     ed.handle_input(mouse_left_down(3, 0));
@@ -990,7 +994,11 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
         ));
     ed.state.push_layer(
         &ed.view,
-        DrawerLayer::new(vec!["d0".to_string()], marker("drawer-cb"), 0),
+        DrawerLayer::new(
+            hume_scripting::host::DrawerItems::Rows(vec!["d0".to_string()]),
+            marker("drawer-cb"),
+            0,
+        ),
     );
 
     ed.handle_input(mouse_wheel(false));

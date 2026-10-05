@@ -15,6 +15,30 @@ use hume_engine::types::TruncateEnd;
 use super::token::HostToken;
 use crate::types::PaneHandle;
 
+/// A drawer's rows, as `show-drawer-list!`/`update-drawer-list!` received
+/// them.
+#[derive(Debug)]
+pub enum DrawerItems {
+    /// Rows already rendered.
+    Rows(Vec<String>),
+    /// One opaque key per row. Before a frame shows rows not rendered yet,
+    /// the editor calls `(render start keys)` with those rows' keys, which
+    /// must return one string per key.
+    Keys {
+        keys: Vec<steel::rvals::SteelVal>,
+        render: steel::rvals::SteelVal,
+    },
+}
+
+impl DrawerItems {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Rows(rows) => rows.is_empty(),
+            Self::Keys { keys, .. } => keys.is_empty(),
+        }
+    }
+}
+
 /// How an open popup reacts to key and mouse input: `show-popup!`'s
 /// `#:kind` symbol, decoded once at the builtin boundary
 /// (`builtins::ui::show_popup`) and carried as-is into the editor's own
@@ -228,7 +252,7 @@ pub trait UiHost {
     fn show_drawer_list(
         &mut self,
         pane: PaneHandle,
-        items: Vec<String>,
+        items: DrawerItems,
         callback: steel::rvals::SteelVal,
         selected: usize,
     ) -> Result<Option<HostToken>, String>;
@@ -258,7 +282,7 @@ pub trait UiHost {
     fn update_drawer_list(
         &mut self,
         token: HostToken,
-        items: Vec<String>,
+        items: DrawerItems,
         callback: steel::rvals::SteelVal,
         selected: usize,
     ) -> bool;

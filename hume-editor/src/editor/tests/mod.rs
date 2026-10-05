@@ -254,10 +254,17 @@ fn custom_text(ed: &Editor, name: &str) -> String {
 }
 
 /// The open drawer's rows. Every drawer assertion reads through this
-/// instead of reaching into `views.drawer` by hand.
+/// instead of reaching into `views.drawer` by hand. A lazy drawer's rows
+/// are rendered by a frame (`frame`/`render`), so read them after one.
 fn drawer_rows(ed: &Editor) -> Vec<String> {
     let guard = ed.state.views.drawer.read();
-    guard.as_ref().expect("drawer must be open").rows.to_vec()
+    guard
+        .as_ref()
+        .expect("drawer must be open")
+        .rows
+        .iter()
+        .map(|row| row.clone().expect("every row is rendered"))
+        .collect()
 }
 
 /// The `:` line's current input, `""` when no minibuffer is open.
@@ -299,7 +306,7 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_scripting::host
     EditorHostImpl::new(&mut ed.state, &mut ed.view)
         .show_drawer_list(
             pane,
-            items.iter().map(|s| s.to_string()).collect(),
+            hume_scripting::host::DrawerItems::Rows(items.iter().map(|s| s.to_string()).collect()),
             steel::rvals::SteelVal::Void,
             0,
         )
@@ -1487,6 +1494,7 @@ mod insert_session_buffer_switch;
 mod jump_list;
 mod kitty;
 mod language;
+mod lazy_drawer;
 mod line_store;
 mod list_buffers;
 mod lsp;

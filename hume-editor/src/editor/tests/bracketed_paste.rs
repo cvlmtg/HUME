@@ -284,7 +284,11 @@ fn drawer_paste_is_swallowed_but_clears_the_status_message() {
     ed.state.status_msg = Some("previous message".to_string());
     ed.state.push_layer(
         &ed.view,
-        DrawerLayer::new(vec!["d0".to_string()], marker("drawer-cb"), 0),
+        DrawerLayer::new(
+            hume_scripting::host::DrawerItems::Rows(vec!["d0".to_string()]),
+            marker("drawer-cb"),
+            0,
+        ),
     );
 
     ed.feed_paste("xyz");

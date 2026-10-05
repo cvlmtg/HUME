@@ -152,8 +152,11 @@
 (define (show-popup! pane text #:anchor [anchor 'cursor] #:kind [kind 'sticky] #:lang [lang #f])
   (%show-popup! pane text anchor kind lang))
 
-(define (show-drawer-list! pane items on-select #:selected [selected 0])
-  (%show-drawer-list! pane items on-select selected))
+(define (show-drawer-list! pane items on-select #:selected [selected 0] #:render [render #f])
+  (%show-drawer-list! pane items on-select selected render))
+
+(define (update-drawer-list! token items on-select selected #:render [render #f])
+  (%update-drawer-list! token items on-select selected render))
 
 (define (picker! pane items on-select #:prompt [prompt ""] #:pending [pending #f]
                                        #:query [query ""] #:truncate [truncate 'head]

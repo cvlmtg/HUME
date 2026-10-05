@@ -500,7 +500,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_drawer_list(
         pane,
-        vec!["one".to_string(), "two".to_string()],
+        hume_scripting::host::DrawerItems::Rows(vec!["one".to_string(), "two".to_string()]),
         steel::rvals::SteelVal::Void,
         0,
     )

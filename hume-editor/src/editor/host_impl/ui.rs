@@ -9,8 +9,8 @@ use crate::editor::input_stack::{
 };
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{
-    BufferHost, HostToken, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
-    UiHost,
+    BufferHost, DrawerItems, HostToken, LivePickerOpts, PickerFeedMode, PickerOpts,
+    PickerSourceOpts, PopupKind, UiHost,
 };
 
 impl<'a> EditorHostImpl<'a> {
@@ -203,7 +203,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     fn show_drawer_list(
         &mut self,
         pane: PaneHandle,
-        items: Vec<String>,
+        items: DrawerItems,
         callback: steel::rvals::SteelVal,
         selected: usize,
     ) -> Result<Option<HostToken>, String> {
@@ -272,7 +272,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     fn update_drawer_list(
         &mut self,
         token: HostToken,
-        items: Vec<String>,
+        items: DrawerItems,
         callback: steel::rvals::SteelVal,
         selected: usize,
     ) -> bool {

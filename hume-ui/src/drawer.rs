@@ -36,9 +36,10 @@ use hume_engine::types::Scope;
 
 /// Read-side snapshot for `DrawerWidget`: the same shape as
 /// `DrawerLayer` (`hume-editor`'s raw `(show-drawer-list! …)` state) minus
-/// the callback, which the render side never needs.
+/// the callback, which the render side never needs. A row is `None` until
+/// its text is rendered, and draws blank.
 pub struct DrawerViewState {
-    pub rows: Arc<Vec<String>>,
+    pub rows: Arc<Vec<Option<String>>>,
     pub selected: usize,
     pub scroll: usize,
 }
@@ -100,7 +101,7 @@ impl BottomBandProvider for DrawerWidget {
                 y,
                 area.width,
                 area.right(),
-                item,
+                item.as_deref().unwrap_or(""),
                 row_idx == state.selected,
                 selected_style,
                 style,

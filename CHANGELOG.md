@@ -39,6 +39,7 @@
 - New `buffer-revision-diff` returns the line hunks, with word spans, between a revision of the undo history and the buffer's current content.
 - New `git-diff/render-diff` command in `core:git-diff` draws a list of hunks inline under a decoration source of the caller's choosing, for plugins that have hunks of their own. While it does, the buffer's own inline git diff is hidden, so changed lines are not drawn twice; the new `git-diff/release-diff` clears the caller's drawing and shows it again.
 - `show-drawer-list!` takes `#:selected` to open on a given row. The drawer scrolls to keep the selected row visible, including after `update-drawer-list!`.
+- `show-drawer-list!` and `update-drawer-list!` take `#:render`: the items can be any values, and the drawer asks the render function for the text of only the rows it shows. `core:undotree` uses it, so stepping through a long undo history stays quick.
 
 ### Commands
 - `:e path:line[:col]` jumps to a position on open.

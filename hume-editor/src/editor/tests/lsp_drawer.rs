@@ -110,7 +110,7 @@ fn show_drawer_list_over_a_live_popup_clears_it() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_drawer_list(
         pane,
-        vec!["one".to_string()],
+        hume_scripting::host::DrawerItems::Rows(vec!["one".to_string()]),
         steel::rvals::SteelVal::BoolV(false),
         0,
     )
@@ -150,8 +150,12 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
 
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result =
-        host.show_drawer_list(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void, 0);
+    let result = host.show_drawer_list(
+        pane,
+        hume_scripting::host::DrawerItems::Rows(vec!["a".to_string()]),
+        steel::rvals::SteelVal::Void,
+        0,
+    );
     assert!(
         result.is_ok(),
         "a stale async response must never error: it would abort the whole call batch"
@@ -238,8 +242,12 @@ fn show_drawer_list_from_insert_warns_instead_of_opening() {
 
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result =
-        host.show_drawer_list(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void, 0);
+    let result = host.show_drawer_list(
+        pane,
+        hume_scripting::host::DrawerItems::Rows(vec!["a".to_string()]),
+        steel::rvals::SteelVal::Void,
+        0,
+    );
     assert!(
         result.is_ok(),
         "a mode-layer race must never error: it would abort the whole call batch"
@@ -323,7 +331,7 @@ fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
-    let model_items = std::sync::Arc::clone(&ed.state.input.drawer().unwrap().items);
+    let model_items = std::sync::Arc::clone(ed.state.input.drawer().unwrap().rows.text());
     let view_rows = {
         let guard = ed.state.views.drawer.read();
         std::sync::Arc::clone(&guard.as_ref().unwrap().rows)
@@ -353,7 +361,7 @@ fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
         !std::sync::Arc::ptr_eq(&view_rows, &view_rows_after),
         "the view must follow a replaced model to its new row list"
     );
-    assert_eq!(*view_rows_after, vec!["replaced"]);
+    assert_eq!(*view_rows_after, vec![Some("replaced".to_string())]);
 }
 
 #[test]
@@ -419,7 +427,7 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let applied = host.update_drawer_list(
         crate::editor::host_token::mint(),
-        vec!["x".to_string()],
+        hume_scripting::host::DrawerItems::Rows(vec!["x".to_string()]),
         steel::rvals::SteelVal::Void,
         0,
     );
@@ -427,8 +435,8 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
     assert!(!applied, "a foreign token must not apply");
     let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(
-        *drawer.items,
-        vec!["a".to_string(), "b".to_string()],
+        **drawer.rows.text(),
+        vec![Some("a".to_string()), Some("b".to_string())],
         "rows must be untouched by a mismatched-token update"
     );
 }
@@ -649,7 +657,10 @@ fn update_replaces_rows_callback_and_selection_in_place() {
         "update must report it applied"
     );
     let drawer = ed.state.input.drawer().unwrap();
-    assert_eq!(*drawer.items, vec!["x", "y"]);
+    assert_eq!(
+        **drawer.rows.text(),
+        vec![Some("x".to_string()), Some("y".to_string())]
+    );
     assert_eq!(
         drawer.selected, 1,
         "caller's selection must be kept, not reset"
@@ -710,7 +721,12 @@ fn show_with_empty_items_errors_and_opens_nothing() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_drawer_list(pane, Vec::new(), steel::rvals::SteelVal::BoolV(false), 0);
+    let result = host.show_drawer_list(
+        pane,
+        hume_scripting::host::DrawerItems::Rows(Vec::new()),
+        steel::rvals::SteelVal::BoolV(false),
+        0,
+    );
     assert!(
         result.is_err(),
         "empty show must fail fast instead of opening a 0-row drawer"
@@ -753,8 +769,8 @@ fn update_with_empty_items_is_a_noop_false() {
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
     let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(
-        *drawer.items,
-        vec!["a".to_string(), "b".to_string()],
+        **drawer.rows.text(),
+        vec![Some("a".to_string()), Some("b".to_string())],
         "the old rows must survive a rejected update"
     );
     assert_eq!(drawer.selected, 0);

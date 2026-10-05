@@ -40,7 +40,9 @@ pub use registers::RegisterHost;
 pub use settings::{LANGUAGE_OPTION, OptionValue, SettingsHost, language_option_value};
 pub use timers::TimerHost;
 pub use token::HostToken;
-pub use ui::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost};
+pub use ui::{
+    DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
+};
 
 /// Key-binding mode, as recognised by `bind-key!`/`unbind-key!`.
 ///

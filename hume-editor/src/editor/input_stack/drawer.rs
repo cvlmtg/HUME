@@ -1,13 +1,18 @@
 //! The bottom-drawer layer: `(show-drawer-list! items on-select)`'s raw
 //! state, browsed with Helix-style "stay open while editing" semantics.
 
+use std::ops::Range;
 use std::sync::Arc;
 
+use steel::rvals::{IntoSteelVal, SteelVal};
 use termina::event::{KeyCode, Modifiers};
 
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
-use hume_scripting::host::HostToken;
+use hume_scripting::host::{DrawerItems, HostToken};
+
+use crate::editor::Severity;
+use crate::editor::host_impl::EditorHostImpl;
 
 use super::super::Editor;
 use super::super::EditorState;
@@ -19,11 +24,7 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalSc
 /// not-yet-exhausted Steel callback. Cleared by `Esc` or `close-drawer!`,
 /// not by `Enter` (the drawer stays open across selections).
 pub(in crate::editor) struct DrawerLayer {
-    /// Shared with `hume_ui::drawer::DrawerViewState::rows` (an
-    /// `Arc::clone`, not a deep copy): `sync_drawer_view` runs
-    /// unconditionally every frame while the drawer is open, and a
-    /// references batch can carry thousands of rows.
-    pub(in crate::editor) items: std::sync::Arc<Vec<String>>,
+    pub(in crate::editor) rows: DrawerRows,
     pub(in crate::editor) selected: usize,
     /// Index of the first visible row, clamped to keep `selected` in view
     /// whenever the selection moves ([`clamp_drawer_scroll`]).
@@ -43,12 +44,12 @@ impl DrawerLayer {
     /// holding can never alias a *different*, later drawer that happens to
     /// reuse the same stack slot.
     pub(in crate::editor) fn new(
-        items: Vec<String>,
+        items: DrawerItems,
         callback: steel::rvals::SteelVal,
         selected: usize,
     ) -> Self {
         let mut drawer = Self {
-            items: Arc::new(items),
+            rows: DrawerRows::new(items),
             selected: 0,
             scroll: 0,
             callback,
@@ -61,7 +62,7 @@ impl DrawerLayer {
     /// Selects row `selected`, or the last row when it is past the end.
     /// `items` must be non-empty.
     fn select_clamped(&mut self, selected: usize) {
-        self.selected = selected.min(self.items.len() - 1);
+        self.selected = selected.min(self.rows.len() - 1);
     }
 
     /// Identifies this drawer to Steel: `show-drawer-list!`'s return value,
@@ -71,6 +72,61 @@ impl DrawerLayer {
     /// `PickerSession::token`.
     pub(in crate::editor) fn token(&self) -> HostToken {
         self.token
+    }
+}
+
+/// A drawer's rows and, for lazy rows, what renders them. A row's text is
+/// `None` until rendered. The keys and the text are only ever replaced
+/// together, so a rendered text never outlives the key it was rendered from.
+pub(in crate::editor) struct DrawerRows {
+    /// Shared with `hume_ui::drawer::DrawerViewState::rows` (an
+    /// `Arc::clone`, not a deep copy): `sync_drawer_view` runs
+    /// unconditionally every frame while the drawer is open, and a
+    /// references batch can carry thousands of rows.
+    text: Arc<Vec<Option<String>>>,
+    /// For lazy rows: one key per entry of `text`, and the render proc.
+    lazy: Option<(Vec<SteelVal>, SteelVal)>,
+}
+
+impl DrawerRows {
+    fn new(items: DrawerItems) -> Self {
+        match items {
+            DrawerItems::Rows(rows) => Self {
+                text: Arc::new(rows.into_iter().map(Some).collect()),
+                lazy: None,
+            },
+            DrawerItems::Keys { keys, render } => Self {
+                text: Arc::new(vec![None; keys.len()]),
+                lazy: Some((keys, render)),
+            },
+        }
+    }
+
+    pub(in crate::editor) fn len(&self) -> usize {
+        self.text.len()
+    }
+
+    pub(in crate::editor) fn text(&self) -> &Arc<Vec<Option<String>>> {
+        &self.text
+    }
+
+    /// The render call `window` still needs: the first unrendered row in
+    /// it, the keys from there through its last unrendered row, and the
+    /// render proc. `None` when every row in `window` has its text.
+    fn pending(&self, window: Range<usize>) -> Option<(usize, Vec<SteelVal>, SteelVal)> {
+        let (keys, render) = self.lazy.as_ref()?;
+        let window = window.start.min(self.len())..window.end.min(self.len());
+        let first = window.clone().find(|&i| self.text[i].is_none())?;
+        let last = window.rev().find(|&i| self.text[i].is_none())?;
+        Some((first, keys[first..=last].to_vec(), render.clone()))
+    }
+
+    /// Stores `rendered` as the text of the rows from `start` on.
+    fn fill(&mut self, start: usize, rendered: Vec<String>) {
+        let text = Arc::make_mut(&mut self.text);
+        for (slot, row) in text[start..].iter_mut().zip(rendered) {
+            *slot = Some(row);
+        }
     }
 }
 
@@ -146,7 +202,7 @@ impl EditorState {
             .input
             .drawer()
             .map(|d| hume_ui::drawer::DrawerViewState {
-                rows: Arc::clone(&d.items),
+                rows: Arc::clone(d.rows.text()),
                 selected: d.selected,
                 scroll: d.scroll,
             });
@@ -167,7 +223,7 @@ impl EditorState {
     pub(in crate::editor) fn set_drawer_items(
         &mut self,
         token: HostToken,
-        items: Vec<String>,
+        items: DrawerItems,
         callback: steel::rvals::SteelVal,
         selected: usize,
     ) -> bool {
@@ -181,7 +237,7 @@ impl EditorState {
             .input
             .at_mut::<DrawerLayer>(r)
             .expect("drawer_ref_with_token names a live DrawerLayer");
-        drawer.items = Arc::new(items);
+        drawer.rows = DrawerRows::new(items);
         drawer.callback = callback;
         drawer.select_clamped(selected);
         self.sync_drawer_view();
@@ -206,7 +262,7 @@ impl EditorState {
         let Some(drawer) = self.input.find_mut::<DrawerLayer>() else {
             return;
         };
-        let len = drawer.items.len();
+        let len = drawer.rows.len();
         let visible = drawer_visible_for(terminal_height, len);
         drawer.scroll =
             hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, visible)
@@ -333,7 +389,7 @@ fn drawer_visible_rows(ed: &Editor, r: LayerRef) -> usize {
     let Some(drawer) = ed.state.input.at::<DrawerLayer>(r) else {
         return 0;
     };
-    drawer_visible_for(ed.view.last_terminal_area.height, drawer.items.len())
+    drawer_visible_for(ed.view.last_terminal_area.height, drawer.rows.len())
 }
 
 /// Moves the drawer's selection by `delta` (clamped to `[0, len - 1]`), then
@@ -344,7 +400,7 @@ fn move_drawer_selection(ed: &mut Editor, r: LayerRef, delta: isize) {
         .input
         .at_mut::<DrawerLayer>(r)
         .expect("dispatch_at already checked kind(r) == DrawerLayer");
-    let len = drawer.items.len();
+    let len = drawer.rows.len();
     if len > 0 {
         let new = (drawer.selected as isize + delta).clamp(0, len as isize - 1);
         drawer.selected = new as usize;
@@ -363,4 +419,70 @@ fn clamp_drawer_scroll(ed: &mut Editor, r: LayerRef) {
     drawer.scroll =
         hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, visible_rows);
     ed.state.sync_drawer_view();
+}
+
+impl Editor {
+    /// Renders the open drawer's visible rows that have no text yet, with
+    /// one call to its render proc. Runs every frame after the scroll is
+    /// clamped to the terminal, so a scroll, a resize or a shrunk list shows
+    /// rendered rows in the frame it happens. A failed render closes the
+    /// drawer, delivering `#f` to `on-select`, and reports the error.
+    pub(in crate::editor) fn fill_drawer_window(&mut self) {
+        let Some(drawer) = self.state.input.drawer() else {
+            return;
+        };
+        let visible = drawer_visible_for(self.view.last_terminal_area.height, drawer.rows.len());
+        let Some((start, keys, render)) =
+            drawer.rows.pending(drawer.scroll..drawer.scroll + visible)
+        else {
+            return;
+        };
+        let count = keys.len();
+        let Some(scripting) = self.scripting.as_mut() else {
+            return;
+        };
+        let result = keys
+            .into_steelval()
+            .map_err(|e| e.to_string())
+            .and_then(|keys| {
+                let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
+                scripting.call_for_value(
+                    render,
+                    vec![SteelVal::IntV(start as isize), keys],
+                    &mut host,
+                )
+            })
+            .and_then(|value| rendered_rows(value, count));
+        self.flush_script_messages();
+        match result {
+            Ok(rows) => {
+                if let Some(drawer) = self.state.input.find_mut::<DrawerLayer>() {
+                    drawer.rows.fill(start, rows);
+                }
+            }
+            Err(message) => {
+                if let Some(r) = self.state.input.ref_of::<DrawerLayer>() {
+                    self.state.take_firing_false::<DrawerLayer>(&self.view, r);
+                }
+                self.report(Severity::Error, format!("drawer render error: {message}"));
+            }
+        }
+    }
+}
+
+/// A render proc's result as `count` row strings.
+fn rendered_rows(value: SteelVal, count: usize) -> Result<Vec<String>, String> {
+    let expected = || format!("expected a list of {count} strings, got {value}");
+    let SteelVal::ListV(list) = &value else {
+        return Err(expected());
+    };
+    let rows = list
+        .iter()
+        .map(|row| match row {
+            SteelVal::StringV(s) => Some(s.to_string()),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .filter(|rows| rows.len() == count);
+    rows.ok_or_else(expected)
 }

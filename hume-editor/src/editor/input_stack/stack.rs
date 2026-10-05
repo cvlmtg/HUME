@@ -1039,7 +1039,7 @@ mod tests {
         let mut stack = InputStack::new();
         stack.push(menu("m"));
         stack.push(DrawerLayer::new(
-            vec!["d".to_string()],
+            hume_scripting::host::DrawerItems::Rows(vec!["d".to_string()]),
             SteelVal::BoolV(false),
             0,
         ));

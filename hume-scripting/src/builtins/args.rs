@@ -219,6 +219,17 @@ pub(crate) fn callable_arg(val: SteelVal, ctx_name: &str) -> Result<SteelVal, St
     }
 }
 
+/// A callable argument that may be `#f` (absent).
+pub(crate) fn optional_callable_arg(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<SteelVal>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        other => Ok(Some(callable_arg(other, ctx_name)?)),
+    }
+}
+
 /// `(%callable? v)`: backs `live-picker!`'s `#:command` check (see
 /// `bootstrap.scm`), which must validate it in Scheme before composing the
 /// debounced-respawn wrapper around it: once wrapped, `%live-picker!`'s own
