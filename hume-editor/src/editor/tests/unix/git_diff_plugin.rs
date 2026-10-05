@@ -1210,7 +1210,7 @@ fn buffer_close_after_open_leaves_no_stray_error() {
 
     // Let on-buffer-open run (starting its debounce timer), then close just
     // past the 150ms debounce. The background `git cat-file` is plausibly still
-    // in flight at that point. on-buffer-close's cancel-fetch!/remove-buffer!
+    // in flight at that point. on-buffer-close's remove-buffer!
     // must leave no callback able to misfire against this now-closed buffer.
     ed.settle();
     std::thread::sleep(Duration::from_millis(160));

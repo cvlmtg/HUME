@@ -46,22 +46,6 @@
 (define (git-diff/word-span start end scope)
   (hash 'start start 'end end 'scope scope))
 
-;;; Char offset where each of `new-lines` starts — see docs/rendering.md.
-(define (git-diff/line-offsets pane new-start new-lines)
-  (let loop ([offset (line->offset pane new-start)] [lines new-lines] [acc '()])
-    (if (null? lines)
-        (reverse acc)
-        (loop (+ offset (string-length (car lines)) 1) (cdr lines) (cons offset acc)))))
-
-;;; A hunk's own `'words` -> `(virtual-lines . spans)` — see docs/rendering.md's "Word spans".
-(define (git-diff/hunk-word-data pane hunk)
-  (let* ([words (hash-ref hunk 'words)]
-         [new-start (hash-ref hunk 'new-start)]
-         [anchor (git-diff/hunk-anchor new-start)])
-    (cons (git-diff/old-lines->virtual-lines (hash-ref hunk 'old-lines) (hash-ref words 'old) anchor)
-          (git-diff/line-spans->new-side-spans
-            pane new-start (hash-ref hunk 'new-lines) (hash-ref words 'new)))))
-
 (define (git-diff/line-span->segment span)
   (git-diff/word-span (hash-ref span 'start) (hash-ref span 'end) "diff.minus.word"))
 
@@ -84,15 +68,16 @@
       '()
       (let loop ([spans spans]
                  [line 0]
-                 [offsets (git-diff/line-offsets pane new-start new-lines)]
+                 [lines new-lines]
+                 [offset (line->offset pane new-start)]
                  [acc '()])
         (cond
           [(null? spans) (reverse acc)]
           [(< line (hash-ref (car spans) 'line))
-           (loop spans (+ line 1) (cdr offsets) acc)]
+           (loop spans (+ line 1) (cdr lines) (+ offset (string-length (car lines)) 1) acc)]
           [else
-           (let ([span (car spans)] [offset (car offsets)])
-             (loop (cdr spans) line offsets
+           (let ([span (car spans)])
+             (loop (cdr spans) line lines offset
                    (cons (git-diff/word-span (+ offset (hash-ref span 'start))
                                              (+ offset (hash-ref span 'end))
                                              "diff.plus.word")
@@ -102,7 +87,12 @@
 (define (git-diff/hunk-inline-data pane hunk)
   (if (= (hash-ref hunk 'old-count) 0)
       (cons '() '())
-      (git-diff/hunk-word-data pane hunk)))
+      (let* ([words (hash-ref hunk 'words)]
+             [new-start (hash-ref hunk 'new-start)]
+             [anchor (git-diff/hunk-anchor new-start)])
+        (cons (git-diff/old-lines->virtual-lines (hash-ref hunk 'old-lines) (hash-ref words 'old) anchor)
+              (git-diff/line-spans->new-side-spans
+                pane new-start (hash-ref hunk 'new-lines) (hash-ref words 'new))))))
 
 ;;; Two setter calls, not one — see docs/rendering.md.
 (define (git-diff/render-inline! pane source hunks)

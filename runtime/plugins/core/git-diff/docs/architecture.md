@@ -69,7 +69,8 @@ flipped value.
 slot's current job first. The result callback runs only while its job still owns the slot, so
 a result queued before a cancel or a replacement, or arriving after the buffer closed, is
 dropped. `cancel-job!` cancels a slot's job without firing its callback. `diff.scm` and
-`branch.scm` both go through these two, differing only in the key.
+`branch.scm` both go through these two, differing only in the key. `remove-buffer!` cancels
+every slot's live job before it drops the entry, so a new slot needs no change in the close hook.
 
 ## Ref handling
 
@@ -81,7 +82,7 @@ when it runs, not when a hook scheduled it. The shared body
 `run-toggle!` handles both commands:
 
 - With a ref argument it ensures the entry exists, turns that rendering on, stores the ref,
-  cancels any fetch in flight, clears `"ref-text"` and force-refreshes. A ref always turns the
+  drops `"ref-text"` and any fetch in flight (`drop-ref-text!`) and force-refreshes. A ref always turns the
   rendering on and always re-fetches, even if it is already on at the same ref.
 - With no argument it flips the flag. Turning it on force-refreshes; turning it off
   reconciles, which clears that rendering.

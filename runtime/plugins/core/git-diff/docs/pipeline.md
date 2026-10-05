@@ -37,7 +37,7 @@ handle-fetch-result! ──▶ diff-buffer-lines                       │
 | `on-buffer-enter` | Cancel any in-flight fetch, clear `"ref-text"`, schedule a refresh and a branch refresh |
 | `on-text-changed` | Schedule a refresh |
 | `on-buffer-save` | Cancel any in-flight fetch, clear `"ref-text"`, schedule a refresh and a branch refresh |
-| `on-buffer-close` | Cancel any in-flight diff and branch fetch, drop the entry |
+| `on-buffer-close` | `remove-buffer!` cancels any in-flight diff and branch fetch and drops the entry |
 
 `on-buffer-save` and `on-buffer-enter` share `invalidate-ref!`: it clears the cached
 `"ref-text"` and cancels any fetch already in flight before it schedules the refresh. A save
@@ -106,8 +106,8 @@ call it, so turning a rendering back on retries and does not stay empty because 
 fetch failed. Turning a rendering on never paints the stored hunks, which may describe text
 that has since changed: it waits for the refresh's fresh diff.
 
-`cancel-fetch!` cancels any in-flight fetch for a buffer without firing its callback. It is
-called from `invalidate-ref!`, `on-buffer-close` and the explicit-ref toggle.
+`drop-ref-text!` cancels any in-flight fetch for a buffer without firing its callback and
+clears `"ref-text"`. It is called from `invalidate-ref!` and the explicit-ref toggle.
 
 ### Applying hunks
 

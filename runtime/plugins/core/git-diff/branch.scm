@@ -2,7 +2,7 @@
 
 (require "state.scm")
 
-(provide git-diff/schedule-branch-refresh! git-diff/cancel-branch-fetch!)
+(provide git-diff/schedule-branch-refresh!)
 
 ;;; `spawn-async!` callback for `git rev-parse --abbrev-ref HEAD` — see docs/pipeline.md.
 (define (git-diff/handle-branch-result! pane stdout stderr exit-code)
@@ -29,10 +29,6 @@
   (when (and (git-diff/buffer-entry pane) (git-diff/branch-element-placed?))
     (let ([path (buffer-path pane)])
       (when path (git-diff/fetch-branch! pane path)))))
-
-;;; Cancels any in-flight branch fetch for `pane` without firing its callback.
-(define (git-diff/cancel-branch-fetch! pane)
-  (git-diff/cancel-job! pane "branch-job"))
 
 ;;; `debounce-by`, keyed per buffer, at 150ms — see docs/pipeline.md.
 (define git-diff/schedule-branch-refresh!

@@ -42,10 +42,7 @@
     (git-diff/schedule-branch-refresh! pane)))
 
 (register-hook! 'on-buffer-close
-  (lambda (pane)
-    (git-diff/cancel-fetch! pane)
-    (git-diff/cancel-branch-fetch! pane)
-    (git-diff/remove-buffer! pane)))
+  (lambda (pane) (git-diff/remove-buffer! pane)))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
@@ -93,8 +90,7 @@
              (begin (git-diff/ensure-entry! pane)
                     (git-diff/entry-set! pane key #t)
                     (git-diff/entry-set! pane "ref" arg)
-                    (git-diff/cancel-fetch! pane)
-                    (git-diff/entry-set! pane "ref-text" #f)
+                    (git-diff/drop-ref-text! pane)
                     #t)
              (git-diff/toggle-flag! pane key))])
     (if enabled?

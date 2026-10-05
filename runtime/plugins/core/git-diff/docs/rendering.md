@@ -10,8 +10,8 @@ under that plugin's own source (see [Rendering another plugin's hunks](#renderin
 
 ## Flag → renderer dispatch
 
-`diff.scm`'s `reconcile!` is the one place a flag key (`"signs?"` or `"inline?"`) maps to
-its renderers: `"signs?"` calls `render-signs!`, and `"inline?"` calls `render-diff!` under
+`diff.scm`'s `reconcile!` is the one place a flag key (`"signs?"` or `"inline?"`) is paired
+with its renderer: `"signs?"` with `render-signs!`, and `"inline?"` with `render-diff!` under
 the `"git-diff"` source, with no hunks while another plugin's source covers the buffer (see
 [Rendering another plugin's hunks](#rendering-another-plugins-hunks)). Every caller that
 paints or clears a rendering goes through it: `apply-hunks!` on a live refresh, the toggle

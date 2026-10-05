@@ -4,26 +4,25 @@
 (require "render.scm")
 
 (provide git-diff/schedule-refresh! git-diff/refresh! git-diff/force-refresh!
-         git-diff/invalidate-ref! git-diff/cancel-fetch! git-diff/reconcile!)
+         git-diff/invalidate-ref! git-diff/drop-ref-text! git-diff/reconcile!)
 
-;;; Paints `flag`'s rendering when `target` differs from what it last painted.
-(define (git-diff/reconcile-rendering! pane flag painted-key target)
-  (let ([entry (git-diff/buffer-entry pane)])
-    (unless (equal? (hash-ref entry painted-key) target)
-      (if (equal? flag "signs?")
-          (git-diff/render-signs! pane target)
-          (git-diff/render-diff! pane git-diff/*source* target))
-      (git-diff/entry-set! pane painted-key target))))
+;;; Calls `paint!` with `target` when it differs from what `painted-key` last recorded.
+(define (git-diff/reconcile-rendering! entry pane painted-key target paint!)
+  (unless (equal? (hash-ref entry painted-key) target)
+    (paint! pane target)
+    (git-diff/entry-set! pane painted-key target)))
 
 ;;; Brings both renderings in line with the flags, the covers and `"hunks"`.
 (define (git-diff/reconcile! pane)
   (let ([entry (git-diff/buffer-entry pane)])
     (when entry
       (let ([hunks (hash-ref entry "hunks")])
-        (git-diff/reconcile-rendering! pane "signs?" "signs-painted"
-          (if (hash-ref entry "signs?") hunks '()))
-        (git-diff/reconcile-rendering! pane "inline?" "inline-painted"
-          (if (and (hash-ref entry "inline?") (not (git-diff/inline-covered? pane))) hunks '()))))))
+        (git-diff/reconcile-rendering! entry pane "signs-painted"
+          (if (hash-ref entry "signs?") hunks '())
+          git-diff/render-signs!)
+        (git-diff/reconcile-rendering! entry pane "inline-painted"
+          (if (and (hash-ref entry "inline?") (null? (hash-ref entry "covered-by"))) hunks '())
+          (lambda (p target) (git-diff/render-diff! p git-diff/*source* target)))))))
 
 (define (git-diff/apply-hunks! pane hunks)
   (git-diff/entry-set! pane "hunks" hunks)
@@ -75,15 +74,15 @@
         (git-diff/entry-set! pane "ref-text" #f))
       (git-diff/refresh! pane default-ref))))
 
+;;; Drops the cached blob and cancels any fetch in flight without firing its callback.
+(define (git-diff/drop-ref-text! pane)
+  (git-diff/cancel-job! pane "job")
+  (git-diff/entry-set! pane "ref-text" #f))
+
 ;;; Drops the cached blob and any fetch in flight, then schedules a refetch.
 (define (git-diff/invalidate-ref! pane default-ref)
-  (git-diff/cancel-fetch! pane)
-  (git-diff/entry-set! pane "ref-text" #f)
+  (git-diff/drop-ref-text! pane)
   (git-diff/schedule-refresh! pane default-ref))
-
-;;; Cancels any in-flight fetch for `pane` without firing its callback.
-(define (git-diff/cancel-fetch! pane)
-  (git-diff/cancel-job! pane "job"))
 
 ;;; `debounce-by`, keyed per buffer, at 150ms — see docs/pipeline.md.
 (define git-diff/schedule-refresh!
