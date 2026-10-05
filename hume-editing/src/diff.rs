@@ -280,6 +280,9 @@ pub fn diff_words_with_deadline(old: &str, new: &str, deadline: Duration) -> Wor
     }
 }
 
+/// Changed char ranges of the old side, then of the new side.
+pub(crate) type ChangedRanges = (Vec<Range<usize>>, Vec<Range<usize>>);
+
 /// The char ranges of `old` and of `new` that a word diff marks as changed,
 /// with no text payloads, or `None` when Myers missed `deadline`. A pure
 /// insertion or deletion contributes a zero-width range to the side it
@@ -288,7 +291,7 @@ pub(crate) fn word_change_ranges(
     old: &str,
     new: &str,
     deadline: Duration,
-) -> Option<(Vec<Range<usize>>, Vec<Range<usize>>)> {
+) -> Option<ChangedRanges> {
     let diff = word_ops(old, new, deadline);
     if diff.deadline_hit {
         return None;

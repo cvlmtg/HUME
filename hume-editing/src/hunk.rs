@@ -188,7 +188,7 @@ fn group_hunk(
 ///
 /// Word spans come from a word diff of each hunk's two sides joined by line
 /// breaks, so an edit is marked where it is whatever the line counts on
-/// either side. All hunks share [`HUNK_WORDS_BUDGET`].
+/// either side. All hunks share `HUNK_WORDS_BUDGET`.
 pub fn text_hunks(old: &BufferText, new: &BufferText) -> Vec<ChangeHunk> {
     text_hunks_with_budget(old, new, HUNK_WORDS_BUDGET)
 }
