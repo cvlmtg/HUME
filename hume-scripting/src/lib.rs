@@ -37,6 +37,7 @@ mod activation;
 mod context;
 #[cfg(test)]
 mod null_host;
+mod read_only_host;
 #[cfg(any(test, feature = "test-util"))]
 mod test_scm;
 #[cfg(test)]
@@ -94,6 +95,7 @@ use attribution::PluginStack;
 use hooks::HookRegistry;
 use host::EditorHost;
 use lazy::{LazyRegistry, PluginState};
+use read_only_host::ReadOnlyHost;
 
 /// The persistent registry fields bundled as a unit so they can be
 /// borrowed as a single `&mut ScriptingRegistries`, disjoint from the
@@ -783,6 +785,43 @@ impl ScriptingHost {
         }
 
         self.take_eval_effects(effects_start, first_error.map_or(Ok(()), Err))
+    }
+
+    /// Calls `proc` with `args` and returns its value: the one entry point
+    /// for a proc whose result the editor uses, such as a drawer's row
+    /// renderer. The proc sees `host` through `ReadOnlyHost`: it may read
+    /// the editor but not change it, and it may not queue commands with
+    /// `call!`. Either attempt fails the call, even when the proc caught the
+    /// error it raised, and whatever it queued is dropped. Runs under the
+    /// same watchdog budget as a command.
+    pub fn call_for_value(
+        &mut self,
+        proc: SteelVal,
+        args: Vec<SteelVal>,
+        host: &mut dyn EditorHost,
+    ) -> Result<SteelVal, String> {
+        let budget_ms = host.settings().steel_command_budget_ms();
+        let effects_start = self.effects.len();
+        let mut read_only = ReadOnlyHost::new(host);
+        let mut value = None;
+        let result = {
+            let (steel, watchdog, bundle) = self.steel_and_bundle();
+            let mut steel_ctx = SteelCtx::new_command(&mut read_only, bundle, None);
+            run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
+                value = Some(steel.call_function_with_args(proc, args)?);
+                Ok(())
+            })
+            .map_err(|e| e.message)
+        };
+        let queued = self.effects.split_off(effects_start);
+        result?;
+        if let Some(refused) = read_only.refused() {
+            return Err(refused);
+        }
+        if !queued.is_empty() {
+            return Err("call!: commands cannot be queued while rendering".to_string());
+        }
+        Ok(value.expect("a session that succeeded ran the call"))
     }
 }
 
