@@ -73,6 +73,13 @@ impl DrawerLayer {
     pub(in crate::editor) fn token(&self) -> HostToken {
         self.token
     }
+
+    /// The arguments of every call to this drawer's callback: `payload`
+    /// (the selected row, or `#f` on close) and this drawer's token, so an
+    /// owner can tell its own drawer's close from a replaced one's.
+    fn call_args(&self, payload: SteelVal) -> Vec<SteelVal> {
+        vec![payload, self.token.to_steel()]
+    }
 }
 
 /// A drawer's rows and, for lazy rows, what renders them. A row's text is
@@ -167,7 +174,7 @@ impl Layer for DrawerLayer {
         if let Removal::Incidental = why {
             state.queue_steel_call(
                 self.callback.clone(),
-                vec![steel::rvals::SteelVal::BoolV(false)],
+                self.call_args(SteelVal::BoolV(false)),
             );
         }
     }
@@ -271,8 +278,9 @@ impl EditorState {
 }
 
 impl super::stack::FiresFalseOnReplace for DrawerLayer {
-    fn into_callback(self: Box<Self>) -> steel::rvals::SteelVal {
-        self.callback
+    fn into_close_call(self: Box<Self>) -> (steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>) {
+        let args = self.call_args(SteelVal::BoolV(false));
+        (self.callback, args)
     }
 }
 
@@ -359,9 +367,9 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
                 .input
                 .at::<DrawerLayer>(r)
                 .expect("dispatch_at already checked kind(r) == DrawerLayer");
-            let idx = steel::rvals::SteelVal::IntV(drawer.selected as isize);
+            let args = drawer.call_args(SteelVal::IntV(drawer.selected as isize));
             let callback = drawer.callback.clone();
-            ed.state.queue_steel_call(callback, vec![idx]);
+            ed.state.queue_steel_call(callback, args);
         }
         KeyCode::Escape => {
             ed.state.take_firing_false::<DrawerLayer>(&ed.view, r);

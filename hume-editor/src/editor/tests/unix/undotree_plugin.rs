@@ -69,7 +69,7 @@ fn rendered_rows_after(earlier: &[&[Node]], nodes: &[Node]) -> String {
   (lambda (pane)
     {}
     (let ([rendered (undotree/render {})])
-      (show-drawer-list! pane (hash-ref rendered 'nodes) (lambda (i) (begin))
+      (show-drawer-list! pane (hash-ref rendered 'nodes) (lambda (i tok) (begin))
                          #:render (hash-ref rendered 'render)))))"#,
         earlier.join("\n    "),
         scheme_nodes(nodes)
@@ -1029,7 +1029,7 @@ fn setup_with_foreign_drawer(tmp: &Path) -> (Editor, RealRuntimeGuard) {
         r#"{}
 (define-command! "foreign-drawer" "Open an unrelated drawer."
   (lambda (pane)
-    (show-drawer-list! pane (list "foreign") (lambda (i) (begin)))))"#,
+    (show-drawer-list! pane (list "foreign") (lambda (i tok) (begin)))))"#,
         hume_scripting::eager_load_scm("core:undotree", None)
     );
     run(&mut ed, tmp, &source);

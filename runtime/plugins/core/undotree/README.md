@@ -107,9 +107,10 @@ token, the pane the tree was last read from, the revision id behind each row,
 and the revision diff last drawn. Every refresh reads the focused pane and
 replaces the hash in one step, before it draws the diff, so an error from the
 renderer leaves a session that matches the drawer. Esc, or another feature
-opening its own drawer, delivers `#f` to the callback. The session ends only
-when its own drawer is no longer open, so the `#f` of a drawer this session
-replaced does nothing. Enter acts on the rows its drawer was last given.
+opening its own drawer, delivers `#f` to the callback. The callback also
+receives the token of the drawer that fired. The session ends only when that is
+its own drawer, so the `#f` of a drawer this session replaced does nothing.
+Enter acts on the rows its drawer was last given.
 
 `goto-revision!` raises for a read-only buffer, and the error reaches the user
 as any Steel error does; the session stays open.

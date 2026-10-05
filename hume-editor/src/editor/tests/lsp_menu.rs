@@ -302,7 +302,7 @@ fn show_menu_opens_over_an_open_drawer() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (show-drawer-list! pane (list "one.rs:1") (lambda (idx) (void)))))"#,
+             (show-drawer-list! pane (list "one.rs:1") (lambda (idx tok) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");

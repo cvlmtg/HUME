@@ -109,8 +109,8 @@ impl Layer for MenuLayer {
 }
 
 impl super::stack::FiresFalseOnReplace for MenuLayer {
-    fn into_callback(self: Box<Self>) -> steel::rvals::SteelVal {
-        self.callback
+    fn into_close_call(self: Box<Self>) -> (steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>) {
+        (self.callback, vec![steel::rvals::SteelVal::BoolV(false)])
     }
 }
 

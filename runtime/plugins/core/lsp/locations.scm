@@ -35,11 +35,10 @@
     (log! 'info message)))
 
 (define (lsp/locations-on-select locs)
-  (lambda (idx)
+  (lambda (idx drawer)
     (cond
       (idx (goto-location! (focused-pane) (list-ref locs idx)))
-      ((and lsp/*locations*
-            (not (drawer-selected-index (hash-ref lsp/*locations* 'drawer))))
+      ((and lsp/*locations* (equal? (hash-ref lsp/*locations* 'drawer) drawer))
        (lsp/end-locations-session!)))))
 
 (define (lsp/location-line-counts pane parts)

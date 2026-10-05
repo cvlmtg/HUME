@@ -58,7 +58,7 @@
 (define lsp/*diag-drawer* #f)
 
 (define (lsp/diag-select-callback pane diags)
-  (lambda (idx)
+  (lambda (idx drawer)
     (when idx
       (lsp/diag-jump-to! pane (list-ref diags idx)))))
 

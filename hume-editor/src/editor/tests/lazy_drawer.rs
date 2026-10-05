@@ -10,7 +10,7 @@ const WIDTH: u16 = 40;
 const HEIGHT: u16 = 12;
 
 /// Every render call is appended to `requests` as `start:count;`. Rows read
-/// `row <key>`. `on-select` appends its argument to `selections`. `:requests`,
+/// `row <key>`. `on-select` appends its argument to `selections`, marked `?` when its token is not the drawer's. `:requests`,
 /// `:selections` and `:tab-width` show a value in the status line.
 const PRELUDE: &str = r##"
 (define requests "")
@@ -20,8 +20,9 @@ const PRELUDE: &str = r##"
   (set! requests (string-append requests (number->string start) ":"
                                 (number->string (length keys)) ";"))
   (map (lambda (k) (string-append "row " (number->string k))) keys))
-(define (on-select i)
-  (set! selections (string-append selections (if i (number->string i) "#f") ";")))
+(define (on-select i token)
+  (set! selections (string-append selections (if i (number->string i) "#f")
+                                  (if (equal? token drawer) "" "?") ";")))
 (define-typed-command! "requests" "" (lambda (pane) (log! 'info requests)))
 (define-typed-command! "selections" "" (lambda (pane) (log! 'info selections)))
 (define-typed-command! "tab-width" "" (lambda (pane)
@@ -192,7 +193,7 @@ fn eager_string_rows_need_no_render_proc() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (show-drawer-list! pane (list "a" "b") (lambda (i) (begin)))))"#,
+             (show-drawer-list! pane (list "a" "b") (lambda (i tok) (begin)))))"#,
     );
     type_cmd(&mut ed, ":go");
 

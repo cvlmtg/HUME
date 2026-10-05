@@ -77,16 +77,12 @@
 (define (undotree/row-id nodes idx)
   (hash-ref (list-ref nodes idx) 'id))
 
-;;; `key` is the buffer `nodes` were rendered for. A `#f` also arrives when
-;;; another drawer replaced this one, so it ends the session only once the
-;;; session's own drawer is gone.
 (define (undotree/on-select key nodes)
-  (lambda (idx)
-    (when undotree/*session*
-      (cond
-        [idx (undotree/jump! key (list-ref nodes idx))]
-        [(not (drawer-selected-index (hash-ref undotree/*session* 'drawer)))
-         (undotree/end-session!)]))))
+  (lambda (idx drawer)
+    (when (undotree/session-drawer? drawer)
+      (if idx
+          (undotree/jump! key (list-ref nodes idx))
+          (undotree/end-session!)))))
 
 ;;; Re-renders the focused pane's tree into the open drawer. See README.md's "Refresh".
 (define (undotree/show!)

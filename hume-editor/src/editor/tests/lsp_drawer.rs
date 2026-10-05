@@ -15,7 +15,7 @@ fn arm_three_items(ed: &mut Editor, tmp: &Path) {
         tmp,
         r#"(define-typed-command! "go" "" (lambda (pane)
              (show-drawer-list! pane (list "one.rs:1" "two.rs:2" "three.rs:3")
-               (lambda (idx) (log! 'info (to-string idx))))))"#,
+               (lambda (idx tok) (log! 'info (to-string idx))))))"#,
     );
     type_cmd(ed, ":go");
 }
@@ -40,7 +40,7 @@ fn open_with_selected(ed: &mut Editor, tmp: &Path, rows: usize, selected: usize)
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
                  (show-drawer-list! pane (map to-string (range 0 {rows}))
-                   (lambda (idx) (begin)) #:selected {selected})))"#
+                   (lambda (idx tok) (begin)) #:selected {selected})))"#
         ),
     );
     type_cmd(ed, ":go");
@@ -350,7 +350,7 @@ fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
         tmp.path(),
         r#"(define-typed-command! "refresh" "" (lambda (pane)
              (show-drawer-list! pane (list "replaced")
-               (lambda (idx) (void)))))"#,
+               (lambda (idx tok) (void)))))"#,
     );
     type_cmd(&mut ed, ":refresh");
     let view_rows_after = {
@@ -538,7 +538,7 @@ fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go-drawer" "" (lambda (pane)
-             (show-drawer-list! pane (list "one.rs:1") (lambda (idx) (log! 'info (to-string idx))))))
+             (show-drawer-list! pane (list "one.rs:1") (lambda (idx tok) (log! 'info (to-string idx))))))
            (define-typed-command! "go-menu" "" (lambda (pane)
              (show-menu! pane (list "Extract function") (lambda (idx) (log! 'info (to-string idx))))))"#,
     );
@@ -586,9 +586,9 @@ fn replace_fires_false_to_the_outgoing_callback() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (show-drawer-list! pane (list "a" "b") (lambda (idx) (log! 'info (to-string idx))))))
+             (show-drawer-list! pane (list "a" "b") (lambda (idx tok) (log! 'info (to-string idx))))))
            (define-typed-command! "other" "" (lambda (pane)
-             (show-drawer-list! pane (list "c") (lambda (idx) (log! 'info "second")))))"#,
+             (show-drawer-list! pane (list "c") (lambda (idx tok) (log! 'info "second")))))"#,
     );
     // No settle between the two opens: back-to-back shows are the normal
     // self-replace path (see the `Arc` test above). (The second command is
@@ -611,6 +611,56 @@ fn replace_fires_false_to_the_outgoing_callback() {
     assert_eq!(drawer_rows(&ed), vec!["c"]);
 }
 
+/// Every drawer callback call carries the token of the drawer that fired,
+/// so an owner can tell its own drawer's close from a replaced one's.
+const TOKEN_PROBE: &str = r#"(define *tok* #f)
+(define *other* #f)
+(define (probe idx token)
+  (log! 'info (string-append (to-string idx) ":" (to-string (equal? token *tok*))
+                             ":" (to-string (equal? token *other*)))))
+(define-typed-command! "go" "" (lambda (pane)
+  (set! *tok* (show-drawer-list! pane (list "a" "b") probe))))
+(define-typed-command! "other" "" (lambda (pane)
+  (set! *other* (show-drawer-list! pane (list "c") probe))))"#;
+
+#[test]
+fn enter_passes_the_drawers_token() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(&mut ed, tmp.path(), TOKEN_PROBE);
+    type_cmd(&mut ed, ":go");
+
+    ed.feed_key(key_enter());
+    ed.settle();
+
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "0:#true:#false");
+}
+
+#[test]
+fn esc_passes_the_drawers_token() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(&mut ed, tmp.path(), TOKEN_PROBE);
+    type_cmd(&mut ed, ":go");
+
+    ed.feed_key(key_esc());
+    ed.settle();
+
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false:#true:#false");
+}
+
+#[test]
+fn replace_passes_the_outgoing_drawers_token() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(&mut ed, tmp.path(), TOKEN_PROBE);
+    type_cmd(&mut ed, ":go");
+    type_cmd(&mut ed, ":other");
+    ed.settle();
+
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false:#true:#false");
+}
+
 // ── update-drawer-list! / drawer-selected-index ──────────────────────────────
 
 /// `update-drawer-list!` replaces rows + callback in place (no reset to row
@@ -625,15 +675,15 @@ fn update_replaces_rows_callback_and_selection_in_place() {
         tmp.path(),
         r#"(define *tok* #f)
            (define-typed-command! "go" "" (lambda (pane)
-             (set! *tok* (show-drawer-list! pane (list "a" "b" "c") (lambda (idx) (log! 'info "old"))))))
+             (set! *tok* (show-drawer-list! pane (list "a" "b" "c") (lambda (idx tok) (log! 'info "old"))))))
            (define-typed-command! "sel" "" (lambda ()
              (log! 'info (to-string (drawer-selected-index *tok*)))))
            (define-typed-command! "upd" "" (lambda ()
              (log! 'info (to-string (update-drawer-list! *tok* (list "x" "y")
-               (lambda (idx) (log! 'info (to-string idx))) 1)))))
+               (lambda (idx tok) (log! 'info (to-string idx))) 1)))))
            (define-typed-command! "upd-big" "" (lambda ()
              (log! 'info (to-string (update-drawer-list! *tok* (list "x" "y")
-               (lambda (idx) (log! 'info (to-string idx))) 99)))))"#,
+               (lambda (idx tok) (log! 'info (to-string idx))) 99)))))"#,
     );
     type_cmd(&mut ed, ":go");
     ed.settle();
@@ -694,7 +744,7 @@ fn update_and_selected_index_with_none_open_report_false() {
         tmp.path(),
         r#"(define-typed-command! "upd" "" (lambda ()
              (log! 'info (to-string (update-drawer-list! 0 (list "x")
-               (lambda (idx) (void)) 0)))))
+               (lambda (idx tok) (void)) 0)))))
            (define-typed-command! "sel" "" (lambda ()
              (log! 'info (to-string (drawer-selected-index 0)))))"#,
     );
@@ -755,10 +805,10 @@ fn update_with_empty_items_is_a_noop_false() {
         tmp.path(),
         r#"(define *tok* #f)
            (define-typed-command! "go" "" (lambda (pane)
-             (set! *tok* (show-drawer-list! pane (list "a" "b") (lambda (idx) (void))))))
+             (set! *tok* (show-drawer-list! pane (list "a" "b") (lambda (idx tok) (void))))))
            (define-typed-command! "upd" "" (lambda ()
              (log! 'info (to-string (update-drawer-list! *tok* (list)
-               (lambda (idx) (void)) 0)))))"#,
+               (lambda (idx tok) (void)) 0)))))"#,
     );
     type_cmd(&mut ed, ":go");
     ed.settle();
@@ -955,7 +1005,7 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
                  (show-drawer-list! pane (list {items_scm})
-                   (lambda (idx) (log! 'info (to-string idx))))))"#
+                   (lambda (idx tok) (log! 'info (to-string idx))))))"#
         ),
     );
 
@@ -1006,7 +1056,7 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
                  (show-drawer-list! pane (list {items_scm})
-                   (lambda (idx) (log! 'info (to-string idx))))))"#
+                   (lambda (idx tok) (log! 'info (to-string idx))))))"#
         ),
     );
     // Populate `last_terminal_area` before any key handling needs it: the
@@ -1166,7 +1216,7 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
              (show-drawer-list! bid (list "line 3")
-               (lambda (idx) (goto-location! bid (hash 'target bid 'line 2 'char-col 1))))))"#,
+               (lambda (idx tok) (goto-location! bid (hash 'target bid 'line 2 'char-col 1))))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -1206,7 +1256,7 @@ fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
              (show-drawer-list! pane (list "src/a.rs:1: unused import" "src/b.rs:9: TODO")
-               (lambda (idx) (void)))))"#,
+               (lambda (idx tok) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
 

@@ -1170,7 +1170,7 @@ fn widget_token_builtins_treat_a_false_token_as_stale_not_an_error() {
              (close-drawer! #f)
              (picker-close! #f)
              (call! "move-right" pane)
-             (when (not (update-drawer-list! #f (list "a") (lambda (x) x) 0))
+             (when (not (update-drawer-list! #f (list "a") (lambda (x tok) x) 0))
                (call! "move-right" pane))
              (when (not (drawer-selected-index #f))
                (call! "move-right" pane))

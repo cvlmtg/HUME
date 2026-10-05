@@ -9,6 +9,7 @@
 - `spawn-async!`, `run-capture!` and `stdlib/run!` take the working directory as an optional `#:cwd` keyword. `run-capture!` and `stdlib/run!` start their child in its own process group, so Ctrl-c during an inline-output command no longer reaches it.
 - `buffer-selections` entries are opaque: read them with `stdlib/selection-anchor`, `-head`, `-start`, `-end` and `-primary?`. `stdlib/selection-start` and `-end` are new.
 - `show-popup!`, `show-menu!` return a token, and `close-popup!`, `close-menu!`, `picker-close!` take it. A token for a closed or replaced widget is a no-op.
+- The `on-select` of `show-drawer-list!` and `update-drawer-list!` takes a second argument, the token of the drawer that called it. Compare it with the token you stored to tell your own drawer's `#f` from the one a replacing drawer sends.
 - Decoration entries are symbol-keyed hashmaps: `set-signs!`, `set-eol-text!`, `set-extra-highlights!`, `set-virtual-lines!`, `set-line-backgrounds!` and `set-inlay-hints!` take `(hash 'line l 'text t 'scope s)` and the like.
 - Builtins that returned a positional list or pair return a symbol-keyed hashmap: `diagnostic-counts`, `run-capture!`, `stdlib/run!`, `viewport-range`, `lsp-range->offsets`, `diff-lines`, `diff-buffer-lines`, `diff-words`, `lsp-locations->display-parts`. `goto-location!` and the `#:range` of `diagnostics-for-buffer` take one.
 - `diagnostics-for-buffer` and `lsp-server-status` entries and `lsp-request!`'s `err` use symbol keys. A diagnostic's `'severity` and a server's `'state` are symbols.

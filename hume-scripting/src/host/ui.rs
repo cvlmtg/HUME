@@ -232,7 +232,8 @@ pub trait UiHost {
     /// in the bottom chrome band. `items` are pre-formatted display strings;
     /// the drawer never interprets their content; the jump (if any) is the
     /// caller's job, typically `(goto-location! ...)` inside `on-select`.
-    /// `on-select` receives the chosen index and, unlike the popup/menu's
+    /// `on-select` receives the chosen index and the drawer's token, so an owner can tell
+    /// its own drawer's close from a replaced one's, and, unlike the popup/menu's
     /// one-shot callback, may fire more than once: the drawer stays open
     /// across `Enter` (Helix-style browse) until `Esc` or `close-drawer!`.
     /// `selected` names the row to open on, clamped into `items`.
