@@ -1562,6 +1562,42 @@ fn toggling_signs_on_after_both_renderings_were_off_paints_the_current_diff() {
 }
 
 #[test]
+fn drawing_another_sources_hunks_while_signs_wait_for_a_fetch_paints_no_old_signs() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_source(
+        tmp.path(),
+        Some(r#"(hash "signs" #f "inline" #f)"#),
+        &render_probe_source("(list)"),
+    );
+    let repo = dirty_six_line_repo();
+    let bid = open(&mut ed, &repo.path().join("f.txt"));
+    ed.settle();
+
+    type_cmd(&mut ed, ":toggle-git-signs");
+    drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
+    type_cmd(&mut ed, ":toggle-git-signs");
+    ed.settle();
+    delete_from_third_line(&mut ed);
+
+    type_cmd(&mut ed, ":toggle-git-signs HEAD");
+    type_cmd(&mut ed, ":render-probe");
+    assert_eq!(
+        ed.state.status_msg, None,
+        "the draw must succeed instead of painting hunks for lines that are gone"
+    );
+    assert!(
+        signs(&ed, bid).is_empty(),
+        "the fetch has not landed, so no signs may be painted from the earlier text's hunks"
+    );
+
+    drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
+    assert_eq!(
+        signs(&ed, bid),
+        vec![(1, "▁".to_string(), "diff.minus".to_string())]
+    );
+}
+
+#[test]
 fn toggling_signs_off_on_a_buffer_that_never_showed_signs_reserves_no_gutter_slot() {
     let tmp = safe_tempdir();
     let (mut ed, _guard) = setup(tmp.path(), None);

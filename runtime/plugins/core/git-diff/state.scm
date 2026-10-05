@@ -11,7 +11,7 @@
 ;;; SSOT for a buffer's starting shape.
 (define (git-diff/fresh-entry signs? inline?)
   (hash "signs?" signs? "inline?" inline?
-        "ref-text" #f "hunks" '() "signs-painted" '() "inline-painted" '()
+        "ref-text" #f "signs-painted" '() "inline-painted" '()
         "job" #f "ref" #f "branch-job" #f "covered-by" '()))
 
 (define (git-diff/buffer-entry pane)

@@ -29,19 +29,18 @@ one `fresh-entry` and holds:
 |---|---|
 | `"signs?"` / `"inline?"` | The two independent enable flags |
 | `"ref-text"` | The fetch/diff cache (see the table below) |
-| `"hunks"` | The verbatim hunk hashes `diff-buffer-lines` last returned |
 | `"signs-painted"` / `"inline-painted"` | The hunks each rendering last painted; `'()` when it shows nothing |
 | `"job"` | The in-flight diff-fetch `spawn-async!` id, or `#f` |
 | `"ref"` | `#f` (use the config default) or a runtime override string set via `:toggle-git-signs <ref>`/`:toggle-inline-diff <ref>` |
 | `"branch-job"` | The in-flight branch-fetch `spawn-async!` id, or `#f`; independent of `"job"` |
 | `"covered-by"` | The other plugins' decoration sources drawing through `git-diff/render-diff`, which hide the inline rendering (see `docs/rendering.md`) |
 
-### One hunk store
+### One hunk set
 
-Every renderer in `render.scm` is a pure function over that one hunk set. `"hunks"` can
-differ from what a rendering shows, because a rendering that is off or covered shows
-nothing. `diff.scm`'s `reconcile!` compares each rendering's target (the hunks, or `'()`)
-with its `*-painted` field and paints only on a difference. A new rendering is one function,
+Every renderer in `render.scm` is a pure function over the one hunk set a refresh passes
+to `apply-hunks!`. The plugin does not store it. A rendering that is off or covered shows
+nothing. `diff.scm` compares each rendering's target (the hunks, or `'()`) with its
+`*-painted` field and paints only on a difference. A new rendering is one function,
 one setter call and one `*-painted` field.
 
 ### `"ref-text"` states

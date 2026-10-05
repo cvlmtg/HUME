@@ -20,7 +20,7 @@ handle-fetch-result! ──▶ diff-buffer-lines                       │
                                                           apply-hunks!
                                                                  │
                                                                  ▼
-                                                            reconcile!
+                                                      per-rendering reconcile
                                                     (paints only what differs
                                                      from what's already painted)
                                                        ┌─────────┴─────────┐
@@ -103,18 +103,21 @@ and has nothing to diff against. The `"ref-text"` value decides the rest:
 `force-refresh!` clears `"ref-text"` unless it is a string, then calls `refresh!`, so a
 failed earlier fetch is retried and a cached blob gives a local diff. Both toggle commands
 call it, so turning a rendering back on retries and does not stay empty because a previous
-fetch failed. Turning a rendering on never paints the stored hunks, which may describe text
-that has since changed: it waits for the refresh's fresh diff.
+fetch failed. Turning a rendering on paints nothing itself: it waits for the refresh's
+fresh diff.
 
 `drop-ref-text!` cancels any in-flight fetch for a buffer without firing its callback and
 clears `"ref-text"`. It is called from `invalidate-ref!` and the explicit-ref toggle.
 
 ### Applying hunks
 
-`apply-hunks!` writes the hunks to state and calls `reconcile!`, which compares each
-rendering's target with what it last painted (`"signs-painted"`/`"inline-painted"`) and
-paints only on a difference. A rendering's target is the hunks when its flag is on (for
-inline, also when no other plugin's source covers the buffer), else `'()`. Signs on with
+`apply-hunks!` takes the fresh hunks and compares each rendering's target with what it last
+painted (`"signs-painted"`/`"inline-painted"`), painting only on a difference. A rendering's
+target is the hunks when its flag is on (for inline, also when no other plugin's source
+covers the buffer), else `'()`. The hunks are not stored: only a refresh holds them, so
+nothing else can paint hunks for text that has since changed. `hide-renderings!`, which the
+toggle-off and the `render-diff` command's cover call, takes no hunks and only clears the
+renderings that are hidden. Signs on with
 inline off, or the reverse, is a valid state, and a refresh for one must not touch the other.
 A rendering that never painted anything is never touched, so a buffer whose signs are
 turned off before any appeared never reserves a gutter slot.
@@ -122,8 +125,8 @@ turned off before any appeared never reserves a gutter slot.
 ## Branch tracking (`branch.scm`)
 
 A second, simpler pipeline next to `diff.scm`'s. It runs `git rev-parse --abbrev-ref HEAD`
-and pushes the result to the `"steel:git-branch"` statusline element, not into `"hunks"` or
-a decoration setter. A branch name is shown only for the focused buffer, so the fetch is
+and pushes the result to the `"steel:git-branch"` statusline element, not into the
+diff renderings or a decoration setter. A branch name is shown only for the focused buffer, so the fetch is
 driven by `on-buffer-enter`, not `on-buffer-open`, which fires for every buffer whether or
 not it is displayed. It also runs on `on-buffer-save`, since a hook run on save or a
 checkout in another terminal can move HEAD without a focus change.

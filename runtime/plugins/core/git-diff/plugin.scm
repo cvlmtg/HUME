@@ -51,7 +51,7 @@
     (error (string-append "git-diff/render-diff: the source \"" source "\" is core:git-diff's own")))
   (git-diff/render-diff! pane source hunks)
   (git-diff/add-cover! pane source)
-  (git-diff/reconcile! pane))
+  (git-diff/hide-renderings! pane))
 
 (define (git-diff/release-source! pane source)
   (git-diff/render-diff! pane source '())
@@ -95,7 +95,7 @@
              (git-diff/toggle-flag! pane key))])
     (if enabled?
         (git-diff/force-refresh! pane git-diff/ref)
-        (git-diff/reconcile! pane))
+        (git-diff/hide-renderings! pane))
     (log! 'info (if enabled?
                     (string-append "git-diff: " label " on (" (git-diff/buffer-ref pane git-diff/ref) ")")
                     (string-append "git-diff: " label " off")))))

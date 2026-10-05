@@ -4,7 +4,7 @@
 (require "render.scm")
 
 (provide git-diff/schedule-refresh! git-diff/refresh! git-diff/force-refresh!
-         git-diff/invalidate-ref! git-diff/drop-ref-text! git-diff/reconcile!)
+         git-diff/invalidate-ref! git-diff/drop-ref-text! git-diff/hide-renderings!)
 
 ;;; Calls `paint!` with `target` when it differs from what `painted-key` last recorded.
 (define (git-diff/reconcile-rendering! entry pane painted-key target paint!)
@@ -12,21 +12,34 @@
     (paint! pane target)
     (git-diff/entry-set! pane painted-key target)))
 
-;;; Brings both renderings in line with the flags, the covers and `"hunks"`.
-(define (git-diff/reconcile! pane)
+(define (git-diff/signs-visible? entry)
+  (hash-ref entry "signs?"))
+
+(define (git-diff/inline-visible? entry)
+  (and (hash-ref entry "inline?") (null? (hash-ref entry "covered-by"))))
+
+(define (git-diff/reconcile-signs! entry pane target)
+  (git-diff/reconcile-rendering! entry pane "signs-painted" target git-diff/render-signs!))
+
+(define (git-diff/reconcile-inline! entry pane target)
+  (git-diff/reconcile-rendering! entry pane "inline-painted" target
+    (lambda (p hunks) (git-diff/render-diff! p git-diff/*source* hunks))))
+
+;;; Paints `hunks` in each visible rendering and clears each hidden one.
+(define (git-diff/apply-hunks! pane hunks)
   (let ([entry (git-diff/buffer-entry pane)])
     (when entry
-      (let ([hunks (hash-ref entry "hunks")])
-        (git-diff/reconcile-rendering! entry pane "signs-painted"
-          (if (hash-ref entry "signs?") hunks '())
-          git-diff/render-signs!)
-        (git-diff/reconcile-rendering! entry pane "inline-painted"
-          (if (and (hash-ref entry "inline?") (null? (hash-ref entry "covered-by"))) hunks '())
-          (lambda (p target) (git-diff/render-diff! p git-diff/*source* target)))))))
+      (git-diff/reconcile-signs! entry pane (if (git-diff/signs-visible? entry) hunks '()))
+      (git-diff/reconcile-inline! entry pane (if (git-diff/inline-visible? entry) hunks '())))))
 
-(define (git-diff/apply-hunks! pane hunks)
-  (git-diff/entry-set! pane "hunks" hunks)
-  (git-diff/reconcile! pane))
+;;; Clears each hidden rendering and leaves the visible ones as painted.
+(define (git-diff/hide-renderings! pane)
+  (let ([entry (git-diff/buffer-entry pane)])
+    (when entry
+      (unless (git-diff/signs-visible? entry)
+        (git-diff/reconcile-signs! entry pane '()))
+      (unless (git-diff/inline-visible? entry)
+        (git-diff/reconcile-inline! entry pane '())))))
 
 ;;; `spawn-async!` callback for the `git cat-file` below — see docs/pipeline.md.
 (define (git-diff/handle-fetch-result! pane stdout stderr exit-code)
