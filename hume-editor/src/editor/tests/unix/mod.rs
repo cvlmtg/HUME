@@ -21,13 +21,15 @@ use std::time::{Duration, Instant};
 // single drain call. A background thread's result can land on any frame,
 // so CI scheduling jitter would flake a "drain once and assert" test.
 
-/// Drains async sources and their queued Steel callbacks/events in a bounded
-/// loop until `until` returns true. `settle()` already covers both (see its
-/// doc), so this is a single call, not two.
-fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
+/// Runs `step` in a bounded loop until `until` returns true.
+fn poll_until(
+    ed: &mut Editor,
+    mut step: impl FnMut(&mut Editor),
+    mut until: impl FnMut(&Editor) -> bool,
+) {
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
-        ed.settle();
+        step(ed);
         if until(ed) {
             return;
         }
@@ -36,20 +38,25 @@ fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
     }
 }
 
+/// Drains async sources and their queued Steel callbacks/events in a bounded
+/// loop until `until` returns true. `settle()` already covers both (see its
+/// doc), so this is a single call, not two.
+fn drain_until(ed: &mut Editor, until: impl FnMut(&Editor) -> bool) {
+    poll_until(ed, Editor::settle, until);
+}
+
+/// [`drain_until`], drawing a frame each pass (`render`, which settles
+/// first), for state only a frame produces, such as a lazy drawer's rows.
+fn drain_frames_until(ed: &mut Editor, until: impl FnMut(&Editor) -> bool) {
+    poll_until(ed, render, until);
+}
+
 /// Same loop as [`drain_until`], but calls `drain_async_sources` directly
 /// instead of `settle()`, for tests that drive the Rust-level registry
 /// directly, with no Steel VM in play, where settling the (empty) work queue
 /// on top would be pointless.
-fn drain_sources_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(2);
-    loop {
-        ed.drain_async_sources();
-        if until(ed) {
-            return;
-        }
-        assert!(Instant::now() < deadline, "condition never became true");
-        std::thread::sleep(Duration::from_millis(10));
-    }
+fn drain_sources_until(ed: &mut Editor, until: impl FnMut(&Editor) -> bool) {
+    poll_until(ed, Editor::drain_async_sources, until);
 }
 
 /// Waits until the open picker's `total_len()` reaches exactly `n`: the

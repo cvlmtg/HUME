@@ -37,9 +37,12 @@ as). After a jump, redo continues along the branch the jump entered.
 `(hash 'id 'parent 'age-secs 'current? 'saved?)` per revision, ascending by
 id, never empty. A revision's parent always has a smaller id, so walking the
 list newest first visits every child before its parent. It returns
-`(hash 'rows 'ids 'current 'current-node)`: one row string per revision newest
-first, the revision id behind each row, the index of the current revision's
-row, and that revision's input hash.
+`(hash 'nodes 'render 'current 'current-node)`: the input hashes newest first,
+one per row; a `(render start nodes)` procedure that formats the rows from
+index `start` for those hashes; the index of the current revision's row; and
+that revision's input hash. The plugin hands `'nodes` to the drawer as its row
+keys and `'render` as its `#:render`, so only the rows the drawer shows are
+formatted.
 
 The renderer keeps a list of lanes. A lane is the id of the parent a column of
 the graph is waiting to reach, or `#f` when the column is free. For each
@@ -56,7 +59,10 @@ revision, newest first:
    merging lane, and drop trailing free lanes.
 
 Each row is the graph padded to the widest graph, two spaces, two marker
-cells, a space, and the age right-aligned. The first marker cell is `@` for
+cells, a space, and the age right-aligned in a column as wide as the oldest
+revision's age, and at least 3 cells: an age in seconds, minutes or hours is
+at most 3 cells, and an age in days only grows with age, so the column fits
+every row without measuring each one. The first marker cell is `@` for
 the current revision, the second `S` for the saved one, and either is blank
 otherwise. They sit in a column of their own so they stay visible next to a
 wide graph. Here the current revision is 4 and the saved one is 0:
@@ -76,7 +82,7 @@ The graph depends only on each revision's id and parent. `undotree/render`
 keeps the graph rows of its last call and reuses them when the list of
 `(id . parent)` pairs, newest first, is `equal?` to that call's. An undo, redo
 or jump moves only the markers, so it skips the lane walk; the markers and ages
-are formatted on every call. The key is the whole input to the lane walk, so
+are formatted on every render. The key is the whole input to the lane walk, so
 there is nothing to invalidate.
 
 ## Age

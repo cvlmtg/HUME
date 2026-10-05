@@ -68,7 +68,9 @@ fn rendered_rows_after(earlier: &[&[Node]], nodes: &[Node]) -> String {
 (define-command! "undotree-probe" "Show the rendered rows of a literal node list."
   (lambda (pane)
     {}
-    (show-drawer-list! pane (hash-ref (undotree/render {}) 'rows) (lambda (i) (begin)))))"#,
+    (let ([rendered (undotree/render {})])
+      (show-drawer-list! pane (hash-ref rendered 'nodes) (lambda (i) (begin))
+                         #:render (hash-ref rendered 'render)))))"#,
         earlier.join("\n    "),
         scheme_nodes(nodes)
     );
@@ -83,7 +85,7 @@ fn rendered_rows_after(earlier: &[&[Node]], nodes: &[Node]) -> String {
         "(load-plugin! \"core:undotree-probe\")",
     );
     ed.execute_keymap_command("undotree-probe".to_string().into(), None, false);
-    ed.settle();
+    frame(&mut ed, 80, 40);
     drawer_rows(&ed).join("\n")
 }
 
@@ -172,10 +174,10 @@ fn render_new_parents_redraw_the_graph() {
             node(2, Some(0), 0, true, false),
         ],
     );
-    insta::assert_snapshot!(rows, @r"
-    o    @  0s
-    | o     1m
-    o-'   S 2m
+    insta::assert_snapshot!(rows, @"
+    o    @   0s
+    | o      1m
+    o-'   S  2m
     ");
 }
 
@@ -198,7 +200,7 @@ fn setup(tmp: &Path) -> (Editor, RealRuntimeGuard) {
 
 fn toggle(ed: &mut Editor) {
     ed.execute_keymap_command("toggle-undotree".to_string().into(), None, false);
-    ed.settle();
+    render(ed);
 }
 
 /// Two branches off the root: rev1 deletes `h`, rev2 deletes `e`; the editor
@@ -250,10 +252,10 @@ fn undotree_opens_on_current_revision() {
 
     toggle(&mut ed);
 
-    insta::assert_snapshot!(masked_rows(&ed), @r"
-    o    @  ##
-    | o     ##
-    o-'   S ##
+    insta::assert_snapshot!(masked_rows(&ed), @"
+    o    @   ##
+    | o      ##
+    o-'   S  ##
     ");
     assert_eq!(ed.state.input.drawer().unwrap().selected, 0);
 }
@@ -268,15 +270,15 @@ fn undotree_enter_jumps_and_rerenders_current_marker() {
 
     ed.handle_key(key_shift_down());
     ed.handle_key(key_enter());
-    drain_until(&mut ed, |ed| {
+    drain_frames_until(&mut ed, |ed| {
         drawer_rows(ed).get(1).is_some_and(|row| row.contains('@'))
     });
 
     assert_eq!(ed.doc().text().to_string(), "ello\n");
-    insta::assert_snapshot!(masked_rows(&ed), @r"
-    o       ##
-    | o  @  ##
-    o-'   S ##
+    insta::assert_snapshot!(masked_rows(&ed), @"
+    o        ##
+    | o  @   ##
+    o-'   S  ##
     ");
     assert_eq!(
         ed.state.input.drawer().unwrap().selected,
@@ -314,13 +316,13 @@ fn undotree_refreshes_after_edit() {
     toggle(&mut ed);
 
     ed.feed_key(key('d'));
-    drain_until(&mut ed, |ed| drawer_rows(ed).len() == 4);
+    drain_frames_until(&mut ed, |ed| drawer_rows(ed).len() == 4);
 
-    insta::assert_snapshot!(masked_rows(&ed), @r"
-    o    @  ##
-    o       ##
-    | o     ##
-    o-'   S ##
+    insta::assert_snapshot!(masked_rows(&ed), @"
+    o    @   ##
+    o        ##
+    | o      ##
+    o-'   S  ##
     ");
 }
 
@@ -337,15 +339,15 @@ fn undotree_refreshes_after_net_identity_undo() {
 
     ed.feed_key(key('2'));
     ed.feed_key(key('u'));
-    drain_until(&mut ed, |ed| {
+    drain_frames_until(&mut ed, |ed| {
         drawer_rows(ed).last().is_some_and(|row| row.contains('@'))
     });
 
     assert_eq!(ed.doc().text().to_string(), before, "setup: no text change");
-    insta::assert_snapshot!(masked_rows(&ed), @r"
-    o     ##
-    o     ##
-    o  @S ##
+    insta::assert_snapshot!(masked_rows(&ed), @"
+    o      ##
+    o      ##
+    o  @S  ##
     ");
 }
 
@@ -429,7 +431,7 @@ fn undotree_enter_redraws_the_diff_for_the_revision_jumped_to() {
 
     ed.handle_key(key_shift_down());
     ed.handle_key(key_enter());
-    drain_until(&mut ed, |ed| {
+    drain_frames_until(&mut ed, |ed| {
         diff_vlines(ed, bid) == vec![(0, true, "hello".to_string(), vec![(0, 1)])]
     });
 
@@ -474,7 +476,7 @@ fn undotree_redo_in_buffer_redraws_diff_and_marker_in_the_same_settle() {
     );
 
     ed.feed_key(key('U'));
-    ed.settle();
+    render(&mut ed);
 
     assert_eq!(ed.doc().text().to_string(), "hllo\n");
     assert_eq!(
@@ -496,7 +498,7 @@ fn undotree_root_has_no_diff() {
     ed.handle_key(key_shift_down());
     ed.handle_key(key_shift_down());
     ed.handle_key(key_enter());
-    drain_until(&mut ed, |ed| diff_vlines(ed, bid).is_empty());
+    drain_frames_until(&mut ed, |ed| diff_vlines(ed, bid).is_empty());
 
     assert_eq!(ed.doc().text().to_string(), "hello\n");
     assert_eq!(diff_line_bgs(&ed, bid), 0);
@@ -630,7 +632,7 @@ fn undotree_redraws_the_diff_only_when_the_revision_changes() {
         "setup: the diff is cleared"
     );
 
-    drain_until(&mut ed, |ed| {
+    drain_frames_until(&mut ed, |ed| {
         drawer_rows(ed).iter().all(|row| row.ends_with(" 1s"))
     });
     assert!(
@@ -640,7 +642,7 @@ fn undotree_redraws_the_diff_only_when_the_revision_changes() {
 
     ed.handle_key(key_shift_down());
     ed.handle_key(key_enter());
-    drain_until(&mut ed, |ed| !diff_vlines(ed, bid).is_empty());
+    drain_frames_until(&mut ed, |ed| !diff_vlines(ed, bid).is_empty());
 }
 
 /// Showing another buffer retargets the drawer to it, and the buffer it left
@@ -661,7 +663,7 @@ fn undotree_buffer_switch_clears_the_diff_of_the_buffer_left() {
     std::fs::write(&other, "x\n").unwrap();
     ed.execute_typed("e", Some(other.to_str().unwrap()))
         .unwrap();
-    drain_until(&mut ed, |ed| diff_vlines(ed, first).is_empty());
+    drain_frames_until(&mut ed, |ed| diff_vlines(ed, first).is_empty());
 
     assert_ne!(
         ed.focused_buffer_id(),
@@ -750,9 +752,9 @@ fn undotree_follows_buffer_switch() {
 
     ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
     ed.execute_typed("bn", None).unwrap();
-    drain_until(&mut ed, |ed| drawer_rows(ed).len() == 1);
+    drain_frames_until(&mut ed, |ed| drawer_rows(ed).len() == 1);
 
-    insta::assert_snapshot!(masked_rows(&ed), @"o  @S ##");
+    insta::assert_snapshot!(masked_rows(&ed), @"o  @S  ##");
 }
 
 #[test]
@@ -761,10 +763,10 @@ fn undotree_typed_command_opens_the_drawer() {
     let (mut ed, _guard) = setup(tmp.path());
 
     type_cmd(&mut ed, ":undotree");
-    ed.settle();
+    render(&mut ed);
 
     assert!(drawer_open(&ed));
-    insta::assert_snapshot!(masked_rows(&ed), @"o  @S ##");
+    insta::assert_snapshot!(masked_rows(&ed), @"o  @S  ##");
 }
 
 const PLUGIN_SCM: &str = include_str!(concat!(
@@ -804,7 +806,7 @@ fn undotree_ages_refresh_while_the_drawer_is_open() {
         "setup: a fresh tree reads 0s"
     );
 
-    drain_until(&mut ed, |ed| {
+    drain_frames_until(&mut ed, |ed| {
         drawer_rows(ed).iter().all(|row| row.ends_with(" 1s"))
     });
 }

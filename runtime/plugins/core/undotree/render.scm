@@ -74,7 +74,8 @@
          (undotree/advance-lanes wide column merging (hash-ref node 'parent))
          (cons (undotree/graph-row wide column merging) laid-out)))))
 
-;;; One entry: the last layout's key, its graph rows and their widest graph.
+;;; One entry: the last layout's key, its graph rows (a vector) and their
+;;; widest graph.
 ;;; See README.md's "Graph".
 (define undotree/*layout-memo* (box #f))
 
@@ -85,7 +86,7 @@
     (if (and memo (equal? (car memo) key))
         (cdr memo)
         (let* ([graphs (undotree/layout newest-first '() '())]
-               [entry (cons graphs (undotree/max-width graphs))])
+               [entry (cons (list->vector graphs) (undotree/max-width graphs))])
           (set-box! undotree/*layout-memo* (cons key entry))
           entry))))
 
@@ -126,16 +127,21 @@
 (define (undotree/render nodes)
   (let* ([newest-first (reverse nodes)]
          [layout (undotree/graphs newest-first)]
-         [ages (map (lambda (node) (undotree/format-age (hash-ref node 'age-secs))) newest-first)]
-         [age-width (undotree/max-width ages)]
+         [graphs (car layout)]
+         [graph-width (cdr layout)]
+         [age-width (max 3 (string-length
+                            (undotree/format-age (hash-ref (car nodes) 'age-secs))))]
          [current (undotree/find-row (lambda (node) (hash-ref node 'current?)) newest-first 0)])
-    (hash 'rows (let loop ([nodes newest-first] [rows (car layout)] [ages ages] [acc '()])
-                  (if (null? nodes)
-                      (reverse acc)
-                      (loop (cdr nodes) (cdr rows) (cdr ages)
-                            (cons (undotree/format-row (car nodes) (car rows) (car ages)
-                                                       (cdr layout) age-width)
-                                  acc))))
-          'ids (map (lambda (node) (hash-ref node 'id)) newest-first)
+    (hash 'nodes newest-first
+          'render (lambda (start keys)
+                    (let loop ([keys keys] [i start] [acc '()])
+                      (if (null? keys)
+                          (reverse acc)
+                          (loop (cdr keys) (+ i 1)
+                                (cons (undotree/format-row
+                                       (car keys) (vector-ref graphs i)
+                                       (undotree/format-age (hash-ref (car keys) 'age-secs))
+                                       graph-width age-width)
+                                      acc)))))
           'current (car current)
           'current-node (cdr current))))
