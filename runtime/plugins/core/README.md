@@ -150,7 +150,7 @@ to the user, not by how verbose the plugin author wants to be:
   an invalid name), or a security-relevant refusal (a path-traversal attempt) worth a
   persistent record.
 - `'trace`: an expected, common failure that would otherwise fill `:messages` for every
-  buffer that never opted into the feature (e.g. `git show` failing for a buffer with no
+  buffer that never opted into the feature (e.g. `git cat-file` failing for a buffer with no
   ref override, which `git-diff` runs for every buffer).
 - `'info` (via `Severity::Info`) is status-line only and never reaches `:messages`, so it
   suits status that need not outlive the moment it flashed by.

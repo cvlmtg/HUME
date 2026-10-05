@@ -263,7 +263,7 @@ fn text_hunks_multi_line_delete_keeps_lines_apart() {
     );
 }
 
-/// A `git show` blob routinely lacks its final newline.
+/// A `git cat-file` blob routinely lacks its final newline.
 #[test]
 fn text_hunks_missing_trailing_newline_is_not_a_change() {
     assert_eq!(text_of("a\nb", "a\nb\n"), Vec::new());

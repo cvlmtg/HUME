@@ -6,23 +6,19 @@
 
 ;;; `spawn-async!` callback for `git rev-parse --abbrev-ref HEAD` — see docs/pipeline.md.
 (define (git-diff/handle-branch-result! pane stdout stderr exit-code)
-  (git-diff/entry-set! pane "branch-job" #f)
-  (when (git-diff/buffer-entry pane)
-    (if (= exit-code 0)
-        (set-statusline-text! "git-branch" pane (string-append "(" (trim stdout) ")"))
-        (begin
-          (when (= exit-code -1)
-            (log! 'error (string-append "git-diff: `git rev-parse` failed: " (trim stderr))))
-          (set-statusline-text! "git-branch" pane "")))))
+  (if (= exit-code 0)
+      (set-statusline-text! "git-branch" pane (string-append "(" (trim stdout) ")"))
+      (begin
+        (when (= exit-code -1)
+          (log! 'error (string-append "git-diff: `git rev-parse` failed: " (trim stderr))))
+        (set-statusline-text! "git-branch" pane ""))))
 
 ;;; `git rev-parse --abbrev-ref HEAD`, cwd = `path`'s directory.
 (define (git-diff/fetch-branch! pane path)
-  (git-diff/cancel-branch-fetch! pane)
-  (let ([job (spawn-async! "git" '("rev-parse" "--abbrev-ref" "HEAD")
-                           (lambda (stdout stderr exit-code)
-                             (git-diff/handle-branch-result! pane stdout stderr exit-code))
-                           #:cwd (parent-name path))])
-    (git-diff/entry-set! pane "branch-job" job)))
+  (git-diff/spawn-job! pane "branch-job" "git" '("rev-parse" "--abbrev-ref" "HEAD")
+                       (parent-name path)
+                       (lambda (stdout stderr exit-code)
+                         (git-diff/handle-branch-result! pane stdout stderr exit-code))))
 
 ;;; Gates the fetch on `"steel:git-branch"` being placed — see docs/pipeline.md.
 (define (git-diff/branch-element-placed?)

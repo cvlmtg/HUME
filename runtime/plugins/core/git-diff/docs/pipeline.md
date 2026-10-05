@@ -12,17 +12,17 @@ schedule-refresh! (150ms debounce-by, keyed by buffer)
 ref-text cached? ──yes──▶ diff-buffer-lines (local, no process) ─┐
         │no                                                      │
         ▼                                                        │
-   git show <ref>:./<file>  (async)                              │
+   git cat-file --filters <ref>:./<file>  (async)                │
         │                                                        │
         ▼                                                        │
 handle-fetch-result! ──▶ diff-buffer-lines                       │
                                                                  ▼
                                                           apply-hunks!
-                                                    (skips if unchanged from
-                                                     what's already painted)
                                                                  │
                                                                  ▼
-                                                   render-for! (signs?/inline?)
+                                                            reconcile!
+                                                    (paints only what differs
+                                                     from what's already painted)
                                                        ┌─────────┴─────────┐
                                                        ▼                   ▼
                                                   render-signs!    render-inline! +
@@ -34,32 +34,37 @@ handle-fetch-result! ──▶ diff-buffer-lines                       │
 | Hook | Action |
 |---|---|
 | `on-buffer-open` | Init state, schedule a refresh |
+| `on-buffer-enter` | Cancel any in-flight fetch, clear `"ref-text"`, schedule a refresh and a branch refresh |
 | `on-text-changed` | Schedule a refresh |
 | `on-buffer-save` | Cancel any in-flight fetch, clear `"ref-text"`, schedule a refresh and a branch refresh |
 | `on-buffer-close` | Cancel any in-flight diff and branch fetch, drop the entry |
 
-`on-buffer-save` clears the cached `"ref-text"` and cancels any fetch already in flight
-before it schedules the refresh. A fetch spawned just before the save could otherwise land
-inside the debounce window and repopulate `"ref-text"` with the pre-save blob, which
-`refresh!` would treat as a valid cache and never re-fetch.
+`on-buffer-save` and `on-buffer-enter` share `invalidate-ref!`: it clears the cached
+`"ref-text"` and cancels any fetch already in flight before it schedules the refresh. A save
+changes the file, and a commit or checkout in another terminal moves the ref without any
+event, so the next focus change is the first chance to notice it. Without the cancel, a fetch
+spawned just before could land inside the debounce window and repopulate `"ref-text"` with
+the stale blob, which `refresh!` would treat as a valid cache and never re-fetch.
 
 ### Fetching
 
-`fetch-ref!` cancels any earlier fetch, then runs `git show <ref>:./<name>` with cwd set to
-the buffer's own directory. The `./` prefix resolves the name relative to cwd, so locating
-the blob needs no `git rev-parse --show-toplevel` call and no cached repo root in state.
+`fetch-ref!` starts `git cat-file --filters --end-of-options <ref>:./<name>` through
+`spawn-job!`, which cancels any earlier fetch, with cwd set to the buffer's own directory.
+The `./` prefix resolves the name relative to cwd, so locating the blob needs no
+`git rev-parse --show-toplevel` call and no cached repo root in state. `--filters` applies
+the file's checkout filters to the blob, so a file stored through Git LFS, `ident` or a
+smudge filter diffs as the text on disk. `--end-of-options` keeps a ref that starts with `-`
+from being read as an option.
 
-`handle-fetch-result!` is the `spawn-async!` callback. It clears `"job"` and trusts `stdout`
-only on exit code `0`. On success it stores the blob in `"ref-text"` and applies the diff;
+`handle-fetch-result!` is the `spawn-job!` callback, so it runs only for the fetch that
+still owns `"job"`. It trusts `stdout` only on exit code `0`. On success it stores the blob in `"ref-text"` and applies the diff;
 on failure it sets `"ref-text"` to `'unavailable` and applies `'()`, which clears the painted
 hunks.
 
-A buffer can close while its fetch is in flight, for example when `:bd` and the job's
-completion land in the same frame. `on-buffer-close`'s cancel cannot help, because the job
-has already left the cancellable slot and entered this callback. The state writes
-(`entry-set!`, `cancel-job!`) no-op on a missing entry, but `diff-buffer-lines` raises for
-a closed buffer, so the success branch checks that the entry exists before calling it. See
-[Closed buffers](#closed-buffers).
+A buffer can close, or a save can cancel the fetch, while its completion is already queued
+for the same frame. The cancel cannot help, because the job has already left the cancellable
+slot. `spawn-job!` drops such a result: the entry is gone or the slot holds another job (or
+none). See [Closed buffers](#closed-buffers).
 
 #### Severity routing
 
@@ -70,12 +75,14 @@ a closed buffer, so the success branch checks that the entry exists before calli
 | any other nonzero, no override | `'trace` | Untracked file, brand-new file, buffer outside any repo, bad `ref` config. These cannot be told apart without parsing `stderr` further; the line is visible in `:messages` for diagnosis and otherwise quiet |
 
 Either way `"ref-text"` becomes `'unavailable`, not `#f`. `#f` means "not fetched yet", and
-`refresh!` would respawn a `git show` that fails the same way on every debounced keystroke.
+`refresh!` would respawn a `git cat-file` that fails the same way on every debounced keystroke.
 `'unavailable` is a sticky negative cache, cleared by `on-buffer-save` or `force-refresh!`.
 
 ### Refresh entry points
 
-`schedule-refresh!` is the debounced entry point every hook calls. It uses `debounce-by`,
+`schedule-refresh!` is the debounced entry point every hook calls. Hooks pass the config
+ref, and `refresh!` resolves the buffer's own ref when it fires, so a ref switched inside the
+debounce window is the one fetched. It uses `debounce-by`,
 keyed by `(buffer-key pane)` and not the pane value (see the
 [core plugins index](../../README.md#debouncing)), at 150ms. With the ref cached a refresh
 is a local diff and not a git process, so it can debounce tighter than `core:lsp`'s inlay
@@ -89,27 +96,28 @@ and has nothing to diff against. The `"ref-text"` value decides the rest:
 | `"ref-text"` | `refresh!` does |
 |---|---|
 | a string | A local diff, no git process |
-| `#f` | Fetches |
+| `#f`, no fetch in flight | Fetches |
+| `#f`, a fetch in flight | Nothing: the fetch's callback diffs the live text when it lands |
 | `'unavailable` | Nothing |
 
 `force-refresh!` clears `"ref-text"` unless it is a string, then calls `refresh!`, so a
 failed earlier fetch is retried and a cached blob gives a local diff. Both toggle commands
 call it, so turning a rendering back on retries and does not stay empty because a previous
-fetch failed. It leaves `"hunks"` as it is: that field must keep equal to what is painted.
-The toggle command paints the stored hunks before it calls `force-refresh!`. Without that,
-a re-enabled rendering whose fetch returns the same hunks as the stored ones would be
-skipped by `apply-hunks!`'s equality check and stay blank.
+fetch failed. Turning a rendering on never paints the stored hunks, which may describe text
+that has since changed: it waits for the refresh's fresh diff.
 
 `cancel-fetch!` cancels any in-flight fetch for a buffer without firing its callback. It is
-called from `on-buffer-save`, `on-buffer-close` and `fetch-ref!`.
+called from `invalidate-ref!`, `on-buffer-close` and the explicit-ref toggle.
 
 ### Applying hunks
 
-`apply-hunks!` writes the hunks to state and re-renders only when they differ from what is
-already painted, which is why `"hunks"` must equal what is painted. It re-reads the buffer's
-entry and does not trust one held by the caller. Each rendering is gated on its own flag:
-signs on with inline off, or the reverse, is a valid state, and a refresh for one must not
-touch the other.
+`apply-hunks!` writes the hunks to state and calls `reconcile!`, which compares each
+rendering's target with what it last painted (`"signs-painted"`/`"inline-painted"`) and
+paints only on a difference. A rendering's target is the hunks when its flag is on (for
+inline, also when no other plugin's source covers the buffer), else `'()`. Signs on with
+inline off, or the reverse, is a valid state, and a refresh for one must not touch the other.
+A rendering that never painted anything is never touched, so a buffer whose signs are
+turned off before any appeared never reserves a gutter slot.
 
 ## Branch tracking (`branch.scm`)
 
@@ -145,9 +153,9 @@ Branch tracking runs for every buffer the hooks fire on, not only those opted in
 ## Closed buffers
 
 `buffer-path`, the statusline setter and `diff-buffer-lines` raise for a closed buffer where
-this plugin's own state writes no-op. `refresh-branch!`, `handle-branch-result!`,
-`apply-hunks!` and `handle-fetch-result!` therefore check that the buffer's entry exists
-before they call one of them. That check is reliable, even in a debounce timer or a
+this plugin's own state writes no-op. `refresh-branch!` and `refresh!` therefore check that
+the buffer's entry exists before they call one of them, and `spawn-job!` runs a result
+callback only while the entry exists. That check is reliable, even in a debounce timer or a
 `spawn-async!` callback that fires after the buffer closes, because `on-buffer-close`
 removes the entry synchronously before either can run: a missing entry means the buffer is
 gone.

@@ -103,7 +103,7 @@ fn open(ed: &mut Editor, path: &Path) -> BufferId {
 }
 
 /// Waits out a just-queued hook's 150ms `debounce-by` timer plus the
-/// subsequent async `git show` round trip, for a bounded negative wait
+/// subsequent async `git cat-file` round trip, for a bounded negative wait
 /// (asserting nothing/something-specific happened) where no store mutation
 /// exists to `drain_until` on.
 ///
@@ -1039,7 +1039,7 @@ fn untracked_file_shows_no_diff_and_logs_nothing() {
     let status_after_open = ed.state.status_msg.clone();
 
     // No positive signal exists for "the fetch ran and found nothing":
-    // wait past the 150ms debounce plus a real `git show` round trip,
+    // wait past the 150ms debounce plus a real `git cat-file` round trip,
     // mirroring `lsp_sighelp.rs`'s bounded-sleep idiom for a background
     // subprocess with no observable completion event to poll on.
     wait_for_refresh(&mut ed);
@@ -1209,7 +1209,7 @@ fn buffer_close_after_open_leaves_no_stray_error() {
     open(&mut ed, &repo.path().join("f.txt"));
 
     // Let on-buffer-open run (starting its debounce timer), then close just
-    // past the 150ms debounce. The background `git show` is plausibly still
+    // past the 150ms debounce. The background `git cat-file` is plausibly still
     // in flight at that point. on-buffer-close's cancel-fetch!/remove-buffer!
     // must leave no callback able to misfire against this now-closed buffer.
     ed.settle();
@@ -1505,5 +1505,153 @@ fn missing_stdlib_errors_at_load() {
         }),
         "error must name the missing dependency; got: {:?}",
         host.peek_pending_messages()
+    );
+}
+
+// ── Painted state, ref freshness, git invocation ────────────────────────────
+
+/// Deletes the buffer's lines from line 2 on, leaving `a\nb\n`.
+fn delete_from_third_line(ed: &mut Editor) {
+    ed.feed_key(key('j'));
+    ed.feed_key(key('j'));
+    ed.feed_key(key('x'));
+    for _ in 0..3 {
+        ed.feed_key(key_ctrl('x'));
+    }
+    ed.feed_key(key('d'));
+    ed.settle();
+}
+
+/// Six-line fixture: HEAD holds `a..f`, the working tree changes `e`.
+fn dirty_six_line_repo() -> tempfile::TempDir {
+    let repo = safe_tempdir();
+    git_init(repo.path());
+    commit_file(repo.path(), "f.txt", "a\nb\nc\nd\ne\nf\n", "v1");
+    std::fs::write(repo.path().join("f.txt"), "a\nb\nc\nd\nE\nf\n").unwrap();
+    repo
+}
+
+#[test]
+fn toggling_signs_on_after_both_renderings_were_off_paints_the_current_diff() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "signs" #f "inline" #f)"#));
+    let repo = dirty_six_line_repo();
+    let bid = open(&mut ed, &repo.path().join("f.txt"));
+    ed.settle();
+
+    type_cmd(&mut ed, ":toggle-git-signs");
+    drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
+    type_cmd(&mut ed, ":toggle-git-signs");
+    ed.settle();
+    assert!(signs(&ed, bid).is_empty(), "sanity: signs off");
+
+    delete_from_third_line(&mut ed);
+    type_cmd(&mut ed, ":toggle-git-signs");
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("git-diff: signs on (HEAD)"),
+        "the toggle must complete instead of painting hunks for lines that are gone"
+    );
+    drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
+
+    assert_eq!(
+        signs(&ed, bid),
+        vec![(1, "▁".to_string(), "diff.minus".to_string())],
+        "c..f were deleted, so the only mark is the deletion boundary under line b"
+    );
+}
+
+#[test]
+fn toggling_signs_off_on_a_buffer_that_never_showed_signs_reserves_no_gutter_slot() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+    let dir = safe_tempdir();
+    std::fs::write(dir.path().join("plain.txt"), "hello\n").unwrap();
+    let bid = open(&mut ed, &dir.path().join("plain.txt"));
+    wait_for_refresh(&mut ed);
+
+    type_cmd(&mut ed, ":toggle-git-signs");
+    ed.settle();
+
+    assert_eq!(ed.state.config.decorations.sign_source_count(bid), 0);
+}
+
+#[test]
+fn releasing_a_source_right_after_an_edit_draws_the_inline_diff_of_the_current_text() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup_with_source(
+        tmp.path(),
+        Some(r#"(hash "signs" #f "inline" #t)"#),
+        &render_probe_source("(list)"),
+    );
+    let repo = dirty_six_line_repo();
+    let bid = open(&mut ed, &repo.path().join("f.txt"));
+    drain_until(&mut ed, |ed| !line_bgs(ed, bid).is_empty());
+
+    type_cmd(&mut ed, ":render-probe");
+    delete_from_third_line(&mut ed);
+    type_cmd(&mut ed, ":render-release");
+    ed.settle();
+
+    let removed: Vec<_> = vlines(&ed, bid).into_iter().map(|v| v.2).collect();
+    assert_eq!(removed, vec!["c", "d", "e", "f"]);
+}
+
+#[test]
+fn switching_back_to_a_buffer_picks_up_a_commit_made_outside_the_editor() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+    let repo = dirty_six_line_repo();
+    let path = repo.path().join("f.txt");
+    let bid = open(&mut ed, &path);
+    drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
+
+    git(repo.path(), &["commit", "-q", "-a", "-m", "v2"]);
+    let other = safe_tempdir();
+    std::fs::write(other.path().join("o.txt"), "o\n").unwrap();
+    open(&mut ed, &other.path().join("o.txt"));
+    ed.settle();
+    open(&mut ed, &path);
+    drain_until(&mut ed, |ed| signs(ed, bid).is_empty());
+}
+
+#[test]
+fn a_file_stored_through_a_git_filter_diffs_as_its_checked_out_text() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+    let repo = safe_tempdir();
+    git_init(repo.path());
+    commit_file(repo.path(), ".gitattributes", "f.txt ident\n", "attrs");
+    commit_file(repo.path(), "f.txt", "$Id$\nx\n", "v1");
+    std::fs::remove_file(repo.path().join("f.txt")).unwrap();
+    git(repo.path(), &["checkout", "-q", "--", "f.txt"]);
+    let checked_out = std::fs::read_to_string(repo.path().join("f.txt")).unwrap();
+    std::fs::write(repo.path().join("f.txt"), checked_out.replace("x\n", "y\n")).unwrap();
+    let bid = open(&mut ed, &repo.path().join("f.txt"));
+    drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
+
+    assert_eq!(
+        signs(&ed, bid),
+        vec![(1, "~".to_string(), "diff.delta".to_string())],
+        "only the edited line differs; the expanded `$Id$` line matches the filtered blob"
+    );
+}
+
+#[test]
+fn a_ref_that_looks_like_a_git_option_is_not_run_as_one() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+    let repo = safe_tempdir();
+    git_init(repo.path());
+    commit_file(repo.path(), "f.txt", "a\n", "v1");
+    std::fs::create_dir(repo.path().join("out:.")).unwrap();
+    open(&mut ed, &repo.path().join("f.txt"));
+
+    type_cmd(&mut ed, ":toggle-git-signs --output=out");
+    wait_for_refresh(&mut ed);
+
+    assert!(
+        !repo.path().join("out:./f.txt").exists(),
+        "git must not have taken the ref as its --output option"
     );
 }

@@ -2,7 +2,7 @@
 
 (provide git-diff/init-buffer! git-diff/remove-buffer!
          git-diff/buffer-entry git-diff/entry-set! git-diff/ensure-entry!
-         git-diff/toggle-flag! git-diff/cancel-job!
+         git-diff/buffer-ref git-diff/toggle-flag! git-diff/cancel-job! git-diff/spawn-job!
          git-diff/add-cover! git-diff/remove-cover! git-diff/inline-covered?)
 
 ;;; Keyed by `(buffer-key pane)`, not `pane` itself — see docs/architecture.md's "State (`state.scm`)".
@@ -11,8 +11,8 @@
 ;;; SSOT for a buffer's starting shape.
 (define (git-diff/fresh-entry signs? inline?)
   (hash "signs?" signs? "inline?" inline?
-        "ref-text" #f "hunks" '() "job" #f "ref" #f "branch-job" #f
-        "covered-by" '()))
+        "ref-text" #f "hunks" '() "signs-painted" '() "inline-painted" '()
+        "job" #f "ref" #f "branch-job" #f "covered-by" '()))
 
 (define (git-diff/buffer-entry pane)
   (let ([table (unbox git-diff/*buffers*)]
@@ -40,6 +40,11 @@
   (unless (git-diff/buffer-entry pane)
     (set-box! git-diff/*buffers*
               (hash-insert (unbox git-diff/*buffers*) (buffer-key pane) (git-diff/fresh-entry #f #f)))))
+
+;;; The buffer's own ref, else `default`.
+(define (git-diff/buffer-ref pane default)
+  (let ([entry (git-diff/buffer-entry pane)])
+    (or (and entry (hash-ref entry "ref")) default)))
 
 ;;; Flips `key` (one of "signs?"/"inline?") and returns the new value.
 (define (git-diff/toggle-flag! pane key)
@@ -73,3 +78,19 @@
       (let ([job (hash-ref entry key)])
         (when job (cancel-async! job)))
       (git-diff/entry-set! pane key #f))))
+
+;;; Starts `program` as the job in slot `key`, cancelling that slot's current
+;;; job. `on-result` runs only while the job still owns the slot, so a result
+;;; queued before a cancel or a replacement is dropped.
+(define (git-diff/spawn-job! pane key program args cwd on-result)
+  (git-diff/cancel-job! pane key)
+  (let* ([id (box #f)]
+         [job (spawn-async! program args
+                (lambda (stdout stderr exit-code)
+                  (let ([entry (git-diff/buffer-entry pane)])
+                    (when (and entry (equal? (hash-ref entry key) (unbox id)))
+                      (git-diff/entry-set! pane key #f)
+                      (on-result stdout stderr exit-code))))
+                #:cwd cwd)])
+    (set-box! id job)
+    (git-diff/entry-set! pane key job)))
