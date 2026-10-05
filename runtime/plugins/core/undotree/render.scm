@@ -103,7 +103,7 @@
       [(and memo (undotree/appends-child? key (car memo)))
        (let ([previous (cdr memo)])
          (undotree/remember-layout! key
-                                    (list->vector (cons "o" (vector->list (car previous))))
+                                    (vector-append (vector "o") (car previous))
                                     (cdr previous)))]
       [else
        (let ([graphs (undotree/layout newest-first '() '())])
