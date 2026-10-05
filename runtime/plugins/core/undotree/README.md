@@ -72,6 +72,13 @@ o-'     S 12m
 
 Every row is a revision, so a row always names a revision to jump to.
 
+The graph depends only on each revision's id and parent. `undotree/render`
+keeps the graph rows of its last call and reuses them when the list of
+`(id . parent)` pairs, newest first, is `equal?` to that call's. An undo, redo
+or jump moves only the markers, so it skips the lane walk; the markers and ages
+are formatted on every call. The key is the whole input to the lane walk, so
+there is nothing to invalidate.
+
 ## Age
 
 `undotree/format-age` floors whole seconds to the largest unit that fits:

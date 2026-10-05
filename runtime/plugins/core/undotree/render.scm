@@ -72,10 +72,22 @@
         (undotree/layout
          (cdr nodes)
          (undotree/advance-lanes wide column merging (hash-ref node 'parent))
-         (cons (hash 'node node
-                     'graph (undotree/graph-row wide column merging)
-                     'age (undotree/format-age (hash-ref node 'age-secs)))
-               laid-out)))))
+         (cons (undotree/graph-row wide column merging) laid-out)))))
+
+;;; One entry: the last layout's key, its graph rows and their widest graph.
+;;; See README.md's "Graph".
+(define undotree/*layout-memo* (box #f))
+
+(define (undotree/graphs newest-first)
+  (let ([key (map (lambda (node) (cons (hash-ref node 'id) (hash-ref node 'parent)))
+                  newest-first)]
+        [memo (unbox undotree/*layout-memo*)])
+    (if (and memo (equal? (car memo) key))
+        (cdr memo)
+        (let* ([graphs (undotree/layout newest-first '() '())]
+               [entry (cons graphs (undotree/max-width graphs))])
+          (set-box! undotree/*layout-memo* (cons key entry))
+          entry))))
 
 ;; ── Rows ─────────────────────────────────────────────────────────────────────
 
@@ -91,15 +103,14 @@
 (define (undotree/max-width strings)
   (apply max (map string-length strings)))
 
-(define (undotree/format-row row graph-width age-width)
-  (let ([node (hash-ref row 'node)])
-    (string-append
-     (undotree/pad-right (hash-ref row 'graph) graph-width)
-     "  "
-     (if (hash-ref node 'current?) "@" " ")
-     (if (hash-ref node 'saved?) "S" " ")
-     " "
-     (undotree/pad-left (hash-ref row 'age) age-width))))
+(define (undotree/format-row node graph age graph-width age-width)
+  (string-append
+   (undotree/pad-right graph graph-width)
+   "  "
+   (if (hash-ref node 'current?) "@" " ")
+   (if (hash-ref node 'saved?) "S" " ")
+   " "
+   (undotree/pad-left age age-width)))
 
 (define (undotree/find-row pred rows i)
   (cond
@@ -113,14 +124,18 @@
 
 ;;; See README.md's "Graph" for the input and result shapes.
 (define (undotree/render nodes)
-  (let* ([laid-out (undotree/layout (reverse nodes) '() '())]
-         [node-of (lambda (row) (hash-ref row 'node))]
-         [ids (map (lambda (row) (hash-ref (node-of row) 'id)) laid-out)]
-         [graph-width (undotree/max-width (map (lambda (row) (hash-ref row 'graph)) laid-out))]
-         [age-width (undotree/max-width (map (lambda (row) (hash-ref row 'age)) laid-out))]
-         [current (undotree/find-row (lambda (row) (hash-ref (node-of row) 'current?)) laid-out 0)])
-    (hash 'rows (map (lambda (row) (undotree/format-row row graph-width age-width))
-                     laid-out)
-          'ids ids
+  (let* ([newest-first (reverse nodes)]
+         [layout (undotree/graphs newest-first)]
+         [ages (map (lambda (node) (undotree/format-age (hash-ref node 'age-secs))) newest-first)]
+         [age-width (undotree/max-width ages)]
+         [current (undotree/find-row (lambda (node) (hash-ref node 'current?)) newest-first 0)])
+    (hash 'rows (let loop ([nodes newest-first] [rows (car layout)] [ages ages] [acc '()])
+                  (if (null? nodes)
+                      (reverse acc)
+                      (loop (cdr nodes) (cdr rows) (cdr ages)
+                            (cons (undotree/format-row (car nodes) (car rows) (car ages)
+                                                       (cdr layout) age-width)
+                                  acc))))
+          'ids (map (lambda (node) (hash-ref node 'id)) newest-first)
           'current (car current)
-          'current-node (node-of (cdr current)))))
+          'current-node (cdr current))))

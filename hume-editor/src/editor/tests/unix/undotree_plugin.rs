@@ -51,13 +51,25 @@ fn scheme_nodes(nodes: &[Node]) -> String {
 
 /// The drawer rows `undotree/render` produces for `nodes`, joined by newlines.
 fn rendered_rows(nodes: &[Node]) -> String {
+    rendered_rows_after(&[], nodes)
+}
+
+/// [`rendered_rows`], with `earlier` rendered first, in order, in the same
+/// Steel VM.
+fn rendered_rows_after(earlier: &[&[Node]], nodes: &[Node]) -> String {
     let guard = HumeRuntimeGuard::new();
     let plugin_dir = guard.runtime.path().join("plugins/core/undotree-probe");
+    let earlier: Vec<String> = earlier
+        .iter()
+        .map(|nodes| format!("(undotree/render {})", scheme_nodes(nodes)))
+        .collect();
     let probe = format!(
         r#"(require "render.scm")
 (define-command! "undotree-probe" "Show the rendered rows of a literal node list."
   (lambda (pane)
+    {}
     (show-drawer-list! pane (hash-ref (undotree/render {}) 'rows) (lambda (i) (begin)))))"#,
+        earlier.join("\n    "),
         scheme_nodes(nodes)
     );
     write_core_plugin(&guard, "undotree-probe", &probe);
@@ -119,6 +131,52 @@ fn render_age_units() {
         .map(|(id, &age)| node(id, id.checked_sub(1), age, id == ages.len() - 1, id == 0))
         .collect();
     insta::assert_snapshot!(rendered_rows(&nodes));
+}
+
+/// The markers and ages come from the second call's nodes even though its
+/// tree has the first call's shape.
+#[test]
+fn render_same_shape_shows_the_later_markers_and_ages() {
+    let rows = rendered_rows_after(
+        &[&[
+            node(0, None, 600, false, true),
+            node(1, Some(0), 300, false, false),
+            node(2, Some(1), 90, true, false),
+        ]],
+        &[
+            node(0, None, 7200, true, false),
+            node(1, Some(0), 30, false, false),
+            node(2, Some(1), 5, false, true),
+        ],
+    );
+    insta::assert_snapshot!(rows, @r"
+    o   S  5s
+    o     30s
+    o  @   2h
+    ");
+}
+
+/// Same revision count, different parents: the second call draws its own
+/// branch, not the first call's chain.
+#[test]
+fn render_new_parents_redraw_the_graph() {
+    let rows = rendered_rows_after(
+        &[&[
+            node(0, None, 120, false, true),
+            node(1, Some(0), 60, false, false),
+            node(2, Some(1), 0, true, false),
+        ]],
+        &[
+            node(0, None, 120, false, true),
+            node(1, Some(0), 60, false, false),
+            node(2, Some(0), 0, true, false),
+        ],
+    );
+    insta::assert_snapshot!(rows, @r"
+    o    @  0s
+    | o     1m
+    o-'   S 2m
+    ");
 }
 
 // ── End to end: the real core:undotree plugin ───────────────────────────────
