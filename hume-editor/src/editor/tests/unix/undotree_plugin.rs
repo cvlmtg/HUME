@@ -181,6 +181,116 @@ fn render_new_parents_redraw_the_graph() {
     ");
 }
 
+/// Seconds until `undotree/render`'s soonest age label change for `ages`, as
+/// the probe command traces it.
+fn next_change_secs(ages: &[u64]) -> String {
+    let guard = HumeRuntimeGuard::new();
+    let plugin_dir = guard.runtime.path().join("plugins/core/undotree-probe");
+    let nodes: Vec<Node> = ages
+        .iter()
+        .enumerate()
+        .map(|(id, &age)| node(id, id.checked_sub(1), age, id == 0, false))
+        .collect();
+    let probe = format!(
+        r#"(require "render.scm")
+(define-command! "undotree-probe" "Trace the seconds to the next age label change."
+  (lambda (pane)
+    (log! 'trace (number->string (hash-ref (undotree/render {}) 'next-change-secs)))))"#,
+        scheme_nodes(&nodes)
+    );
+    write_core_plugin(&guard, "undotree-probe", &probe);
+    std::fs::write(plugin_dir.join("render.scm"), RENDER_SCM).unwrap();
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        "(load-plugin! \"core:undotree-probe\")",
+    );
+    ed.execute_keymap_command("undotree-probe".to_string().into(), None, false);
+    ed.settle();
+    ed.state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == crate::editor::message_log::Severity::Trace)
+        .last()
+        .map(|e| e.text.to_string())
+        .expect("the probe traced a value")
+}
+
+/// The soonest label change across rows: seconds-unit rows change every
+/// second, a minutes-unit row when its next whole minute is reached, and so
+/// on for hours and days.
+#[test]
+fn render_reports_the_seconds_to_the_next_age_label_change() {
+    assert_eq!(next_change_secs(&[7200, 125, 5]), "1");
+    assert_eq!(next_change_secs(&[7300, 125]), "55");
+    assert_eq!(next_change_secs(&[7300, 3599]), "1");
+    assert_eq!(next_change_secs(&[172_800, 90_000]), "82800");
+}
+
+/// A fork off the root, the newest revision (3) on one branch and the saved
+/// root on the other.
+fn forked() -> Vec<Node> {
+    vec![
+        node(0, None, 40, false, true),
+        node(1, Some(0), 30, false, false),
+        node(2, Some(1), 20, false, false),
+        node(3, Some(0), 10, true, false),
+    ]
+}
+
+/// `forked()` with revision 4 added under the newest, as one more edit does.
+fn forked_with_child() -> Vec<Node> {
+    vec![
+        node(0, None, 40, false, true),
+        node(1, Some(0), 30, false, false),
+        node(2, Some(1), 20, false, false),
+        node(3, Some(0), 10, false, false),
+        node(4, Some(3), 0, true, false),
+    ]
+}
+
+/// Rows derived by hand from the lane rules: 4 and 3 stack in column 0, 2 and
+/// 1 sit in column 1 beside the lane still waiting for 0, which merges at 0.
+#[test]
+fn render_a_child_of_the_newest_revision_extends_the_graph() {
+    let rows = rendered_rows_after(&[&forked()], &forked_with_child());
+    insta::assert_snapshot!(rows, @"
+    o    @   0s
+    o       10s
+    | o     20s
+    | o     30s
+    o-'   S 40s
+    ");
+}
+
+/// Each of two edits in a row extends the previous layout.
+#[test]
+fn render_two_appended_edits_match_a_fresh_layout() {
+    let mut longer = forked_with_child();
+    longer[4].current = false;
+    longer.push(node(5, Some(4), 0, true, false));
+    assert_eq!(
+        rendered_rows_after(&[&forked(), &forked_with_child()], &longer),
+        rendered_rows(&longer)
+    );
+}
+
+/// A new revision under an older one, such as an edit after an undo, draws a
+/// new branch rather than extending the newest revision's column.
+#[test]
+fn render_a_child_of_an_older_revision_matches_a_fresh_layout() {
+    let mut branched = forked();
+    branched[3].current = false;
+    branched.push(node(4, Some(2), 0, true, false));
+    assert_eq!(
+        rendered_rows_after(&[&forked()], &branched),
+        rendered_rows(&branched)
+    );
+}
+
 // ── End to end: the real core:undotree plugin ───────────────────────────────
 
 use std::path::Path;
@@ -323,6 +433,31 @@ fn undotree_refreshes_after_edit() {
     o        ##
     | o      ##
     o-'   S  ##
+    ");
+}
+
+#[test]
+fn undotree_saved_marker_follows_a_write() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path());
+    let path = tmp.path().join("saved.txt");
+    std::fs::write(&path, "hello\n").unwrap();
+    ed.feed_key(key('d'));
+    ed.settle();
+    toggle(&mut ed);
+    insta::assert_snapshot!(masked_rows(&ed), @"
+    o  @   ##
+    o   S  ##
+    ");
+
+    ed.execute_typed("w", Some(path.to_str().unwrap())).unwrap();
+    drain_frames_until(&mut ed, |ed| {
+        drawer_rows(ed).first().is_some_and(|row| row.contains('S'))
+    });
+
+    insta::assert_snapshot!(masked_rows(&ed), @"
+    o  @S  ##
+    o      ##
     ");
 }
 
@@ -551,10 +686,6 @@ fn copy_core_plugin_files(guard: &HumeRuntimeGuard, name: &str) {
     }
 }
 
-/// A refresh that finds the buffer on the same revision leaves the diff
-/// alone: the age timer re-renders the rows every 100ms here, and the diff
-/// the test cleared behind the plugin's back stays cleared until a jump moves
-/// the revision.
 /// A renderer that raises while clearing still ends the session, so the next
 /// toggle opens the drawer again.
 #[test]
@@ -593,23 +724,14 @@ fn undotree_session_ends_when_clearing_the_diff_raises() {
     assert!(drawer_open(&ed), "the next toggle opens it again");
 }
 
+/// A refresh that finds the buffer on the same revision leaves the diff
+/// alone: the age timer re-renders the rows each second, and the diff the
+/// test cleared behind the plugin's back stays cleared until a jump moves the
+/// revision.
 #[test]
 fn undotree_redraws_the_diff_only_when_the_revision_changes() {
-    let guard = HumeRuntimeGuard::new();
-    copy_core_plugin_files(&guard, "stdlib");
-    copy_core_plugin_files(&guard, "git-diff");
-    copy_core_plugin_files(&guard, "undotree");
-    let plugin_scm = guard
-        .runtime
-        .path()
-        .join("plugins/core/undotree/plugin.scm");
-    let patched = std::fs::read_to_string(&plugin_scm).unwrap().replace(
-        "(define undotree/age-refresh-ms 60000)",
-        "(define undotree/age-refresh-ms 100)",
-    );
-    std::fs::write(&plugin_scm, patched).unwrap();
-
     let tmp = safe_tempdir();
+    let _guard = RealRuntimeGuard::new();
     let mut ed = editor_from("-[h]>ello\n");
     let load = format!(
         "(load-plugin! \"core:stdlib\")\n{}\n{}\n{}",
@@ -769,37 +891,126 @@ fn undotree_typed_command_opens_the_drawer() {
     insta::assert_snapshot!(masked_rows(&ed), @"o  @S  ##");
 }
 
-const PLUGIN_SCM: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../runtime/plugins/core/undotree/plugin.scm"
-));
-const MANIFEST_SCM: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../runtime/plugins/core/undotree/manifest.scm"
-));
+#[test]
+fn undotree_typed_command_rejects_an_argument() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path());
+
+    type_cmd(&mut ed, ":undotree foo");
+    render(&mut ed);
+
+    assert!(!drawer_open(&ed), "the rejected command opened nothing");
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.text == "`:undotree` takes no argument"),
+        "the rejection is reported"
+    );
+}
+
+/// Patches the shipped `core:git-diff` so `git-diff/render-diff` raises.
+fn copy_plugins_with_raising_renderer(guard: &HumeRuntimeGuard) {
+    copy_core_plugin_files(guard, "stdlib");
+    copy_core_plugin_files(guard, "git-diff");
+    copy_core_plugin_files(guard, "undotree");
+    let plugin_scm = guard
+        .runtime
+        .path()
+        .join("plugins/core/git-diff/plugin.scm");
+    let patched = std::fs::read_to_string(&plugin_scm).unwrap().replace(
+        "  git-diff/draw-for-source!)",
+        "  (lambda (pane source hunks) (error \"draw failed\")))",
+    );
+    std::fs::write(&plugin_scm, patched).unwrap();
+}
+
+/// A renderer that raises on draw still leaves a session: the next toggle
+/// closes the drawer instead of opening another over it.
+#[test]
+fn undotree_session_survives_a_raising_diff_renderer() {
+    let guard = HumeRuntimeGuard::new();
+    copy_plugins_with_raising_renderer(&guard);
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    let load = format!(
+        "(load-plugin! \"core:stdlib\")\n{}\n{}",
+        hume_scripting::eager_load_scm("core:git-diff", None),
+        hume_scripting::eager_load_scm("core:undotree", None),
+    );
+    run(&mut ed, tmp.path(), &load);
+    ed.settle();
+    two_branches(&mut ed);
+
+    toggle(&mut ed);
+    assert!(drawer_open(&ed), "setup: the drawer is open");
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.text.contains("draw failed")),
+        "the renderer's error is reported"
+    );
+
+    toggle(&mut ed);
+    assert!(!drawer_open(&ed), "the toggle closed the drawer");
+}
+
+/// Two panes show one buffer. The drawer is opened from the first and focus
+/// then moves to the second: Enter jumps through the focused pane, so its
+/// selections come from the revision and the first pane's are carried along.
+#[test]
+fn undotree_enter_acts_through_the_focused_pane() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path());
+    two_branches(&mut ed);
+    let first = ed.state.focus.id();
+    toggle(&mut ed);
+    ed.execute_typed("split", None).unwrap();
+    let second = ed.state.focus.id();
+    assert_ne!(first, second, "setup: focus moved to the new pane");
+
+    ed.handle_key(key_shift_down());
+    ed.handle_key(key_enter());
+    drain_frames_until(&mut ed, |ed| {
+        drawer_rows(ed).get(1).is_some_and(|row| row.contains('@'))
+    });
+
+    assert_eq!(ed.doc().text().to_string(), "ello\n");
+    assert_eq!(
+        state(&ed),
+        "-[e]>llo\n",
+        "the focused pane has the revision's own selections"
+    );
+}
+
+/// The pane the drawer was opened from has closed and the focused pane shows
+/// the same buffer: one Enter jumps, with no retarget step first.
+#[test]
+fn undotree_enter_jumps_after_the_session_pane_closes() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path());
+    two_branches(&mut ed);
+    toggle(&mut ed);
+    ed.execute_typed("split", None).unwrap();
+    ed.execute_keymap_command("pane-focus-next".to_string().into(), None, false);
+    ed.execute_keymap_command("pane-close".to_string().into(), None, false);
+    ed.settle();
+    assert!(drawer_open(&ed), "setup: the drawer survives the close");
+
+    ed.handle_key(key_shift_down());
+    ed.handle_key(key_enter());
+    drain_frames_until(&mut ed, |ed| {
+        drawer_rows(ed).get(1).is_some_and(|row| row.contains('@'))
+    });
+
+    assert_eq!(ed.doc().text().to_string(), "ello\n");
+}
 
 #[test]
 fn undotree_ages_refresh_while_the_drawer_is_open() {
-    let guard = HumeRuntimeGuard::new();
-    write_core_plugin(
-        &guard,
-        "undotree",
-        &PLUGIN_SCM.replace(
-            "(define undotree/age-refresh-ms 60000)",
-            "(define undotree/age-refresh-ms 100)",
-        ),
-    );
-    let plugin_dir = guard.runtime.path().join("plugins/core/undotree");
-    std::fs::write(plugin_dir.join("render.scm"), RENDER_SCM).unwrap();
-    std::fs::write(plugin_dir.join("manifest.scm"), MANIFEST_SCM).unwrap();
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[h]>ello\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        &hume_scripting::eager_load_scm("core:undotree", None),
-    );
-    ed.settle();
+    let (mut ed, _guard) = setup(tmp.path());
     toggle(&mut ed);
     assert!(
         drawer_rows(&ed).iter().all(|row| row.ends_with(" 0s")),

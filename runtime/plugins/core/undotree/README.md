@@ -79,11 +79,20 @@ o-'     S 12m
 Every row is a revision, so a row always names a revision to jump to.
 
 The graph depends only on each revision's id and parent. `undotree/render`
-keeps the graph rows of its last call and reuses them when the list of
-`(id . parent)` pairs, newest first, is `equal?` to that call's. An undo, redo
-or jump moves only the markers, so it skips the lane walk; the markers and ages
-are formatted on every render. The key is the whole input to the lane walk, so
-there is nothing to invalidate.
+keeps the graph rows of its last call, as a vector, with the width of the
+widest, and the list of `(id . parent)` pairs, newest first, they were drawn
+for. The next call reuses the rows when its list is `equal?` to that one. An
+undo, redo or jump moves only the markers, so it skips the lane walk; the
+markers and ages are formatted on every render.
+
+An edit adds one revision under the newest, and then the previous rows still
+hold: the previous newest revision started with no lanes, and with the new one
+waiting for it it takes column 0 with the same row and the same lanes after it.
+So when the new list is the previous one plus a newest revision whose parent is
+the previous newest, the rows are `o` followed by the previous rows, at the
+same width, and the walk is skipped. Any other new list, such as an edit after an undo, is laid
+out from scratch. The key is the whole input to the lane walk, so there is
+nothing to invalidate.
 
 ## Age
 
@@ -94,8 +103,11 @@ are the units `:earlier` and `:later` accept.
 ## Session
 
 One session at a time, since the drawer is one slot: a hash of an id, the
-drawer token, the pane the tree is read from, that pane's `buffer-key`, and
-the revision id behind each row. The id guards every drawer callback. A
+drawer token, the pane the tree was last read from, the revision id behind each
+row, and the revision diff last drawn. Every refresh reads the focused pane and
+replaces the hash in one step, before it draws the diff, so an error from the
+renderer leaves a session that matches the drawer. The id guards every drawer
+callback. A
 callback from a drawer the session has since replaced finds a different id
 and does nothing. Esc, or another feature opening its own drawer, delivers
 `#f` to the callback and ends the session.
@@ -114,12 +126,18 @@ belongs to a different buffer.
   hook before it draws the next frame, so the text change, the `@` and the
   revision diff appear together. The event fires once per revision change, not
   per typed key, and also for an undo whose net change to the text is nothing,
-  which `on-text-changed` would miss.
-- Every 60 seconds while the session is open, so the ages keep up with the
-  clock. The timer is cancelled when the session ends.
-- On `on-buffer-enter` for another buffer, which retargets the session to the
-  buffer now shown. When the session's pane has closed or shows another
-  buffer, the next refresh or Enter retargets to the focused pane the same way.
+  which `on-text-changed` would miss, and for a write, which moves `S`.
+- When an age label changes while the session is open, so the ages keep up with
+  the clock: every second while a revision is under a minute old, then every
+  minute, hour and day. Each refresh arms the next one, and ending the session
+  cancels it.
+- On `on-buffer-enter`, which retargets the session to the buffer now shown.
+
+Every refresh reads the focused pane. Enter jumps through the focused pane when
+it shows the session's buffer, so a jump acts on the pane the user is in, even
+when the drawer was opened from another pane of the same buffer or that pane
+has closed. When the focused pane shows another buffer, Enter retargets the
+drawer to it and does not jump.
 
 ## Revision diff
 
@@ -142,11 +160,13 @@ message in the status line saying to load it. A user who loaded
 `core:git-diff` with an activation list that leaves either command out gets
 the same message.
 
-The session remembers the buffer and revision it last drew. Wherever the rows
-are re-rendered (after a jump, on a history change, on the age timer, when the
-session retargets) the diff is redrawn only when the buffer or its current
-revision differs from that, since a revision's text never changes. So the age
-timer never redraws it. Retargeting to another buffer first clears the diff of
+The session remembers the buffer and revision it last drew, whether or not the
+draw succeeded. Wherever the rows are re-rendered (after a jump, on a history
+change, on the age timer, when the session retargets) the diff is redrawn only
+when the buffer or its current revision differs from that, since a revision's
+text never changes. So the age timer never redraws it, and a renderer that
+raised is not asked again until the revision changes. Its error is reported
+and the drawer stays open. Retargeting to another buffer first clears the diff of
 the buffer it leaves. Ending the session clears it too, for a buffer that is
 still open.
 

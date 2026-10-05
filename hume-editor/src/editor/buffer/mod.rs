@@ -50,6 +50,23 @@ use hume_treesitter::syntax::Syntax;
 /// `commands::edit::history_step` all spell the same shape.
 pub(in crate::editor) type HistoryWalkResult = Option<(SelectionSet, ChangeSet, usize)>;
 
+/// The part of a buffer's undo state `on-undo-history-changed` reports: the
+/// history's `change_seq` and the revision `buffer-undo-tree` marks `saved?`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) struct HistoryMark {
+    seq: u64,
+    saved: Option<RevisionId>,
+}
+
+impl HistoryMark {
+    fn of(history: &History, saved: Option<RevisionId>) -> Self {
+        Self {
+            seq: history.change_seq(),
+            saved,
+        }
+    }
+}
+
 /// Content-only document: text, undo history, search state, and per-buffer overrides.
 ///
 /// `Buffer` is the SSOT for everything intrinsic to an open file and shared
@@ -115,10 +132,10 @@ pub(crate) struct Buffer {
     /// text's generation at a drain observation point (see
     /// `BufferStore::take_text_changed`) rather than at `install` itself.
     pub(in crate::editor) announced_generation: u64,
-    /// The undo history's `change_seq` most recently announced as an
+    /// The history state most recently announced as an
     /// `on-undo-history-changed` event, diffed the same way
     /// `announced_generation` is (see `BufferStore::take_history_changed`).
-    pub(in crate::editor) announced_history_seq: u64,
+    pub(in crate::editor) announced_history: HistoryMark,
     /// Per-buffer tree-sitter syntax attachment: grammar identity, committed
     /// parse layers, generation bookkeeping, and in-flight state, all in one
     /// place. `None` when no grammar is attached or the buffer exceeds
@@ -183,7 +200,7 @@ impl Buffer {
         let history = History::new();
         let saved_revision = Some(history.current_id());
         let announced_generation = text.generation();
-        let announced_history_seq = history.change_seq();
+        let announced_history = HistoryMark::of(&history, saved_revision);
         Self {
             text,
             history,
@@ -197,7 +214,7 @@ impl Buffer {
             language: None,
             language_explicit: false,
             announced_generation,
-            announced_history_seq,
+            announced_history,
             syntax: None,
             read_only: false,
             label: None,
@@ -831,9 +848,9 @@ impl Buffer {
         self.apply_transactions(id, stores, acting, txns)
     }
 
-    /// The undo history's change counter. See `History::change_seq`.
-    pub(in crate::editor) fn history_change_seq(&self) -> u64 {
-        self.history.change_seq()
+    /// What `on-undo-history-changed` announces changes of.
+    pub(in crate::editor) fn history_mark(&self) -> HistoryMark {
+        HistoryMark::of(&self.history, self.saved_revision)
     }
 
     /// The current buffer contents.

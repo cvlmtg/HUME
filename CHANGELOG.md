@@ -17,6 +17,7 @@
 - `configure-statusline!` rejects an empty element name.
 - `register-trigger-chars!` is now `set-hook-triggers!`, and `completion-set-trigger-chars!` is now `set-completion-triggers!`.
 - `language` is a buffer option: use `set-buffer-option!`/`get-buffer-option`. `set-buffer-language!` and `buffer-language` are gone. `""` clears the language, and `on-language-set` passes `""` instead of `#f`.
+- A typed command whose lambda declares no `arg` parameter rejects a typed argument, and one that declares no `force` parameter rejects `!`, instead of dropping them. A lambda with a rest parameter still receives both.
 - `on-lsp-notification` is a hook, called with `(server method params)`. `register-lsp-notification-hook!` handles only chosen methods.
 - `:lsp-install`, `:lsp-uninstall`, `:lsp-servers` and `:lsp-rescan-servers` moved to the new `core:lsp-install` plugin. Add `(load-plugin! "core:lsp-install")` to keep them.
 - The bare `(declare-plugin! "core:x")` form is removed, and `declare-plugin!` no longer takes `#:config`. Use `(load-plugin! "core:x" #:config …)`. A plugin that ships a `manifest.scm` loads lazily.

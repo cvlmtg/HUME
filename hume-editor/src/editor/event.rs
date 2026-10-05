@@ -181,14 +181,14 @@ pub(in crate::editor) enum EditorEvent {
     },
     /// Fires when a buffer's undo history changes: a revision recorded (an
     /// edit, an Insert or paste session ending, an `:e!` reload), an undo,
-    /// redo or jump to another revision, or an `undo-levels` trim. Unlike
-    /// `OnTextChanged` it also fires for a walk whose net change to the text
+    /// redo or jump to another revision, an `undo-levels` trim, or a write that
+    /// moves the saved revision. Unlike `OnTextChanged` it also fires for a walk whose net change to the text
     /// is nothing, such as undoing an insert together with its later delete,
     /// and never fires for text changes that record no revision (a view
-    /// buffer's refresh). Raised by diffing `History::change_seq` against a
-    /// per-buffer baseline at the same drain observation point as
+    /// buffer's refresh). Raised by diffing a per-buffer baseline at the same drain observation point as
     /// `OnTextChanged` (`Editor::detect_history_changed`,
-    /// `BufferStore::take_history_changed`), so it coalesces the same way.
+    /// `BufferStore::take_history_changed`, over a `HistoryMark` of the
+    /// `change_seq` and the saved revision), so it coalesces the same way.
     OnUndoHistoryChanged {
         buffer: BufferId,
     },

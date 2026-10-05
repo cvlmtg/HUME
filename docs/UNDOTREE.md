@@ -39,9 +39,10 @@ HUME's undo history is a tree, not a stack — see
   commits a paste session open on its own pane and buffer before walking, and
   refuses a walk under that pane's open Insert session. Every history walk goes
   through it, so a Steel caller is covered too.
-- **`on-undo-history-changed`.** Raised by diffing `History::change_seq`
-  against a per-buffer baseline at the drain point `on-text-changed` uses, so it
-  fires for a walk whose changes cancel out and `on-text-changed` does not.
+- **`on-undo-history-changed`.** Raised by diffing `History::change_seq` and the
+  saved revision against a per-buffer baseline at the drain point
+  `on-text-changed` uses, so it fires for a walk whose changes cancel out and
+  `on-text-changed` does not, and for a write that moves `saved?`.
 - **Two builtins.** `(buffer-undo-tree pane)` returns one
   `(hash 'id 'parent 'age-secs 'current? 'saved?)` per revision, and
   `(goto-revision! pane id)` jumps. Both are `cmd`-gated, and

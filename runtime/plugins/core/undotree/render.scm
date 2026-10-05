@@ -3,12 +3,20 @@
 (provide undotree/format-age undotree/render undotree/row-index)
 
 ;;; See README.md's "Age".
-(define (undotree/format-age secs)
+(define (undotree/age-unit secs)
   (cond
-    [(< secs 60) (string-append (number->string secs) "s")]
-    [(< secs 3600) (string-append (number->string (quotient secs 60)) "m")]
-    [(< secs 86400) (string-append (number->string (quotient secs 3600)) "h")]
-    [else (string-append (number->string (quotient secs 86400)) "d")]))
+    [(< secs 60) (cons 1 "s")]
+    [(< secs 3600) (cons 60 "m")]
+    [(< secs 86400) (cons 3600 "h")]
+    [else (cons 86400 "d")]))
+
+(define (undotree/format-age secs)
+  (let ([unit (undotree/age-unit secs)])
+    (string-append (number->string (quotient secs (car unit))) (cdr unit))))
+
+(define (undotree/secs-to-label-change secs)
+  (let ([divisor (car (undotree/age-unit secs))])
+    (- divisor (remainder secs divisor))))
 
 ;; ── Lanes ────────────────────────────────────────────────────────────────────
 
@@ -74,21 +82,32 @@
          (undotree/advance-lanes wide column merging (hash-ref node 'parent))
          (cons (undotree/graph-row wide column merging) laid-out)))))
 
-;;; One entry: the last layout's key, its graph rows (a vector) and their
-;;; widest graph.
 ;;; See README.md's "Graph".
 (define undotree/*layout-memo* (box #f))
+
+(define (undotree/remember-layout! key graphs width)
+  (let ([entry (cons graphs width)])
+    (set-box! undotree/*layout-memo* (cons key entry))
+    entry))
+
+(define (undotree/appends-child? key previous-key)
+  (and (equal? (cdr (car key)) (car (car previous-key)))
+       (equal? (cdr key) previous-key)))
 
 (define (undotree/graphs newest-first)
   (let ([key (map (lambda (node) (cons (hash-ref node 'id) (hash-ref node 'parent)))
                   newest-first)]
         [memo (unbox undotree/*layout-memo*)])
-    (if (and memo (equal? (car memo) key))
-        (cdr memo)
-        (let* ([graphs (undotree/layout newest-first '() '())]
-               [entry (cons (list->vector graphs) (undotree/max-width graphs))])
-          (set-box! undotree/*layout-memo* (cons key entry))
-          entry))))
+    (cond
+      [(and memo (equal? (car memo) key)) (cdr memo)]
+      [(and memo (undotree/appends-child? key (car memo)))
+       (let ([previous (cdr memo)])
+         (undotree/remember-layout! key
+                                    (list->vector (cons "o" (vector->list (car previous))))
+                                    (cdr previous)))]
+      [else
+       (let ([graphs (undotree/layout newest-first '() '())])
+         (undotree/remember-layout! key (list->vector graphs) (undotree/max-width graphs)))])))
 
 ;; ── Rows ─────────────────────────────────────────────────────────────────────
 
@@ -144,4 +163,8 @@
                                        graph-width age-width)
                                       acc)))))
           'current (car current)
-          'current-node (cdr current))))
+          'current-node (cdr current)
+          'next-change-secs (apply min (map (lambda (node)
+                                              (undotree/secs-to-label-change
+                                               (hash-ref node 'age-secs)))
+                                            nodes)))))

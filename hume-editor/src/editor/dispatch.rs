@@ -294,6 +294,23 @@ impl Editor {
             _ => return self.report_command_lost(name),
         };
 
+        // A fixed parameter list is the lambda's whole input, so an argument
+        // or `!` it has no parameter for is the user's mistake, not noise to
+        // drop. A variadic lambda takes everything.
+        if !cmd_is_variadic {
+            let refused = if arg.is_some() && cmd_arity < 2 {
+                Some("takes no argument")
+            } else if force && cmd_arity < 3 {
+                Some("takes no `!`")
+            } else {
+                None
+            };
+            if let Some(reason) = refused {
+                self.report(Severity::Error, format!("`:{name}` {reason}"));
+                return false;
+            }
+        }
+
         // Scheme-idiomatic absence: an untyped argument is `#f`, not a
         // sentinel string or a fabricated count; a lambda that only cares
         // whether an arg was given writes a plain `(if arg …)` guard.

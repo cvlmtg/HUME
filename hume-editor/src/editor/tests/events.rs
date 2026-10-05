@@ -1504,6 +1504,44 @@ fn undo_history_hook_fires_once_per_edit_undo_and_redo() {
     );
 }
 
+/// A write moves the saved revision, which `buffer-undo-tree` reports as
+/// `saved?`, so it announces once. A write that finds the same revision
+/// already saved moves nothing.
+#[test]
+fn undo_history_hook_fires_when_a_write_moves_the_saved_revision() {
+    let tmp = safe_tempdir();
+    let path = tmp.path().join("saved.txt");
+    std::fs::write(&path, "ab\n").unwrap();
+    let mut ed = editor_with_history_hooks("-[a]>b\n");
+    ed.execute_typed("w", Some(path.to_str().unwrap())).unwrap();
+    ed.settle();
+    let after_first_write = trace_count(&ed, "history");
+
+    ed.feed_key(key('d'));
+    ed.settle();
+    assert_eq!(
+        trace_count(&ed, "history"),
+        after_first_write + 1,
+        "the edit"
+    );
+
+    ed.execute_typed("w", None).unwrap();
+    ed.settle();
+    assert_eq!(
+        trace_count(&ed, "history"),
+        after_first_write + 2,
+        "the write"
+    );
+
+    ed.execute_typed("w", None).unwrap();
+    ed.settle();
+    assert_eq!(
+        trace_count(&ed, "history"),
+        after_first_write + 2,
+        "a second write of the same revision moves nothing"
+    );
+}
+
 /// Undoing an insert together with its later delete nets to no text change:
 /// `on-text-changed` stays quiet, `on-undo-history-changed` does not.
 #[test]

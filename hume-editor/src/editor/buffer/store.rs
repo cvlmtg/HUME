@@ -165,12 +165,12 @@ impl BufferStore {
     /// observation-point source for `on-undo-history-changed`
     /// (`EditorEvent::OnUndoHistoryChanged`'s doc has the contract). Same
     /// advance-as-it-reports shape as [`Self::take_text_changed`], over
-    /// `History::change_seq`.
+    /// [`Buffer::history_mark`](super::Buffer::history_mark).
     pub(in crate::editor) fn take_history_changed(&mut self) -> Vec<BufferId> {
         self.take_announced(|buf| {
-            let seq = buf.history_change_seq();
-            let changed = seq != buf.announced_history_seq;
-            buf.announced_history_seq = seq;
+            let mark = buf.history_mark();
+            let changed = mark != buf.announced_history;
+            buf.announced_history = mark;
             changed
         })
     }

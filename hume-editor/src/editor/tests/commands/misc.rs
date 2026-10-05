@@ -262,33 +262,98 @@ fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) 
     ed
 }
 
-/// arity-1 (`bid` alone, no arg): the rule supplies only the leading bid,
-/// never the typed arg. A string-type lambda that checks `(string? x)` never
-/// sees a string, so it never fires the wrapped `call!` and the cursor never
-/// moves, regardless of whether an arg was typed.
+/// Types `:{line}<Enter>`.
+fn type_command_line(ed: &mut Editor, line: &str) {
+    ed.handle_key(key(':'));
+    for ch in line.chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+}
+
+fn logged(ed: &Editor, text: &str) -> bool {
+    ed.state
+        .message_log
+        .entries()
+        .any(|e| e.severity == Severity::Error && e.text == text)
+}
+
+/// arity-1 (`bid` alone): the lambda declares no `arg`, so a typed argument is
+/// an error and the body does not run. Without an argument the body runs.
 #[test]
-fn typed_arity_rule_supplies_bid_only_at_arity_1() {
+fn typed_arity_1_rejects_an_argument() {
     let mut ed = setup_typed_arity_test(
-        r#"(define-typed-command! "echo-cmd" "" (lambda (bid) (when (string? bid) (call! bid))))"#,
-        "echo-cmd",
+        r#"(define-typed-command! "move-cmd" "" (lambda (bid) (call! "move-right" bid)))"#,
+        "move-cmd",
         1,
         false,
     );
 
     let before = state(&ed);
-    // `:echo-cmd move-right<Enter>`: arity-1 rule supplies bid only; the typed
-    // arg "move-right" never reaches the lambda.
-    ed.handle_key(key(':'));
-    for ch in "echo-cmd move-right".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    type_command_line(&mut ed, "move-cmd extra");
+    assert_eq!(state(&ed), before, "the body must not run");
+    assert!(logged(&ed, "`:move-cmd` takes no argument"));
 
-    assert_eq!(
-        state(&ed),
-        before,
-        "arity-1 rule must not forward the typed arg; cursor must not move"
+    type_command_line(&mut ed, "move-cmd");
+    assert_ne!(state(&ed), before, "no argument: the body runs");
+}
+
+/// arity-0 declares neither `pane` nor `arg`, so it rejects an argument too.
+#[test]
+fn typed_arity_0_rejects_an_argument() {
+    let mut ed = setup_typed_arity_test(
+        r#"(define-typed-command! "move-cmd" "" (lambda () (call! "move-right" (focused-pane))))"#,
+        "move-cmd",
+        0,
+        false,
     );
+
+    let before = state(&ed);
+    type_command_line(&mut ed, "move-cmd extra");
+    assert_eq!(state(&ed), before, "the body must not run");
+    assert!(logged(&ed, "`:move-cmd` takes no argument"));
+}
+
+/// A lambda without a `force` parameter rejects `!`, whether it takes an
+/// argument or not.
+#[test]
+fn typed_arity_below_3_rejects_bang() {
+    for (arity, lambda) in [
+        (1, "(lambda (bid) (call! \"move-right\" bid))"),
+        (2, "(lambda (bid x) (call! \"move-right\" bid))"),
+    ] {
+        let mut ed = setup_typed_arity_test(
+            &format!(r#"(define-typed-command! "move-cmd" "" {lambda})"#),
+            "move-cmd",
+            arity,
+            false,
+        );
+
+        let before = state(&ed);
+        type_command_line(&mut ed, "move-cmd!");
+        assert_eq!(state(&ed), before, "arity {arity}: the body must not run");
+        assert!(
+            logged(&ed, "`:move-cmd` takes no `!`"),
+            "arity {arity}: error logged"
+        );
+    }
+}
+
+/// A variadic lambda declares no fixed parameter list, so it receives the
+/// argument and `!` both.
+#[test]
+fn typed_variadic_lambda_accepts_argument_and_bang() {
+    let mut ed = setup_typed_arity_test(
+        r#"(define-typed-command! "echo-cmd" ""
+             (lambda (bid . rest) (when (and (string? (car rest)) (cadr rest)) (call! (car rest) bid))))"#,
+        "echo-cmd",
+        1,
+        true,
+    );
+
+    let before = state(&ed);
+    type_command_line(&mut ed, "echo-cmd! move-right");
+    assert_ne!(state(&ed), before, "the variadic lambda got arg and force");
 }
 
 /// arity-2 (`bid arg`): the typed arg reaches the lambda as `StringV`, queued
