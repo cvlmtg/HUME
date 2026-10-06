@@ -482,6 +482,21 @@ fn set_global_lsp_viewport_debounce_ms_zero_errors() {
 }
 
 #[test]
+fn set_global_lsp_diagnostics_pull_debounce_ms() {
+    assert_eq!(
+        global("lsp.diagnostics-pull-debounce-ms", "50")
+            .unwrap()
+            .lsp_diagnostics_pull_debounce_ms,
+        50
+    );
+}
+
+#[test]
+fn set_global_lsp_diagnostics_pull_debounce_ms_zero_errors() {
+    assert!(global("lsp.diagnostics-pull-debounce-ms", "0").is_err());
+}
+
+#[test]
 fn set_global_lsp_format_max_ranges() {
     assert_eq!(
         global("lsp.format-max-ranges", "32")

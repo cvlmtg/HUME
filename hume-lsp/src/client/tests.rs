@@ -714,6 +714,23 @@ fn change_sync_reads_options_shape() {
 }
 
 #[test]
+fn diagnostics_refresh_is_declared_and_pull_is_not() {
+    let caps = build_client_capabilities();
+
+    assert_eq!(
+        caps.workspace
+            .unwrap()
+            .diagnostic
+            .and_then(|d| d.refresh_support),
+        Some(true)
+    );
+    assert!(
+        caps.text_document.unwrap().diagnostic.is_none(),
+        "declaring pull makes a server that offers both stop pushing"
+    );
+}
+
+#[test]
 fn change_sync_absent_capability_means_no_change_notifications() {
     // Spec default for an unadvertised `textDocumentSync` is `None`: the
     // server never declared it wants change notifications at all.

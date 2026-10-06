@@ -62,7 +62,7 @@ impl Editor {
         server_id: ServerId,
         params: lsp_types::ProgressParams,
     ) {
-        let name = self.lsp_server_name(server_id);
+        let name = self.state.lsp_server_name(server_id);
         let token = match params.token {
             lsp_types::NumberOrString::Number(n) => n.to_string(),
             lsp_types::NumberOrString::String(s) => s,

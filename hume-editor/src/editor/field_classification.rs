@@ -151,6 +151,9 @@ fn editor_fields_are_classified() {
             // preserved: indexes the native ViewportDebounce timers
             // that themselves survive the reset
             viewport_debounce: _,
+            // preserved: indexes the native DiagnosticPullDebounce timers
+            // that themselves survive the reset
+            diagnostic_pull_debounce: _,
             last_visible_range: _,     // preserved
             last_tabline_signature: _, // preserved
             // preserved: staleness after a reload is forced by

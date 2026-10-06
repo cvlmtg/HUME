@@ -638,6 +638,49 @@ fn diagnostics_drawer_rows_name_the_publishing_server() {
     "#);
 }
 
+/// A server that pushes and one that only answers pulls, on one buffer:
+/// the drawer lists both, each row naming its server.
+#[test]
+fn diagnostics_drawer_lists_a_pushing_and_a_pull_only_server() {
+    let tmp = safe_tempdir();
+    let wire = |line: u32, message: &str| {
+        serde_json::json!({
+            "range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": 1}},
+            "severity": 1,
+            "message": message,
+        })
+    };
+    let pull_only = serde_json::json!({
+        "diagnosticProvider": {"interFileDependencies": false, "workspaceDiagnostics": false},
+    });
+    let report = serde_json::json!({
+        "kind": "full",
+        "resultId": "r1",
+        "items": [wire(0, "from pull")],
+    });
+    let (mut rig, _guard) = two_servers(
+        tmp.path(),
+        "a\nb\n",
+        serde_json::json!({}),
+        pull_only,
+        "",
+        |backend| backend.respond_to_server(LINT, "textDocument/diagnostic", report),
+    );
+    settle(&mut rig.ed);
+    rig.publish(RA, serde_json::json!([wire(1, "pushed")]));
+    rig.ed.settle();
+
+    type_cmd(&mut rig.ed, ":diagnostics");
+    settle(&mut rig.ed);
+
+    insta::assert_debug_snapshot!(drawer_rows(&rig.ed), @r#"
+    [
+        "✘ 1:1 ra-lint: from pull",
+        "✘ 2:1 rust-analyzer: pushed",
+    ]
+    "#);
+}
+
 /// A feature no server of the buffer offers is a fact about the setup, not
 /// a failure: it is reported at Info, never at Error.
 #[test]

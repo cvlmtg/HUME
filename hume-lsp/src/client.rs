@@ -10,15 +10,15 @@ use hume_rope::position_encoding::PositionEncoding;
 use lsp_types::{
     ClientCapabilities, ClientInfo, CodeActionClientCapabilities, CodeActionKind,
     CodeActionKindLiteralSupport, CodeActionLiteralSupport, CompletionClientCapabilities,
-    CompletionItemCapability, CompletionListCapability, DidChangeConfigurationClientCapabilities,
-    DidChangeConfigurationParams, FailureHandlingKind, GeneralClientCapabilities, GotoCapability,
-    HoverClientCapabilities, InitializeParams, InitializeResult, InitializedParams, MarkupKind,
-    ParameterInformationSettings, PositionEncodingKind, PublishDiagnosticsClientCapabilities,
-    RenameClientCapabilities, ResourceOperationKind, SignatureHelpClientCapabilities,
-    SignatureInformationSettings, TextDocumentClientCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncClientCapabilities, TextDocumentSyncKind, TextDocumentSyncOptions,
-    WindowClientCapabilities, WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
-    WorkspaceFolder,
+    CompletionItemCapability, CompletionListCapability, DiagnosticWorkspaceClientCapabilities,
+    DidChangeConfigurationClientCapabilities, DidChangeConfigurationParams, FailureHandlingKind,
+    GeneralClientCapabilities, GotoCapability, HoverClientCapabilities, InitializeParams,
+    InitializeResult, InitializedParams, MarkupKind, ParameterInformationSettings,
+    PositionEncodingKind, PublishDiagnosticsClientCapabilities, RenameClientCapabilities,
+    ResourceOperationKind, SignatureHelpClientCapabilities, SignatureInformationSettings,
+    TextDocumentClientCapabilities, TextDocumentSyncCapability, TextDocumentSyncClientCapabilities,
+    TextDocumentSyncKind, TextDocumentSyncOptions, WindowClientCapabilities,
+    WorkspaceClientCapabilities, WorkspaceEditClientCapabilities, WorkspaceFolder,
 };
 
 use crate::backend::{LspBackend, ServerId};
@@ -169,35 +169,45 @@ fn classify_publish(params: &mut serde_json::Value) -> Option<PublishedDiagnosti
         None | Some(serde_json::Value::Null) => None,
         Some(v) => Some(i32::deserialize(v).ok()?),
     };
-    let parsed: Vec<Result<lsp_types::Diagnostic, String>> = params
-        .get("diagnostics")?
-        .as_array()?
+    let (diagnostics, skipped) =
+        parse_wire_diagnostics(params.get_mut("diagnostics")?.as_array_mut()?)?;
+    Some(PublishedDiagnostics {
+        uri,
+        version,
+        diagnostics,
+        skipped,
+    })
+}
+
+/// Parses each wire diagnostic on its own, moving the values out of `wire`
+/// into the result. Returns the diagnostics that parsed and the parse error
+/// of each that did not. `None`, with `wire` untouched, when `wire` holds
+/// diagnostics and none parse: storing an empty list would read as the
+/// server clearing the file. Shared by a publish and a pull report.
+pub fn parse_wire_diagnostics(
+    wire: &mut [serde_json::Value],
+) -> Option<(Vec<WireDiagnostic>, Vec<String>)> {
+    use serde::Deserialize as _;
+
+    let parsed: Vec<Result<lsp_types::Diagnostic, String>> = wire
         .iter()
-        .map(|wire| lsp_types::Diagnostic::deserialize(wire).map_err(|e| e.to_string()))
+        .map(|value| lsp_types::Diagnostic::deserialize(value).map_err(|e| e.to_string()))
         .collect();
     if !parsed.is_empty() && parsed.iter().all(Result::is_err) {
         return None;
     }
-    let Some(serde_json::Value::Array(raw)) =
-        params.get_mut("diagnostics").map(serde_json::Value::take)
-    else {
-        unreachable!("the diagnostics array was just read");
-    };
-    let mut published = PublishedDiagnostics {
-        uri,
-        version,
-        diagnostics: Vec::with_capacity(parsed.len()),
-        skipped: Vec::new(),
-    };
-    for (parsed, raw) in parsed.into_iter().zip(raw) {
+    let mut diagnostics = Vec::with_capacity(parsed.len());
+    let mut skipped = Vec::new();
+    for (parsed, raw) in parsed.into_iter().zip(wire) {
         match parsed {
-            Ok(diagnostic) => published
-                .diagnostics
-                .push(WireDiagnostic { diagnostic, raw }),
-            Err(error) => published.skipped.push(error),
+            Ok(diagnostic) => diagnostics.push(WireDiagnostic {
+                diagnostic,
+                raw: raw.take(),
+            }),
+            Err(error) => skipped.push(error),
         }
     }
-    Some(published)
+    Some((diagnostics, skipped))
 }
 
 /// Recovers a `$/progress` whose `WorkDoneProgress::Begin` omits the
@@ -837,6 +847,12 @@ fn build_client_capabilities() -> ClientCapabilities {
                 dynamic_registration: Some(false),
             }),
             workspace_folders: Some(true),
+            // Lets a pull-only server ask for a re-pull. The client does not
+            // declare `textDocument.diagnostic`: a server that offers both
+            // would then stop pushing.
+            diagnostic: Some(DiagnosticWorkspaceClientCapabilities {
+                refresh_support: Some(true),
+            }),
             // Every rename result is a WorkspaceEdit. Some servers
             // (rust-analyzer) refuse textDocument/rename outright without
             // this declared, since they can't otherwise confirm the client

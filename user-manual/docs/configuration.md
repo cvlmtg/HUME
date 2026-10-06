@@ -112,6 +112,7 @@ The `lsp.*` options below configure `core:lsp`. See [Language Servers](lsp.md) f
 | `lsp.diagnostics-on-insert-line` | bool | `#f` | Keep the diagnostic underline and end-of-line summary on the line you are typing on in Insert mode. Off hides them there |
 | `lsp.request-timeout-ms` | integer ≥ 1 | `10000` | How long to wait for a language-server reply |
 | `lsp.viewport-debounce-ms` | integer ≥ 1 | `150` | Delay before re-requesting hints after scrolling |
+| `lsp.diagnostics-pull-debounce-ms` | integer ≥ 1 | `250` | Delay after you stop typing before asking a server that only reports on request for its diagnostics |
 | `lsp.format-max-ranges` | integer ≥ 1 | `16` | Above this many disjoint ranges, `:lsp-fmt` warns and formats nothing instead of sending one request per range (a server that batches ranges into a single request isn't capped) |
 
 ## Buffer options

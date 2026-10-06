@@ -143,9 +143,9 @@ impl Editor {
         // likewise carries no Steel callback.
         self.state.lsp.reset_config();
         self.state.buffer_positions.lsp.clear_all_triggers();
-        // Only the Steel `after!` thunks. Native `ViewportDebounce` timers
-        // keep their wheel entries and their `viewport_debounce` back-index
-        // intact, since nothing about them is Steel-VM-specific. Exhaustive
+        // Only the Steel `after!` thunks. Native debounce timers keep their
+        // wheel entries and their back-indexes intact, since nothing about
+        // them is Steel-VM-specific. Exhaustive
         // match, not `matches!`, so a future `TimerPayload` variant forces a
         // decision here instead of silently surviving the engine drop.
         let steel_timer_ids: Vec<super::timers::TimerId> = self
@@ -153,7 +153,8 @@ impl Editor {
             .iter()
             .filter(|(_, payload)| match payload {
                 super::timer_bridge::TimerPayload::SteelThunk(_) => true,
-                super::timer_bridge::TimerPayload::ViewportDebounce(_) => false,
+                super::timer_bridge::TimerPayload::ViewportDebounce(_)
+                | super::timer_bridge::TimerPayload::DiagnosticPullDebounce(_) => false,
             })
             .map(|(&id, _)| id)
             .collect();

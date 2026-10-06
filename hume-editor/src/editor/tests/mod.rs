@@ -872,6 +872,7 @@ impl Editor {
             timer_wheel: super::timers::TimerWheel::new(),
             timer_payloads: rustc_hash::FxHashMap::default(),
             viewport_debounce: rustc_hash::FxHashMap::default(),
+            diagnostic_pull_debounce: rustc_hash::FxHashMap::default(),
             last_visible_range: rustc_hash::FxHashMap::default(),
             last_tabline_signature: None,
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
@@ -1512,6 +1513,7 @@ mod lsp_multi_attach;
 mod lsp_popup;
 mod lsp_popup_markdown;
 mod lsp_prompt;
+mod lsp_pull_diagnostics;
 mod lsp_render;
 mod lsp_rig;
 mod lsp_routing;

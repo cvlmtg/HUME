@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use hume_engine::pipeline::PaneId;
+use hume_engine::pipeline::{BufferId, PaneId};
 use steel::rvals::SteelVal;
 
 use super::Editor;
@@ -16,10 +16,13 @@ use super::timers::TimerId;
 /// What firing a `TimerId` actually does: a Steel closure (the `after!`
 /// builtin) or a native Rust action (the viewport-change debounce, which has no Steel
 /// closure to call: the fire site always reads the *current* visible range,
-/// not whatever it was when the timer was scheduled).
+/// not whatever it was when the timer was scheduled; likewise the
+/// diagnostics-pull debounce, which pulls for the buffer as it is when it
+/// fires).
 pub(super) enum TimerPayload {
     SteelThunk(SteelVal),
     ViewportDebounce(PaneId),
+    DiagnosticPullDebounce(BufferId),
 }
 
 /// Disjoint-borrow handle over `Editor`'s timer wheel + payload table,
@@ -69,6 +72,10 @@ impl Editor {
                     self.viewport_debounce.remove(&pane_id);
                     self.queue_viewport_change(pane_id);
                 }
+                Some(TimerPayload::DiagnosticPullDebounce(bid)) => {
+                    self.diagnostic_pull_debounce.remove(&bid);
+                    self.state.lsp_pull_diagnostics(bid, None);
+                }
                 None => {}
             }
         }
@@ -96,5 +103,23 @@ impl Editor {
         self.timer_payloads
             .insert(id, TimerPayload::ViewportDebounce(pane_id));
         self.viewport_debounce.insert(pane_id, id);
+    }
+
+    /// (Re)schedules `bid`'s diagnostics pull, cancelling whichever timer
+    /// from a previous call is still pending, so a typing burst collapses to
+    /// one pull, `lsp.diagnostics-pull-debounce-ms` after it settles.
+    pub(super) fn debounce_diagnostic_pull(&mut self, bid: BufferId) {
+        if let Some(old_id) = self.diagnostic_pull_debounce.remove(&bid) {
+            TimerHandle {
+                wheel: &mut self.timer_wheel,
+                payloads: &mut self.timer_payloads,
+            }
+            .cancel(old_id.0);
+        }
+        let ms = self.state.settings.lsp_diagnostics_pull_debounce_ms as u64;
+        let id = self.timer_wheel.schedule(Duration::from_millis(ms));
+        self.timer_payloads
+            .insert(id, TimerPayload::DiagnosticPullDebounce(bid));
+        self.diagnostic_pull_debounce.insert(bid, id);
     }
 }

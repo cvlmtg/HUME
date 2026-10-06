@@ -447,6 +447,16 @@ impl Editor {
         for buffer in self.state.buffers.take_text_changed() {
             self.state
                 .queue_event(EditorEvent::OnTextChanged { buffer });
+            if self
+                .state
+                .buffer_positions
+                .lsp
+                .servers(buffer)
+                .next()
+                .is_some()
+            {
+                self.debounce_diagnostic_pull(buffer);
+            }
         }
     }
 

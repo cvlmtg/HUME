@@ -273,6 +273,9 @@ Then list it after typescript-language-server for JavaScript and TypeScript in y
       '("typescript-language-server" "vscode-eslint-language-server")))
   '("javascript" "jsx" "typescript" "tsx"))
 ```
+
+ESLint reports only when asked, so HUME asks when the file opens, after you stop typing, and
+when you save.
 :::
 
 `:lsp-status` shows which languages each running server serves. A name that isn't registered

@@ -300,6 +300,7 @@ impl EditorState {
             .lsp
             .push(bid, Attachment::new(sid, filter), opened);
         self.queue_lsp_attach(bid, sid);
+        self.lsp_pull_diagnostics(bid, Some(sid));
     }
 
     /// A kept attachment's new filter. A filter that no longer admits

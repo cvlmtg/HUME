@@ -161,10 +161,11 @@ impl Editor {
                 // skipped firing it for them.
                 for bid in self.state.buffer_positions.lsp.buffers_of(server_id) {
                     self.state.queue_lsp_attach(bid, server_id);
+                    self.state.lsp_pull_diagnostics(bid, Some(server_id));
                 }
             }
             ClientAction::Crashed { error } => {
-                let name = self.lsp_server_name(server_id);
+                let name = self.state.lsp_server_name(server_id);
                 self.report(
                     Severity::Error,
                     format!("lsp: {}", super::crashed_text(&name, error.as_deref())),
@@ -186,10 +187,16 @@ impl Editor {
                 }
             }
             ClientAction::ServerRequest { id, method, params } => {
-                // `workspace/applyEdit` needs `&mut Editor` (the edit engine);
-                // every other request answers from the pure lookup table.
+                // `workspace/applyEdit` needs `&mut Editor` (the edit engine),
+                // and a diagnostics refresh pulls; every other request
+                // answers from the pure lookup table.
                 let result = if method == lsp_types::request::ApplyWorkspaceEdit::METHOD {
                     self.apply_edit_request_response(&params, server_id)
+                } else if method == lsp_types::request::WorkspaceDiagnosticRefresh::METHOD {
+                    for bid in self.state.buffer_positions.lsp.buffers_of(server_id) {
+                        self.state.lsp_pull_diagnostics(bid, Some(server_id));
+                    }
+                    Ok(serde_json::Value::Null)
                 } else {
                     let settings = self
                         .state
@@ -211,14 +218,16 @@ impl Editor {
                 // later action for the same (server, uri) wins whatever its
                 // arrival order, and a publish an earlier drain deferred is
                 // still waiting there.
-                self.note_skipped_diagnostics(server_id, &published);
+                self.state.lsp.instances.note_pushed_diagnostics(server_id);
+                self.state
+                    .note_skipped_diagnostics(server_id, &published.skipped);
                 self.state.lsp.publishes.offer(server_id, published);
             }
             ClientAction::Progress(params) => {
                 self.handle_progress(server_id, params);
             }
             ClientAction::LogMessage(params) => {
-                let name = self.lsp_server_name(server_id);
+                let name = self.state.lsp_server_name(server_id);
                 let severity = match params.typ {
                     lsp_types::MessageType::ERROR => Severity::Error,
                     lsp_types::MessageType::WARNING => Severity::Warning,
@@ -227,7 +236,7 @@ impl Editor {
                 self.report(severity, format!("{name}: {}", params.message));
             }
             ClientAction::ShowMessage(params) => {
-                let name = self.lsp_server_name(server_id);
+                let name = self.state.lsp_server_name(server_id);
                 self.report(Severity::Info, format!("{name}: {}", params.message));
             }
             ClientAction::ServerNotification { method, params } => {
@@ -236,21 +245,10 @@ impl Editor {
             ClientAction::Stderr(line) => {
                 // rust-analyzer logs a lot; Trace keeps :messages usable;
                 // never promote stderr to a higher severity.
-                let name = self.lsp_server_name(server_id);
+                let name = self.state.lsp_server_name(server_id);
                 self.report(Severity::Trace, format!("{name}: {line}"));
             }
         }
-    }
-
-    /// Name used to prefix this server's log lines: its registration name,
-    /// or `"lsp"` for one no longer running.
-    pub(super) fn lsp_server_name(&self, server_id: ServerId) -> String {
-        self.state
-            .lsp
-            .instances
-            .get(server_id)
-            .map(|i| i.name.to_string())
-            .unwrap_or_else(|| "lsp".to_string())
     }
 
     /// `textDocument/publishDiagnostics`, `$/progress`, `window/logMessage`,
@@ -294,6 +292,16 @@ impl Editor {
 }
 
 impl EditorState {
+    /// Name used to prefix this server's log lines: its registration name,
+    /// or `"lsp"` for one no longer running.
+    pub(super) fn lsp_server_name(&self, server_id: ServerId) -> String {
+        self.lsp
+            .instances
+            .get(server_id)
+            .map(|i| i.name.to_string())
+            .unwrap_or_else(|| "lsp".to_string())
+    }
+
     /// Hands `server_id`'s answer to request `id` to the delivery slot that
     /// waits for it. Every way a request ends (response, timeout, crash,
     /// stop) arrives here.

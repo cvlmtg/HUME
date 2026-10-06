@@ -15,6 +15,7 @@ mod instances;
 pub(crate) mod introspect;
 pub(in crate::editor) mod params;
 mod progress;
+mod pull;
 mod registry;
 mod route;
 pub(in crate::editor) mod sync;

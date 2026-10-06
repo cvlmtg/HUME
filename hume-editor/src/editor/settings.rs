@@ -855,6 +855,10 @@ define_settings! {
         "lsp.viewport-debounce-ms" => lsp_viewport_debounce_ms: usize = 150,
             scope: [Scope::Global],
             parser: usize_nonzero;
+        // A typing burst collapses to one diagnostics pull per buffer.
+        "lsp.diagnostics-pull-debounce-ms" => lsp_diagnostics_pull_debounce_ms: usize = 250,
+            scope: [Scope::Global],
+            parser: usize_nonzero;
         // Hint = most lenient: every severity renders. Gates the diagnostic
         // underline/extra-highlight and gutter-sign render write sides.
         "lsp.diagnostics-severity-floor" => lsp_diagnostics_severity_floor: crate::editor::lsp::diagnostics::DiagSeverity = crate::editor::lsp::diagnostics::DiagSeverity::Hint,

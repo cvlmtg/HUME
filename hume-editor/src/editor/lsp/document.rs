@@ -20,12 +20,14 @@ use hume_scripting::TriggerKind;
 /// list lets that server handle for it, and the trigger characters plugins
 /// registered for this buffer under it (kind and source name -> chars).
 /// The trigger characters go with the attachment, and with a change of its
-/// filter.
+/// filter. `pull_result_id` is the `resultId` of the last diagnostics report
+/// the server gave for this buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::editor) struct Attachment {
     pub(in crate::editor) server: ServerId,
     pub(in crate::editor) filter: FeatureFilter,
     triggers: FxHashMap<(TriggerKind, String), Vec<char>>,
+    pull_result_id: Option<String>,
 }
 
 impl Attachment {
@@ -34,6 +36,7 @@ impl Attachment {
             server,
             filter,
             triggers: FxHashMap::default(),
+            pull_result_id: None,
         }
     }
 }
@@ -114,6 +117,32 @@ impl LspDocuments {
             .iter()
             .find(|a| a.server == sid)
             .map(|a| a.filter)
+    }
+
+    /// The `resultId` of `sid`'s last diagnostics report for `bid`.
+    pub(in crate::editor::lsp) fn pull_result_id(
+        &self,
+        bid: BufferId,
+        sid: ServerId,
+    ) -> Option<&str> {
+        self.attachments(bid)
+            .iter()
+            .find(|a| a.server == sid)?
+            .pull_result_id
+            .as_deref()
+    }
+
+    /// Replaces the `resultId` of `sid`'s last diagnostics report for `bid`.
+    /// Does nothing when `sid` is not attached to `bid`.
+    pub(in crate::editor::lsp) fn set_pull_result_id(
+        &mut self,
+        bid: BufferId,
+        sid: ServerId,
+        result_id: Option<String>,
+    ) {
+        if let Some(att) = self.attachment_mut(bid, sid) {
+            att.pull_result_id = result_id;
+        }
     }
 
     /// Every `(source, chars)` of `kind` registered on any of `bid`'s

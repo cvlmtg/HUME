@@ -304,7 +304,7 @@ impl EditorState {
             to: Some(server),
             ..RouteSpec::default()
         };
-        let Ok(mut routed) = route(self, bid, None, &spec) else {
+        let Ok(mut routed) = route(self, bid, Some(method), &spec) else {
             return;
         };
         self.lsp_flush_pending();

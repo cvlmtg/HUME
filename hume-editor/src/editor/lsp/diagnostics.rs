@@ -16,8 +16,8 @@ use lsp_types::PublishDiagnosticsParams;
 use ropey::Rope;
 use rustc_hash::FxHashMap;
 
-use crate::editor::Editor;
 use crate::editor::message_log::Severity;
+use crate::editor::{Editor, EditorState};
 use hume_decorations::{Positioned, RangeAnchored, SourceStore};
 
 /// Ordered least-to-most-lenient so `severity <= floor` means "at least as
@@ -414,7 +414,7 @@ impl Editor {
             return Ingest::Done(None);
         };
         if let Some(bid) = self.state.buffers.find_by_path(&path) {
-            return Ingest::Done(self.ingest_into(server_id, published, bid, &path));
+            return Ingest::Done(self.ingest_into(server_id, published, bid));
         }
         if *canonicalize_budget == 0 {
             return Ingest::Deferred(published);
@@ -440,34 +440,7 @@ impl Editor {
             );
             return Ingest::Done(None);
         };
-        Ingest::Done(self.ingest_into(server_id, published, bid, &canonical))
-    }
-
-    /// Reports the diagnostics of `published` that did not parse: a Warning
-    /// the first time for `server_id`, a Trace line after, so a server that
-    /// republishes on every keystroke does not fill the log.
-    pub(in crate::editor) fn note_skipped_diagnostics(
-        &mut self,
-        server_id: ServerId,
-        published: &PublishedDiagnostics,
-    ) {
-        let Some(first) = published.skipped.first() else {
-            return;
-        };
-        let severity = if self.state.lsp.instances.first_skipped_report(server_id) {
-            Severity::Warning
-        } else {
-            Severity::Trace
-        };
-        let name = self.lsp_server_name(server_id);
-        self.report(
-            severity,
-            format!(
-                "lsp: '{name}' sent {} diagnostic(s) that do not parse and were skipped; \
-                 the rest are shown (first error: {first})",
-                published.skipped.len()
-            ),
-        );
+        Ingest::Done(self.ingest_into(server_id, published, bid))
     }
 
     /// [`Self::ingest_publish_diagnostics`] with no budget, for a test's
@@ -486,34 +459,13 @@ impl Editor {
     }
 
     /// The part of an ingest that follows finding the buffer: the publish
-    /// checked and stored. `path` only names the file in Trace lines.
+    /// checked against the buffer's version and stored.
     fn ingest_into(
         &mut self,
         server_id: ServerId,
         published: PublishedDiagnostics,
         bid: BufferId,
-        path: &std::path::Path,
     ) -> Option<BufferId> {
-        // Only a server attached to the buffer, and asked for its
-        // diagnostics there, has them shown. A server detached since
-        // publishing, or whose list entry excludes diagnostics, is dropped.
-        let admitted = self
-            .state
-            .buffer_positions
-            .lsp
-            .filter_of(bid, server_id)
-            .is_some_and(|filter| filter.admits(hume_scripting::LspFeature::Diagnostics));
-        if !admitted {
-            self.report(
-                Severity::Trace,
-                format!(
-                    "lsp: dropping publishDiagnostics from a server not reporting diagnostics for {}",
-                    path.display()
-                ),
-            );
-            return None;
-        }
-
         // A publish computed against an older version would convert its
         // positions against text that has since moved on. The server has
         // already received our newer didChange(s) and will republish
@@ -530,22 +482,48 @@ impl Editor {
             );
             return None;
         }
+        self.state
+            .store_server_diagnostics(server_id, bid, published.diagnostics)
+            .then_some(bid)
+    }
+}
 
-        // No silent UTF-16 guess: an untracked server (crashed or stopped
-        // between sending this and it being drained) has no negotiated
-        // encoding to decode against, and a wrong silent answer is only
-        // visible on a non-ASCII line.
-        let Some((server, encoding)) = self.state.lsp.instances.origin(server_id) else {
+impl EditorState {
+    /// Stores `diagnostics` as everything `server_id` reports for `bid`,
+    /// converted to char offsets against the buffer as it is now. `false`
+    /// when they are dropped: only a server attached to the buffer, and
+    /// asked for its diagnostics there, has them shown, and a server
+    /// untracked since it reported has no negotiated encoding to decode
+    /// them against.
+    pub(in crate::editor) fn store_server_diagnostics(
+        &mut self,
+        server_id: ServerId,
+        bid: BufferId,
+        diagnostics: Vec<WireDiagnostic>,
+    ) -> bool {
+        let admitted = self
+            .buffer_positions
+            .lsp
+            .filter_of(bid, server_id)
+            .is_some_and(|filter| filter.admits(hume_scripting::LspFeature::Diagnostics));
+        if !admitted {
+            let name = self.lsp_server_name(server_id);
             self.report(
                 Severity::Trace,
-                "lsp: dropping publishDiagnostics from an untracked server".to_string(),
+                format!("lsp: dropping diagnostics from '{name}', which is not reporting diagnostics for this buffer"),
             );
-            return None;
+            return false;
+        }
+        let Some((server, encoding)) = self.lsp.instances.origin(server_id) else {
+            self.report(
+                Severity::Trace,
+                "lsp: dropping diagnostics from an untracked server".to_string(),
+            );
+            return false;
         };
-        let rope = self.state.buffers.get(bid).text().rope().clone();
+        let rope = self.buffers.get(bid).text().rope().clone();
 
-        let stored: Vec<StoredDiag> = published
-            .diagnostics
+        let stored: Vec<StoredDiag> = diagnostics
             .into_iter()
             .map(|WireDiagnostic { diagnostic: d, raw }| {
                 let raw = Arc::new(raw);
@@ -572,11 +550,37 @@ impl Editor {
             })
             .collect();
 
-        self.state
-            .buffer_positions
+        self.buffer_positions
             .diagnostics
             .replace(server_id, bid, stored);
-        Some(bid)
+        true
+    }
+
+    /// Reports the diagnostics of a report that did not parse: a Warning the
+    /// first time for `server_id`, a Trace line after, so a server that
+    /// reports on every keystroke does not fill the log.
+    pub(in crate::editor) fn note_skipped_diagnostics(
+        &mut self,
+        server_id: ServerId,
+        skipped: &[String],
+    ) {
+        let Some(first) = skipped.first() else {
+            return;
+        };
+        let severity = if self.lsp.instances.first_skipped_report(server_id) {
+            Severity::Warning
+        } else {
+            Severity::Trace
+        };
+        let name = self.lsp_server_name(server_id);
+        self.report(
+            severity,
+            format!(
+                "lsp: '{name}' sent {} diagnostic(s) that do not parse and were skipped; \
+                 the rest are shown (first error: {first})",
+                skipped.len()
+            ),
+        );
     }
 }
 

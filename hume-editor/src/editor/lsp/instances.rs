@@ -33,6 +33,9 @@ pub(in crate::editor::lsp) struct Instance {
     /// Set once a diagnostic this server sent that did not parse has been
     /// reported at Warning.
     skipped_reported: bool,
+    /// Set once the server has sent `publishDiagnostics`. A server that has
+    /// not is asked for its diagnostics instead (`pull.rs`).
+    pushed_diagnostics: bool,
 }
 
 impl Instance {
@@ -81,6 +84,7 @@ impl Instances {
                 spawned: config.clone(),
                 drift_reported: false,
                 skipped_reported: false,
+                pushed_diagnostics: false,
             },
         );
         Ok(sid)
@@ -115,6 +119,18 @@ impl Instances {
         self.map
             .get_mut(&sid)
             .is_some_and(|instance| !std::mem::replace(&mut instance.skipped_reported, true))
+    }
+
+    /// Records that `sid` pushes diagnostics.
+    pub(in crate::editor::lsp) fn note_pushed_diagnostics(&mut self, sid: ServerId) {
+        if let Some(instance) = self.map.get_mut(&sid) {
+            instance.pushed_diagnostics = true;
+        }
+    }
+
+    /// Whether `sid` has sent `publishDiagnostics`.
+    pub(in crate::editor::lsp) fn has_pushed_diagnostics(&self, sid: ServerId) -> bool {
+        self.map.get(&sid).is_some_and(|i| i.pushed_diagnostics)
     }
 
     pub(in crate::editor::lsp) fn remove(&mut self, sid: ServerId) -> Option<Instance> {

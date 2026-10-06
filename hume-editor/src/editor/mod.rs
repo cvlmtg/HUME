@@ -880,6 +880,10 @@ pub(crate) struct Editor {
     /// This pane's currently-pending `OnViewportChange` debounce timer, if
     /// any, looked up to cancel-and-replace on the next change.
     viewport_debounce: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, timers::TimerId>,
+    /// This buffer's currently-pending diagnostics-pull debounce timer, if
+    /// any, looked up to cancel-and-replace on the next edit.
+    diagnostic_pull_debounce:
+        rustc_hash::FxHashMap<hume_engine::pipeline::BufferId, timers::TimerId>,
     /// `(buffer_id, visible range)` as of the last frame this pane was
     /// *visible*, per pane, the range being what `OnViewportChange` carries
     /// (`lsp::introspect::pane_visible_range`). `prepare_frame`'s scroll step
