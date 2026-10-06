@@ -1,6 +1,6 @@
 ;;; runtime/scheme/grammar-sources.scm — HUME bundled tree-sitter grammar source catalog.
 ;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
-;;; Source: helix-editor/helix languages.toml @ f6f3eb1fe4a7
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b
 
 (
  ("ada" "https://github.com/briot/tree-sitter-ada" "ba0894efa03beb70780156b91e28c716b7a4764d" "tree_sitter_ada" "")
@@ -164,7 +164,7 @@
  ("jsonnet" "https://github.com/sourcegraph/tree-sitter-jsonnet" "ddd075f1939aed8147b7aa67f042eda3fce22790" "tree_sitter_jsonnet" "")
  ("jsx" "https://github.com/tree-sitter/tree-sitter-javascript" "58404d8cf191d69f2674a8fd507bd5776f46cb11" "tree_sitter_javascript" "")
  ("julia" "https://github.com/tree-sitter/tree-sitter-julia" "e0f9dcd180fdcfcfa8d79a3531e11d99e79321d3" "tree_sitter_julia" "")
- ("just" "https://github.com/poliorcetics/tree-sitter-just" "f749ec853adcacc5f14e9ec375f244104e033d88" "tree_sitter_just" "")
+ ("just" "https://github.com/poliorcetics/tree-sitter-just" "00859eebfb774d371af174ea1e582d46e697b469" "tree_sitter_just" "")
  ("kcl" "https://github.com/KittyCAD/tree-sitter-kcl" "8905e0bdbf5870b50bc3f24345f1af27746f42e8" "tree_sitter_kcl" "")
  ("kconfig" "https://github.com/tree-sitter-grammars/tree-sitter-kconfig" "9ac99fe4c0c27a35dc6f757cef534c646e944881" "tree_sitter_kconfig" "")
  ("kdl" "https://github.com/amaanq/tree-sitter-kdl" "b37e3d58e5c5cf8d739b315d6114e02d42e66664" "tree_sitter_kdl" "")
@@ -280,7 +280,7 @@
  ("sgf" "https://github.com/lykahb/tree-sitter-sgf" "b7e0fb713b29495722e056fdc3dc4f889f6d6ed2" "tree_sitter_sgf" "")
  ("shellcheckrc" "https://codeberg.org/kpbaks/tree-sitter-shellcheckrc" "ad3da4e8f7fd72dcc5e93a6b89822c59a7cd10ff" "tree_sitter_shellcheckrc" "")
  ("slang" "https://github.com/tree-sitter-grammars/tree-sitter-slang" "327b1b821c255867a4fb724c8eee48887e3d014b" "tree_sitter_slang" "")
- ("slint" "https://github.com/slint-ui/tree-sitter-slint" "68b25244cec6eb9d7f8f790ef781c29c822d8f84" "tree_sitter_slint" "")
+ ("slint" "https://github.com/slint-ui/tree-sitter-slint" "f94f96ce093ec153f037228ac2fac5f1a3cd9ac6" "tree_sitter_slint" "")
  ("slisp" "https://git.sr.ht/~xguerin/tree-sitter-slisp" "e14f62169145d9661c1ab16790f527770d157bb8" "tree_sitter_slisp" "")
  ("smali" "https://github.com/tree-sitter-grammars/tree-sitter-smali" "fdfa6a1febc43c7467aa7e937b87b607956f2346" "tree_sitter_smali" "")
  ("smithy" "https://github.com/indoorvivants/tree-sitter-smithy" "ec4fe14586f2b0a1bc65d6db17f8d8acd8a90433" "tree_sitter_smithy" "")

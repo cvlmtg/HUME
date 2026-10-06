@@ -1,0 +1,32 @@
+;;; runtime/plugins/core/lsp-install/server-commands.scm — the command of each bundled LSP server whose command differs from its name.
+;;; Generated — do not hand-edit. Record format: README.md, this directory.
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+
+(
+ ("actions-language-server" . "actions-languageserver")
+ ("ada-gpr-language-server" . "ada_language_server")
+ ("ada-language-server" . "ada_language_server")
+ ("cuelsp" . "cue")
+ ("erlang-ls" . "erlang_ls")
+ ("fsharp-ls" . "fsautocomplete")
+ ("godot" . "ncat")
+ ("golangci-lint-lsp" . "golangci-lint-langserver")
+ ("graphql-language-service" . "graphql-lsp")
+ ("haskell-language-server" . "haskell-language-server-wrapper")
+ ("jedi" . "jedi-language-server")
+ ("kcl-lsp" . "kcl-language-server")
+ ("lean" . "lake")
+ ("luau" . "luau-lsp")
+ ("millet" . "millet-ls")
+ ("mojo-lsp-server" . "pixi")
+ ("nu-lsp" . "nu")
+ ("omnisharp" . "OmniSharp")
+ ("pbkit" . "pb")
+ ("r" . "R")
+ ("ripple-lsp" . "ripple-language-server")
+ ("spade-language-server" . "swim")
+ ("typespec" . "tsp-server")
+ ("vlang-language-server" . "v-analyzer")
+ ("vuels" . "vue-language-server")
+ ("wasm-language-tools" . "wat_server")
+)
