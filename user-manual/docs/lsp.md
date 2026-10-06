@@ -255,7 +255,16 @@ the feature. Give the names in the order you want:
 ```
 
 A list names the only servers a language uses, so adding a server means restating the whole
-list. This runs ESLint beside typescript-language-server for JavaScript and TypeScript:
+list.
+
+::: tip ESLint beside typescript-language-server
+Install the ESLint server once:
+
+```
+:lsp-install vscode-eslint-language-server
+```
+
+Then list it after typescript-language-server for JavaScript and TypeScript in your `init.scm`:
 
 ```scheme
 (for-each
@@ -264,6 +273,7 @@ list. This runs ESLint beside typescript-language-server for JavaScript and Type
       '("typescript-language-server" "vscode-eslint-language-server")))
   '("javascript" "jsx" "typescript" "tsx"))
 ```
+:::
 
 `:lsp-status` shows which languages each running server serves. A name that isn't registered
 yet takes its place in the list once it registers. An entry can
