@@ -605,6 +605,39 @@ fn diagnostics_detach_one_keeps_other_decorations() {
     assert_eq!(eol(&rig.ed), 1);
 }
 
+#[test]
+fn diagnostics_drawer_rows_name_the_publishing_server() {
+    let tmp = safe_tempdir();
+    let (mut rig, _guard) = two_servers(
+        tmp.path(),
+        "a\nb\n",
+        serde_json::json!({}),
+        serde_json::json!({}),
+        "",
+        |_| {},
+    );
+    let diag = |line: u32, message: &str| {
+        serde_json::json!([{
+            "range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": 1}},
+            "severity": 1,
+            "message": message,
+        }])
+    };
+    rig.publish(RA, diag(0, "from ra"));
+    rig.publish(LINT, diag(1, "from lint"));
+    rig.ed.settle();
+
+    type_cmd(&mut rig.ed, ":diagnostics");
+    settle(&mut rig.ed);
+
+    insta::assert_debug_snapshot!(drawer_rows(&rig.ed), @r#"
+    [
+        "✘ 1:1 rust-analyzer: from ra",
+        "✘ 2:1 ra-lint: from lint",
+    ]
+    "#);
+}
+
 /// A feature no server of the buffer offers is a fact about the setup, not
 /// a failure: it is reported at Info, never at Error.
 #[test]

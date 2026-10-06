@@ -53,6 +53,7 @@
 (define (lsp/diag-row d)
   (string-append (lsp/severity-glyph (hash-ref d 'severity)) " "
                  (lsp/format-position (hash-ref d 'line) (hash-ref d 'grapheme-col)) " "
+                 (lsp-server-name (hash-ref d 'server)) ": "
                  (lsp/first-line (hash-ref d 'message))))
 
 (define lsp/*diag-drawer* #f)

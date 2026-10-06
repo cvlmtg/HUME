@@ -22,7 +22,7 @@ the jump has already navigated there, so that is the pane showing the target.
 ## Diagnostics drawer
 
 `:diagnostics` lists the buffer's diagnostics in a drawer, one row per diagnostic:
-a severity glyph, `line:col` and the message's first line. Selecting a row jumps the
+a severity glyph, `line:col`, the name of the server that reported it and the message's first line. Selecting a row jumps the
 same way navigation does, without the popup, since the row already showed the message.
 Unlike a one-shot picker, the drawer's rows track the buffer's diagnostics as they
 change, and this plugin owns refreshing them.
