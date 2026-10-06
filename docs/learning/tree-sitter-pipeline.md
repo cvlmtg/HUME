@@ -288,8 +288,8 @@ Putting it all together, here is what happens when you open `main.rs`:
 
 3. **Funnel** — the funnel is called with `"rust"`. It writes the language
    name to the buffer, looks up Rust's registered grammar (if any), proceeds
-   to syntax setup, and attaches the buffer to a Rust language server if one
-   is configured (see the LSP doc).
+   to syntax setup, and attaches the buffer to the language servers Rust's
+   list names, if any (see the LSP doc).
 
 4. **Syntax setup** — if a grammar bundle is attached to the Rust config, a
    parse request is queued to the background parse worker. Parsing happens

@@ -161,7 +161,7 @@ See [Configuration](configuration.md) for every option.
 | `:ver`, `:version` | Show the editor version |
 | `:tutor` | Open the interactive tutorial |
 
-Plugins add commands of their own once you load them. The `:plum-*` commands (installing plugins and grammars) come from `core:plum`, and `:lsp-status`, `:lsp-stop`, `:lsp-restart`, `:diagnostics`, and `:format-source` from `core:lsp`, and `:lsp-install`, `:lsp-uninstall`, `:lsp-servers`, and `:lsp-rescan-servers` from `core:lsp-install`. None of these plugins is loaded until you ask for it in `init.scm`. See [Core Plugins](core-plugins.md).
+Plugins add commands of their own once you load them. The `:plum-*` commands (installing plugins and grammars) come from `core:plum`, and `:lsp-status`, `:lsp-stop`, `:lsp-restart`, `:diagnostics`, and `:format-source` from `core:lsp`, and `:lsp-install`, `:lsp-uninstall`, and `:lsp-catalog` from `core:lsp-install`. None of these plugins is loaded until you ask for it in `init.scm`. See [Core Plugins](core-plugins.md).
 
 ## Finding a command
 

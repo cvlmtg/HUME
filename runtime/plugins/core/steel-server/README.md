@@ -14,8 +14,9 @@ Mason registry, the two sources `core:lsp-install`'s catalog is generated from, 
 (load-plugin! "core:steel-server")
 ```
 
-- **Depends on:** nothing at load time. The plugin only calls `register-lsp-server!` and
-  `lsp-registered-for-language?`, so it loads without `core:lsp`. The editor-side features
+- **Depends on:** nothing at load time. The plugin only calls `register-lsp-server!`,
+  `lsp-server-registered?`, `define-language!` and `set-default-language-servers!`, so it
+  loads without `core:lsp`. The editor-side features
   that make the registered server useful (hover, goto, diagnostics) come from `core:lsp`,
   which in turn needs `core:stdlib`.
 - **Activates on:** the first Scheme buffer, or `:steel-server-install`, whichever comes
@@ -34,10 +35,12 @@ Mason registry, the two sources `core:lsp-install`'s catalog is generated from, 
 
 ### Registration
 
-At load, when `steel-language-server` is on `$PATH`, the plugin registers it for the
-`scheme` language with the root marker `cog.scm`. Otherwise it logs a warning that points
-at `:steel-server-install`. A `scheme` registration that already exists, such as a manual
-`register-lsp-server! "scheme"` in `init.scm`, is left alone.
+At load, when `steel-language-server` is on `$PATH`, the plugin registers it under the
+name `steel-language-server`. It also redefines the `scheme` language with the root marker
+`cog.scm`, repeating the bundled extensions, globs and shebangs, and sets the language's
+default list to this server. Otherwise it logs a warning that points at `:steel-server-install`. A registration under
+that name that already exists, such as a manual
+`register-lsp-server! "steel-language-server" …` in `init.scm`, is left alone.
 
 `:steel-server-install` logs that the server is already installed when the binary is on
 `$PATH`. Otherwise it needs `cargo` on `$PATH` and fails with a pointer to rustup if not.

@@ -145,10 +145,10 @@ menu and `git-diff`'s fetch/diff pipeline both follow this.
 to the user, not by how verbose the plugin author wants to be:
 
 - `'error`: the operation couldn't run (a required tool is missing, a process
-  failed to start at all).
-- `'warn`: a failure that's a direct answer to something the user just typed (a bad ref,
-  an invalid name), or a security-relevant refusal (a path-traversal attempt) worth a
-  persistent record.
+  failed to start at all), or a typed argument names nothing the command can act on (an
+  unknown name, a bad ref, an invalid or path-traversal name).
+- `'warn`: something worth a persistent record that the user did not just ask for: an
+  unsafe name from a catalog or remote source, a stale lock, an orphan directory.
 - `'trace`: an expected, common failure that would otherwise fill `:messages` for every
   buffer that never opted into the feature (e.g. `git cat-file` failing for a buffer with no
   ref override, which `git-diff` runs for every buffer).

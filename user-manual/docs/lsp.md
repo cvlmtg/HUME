@@ -9,8 +9,8 @@ installs the servers themselves, so getting a language working is usually one co
 
 Bring in `core:lsp` and `core:lsp-install` from your [`init.scm`](configuration.md) (see
 [Core Plugins](core-plugins.md#core-lsp) for how they fit alongside HUME's other bundled
-plugins) and make sure a server is registered for the languages you use. The easiest way
-to get a server is [`:lsp-install`](#installing-servers): run it once per language and it downloads,
+plugins) and make sure a server is registered, and named in the language's list, for the
+languages you use. The easiest way to get a server, which does both, is [`:lsp-install`](#installing-servers): run it once per language and it downloads,
 verifies, and registers the server in one step, no separate download tool needed. If
 you'd rather manage a server yourself (a local build, a version the seeded catalog
 doesn't carry, or a `$PATH` copy you want to take precedence), register it by hand
@@ -22,7 +22,7 @@ instead. See [Registering a language server](#registering-a-language-server).
 (load-plugin! "core:lsp-install")  ; :lsp-install and friends; leave it out to manage servers yourself
 ```
 
-Both plugins load lazily, which keeps startup fast: `core:lsp` activates the first time any file with a recognized language opens, or you run one of its commands directly. `core:lsp-install` registers servers you already installed when a file with a recognized language opens, and loads the rest of itself the first time you run `:lsp-install`, `:lsp-uninstall` or `:lsp-servers`.
+Both plugins load lazily, which keeps startup fast: `core:lsp` activates the first time any file with a recognized language opens, or you run one of its commands directly. `core:lsp-install` registers servers you already installed when a file with a recognized language opens, and loads the rest of itself the first time you run `:lsp-install`, `:lsp-uninstall` or `:lsp-catalog`.
 
 Want activation to only trigger for specific languages, or a smaller set of commands?
 Pass `#:languages`/`#:commands`/`#:typed-commands`/`#:events` to `declare-plugin!` before the
@@ -53,8 +53,9 @@ commands, so `#:commands`/`#:typed-commands` alone does not get completions work
 completions along with everything else.
 :::
 
-Opening a file whose language matches a registered server spawns it automatically (once per
-project root) and attaches.
+Opening a file attaches every server its language's list names, starting each one once per
+project root. A language's [list](#choosing-which-server-a-language-uses) is Helix's own once
+`core:lsp-install` is loaded, and empty until you set one otherwise.
 
 ## Installing servers
 
@@ -101,7 +102,7 @@ Open a file in the language you want a server for, then run:
 :lsp-install
 ```
 
-Or name the language directly. Tab completes every language HUME has a seeded server for:
+Or name the language directly. Tab completes every language HUME has a seeded server for, and every installable server:
 
 ```
 :lsp-install rust
@@ -110,9 +111,21 @@ Or name the language directly. Tab completes every language HUME has a seeded se
 HUME downloads the pinned release, verifies its checksum, unpacks it, and registers it;
 already-open buffers of that language attach immediately, no restart needed. Running
 `:lsp-install` again for a server that's already at the latest seeded version never
-re-downloads, but still re-registers, which is useful if a receipt was installed out-of-band and
-hasn't attached yet. (A language you've registered by hand is left alone by any
-rescan, whether or not the server is also managed by `:lsp-install`.)
+re-downloads. (A server you've registered by hand under the same name is left alone,
+whether or not it is also managed by `:lsp-install`.)
+
+`:lsp-install` installs the first server HUME knows for a language. Some languages have
+more than one (Python: ty, ruff, jedi, pylsp, zuban; TOML: taplo, tombi). To install
+another, name it. Tab completes every server that can be installed:
+
+```
+:lsp-install ruff
+```
+
+Installed servers for one language run together on a buffer, in the order HUME's catalog
+lists them, with any limits the catalog puts on what each is used for. To choose the order
+or the limits yourself, see
+[Choosing which server a language uses](#choosing-which-server-a-language-uses).
 
 You don't need to run this ahead of time: opening a file whose language has an installable,
 uninstalled server shows a one-line `run :lsp-install` hint, once per language per session.
@@ -120,11 +133,12 @@ uninstalled server shows a one-line `run :lsp-install` hint, once per language p
 ### See what's available
 
 ```
-:lsp-servers
+:lsp-catalog
 ```
 
 Lists every server HUME knows about: its languages, its seeded version, and whether it's
-installed, out of date, or not installable on your platform (and why). Not every entry can
+installed, out of date, or not installable on your platform (and why). A language a server
+only backs second to another is marked `(secondary)`. Not every entry can
 be installed for you: many are listed so you can point HUME at a copy you install yourself,
 with `register-lsp-server!` below.
 
@@ -135,7 +149,7 @@ with `register-lsp-server!` below.
 ```
 
 Shuts down any running client for that server, unregisters it, and removes it from disk. Use
-the server's name from `:lsp-servers`, not the language name, e.g.
+the server's name from `:lsp-catalog`, not the language name, e.g.
 `:lsp-uninstall rust-analyzer`, not `:lsp-uninstall rust`. Tab completes every server with an
 install directory on disk, including an orphan one no longer in the seeded catalog.
 
@@ -161,12 +175,14 @@ through a package manager not yet supported (`opam`, `luarocks`, …). Install i
 and register it manually as described in [Registering a language server](#registering-a-language-server)
 below.
 
-**A server is on disk but nothing attaches.** Either `core:lsp-install` is not loaded from your `init.scm`, or the server appeared on disk after its scan already ran (installed outside `:lsp-install`, copied in, or installed by an earlier HUME version). Add `(load-plugin! "core:lsp-install")` to your `init.scm`, or run `:lsp-rescan-servers`.
+**A server is on disk but nothing attaches.** `core:lsp-install` is probably not loaded from your `init.scm`. Add `(load-plugin! "core:lsp-install")` to it.
 
 **A server on your `$PATH` isn't the one HUME runs.** `:lsp-install` always spawns the managed
 copy, even when the same command name also resolves on `$PATH`. You'll see a note about this
 after installing. Register the server manually instead if you want your `$PATH` copy to take
-precedence.
+precedence: register it under the same name `:lsp-catalog` shows for the managed server
+(`"rust-analyzer"`, not `"rust"`), as described in
+[Registering a language server](#registering-a-language-server).
 
 ## Registering a language server
 
@@ -177,16 +193,20 @@ catalog doesn't carry, or a `$PATH` copy you want to take precedence over a mana
 [managing-servers commands](#managing-servers) below (`:lsp-status`, `:lsp-stop`,
 `:lsp-restart`) are `core:lsp` commands, so a manually registered server still needs
 `core:lsp` loaded to inspect, stop, or restart it. A manual `register-lsp-server!`
-call always overrides a seeded, installed server for the same language, whether it comes
-before or after `(load-plugin! "core:lsp")` in your init.scm;
-order doesn't matter. `register-lsp-server!` takes:
+call under the same name as a seeded, installed server replaces it, whether it comes
+before or after `(load-plugin! "core:lsp")` in your init.scm; order doesn't matter.
+
+A registration says how to start a server. A server serves a language only once that
+language's server list names it, so the examples that follow list each server for its
+languages with a [`set-language-servers!`](#choosing-which-server-a-language-uses) call. The project root
+comes from the language's own root markers, which the bundled languages already carry
+(`Cargo.toml` for Rust, `go.mod` for Go, and so on). `register-lsp-server!` takes:
 
 | Argument | Meaning |
 |----------|---------|
-| language | A name you choose (matches HUME's own language identity for a buffer: `"rust"`, `"python"`, `"typescript"`, …) |
+| name | The server's name. Registering the same name again replaces its registration, and `:lsp-stop`/`:lsp-restart` take it. No spaces |
 | `#:command` | The executable to run |
 | `#:args` | Extra command-line arguments, if the server needs them |
-| `#:root-markers` | Filenames that mark a project root (HUME walks up from the opened file looking for the nearest one) |
 | `#:init-options` | Server configuration, sent once at startup; see below |
 | `#:settings` | Server configuration, handed over on an ongoing basis; see below |
 | `#:env` | Extra environment variables for the server process, as a list of `("NAME" . "value")` pairs, added on top of the environment HUME itself runs in, never replacing it |
@@ -195,22 +215,72 @@ Examples for a few commonly used servers:
 
 ```scheme
 ;; Rust — rust-analyzer
-(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
+(register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
+(set-language-servers! "rust" '("rust-analyzer"))
 
 ;; Python — pyright
-(register-lsp-server! "python" #:command "pyright-langserver" #:args '("--stdio")
-                               #:root-markers '("pyproject.toml" "setup.py"))
+(register-lsp-server! "pyright" #:command "pyright-langserver" #:args '("--stdio"))
+(set-language-servers! "python" '("pyright"))
 
 ;; TypeScript / JavaScript — typescript-language-server
-(register-lsp-server! "typescript" #:command "typescript-language-server" #:args '("--stdio")
-                                   #:root-markers '("package.json" "tsconfig.json"))
+(register-lsp-server! "typescript-language-server"
+                      #:command "typescript-language-server" #:args '("--stdio"))
+(set-language-servers! "typescript" '("typescript-language-server"))
+(set-language-servers! "tsx" '("typescript-language-server"))
 
 ;; Go — gopls
-(register-lsp-server! "go" #:command "gopls" #:root-markers '("go.mod"))
+(register-lsp-server! "gopls" #:command "gopls")
+(set-language-servers! "go" '("gopls"))
 
 ;; C / C++ — clangd
-(register-lsp-server! "c" #:command "clangd" #:root-markers '("compile_commands.json" ".clangd"))
+(register-lsp-server! "clangd" #:command "clangd")
+(set-language-servers! "c" '("clangd"))
+(set-language-servers! "cpp" '("clangd"))
 ```
+
+### Choosing which server a language uses
+
+A language uses the servers its list names, and a buffer attaches to all of them, in list
+order. With `core:lsp-install` loaded, every language it knows starts with Helix's list for
+it. Any other language has no list until you set one, so a server you register yourself
+serves nothing until a list names it. Diagnostics from every server
+show together, completion lists every server's items, code actions list every server's
+actions (with the server's name beside each when several offer some), goto and references
+combine every server's locations, and inlay hints come from all of them. Hover, signature
+help, rename and formatting use the first server in the list that is running and supports
+the feature. Give the names in the order you want:
+
+```scheme
+(set-language-servers! "python" '("pyright" "ruff"))
+```
+
+A list names the only servers a language uses, so adding a server means restating the whole
+list. This runs ESLint beside typescript-language-server for JavaScript and TypeScript:
+
+```scheme
+(for-each
+  (lambda (language)
+    (set-language-servers! language
+      '("typescript-language-server" "vscode-eslint-language-server")))
+  '("javascript" "jsx" "typescript" "tsx"))
+```
+
+`:lsp-status` shows which languages each running server serves. A name that isn't registered
+yet takes its place in the list once it registers. An entry can
+also limit a server to some features, with `only-features` or `except-features` (give one,
+not both), using the feature names Helix uses in its own `languages.toml`:
+
+```scheme
+(set-language-servers! "python"
+  (list "pyright" (hash 'name "ruff" 'only-features '(format diagnostics))))
+```
+
+A server limited this way contributes only those features: with `'(format diagnostics)`,
+ruff's diagnostics are shown and its other answers are not used.
+
+Plugins can ship a list of their own with `set-default-language-servers!`, which takes the
+same arguments. It applies only while you haven't set a list for that language. Passing `#f`
+instead of a list clears what you set.
 
 ### Server configuration (`#:init-options` and `#:settings`)
 
@@ -221,8 +291,7 @@ Language servers each have their own configuration options (code style, extra wa
 ```scheme
 ;; gopls reads its own option names directly off the hash you pass here —
 ;; no extra nesting needed.
-(register-lsp-server! "go" #:command "gopls"
-  #:root-markers '("go.mod")
+(register-lsp-server! "gopls" #:command "gopls"
   #:init-options (hash "hints" (hash "assignVariableTypes" #t
                                      "parameterNames" #t)
                        "usePlaceholders" #t))
@@ -233,14 +302,14 @@ Language servers each have their own configuration options (code style, extra wa
 ```scheme
 ;; typescript-language-server reads its "typescript" and "javascript"
 ;; keys from what's handed to it, without asking for them by name.
-(register-lsp-server! "typescript" #:command "typescript-language-server" #:args '("--stdio")
-  #:root-markers '("package.json" "tsconfig.json")
+(register-lsp-server! "typescript-language-server"
+  #:command "typescript-language-server" #:args '("--stdio")
   #:settings (hash "typescript" (hash "inlayHints" (hash "parameterNames" (hash "enabled" "all")))))
 ```
 
 If a server does ask for a specific named piece and it isn't in your `#:settings` hash, that's a plain "nothing configured for this" answer, not an error. Well-behaved servers, including gopls and rust-analyzer, take that in stride and keep whatever configuration they already have.
 
-Changing either and running `:reload-config` updates what HUME has stored, but an already-running server keeps its old configuration until it restarts. Run `:lsp-restart` (or reinstall the server) to push the change.
+Changing either and running `:reload-config` updates what HUME has stored, but an already-running server keeps the configuration it started with until it restarts, and HUME says so once in the message log. Run `:lsp-restart` (or reinstall the server) to push the change.
 
 ## Commands and keys
 
@@ -315,9 +384,13 @@ server from disk, see [Installing servers](#installing-servers).
 
 | Command | Effect |
 |---------|--------|
-| `:lsp-status` | Show every running server and its state |
-| `:lsp-stop [language]` | Stop a server (default: the focused buffer's) |
-| `:lsp-restart [language]` | Stop and respawn a server |
+| `:lsp-status` | Show every running server and its state, each buffer's servers, and the servers you stopped |
+| `:lsp-stop [name]` | Stop a server (default: every server on the focused buffer); with a name, every running copy of that server. It stays stopped, for new buffers and changes to a server list too, until `:lsp-restart`, `:reload-config` or a new `register-lsp-server!` of its name |
+| `:lsp-restart [name]` | Stop and respawn a server, or start one that was stopped (default: every server on the focused buffer) |
+
+A server stops by itself once no open buffer uses it: after you close its last buffer, or after
+a server list or a buffer's language no longer includes it. Opening a matching file starts it
+again. A server that crashed stays down for its buffers until you run `:lsp-restart`.
 
 Server output and protocol errors are visible in `:messages`.
 
@@ -334,8 +407,7 @@ returns its generated code:
     (lsp-request! pane "rust-analyzer/expandMacro" (lsp-position-params pane)
       (lambda (err res)
         (cond
-          (err (log! 'error (string-append "expand macro: "
-                                           (if (string? err) err (hash-ref err 'message)))))
+          (err (log! 'error (string-append "expand macro: " (hash-ref err 'message))))
           ((void? res) (log! 'info "Not inside a macro"))
           (else (show-popup! pane (json-ref res "expansion"))))))))
 ```
@@ -346,10 +418,36 @@ builtin (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`,
 `apply-workspace-edit!`, …). `err` and `res` are never both set. Check `err` first and stop
 on it, the way every built-in feature does. `res` is a JSON handle: read a field with
 `json-ref`/`json-contains?`/`json-list`, not `hash-ref`; a `null` response arrives as void, not `#f`.
-`err`, when set, is an ordinary hashmap (`'code`, `'message`) or a plain string message (`"timeout"`
-for a request that timed out); check `(string? err)` before `hash-ref`. Read a hashmap with
-`hash-ref`, not `json-ref`.
+`err`, when set, is a hashmap with a `'kind` and a `'message`; read it with `hash-ref`, not
+`json-ref`. `'kind` says what went wrong: `'server` when the server answered with an error (its
+`'code` is then set too), `'timeout` when no answer came in time, `'unavailable` when no server
+could take the request (none supports it, or they are all still starting), `'stopped` when the
+server stopped or crashed before it answered, and `'unsent` when the params could not be sent to
+the server. The built-in features report `'unavailable` and `'stopped` as a plain message and
+every other kind as an error.
 
-`lsp-request!` also takes four keyword args for requests that fire more than once, or whose answer might arrive after the moment it was asked for has passed. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key (the server gets `$/cancelRequest` and the old callback never fires), which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful. `#:require-focus #t` drops the callback entirely unless the exact pane you called it from is still the one you're looking at, still showing the same buffer, by the time the answer arrives. Hover, signature help, and code actions use it, so a slow answer never pops up over whatever you've moved on to, even if that's just a different split on the same file. `#:tracked token` takes a `track-position!` token for the position the request was asked about: the token follows edits made while the request is pending, and is forgotten once the callback has run, unless the callback calls `keep-tracked-position!`.
+When a buffer has several servers, the request goes to the first one in the language's server
+order that is running and can answer it. A request for a standard method such as
+`textDocument/hover` or `textDocument/formatting` is tied to that method's feature, using the same
+feature names as `set-language-servers!` (`'hover`, `'goto-definition`, `'format`, …): a server
+whose entry leaves that feature out, or that does not advertise it, is passed over. For any other
+method, name the feature with `#:feature`; giving it for a standard method is an error. `(lsp-servers pane #:method "textDocument/hover")` lists
+the servers such a request would reach. To reach one server in particular, such as the one an earlier
+answer came from, get its value from `(lsp-servers pane)` and pass `#:to server`.
+`(lsp-server-name server)` gives its name, `(lsp-capabilities server)` its capabilities, and
+`(lsp-capability server #:feature 'completion)` what it advertises for one feature.
+
+`lsp-request-all!` asks every server that can answer and calls back once, when all of them have,
+with `(err results)`: one `(hash 'server s 'err e 'result r)` per server, in order. It takes the same
+keywords except `#:to`; its params can also be a list of `(server . params)` pairs, giving each
+named server its own; the method and `#:feature` still decide whether each of those servers is
+sent the request.
+
+The position in `lsp-position-params` (and the ranges in its siblings) is not a line and column
+pair you can read: servers count columns in different units, so each server receives the position
+in its own units when the request is sent. Add your own keys to the params hash, but take the
+position from these builtins rather than building one.
+
+`lsp-request!` also takes four keyword args for requests that fire more than once, or whose answer might arrive after the moment it was asked for has passed. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key (every server it went to gets `$/cancelRequest` and the old callback never fires), which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful. `#:require-focus #t` drops the callback entirely unless the exact pane you called it from is still the one you're looking at, still showing the same buffer, by the time the answer arrives. Hover, signature help, and code actions use it, so a slow answer never pops up over whatever you've moved on to, even if that's just a different split on the same file. `#:tracked token` takes a `track-position!` token for the position the request was asked about: the token follows edits made while the request is pending, and is forgotten once the callback has run, unless the callback calls `keep-tracked-position!`.
 
 A server's response sometimes carries its own position or range rather than the one you sent, such as a related location returned inside `res`, say. Convert it back into a plain buffer offset with `lsp-position->offset`/`lsp-range->offsets` before using it with any editing command; both return `#f` if the buffer has no server attached to convert against.

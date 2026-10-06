@@ -6,10 +6,12 @@ formats at runtime. Design rationale for the LSP parts: `docs/LSP-INSTALL.md`.
 
 | Script | Pin | Fetches | Emits |
 |---|---|---|---|
-| `sync-grammars.py` | `runtime/scheme/helix-pin.scm` | `helix-editor/helix` `languages.toml` | `runtime/scheme/languages.scm`, `runtime/scheme/grammar-sources.scm`, `runtime/plugins/core/lsp-install/servers.scm` |
+| `sync-grammars.py` | `runtime/scheme/helix-pin.scm` | `helix-editor/helix` `languages.toml` | `runtime/scheme/languages.scm`, `runtime/scheme/grammar-sources.scm`, `runtime/plugins/core/lsp-install/servers.scm`, `language-servers.scm` and `server-commands.scm` |
 | `sync-lsp-sources.py` | `runtime/plugins/core/lsp-install/mason-pin.scm` | `mason-org/mason-registry` `registry.json.zip` + every release asset (for sha256) | `runtime/plugins/core/lsp-install/sources.scm` and `requirements.scm` |
 
-Shared helpers (pin reading, sexpr emission, atomic writes) live in `sync_common.py`.
+Shared helpers (pin reading, sexpr emission, atomic writes) live in `sync_common.py`. The
+parsing logic is tested against fixtures, without the network, by
+`python3 -m unittest discover -s scripts/tests`.
 
 ## Run order
 
@@ -18,7 +20,7 @@ Each script runs alone after its own pin bump:
 - bump `helix-pin.scm` → run `sync-grammars.py`
 - bump `lsp-install/mason-pin.scm` → run `sync-lsp-sources.py`
 
-One exception: `sync-lsp-sources.py` reads the checked-in `servers.scm` to filter
+One exception: `sync-lsp-sources.py` reads the checked-in `servers.scm` and `server-commands.scm` to filter
 Mason to the servers Helix actually wires — through an explicit Helix→Mason name-mapping
 table (the namespaces differ: Helix `pylsp` is Mason `python-lsp-server`), reporting every
 Helix server left unmatched. So after a helix bump that changes server names, run

@@ -53,7 +53,7 @@ the result for both the decorations and the drawer:
 |---|---|
 | `on-diagnostics-changed` | Refreshes the EOL summary, signs and drawer for that buffer |
 | `on-option-change` for `lsp.diagnostics-severity-floor` or `lsp.diagnostics-on-insert-line` | Refreshes every buffer. The store applies a new floor only when it is read, so without this each buffer would keep the previous cut until its next diagnostics change |
-| `on-lsp-detach` | Clears the summary and signs and closes the drawer if it showed that buffer. It fetches nothing |
+| `on-lsp-detach` | Refreshes the summary, signs and drawer from what the buffer's other servers published; the detached server's diagnostics are already gone |
 
 ## Grouping and severity
 
@@ -112,17 +112,23 @@ lsp.inlay-hints=true` turns them on.
 
 Refreshes are debounced by 200 ms per buffer (keyed, not global), so a diagnostics batch
 touching two buffers cannot have the second buffer's call cancel the first's pending
-refresh. A refresh sends nothing when the option is off, the server lacks
-`inlayHintProvider`, or the request params cannot be built because the buffer is hidden or
-detached by the time the debounce fires.
+refresh. A refresh asks every server of the buffer that offers inlay hints and merges their
+hints into one set. It sends nothing when the option is off or the request params cannot be
+built because the buffer is hidden by the time the debounce fires, and clears the buffer's
+hints when no server offers them.
 
 On the response:
 
 - A hint whose wire position cannot be converted to a buffer offset (the buffer detached
   between request and response) is dropped.
-- A null response clears the hints left from an earlier, larger response.
-- An error leaves the existing hints untouched.
+- The hints shown are those of every server that answered; a null answer contributes
+  none, so the hints left from an earlier, larger answer go.
+- A request no server could take leaves the existing hints untouched.
+- When every server failed (an error, a timeout, a stop), the existing hints stay and each
+  error is reported. A failure says nothing about what the buffer has, where a null answer
+  says there are none.
 
 Turning `lsp.inlay-hints` off clears this plugin's hint source for every buffer, and
-turning it on refreshes every buffer. Detaching a server clears that buffer's hints. The
+turning it on refreshes every buffer. Detaching a server refreshes that buffer, so the
+other servers' hints stay. The
 hint store is per source, so another plugin's hints are unaffected.

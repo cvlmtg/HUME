@@ -20,9 +20,21 @@
 - `language` is a buffer option: use `set-buffer-option!`/`get-buffer-option`. `set-buffer-language!` and `buffer-language` are gone. `""` clears the language, and `on-language-set` passes `""` instead of `#f`.
 - A typed command whose lambda declares no `arg` parameter rejects a typed argument, and one that declares no `force` parameter rejects `!`, instead of dropping them. A lambda with a rest parameter still receives both.
 - `on-lsp-notification` is a hook, called with `(server method params)`. `register-lsp-notification-hook!` handles only chosen methods.
-- `:lsp-install`, `:lsp-uninstall`, `:lsp-servers` and `:lsp-rescan-servers` moved to the new `core:lsp-install` plugin. Add `(load-plugin! "core:lsp-install")` to keep them.
+- `:lsp-install`, `:lsp-uninstall` and `:lsp-servers` moved to the new `core:lsp-install` plugin. Add `(load-plugin! "core:lsp-install")` to keep them. `:lsp-servers` is now `:lsp-catalog`.
+- `:lsp-rescan-servers` is removed.
 - The bare `(declare-plugin! "core:x")` form is removed, and `declare-plugin!` no longer takes `#:config`. Use `(load-plugin! "core:x" #:config …)`. A plugin that ships a `manifest.scm` loads lazily.
 - `hume-target`, `sha256-file`, `unpack-gz`, `unpack-zip`, `unpack-tar`, `mark-executable!`, `acquire-install-lock!` and `release-install-lock!` are removed.
+- `register-lsp-server!` takes a server name and only says how to start it: `(register-lsp-server! "rust-analyzer" #:command "rust-analyzer")`. A language's servers come from `set-language-servers!`. `unregister-lsp-server!`, `:lsp-stop` and `:lsp-restart` take that name, and `lsp-registered-for-language?` is replaced by `lsp-server-registered?`.
+- `on-lsp-attach`, `on-lsp-detach` and `on-lsp-notification` pass a server instead of a language, and attach and detach fire once per server.
+- `lsp-server-status` entries have `'name` and `'languages` instead of `'language`. `lsp-server-for-buffer` is replaced by `lsp-servers` and `lsp-server-name`.
+- `lsp-request!` and `lsp-notify!` pick among a buffer's servers when sent: by the method, by `#:feature` for a non-standard one, or `#:to` for one server. A request no server can take calls back at once with the reason.
+- `lsp-capabilities` takes a server, not a pane.
+- `:lsp-stop` is lasting: a stopped server stays stopped until `:lsp-restart`, `:reload-config` or registering its name again.
+- A request callback's `err` is a hash with `'kind` and `'message`.
+- `set-attachment-hook-triggers!` and `set-attachment-completion-triggers!` set trigger characters for one buffer's attachment to one server.
+- `completion-emit!` takes a list of entries. Pass an `lsp-request!` answer as `(list res)`.
+- `diagnostics-for-buffer` entries carry `'server`, and `lsp-locations->display-parts` rows carry `'location`.
+- `lsp-position-params` and its siblings give each server position values in its own column units, not line and character numbers.
 
 ### Plugins
 - `:plugin-status` also lists plugins that are not installed (`absent`) or whose `manifest.scm` failed (`failed`). An absent plugin is reported once in `:messages`.
@@ -32,7 +44,10 @@
 - New `(hume-version)`, `(hume-version>=? major minor patch)` and `(command-exists? name)` let a plugin adapt to the running editor.
 - `set-eol-text!` takes `#:hide-on-insert-line`.
 - `register-completion-source!` takes `#:token-chars` for extra token characters in a `'buffer` source.
+- New `lsp-capability` reads what a server advertises for a feature or a method.
+- `define-language!` takes `#:roots`, the file names that mark a project root for the language. Language servers start in the root found for the buffer's language.
 - New `track-position!`, `tracked-position-params`, `untrack-position!` and `lsp-request!`'s `#:tracked` keep a position through edits.
+- New `lsp-request-all!` sends a request to every server of a buffer that can answer and calls back once. New `lsp-servers` lists a buffer's servers and `lsp-server-name` names one.
 - `run-inline-output!` takes `#:env`.
 - `core:buffer-words` indexes 100 lines on each side of the cursor per step, down from 200.
 - New `core:undotree`: `:undotree` shows the buffer's undo tree as a graph in the bottom drawer, and `Enter` jumps to the highlighted revision, across branches. Bind `toggle-undotree` to a key.
@@ -74,6 +89,9 @@
 - Typing a quote right after the same quote no longer opens a pair, so ```` ``` ```` and `"""` come out as typed.
 
 ### Language servers
+- A buffer uses every server in its language's list at once. Diagnostics from all of them show together, completion, code actions, goto, references and inlay hints combine their answers, and hover, signature help, rename and formatting use the first server that supports the feature. New `set-language-servers!` chooses a language's servers and their order, such as ESLint beside typescript-language-server, with `only-features` and `except-features` to limit an entry. `set-default-language-servers!` gives a plugin's list, and `lsp-language-servers` reads the result.
+- `:lsp-install` also takes a server name, such as ruff or tombi; a language installs its first server. With `core:lsp-install` loaded, every language starts with Helix's servers for it. `:lsp-catalog` marks a language a server only backs second to another as `(secondary)`.
+- A language server stops once no open buffer uses it: after its last buffer closes, or a server list or a buffer's language no longer includes it.
 - `:lsp-install` supports many more servers: tar archives and single binaries, terraform-ls, jdtls, and servers installed through `go`, `pip`, `gem` or `dotnet`. See [Installing servers](user-manual/docs/lsp.md#installing-servers).
 - `:lsp-install` says so when a server doesn't support your platform.
 - Diagnostics are hidden on the line you are typing on in Insert mode. `lsp.diagnostics-on-insert-line` keeps them.

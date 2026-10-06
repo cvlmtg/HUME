@@ -8,11 +8,13 @@ are in `decorations.md`.
 ## Goto and references
 
 `goto.scm` serves the four goto commands (definition, declaration, type definition,
-implementation) and `lsp-references` through one response handler:
+implementation) and `lsp-references` through one response handler. Each asks every server
+offering the feature, and their locations merge into one list in which rows naming the
+same path, line and column appear once:
 
-1. An error is reported.
-2. An empty or null response logs "No definition found" (or "No references found").
-3. A single location jumps to it.
+1. A server's error is reported; the others' locations still count.
+2. No location at all logs "No definition found" (or "No references found").
+3. A single location jumps to it, so two servers agreeing on a definition still jump.
 4. Several locations open the [locations drawer](architecture.md#locations-drawer-locationsscm).
 
 `lsp-references` always opens the drawer, even for one result, because "where is this
@@ -56,10 +58,12 @@ because its items come from the buffer's own attached server. The editor calls i
 trigger characters, with no hook round trip), and again after each keystroke while the
 last answer was incomplete.
 
-The source answers with an empty list when the buffer's server has no completion
-provider. Otherwise it sends `textDocument/completion` with `#:supersede "completion"`, so
-a newer request replaces an older one still in flight, and passes any non-null response to
-`completion-emit!` unchanged. An error is reported and answered with an empty list.
+The source answers with an empty list when no server of the buffer offers completion.
+Otherwise it asks every server that does with `lsp-request-all!` and `#:supersede
+"completion"`, so a newer request replaces an older one still in flight, and passes every
+non-null response to `completion-emit!` as one entry each, so their items merge into one
+menu. A server's error is reported; the others' items still show. A server's own trigger
+characters invoke the source in the buffers attached to that server.
 
 The rest happens in the editor. Each item's own edit range, or the list's default
 `itemDefaults.editRange`, says where its token starts, and the item is filtered against
@@ -69,13 +73,17 @@ Accepting an item applies its main edit, its `additionalTextEdits` and
 
 ## Code actions
 
-`lsp-code-actions` captures the pane and `(buffer-generation pane)` when it sends the
-menu request, and threads both through the menu selection and any `codeAction/resolve`
-round trip without re-reading focus, since each round trip is asynchronous.
+`lsp-code-actions` asks every server offering code actions, captures the pane and
+`(buffer-generation pane)`, and threads both through the menu selection and any
+`codeAction/resolve` round trip without re-reading focus, since each round trip is
+asynchronous. The menu lists every server's actions in server order; when more than one
+server offered some, each title ends with its server's name. A chosen action's resolve
+and command go back to the server that offered it.
 
-The request's `context.diagnostics` echoes the raw wire `Diagnostic` objects in the
-primary selection's range (the `'raw` field of the diagnostics store entries), and
-`triggerKind` is `1`. Actions with a truthy `"disabled"` field are dropped from the menu.
+Each server's `context.diagnostics` echoes the raw wire `Diagnostic` objects in the
+primary selection's range that this server published (the `'raw` field of the
+diagnostics store entries whose `'server` is it), and `triggerKind` is `1`. Actions with a
+truthy `"disabled"` field are dropped from the menu.
 
 Running a chosen action applies its `edit`, then runs its `command`. An action with
 neither is resolved once through `codeAction/resolve` when the server advertises
@@ -101,9 +109,12 @@ default. To opt in, add this to `init.scm`:
 The hook's value carries no pane, and `lsp-fmt` reads the live selection set, so the
 snippet resolves a pane first.
 
-A buffer with no attached server, or one with no path, logs a message and formats
-nothing. The two cases are told apart directly, because a capability guard cannot
-distinguish them.
+A buffer with no path logs a message and formats nothing. Formatting the whole buffer
+goes to the first running server with the `format` feature and a
+`documentFormattingProvider`; when there is none, the error names why. Formatting ranges
+goes to the first server with a `documentRangeFormattingProvider`, and every range of one
+command goes to that same server, so the edits joined below all come from one server. No
+such server logs a message and formats nothing.
 
 ### Selection classification
 
@@ -116,7 +127,7 @@ distinguish them.
 ### Range requests
 
 Several disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP 3.18)
-when the server advertises `rangesSupport`. Otherwise each range is its own
+when that server advertises `rangesSupport`. Otherwise each range is its own
 `textDocument/rangeFormatting` request, and more than `lsp.format-max-ranges` ranges log a
 message and format nothing, the same refusal a mixed selection gets.
 
@@ -131,23 +142,31 @@ can land in any order.
 `lsp-rename` prompts with the symbol under the cursor prefilled, captures the buffer's
 generation when the name is accepted, and sends `textDocument/rename`. A null response
 logs "Nothing to rename". Otherwise the workspace edit is applied with
-`#:expect-generation`. A buffer with no server gets the capability guard's "not supported"
-message.
+`#:expect-generation`. A buffer with no server that supports renaming gets a "not supported"
+message before any prompt opens. The request itself names the `rename-symbol` feature, so
+it goes to whichever server supports it when the name is accepted.
 
 ## Request flags
 
-| Request | `#:require-focus` | `#:allow-stale` | `#:supersede` |
-|---|---|---|---|
-| `lsp-hover` | yes | yes | |
-| `lsp-goto-*` (four) | | | |
-| `lsp-references` | yes | | |
-| Signature help | yes | | |
-| Code actions (menu request) | yes | | |
-| `codeAction/resolve`, `workspace/executeCommand` | | yes | |
-| Completion | | | `"completion"` |
-| Formatting (all three request shapes) | | yes | |
-| Rename | | yes | |
-| Locations drawer refresh | | yes | `"lsp-locations"` |
+| Request | Routed by | `#:require-focus` | `#:allow-stale` | `#:supersede` |
+|---|---|---|---|---|
+| `lsp-hover` | `'hover` | yes | yes | |
+| `lsp-goto-*` (four), every server | `'goto-definition` and siblings | | | |
+| `lsp-references`, every server | `'goto-reference` | yes | | |
+| Signature help | `'signature-help` | yes | | |
+| Code actions (menu request), every server | `'code-action` | yes | | |
+| `codeAction/resolve`, `workspace/executeCommand` | `#:to` the server that offered the action | | yes | |
+| Completion, every server | `'completion` | | | `"completion"` |
+| Whole-buffer formatting | `'format` and `documentFormattingProvider` | | yes | |
+| Range formatting (both shapes) | `#:to` the first range-formatting server | | yes | |
+| Rename | `'rename-symbol` | | yes | |
+| Inlay hints, every server | `'inlay-hints` | | | |
+| Locations drawer refresh | the drawer's own feature | | yes | `"lsp-locations"` |
+
+"Routed by" is what picks the server among a buffer's servers when the request is sent:
+a feature name sends it to the first running server whose list entry admits that feature
+and that advertises it, or to every such server where the row says so, and `#:to` sends
+it to one server chosen earlier.
 
 `#:require-focus` drops the callback unless the invoking pane is still the focused pane
 and still shows the same buffer when the response arrives. It fits requests whose result

@@ -17,7 +17,7 @@ registers it — mirroring what the grammar pipeline already does for tree-sitte
 Install, uninstall, receipts and the registration scan live in their own plugin,
 `core:lsp-install`. `core:lsp` is the language-server client only and knows nothing about
 servers on disk: the two meet at the editor-level registry, through the
-`register-lsp-server!` / `unregister-lsp-server!` / `lsp-registered-for-language?`
+`register-lsp-server!` / `unregister-lsp-server!` / `lsp-server-registered?`
 builtins that `core:steel-server` already uses. The installer pushes registrations into
 that registry; the client never asks an installer anything.
 
@@ -49,7 +49,7 @@ No upstream format is ever parsed inside the editor.
 
 | Concern | Upstream | Pin | Generated data |
 |---|---|---|---|
-| **Registration** — which server per language, command, args, root markers | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/plugins/core/lsp-install/servers.scm` |
+| **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/plugins/core/lsp-install/servers.scm`, `language-servers.scm`, `server-commands.scm` (and each language's root markers in `runtime/scheme/languages.scm`) |
 | **Installation** — where to download, per platform | `mason-org/mason-registry` (Apache-2.0; one `package.yaml` per tool, purl sources, per-platform assets; publishes compiled `registry.json` per release tag) | new `mason-pin.scm` (registry release tag) | `runtime/plugins/core/lsp-install/sources.scm` |
 
 One generated file per pin: a helix-pin bump touches only registration data, a mason-pin
@@ -70,12 +70,12 @@ Scripts align with *pins*, not features (see `scripts/README.md`):
 
 - **`scripts/sync-grammars.py`** (existing, extended): already fetches `languages.toml` at
   helix-pin and emits `languages.scm` + `grammar-sources.scm`; additionally emits
-  `servers.scm` from the same parsed TOML. One bump, one run, all helix-derived files
+  `servers.scm`, `language-servers.scm` and `server-commands.scm` from the same parsed TOML. One bump, one run, all helix-derived files
   move in one diff.
 - **`scripts/sync-lsp-sources.py`** (new, standalone): mason-pin → `sources.scm`.
   Standalone because it is *expensive* — it downloads every asset per server×platform to
   compute sha256s; a routine helix bump must not pay that.
-- **Ordering**: the Mason script reads the checked-in `servers.scm` for the server-name
+- **Ordering**: the Mason script reads the checked-in `servers.scm` and `server-commands.scm` for the server-name
   intersection filter, so after a helix bump that changes server names run helix sync
   first, mason sync second. Both outputs are checked in; normally each runs alone.
 - Shared sexpr-emission/pin-reading helpers move to `scripts/sync_common.py` (hyphenated
@@ -105,37 +105,40 @@ instead of positional tuples**: install records are heterogeneous (`github` vs `
 different fields, and more kinds will come), and positional encoding does not survive
 optional fields.
 
-**`servers.scm`** (registration, from helix-pin) — keyed by *server*, with a language
-list that the scan fans out into one `register-lsp-server!` call per language. Keying by
-language would copy a multi-language server's `config` blob once per language
-(typescript-language-server serves four); normalized beats denormalized copies. Root
-markers are the one *per-language* field: in Helix, `roots` belongs to the language, not
-the server, and languages sharing a server differ (javascript/jsx root on
-`jsconfig.json`, typescript/tsx on `tsconfig.json`) — so each `languages` entry is
-`(name marker…)` and the scan passes that entry's markers to its registration call.
+**Registration catalogs** (from helix-pin) — split by what registration reads, so the
+scan at activation loads no field only the installer needs. `servers.scm` is keyed by
+*server* and holds `args` and `config`: keying it by language would copy a multi-language
+server's `config` blob once per language (typescript-language-server serves four).
+`language-servers.scm` is keyed by *language* and holds the language's ordered server
+list; a server's languages are the inverse of that list, so they are not stored a second
+time under the server. Root markers are per-language in Helix (`roots` belongs to the
+language, not the server, and languages sharing a server differ: javascript/jsx root on
+`jsconfig.json`, typescript/tsx on `tsconfig.json`), so they live in `languages.scm`
+(`define-language! #:roots`), not here. The scan registers each server with no languages
+and writes every language's list as its default.
+`server-commands.scm` holds the command of each server whose command differs from its name
+(a missing server runs a command named like itself), which only the install pipeline and
+`sync-lsp-sources.py` read.
 
 ```scheme
-(("rust-analyzer"
-  (languages ("rust" "Cargo.toml"))
-  (command . "rust-analyzer")
-  (args)
-  (config))
+;; servers.scm
+(("rust-analyzer" (args) (config))
  ("typescript-language-server"
-  (languages
-   ("typescript" "package.json" "tsconfig.json")
-   ("tsx"        "package.json" "tsconfig.json")
-   ("javascript" "package.json" "jsconfig.json")
-   ("jsx"        "package.json" "jsconfig.json"))
-  (command . "typescript-language-server")
   (args "--stdio")
   (config . "{\"hostInfo\": \"hume\", \"typescript\": {\"inlayHints\": {…}}}")))
+
+;; language-servers.scm
+(("rust" (servers ("rust-analyzer")))
+ ("typescript" (servers ("typescript-language-server"))))
+
+;; server-commands.scm
+(("rust-analyzer" . "rust-analyzer")
+ ("typescript-language-server" . "typescript-language-server"))
 ```
 
-- **Languages live only in this file.** Helix language names match `languages.scm` (same
-  upstream, same pin). Mason's `languages:` field uses different naming ("TypeScript") and
-  would need its own mapping — dropped entirely.
-- **Language lists are disjoint across servers**, enforced at sync time — see
-  [v1 scope](#v1-scope-and-limitations) for the full rule and why.
+- **Languages live only in `language-servers.scm`.** Helix language names match
+  `languages.scm` (same upstream, same pin). Mason's `languages:` field uses different
+  naming ("TypeScript") and would need its own mapping — dropped entirely.
 - Field encoding (empty tail never `#f`, canonical JSON `config` string, delivered both ways
   by `core:lsp-install/register.scm`, decoded once via `(json-parse)` at the one consuming site):
   see `runtime/plugins/core/lsp-install/README.md`'s record-shape reference. A JSON string sidesteps the fact that plain
@@ -215,9 +218,9 @@ the server, and languages sharing a server differ (javascript/jsx root on
   targets.
 - **Unsupported kinds** (`opam`, `luarocks`, `github-build`, `generic-build`, `cargo-git`, …):
   emitted as a *stub* — `(kind . opam)` plus `version`, no install fields. That is what lets
-  `:lsp-install` fail naming the kind and `:lsp-servers` mark the entry "not installable". A
+  `:lsp-install` fail naming the kind and `:lsp-catalog` mark the entry "not installable". A
   Helix-primary server Mason doesn't carry at all (no name-mapping match) gets no entry;
-  `:lsp-install` for it fails with "no install source" and `:lsp-servers` marks it the same
+  `:lsp-install` for it fails with "no install source" and `:lsp-catalog` marks it the same
   way. A Mason package that shares a Helix server's name but runs a different program
   (`cuelsp`: Helix runs `cue lsp serve`) is listed in the sync script's
   `MASON_NOT_HELIX_SERVER` and gets no entry either.
@@ -300,24 +303,24 @@ the server, and languages sharing a server differ (javascript/jsx root on
 
 - **Filesystem is the SSOT for "what is installed"; seeded data is the SSOT for "how to
   run it".** When `core:lsp-install`'s `plugin.scm` activates, the scan
-  reads `servers/` receipts and registers each installed server for every language it
-  serves (per the seeded data). A directory scan is cheap. `:lsp-install` calls the same
+  reads `servers/` receipts and registers each installed server once, under its catalog
+  name, then writes every catalog language's default list (per the seeded data). A directory scan is cheap. `:lsp-install` calls the same
   scan (`lsp-install/register-installed-servers!`, `register.scm`) directly right after a
   successful install — or after confirming an already-up-to-date one — so a server
-  installed mid-session attaches immediately, without a restart. `core:lsp-install` also exposes
-  the rescan directly as `:lsp-rescan-servers`, for servers installed out-of-band (not
-  through `:lsp-install`).
+  installed mid-session attaches immediately, without a restart.
   `(load-plugin! "core:lsp-install")` is the supported way to bring the plugin in. Its
-  `manifest.scm` splits it into two lazy entries: `plugin.scm` (`#:languages '("*")`,
-  `:lsp-rescan-servers`) registers installed servers, and `commands.scm` (`#:entry`, the other
+  `manifest.scm` splits it into two lazy entries: `plugin.scm` (`#:languages '("*")`) registers installed servers, and `commands.scm` (`#:entry`, the
   three commands) loads the install pipeline on first use. Lazy command stubs activate their
   plugin before arity marshalling, so `:lsp-install <lang>` works before either entry has
   loaded. A trigger set keyed only on `#:events '(on-lsp-attach)` can never activate, since
   nothing is registered yet for that event to fire on; the shipped manifest uses a language
   trigger instead.
-- **Last-wins registration.** `register-lsp-server!` uses *replace* semantics, matching
-  `define-language!`. `init.scm` reads naturally: `load-plugin!` → scan auto-registers →
-  later user `register-lsp-server!` calls override. At init time replacement never races
+- **Last-wins registration.** `register-lsp-server!` uses *replace* semantics per name,
+  matching `define-language!`. `init.scm` reads naturally: `load-plugin!` → scan
+  auto-registers → a later user `register-lsp-server!` under the same name overrides. The
+  scan skips a name that is already registered (`lsp-server-registered?`), which is how a
+  user registration survives a rescan. A user registration under a different name serves
+  a language only when that language's list names it (`set-language-servers!`). At init time replacement never races
   a running client — nothing has spawned yet. `register-lsp-server!` also works from
   command context (queued, flushed end-of-eval) — not init-only — which is what
   `:lsp-install`'s runtime registration path relies on. At runtime there are two paths:
@@ -329,27 +332,26 @@ the server, and languages sharing a server differ (javascript/jsx root on
   an *absolute path* (server dir + receipt's `bin-path`), so a managed install always spawns
   the pinned binary — no lookup-order logic in the bridge. Bare command names (from manual
   `register-lsp-server!`) resolve via `$PATH` exactly as today; a user who prefers the
-  `$PATH` copy overrides with a manual registration. `:lsp-install` prints a notice when
+  `$PATH` copy overrides with a manual registration under the server's catalog name. `:lsp-install` prints a notice when
   the command already exists on `$PATH`.
 - **Orphan dirs** (installed, but no seeded entry after a pin bump renames/drops a server):
   warn at scan time, leave unregistered, suggest `:lsp-uninstall`. Never silently skipped.
 
 ## Commands and lifecycle
 
-All four are Steel commands in the `core:lsp` module — no Rust command work needed:
+These are Steel commands in the `core:lsp-install` plugin — no Rust command work needed:
 `:`-line string arguments already reach Steel commands (arity marshalling in
 `input_stack/command.rs`), and `#:inline-output #t` displays listing output.
 
 | Command | Behaviour |
 |---|---|
-| `:lsp-install [lang]` | No arg: current buffer's language. Downloads, verifies sha256, unpacks, writes receipt, then registers and attaches already-open buffers via the same scan `:lsp-rescan-servers` runs. Re-running against an already-up-to-date install still triggers this registration step (a no-op download, but not a no-op session effect) — covers a server installed out-of-band. No argument completion in v1 — Steel commands have no argument-completion path today (possible follow-up). |
-| `:lsp-uninstall <server>` | Shuts down the server's running clients — plural: one per (language, root), and a multi-language server may back several — unregisters every language it serves, removes the server dir. |
-| `:lsp-servers` | Catalog listing (`hx --health`-style): every seeded server with languages, seeded version, installed version / not installed / update available. |
-| `:lsp-rescan-servers` | Re-scans `servers/` receipts and registers any not yet registered — the same scan that runs at `core:lsp` load and after every `:lsp-install`/`:lsp-uninstall`, callable directly for a server installed outside `:lsp-install`. |
+| `:lsp-install [language\|server]` | A seeded server name installs that server, including one that is not the first of any language's list (ruff, tombi, …); anything else is a language, installing its first server; no argument means the current buffer's language. Downloads, verifies sha256, unpacks, writes receipt, then registers and attaches already-open buffers via the scan. Re-running against an already-up-to-date install still triggers this registration step (a no-op download, but not a no-op session effect). Tab completes the installable servers and the seeded languages. |
+| `:lsp-uninstall <server>` | Unregisters the server by name, which detaches its buffers and stops each running instance (one per workspace root), then removes the server dir. |
+| `:lsp-catalog` | Catalog listing (`hx --health`-style): every seeded server with languages, seeded version, installed version / not installed / update available. |
 
 `:lsp-status` (running servers, roots, state, in-flight counts, diagnostics) is the
 *runtime* view — a `core:lsp` command dispatching into Rust introspection, unchanged by
-this feature; `:lsp-servers` is the *catalog* view. Install knowledge (receipts, seeded
+this feature (it also lists the servers `:lsp-stop` left stopped); `:lsp-catalog` is the *catalog* view. Install knowledge (receipts, seeded
 lists) stays in the plugin — Rust never reads them.
 
 - **Upgrades**: after a pin bump, `:lsp-install` compares the receipt's version against the
@@ -359,10 +361,8 @@ lists) stays in the plugin — Rust never reads them.
   the `on-language-set` hook. Only fires while `core:lsp` itself is loaded or active —
   a setup running only `core:plum` (or nothing) gets no LSP hints, matching the rest of
   the feature (see [Placement](#placement-corelsp-owns-the-server-lifecycle-end-to-end)).
-  "No registered one" is checked with the `lsp-registered-for-language?` builtin —
-  registration state is not otherwise visible to Steel (`lsp-server-for-buffer` reports
-  *attachment*, which is ordering-dependent and can't distinguish "unregistered" from
-  "still starting"). Hinted at most once per language per session, and only when the
+  "No registered one" is checked with the `lsp-language-servers` builtin (the servers a
+  language uses, empty when none is registered). Hinted at most once per language per session, and only when the
   server's install source is a supported kind and it isn't already installed — never a
   hint whose suggestion would fail or be a no-op.
 - **Synchronous**: installs block the editor for their duration, exactly like grammar
@@ -383,34 +383,41 @@ lists) stays in the plugin — Rust never reads them.
   …) fail with a loud, specific error naming the unsupported kind. jdtls installs the
   tarball only: it needs a JDK and `python3` at run time, which the installer does not
   check.
-- **One server per language — no multi-server support.** Helix lists ordered *multiple*
-  servers for some languages (python → `["ty", "ruff", "jedi", "pylsp"]`,
-  toml → `["taplo", "tombi"]`, go → `["gopls", "golangci-lint-lsp"]`). The registry holds
-  one server per language and the client is single-server-per-buffer by design (an
-  `LSP.md` v1 non-goal — multi-server means merging diagnostics and routing requests per
-  capability, a client milestone, not an installer one). **v1 rule, enforced at sync
-  time: each language is emitted under exactly one server — the first entry in Helix's
-  list** (their order is priority order). Non-primary servers for a language are not
-  seeded and not installable: Helix `toml → [taplo, tombi]` means only taplo is seeded
-  for toml. Parsing note for the sync: Helix `language-servers` entries are not always
-  strings — some are inline tables (`{ name = "typescript-language-server",
-  except-features = [...] }`, e.g. gjs/gts); the sync unwraps `name` and ignores the
-  feature filters, which are meaningless to a single-server client. Consequence: no two
-  seeded servers ever share a language, so scan-time registration conflicts
-  cannot occur. Multi-server support, when the client learns it, is a sync
-  script + consumer change together.
-- **One server, many languages** is fully supported and cheap: an installed
-  typescript-language-server registers for typescript, tsx, javascript, jsx — N entries in
-  the registry, same config.
+- **Several servers per language, in Helix's order.** Helix lists ordered *multiple*
+  servers for some languages (python → `["ty", "ruff", "jedi", "pylsp", "zuban"]`,
+  toml → `["taplo", "tombi"]`, go → `["gopls", "golangci-lint-lsp"]`), and their order is
+  priority order. The sync keeps every listed server: `servers.scm` seeds each one that has
+  a `[language-server.*]` command table (one without is dropped with a report), and
+  `language-servers.scm` holds each language's ordered list. An inline-table entry's
+  `only-features`/`except-features` (e.g. gjs/gts, `{ name = "typescript-language-server",
+  except-features = [...] }`) is carried into the list as `(only-features "f" …)` or
+  `(except-features "f" …)`. Both filters on one entry, an unknown feature name, a server
+  listed twice for one language, or a listed server `servers.scm` does not seed all stop
+  the sync. The feature names are Helix's 21 (`LSP_FEATURES` in `sync-grammars.py`),
+  mirrored by HUME's `LspFeature::ALL`; a test in `hume-editor` compares the two. The
+  client attaches a buffer to every server of its language's list
+  (`docs/LSP.md`), so installing a secondary server is useful on its own.
+  `:lsp-install <lang>` installs the language's first server; `:lsp-install <name>`
+  installs any seeded server by name. The scan registers each installed server once and
+  sets Helix's list, filters included, as the default list of every catalog language
+  (`set-default-language-servers!`), whether or not any server in it is installed. An
+  entry naming a server that is not registered serves nothing. A user's own
+  `set-language-servers!` wins over that default, and may name any registered server for
+  any language. The expected setup is one plugin writing defaults plus the user's
+  overrides in `init.scm`; where several plugins write a language's default, the last
+  write wins.
+- **One server, many languages** is fully supported and cheap: one registration of
+  typescript-language-server serves every language whose list names it (typescript, tsx,
+  javascript, jsx), with the same config.
 
 ## Implementation shape
 
 Each layer is a pure consumer of the one below it: a Python-only data pipeline
-(`mason-pin.scm`; `sync-grammars.py` → `servers.scm`; `sync-lsp-sources.py` →
+(`mason-pin.scm`; `sync-grammars.py` → `servers.scm` and `language-servers.scm`; `sync-lsp-sources.py` →
 `sources.scm`, with the Helix→Mason name-mapping table and unmatched-server report;
 shared `sync_common.py`); the generic scripting primitives below; and `core:lsp-install`
 itself (Steel, a pure consumer of the previous two — scan-on-load registration,
-`lsp-install`/`lsp-uninstall`/`lsp-servers`/`lsp-rescan-servers` commands, receipts, orphan
+`lsp-install`/`lsp-uninstall`/`lsp-catalog` commands, receipts, orphan
 warnings, per-kind install paths, missing-server hint, user-manual + `init.scm.example`
 docs — `core:plum`'s `grammars.scm` is the template. See
 [Placement](#placement-corelsp-install-owns-the-server-lifecycle-corelsp-stays-a-client)).
@@ -421,10 +428,9 @@ string", not absence.
 **Primitives the plugin relies on**: last-wins `register-lsp-server!` semantics plus a
 runtime registration path (registrations are queued and flushed once per eval, not just at
 init); unregister path + client shutdown (for `:lsp-uninstall` and
-reinstall-while-running; per-language, matching the registry's language keying — the
-plugin fans out); attach already-open buffers after registration;
-`lsp-registered-for-language?` (registry query for the discovery hint and the scan's
-manual-wins filter); `(plugin-dir)` (a plugin reading its own catalogs); `run-capture!`
+reinstall-while-running; by registration name, one call per server); attach already-open
+buffers after registration; `lsp-server-registered?` (registry query for the scan's
+manual-wins filter) and `lsp-language-servers` (registry query for the discovery hint); `(plugin-dir)` (a plugin reading its own catalogs); `run-capture!`
 and `run-inline-output!` (subprocesses — the latter process-group-isolated, needed because
 `#:inline-output` commands run with terminal raw mode off and Steel's `spawn-process` has
 no `setpgid`; `run-capture!` is isolated the same way). Everything else is Steel's own
@@ -458,7 +464,7 @@ installs. cargo-kind installs are opt-in per server and add a Rust toolchain req
 only for those. `:lsp-install` checks
 the specific tool an install needs (via Steel's `which`)
 before downloading anything, so a missing tool fails loudly naming it rather than
-partway through an install. `:lsp-servers` and the discovery hint run the same check.
+partway through an install. `:lsp-catalog` and the discovery hint run the same check.
 
 **Why shell out instead of adding `sha2`/`flate2`/`zip` crate dependencies**: avoids growing the dependency tree for functionality the
 OS/toolchain already ships, and — since these tools are already required by any

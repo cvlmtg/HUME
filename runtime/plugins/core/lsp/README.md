@@ -11,7 +11,8 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 ```scheme
 (load-plugin! "core:stdlib")
 
-(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
+(register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
+(set-language-servers! "rust" '("rust-analyzer"))
 
 (load-plugin! "core:lsp")
 ```
@@ -48,9 +49,9 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 | `lsp-fmt` | Format the buffer or the linewise selections | none |
 | `:format-source` | `lsp-fmt` from the command line | none |
 | `:diagnostics` | List this buffer's diagnostics in a drawer | none |
-| `:lsp-status` | Show every running server and its state, plus attached buffers' diagnostic counts | none |
-| `:lsp-stop [lang]` | Stop a running server (default: the focused buffer's) | none |
-| `:lsp-restart [lang]` | Stop and respawn a running server (default: the focused buffer's) | none |
+| `:lsp-status` | Show every running server and its state, plus each attached buffer's servers and diagnostic counts, and the servers a stop left stopped | none |
+| `:lsp-stop [name]` | Stop a running server (default: every server on the focused buffer); it stays stopped until restarted, its name is registered again or the config reloads | none |
+| `:lsp-restart [name]` | Stop and respawn a server, or start a stopped one (default: every server on the focused buffer) | none |
 
 ## Key layout
 

@@ -71,8 +71,8 @@ The funnel does five things in sequence:
    at the tail of the current event, after syntax setup has already run.
 4. Sets up (or tears down) syntax parsing for the buffer based on the new
    language.
-5. Attaches the buffer to a language server for the new language, spawning
-   one if needed (see the LSP doc). The identifier sent over the wire to the
+5. Attaches the buffer to every language server the new language's list
+   names, spawning any that is not running yet (see the LSP doc). The identifier sent over the wire to the
    server is usually the language name itself, but a language can register a
    separate identifier for this one purpose — some language servers expect a
    different spelling than HUME's own name for the language (TypeScript's

@@ -48,9 +48,10 @@ fields fully canonicalised at sync time; no defaults applied at read time.
 
 ## `languages.scm`
 
-Identity only: extensions, globs, shebangs, and an optional `#:language-id` override for the
-`languageId` sent to language servers (present only when it differs from the name, e.g. `tsx`
-→ `typescriptreact`). No grammars are shipped here; installing one is `core:plum`'s job
+Identity and project root markers: extensions, globs, shebangs, an optional `#:language-id`
+override for the `languageId` sent to language servers (present only when it differs from the
+name, e.g. `tsx` → `typescriptreact`), and an optional `#:roots` list of the file names that
+mark the language's project root (present only when Helix lists some). No grammars are shipped here; installing one is `core:plum`'s job
 (`:plum-install-grammar`). Override any entry in your own `init.scm`. `define-language!`
 replaces the prior identity for that name and keeps any grammar already attached to it (see
 `runtime/init.scm.example` for override examples).

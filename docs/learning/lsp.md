@@ -146,7 +146,7 @@ bad edit in one file doesn't leave the rest half-applied.
 
 Diagnostics — errors, warnings, lints — are *pushed*: the server sends them
 whenever it feels like it, unprompted, and the editor just displays whatever
-arrived most recently. HUME shows them as gutter signs, inline underlines, an
+each server sent most recently. HUME shows them as gutter signs, inline underlines, an
 end-of-line summary, and an error/warning count in the statusline; jump
 between them with `g n` / `g p`, or list them all with `:diagnostics`.
 
@@ -176,7 +176,7 @@ hang the editor forever. Some requests can be superseded — completion can
 need a fresh request as the user types (when the server said its candidate
 list was incomplete), and each new request cancels the one still in flight
 rather than piling up. If a server process dies outright, HUME marks
-it dead and stops routing buffers to it; it does **not** restart
+it dead and stops sending it requests; it does **not** restart
 automatically. That's a deliberate choice — a crash loop caused by a bad
 project config shouldn't spin silently in the background. Restart by hand
 with `:lsp-restart`.
@@ -204,10 +204,20 @@ server's copy of the text current, filtering completion candidates) earn a
 place in the fast core; everything else is free to live where it's cheap to
 change.
 
-A server is associated with a language by registering it — either by hand or
-through the bundled install catalog (`:lsp-install`) — and HUME runs at most
-one server instance per (language, workspace root) pair, finding the root by
-walking up from the file toward a marker like `.git`.
+A server is registered by hand or through the bundled install catalog
+(`:lsp-install`), and registering it only says how to start it. Each language
+has a list of the servers it uses, and a buffer attaches to every server on its
+language's list. HUME runs one instance per server and workspace root, finding
+the root by walking up from the file toward a marker the *language* names
+(`Cargo.toml` for Rust, say). Two languages that share a server, such as
+TypeScript and TSX, share its instance whenever their files resolve to the same
+root.
+
+Putting the language's list, and not the registration, in charge is what lets
+one language use several servers: a language server for the code itself and a
+linter beside it, for example. Diagnostics from all of them show together,
+completion and code actions combine their answers, and a request like hover goes
+to the first server on the list that can answer it.
 
 ## Three parties: server, editor core, plugin
 

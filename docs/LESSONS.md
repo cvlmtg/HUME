@@ -102,6 +102,9 @@ numbers directly.
   deviation report compares the options on correctness first: what each
   lets go wrong, when, and how it would show. Churn is a separate line, never
   the argument for the smaller option.
+- **L35** — Moving a property to its owner means removing every other carrier
+  of it in the same plan. Check each field and keyword of the existing shape for a
+  second copy of what the new owner now holds.
 
 ---
 
@@ -1514,3 +1517,16 @@ only held for `load-plugin!` and for an explicit `#:typed-commands` declare.
 **Prevention rule:** Open the code a review finding names and trace the
 default path before presenting it. State which setups the finding applies to,
 and mark any finding not yet traced as unverified.
+
+## L35 — A plan moved root markers onto the language and kept them on the server (2026-10-06)
+
+**Root cause:** The plan made root markers a language property
+(`define-language! #:roots`) and still kept `register-lsp-server!`'s
+`#:root-markers`, merged in front of the language's. Two carriers of one
+property survived, which is the duplicate-source shape the redesign existed
+to remove. The user asked why the keyword was still there.
+
+**Prevention rule:** When a plan moves a property to its owner, list every
+field, keyword and merge step that carried it before, and remove each one in
+the same plan. A consumer that needs the property (`core:steel-server`'s
+`cog.scm`) then supplies it through the owner.

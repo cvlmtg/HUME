@@ -8,23 +8,27 @@ the contract with `core:lsp`, and the catalog record formats.
 
 ## Catalogs
 
-Two files in the plugin's directory, read once at load through `(plugin-dir)`:
+Files in the plugin's directory, read through `(plugin-dir)`. Registration (`plugin.scm`)
+reads the first two at load; the install pipeline (`commands.scm`) reads the rest.
+`requirements.scm` is read on the first requirements lookup (the discovery hint, a blocker
+check), not at load.
 
 | Hash | Source | Answers |
 |---|---|---|
-| Servers catalog | `servers.scm` | What a server does once registered: languages, command, args, config |
+| Servers catalog | `servers.scm` | What a server is registered with: args, config |
+| Language catalog | `language-servers.scm` | Each language's ordered servers; a server's languages are derived from it |
+| Requirements catalog | `requirements.scm` | What installing a server needs on each platform |
+| Commands catalog | `server-commands.scm` | The command Helix runs for a server whose command differs from its name, for the install pipeline's `$PATH` note |
 | Sources catalog | `sources.scm` | How to get it: kind, version, download targets |
 
-They stay apart because they come from different upstreams and different pins. Every entry
-in both is a tagged alist tail (`(key . value)` or `(key sub…)`, never a positional
+The first three come from the Helix pin, the last two from the Mason pin, so they stay
+apart. Server, requirements and sources entries are tagged alist tails (`(key . value)` or `(key sub…)`, never a positional
 tuple), so one field lookup serves both. The hashes `catalog.scm` exposes are read-only:
 callers must not mutate what they return.
 
-A third hash, the language-to-server index, is derived from the servers catalog at load.
-Languages are disjoint across servers by a sync-time guarantee (`scripts/sync-grammars.py`
-takes only each language's primary language server), so the index never has two servers
-competing for one language. `:lsp-install` and the discovery hint both look languages up
-there.
+The language catalog is also the language-to-server index. A language lists its servers in
+Helix's priority order, so `:lsp-install <lang>` installs the first and the discovery hint
+looks that one up.
 
 ## Installing a server
 
@@ -32,7 +36,9 @@ Installing or reinstalling a server always starts from a clean slate. That makes
 repair and upgrade path too, and it covers reinstalling over a running client:
 
 1. Run the blocker check, which includes the required tools.
-2. Unregister every seeded language, which shuts down any running client.
+2. Unregister every seeded language, which shuts down any running client. When an install
+   already exists, the command unregisters first and runs steps 3 to 6 on the next tick, so
+   the client has stopped before its files are touched.
 3. Purge any existing install; the receipt goes with it.
 4. Download, verify and unpack (`github`, `generic`), or run the kind's package manager
    (`npm`, `cargo`, `go`, `pip` in a venv, `gem`, `dotnet tool`).
@@ -60,7 +66,7 @@ A generic row is `(target asset url sha bin)`.
   A download in none of these shapes is dropped when `sources.scm` is generated.
 - **Platforms.** A package-manager source with no `platforms` field installs everywhere.
 - **Blockers.** One function is the single source for `:lsp-install`'s error,
-  `:lsp-servers`'s annotation and the discovery hint's gate. In the order it checks:
+  `:lsp-catalog`'s annotation and the discovery hint's gate. In the order it checks:
   unsupported platform, no install source, a stub kind, no row for this platform (not
   supported on this platform, or no prebuilt asset for it), and a missing required tool.
 - **Required tools.** `npm`, `cargo`, `golang`, `pypi`, `gem` and `nuget` kinds need
@@ -121,20 +127,28 @@ escaping mirrors `scripts/sync_common.py`'s, because receipts are read back by b
 and that script.
 
 The scan in `register.scm` reads `<data>/servers/` and registers every installed server.
-It is passive (no subprocess, no network). It runs at load or lazy activation, after every
-install, and on demand as `:lsp-rescan-servers`, which also picks up a server installed
-outside `:lsp-install`. It is the only registrar for managed servers. It lists
+It is passive (no subprocess, no network). It runs at load or lazy activation and after every
+install. It is the only registrar for managed servers. It lists
 subdirectories only, so the lock file is never read as a server. Two cases are logged as
 warnings and skipped: a directory with no readable receipt (an interrupted install) and
 a directory whose name is not in `servers.scm` (an orphan, to be removed with
 `:lsp-uninstall`).
 
-Registering a server's languages skips any language that already has a registration. That
-lets a mid-session rescan leave a user's own `register-lsp-server!` alone. The check reads
-through the same-eval pending queue, so it is correct in queue order regardless of load
-order: the rescan after an install sees the install's own queued unregister calls and
-re-admits those languages. The Rust side sweeps every already-open buffer for each
-registration this queues.
+Each installed server registers once, under its catalog name, with the command, arguments,
+environment and configuration to launch it and no languages. A name that already has a
+registration is skipped, which lets a mid-session rescan leave a user's own
+`register-lsp-server!` under that name alone. The check reads through the same-eval pending
+queue, so it is correct in queue order regardless of load order: the rescan after an install
+sees the install's own queued unregister and re-admits the name.
+
+After the registrations, the scan sets every language's default server list. For every
+language in `language-servers.scm` it calls `set-default-language-servers!` with Helix's
+whole list, filters included, whether or not any server in it is installed: a name that is
+not registered matches nothing until it registers, and the Rust side attaches every
+already-open buffer of the language when it does. The default applies only while the user
+has set no list of their own for the language. A server the user registered by hand serves
+a language only when a list names it. The last write to a language's default list wins, so
+only one plugin should write defaults for a language.
 
 A server's `config` field is delivered as both `#:init-options` and `#:settings`, matching
 Helix. The loader decodes the JSON string each time it registers a server. An empty config
@@ -160,17 +174,20 @@ the same server directory at once.
 
 ## Commands
 
-**`:lsp-install`** completes from every language a server is seeded for, the same set its
-"no language server is seeded for" check reads. If the receipt's version already matches the
+**`:lsp-install`** takes a seeded server name or a language. A name that is a seeded server
+installs that server; anything else is a language, installing its first server, and no argument
+means the buffer's language. A name that is both a server and a language must be its own
+language's first server, so the two readings agree. Completion offers every installable server
+and every seeded language. If the receipt's version already matches the
 seeded one it logs "up to date" and only runs the scan. Otherwise it installs under the
 lock and then runs the scan outside the lock, so a failure in the scan surfaces as its own
 error instead of being reported as a failed install.
 
 **`:lsp-uninstall`** takes a user-typed server name straight into a path join, so it first
 validates it with `core:stdlib`'s `stdlib/safe-path-segment?`. `:lsp-install` needs no such
-check, since its name always comes from the language-to-server index. An invalid name logs
-`'warn` because it can be a path-traversal attempt such as `"../plugins"`, which deserves a
-persistent record (see the index's
+check, since its name is always a key of the seeded catalog. An invalid name logs
+`'error`, as any typed argument the command can't act on does, so a path-traversal attempt
+such as `"../plugins"` stays in `:messages` (see the index's
 [Log severity](../../README.md#log-severity)). The command unregisters the server's
 languages, then removes its directory. An orphan (on disk, not in `servers.scm`) skips
 the unregister step. The removal is deferred with `after! 0` so the unregister has shut
@@ -178,11 +195,9 @@ down any running client before the lock is taken. Its completion lists every ser
 directory on disk, seeded or orphan, because the on-disk check decides what there is to
 remove.
 
-**`:lsp-servers`** prints one line per seeded server: its name, its languages, and either
+**`:lsp-catalog`** prints one line per seeded server: its name, its languages, and either
 `installed vX`, `installed vX — update available (vY)`, the install blocker, or `not
 installed`. A count line follows.
-
-**`:lsp-rescan-servers`** runs the scan.
 
 ### Discovery hint
 

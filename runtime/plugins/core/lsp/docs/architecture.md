@@ -38,30 +38,40 @@ lsp-request! ──▶ transform response ──▶ UI builtin (show-popup!/show
 
 - **JSON `null` decodes to Steel `void`, not `#f`.** Every response handler checks
   `(void? res)` for "no results", never `(not res)`.
-- **Errors** go through `lsp/report-error!`, which takes a hashmap with a `'message` key or
-  a bare string such as `"timeout"` and logs one `'error` line.
-- **Capability guards** read `(lsp-capabilities pane)`, a `JsonHandle` onto the attached
-  server's provider capabilities. `lsp/supports?` is true when the handle exists, contains
-  the key, and the value is neither `#f` nor JSON null. A provider can be declared and
-  then disabled with `#f`, which differs from never being declared.
-  `lsp/guard-capability` runs a thunk when the capability is present and otherwise logs
-  `'info` "not supported by <server>". `lsp/cap-field` and `lsp/cap-flag?` read a nested
-  field off a capability that is either the bare `#t` or an options object (for example
-  `codeActionProvider.resolveProvider` or
-  `documentRangeFormattingProvider.rangesSupport`), returning a caller-supplied default on
-  every kind of miss.
+- **Errors** go through `lsp/report-error!`, which takes a request's `err` hash and logs
+  one line: at `'info` for `'unavailable` (no server could take the request, which is a fact
+  about the setup) and `'stopped` (the server stopped or crashed first, which is reported on
+  its own), at `'error` for every other kind.
+- **Choosing a server.** A request for a standard method (`textDocument/hover`, …) is
+  tied to that method's feature, and the editor sends it to the first server attached to
+  the buffer that is running, whose list entry admits the feature and whose capabilities
+  advertise it. `#:feature` names the feature of a method the editor does not know. When none qualifies, the
+  callback's `err` says why ("hover is not supported by rust-analyzer", "… still
+  starting"). A request triggered without the user asking (completion, signature help,
+  inlay hints) first checks `(lsp-servers pane #:feature …)` and stays silent when it is
+  empty. A follow-up that must reach the server an earlier answer came from (code-action
+  resolve and execute, range formatting) picks that server with `lsp-servers` and sends
+  `#:to` it.
+  A command the user asked for reports an empty answer through `lsp/with-servers`, which
+  logs "… is not supported by this buffer's language servers" and calls its body only with servers.
+- **Capability fields.** `lsp/cap-field` and `lsp/cap-flag?` read a nested field off one
+  server's `(lsp-capability server #:feature f)` (or `#:method m`), which is either the
+  bare `#t` or an options object (for example a code-action provider's `resolveProvider`
+  or a range-formatting provider's `rangesSupport`), returning a caller-supplied default
+  on every kind of miss. The feature or method names the capability, so no plugin spells
+  a `ServerCapabilities` key.
 
 ## Shared helpers (`lib.scm`)
 
-- **Trigger characters.** `lsp/setup-trigger-chars!` registers `on-lsp-attach` and
-  `on-lsp-detach` handlers for a feature. On attach it reads the server's
-  `triggerCharacters` for the feature's capability, adds the feature's own extra
-  characters, and registers the set; on detach it registers an empty set. Both tables are
-  keyed by the source name and the server name the attach hook passes, so a second server
-  attaching under the same source gets its own entry. A feature with a handler (signature
-  help) registers through `set-hook-triggers!` and also gets an `on-trigger-char`
+- **Trigger characters.** `lsp/setup-trigger-chars!` registers an `on-lsp-attach` handler
+  for a feature. When a server whose list entry admits the feature attaches, it reads the
+  `triggerCharacters` that server advertises for the feature's capability, adds the
+  feature's own extra characters, and registers the set for that buffer's attachment to
+  the server, so it goes when the buffer detaches, or when a list change fires
+  `on-lsp-attach` again. A feature with a handler (signature
+  help) registers through `set-attachment-hook-triggers!` and also gets an `on-trigger-char`
   dispatcher that filters on its source name. A feature without one (completion)
-  registers through `set-completion-triggers!`, and the editor invokes the source
+  registers through `set-attachment-completion-triggers!`, and the editor invokes the source
   directly with no hook round trip.
 - **Pane resolution.** `lsp/resolve-pane` is `(car (buffer-panes pane))`, or `#f` when no
   pane shows the buffer. `buffer-panes` answers the given pane when it still shows its
@@ -116,7 +126,7 @@ reads a location's wire fields.
 
 ## Status commands (`status.scm`)
 
-`:lsp-status` shows every running server and its state, plus attached buffers' diagnostic
-counts. `:lsp-stop [lang]` and `:lsp-restart [lang]` stop, or stop and respawn, a running
-server, defaulting to the focused buffer's. All three wrap Rust builtins and keep no
+`:lsp-status` shows every running server and its state, plus each attached buffer's servers
+and diagnostic counts, and the servers a stop left stopped. `:lsp-stop [name]` and `:lsp-restart [name]` stop, or stop and respawn,
+a running server by registration name, defaulting to every server on the focused buffer. All three wrap Rust builtins and keep no
 Scheme-side state beyond the argument default.

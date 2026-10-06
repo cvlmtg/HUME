@@ -58,20 +58,20 @@ See [Language Servers](lsp.md) for setup, the full command and key tables, and s
 
 ## core:lsp-install
 
-Downloads, verifies and registers language servers: `:lsp-install`, `:lsp-uninstall`, `:lsp-servers` and `:lsp-rescan-servers`. It registers what it installed through `register-lsp-server!`, so `core:lsp` works the same with or without it, and a different installer can take its place by declaring that one instead.
+Downloads, verifies and registers language servers: `:lsp-install`, `:lsp-uninstall` and `:lsp-catalog`. It registers what it installed through `register-lsp-server!` and gives every language it knows Helix's server list, so `core:lsp` works the same with or without it, and a different installer can take its place by declaring that one instead.
 
 ```scheme
 (load-plugin! "core:stdlib")
 (load-plugin! "core:lsp-install")
 ```
 
-Requires `core:stdlib` loaded first. Loads lazily in two parts: `:lsp-rescan-servers` and the registration of installed servers wake on the first buffer with a detected language, and `:lsp-install`, `:lsp-uninstall` and `:lsp-servers` load on first use. See [Language Servers](lsp.md#installing-servers) for the prerequisites and the commands.
+Requires `core:stdlib` loaded first. Loads lazily in two parts: the registration of installed servers wakes on the first buffer with a detected language, and `:lsp-install`, `:lsp-uninstall` and `:lsp-catalog` load on first use. See [Language Servers](lsp.md#installing-servers) for the prerequisites and the commands.
 
 ## core:steel-server
 
 Registers a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), which includes your
 own `init.scm` and plugin files, so you get hover, diagnostics, and completion while editing
-your HUME config. Requires `core:lsp`, which provides the editor-side features that make a
+your HUME config. It also makes `cog.scm` the project root marker for Scheme. Requires `core:lsp`, which provides the editor-side features that make a
 registered server useful.
 
 ```scheme

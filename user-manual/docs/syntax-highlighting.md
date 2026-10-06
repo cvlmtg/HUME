@@ -101,6 +101,14 @@ If the language server you'll connect expects a different identifier than `"my-l
 
 It defaults to the language name when omitted.
 
+`#:roots` lists the file or directory names that mark a project's root for this language (HUME walks up from the opened file to the nearest directory holding one). Language servers use the directory it finds as their workspace:
+
+```scheme
+(define-language! "my-lang" '("myl") #:roots '("my-lang.toml" ".git"))
+```
+
+A language with no roots uses the directory HUME was started in. Defining a language that already exists replaces its whole record, so a redefinition also repeats the extensions and roots it should keep.
+
 Now `my-lang` is detected like any built-in. If its grammar is already in PLUM's catalog under that name, install it the normal way:
 
 ```
