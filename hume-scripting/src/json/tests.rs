@@ -350,3 +350,30 @@ fn indexed_child_inherits_the_parent_tag() {
         .expect("path resolves");
     assert_eq!(child.position_encoding("test"), Ok(PositionEncoding::Utf8));
 }
+
+fn doc_pos_val(offset: usize) -> SteelVal {
+    let buffer = slotmap::SlotMap::<hume_engine::pipeline::BufferId, ()>::with_key().insert(());
+    crate::DocPos {
+        buffer,
+        version: hume_editing::text::BufferText::from("a\n").version(),
+        offset: hume_rope::offset::CharOffset::new(offset),
+    }
+    .into_steel_val()
+}
+
+#[test]
+fn steel_to_json_with_routes_a_custom_value_through_the_hook() {
+    let v = SteelVal::ListV(vec![SteelVal::IntV(1), doc_pos_val(7)].into());
+    let json = steel_to_json_with(&v, &mut |custom| {
+        crate::DocPos::from_steel_val(custom)
+            .map(|pos| Ok(serde_json::json!({ "at": pos.offset.index() })))
+    })
+    .expect("the hook encodes the position");
+    assert_eq!(json, serde_json::json!([1, { "at": 7 }]));
+}
+
+#[test]
+fn steel_to_json_rejects_a_doc_pos() {
+    let err = steel_to_json(&doc_pos_val(0)).expect_err("a position has no plain JSON form");
+    assert!(err.contains("lsp-request!"), "{err}");
+}

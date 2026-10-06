@@ -70,15 +70,25 @@ pub(crate) fn single_key_arg(val: SteelVal, ctx_name: &str) -> Result<KeyEvent, 
     Ok(keys.remove(0))
 }
 
+/// `None` for `#f`, otherwise `decode` of `val`: the one place the `#f`
+/// check of an `optional_*` decoder lives.
+fn optional<T>(
+    val: SteelVal,
+    ctx_name: &str,
+    decode: impl FnOnce(SteelVal, &str) -> Result<T, SteelErr>,
+) -> Result<Option<T>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        other => decode(other, ctx_name).map(Some),
+    }
+}
+
 /// A string argument that may be `#f` (absent).
 pub(crate) fn optional_string_arg(
     val: SteelVal,
     ctx_name: &str,
 ) -> Result<Option<String>, SteelErr> {
-    match val {
-        SteelVal::BoolV(false) => Ok(None),
-        other => Ok(Some(string_arg(other, ctx_name)?)),
-    }
+    optional(val, ctx_name, string_arg)
 }
 
 /// A symbol argument that may be `#f` (absent). Unlike `optional_string_arg`,
@@ -163,10 +173,7 @@ pub(crate) fn usize_arg(val: SteelVal, ctx_name: &str) -> Result<usize, SteelErr
 
 /// A non-negative-integer argument that may be `#f` (absent).
 pub(crate) fn optional_usize_arg(val: SteelVal, ctx_name: &str) -> Result<Option<usize>, SteelErr> {
-    match val {
-        SteelVal::BoolV(false) => Ok(None),
-        other => Ok(Some(usize_arg(other, ctx_name)?)),
-    }
+    optional(val, ctx_name, usize_arg)
 }
 
 /// A widget opener's result: the new widget's token, or `#f` when the open
@@ -184,6 +191,20 @@ pub(crate) fn token_or_false(token: Option<HostToken>) -> SteelVal {
 pub(crate) fn token_arg(val: SteelVal, ctx_name: &str) -> Result<HostToken, SteelErr> {
     Ok(optional_usize_arg(val, ctx_name)?
         .map_or(HostToken::NONE, |n| HostToken::from_raw(n as u64)))
+}
+
+/// A server value, as hooks, `lsp-servers` and results hand it out.
+pub(crate) fn server_arg(val: &SteelVal, ctx_name: &str) -> Result<crate::ServerRef, SteelErr> {
+    crate::ServerRef::from_steel_val(val)
+        .ok_or_else(|| generic_err(format!("{ctx_name}: expected a server value")))
+}
+
+/// A server value that may be `#f` (absent).
+pub(crate) fn optional_server_arg(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<crate::ServerRef>, SteelErr> {
+    optional(val, ctx_name, |v, ctx| server_arg(&v, ctx))
 }
 
 /// An optional token argument: `None` for `#f`, the token otherwise.
@@ -224,10 +245,7 @@ pub(crate) fn optional_callable_arg(
     val: SteelVal,
     ctx_name: &str,
 ) -> Result<Option<SteelVal>, SteelErr> {
-    match val {
-        SteelVal::BoolV(false) => Ok(None),
-        other => Ok(Some(callable_arg(other, ctx_name)?)),
-    }
+    optional(val, ctx_name, callable_arg)
 }
 
 /// `(%callable? v)`: backs `live-picker!`'s `#:command` check (see
@@ -250,6 +268,14 @@ pub(crate) fn list_items(val: SteelVal, ctx_name: &str) -> Result<Vec<SteelVal>,
         SteelVal::ListV(list) => Ok(list.into_iter().collect()),
         _ => steel::stop!(TypeMismatch => "{}: expected a list", ctx_name),
     }
+}
+
+/// A Steel list that may be `#f` (absent).
+pub(crate) fn optional_list_items(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<Vec<SteelVal>>, SteelErr> {
+    optional(val, ctx_name, list_items)
 }
 
 /// A Steel list of strings, unpacked to a `Vec<String>`.
@@ -350,10 +376,7 @@ pub(crate) fn optional_json_arg(
     val: SteelVal,
     ctx_name: &str,
 ) -> Result<Option<serde_json::Value>, SteelErr> {
-    match val {
-        SteelVal::BoolV(false) => Ok(None),
-        other => Ok(Some(json_params(other, ctx_name)?)),
-    }
+    optional(val, ctx_name, json_params)
 }
 
 /// A caught `with-handler` exception value that may be `#f` (no exception:
@@ -512,12 +535,25 @@ pub(crate) fn string_list(items: impl IntoIterator<Item = String>) -> SteelVal {
 }
 
 /// Builds a symbol-keyed Steel hashmap: the encode counterpart to
-/// [`hash_list`]'s decode. An absent optional value is the caller's to map to
+/// `hash_list`'s decode. An absent optional value is the caller's to map to
 /// the convention its key documents.
-pub(crate) fn symbol_hash(pairs: impl IntoIterator<Item = (&'static str, SteelVal)>) -> SteelVal {
+pub fn symbol_hash(pairs: impl IntoIterator<Item = (&'static str, SteelVal)>) -> SteelVal {
+    keyed_hash(pairs, |key| SteelVal::SymbolV(key.into()))
+}
+
+/// [`symbol_hash`] with string keys: the shape of a JSON object built in
+/// Rust for Steel to extend (an LSP params hash).
+pub(crate) fn string_hash(pairs: impl IntoIterator<Item = (&'static str, SteelVal)>) -> SteelVal {
+    keyed_hash(pairs, |key| SteelVal::StringV(key.into()))
+}
+
+fn keyed_hash(
+    pairs: impl IntoIterator<Item = (&'static str, SteelVal)>,
+    key: fn(&'static str) -> SteelVal,
+) -> SteelVal {
     let map: steel::HashMap<SteelVal, SteelVal> = pairs
         .into_iter()
-        .map(|(key, value)| (SteelVal::SymbolV(key.into()), value))
+        .map(|(k, value)| (key(k), value))
         .collect();
     SteelVal::HashMapV(steel::gc::Gc::new(map).into())
 }
@@ -563,7 +599,7 @@ pub(crate) fn cons_pair(mut a: SteelVal, mut b: SteelVal) -> Result<SteelVal, St
 /// for a builtin whose own contract is "answer `#f`/empty for a `pane`
 /// this host doesn't currently show anything for," where a closed buffer is
 /// just one more case of that, not a distinct error (`diagnostic-counts`,
-/// `lsp-capabilities`, …). [`LivePane`] is the counterpart for a builtin
+/// `buffer-live?`, …). [`LivePane`] is the counterpart for a builtin
 /// that must raise on a closed buffer instead. Neither checks the pane half
 /// live: a builtin that needs the pane itself (kind A/B, see
 /// `hume-editor`'s `CommandPane::resolve`/`FocusedPane::resolve`) resolves and checks it through the host,
@@ -706,12 +742,12 @@ impl BuiltinArg for OptUsize {
 /// `(lsp-stop! target)` / `(lsp-restart! target)`'s `target` argument, ahead
 /// of [`BuiltinArg::resolve`]'s liveness check on the `Buffer` case. A pane
 /// decodes like [`LivePane`] (only its buffer is used: this is a kind-C,
-/// buffer-only operation), a string or symbol names a language (required:
-/// there is no "focused buffer" fallback to decode `#f` into).
+/// buffer-only operation), a string or symbol names a registered server
+/// (required: there is no "focused buffer" fallback to decode `#f` into).
 #[derive(Debug)]
 pub(crate) enum LspTargetArg {
     Buffer(LivePane),
-    Language(String),
+    Name(String),
 }
 
 impl FromSteelVal for LspTargetArg {
@@ -720,11 +756,11 @@ impl FromSteelVal for LspTargetArg {
             return Ok(LspTargetArg::Buffer(pane));
         }
         match val {
-            SteelVal::StringV(s) => Ok(LspTargetArg::Language(s.to_string())),
-            SteelVal::SymbolV(s) => Ok(LspTargetArg::Language(s.to_string())),
+            SteelVal::StringV(s) => Ok(LspTargetArg::Name(s.to_string())),
+            SteelVal::SymbolV(s) => Ok(LspTargetArg::Name(s.to_string())),
             _ => Err(SteelErr::new(
                 ErrorKind::TypeMismatch,
-                "expected a pane or a language name".to_string(),
+                "expected a pane or a server name".to_string(),
             )),
         }
     }
@@ -741,9 +777,9 @@ impl BuiltinArg for LspTargetArg {
             LspTargetArg::Buffer(pane) => Ok(crate::types::LspServerTarget::Buffer(
                 pane.resolve(ctx, name)?.buffer(),
             )),
-            LspTargetArg::Language(language) => {
-                Ok(crate::types::LspServerTarget::Language(language))
-            }
+            LspTargetArg::Name(server) => crate::types::ServerName::parse(&server)
+                .map(crate::types::LspServerTarget::Name)
+                .map_err(|e| super::errors::generic_err(format!("{name}: {e}"))),
         }
     }
 }

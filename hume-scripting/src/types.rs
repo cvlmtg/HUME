@@ -113,6 +113,7 @@ pub enum PendingLanguageReg {
         globs: Vec<String>,
         shebangs: Vec<String>,
         lsp_language_id: Option<String>,
+        roots: Vec<String>,
     },
     Grammar(GrammarReg),
 }
@@ -165,16 +166,167 @@ pub struct VirtualLineSpec {
     pub segments: Vec<(usize, usize, String)>,
 }
 
+/// A language server's registration name: non-empty, no whitespace, so it
+/// reads unambiguously as a `:lsp-stop`/`:lsp-restart` argument.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ServerName(std::sync::Arc<str>);
+
+impl ServerName {
+    /// `Err` names what is wrong with `name`, for a builtin to prefix with
+    /// its own name.
+    pub fn parse(name: &str) -> Result<Self, String> {
+        if name.is_empty() {
+            return Err("server name is empty".to_string());
+        }
+        if name.chars().any(char::is_whitespace) {
+            return Err(format!("server name {name:?} contains whitespace"));
+        }
+        Ok(Self(std::sync::Arc::from(name)))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ServerName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// One macro list generates [`LspFeature`], its wire-name table and
+/// [`LspFeature::ALL`], so the variants, the names and the full list cannot
+/// drift apart.
+macro_rules! lsp_features {
+    ($($variant:ident => $name:literal),+ $(,)?) => {
+        /// A language-server capability requests are routed by: Helix's
+        /// `language-servers` feature vocabulary, spelled the same way so a
+        /// Helix `only-features`/`except-features` list carries over verbatim.
+        /// Features HUME has no command for are still valid names.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum LspFeature {
+            $($variant),+
+        }
+
+        impl LspFeature {
+            pub const ALL: [LspFeature; [$(LspFeature::$variant),+].len()] =
+                [$(LspFeature::$variant),+];
+
+            /// Every `(wire name, feature)` pair, the table a feature
+            /// argument is decoded through.
+            pub const NAMED: [(&'static str, LspFeature); [$(LspFeature::$variant),+].len()] =
+                [$(($name, LspFeature::$variant)),+];
+
+            pub fn name(self) -> &'static str {
+                match self {
+                    $(LspFeature::$variant => $name),+
+                }
+            }
+        }
+    };
+}
+
+lsp_features! {
+    Format => "format",
+    GotoDeclaration => "goto-declaration",
+    GotoDefinition => "goto-definition",
+    GotoTypeDefinition => "goto-type-definition",
+    GotoReference => "goto-reference",
+    GotoImplementation => "goto-implementation",
+    SignatureHelp => "signature-help",
+    Hover => "hover",
+    DocumentHighlight => "document-highlight",
+    Completion => "completion",
+    CodeAction => "code-action",
+    DocumentLinks => "document-links",
+    WorkspaceCommand => "workspace-command",
+    DocumentSymbols => "document-symbols",
+    WorkspaceSymbols => "workspace-symbols",
+    Diagnostics => "diagnostics",
+    PullDiagnostics => "pull-diagnostics",
+    RenameSymbol => "rename-symbol",
+    InlayHints => "inlay-hints",
+    DocumentColors => "document-colors",
+    CallHierarchy => "call-hierarchy",
+}
+
+/// A set of [`LspFeature`]s, one bit per variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LspFeatureSet(u32);
+
+impl LspFeatureSet {
+    pub fn insert(&mut self, feature: LspFeature) {
+        self.0 |= 1 << feature as u32;
+    }
+
+    pub fn contains(self, feature: LspFeature) -> bool {
+        self.0 & (1 << feature as u32) != 0
+    }
+
+    /// Members in [`LspFeature::ALL`] order.
+    pub fn iter(self) -> impl Iterator<Item = LspFeature> {
+        LspFeature::ALL
+            .into_iter()
+            .filter(move |f| self.contains(*f))
+    }
+}
+
+impl FromIterator<LspFeature> for LspFeatureSet {
+    fn from_iter<I: IntoIterator<Item = LspFeature>>(iter: I) -> Self {
+        let mut set = Self::default();
+        for feature in iter {
+            set.insert(feature);
+        }
+        set
+    }
+}
+
+/// Which features a server may be asked for within one language's server
+/// list: Helix's `only-features`/`except-features`, or neither.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeatureFilter {
+    All,
+    Only(LspFeatureSet),
+    Except(LspFeatureSet),
+}
+
+impl FeatureFilter {
+    pub fn admits(self, feature: LspFeature) -> bool {
+        match self {
+            FeatureFilter::All => true,
+            FeatureFilter::Only(set) => set.contains(feature),
+            FeatureFilter::Except(set) => !set.contains(feature),
+        }
+    }
+}
+
+/// One entry of a language's ordered server list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListEntry {
+    pub name: ServerName,
+    pub filter: FeatureFilter,
+}
+
+/// Which of a language's two server lists a call writes. A `User` list
+/// always wins over a `Default` one, whichever was set first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListLayer {
+    User,
+    Default,
+}
+
 /// One `(register-lsp-server! …)` call queued for the end-of-eval drain.
 ///
 /// `init_options`/`settings` are decoded at the Steel boundary via
 /// `crate::json::steel_to_json`: Steel data structures in, real JSON out.
 #[derive(Debug)]
 pub struct PendingLspServerReg {
-    pub language: String,
+    /// The registration's identity: re-registering a name replaces its
+    /// config, and `unregister-lsp-server!`/`lsp-stop!`/`lsp-restart!` name it.
+    pub name: ServerName,
     pub command: String,
     pub args: Vec<String>,
-    pub root_markers: Vec<String>,
     pub init_options: Option<serde_json::Value>,
     pub settings: Option<serde_json::Value>,
     /// `#:env`: extra environment variables applied additively (never
@@ -182,21 +334,21 @@ pub struct PendingLspServerReg {
     pub env: Vec<(String, String)>,
 }
 
-/// `(lsp-stop! target)` / `(lsp-restart! target)`'s target: either one
-/// buffer's attached server, or every server registered for a language
+/// `(lsp-stop! target)` / `(lsp-restart! target)`'s target: every server
+/// attached to one buffer, or every running instance of a registration
 /// name. A caller names the buffer explicitly, so a stop/restart queued
 /// from a hook or callback isn't at the mercy of whatever buffer happens to
 /// be focused when the effect log drains.
 #[derive(Debug)]
 pub enum LspServerTarget {
     Buffer(BufferId),
-    Language(String),
+    Name(ServerName),
 }
 
 /// An LSP server registration, unregistration, stop/restart, or status-view
 /// request queued during any eval (init.scm, plugin activation, or a
 /// command/hook body) and applied, in order, by
-/// `Editor::apply_lsp_server_op` as part of `Effect::LspServerOp` application.
+/// `Editor::apply_lsp_server_ops` as part of `Effect::LspServerOp` application.
 ///
 /// `Stop`/`Restart`/`ShowStatus` ride the same op enum as `Register`/
 /// `Unregister` because they too need `&mut Editor`, which the Steel-eval-time
@@ -205,9 +357,21 @@ pub enum LspServerTarget {
 #[derive(Debug)]
 pub enum PendingLspServerOp {
     Register(PendingLspServerReg),
-    Unregister { language: String },
-    Stop { target: LspServerTarget },
-    Restart { target: LspServerTarget },
+    Unregister {
+        name: ServerName,
+    },
+    /// Sets (`Some`) or clears (`None`) one of `language`'s server lists.
+    SetLanguageServers {
+        language: String,
+        layer: ListLayer,
+        entries: Option<Vec<ListEntry>>,
+    },
+    Stop {
+        target: LspServerTarget,
+    },
+    Restart {
+        target: LspServerTarget,
+    },
     ShowStatus,
 }
 
@@ -215,46 +379,112 @@ pub enum PendingLspServerOp {
 /// (`Editor::lsp_status_text`) in structured form for Steel.
 #[derive(Debug, Clone)]
 pub struct LspServerStatusEntry {
-    pub language: String,
+    pub name: ServerName,
+    pub languages: Vec<String>,
     pub root: std::path::PathBuf,
     /// `ServerState::name`'s lowercase spelling (`"running"`, `"starting"`,
-    /// …), so the trait boundary stays free of a `hume-lsp` dependency.
+    /// …), the symbol Steel receives.
     pub state: &'static str,
     pub pending: usize,
 }
 
-/// `(lsp-request! pane method params callback #:allow-stale bool)` calls
-/// queued during a command, hook, or queued-Steel-call eval and sent by
-/// `Editor::send_one_lsp_request` as part of `Effect::LspRequest` application.
-///
-/// `bid` is resolved to its attached server at that apply-time point,
-/// never a fallback to live focus, so a response callback that fires a
-/// follow-up request resolves against the buffer the original request was
-/// about, not whatever happens to be focused when the callback runs.
-/// `params` is already decoded to JSON via `crate::json::steel_to_json`;
-/// `callback` is the raw Steel closure, delivered `(err result)` through
-/// the queued-Steel-call mechanism once the response (or timeout) arrives.
+/// Which listeners a trigger-char set is for: `on-trigger-char` hooks named
+/// by the source, or the completion source of that name, which a typed
+/// character invokes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TriggerKind {
+    Hook,
+    Completion,
+}
+
+/// Where a trigger-char set applies: the buffers of a language, or one
+/// buffer's attachment to one server, whose entries go when that buffer
+/// detaches from the server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TriggerScope {
+    Language(String),
+    Attachment {
+        buffer: hume_engine::pipeline::BufferId,
+        server: hume_lsp::backend::ServerId,
+    },
+}
+
+/// Which of a buffer's attached servers a request or notification may go
+/// to, beyond what its method implies. Routing happens when the request is
+/// sent, among the servers attached and `Running` then: `feature` keeps the
+/// servers whose list entry admits it and whose capabilities advertise it,
+/// and is given only for a method with no standard feature of its own, and
+/// `to` names the one server.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RouteSpec {
+    pub feature: Option<LspFeature>,
+    pub to: Option<crate::ServerRef>,
+}
+
+/// A request's params: one value every routed server receives, or one
+/// value per named server (`lsp-request-all!` with `(server . params)`
+/// pairs, each server kept whole so its result names it even after it
+/// stopped). Kept as Steel values until the request is serialized for each
+/// server, so a `DocPos`/`DocRange` inside is encoded in that server's
+/// position encoding.
+pub enum RequestParams {
+    Shared(Params),
+    PerServer(Vec<(crate::ServerRef, Params)>),
+}
+
+/// The params of a request or notification, as the Steel value the caller
+/// built. `json` is its conversion when it holds no `DocPos`/`DocRange`,
+/// which is then the same for every server; otherwise `None`, and each
+/// position encoding converts it anew.
+pub struct Params {
+    pub value: SteelVal,
+    pub json: Option<serde_json::Value>,
+}
+
+/// How many of the routed servers a request goes to, and so how its
+/// callback is called: `Single` sends to the first and calls back with
+/// `(err result)`, `All` sends to every one and calls back once with
+/// `(err results)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestMode {
+    Single,
+    All,
+}
+
+impl RequestMode {
+    /// The Steel builtin that queues a request in this mode.
+    pub fn verb(self) -> &'static str {
+        match self {
+            RequestMode::Single => "lsp-request!",
+            RequestMode::All => "lsp-request-all!",
+        }
+    }
+}
+
+/// An `lsp-request!`/`lsp-request-all!` call queued during an eval and sent
+/// by the editor when the eval's effects apply. `bid` names the buffer the
+/// request is about, never live focus, so a follow-up request from a
+/// response callback reaches the same buffer. `callback` is the raw Steel
+/// closure, called once through the queued-Steel-call mechanism when every
+/// server it went to has answered, failed, or timed out.
 pub struct PendingLspRequest {
     pub bid: BufferId,
     pub method: String,
-    pub params: serde_json::Value,
+    pub params: RequestParams,
+    pub mode: RequestMode,
+    pub route: RouteSpec,
     pub callback: SteelVal,
     pub allow_stale: bool,
-    /// If `Some(key)`, the bridge cancels the caller's own previous
-    /// still-pending request filed under `(server, key)` before sending
-    /// this one: an explicit opt-in, not automatic by method/buffer, so
-    /// two features issuing the same method concurrently never cancel each
-    /// other by accident.
+    /// `#:supersede`: a new request under the same key cancels the
+    /// previous one still in flight under it, on every server it went to.
+    /// An explicit opt-in, so two features issuing the same method never
+    /// cancel each other.
     pub supersede: Option<String>,
-    /// `#:require-focus`: the pane `(lsp-request! …)` was called with, if
-    /// the callback should fire only while it's still the focused pane when
-    /// the response arrives (never re-derived from `bid` alone, which would
-    /// pass on any pane still showing it rather than the exact pane the
-    /// request was made from). `None` for a background request (formatting,
-    /// rename, completion, diagnostics), which must keep delivering
-    /// regardless of focus. `%lsp-request!`'s decode refuses to queue
-    /// `#:require-focus` with no pane, so a request whose only purpose is
-    /// opening cursor-anchored UI always carries one here.
+    /// `#:require-focus`: the pane the request was made from, if the
+    /// callback should fire only while that pane is still focused when the
+    /// answers arrive. `None` for a background request (formatting, rename,
+    /// completion), which delivers regardless of focus. The decode refuses
+    /// `#:require-focus` with no pane.
     pub require_focus: Option<PaneId>,
     /// `#:tracked`: a tracked position this request holds, released once its
     /// callback has run or will never run, unless the callback kept it.
@@ -262,13 +492,16 @@ pub struct PendingLspRequest {
 }
 
 // Manual (not derived): `SteelVal` has no `Debug` impl. Placeholder the
-// closure. Everything else is real data, still useful in a panic message.
+// closure and params. Everything else is real data, still useful in a
+// panic message.
 impl std::fmt::Debug for PendingLspRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PendingLspRequest")
             .field("bid", &self.bid)
             .field("method", &self.method)
-            .field("params", &self.params)
+            .field("params", &"<steel value>")
+            .field("mode", &self.mode)
+            .field("route", &self.route)
             .field("callback", &"<closure>")
             .field("allow_stale", &self.allow_stale)
             .field("supersede", &self.supersede)
@@ -278,13 +511,24 @@ impl std::fmt::Debug for PendingLspRequest {
     }
 }
 
-/// `(lsp-notify! bid method params)` calls queued the same way as
-/// [`PendingLspRequest`], minus the callback: notifications get no response.
-#[derive(Debug)]
+/// An `lsp-notify!` call, queued the same way as [`PendingLspRequest`]:
+/// sent to every server `route` admits, with no answer to wait for.
 pub struct PendingLspNotify {
     pub bid: BufferId,
     pub method: String,
-    pub params: serde_json::Value,
+    pub params: Params,
+    pub route: RouteSpec,
+}
+
+impl std::fmt::Debug for PendingLspNotify {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingLspNotify")
+            .field("bid", &self.bid)
+            .field("method", &self.method)
+            .field("params", &"<steel value>")
+            .field("route", &self.route)
+            .finish()
+    }
 }
 
 /// Result returned by [`super::ScriptingHost::call_steel_cmd`].
@@ -363,18 +607,23 @@ pub enum Effect {
     /// validation (a callable `proc`, a `#:target` that exists) still fails
     /// synchronously inside the builtin.
     RegisterCompletionSource(crate::host::PendingCompletionSource),
-    /// `(set-completion-triggers! source language chars)`: applied
-    /// into the named `Buffer` source's own trigger-char table. Queued
-    /// alongside [`Effect::RegisterCompletionSource`] for the same ordering
-    /// reason `Effect::UnbindKey` gives for the three binders it follows: a
+    /// `(set-hook-triggers! source language chars)`,
+    /// `(set-completion-triggers! source language chars)` or their
+    /// `set-attachment-…` forms: `source`'s trigger characters of `kind` in
+    /// `scope`, replacing that triple's previous set; an empty `chars`
+    /// removes it. A `Completion` set must name a registered `Buffer`
+    /// source, checked when this applies. Queued alongside
+    /// [`Effect::RegisterCompletionSource`] for the same ordering reason
+    /// [`Effect::UnbindKey`] gives for the three binders it follows: a
     /// source registered earlier in the *same* eval must exist by the time
     /// this applies, and `ScriptingHost`'s effects are one ordered queue
     /// applied in emission order. Checking the registry synchronously
     /// would race a same-eval `register-completion-source!`, which only
     /// takes effect once the whole eval succeeds.
-    SetCompletionTriggers {
+    SetTriggers {
+        kind: TriggerKind,
         source: String,
-        language: String,
+        scope: TriggerScope,
         chars: Vec<char>,
     },
 }
@@ -413,3 +662,6 @@ impl std::fmt::Display for EvalError {
         f.write_str(&self.message)
     }
 }
+
+#[cfg(test)]
+mod tests;

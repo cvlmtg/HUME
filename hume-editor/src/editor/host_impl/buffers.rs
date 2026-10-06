@@ -86,12 +86,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         if self.state.buffers.try_get(id).is_none() {
             return Err(format!("close-buffer!: buffer {id:?} does not exist"));
         }
-        crate::editor::buffer::lifecycle::close_buffer_and_notify(
-            self.view,
-            self.state,
-            self.lsp.as_deref_mut(),
-            id,
-        );
+        crate::editor::buffer::lifecycle::close_buffer_and_notify(self.view, self.state, id);
         Ok(())
     }
     fn switch_to_buffer(&mut self, pane: PaneHandle, target: BufferId) -> Result<(), String> {

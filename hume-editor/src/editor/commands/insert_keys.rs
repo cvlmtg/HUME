@@ -83,38 +83,21 @@ pub(in crate::editor) fn insert_default_key(
             }
             if inserted {
                 let buf = fp.bid(view);
-                let lang_id = state.buffers.get(buf).language;
-                // Owned, not a borrow of `state.config.languages`: `sources`
-                // below already needs a borrowed `&str`, but `Trigger::Char`
-                // is handed to a `&mut EditorState` method further down, so
-                // its own copy can't be tied to that same borrow (see
-                // `Trigger::Char`'s own doc).
-                let language_owned =
-                    lang_id.map(|id| state.config.languages.name_of(id).to_owned());
-                let language = language_owned.as_deref();
-                let sources = state.trigger_sources_for(ch, language);
-                for source in &sources {
+                let sources = state.trigger_sources_for(hume_scripting::TriggerKind::Hook, ch, buf);
+                for source in sources {
                     state.queue_event(EditorEvent::OnTriggerChar {
                         target: hume_scripting::PaneHandle::with_pane(buf, fp.pid()),
                         ch,
-                        source: source.clone(),
+                        source,
                     });
                 }
                 // The hook above is for any listener (signature help); a
                 // completion source's own trigger chars are looked up
                 // directly against the registry
-                // (`SourceRegistry::buffer_sources_for_trigger`), with no hook
-                // round trip, and no dependency on
-                // `set-hook-triggers!`'s separate table (`sources`
-                // above is that table's own answer, used only to fire the
-                // generic hook).
-                state.trigger_buffer_completion(
-                    view,
-                    completion::Trigger::Char {
-                        ch,
-                        language: language_owned,
-                    },
-                );
+                // (`EditorState::completion_sources_for_trigger`), with no hook
+                // round trip, and no dependency on the hook triggers
+                // (`sources` above, used only to fire the generic hook).
+                state.trigger_buffer_completion(view, completion::Trigger::Char { ch, bid: buf });
             }
             true
         }

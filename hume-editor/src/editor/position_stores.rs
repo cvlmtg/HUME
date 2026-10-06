@@ -17,6 +17,7 @@ use slotmap::SecondaryMap;
 use super::input_stack::InputStack;
 use super::jump_list::JumpLists;
 use super::lsp::diagnostics::DiagnosticsStore;
+use super::lsp::document::LspDocuments;
 use super::pane_state::{PaneBufferState, PaneView};
 use super::tracked_positions::TrackedPositions;
 
@@ -30,12 +31,17 @@ pub(crate) struct BufferPositions {
     /// by start, for `mii` (`select-last-insertion`). A range a change
     /// deletes outright drops out, and the record with it once none is left.
     pub(in crate::editor) last_inserts: SecondaryMap<BufferId, Tracked<Vec<ClusterRange>>>,
+    /// Each buffer's language-server attachments and the changes not yet
+    /// sent to them.
+    pub(in crate::editor) lsp: LspDocuments,
 }
 
 impl BufferPositions {
-    /// Carry `buffer`'s diagnostics and last insertion through `change`.
+    /// Carry `buffer`'s diagnostics and last insertion through `change`, and
+    /// queue it for the buffer's language servers.
     fn carry(&mut self, buffer: BufferId, change: &TextChange<'_>) {
         self.diagnostics.remap_through(buffer, change.changes());
+        self.lsp.record(buffer, change);
         let Some(last) = self.last_inserts.get_mut(buffer) else {
             return;
         };
@@ -86,7 +92,8 @@ impl<'a> PositionStores<'a> {
     /// selections of each pane that has shown the buffer, whether or not it
     /// shows it now, every jump list, every position a script is tracking,
     /// every open prompt's snapshot, the open completion session, the
-    /// buffer's diagnostics and decorations, and its last insertion.
+    /// buffer's diagnostics and decorations, and its last insertion. The
+    /// change is also queued for the buffer's language servers.
     ///
     /// `acting` is the pane whose caller replaces its selections with the
     /// edit's own once this returns, so a real change does not carry them. An
@@ -146,8 +153,15 @@ impl<'a> PositionStores<'a> {
         self.drop_shared(buffer);
     }
 
-    /// The stores that are not a pane's own state for `buffer`.
+    /// The stores that are not a pane's own state for `buffer`. A buffer
+    /// with language-server attachments reaches here only after
+    /// `EditorState::lsp_buffer_closing` detached it, so its servers have
+    /// seen `didClose`.
     fn drop_shared(&mut self, buffer: BufferId) {
+        debug_assert!(
+            !self.buffers.lsp.has_doc(buffer),
+            "drop_shared: buffer still attached to a language server"
+        );
         self.jumps.prune_buffer(buffer);
         self.tracked.prune_buffer(buffer);
         for snapshot in self.input.snapshots_mut() {

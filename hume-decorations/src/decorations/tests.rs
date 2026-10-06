@@ -384,3 +384,33 @@ fn remap_points_drops_an_entry_whose_anchor_was_deleted() {
         "a sign past the deletion still remaps, just shifted"
     );
 }
+
+#[test]
+fn remove_source_for_buffer_drops_only_that_pair() {
+    let (a, b) = make_two_bids();
+    let mut store: SourceStore<&str, SignEntry> = SourceStore::default();
+    store.set("x", a, vec![sign(0, "xa")]);
+    store.set("y", a, vec![sign(1, "ya")]);
+    store.set("x", b, vec![sign(2, "xb")]);
+
+    assert!(store.remove_source_for_buffer(&"x", a));
+    assert!(!store.remove_source_for_buffer(&"x", a));
+
+    let texts = |bid| -> Vec<String> {
+        store
+            .for_buffer(bid)
+            .map(|(_, s)| s.text.to_string())
+            .collect()
+    };
+    assert_eq!(texts(a), vec!["ya"]);
+    assert_eq!(texts(b), vec!["xb"]);
+}
+
+#[test]
+fn removing_a_buffers_last_source_forgets_the_buffer() {
+    let (a, _) = make_two_bids();
+    let mut store: SourceStore<&str, SignEntry> = SourceStore::default();
+    store.set("x", a, vec![sign(0, "xa")]);
+    assert!(store.remove_source_for_buffer(&"x", a));
+    assert_eq!(store.buffers().count(), 0);
+}

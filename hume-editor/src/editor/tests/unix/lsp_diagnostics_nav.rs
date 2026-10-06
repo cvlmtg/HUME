@@ -10,74 +10,24 @@
 use std::path::Path;
 
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::LspBackend;
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
 
-/// Everything `setup` builds and keeps alive for the test's duration: a
-/// struct, not a tuple, so the next field added doesn't churn every call
-/// site (the same reason `super::DiagSetup` is a struct). `_guard` must
-/// stay explicitly bound (it holds the env lock); `sid` is `Copy`, so a
-/// caller that doesn't need it may drop it with `..`.
-struct NavSetup {
-    ed: Editor,
-    _guard: RealRuntimeGuard,
-    sid: hume_lsp::backend::ServerId,
-}
-
-/// Builds the `publishDiagnostics` notification for `file`, shared by
-/// `setup` (pushed at the backend, drained via `drain_lsp`) and `republish`
-/// (dispatched straight through the production single-shot path), so the
-/// two can't drift on params shape.
+/// Builds the `publishDiagnostics` notification for `file`, as `republish`
+/// dispatches it.
 fn publish_msg(file: &Path, diags: &[DiagFixture]) -> hume_lsp::codec::Message {
-    let uri = hume_lsp::uri::path_to_uri(file).unwrap();
-    publish_diagnostics_notification(uri.as_str(), diags)
+    publish_diagnostics_notification(&file_uri(file), diags)
 }
 
 /// Fixture buffer: "aa\nbb\ncc\ndd\n". Char offsets: line0 'aa' = 0..2,
 /// line1 'bb' = 3..5, line2 'cc' = 6..8, line3 'dd' = 9..11. Diagnostic A
 /// covers 'bb' (char start 3); diagnostic B covers 'dd' (char start 9) —
 /// leaves line0 "before A" and line2 "between A and B".
-fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> NavSetup {
-    let guard = RealRuntimeGuard::new();
-    std::fs::write(file, "aa\nbb\ncc\ndd\n").unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    if !diags.is_empty() {
-        backend.push_from_server(sid, publish_msg(file, diags));
-    }
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, file.parent().unwrap().to_path_buf()));
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    ed.drain_lsp();
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib") (load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
-        tmp,
-    );
-    ed.scripting = Some(host);
-
-    NavSetup {
-        ed,
-        _guard: guard,
-        sid,
-    }
+fn setup(diags: &[DiagFixture]) -> DiagSetup {
+    setup_diagnostics("aa\nbb\ncc\ndd\n", diags)
 }
 
-/// Republishes diagnostics for `file` through the production single-shot
-/// path (`dispatch_lsp_action`, the same ingest + `queue_diagnostics_changed`
-/// pair `drain_lsp`'s batch loop runs) and settles, so the queued
+/// Republishes diagnostics for `file` through the production path
+/// (`dispatch_lsp_action` queues the publish, `ingest_published` ingests it
+/// and queues `on-diagnostics-changed`) and settles, so the queued
 /// `on-diagnostics-changed` hook (including the drawer's own refresh)
 /// has run by the time this returns.
 fn republish(
@@ -87,7 +37,13 @@ fn republish(
     diags: &[DiagFixture],
 ) {
     let params = params_of(publish_msg(file, diags));
-    ed.dispatch_lsp_action(sid, hume_lsp::client::ClientAction::Diagnostics(params));
+    ed.dispatch_lsp_action(
+        sid,
+        hume_lsp::client::ClientAction::Diagnostics(
+            crate::editor::lsp::diagnostics::published_for_test(params),
+        ),
+    );
+    ed.ingest_published();
     ed.settle();
 }
 
@@ -104,13 +60,12 @@ const DIAG_B: DiagFixture = ((3, 0), (3, 2), 2, "problem B");
 
 #[test]
 fn next_from_before_a_jumps_to_a() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let NavSetup { mut ed, _guard, .. } = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[DIAG_A, DIAG_B],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 0);
 
     run(&mut ed, "goto-next-diagnostic");
@@ -124,13 +79,12 @@ fn next_from_before_a_jumps_to_a() {
 
 #[test]
 fn next_from_as_start_of_a_jumps_to_b_not_a() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let NavSetup { mut ed, _guard, .. } = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[DIAG_A, DIAG_B],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 3); // sitting exactly on A's start
 
     run(&mut ed, "goto-next-diagnostic");
@@ -144,13 +98,12 @@ fn next_from_as_start_of_a_jumps_to_b_not_a() {
 
 #[test]
 fn next_from_after_b_wraps_to_a() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let NavSetup { mut ed, _guard, .. } = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[DIAG_A, DIAG_B],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 11); // past both diagnostics
 
     run(&mut ed, "goto-next-diagnostic");
@@ -164,13 +117,12 @@ fn next_from_after_b_wraps_to_a() {
 
 #[test]
 fn prev_from_after_b_jumps_to_b() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let NavSetup { mut ed, _guard, .. } = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[DIAG_A, DIAG_B],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 11);
 
     run(&mut ed, "goto-prev-diagnostic");
@@ -184,13 +136,12 @@ fn prev_from_after_b_jumps_to_b() {
 
 #[test]
 fn prev_from_before_a_wraps_to_b() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let NavSetup { mut ed, _guard, .. } = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[DIAG_A, DIAG_B],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 0);
 
     run(&mut ed, "goto-prev-diagnostic");
@@ -204,9 +155,12 @@ fn prev_from_before_a_wraps_to_b() {
 
 #[test]
 fn empty_buffer_reports_no_diagnostics() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let NavSetup { mut ed, _guard, .. } = setup(&file_dir.path().join("main.rs"), tmp.path(), &[]);
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _root,
+        ..
+    } = setup(&[]);
     let before = state(&ed);
 
     run(&mut ed, "goto-next-diagnostic");
@@ -221,13 +175,12 @@ fn empty_buffer_reports_no_diagnostics() {
 
 #[test]
 fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let NavSetup { mut ed, _guard, .. } = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        &[DIAG_A, DIAG_B],
-    );
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -268,17 +221,20 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
 /// land clamped inside `other.rs`'s two short lines.
 #[test]
 fn enter_jumps_into_the_drawer_s_buffer_even_after_switching_away() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let main_file = file_dir.path().join("main.rs");
-    let NavSetup { mut ed, _guard, .. } = setup(&main_file, tmp.path(), &[DIAG_A, DIAG_B]);
+    let DiagSetup {
+        mut ed,
+        file,
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_B]);
     let main_bid = ed.focused_buffer_id();
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
     assert_eq!(drawer_rows(&ed).len(), 2, "sanity: both rows listed");
 
-    let other_file = file_dir.path().join("other.rs");
+    let other_file = file.with_file_name("other.rs");
     std::fs::write(&other_file, "xx\nyy\n").unwrap();
     ed.execute_typed("e", Some(other_file.to_str().unwrap()))
         .unwrap();
@@ -320,14 +276,14 @@ const DIAG_C: DiagFixture = ((2, 0), (2, 2), 1, "problem C");
 /// the open drawer showing the stale list.
 #[test]
 fn drawer_refreshes_rows_when_a_diagnostic_is_fixed() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    let NavSetup {
+    let DiagSetup {
         mut ed,
-        _guard,
+        file,
         sid,
-    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -348,14 +304,14 @@ fn drawer_refreshes_rows_when_a_diagnostic_is_fixed() {
 /// index. A plain index clamp would land on B here instead of C.
 #[test]
 fn drawer_keeps_selection_on_the_surviving_diagnostic() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    let NavSetup {
+    let DiagSetup {
         mut ed,
-        _guard,
+        file,
         sid,
-    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_C, DIAG_B]);
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_C, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -378,14 +334,14 @@ fn drawer_keeps_selection_on_the_surviving_diagnostic() {
 /// at that position (the next one) rather than tracking a stale index.
 #[test]
 fn drawer_moves_selection_to_next_when_the_selected_diagnostic_is_fixed() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    let NavSetup {
+    let DiagSetup {
         mut ed,
-        _guard,
+        file,
         sid,
-    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_C, DIAG_B]);
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_C, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -408,14 +364,14 @@ fn drawer_moves_selection_to_next_when_the_selected_diagnostic_is_fixed() {
 /// (or stale) list behind.
 #[test]
 fn drawer_closes_when_all_diagnostics_are_fixed() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    let NavSetup {
+    let DiagSetup {
         mut ed,
-        _guard,
+        file,
         sid,
-    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -438,10 +394,12 @@ fn drawer_closes_when_all_diagnostics_are_fixed() {
 /// `diagnostics-for-buffer` (which defaults to the floor) at open time.
 #[test]
 fn drawer_refreshes_rows_when_the_severity_floor_changes() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    let NavSetup { mut ed, _guard, .. } = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -479,10 +437,12 @@ fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
     use crate::editor::input_stack::DrawerLayer;
     use hume_engine::pipeline::RenderContext;
 
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    let NavSetup { mut ed, _guard, .. } = setup(&file, tmp.path(), &[DIAG_A, DIAG_C, DIAG_B]);
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _root,
+        ..
+    } = setup(&[DIAG_A, DIAG_C, DIAG_B]);
 
     // Populate `last_terminal_area` before opening the drawer: the scroll
     // clamp reads it to agree with what the engine will next paint (same
@@ -540,11 +500,13 @@ fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
 /// same as fixing the last diagnostic does.
 #[test]
 fn drawer_closes_when_the_severity_floor_hides_everything() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
     let warning_only: DiagFixture = ((1, 0), (1, 2), 2, "just a warning");
-    let NavSetup { mut ed, _guard, .. } = setup(&file, tmp.path(), &[warning_only]);
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _root,
+        ..
+    } = setup(&[warning_only]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -569,14 +531,14 @@ fn drawer_closes_when_the_severity_floor_hides_everything() {
 /// foreign rows alone instead of refreshing them.
 #[test]
 fn foreign_replace_kills_refresh_tracking() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    let NavSetup {
+    let DiagSetup {
         mut ed,
-        _guard,
+        file,
+        tmp,
         sid,
-    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+        _guard,
+        _root,
+    } = setup(&[DIAG_A, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -589,7 +551,7 @@ fn foreign_replace_kills_refresh_tracking() {
         &mut scripting,
         r#"(define-typed-command! "foreign" "" (lambda (pane)
              (show-drawer-list! pane (list "foreign") (lambda (idx tok) (void)))))"#,
-        tmp.path(),
+        &tmp,
     );
     ed.scripting = Some(scripting);
     type_cmd(&mut ed, ":foreign");

@@ -156,9 +156,6 @@ impl LanguageHost for ReadOnlyHost<'_> {
     fn has_grammar(&self, language: &str) -> bool {
         self.inner.borrow_mut().language().has_grammar(language)
     }
-    fn set_hook_triggers(&mut self, _source: String, _language: String, _chars: Vec<char>) {
-        self.refuse("set_hook_triggers");
-    }
 }
 
 impl SettingsHost for ReadOnlyHost<'_> {

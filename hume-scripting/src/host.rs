@@ -34,7 +34,7 @@ pub use diff::DiffHost;
 pub use edits::{EditHost, WireTextEdit};
 pub use events::EventHost;
 pub use language::LanguageHost;
-pub use lsp::{LocationDisplay, LspHost};
+pub use lsp::{LocationDisplay, LspHost, PositionParams, RangeParams, RangesParams};
 pub use output::OutputHost;
 pub use registers::RegisterHost;
 pub use settings::{LANGUAGE_OPTION, OptionValue, SettingsHost, language_option_value};

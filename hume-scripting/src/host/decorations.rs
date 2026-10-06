@@ -158,8 +158,9 @@ pub struct DiagnosticEntry {
     pub code: Option<String>,
     pub source: Option<String>,
     pub raw: Arc<serde_json::Value>,
-    /// The publishing server's negotiated encoding at ingest time. Tags
-    /// `raw`'s `JsonHandle` so a wire position inside it decodes correctly
-    /// even after the server that sent it has since restarted or detached.
+    /// The publishing server and its negotiated encoding at ingest time.
+    /// They tag `raw`'s `JsonHandle` so a wire position inside it decodes
+    /// correctly even after that server has restarted or detached.
+    pub server: crate::ServerRef,
     pub encoding: PositionEncoding,
 }

@@ -5,41 +5,87 @@ use std::sync::Arc;
 use hume_engine::pipeline::BufferId;
 use hume_rope::position_encoding::PositionEncoding;
 
+use hume_lsp::backend::ServerId;
+
 use super::token::HostToken;
-use crate::types::PaneHandle;
+use crate::builtins::ids::{DocPos, DocRange, ServerRef};
+use crate::types::{LspFeature, PaneHandle};
+
+/// A position request's params before encoding: the document URI and a
+/// position each server receives in its own encoding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PositionParams {
+    pub uri: String,
+    pub pos: DocPos,
+}
+
+/// [`PositionParams`] for one range.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RangeParams {
+    pub uri: String,
+    pub range: DocRange,
+}
+
+/// [`PositionParams`] for several ranges.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RangesParams {
+    pub uri: String,
+    pub ranges: Vec<DocRange>,
+}
 
 /// LSP server introspection, accessed through [`EditorHost::lsp`](super::EditorHost::lsp).
 pub trait LspHost {
-    /// The wire `ServerCapabilities` for `bid`'s attached server, or `None` if
-    /// `bid` has none attached, or the server hasn't finished its handshake
-    /// yet. `Arc`-wrapped so the `JsonHandle` `(lsp-capabilities …)` hands
-    /// Steel shares this allocation instead of a value rebuilt per call.
-    fn lsp_capabilities(&self, bid: BufferId) -> Option<Arc<serde_json::Value>>;
+    /// `server`'s wire `ServerCapabilities`, or `None` if it is no longer
+    /// running or has not finished its handshake. `Arc`-wrapped so the
+    /// `JsonHandle` `(lsp-capabilities …)` hands Steel shares this
+    /// allocation instead of a value rebuilt per call.
+    fn lsp_capabilities(&self, server: ServerId) -> Option<Arc<serde_json::Value>>;
 
-    /// One entry per running (language, root) server.
+    /// What `server` advertises for `feature`, or for the one capability
+    /// `method` needs: the provider's wire value (`true` or an options
+    /// object). `None` when it advertises none, `method` belongs to no
+    /// feature, or `server` is not running. Exactly one of `feature` and
+    /// `method` is `Some`.
+    fn lsp_capability(
+        &self,
+        server: ServerId,
+        feature: Option<LspFeature>,
+        method: Option<&str>,
+    ) -> Option<Arc<serde_json::Value>>;
+
+    /// The feature a standard request `method` belongs to (`textDocument/hover`
+    /// is `hover`'s), or `None` for any other method.
+    fn lsp_method_feature(&self, method: &str) -> Option<LspFeature>;
+
+    /// The servers attached to `bid`, in order. With neither `feature` nor
+    /// `method`, every attached server in any state; otherwise the servers
+    /// a request of that feature or method would go to now (running,
+    /// admitted by their list entry, advertising the capability). `Err` for
+    /// a closed buffer.
+    fn lsp_servers(
+        &self,
+        bid: BufferId,
+        feature: Option<LspFeature>,
+        method: Option<&str>,
+    ) -> Result<Vec<ServerRef>, String>;
+
+    /// One entry per running server instance.
     fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry>;
 
-    /// The registered language for the server attached to buffer `id`, or
-    /// `None` if `id` is unknown or has no attached server.
-    fn lsp_server_for_buffer(&self, id: BufferId) -> Option<String>;
+    /// Whether `name` is registered (not necessarily attached or running),
+    /// as of the last applied effect: the `lsp-server-registered?` builtin
+    /// overlays the ops queued in its own eval before falling back here.
+    fn lsp_server_registered(&self, name: &crate::types::ServerName) -> bool;
 
-    /// Whether `language` currently has a `register-lsp-server!` config
-    /// (registered, not necessarily attached/running). Used by the
-    /// `on-language-set` missing-server hint to distinguish "not installed"
-    /// from "still starting". Reports state *as of the last completed
-    /// drain*: the `lsp-registered-for-language?` builtin overlays this
-    /// with the `Effect::LspServerOp` entries queued this eval/init before
-    /// falling back here, so same-eval visibility is handled at the builtin
-    /// layer, not this trait method.
-    fn lsp_registered_for_language(&self, language: &str) -> bool;
+    /// The servers `language`'s buffers attach to, in order, each with the
+    /// feature filter its list entry gives it.
+    fn lsp_language_servers(&self, language: &str) -> Vec<crate::types::ListEntry>;
 
-    /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
-    /// params for the primary cursor head in `pane`'s own pane, in its
-    /// buffer's attached server's negotiated encoding. `Ok(None)` if the
-    /// buffer has no path or no attached server. `Err` (kind-B fail-fast)
-    /// when `pane` carries no pane, a closed one, or one that no longer
-    /// shows `pane`'s buffer.
-    fn lsp_position_params(&self, pane: PaneHandle) -> Result<Option<serde_json::Value>, String>;
+    /// The document URI and primary cursor head of `pane`'s own pane.
+    /// `Ok(None)` if the buffer has no path. `Err` (kind-B fail-fast) when
+    /// `pane` carries no pane, a closed one, or one that no longer shows
+    /// `pane`'s buffer.
+    fn lsp_position_params(&self, pane: PaneHandle) -> Result<Option<PositionParams>, String>;
 
     /// `(track-position! pane)`: remembers the primary cursor head in
     /// `pane`'s own pane, carried through every edit, and returns the token
@@ -51,8 +97,8 @@ pub trait LspHost {
     /// [`lsp_position_params`](Self::lsp_position_params) shape for where the
     /// tracked position is now. `None` for a released or unknown token, a
     /// closed buffer or one whose text was replaced, or a buffer with no
-    /// path or no attached server; never an error.
-    fn tracked_position_params(&self, token: HostToken) -> Option<serde_json::Value>;
+    /// path; never an error.
+    fn tracked_position_params(&self, token: HostToken) -> Option<PositionParams>;
 
     /// `(untrack-position! token)`: releases the position. A released or
     /// unknown token is a no-op.
@@ -63,27 +109,18 @@ pub trait LspHost {
     /// token is a no-op.
     fn keep_tracked_position(&mut self, token: HostToken);
 
-    /// Same as [`lsp_position_params`](Self::lsp_position_params) but a
-    /// `{"textDocument" {"uri"} "range" {"start" "end"}}` shape from the
-    /// primary selection alone.
-    fn lsp_primary_range_params(
-        &self,
-        pane: PaneHandle,
-    ) -> Result<Option<serde_json::Value>, String>;
+    /// Same as [`lsp_position_params`](Self::lsp_position_params) but the
+    /// range the primary selection covers.
+    fn lsp_primary_range_params(&self, pane: PaneHandle) -> Result<Option<RangeParams>, String>;
 
-    /// `{"textDocument" {"uri"} "ranges" [...]}`: one wire range per
-    /// *linewise* selection in `pane`'s own pane, coalescing any run of
-    /// selections that touch end-to-end into a single range (an LSP range
-    /// is naturally contiguous, so a touching run needs no splitting). A
-    /// non-linewise selection is skipped, not an error: `ranges` is simply
-    /// empty when none of the selections are linewise. `Ok(None)` (as
-    /// opposed to an empty `ranges`) only for the same reason
-    /// `lsp_primary_range_params` returns `Ok(None)`: no path or no attached
-    /// server. `Err` per [`lsp_position_params`](Self::lsp_position_params).
-    fn lsp_linewise_ranges_params(
-        &self,
-        pane: PaneHandle,
-    ) -> Result<Option<serde_json::Value>, String>;
+    /// One range per *linewise* selection in `pane`'s own pane, coalescing
+    /// any run of selections that touch end-to-end into a single range (an
+    /// LSP range is naturally contiguous, so a touching run needs no
+    /// splitting). A non-linewise selection is skipped, not an error:
+    /// `ranges` is empty when none of the selections are linewise.
+    /// `Ok(None)` (as opposed to an empty `ranges`) only for a buffer with
+    /// no path. `Err` per [`lsp_position_params`](Self::lsp_position_params).
+    fn lsp_linewise_ranges_params(&self, pane: PaneHandle) -> Result<Option<RangesParams>, String>;
 
     /// A [`WirePos`](hume_rope::position_encoding::WirePos) → char offset,
     /// decoded in `encoding`. Backs `lsp-range->offsets`. `encoding` comes
@@ -147,6 +184,9 @@ pub trait LspHost {
     /// is the one sanctioned exception to "never render a wire unit
     /// directly".
     ///
+    /// Rows naming the same path, line and column are one row, the first:
+    /// several servers answering one request often name the same place.
+    ///
     /// The path and line ride along with the column because all three come
     /// from one decode: reading `range.start.line` a second time in Scheme
     /// to render the row prefix is how a row ends up naming a position that
@@ -174,7 +214,7 @@ pub trait LspHost {
 
 /// One `lsp-locations->display-parts` result row. See
 /// [`LspHost::lsp_locations_display_parts`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct LocationDisplay {
     /// The URI's decoded display path (`hume_lsp::uri::uri_to_display_string`).
     pub path: String,
@@ -192,4 +232,6 @@ pub struct LocationDisplay {
     /// The open buffer the location's target is, or `None` when the file is
     /// not open.
     pub buffer: Option<BufferId>,
+    /// The location the row was decoded from, for `goto-location!`.
+    pub location: crate::json::JsonHandle,
 }

@@ -5,14 +5,12 @@
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::*;
-use crate::editor::lsp::LspState;
+use crate::editor::tests::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec};
 use hume_engine::pipeline::RenderContext;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::test_util::RecordingLspBackend;
 use hume_scripting::ScriptingHost;
 use hume_scripting::attribution::PluginId;
 
@@ -38,30 +36,22 @@ const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin! "core:stdlib")
                "lsp-rename" "lsp-fmt" "lsp-code-actions")
   #:typed-commands '("diagnostics"))"#;
 
-/// Declares `core:lsp` lazily
-/// (`declare_src`, normally `DECLARE_LSP`) instead of `(load-plugin!
-/// "core:lsp")`: `declare-plugin!` registers the `Lazy` stub directly via
-/// `CommandHost::register_lazy_command` as `eval_with_real_host` runs, so a
-/// `:`-command dispatch can trigger activation with no separate
-/// stub-registration step, combined with the real-runtime staging every
-/// other F-card test uses.
+/// Declares `core:lsp` lazily (`declare_src`, normally `DECLARE_LSP`)
+/// instead of `(load-plugin! "core:lsp")`: `declare-plugin!` registers the
+/// `Lazy` stub directly via `CommandHost::register_lazy_command` as the
+/// rig's init runs, so a `:`-command dispatch can trigger activation with no
+/// separate stub-registration step.
 ///
-/// The handshake below (draining the backend's `initialize` response and
-/// dispatching `BecameRunning`) fires `on-lsp-attach` *before* `ed.scripting`
-/// is even assigned. That's fine: `queue_event` only pushes onto
-/// `state.config.pending_work`, which lives on `Editor::state` independent of
-/// `scripting`, so the queued hook survives host installation and is still
-/// there for a later `ed.settle()` to process against the real host.
+/// The rig's drain completes the handshake, which queues `on-lsp-attach` on
+/// `state.config.pending_work` without processing it: the hook is still
+/// pending when this returns, for a later `ed.settle()` to fire.
 fn setup_declared(
-    file_dir: &Path,
     tmp: &Path,
     declare_src: &str,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+    configure: impl FnOnce(&mut RecordingLspBackend),
 ) -> (Editor, RealRuntimeGuard) {
     let guard = RealRuntimeGuard::new();
 
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    let file = file_dir.join("main.rs");
     // 30 lines: comfortably taller than the default pane height's ⅓-cap
     // (see lsp_hover.rs's `setup` for the full rationale): a 1-2 line
     // fixture makes even trivial hover content overflow to the drawer once
@@ -71,39 +61,18 @@ fn setup_declared(
         .map(|i| format!("// line {i}"))
         .collect::<Vec<_>>()
         .join("\n");
-    std::fs::write(&file, format!("fn main() {{}}\n{filler}\n")).unwrap();
+    let marked = format!("-[f]>n main() {{}}\n{filler}\n");
 
-    let mut backend = InlineLspBackend::new();
+    let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to(
         "initialize",
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
     );
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
+    configure(&mut backend);
+    let init = format!("{declare_src}\n{RUST_ANALYZER}");
+    let rig = LspRig::drained(tmp, RigSpec::rust(&marked).with_init(&init), backend);
 
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(&mut ed, &mut host, declare_src, tmp);
-    ed.scripting = Some(host);
-
-    (ed, guard)
+    (rig.ed, guard)
 }
 
 fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
@@ -120,8 +89,7 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
 #[test]
 fn declared_but_undispatched_plugin_is_declared_not_loaded() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (ed, _guard) = setup_declared(file_dir.path(), tmp.path(), DECLARE_LSP, |backend, _sid| {
+    let (ed, _guard) = setup_declared(tmp.path(), DECLARE_LSP, |backend| {
         backend.respond_to(
             "textDocument/hover",
             serde_json::json!({"contents": {"kind": "plaintext", "value": "fn main()"}}),
@@ -149,14 +117,12 @@ fn declared_but_undispatched_plugin_is_declared_not_loaded() {
 #[test]
 fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) =
-        setup_declared(file_dir.path(), tmp.path(), DECLARE_LSP, |backend, _sid| {
-            backend.respond_to(
-                "textDocument/hover",
-                serde_json::json!({"contents": {"kind": "plaintext", "value": "fn main()"}}),
-            );
-        });
+    let (mut ed, _guard) = setup_declared(tmp.path(), DECLARE_LSP, |backend| {
+        backend.respond_to(
+            "textDocument/hover",
+            serde_json::json!({"contents": {"kind": "plaintext", "value": "fn main()"}}),
+        );
+    });
 
     // Activation runs synchronously inside the command dispatch that hits
     // the lazy stub (`activate_lazy_plugin`, called from the same dispatch
@@ -203,13 +169,7 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
 #[test]
 fn attach_event_alone_activates_the_declared_plugin() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup_declared(
-        file_dir.path(),
-        tmp.path(),
-        DECLARE_LSP,
-        |_backend, _sid| {},
-    );
+    let (mut ed, _guard) = setup_declared(tmp.path(), DECLARE_LSP, |_backend| {});
 
     let id = PluginId::parse("core:lsp").unwrap();
     assert_eq!(
@@ -241,13 +201,7 @@ fn attach_event_alone_activates_the_declared_plugin() {
 #[test]
 fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup_declared(
-        file_dir.path(),
-        tmp.path(),
-        DECLARE_LSP_WRONG_EVENT,
-        |_backend, _sid| {},
-    );
+    let (mut ed, _guard) = setup_declared(tmp.path(), DECLARE_LSP_WRONG_EVENT, |_backend| {});
 
     ed.settle();
 

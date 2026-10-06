@@ -168,19 +168,22 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 /// unrelated drain.
 ///
 /// The rollback in `SteelCtx::pop_effect_marks` is what keeps
-/// `config_command_for_test("rust")` at `None`.
+/// `registered_command_for_test("rust-analyzer")` at `None`.
 #[test]
 fn failed_activation_does_not_leave_a_queued_lsp_registration() {
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
-        r#"(register-lsp-server! "rust" #:command "rust-analyzer")
+        r#"(register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
            (error "intentional mid-body error")"#,
     );
 
     type_cmd(&mut ed, ":bar");
 
     assert!(
-        ed.lsp.config_command_for_test("rust").is_none(),
+        ed.state
+            .lsp
+            .registered_command_for_test("rust-analyzer")
+            .is_none(),
         "a failed activation must not leave its queued register-lsp-server! applied"
     );
 }
@@ -193,7 +196,7 @@ fn failed_activation_does_not_leave_a_queued_lsp_registration() {
 fn lazy_plugin_defined_language_is_registered_on_activation() {
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
-        r#"(%define-language! "foo" '() '() '() #f)
+        r#"(%define-language! "foo" '() '() '() #f '())
            (define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 

@@ -1,5 +1,6 @@
 use super::*;
 use crate::inline::InlineLspBackend;
+use lsp_types::ServerCapabilities;
 use std::path::PathBuf;
 
 fn canned_result(encoding: Option<PositionEncodingKind>) -> serde_json::Value {
@@ -143,7 +144,7 @@ fn handshake_round_trip_transitions_to_running() {
     let actions = client.on_event(ev);
 
     assert_eq!(client.state, ServerState::Running);
-    assert!(client.caps.is_some());
+    assert!(client.capabilities_json().is_some());
     match &actions[..] {
         [ClientAction::BecameRunning { send }] => {
             assert_eq!(send.len(), 1);
@@ -757,6 +758,43 @@ fn eof_transitions_to_crashed_and_further_sends_do_not_panic() {
 /// the caller waiting out the deadline it asked for (routinely tens of
 /// seconds) for a request that was doomed the moment it was sent.
 #[test]
+fn drain_pending_completes_every_request_as_stopped() {
+    let mut backend = InlineLspBackend::new();
+    let sid = backend
+        .start("x", &[], std::path::Path::new("."), &[])
+        .unwrap();
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let meta = || RequestMeta {
+        method: "textDocument/hover".to_string(),
+        deadline: Instant::now() + std::time::Duration::from_secs(30),
+    };
+    let first = client.send_request(
+        &mut backend,
+        "textDocument/hover",
+        serde_json::Value::Null,
+        meta(),
+    );
+    let second = client.send_request(
+        &mut backend,
+        "textDocument/hover",
+        serde_json::Value::Null,
+        meta(),
+    );
+
+    let mut drained = client.drain_pending();
+    drained.sort_by_key(|(id, ..)| format!("{id:?}"));
+
+    let ids: Vec<_> = drained.iter().map(|(id, ..)| id.clone()).collect();
+    assert!(ids.contains(&first) && ids.contains(&second));
+    assert!(
+        drained
+            .iter()
+            .all(|(_, _, outcome)| matches!(outcome, Outcome::Stopped)),
+        "{drained:?}"
+    );
+}
+
+#[test]
 fn send_request_after_crashed_times_out_immediately_via_the_sweep() {
     let mut backend = InlineLspBackend::new();
     let sid = backend
@@ -1214,6 +1252,94 @@ fn publish_diagnostics_notification_classifies_as_typed_diagnostics() {
             assert!(p.diagnostics.is_empty());
         }
         other => panic!("expected one Diagnostics action, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_diagnostics_hands_back_each_wire_diagnostic_verbatim() {
+    let (mut backend, mut client) = make_running_client();
+    let wire = serde_json::json!({
+        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
+        "message": "boom",
+        "x-ext": {"keep": true},
+        "data": {"fix": 7},
+    });
+    backend.push_from_server(
+        client.id,
+        Message::Notification {
+            method: "textDocument/publishDiagnostics".to_string(),
+            params: serde_json::json!({"uri": "file:///a", "diagnostics": [wire.clone()]}),
+        },
+    );
+    let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+    match &client.on_event(ev)[..] {
+        [ClientAction::Diagnostics(published)] => {
+            assert_eq!(published.diagnostics.len(), 1);
+            assert_eq!(published.diagnostics[0].raw, wire);
+        }
+        other => panic!("expected one Diagnostics action, got {other:?}"),
+    }
+}
+
+fn diagnostic_wire(message: &str) -> serde_json::Value {
+    serde_json::json!({
+        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
+        "message": message,
+    })
+}
+
+#[test]
+fn publish_diagnostics_skips_a_diagnostic_that_does_not_parse() {
+    let (mut backend, mut client) = make_running_client();
+    let (first, last) = (diagnostic_wire("first"), diagnostic_wire("last"));
+    let mut bad = diagnostic_wire("bad");
+    bad["severity"] = serde_json::json!("loud");
+    backend.push_from_server(
+        client.id,
+        Message::Notification {
+            method: "textDocument/publishDiagnostics".to_string(),
+            params: serde_json::json!({
+                "uri": "file:///a",
+                "diagnostics": [first.clone(), bad, last.clone()],
+            }),
+        },
+    );
+    let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+    match &client.on_event(ev)[..] {
+        [ClientAction::Diagnostics(published)] => {
+            let kept: Vec<_> = published.diagnostics.iter().map(|d| &d.raw).collect();
+            assert_eq!(kept, [&first, &last]);
+            assert_eq!(published.skipped.len(), 1);
+        }
+        other => panic!("expected one Diagnostics action, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_whose_every_diagnostic_does_not_parse_falls_through() {
+    let (mut backend, mut client) = make_running_client();
+    let mut bad = diagnostic_wire("bad");
+    bad["severity"] = serde_json::json!("loud");
+    let params = serde_json::json!({"uri": "file:///a", "diagnostics": [bad]});
+    backend.push_from_server(
+        client.id,
+        Message::Notification {
+            method: "textDocument/publishDiagnostics".to_string(),
+            params: params.clone(),
+        },
+    );
+    let (_sid, ev) = backend.drain().into_iter().next().unwrap();
+    match &client.on_event(ev)[..] {
+        [
+            ClientAction::ServerNotification {
+                method,
+                params: got,
+            },
+        ] => {
+            assert_eq!(method, "textDocument/publishDiagnostics");
+            assert_eq!(got, &params);
+        }
+        other => panic!("expected fallthrough ServerNotification, got {other:?}"),
     }
 }
 

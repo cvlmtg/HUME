@@ -7,83 +7,35 @@
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
+use hume_lsp::backend::ServerId;
+use hume_lsp::test_util::RecordingLspBackend;
 
-/// Writes the fixture file up front and returns its `file://` URI. Callers
-/// need the URI *before* `setup` to build their scripted `Location`
-/// response, since `configure` must run before the backend is boxed into
-/// `LspState` (trait-erased afterward, per `lsp_hover.rs`).
-fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
-    let file = file_dir.join("main.rs");
-    std::fs::write(&file, "fn main() {\n    foo();\n}\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical)
-        .unwrap()
-        .as_str()
-        .to_string();
-    (file, uri)
-}
+/// Three lines, so a `Location` can point at a different line for the
+/// jump-back test.
+const FIXTURE: &str = "fn main() {\n    foo();\n}\n";
 
-/// A real opened file (three lines, so
-/// a `Location` can point at a different line for the jump-back test),
-/// driven handshake (so `lsp-capabilities` decodes), the real `core:lsp`
-/// plugin loaded in place.
+/// A [`core_lsp_rig`] over `content` (cursor at its start), its server
+/// providing every goto method, with a driven handshake so
+/// `lsp-capabilities` decodes.
 fn setup(
-    file: &Path,
     tmp: &Path,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+    content: &str,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, ServerId) {
-    let guard = RealRuntimeGuard::new();
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to(
-        "initialize",
+    let (rig, guard) = core_lsp_rig(
+        tmp,
+        &marked_at_start(content),
         serde_json::json!({"capabilities": {
             "definitionProvider": true, "declarationProvider": true,
             "typeDefinitionProvider": true, "implementationProvider": true
         }}),
+        configure,
     );
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
-        tmp,
-    );
-    ed.scripting = Some(host);
-
-    (ed, guard, sid)
+    let sid = rig.sid("rust-analyzer");
+    (rig.ed, guard, sid)
 }
 
 /// `cmd` carries a leading `:` for caller readability (`":lsp-goto-definition"`)
@@ -118,9 +70,7 @@ fn location_link(uri: &str, line: u64, character: u64) -> serde_json::Value {
 #[test]
 fn null_result_reports_no_definition_found() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to("textDocument/definition", serde_json::Value::Null);
     });
 
@@ -136,9 +86,8 @@ fn null_result_reports_no_definition_found() {
 #[test]
 fn single_location_hashmap_jumps_directly() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&uri, 1, 4));
     });
 
@@ -161,17 +110,9 @@ fn wire_target_inside_a_combining_sequence_snaps_to_the_clusters_start() {
     // *inside* the cluster: between its base character and its combining
     // mark. The day-one grapheme invariant says a cursor may never sit
     // there.
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    std::fs::write(&file, "e\u{0301}\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical)
-        .unwrap()
-        .as_str()
-        .to_string();
-
     let tmp = safe_tempdir();
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), "e\u{0301}\n", |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&uri, 0, 1));
     });
 
@@ -187,9 +128,8 @@ fn wire_target_inside_a_combining_sequence_snaps_to_the_clusters_start() {
 #[test]
 fn single_element_array_jumps_directly() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
             "textDocument/definition",
             serde_json::json!([loc(&uri, 1, 4)]),
@@ -211,9 +151,8 @@ fn single_element_array_jumps_directly() {
 #[test]
 fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
             "textDocument/definition",
             serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4), loc(&uri, 2, 0)]),
@@ -252,10 +191,9 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
 #[test]
 fn windows_drive_letter_uri_displays_without_leading_slash() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
+    let uri = rust_rig_uri(tmp.path());
     let win_uri = "file:///C:/Users/x/main.rs";
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
             "textDocument/definition",
             serde_json::json!([loc(&uri, 0, 0), loc(win_uri, 1, 0)]),
@@ -282,9 +220,8 @@ fn windows_drive_letter_uri_displays_without_leading_slash() {
 #[test]
 fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
             "textDocument/definition",
             serde_json::json!([
@@ -323,9 +260,8 @@ fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
 #[test]
 fn location_link_array_prefers_target_selection_range() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
             "textDocument/definition",
             serde_json::json!([location_link(&uri, 1, 4)]),
@@ -346,9 +282,8 @@ fn location_link_array_prefers_target_selection_range() {
 #[test]
 fn jump_back_returns_to_the_origin_after_a_jump() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&uri, 1, 4));
     });
     let before = state(&ed);
@@ -381,9 +316,7 @@ fn jump_back_returns_to_the_origin_after_a_jump() {
 #[test]
 fn goto_to_an_unopened_file_detects_its_language() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
-    let other_file = file_dir.path().join("other.rs");
+    let other_file = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other_file, "fn other() {}\n").unwrap();
     let other_canonical = std::fs::canonicalize(&other_file).unwrap();
     let other_uri = hume_lsp::uri::path_to_uri(&other_canonical)
@@ -391,19 +324,9 @@ fn goto_to_an_unopened_file_detects_its_language() {
         .as_str()
         .to_string();
 
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), move |backend, _sid| {
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, move |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&other_uri, 0, 3));
     });
-    ed.state
-        .config
-        .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None);
-    ed.state
-        .config
-        .languages
-        .rebuild_glob_set()
-        .expect("rebuild ok");
-
     run_goto(&mut ed, ":lsp-goto-definition");
 
     let bid = ed
@@ -436,56 +359,18 @@ fn goto_to_an_unopened_file_detects_its_language() {
 #[test]
 fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    std::fs::write(&file, "fn main() {\nlet \u{3c0} = 1;\n}\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical)
-        .unwrap()
-        .as_str()
-        .to_string();
-
-    let guard = RealRuntimeGuard::new();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to(
-        "initialize",
+    let uri = rust_rig_uri(tmp.path());
+    let (rig, guard) = core_lsp_rig(
+        tmp.path(),
+        "-[f]>n main() {\nlet \u{3c0} = 1;\n}\n",
         serde_json::json!({"capabilities": {
             "definitionProvider": true,
             "positionEncoding": "utf-8"
         }}),
+        |backend, _sid| backend.respond_to("textDocument/definition", loc(&uri, 1, 7)),
     );
-    backend.respond_to("textDocument/definition", loc(&uri, 1, 7));
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid_a = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid_a).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
+    let bid_a = rig.bid;
+    let mut ed = rig.ed;
 
     // Send the request from `main.rs` (`bid_a`, UTF-8 server). Dispatches
     // synchronously, so the request has already left with `bid_a` captured
@@ -497,8 +382,9 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
     ed.execute_keymap_command("lsp-goto-definition".into(), Some(1), false);
 
     // Switch focus to an unrelated, server-less buffer *before* the
-    // response arrives. This is the race window.
-    let other = file_dir.path().join("other.rs");
+    // response arrives. This is the race window. The rig registers
+    // a server for `rust` buffers only, so none attaches to a `.txt` one.
+    let other = rig_root(tmp.path()).join("other.txt");
     std::fs::write(&other, "\n").unwrap();
     ed.execute_typed("e", Some(other.to_str().unwrap()))
         .unwrap();
@@ -537,9 +423,8 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
 #[test]
 fn multi_element_response_after_a_buffer_switch_opens_the_drawer() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
             "textDocument/definition",
             serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4), loc(&uri, 2, 0)]),
@@ -547,7 +432,7 @@ fn multi_element_response_after_a_buffer_switch_opens_the_drawer() {
     });
 
     ed.execute_keymap_command("lsp-goto-definition".into(), Some(1), false);
-    let other = file_dir.path().join("other.rs");
+    let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();
     ed.execute_typed("e", Some(other.to_str().unwrap()))
         .unwrap();
@@ -563,13 +448,11 @@ fn multi_element_response_after_a_buffer_switch_opens_the_drawer() {
 #[test]
 fn goto_target_is_directory_errors_without_moving_the_cursor() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
     let dir_uri = hume_lsp::uri::path_to_uri(&std::fs::canonicalize(tmp.path()).unwrap())
         .unwrap()
         .as_str()
         .to_string();
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&dir_uri, 0, 0));
     });
     let before = state(&ed);
@@ -592,11 +475,9 @@ fn goto_target_is_directory_errors_without_moving_the_cursor() {
 #[test]
 fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
-    let missing = file_dir.path().join("not_yet_created.rs");
+    let missing = rig_root(tmp.path()).join("not_yet_created.rs");
     let missing_uri = format!("file://{}", missing.display());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&missing_uri, 0, 0));
     });
     let start_bid = ed.focused_buffer_id();
@@ -619,16 +500,15 @@ fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
     );
 }
 
-/// The same malformed-location rule `lsp-locations->display-parts` enforces
-/// applies to `goto-location!` too, through the shared
-/// `hume_lsp::location::decode_location`: a `Location` missing `range` must
-/// error rather than silently jumping to line 0.
+/// A `Location` missing `range` errors rather than jumping to line 0: the
+/// goto answer is decoded into rows (`lsp-locations->display-parts`) through
+/// the same `hume_lsp::location::decode_location` `goto-location!` uses, so
+/// the error comes from that decode.
 #[test]
 fn location_missing_range_errors_instead_of_jumping() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to("textDocument/definition", serde_json::json!({"uri": uri}));
     });
     let before = state(&ed);
@@ -642,7 +522,7 @@ fn location_missing_range_errors_instead_of_jumping() {
     );
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
-        msg.contains("goto-location!") && msg.contains("missing range"),
+        msg.contains("lsp-locations->display-parts") && msg.contains("missing range"),
         "expected an error naming the builtin and the missing field, got {msg:?}"
     );
 }
@@ -659,9 +539,8 @@ fn each_command_sends_its_own_method() {
         ("lsp-goto-implementation", "textDocument/implementation"),
     ] {
         let tmp = safe_tempdir();
-        let file_dir = safe_tempdir();
-        let (file, uri) = write_fixture_file(file_dir.path());
-        let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        let uri = rust_rig_uri(tmp.path());
+        let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
             backend.respond_to(method, loc(&uri, 1, 4));
         });
 
@@ -690,9 +569,7 @@ fn each_command_sends_its_own_method() {
 #[test]
 fn goto_into_another_file_raises_exactly_one_on_buffer_enter() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
-    let other_file = file_dir.path().join("other.rs");
+    let other_file = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other_file, "fn other() {}\n").unwrap();
     let other_canonical = std::fs::canonicalize(&other_file).unwrap();
     let other_uri = hume_lsp::uri::path_to_uri(&other_canonical)
@@ -700,7 +577,7 @@ fn goto_into_another_file_raises_exactly_one_on_buffer_enter() {
         .as_str()
         .to_string();
 
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), move |backend, _sid| {
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, move |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&other_uri, 0, 3));
     });
 
@@ -747,9 +624,8 @@ fn goto_into_another_file_raises_exactly_one_on_buffer_enter() {
 #[test]
 fn a_malformed_multi_location_reply_releases_the_tracked_position() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
             "textDocument/definition",
             serde_json::json!([loc(&uri, 0, 0), {"uri": uri}]),
@@ -766,9 +642,8 @@ fn a_malformed_multi_location_reply_releases_the_tracked_position() {
 #[test]
 fn a_reply_dropped_as_stale_releases_the_tracked_position() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
             "textDocument/definition",
             serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4)]),
@@ -789,9 +664,8 @@ fn a_reply_dropped_as_stale_releases_the_tracked_position() {
 #[test]
 fn an_opened_drawer_keeps_the_tracked_position() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
             "textDocument/definition",
             serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4)]),
@@ -809,9 +683,8 @@ fn an_opened_drawer_keeps_the_tracked_position() {
 #[test]
 fn a_second_list_keeps_its_session_when_the_replaced_drawer_closes() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         for _ in 0..2 {
             backend.respond_to(
                 "textDocument/definition",
@@ -825,4 +698,28 @@ fn a_second_list_keeps_its_session_when_the_replaced_drawer_closes() {
 
     assert_eq!(drawer_rows(&ed).len(), 2);
     assert_eq!(ed.state.panes.tracked.len(), 1);
+}
+
+/// A buffer with no path has no document to ask about: the command reports
+/// it, sends nothing and tracks no position.
+#[test]
+fn buffer_with_no_path_reports_and_tracks_nothing() {
+    let tmp = safe_tempdir();
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
+        backend.respond_to(
+            "textDocument/definition",
+            serde_json::json!([loc(&uri, 0, 0)]),
+        );
+    });
+    ed.doc_mut().set_path(None);
+
+    run_goto(&mut ed, ":lsp-goto-definition");
+
+    assert_eq!(ed.state.panes.tracked.len(), 0);
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("no file"),
+        "expected a no-file message, got {msg:?}"
+    );
 }

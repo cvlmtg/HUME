@@ -121,7 +121,12 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
             "lsp-request!",
             r#"(lsp-request! (focused-pane) "m" (hash) (lambda (e r) (begin)))"#,
         ),
+        (
+            "lsp-request-all!",
+            r#"(lsp-request-all! (focused-pane) "m" (hash) (lambda (e r) (begin)))"#,
+        ),
         ("lsp-notify!", r#"(lsp-notify! (focused-pane) "m" (hash))"#),
+        ("lsp-servers", "(lsp-servers (focused-pane))"),
         (
             "lsp-position->offset",
             r#"(lsp-position->offset (focused-pane) (hash "line" 0 "character" 0))"#,
@@ -217,7 +222,7 @@ fn lsp_stop_and_restart_reject_false_target_through_real_registration() {
             .err()
             .unwrap_or_else(|| panic!("{expr} must raise on a #f target, got Ok"));
         assert!(
-            err.message.contains("expected a pane or a language name"),
+            err.message.contains("expected a pane or a server name"),
             "{expr}: got {err:?}"
         );
     }

@@ -17,7 +17,6 @@ use crate::editor::buffer::store::BufferStore;
 use crate::editor::commands::CommandPane;
 use crate::editor::event::EditorEvent;
 use crate::editor::jump_list::{JumpRule, with_jump};
-use crate::editor::lsp::LspState;
 use crate::editor::pane_state;
 use crate::editor::position_stores::PositionStores;
 
@@ -226,11 +225,7 @@ pub(in crate::editor) fn close_buffer(
 /// Unlike buffer open, none of this needs Steel eval (`didClose` is pure
 /// protocol, diagnostics/decorations are plain state), so, unlike
 /// `open_buffer_and_notify`, this runs identically from both paths, no
-/// deferred effect needed. `lsp` is `Option` to mirror `EditorHostImpl.lsp`'s
-/// own `Option<&mut LspState>` shape: when `None`, the LSP side effects are
-/// skipped rather than panicking, though in practice this is never observed
-/// because `close-buffer!` is command-gated, and command dispatch always supplies
-/// `Some`.
+/// deferred effect needed.
 ///
 /// `OnBufferClose` is queued only when `id`'s `OnBufferOpen` already fired
 /// (`!open_hook_pending`): hooks announce as a pair or not at all. A buffer
@@ -240,14 +235,11 @@ pub(in crate::editor) fn close_buffer(
 pub(in crate::editor) fn close_buffer_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
-    lsp: Option<&mut LspState>,
     id: BufferId,
 ) {
-    if let Some(lsp) = lsp {
-        // Must run before the slot is freed below: needs the buffer's path
-        // and lsp_server to build the didClose notification.
-        crate::editor::lsp::sync::lsp_did_close(state, lsp, id);
-    }
+    // Must run before the slot is freed below: `didClose` names the
+    // buffer's URI.
+    state.lsp_buffer_closing(ev, id);
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = !state.buffers.get(id).open_hook_pending;
     let opened = close_buffer(state, ev, id);

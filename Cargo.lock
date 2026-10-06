@@ -924,6 +924,7 @@ version = "0.14.0"
 dependencies = [
  "hume-editing",
  "hume-engine",
+ "hume-lsp",
  "hume-ops",
  "hume-platform",
  "hume-rope",

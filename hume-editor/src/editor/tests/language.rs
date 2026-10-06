@@ -20,7 +20,7 @@ fn register_rust(ed: &mut Editor, name: &str, exts: &[&str]) {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild(name, exts, &[], &[], None);
+        .register_identity_no_rebuild(name, exts, &[], &[], None, &[]);
     ed.state
         .config
         .languages
@@ -125,7 +125,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("notes", &[], &[], &[], None);
+        .register_identity_no_rebuild("notes", &[], &[], &[], None, &[]);
     ed.state
         .config
         .languages

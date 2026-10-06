@@ -1,36 +1,27 @@
 use super::*;
-use std::path::Path;
 
-use super::super::lsp_bridge::{OrderedLogBackend, setup_with, setup_with_recording};
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::{LspClient, ServerState};
-use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
+use super::super::lsp_bridge::{OrderedLogBackend, bridge_initialize_result};
 
 /// Two `#:supersede "k"` requests queued in the same command dispatch (so
 /// both flush in one batch, the first still pending when the second sends):
 /// the second must cancel the first: exactly one `$/cancelRequest` on the
 /// wire, the first callback never fires, the second does, and neither the
-/// callback nor the supersede-key entry leaks.
+/// callback nor its delivery leaks.
 #[test]
 fn supersede_cancels_the_prior_request_under_the_same_key() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    let (_sid, notifications, _requests) = setup_with_recording(&mut ed, |b, _sid| {
-        b.respond_to(
-            "textDocument/completion",
-            serde_json::json!({"marker": "A"}),
-        );
-        b.respond_to(
-            "textDocument/completion",
-            serde_json::json!({"marker": "B"}),
-        );
-    });
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
+    let (mut b, _, _) = RecordingLspBackend::new();
+    b.respond_to("initialize", bridge_initialize_result());
+    b.respond_to(
+        "textDocument/completion",
+        serde_json::json!({"marker": "A"}),
+    );
+    b.respond_to(
+        "textDocument/completion",
+        serde_json::json!({"marker": "B"}),
+    );
+    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[a]>bcdef\n"), b);
+    rig.eval(
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
              (lsp-request! bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
@@ -38,11 +29,11 @@ fn supersede_cancels_the_prior_request_under_the_same_key() {
              (lsp-request! bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
                #:supersede "k")))"#,
-        tmp.path(),
     );
-    ed.scripting = Some(host);
+    let sid = rig.sid("rust-analyzer");
+    let ed = &mut rig.ed;
 
-    type_cmd(&mut ed, ":test-cmd");
+    type_cmd(ed, ":test-cmd");
     ed.drain_lsp();
     ed.settle();
 
@@ -56,52 +47,39 @@ fn supersede_cancels_the_prior_request_under_the_same_key() {
         "the superseding request's callback must fire: {log:?}"
     );
 
-    let cancels: Vec<_> = notifications
-        .borrow()
-        .iter()
-        .filter(|(method, _)| method == "$/cancelRequest")
-        .cloned()
-        .collect();
+    let cancels = rig.sent(sid, "$/cancelRequest");
+    // Id 1 is `initialize`, so the superseded request is id 2.
     assert_eq!(
-        cancels.len(),
-        1,
-        "expected exactly one $/cancelRequest, got: {cancels:?}"
+        cancels,
+        vec![serde_json::json!({"id": 2})],
+        "expected exactly one $/cancelRequest, for the superseded request"
     );
-    assert_eq!(cancels[0].1, serde_json::json!({"id": 1}));
 
     assert_eq!(
-        ed.lsp.callback_count_for_test(),
+        rig.ed.state.lsp.callback_count_for_test(),
         0,
         "the superseded request's callback must not leak"
     );
     assert_eq!(
-        ed.lsp.supersede_count_for_test(),
+        rig.ed.state.lsp.delivery_count_for_test(),
         0,
-        "the supersede-key entry must be cleared once its request completes"
+        "the superseded request's delivery must not leak"
     );
 }
 
-/// Opens a real file (so `Buffer.path()` is `Some(canonical)`), wires a
-/// scripted server, and attaches the newly-opened buffer to it. Returns the
-/// buffer id and the `file://` URI a request's `textDocument.uri` must use
-/// to hit the staleness check against this buffer.
-fn setup_with_real_file(
-    ed: &mut Editor,
-    file_dir: &Path,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
-) -> (hume_engine::pipeline::BufferId, String) {
-    let file = file_dir.join("main.rs");
-    std::fs::write(&file, "abcdef\n").unwrap();
-    let sid = setup_with(ed, configure);
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical)
-        .unwrap()
-        .as_str()
-        .to_string();
-    (bid, uri)
+/// A rig over a real file (so `Buffer.path()` is `Some(canonical)`) whose
+/// running server answers one `textDocument/hover`, with `source(uri)`
+/// evaluated in its host: `uri` is the `file://` URI a request's
+/// `textDocument.uri` must use to hit the staleness check against the
+/// rig's buffer.
+fn setup_with_real_file(tmp: &std::path::Path, source: impl FnOnce(&str) -> String) -> Editor {
+    let (mut b, _, _) = RecordingLspBackend::new();
+    b.respond_to("initialize", bridge_initialize_result());
+    b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
+    let mut rig = LspRig::drained(tmp, RigSpec::rust("-[a]>bcdef\n"), b);
+    let uri = rig.uri();
+    rig.eval(&source(&uri));
+    rig.ed
 }
 
 /// Same setup as the two staleness tests below, but with no intervening
@@ -110,24 +88,13 @@ fn setup_with_real_file(
 #[test]
 fn callback_fires_normally_without_an_intervening_edit() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let mut ed = editor_from("-[x]>\n");
-    let (_bid, uri) = setup_with_real_file(&mut ed, file_dir.path(), |b, _sid| {
-        b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
-    });
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        &format!(
+    let mut ed = setup_with_real_file(tmp.path(), |uri| {
+        format!(
             r#"(define-typed-command! "test-cmd" "" (lambda (bid)
                  (lsp-request! bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
                    (call! "move-right" bid)))))"#
-        ),
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
+        )
+    });
 
     let before = state(&ed);
     type_cmd(&mut ed, ":test-cmd");
@@ -144,24 +111,13 @@ fn callback_fires_normally_without_an_intervening_edit() {
 #[test]
 fn stale_response_is_dropped_without_allow_stale() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let mut ed = editor_from("-[x]>\n");
-    let (_bid, uri) = setup_with_real_file(&mut ed, file_dir.path(), |b, _sid| {
-        b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
-    });
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        &format!(
+    let mut ed = setup_with_real_file(tmp.path(), |uri| {
+        format!(
             r#"(define-typed-command! "test-cmd" "" (lambda (bid)
                  (lsp-request! bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
                    (call! "move-right" bid)))))"#
-        ),
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
+        )
+    });
 
     type_cmd(&mut ed, ":test-cmd");
     // Move the buffer's generation past what the request was sent against
@@ -184,24 +140,13 @@ fn stale_response_is_dropped_without_allow_stale() {
 #[test]
 fn allow_stale_delivers_despite_buffer_moving_on() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let mut ed = editor_from("-[x]>\n");
-    let (_bid, uri) = setup_with_real_file(&mut ed, file_dir.path(), |b, _sid| {
-        b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
-    });
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        &format!(
+    let mut ed = setup_with_real_file(tmp.path(), |uri| {
+        format!(
             r#"(define-typed-command! "test-cmd" "" (lambda (bid)
                  (lsp-request! bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
                    (call! "move-right" bid)) #:allow-stale #t)))"#
-        ),
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
+        )
+    });
 
     type_cmd(&mut ed, ":test-cmd");
     ed.feed_key(key('i'));
@@ -226,22 +171,12 @@ fn allow_stale_delivers_despite_buffer_moving_on() {
 #[test]
 fn stale_response_without_text_document_is_dropped() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let mut ed = editor_from("-[x]>\n");
-    let (_bid, _uri) = setup_with_real_file(&mut ed, file_dir.path(), |b, _sid| {
-        b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
-    });
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
+    let mut ed = setup_with_real_file(tmp.path(), |_uri| {
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
              (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
-               (call! "move-right" bid)))))"#,
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
+               (call! "move-right" bid)))))"#
+            .to_string()
+    });
 
     type_cmd(&mut ed, ":test-cmd");
     ed.feed_key(key('i'));
@@ -265,22 +200,12 @@ fn stale_response_without_text_document_is_dropped() {
 #[test]
 fn allow_stale_without_text_document_delivers() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let mut ed = editor_from("-[x]>\n");
-    let (_bid, _uri) = setup_with_real_file(&mut ed, file_dir.path(), |b, _sid| {
-        b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
-    });
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
+    let mut ed = setup_with_real_file(tmp.path(), |_uri| {
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
              (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
-               (call! "move-right" bid)) #:allow-stale #t)))"#,
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
+               (call! "move-right" bid)) #:allow-stale #t)))"#
+            .to_string()
+    });
 
     type_cmd(&mut ed, ":test-cmd");
     ed.feed_key(key('i'));
@@ -301,20 +226,28 @@ fn allow_stale_without_text_document_delivers() {
 /// A Steel command that edits the buffer (queuing an LSP `didChange`) and
 /// then immediately fires an `lsp-request!` (the same shape as a
 /// trigger-char hook firing right after the edit that triggered it) must
-/// put the `didChange` on the wire *before* the request. Left in
-/// `Buffer.lsp_pending` until the next frame's `prepare_frame`, the queued
-/// edit would reach the server after the request computed against it.
+/// put the `didChange` on the wire *before* the request computed against
+/// the edited text.
+///
+/// Opens the file the way `LspRig::open` does, over an `OrderedLogBackend`:
+/// only one log holding requests and notifications together can answer the
+/// ordering question.
 #[test]
 fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
+    let file = root.join("main.rs");
     std::fs::write(&file, "abcdef\n").unwrap();
 
-    let mut ed = editor_from("-[a]>bcdef\n");
+    let mut ed = editor_from("-[\n]>");
     let (mut raw_backend, log) = OrderedLogBackend::new();
+    raw_backend.respond_to(
+        "initialize",
+        serde_json::json!({ "capabilities": { "textDocumentSync": 2, "hoverProvider": true } }),
+    );
     raw_backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
-    // `apply-text-edits!` now only accepts a server-tagged wire edit (via a
+    // `apply-text-edits!` only accepts a server-tagged wire edit (via a
     // real response); this canned response is what the `:stash` dispatch
     // below turns into one, ahead of (and logged separately from) the
     // dispatch under test.
@@ -322,33 +255,31 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
         "test/textEdits",
         serde_json::json!([{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}, "newText": "Z"}]),
     );
-    let sid = raw_backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
+    ed.state.lsp = LspState::with_backend(Box::new(raw_backend));
+    ed.state
+        .config
+        .languages
+        .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(raw_backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.set_state_for_test(ServerState::Running);
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define stashed-edits (box #f))
+        &format!(
+            r#"{RUST_ANALYZER}
+           (define stashed-edits (box #f))
            (define-typed-command! "stash" "" (lambda (bid)
              (lsp-request! bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
            (define-typed-command! "test-cmd" "" (lambda (bid)
              (apply-text-edits! bid (json-list (unbox stashed-edits)))
-             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result) (begin)))))"#,
-        tmp.path(),
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result) (begin)))))"#
+        ),
+        &root,
     );
     ed.scripting = Some(host);
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    ed.drain_lsp();
 
     // Runs (and drains) as its own dispatch, well before the one under
     // test, so the didChange it sends doesn't pollute the log below.

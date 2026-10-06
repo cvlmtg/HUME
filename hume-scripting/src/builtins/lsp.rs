@@ -6,46 +6,44 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::json::json_to_steel;
+use crate::host::{PositionParams, RangeParams, RangesParams};
+use crate::json::steel_to_json_with;
 use crate::types::{
-    Effect, LspServerTarget, PaneHandle, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
+    Effect, FeatureFilter, ListEntry, ListLayer, LspFeature, LspFeatureSet, LspServerTarget,
+    PaneHandle, Params, PendingLspNotify, PendingLspRequest, PendingLspServerOp, RequestMode,
+    RequestParams, RouteSpec, ServerName,
 };
 use crate::{PendingLspServerReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, bool_arg, callable_arg, json_arg, json_params, list_items, list_to_env_pairs,
-    list_to_strings, optional_json_arg, optional_string_arg, optional_token_arg, string_arg,
-    symbol_hash, token_arg, wire_position,
+    bool_arg, callable_arg, hash_entry, json_arg, list_items, list_of, list_to_env_pairs,
+    list_to_strings, optional_json_arg, optional_list_items, optional_server_arg,
+    optional_string_arg, optional_symbol_arg, optional_token_arg, pair_fields, server_arg,
+    string_arg, string_hash, string_list, symbol_enum_arg, symbol_hash, token_arg, wire_position,
 };
 use super::errors::generic_err;
 use super::hooks::{register_entry, require_known_event};
-use super::ids::SteelPane;
+use super::ids::{DocPos, DocRange, ServerRef, SteelPane};
 
-/// `Some(json)` → decoded to a Steel hashmap; `None` (unresolvable, no
-/// attached server, handshake incomplete, …) → `#f`. Every field these
-/// builtins pass is HUME-computed, not server JSON, so they stay a native
-/// decode; see
-/// `lsp_capabilities`, which instead converts via `to_steel_handle` since
-/// its own JSON isn't HUME-computed.
-fn json_or_false(json: Option<serde_json::Value>) -> SteelVal {
-    match json {
-        Some(json) => json_to_steel(&json),
-        None => SteelVal::BoolV(false),
-    }
+/// A registration or list-entry server name, as [`ServerName::parse`]
+/// accepts it.
+fn server_name_arg(val: SteelVal, ctx_name: &str) -> Result<ServerName, SteelErr> {
+    let name = string_arg(val, ctx_name)?;
+    ServerName::parse(&name).map_err(|e| generic_err(format!("{ctx_name}: {e}")))
 }
 
-/// `(%register-lsp-server! language command args root-markers init-options settings env)`
+/// `(%register-lsp-server! name command args init-options settings env)`
 ///
 /// Callable from init.scm, plugin activation, or a command/hook body,
 /// unlike `%define-language!`, this is not gated to init/activation-only.
-/// Queues a last-wins registration: applied at the end of the *current*
-/// eval (see `Editor::apply_lsp_server_op`), replacing any existing
-/// registration for `language` and attaching already-open matching buffers.
-/// `lsp-registered-for-language?` reads through the effect log, so it
+/// Queues a last-wins registration keyed by `name`: applied at the end of
+/// the *current* eval (see `Editor::apply_lsp_server_ops`), replacing any
+/// existing registration of `name` and attaching already-open matching
+/// buffers. `lsp-server-registered?` reads through the effect log, so it
 /// reports this registration as live immediately, within the same eval.
 ///
-/// `args`/`root-markers` are lists of strings; `env` is a list of
+/// `args` is a list of strings; `env` is a list of
 /// `("KEY" . "VALUE")` dotted pairs, applied additively to the spawned
 /// process's inherited environment. Pushes an
 /// `Effect::LspServerOp(PendingLspServerOp::Register)`.
@@ -56,28 +54,25 @@ fn json_or_false(json: Option<serde_json::Value>) -> SteelVal {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn register_lsp_server(
     ctx: &mut SteelCtx,
-    language: SteelVal,
+    name: SteelVal,
     command: SteelVal,
     args_val: SteelVal,
-    root_markers_val: SteelVal,
     init_options: SteelVal,
     settings: SteelVal,
     env_val: SteelVal,
 ) -> SteelResult {
-    let language = string_arg(language, "register-lsp-server! language")?;
+    let name = server_name_arg(name, "register-lsp-server! name")?;
     let command = string_arg(command, "register-lsp-server! command")?;
     let args = list_to_strings(args_val, "register-lsp-server! args")?;
-    let root_markers = list_to_strings(root_markers_val, "register-lsp-server! root-markers")?;
     let init_options = optional_json_arg(init_options, "register-lsp-server! init-options")?;
     let settings = optional_json_arg(settings, "register-lsp-server! settings")?;
     let env = list_to_env_pairs(env_val, "register-lsp-server! env")?;
 
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Register(
         PendingLspServerReg {
-            language,
+            name,
             command,
             args,
-            root_markers,
             init_options,
             settings,
             env,
@@ -86,12 +81,16 @@ pub(crate) fn register_lsp_server(
     Ok(SteelVal::Void)
 }
 
-/// `(unregister-lsp-server! language)`: queues removal of `language`'s
-/// registration and shutdown of any running clients for it, applied at the
-/// end of the current eval (see `Editor::apply_lsp_server_op`).
+/// `(unregister-lsp-server! name)`: queues removal of `name`'s
+/// registration, applied at the end of the current eval (see
+/// `Editor::apply_lsp_server_ops`). Every buffer attached to an instance of
+/// `name` detaches, and an instance no buffer uses stops. The stop happens
+/// where the op falls among the eval's other server ops, so a
+/// `register-lsp-server!` of the same name after it, in the same eval, spawns
+/// a fresh server.
 ///
-/// Idempotent: unregistering a language with no registration and/or no
-/// running clients is not an error: `:lsp-uninstall` of an already-removed
+/// Idempotent: unregistering a name with no registration and/or no
+/// running instance is not an error: `:lsp-uninstall` of an already-removed
 /// or never-installed server must succeed silently.
 ///
 /// Applies at end-of-eval, so within the *same* eval the server process is
@@ -100,18 +99,153 @@ pub(crate) fn register_lsp_server(
 /// locked) should do that work in a follow-up queued eval (e.g. via
 /// `(after! 0 …)`), which runs strictly after this eval's drain reaps the
 /// process.
-pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
-    let language = string_arg(language, "unregister-lsp-server! language")?;
-    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Unregister {
-        language,
-    }));
+pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
+    let name = server_name_arg(name, "unregister-lsp-server! name")?;
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Unregister { name }));
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-stop! target)`: `target` a buffer-id (that buffer's attached
-/// server) or a string/symbol (every server registered for that language).
+/// One server-list entry: a server name, or a hash with a `'name` and at
+/// most one of `'only-features`/`'except-features`. Every shape error
+/// raises, so a typo cannot widen a filter.
+fn list_entry_arg(item: SteelVal, ctx_name: &str) -> Result<ListEntry, SteelErr> {
+    if !matches!(item, SteelVal::HashMapV(_)) {
+        return Ok(ListEntry {
+            name: server_name_arg(item, ctx_name)?,
+            filter: FeatureFilter::All,
+        });
+    }
+    let entry = hash_entry(
+        item,
+        ctx_name,
+        &["name", "only-features", "except-features"],
+    )?;
+    let name = server_name_arg(entry.required("name")?, ctx_name)?;
+    let filter = match (
+        entry.optional("only-features"),
+        entry.optional("except-features"),
+    ) {
+        (None, None) => FeatureFilter::All,
+        (Some(only), None) => {
+            FeatureFilter::Only(feature_set_arg(only, "only-features", ctx_name)?)
+        }
+        (None, Some(except)) => {
+            FeatureFilter::Except(feature_set_arg(except, "except-features", ctx_name)?)
+        }
+        (Some(_), Some(_)) => {
+            return Err(generic_err(format!(
+                "{ctx_name}: '{name}' gives both 'only-features and 'except-features"
+            )));
+        }
+    };
+    Ok(ListEntry { name, filter })
+}
+
+/// A list of feature names, the value of a list entry's `key`.
+fn feature_set_arg(val: SteelVal, key: &str, ctx_name: &str) -> Result<LspFeatureSet, SteelErr> {
+    let label = format!("{ctx_name} '{key}");
+    list_to_strings(val, &label)?
+        .iter()
+        .map(|name| symbol_enum_arg(name, &label, &LspFeature::NAMED))
+        .collect()
+}
+
+/// The one implementation behind `set-language-servers!` and
+/// `set-default-language-servers!`: they differ only in `layer`. `entries`
+/// is a list of server names/hashes, or `#f` to clear the layer.
+fn queue_language_servers(
+    ctx: &mut SteelCtx,
+    language: SteelVal,
+    entries: SteelVal,
+    layer: ListLayer,
+    ctx_name: &str,
+) -> SteelResult {
+    let language = string_arg(language, ctx_name)?;
+    let entries = optional_list_items(entries, ctx_name)?
+        .map(|items| {
+            let mut decoded: Vec<ListEntry> = Vec::with_capacity(items.len());
+            for item in items {
+                let entry = list_entry_arg(item, ctx_name)?;
+                if decoded.iter().any(|e| e.name == entry.name) {
+                    return Err(generic_err(format!(
+                        "{ctx_name}: '{}' is listed twice",
+                        entry.name
+                    )));
+                }
+                decoded.push(entry);
+            }
+            Ok(decoded)
+        })
+        .transpose()?;
+    ctx.push_effect(Effect::LspServerOp(
+        PendingLspServerOp::SetLanguageServers {
+            language,
+            layer,
+            entries,
+        },
+    ));
+    Ok(SteelVal::Void)
+}
+
+/// `(set-language-servers! language entries)`: the user's own ordered server
+/// list for `language`, which beats any default list whatever the call order.
+pub(crate) fn set_language_servers(
+    ctx: &mut SteelCtx,
+    language: SteelVal,
+    entries: SteelVal,
+) -> SteelResult {
+    queue_language_servers(
+        ctx,
+        language,
+        entries,
+        ListLayer::User,
+        "set-language-servers!",
+    )
+}
+
+/// `(set-default-language-servers! language entries)`: the list a plugin
+/// ships for `language`, used only while the user has set none.
+pub(crate) fn set_default_language_servers(
+    ctx: &mut SteelCtx,
+    language: SteelVal,
+    entries: SteelVal,
+) -> SteelResult {
+    queue_language_servers(
+        ctx,
+        language,
+        entries,
+        ListLayer::Default,
+        "set-default-language-servers!",
+    )
+}
+
+/// `(lsp-language-servers language)` → the servers `language`'s buffers
+/// attach to, in order: one `(hash 'name n)` per server, with
+/// `'only-features` or `'except-features` (a list of feature symbols) when
+/// its list entry filters it.
+pub(crate) fn lsp_language_servers(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
+    let language = string_arg(language, "lsp-language-servers language")?;
+    let entries = ctx
+        .host
+        .lsp()
+        .map(|lsp| lsp.lsp_language_servers(&language))
+        .unwrap_or_default();
+    let features =
+        |set: LspFeatureSet| list_of(set.iter().map(|f| SteelVal::SymbolV(f.name().into())));
+    Ok(list_of(entries.into_iter().map(|entry| {
+        let name = ("name", SteelVal::StringV(entry.name.as_str().into()));
+        match entry.filter {
+            FeatureFilter::All => symbol_hash([name]),
+            FeatureFilter::Only(set) => symbol_hash([name, ("only-features", features(set))]),
+            FeatureFilter::Except(set) => symbol_hash([name, ("except-features", features(set))]),
+        }
+    })))
+}
+
+/// `(lsp-stop! target)`: `target` a pane (every server attached to its
+/// buffer) or a string/symbol (every running instance of that server name).
 /// Queues a stop, applied at the end of the current eval (see
-/// `Editor::apply_lsp_server_op`); the report of how many servers stopped is
+/// `Editor::apply_lsp_server_ops`); the report of how many servers stopped is
 /// emitted by that same drain.
 pub(crate) fn lsp_stop(ctx: &mut SteelCtx, target: LspServerTarget) -> SteelResult {
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Stop { target }));
@@ -137,13 +271,122 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResu
     Ok(SteelVal::Void)
 }
 
-/// `(%lsp-request! pane method params callback allow-stale supersede
-/// require-focus tracked)`, behind the `lsp-request!` wrapper (BOOTSTRAP), which
-/// supplies the keyword defaults. Pushes an `Effect::LspRequest` that
-/// `Editor::send_one_lsp_request` sends after this eval, since `SteelCtx` has
-/// no route to the transport. The server is resolved from `pane`'s buffer at
-/// that point, never from live focus, so a follow-up request from a callback
-/// targets the original buffer.
+/// `#:feature`: a feature symbol, or `#f` for none.
+fn feature_arg(val: SteelVal, ctx_name: &str) -> Result<Option<LspFeature>, SteelErr> {
+    optional_symbol_arg(val, ctx_name)?
+        .map(|name| symbol_enum_arg(&name, ctx_name, &LspFeature::NAMED))
+        .transpose()
+}
+
+/// The routing keywords every request and notification shares. `to` is
+/// `#f` for `lsp-request-all!`, which takes no `#:to`.
+fn route_arg(feature: SteelVal, to: SteelVal, verb: &str) -> Result<RouteSpec, SteelErr> {
+    Ok(RouteSpec {
+        feature: feature_arg(feature, &format!("{verb} #:feature"))?,
+        to: optional_server_arg(to, &format!("{verb} #:to"))?,
+    })
+}
+
+/// A `#:feature` names the feature of a method the editor has none for. A
+/// standard method already has one, and a second could only disagree.
+fn reject_feature_on_standard_method(
+    ctx: &mut SteelCtx,
+    route: &RouteSpec,
+    method: &str,
+    verb: &str,
+) -> Result<(), SteelErr> {
+    if route.feature.is_none() {
+        return Ok(());
+    }
+    match ctx
+        .host
+        .lsp()
+        .and_then(|lsp| lsp.lsp_method_feature(method))
+    {
+        Some(feature) => Err(generic_err(format!(
+            "{verb}: {method} is a standard method of the '{} feature; #:feature is for other methods",
+            feature.name()
+        ))),
+        None => Ok(()),
+    }
+}
+
+/// Checks that `val` converts to JSON, positions included, so a malformed
+/// params value raises at the call rather than when the request is sent.
+/// The conversion is kept when the value holds no position.
+fn checked_params(val: SteelVal, ctx_name: &str) -> Result<Params, SteelErr> {
+    if matches!(val, SteelVal::BoolV(_)) {
+        steel::stop!(TypeMismatch => "{}: expected a hashmap or JSON handle, got a boolean", ctx_name);
+    }
+    let mut has_position = false;
+    let mut positions = |v: &SteelVal| {
+        let is_position =
+            DocPos::from_steel_val(v).is_some() || DocRange::from_steel_val(v).is_some();
+        has_position |= is_position;
+        is_position.then_some(Ok(serde_json::Value::Null))
+    };
+    let json = steel_to_json_with(&val, &mut positions)
+        .map_err(|e| generic_err(format!("{ctx_name}: {e}")))?;
+    Ok(Params {
+        value: val,
+        json: (!has_position).then_some(json),
+    })
+}
+
+/// The one decode behind `%lsp-request!` and `%lsp-request-all!`: the
+/// options both share, queued with the mode and params each decoded.
+// Each param is a keyword the bootstrap wrappers pass through positionally.
+#[allow(clippy::too_many_arguments)]
+fn queue_request(
+    ctx: &mut SteelCtx,
+    pane: PaneHandle,
+    method: SteelVal,
+    params: RequestParams,
+    mode: RequestMode,
+    route: RouteSpec,
+    callback: SteelVal,
+    allow_stale: SteelVal,
+    supersede: SteelVal,
+    require_focus: SteelVal,
+    tracked: SteelVal,
+) -> SteelResult {
+    let verb = mode.verb();
+    let method = string_arg(method, &format!("{verb} method"))?;
+    reject_feature_on_standard_method(ctx, &route, &method, verb)?;
+    let callback = callable_arg(callback, &format!("{verb} callback"))?;
+    let allow_stale = bool_arg(allow_stale, &format!("{verb} #:allow-stale"))?;
+    let supersede = optional_string_arg(supersede, &format!("{verb} #:supersede"))?;
+    let require_focus = bool_arg(require_focus, &format!("{verb} #:require-focus"))?
+        .then(|| {
+            pane.pane().ok_or_else(|| {
+                generic_err(format!(
+                    "{verb}: #:require-focus needs a pane, but was given none"
+                ))
+            })
+        })
+        .transpose()?;
+    let tracked = optional_token_arg(tracked, &format!("{verb} #:tracked"))?;
+    ctx.push_effect(Effect::LspRequest(PendingLspRequest {
+        bid: pane.buffer(),
+        method,
+        params,
+        mode,
+        route,
+        callback,
+        allow_stale,
+        supersede,
+        require_focus,
+        tracked,
+    }));
+    Ok(SteelVal::Void)
+}
+
+/// `(%lsp-request! pane method params callback feature to
+/// allow-stale supersede require-focus tracked)`, behind the `lsp-request!`
+/// wrapper (BOOTSTRAP), which supplies the keyword defaults. Queues one
+/// request, sent after this eval to the first server attached to `pane`'s
+/// buffer that `method`, `#:feature` and `#:to` admit and that is running
+/// then. `callback` receives `(err result)`.
 ///
 /// `#:require-focus` fires the callback only if `pane` is still focused when
 /// the response arrives: for cursor-anchored UI (hover, signature help, code
@@ -163,55 +406,135 @@ pub(crate) fn lsp_request(
     method: SteelVal,
     params: SteelVal,
     callback: SteelVal,
+    feature: SteelVal,
+    to: SteelVal,
     allow_stale: SteelVal,
     supersede: SteelVal,
     require_focus: SteelVal,
     tracked: SteelVal,
 ) -> SteelResult {
-    let method = string_arg(method, "lsp-request! method")?;
-    let params = json_params(params, "lsp-request! params")?;
-    let allow_stale = bool_arg(allow_stale, "lsp-request! #:allow-stale")?;
-    let supersede = optional_string_arg(supersede, "lsp-request! supersede")?;
-    let require_focus = bool_arg(require_focus, "lsp-request! #:require-focus")?;
-    let require_focus = require_focus
-        .then(|| {
-            pane.pane().ok_or_else(|| {
-                generic_err("lsp-request!: #:require-focus needs a pane, but was given none")
-            })
-        })
-        .transpose()?;
-    let tracked = optional_token_arg(tracked, "lsp-request! #:tracked")?;
-    ctx.push_effect(Effect::LspRequest(PendingLspRequest {
-        bid: pane.buffer(),
+    let route = route_arg(feature, to, RequestMode::Single.verb())?;
+    let params = RequestParams::Shared(checked_params(params, "lsp-request! params")?);
+    queue_request(
+        ctx,
+        pane,
         method,
         params,
+        RequestMode::Single,
+        route,
         callback,
         allow_stale,
         supersede,
         require_focus,
         tracked,
-    }));
-    Ok(SteelVal::Void)
+    )
 }
 
-/// `(lsp-notify! pane method params)`: fire-and-forget, no callback, no
-/// staleness tag (nothing to correlate a response against). Same queue
-/// discipline as `lsp-request!`, including `pane`'s buffer resolution
-/// contract.
+/// `(%lsp-request-all! pane method params callback feature
+/// allow-stale supersede require-focus tracked)`, behind the
+/// `lsp-request-all!` wrapper. Sends to every server `method` and
+/// `#:feature` admit and calls `callback` once with `(err results)`:
+/// one `(hash 'server s 'err e 'result r)` per server, in attachment order.
+/// `params` is a hash every server receives, or a list of
+/// `(server . params)` pairs giving each named server its own; `method` and
+/// `#:feature` still admit or reject each of them.
+// Same rationale as `lsp_request`'s `#[allow]`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn lsp_request_all(
+    ctx: &mut SteelCtx,
+    pane: PaneHandle,
+    method: SteelVal,
+    params: SteelVal,
+    callback: SteelVal,
+    feature: SteelVal,
+    allow_stale: SteelVal,
+    supersede: SteelVal,
+    require_focus: SteelVal,
+    tracked: SteelVal,
+) -> SteelResult {
+    const CTX: &str = "lsp-request-all! params";
+    let route = route_arg(feature, SteelVal::BoolV(false), RequestMode::All.verb())?;
+    let params = match params {
+        SteelVal::ListV(items) => RequestParams::PerServer(
+            items
+                .into_iter()
+                .map(|item| {
+                    let (server, params) = pair_fields(item, CTX, "(server . params)")?;
+                    let server = server_arg(&server, CTX).map_err(|_| {
+                        generic_err(format!("{CTX}: each entry must be (server . params)"))
+                    })?;
+                    Ok((server, checked_params(params, CTX)?))
+                })
+                .collect::<Result<_, SteelErr>>()?,
+        ),
+        other => RequestParams::Shared(checked_params(other, CTX)?),
+    };
+    queue_request(
+        ctx,
+        pane,
+        method,
+        params,
+        RequestMode::All,
+        route,
+        callback,
+        allow_stale,
+        supersede,
+        require_focus,
+        tracked,
+    )
+}
+
+/// `(%lsp-notify! pane method params feature to)`, behind the `lsp-notify!`
+/// wrapper: fire-and-forget to every server `#:feature` and `#:to` admit,
+/// with no callback and no staleness tag (nothing to correlate a response
+/// against).
 pub(crate) fn lsp_notify(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
     method: SteelVal,
     params: SteelVal,
+    feature: SteelVal,
+    to: SteelVal,
 ) -> SteelResult {
+    const VERB: &str = "lsp-notify!";
     let method = string_arg(method, "lsp-notify! method")?;
-    let params = json_params(params, "lsp-notify! params")?;
+    let params = checked_params(params, "lsp-notify! params")?;
+    let route = route_arg(feature, to, VERB)?;
+    reject_feature_on_standard_method(ctx, &route, &method, VERB)?;
     ctx.push_effect(Effect::LspNotify(PendingLspNotify {
         bid: pane.buffer(),
         method,
         params,
+        route,
     }));
     Ok(SteelVal::Void)
+}
+
+/// `(%lsp-servers pane feature method)`, behind the `lsp-servers` wrapper:
+/// the servers attached to `pane`'s buffer, in order. With neither keyword,
+/// every attached server whatever its state; with either, the servers a
+/// request of that feature or method would reach now.
+pub(crate) fn lsp_servers(
+    ctx: &mut SteelCtx,
+    pane: PaneHandle,
+    feature: SteelVal,
+    method: SteelVal,
+) -> SteelResult {
+    let feature = feature_arg(feature, "lsp-servers #:feature")?;
+    let method = optional_string_arg(method, "lsp-servers #:method")?;
+    let servers = match ctx.host.lsp() {
+        Some(lsp) => lsp
+            .lsp_servers(pane.buffer(), feature, method.as_deref())
+            .map_err(generic_err)?,
+        None => Vec::new(),
+    };
+    Ok(list_of(servers.into_iter().map(ServerRef::into_steel_val)))
+}
+
+/// `(lsp-server-name server)` → the name `server` was registered under.
+pub(crate) fn lsp_server_name(server: SteelVal) -> SteelResult {
+    let server = server_arg(&server, "lsp-server-name")?;
+    Ok(SteelVal::StringV(server.name.as_str().into()))
 }
 
 /// The event `register-lsp-notification-hook!` registers on. This crate
@@ -250,20 +573,49 @@ pub(crate) fn register_lsp_notification_hook(
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-capabilities pane)` → an opaque `JsonHandle` onto `pane`'s buffer's
-/// attached server's wire `ServerCapabilities`, or `#f` if none is attached
-/// or the handshake hasn't finished. Read it with `json-ref`/`json-contains?`.
-pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
+/// `(lsp-capabilities server)` → an opaque `JsonHandle` onto `server`'s
+/// wire `ServerCapabilities`, or `#f` once it has stopped. Read it with
+/// `json-ref`/`json-contains?`.
+pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelResult {
+    let server = server_arg(&server, "lsp-capabilities")?;
     Ok(ctx
         .host
         .lsp()
-        .and_then(|lsp| lsp.lsp_capabilities(pane.0.buffer()))
+        .and_then(|lsp| lsp.lsp_capabilities(server.id))
         .map_or(SteelVal::BoolV(false), |v| {
             crate::json::to_steel_handle(v, crate::json::WireOrigin::Local)
         }))
 }
 
-/// `(lsp-server-status)` → list of `(hash 'language 'root 'state 'pending)`.
+/// `(%lsp-capability server feature method)`, behind the `lsp-capability`
+/// wrapper: what `server` advertises for `feature`, or for the one
+/// capability `method` needs, as the provider's wire value (`#t`, or a
+/// handle onto its options object); `#f` when it advertises none or has
+/// stopped. Exactly one keyword is given.
+pub(crate) fn lsp_capability(
+    ctx: &mut SteelCtx,
+    server: SteelVal,
+    feature: SteelVal,
+    method: SteelVal,
+) -> SteelResult {
+    let server = server_arg(&server, "lsp-capability")?;
+    let feature = feature_arg(feature, "lsp-capability #:feature")?;
+    let method = optional_string_arg(method, "lsp-capability #:method")?;
+    if feature.is_some() == method.is_some() {
+        return Err(generic_err(
+            "lsp-capability: give exactly one of #:feature and #:method".to_string(),
+        ));
+    }
+    Ok(ctx
+        .host
+        .lsp()
+        .and_then(|lsp| lsp.lsp_capability(server.id, feature, method.as_deref()))
+        .map_or(SteelVal::BoolV(false), |v| {
+            crate::json::to_steel_handle(v, crate::json::WireOrigin::Local)
+        }))
+}
+
+/// `(lsp-server-status)` → list of `(hash 'name 'languages 'root 'state 'pending)`.
 pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
     let entries: Vec<SteelVal> = ctx
         .host
@@ -273,7 +625,8 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
         .into_iter()
         .map(|e| {
             symbol_hash([
-                ("language", SteelVal::StringV(e.language.into())),
+                ("name", SteelVal::StringV(e.name.as_str().into())),
+                ("languages", string_list(e.languages)),
                 (
                     "root",
                     SteelVal::StringV(e.root.to_string_lossy().into_owned().into()),
@@ -286,78 +639,94 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
     Ok(SteelVal::ListV(entries.into()))
 }
 
-/// `(lsp-server-for-buffer pane)` → registered language name, or `#f`.
-pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
-    let id = pane.0.buffer();
-    Ok(
-        match ctx.host.lsp().and_then(|lsp| lsp.lsp_server_for_buffer(id)) {
-            Some(lang) => SteelVal::StringV(lang.into()),
-            None => SteelVal::BoolV(false),
-        },
-    )
-}
-
-/// `(lsp-registered-for-language? language)` → bool. Registry query for the
-/// `on-language-set` missing-server hint: distinguishes "no server
-/// registered for this language" from "registered but still starting"
-/// (`lsp-server-for-buffer` reports *attachment*, which can't make that
-/// distinction). Reads through the `Effect::LspServerOp` entries queued this
-/// eval/init, not yet applied, in emission order before falling back to the
-/// live registry. The last queued `Register`/`Unregister` for `language`
-/// wins, matching `Editor::apply_lsp_server_op`'s own last-wins semantics
-/// exactly, so a same-eval registration is visible immediately instead of
-/// only after the next drain.
+/// `(lsp-server-registered? name)` → bool. Reads through the
+/// `Effect::LspServerOp` entries queued this eval, in emission order, before
+/// falling back to the live registry: the last queued `Register`/
+/// `Unregister` of `name` wins, matching `Editor::apply_lsp_server_ops`'s own
+/// last-wins semantics, so a same-eval registration is visible at once.
 ///
-/// Unlike its buffer/pane-touching siblings, this is a pure registry read
-/// (no `EditorHost` state beyond the LSP registry itself), so its table
-/// entry is `open` kind: no gate, callable during init/plugin load too.
-/// That lets `core:lsp-install`'s load-time scan (`register.scm`) query it
-/// directly to skip already-registered languages.
-pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
-    let language = string_arg(language, "lsp-registered-for-language? language")?;
-    let mut pending: Option<bool> = None;
-    for queued in ctx.effects.iter() {
-        let Effect::LspServerOp(op) = &queued.effect else {
-            continue;
-        };
-        match op {
-            PendingLspServerOp::Register(reg) if reg.language == language => pending = Some(true),
-            PendingLspServerOp::Unregister { language: l } if *l == language => {
-                pending = Some(false)
+/// A pure registry read, so its table entry is `open` kind: callable during
+/// init/plugin load too, which lets `core:lsp-install`'s load-time scan skip
+/// names already registered.
+pub(crate) fn lsp_server_registered(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
+    let name = server_name_arg(name, "lsp-server-registered? name")?;
+    let queued = ctx
+        .effects
+        .iter()
+        .rev()
+        .find_map(|queued| match &queued.effect {
+            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.name == name => {
+                Some(true)
             }
-            _ => {}
-        }
-    }
-    let registered = match pending {
+            Effect::LspServerOp(PendingLspServerOp::Unregister { name: n }) if *n == name => {
+                Some(false)
+            }
+            _ => None,
+        });
+    let registered = match queued {
         Some(v) => v,
         None => ctx
             .host
             .lsp()
-            .is_some_and(|lsp| lsp.lsp_registered_for_language(&language)),
+            .is_some_and(|lsp| lsp.lsp_server_registered(&name)),
     };
     Ok(SteelVal::BoolV(registered))
 }
 
-/// Adapts a kind-B `LspHost` params method's `Result<Option<Value>, String>`
-/// (`Err` on a stale `pane`, `Ok(None)` on no path/no attached server) to a
-/// `SteelResult`: `Ok(None)` becomes `#f`, matching `json_or_false`'s own
-/// convention for the "unavailable" case every one of these three builtins
-/// shares.
-fn params_result(result: Option<Result<Option<serde_json::Value>, String>>) -> SteelResult {
+/// The JSON-shaped `{"uri" uri}` a params hash names its document by.
+fn text_document(uri: String) -> SteelVal {
+    string_hash([("uri", SteelVal::StringV(uri.into()))])
+}
+
+/// `{"textDocument" {"uri"} "position" <position>}`: a position stays an
+/// opaque value until the request is sent.
+pub(crate) fn position_params_value(params: PositionParams) -> SteelVal {
+    string_hash([
+        ("textDocument", text_document(params.uri)),
+        ("position", params.pos.into_steel_val()),
+    ])
+}
+
+fn range_params_value(params: RangeParams) -> SteelVal {
+    string_hash([
+        ("textDocument", text_document(params.uri)),
+        ("range", params.range.into_steel_val()),
+    ])
+}
+
+fn ranges_params_value(params: RangesParams) -> SteelVal {
+    string_hash([
+        ("textDocument", text_document(params.uri)),
+        (
+            "ranges",
+            list_of(params.ranges.into_iter().map(DocRange::into_steel_val)),
+        ),
+    ])
+}
+
+/// A kind-B params read as a Steel value: `Err` (a stale `pane`) raises,
+/// `Ok(None)` (a buffer with no path) and no LSP host are `#f`.
+fn params_result<T>(
+    result: Option<Result<Option<T>, String>>,
+    to_steel: fn(T) -> SteelVal,
+) -> SteelResult {
     match result {
         None => Ok(SteelVal::BoolV(false)),
         Some(Err(e)) => Err(generic_err(e)),
-        Some(Ok(json)) => Ok(json_or_false(json)),
+        Some(Ok(params)) => Ok(params.map_or(SteelVal::BoolV(false), to_steel)),
     }
 }
 
-/// `(lsp-position-params pane)` → `{"textDocument" {"uri"} "position" {"line"
-/// "character"}}` from the primary cursor head in `pane`'s own pane, or `#f`
-/// if unavailable (no attached server or no path). Raises (kind-B fail-fast)
-/// when `pane` carries no pane, a closed one, or one that no longer shows
-/// its buffer.
+/// `(lsp-position-params pane)` → `{"textDocument" {"uri"} "position" p}`
+/// for the primary cursor head in `pane`'s own pane, `p` an opaque position
+/// each server receives in its own encoding, or `#f` for a buffer with no
+/// path. Raises (kind-B fail-fast) when `pane` carries no pane, a closed
+/// one, or one that no longer shows its buffer.
 pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    params_result(ctx.host.lsp().map(|lsp| lsp.lsp_position_params(pane)))
+    params_result(
+        ctx.host.lsp().map(|lsp| lsp.lsp_position_params(pane)),
+        position_params_value,
+    )
 }
 
 /// `(track-position! pane)` → a token naming the primary cursor head in
@@ -374,16 +743,15 @@ pub(crate) fn track_position(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResul
 
 /// `(tracked-position-params token)` → the `lsp-position-params` shape for
 /// where the tracked position is now, or `#f` for a released or unknown
-/// token, a closed or replaced buffer, or a buffer with no path or no
-/// attached server.
-/// A `#f` token is that same stale case; only a non-integer raises.
+/// token, a closed or replaced buffer, or a buffer with no path. A `#f`
+/// token is that same stale case; only a non-integer raises.
 pub(crate) fn tracked_position_params(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "tracked-position-params token")?;
-    Ok(json_or_false(
-        ctx.host
-            .lsp()
-            .and_then(|lsp| lsp.tracked_position_params(token)),
-    ))
+    Ok(ctx
+        .host
+        .lsp()
+        .and_then(|lsp| lsp.tracked_position_params(token))
+        .map_or(SteelVal::BoolV(false), position_params_value))
 }
 
 /// `(keep-tracked-position! token)`: keeps a position an `lsp-request!`
@@ -408,13 +776,16 @@ pub(crate) fn untrack_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResu
 }
 
 /// `(lsp-primary-range-params pane)` → same shape but a `"range"` from the
-/// primary selection alone.
+/// primary selection alone, an opaque range value.
 pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    params_result(ctx.host.lsp().map(|lsp| lsp.lsp_primary_range_params(pane)))
+    params_result(
+        ctx.host.lsp().map(|lsp| lsp.lsp_primary_range_params(pane)),
+        range_params_value,
+    )
 }
 
 /// `(lsp-linewise-ranges-params pane)` → `{"textDocument" {"uri"} "ranges"
-/// [...]}`, one wire range per linewise selection in `pane`'s own pane
+/// [...]}`, one opaque range per linewise selection in `pane`'s own pane
 /// (touching selections coalesced into one range apiece). Carries no
 /// all/none/mixed verdict. `:lsp-fmt` gets that from `selections-linewise?`/
 /// `selections-charwise?` instead, since every `lsp-*-params` builtin's
@@ -426,6 +797,7 @@ pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, pane: PaneHandle) -
         ctx.host
             .lsp()
             .map(|lsp| lsp.lsp_linewise_ranges_params(pane)),
+        ranges_params_value,
     )
 }
 
@@ -560,7 +932,8 @@ pub(crate) fn lsp_label_offsets_to_text(
 }
 
 /// `(lsp-locations->display-parts locs)` → one `(hash 'path p 'line l
-/// 'grapheme-col-or-wire c 'buffer b)` per entry in `locs`, a list of raw
+/// 'grapheme-col-or-wire c 'buffer b 'location loc)` per distinct entry in
+/// `locs` (rows naming the same place collapse into the first), a list of raw
 /// `Location`/`LocationLink` hashmaps/handles: the display-side
 /// counterpart to `goto-location!`'s wire conversion, decoded through the
 /// same shared decoder. Each entry reads its own tagged producing-server
@@ -606,6 +979,7 @@ pub(crate) fn lsp_locations_to_display_parts(ctx: &mut SteelCtx, locs: SteelVal)
                         None => SteelVal::BoolV(false),
                     },
                 ),
+                ("location", part.location.into_steel_val()),
             ])
         })
         .collect();

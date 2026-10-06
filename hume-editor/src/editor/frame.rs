@@ -119,13 +119,11 @@ impl Editor {
         let Editor {
             state,
             view,
-            lsp,
             kitty_enabled,
             ..
         } = self;
         let statusline = crate::statusline::HumeStatusline {
             state,
-            lsp,
             kitty_enabled: *kitty_enabled,
             focused_bid,
         };
@@ -155,7 +153,6 @@ impl Editor {
     pub(crate) fn statusline(&self) -> crate::statusline::HumeStatusline<'_> {
         crate::statusline::HumeStatusline {
             state: &self.state,
-            lsp: &self.lsp,
             kitty_enabled: self.kitty_enabled,
             focused_bid: self.focused_buffer_id(),
         }

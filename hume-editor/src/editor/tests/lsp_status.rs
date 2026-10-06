@@ -1,48 +1,44 @@
 // Observability + lifecycle commands:
 // :lsp-status, :lsp-stop, :lsp-restart, and stderr/log-message routing.
 
-use std::path::{Path, PathBuf};
-
+use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::LspBackend;
-use hume_lsp::client::{ClientAction, LspClient, ServerState};
-use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
+use hume_lsp::client::{ClientAction, ServerState};
+use hume_lsp::test_util::RecordingLspBackend;
+use hume_scripting::{LspServerTarget, PendingLspServerOp, ServerName};
 
-fn eval_register(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &Path) {
-    let init_path = tmp.join("init.scm");
-    std::fs::write(&init_path, source).unwrap();
-    let effects = {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("eval_init");
-    ed.apply_script_effects(effects);
+fn rust_rig(tmp: &tempfile::TempDir) -> LspRig {
+    LspRig::rust(
+        tmp.path(),
+        "-[f]>n main() {}\n",
+        serde_json::json!({ "capabilities": {} }),
+    )
+}
+
+fn stop(ed: &mut Editor, target: LspServerTarget) {
+    ed.apply_lsp_server_op(PendingLspServerOp::Stop { target });
+}
+
+fn restart(ed: &mut Editor, target: LspServerTarget) {
+    ed.apply_lsp_server_op(PendingLspServerOp::Restart { target });
+}
+
+fn name(s: &str) -> ServerName {
+    ServerName::parse(s).unwrap()
 }
 
 #[test]
 fn status_text_lists_a_running_server_with_root_and_pending_count() {
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let tmp = safe_tempdir();
+    let rig = rust_rig(&tmp);
 
-    let root = PathBuf::from("/tmp/hume-lsp-status-test");
-    let mut client = LspClient::new(sid, root.clone());
-    client.set_state_for_test(ServerState::Running);
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), root.clone(), sid);
-    ed.lsp
-        .insert_server_name_for_test(sid, "rust-analyzer".to_string());
-
-    let text = ed.lsp_status_text();
-    assert!(text.contains("rust @"), "must show the language: {text:?}");
+    let text = rig.ed.lsp_status_text();
     assert!(
-        text.contains(&root.display().to_string()),
+        text.contains("rust-analyzer [rust] @"),
+        "must show the name and languages: {text:?}"
+    );
+    assert!(
+        text.contains(&rig.root.display().to_string()),
         "must show the root: {text:?}"
     );
     assert!(
@@ -53,268 +49,188 @@ fn status_text_lists_a_running_server_with_root_and_pending_count() {
         text.contains("0 in flight"),
         "must show the pending count: {text:?}"
     );
-}
-
-#[test]
-fn status_text_reports_no_servers_when_none_are_registered() {
-    let ed = editor_from("-[w]>ord\n");
-    assert_eq!(ed.lsp_status_text(), "No LSP servers registered.");
-}
-
-#[test]
-fn lsp_stop_deregisters_the_server_and_clears_buffer_attachment() {
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let root = PathBuf::from("/tmp/hume-lsp-stop-test");
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, root.clone()));
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), root, sid);
-
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let n = ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
-        "rust".to_string(),
-    ));
-
-    assert_eq!(n, 1);
     assert!(
-        ed.lsp.client_for_test(sid).is_none(),
-        "the client must be deregistered"
-    );
-    assert_eq!(
-        ed.lsp.server_count_for_test(),
-        0,
-        "the (language, root) key must be removed"
-    );
-    assert_eq!(
-        ed.state.buffers.get(bid).lsp_server,
-        None,
-        "the buffer must be detached so it can re-attach later"
+        text.contains("main.rs [rust-analyzer]: 0 error(s), 0 warning(s)"),
+        "must list the attached buffer with its servers: {text:?}"
     );
 }
 
-/// `(lsp-stop! bid)` targets `bid`'s own attached server, regardless of
-/// which buffer is currently focused. `LspServerTarget` names the buffer
-/// explicitly.
-///
-/// If `lsp_targets` read `self.focused_buffer_id()` instead of the given
-/// `bid`, it would stop 0 servers here, since the focused buffer (`a`) has
-/// none attached.
+#[test]
+fn status_text_reports_no_servers_when_none_are_running() {
+    let ed = editor_from("-[w]>ord\n");
+    assert_eq!(ed.lsp_status_text(), "No LSP servers running.");
+}
+
+#[test]
+fn status_text_lists_a_stopped_server_until_it_is_restarted() {
+    let tmp = safe_tempdir();
+    let mut rig = rust_rig(&tmp);
+    assert!(
+        !rig.ed.lsp_status_text().contains("Stopped"),
+        "a running server is not listed as stopped"
+    );
+
+    stop(&mut rig.ed, LspServerTarget::Name(name("rust-analyzer")));
+
+    let text = rig.ed.lsp_status_text();
+    assert!(text.contains("No LSP servers running."), "{text:?}");
+    assert!(text.contains("Stopped"), "{text:?}");
+    assert!(
+        text.contains(&format!("  rust-analyzer @ {}", rig.root.display())),
+        "must name the stopped server and its root: {text:?}"
+    );
+
+    restart(&mut rig.ed, LspServerTarget::Name(name("rust-analyzer")));
+
+    let text = rig.ed.lsp_status_text();
+    assert!(!text.contains("Stopped"), "{text:?}");
+}
+
+#[test]
+fn lsp_stop_by_name_detaches_the_buffer_and_stops_the_server() {
+    let tmp = safe_tempdir();
+    let mut rig = rust_rig(&tmp);
+    let sid = rig.sid("rust-analyzer");
+
+    stop(&mut rig.ed, LspServerTarget::Name(name("rust-analyzer")));
+
+    assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 0);
+    assert!(rig.attached().is_empty(), "the buffer must be detached");
+    assert_eq!(rig.sent(sid, "textDocument/didClose").len(), 1);
+    assert_eq!(
+        rig.ed.state.status_msg.as_deref(),
+        Some("lsp: stopped 1 server(s)")
+    );
+}
+
+/// `(lsp-stop! pane)` targets its buffer's servers regardless of which
+/// buffer is focused: `LspServerTarget` names the buffer explicitly.
 #[test]
 fn lsp_stop_targets_the_named_buffer_regardless_of_focus() {
-    let mut ed = editor_from("-[w]>ord\n");
-    let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
-    assert_eq!(ed.focused_buffer_id(), bid_a, "still focused on a");
+    let tmp = safe_tempdir();
+    let mut rig = rust_rig(&tmp);
+    let other = rig
+        .ed
+        .open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    let fp = FocusedPane::current(&rig.ed.state);
+    rig.ed.switch_to_buffer_without_jump(fp, other);
+    assert_ne!(rig.ed.focused_buffer_id(), rig.bid);
 
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let root = PathBuf::from("/tmp/hume-lsp-stop-other-buffer-test");
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, root.clone()));
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), root, sid);
-    ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid);
+    stop(&mut rig.ed, LspServerTarget::Buffer(rig.bid));
 
-    let n = ed.lsp_stop(&hume_scripting::LspServerTarget::Buffer(bid_b));
-
-    assert_eq!(n, 1, "must stop bid_b's server although a is focused");
-    assert!(
-        ed.lsp.client_for_test(sid).is_none(),
-        "the client must be deregistered"
-    );
-    assert_eq!(ed.state.buffers.get(bid_b).lsp_server, None);
+    assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 0);
+    assert!(rig.attached().is_empty());
 }
 
 #[test]
 fn lsp_stop_with_no_matching_server_stops_nothing() {
-    let mut ed = editor_from("-[w]>ord\n");
+    let tmp = safe_tempdir();
+    let mut rig = rust_rig(&tmp);
+    let scratch = rig
+        .ed
+        .open_buffer(Buffer::at_start(BufferText::from("x\n")));
+
+    stop(&mut rig.ed, LspServerTarget::Buffer(scratch));
+
     assert_eq!(
-        ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
-            "nonexistent-language".to_string()
-        )),
-        0
+        rig.ed.state.status_msg.as_deref(),
+        Some("lsp: no matching server to stop")
     );
-    let bid = ed.focused_buffer_id();
-    assert_eq!(
-        ed.lsp_stop(&hume_scripting::LspServerTarget::Buffer(bid)),
-        0
-    );
+    assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 1);
 }
 
-/// A queued didChange entry left over from before the stop must
-/// not survive to be flushed against a future server's didOpen baseline:
-/// it would desync that server's document state on the very first edit.
 #[test]
-fn lsp_stop_clears_the_buffer_s_pending_change_queue() {
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let root = PathBuf::from("/tmp/hume-lsp-stop-pending-test");
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, root.clone()));
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), root, sid);
+fn stopping_an_unknown_name_reports_an_error() {
+    let tmp = safe_tempdir();
+    let mut rig = rust_rig(&tmp);
 
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    let mut b = hume_editing::changeset::ChangeSetBuilder::new(co(4));
-    b.insert("X");
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .lsp_pending
-        .push(crate::editor::lsp::sync::LspPendingChange {
-            cs: b.finish(),
-            before: ropey::Rope::from_str("word"),
-            version: 1,
-        });
-    assert!(!ed.state.buffers.get(bid).lsp_pending.is_empty());
+    stop(&mut rig.ed, LspServerTarget::Name(name("no-such-server")));
 
-    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
-        "rust".to_string(),
-    ));
-
+    let log = rig.ed.state.message_log.format_for_display();
     assert!(
-        ed.state.buffers.get(bid).lsp_pending.is_empty(),
-        "a stopped buffer's pending queue must be cleared, not carried into a future attach"
+        log.contains("[error] lsp: no server named 'no-such-server'"),
+        "{log:?}"
     );
+    assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 1);
+}
+
+/// An edit queued before the stop goes out before `didClose`, so nothing
+/// is left queued for a server that attaches later: the fresh server
+/// starts from `didOpen`'s text alone.
+#[test]
+fn lsp_stop_leaves_no_queued_change_for_a_later_attach() {
+    let tmp = safe_tempdir();
+    let (mut backend, _, _) = RecordingLspBackend::with_default_handshake();
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({ "capabilities": { "textDocumentSync": 2 } }),
+    );
+    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[f]>n main() {}\n"), backend);
+    let old = rig.sid("rust-analyzer");
+    type_chars(&mut rig.ed, "iX");
+    rig.ed.feed_key(key_esc());
+
+    stop(&mut rig.ed, LspServerTarget::Name(name("rust-analyzer")));
+    assert_eq!(rig.sent(old, "textDocument/didChange").len(), 1);
+    assert!(!rig.ed.state.buffer_positions.lsp.has_doc(rig.bid));
+
+    restart(&mut rig.ed, LspServerTarget::Name(name("rust-analyzer")));
+    rig.ed.drain_lsp();
+    let new = rig.sid("rust-analyzer");
+    assert_ne!(old, new);
+    assert!(rig.sent(new, "textDocument/didChange").is_empty());
+    let opened = rig.sent(new, "textDocument/didOpen");
+    assert_eq!(opened.len(), 1);
+    assert_eq!(opened[0]["textDocument"]["text"], "Xfn main() {}\n");
 }
 
 #[test]
 fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
     let tmp = safe_tempdir();
-    let root = std::fs::canonicalize(tmp.path()).unwrap();
-    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
-    std::fs::create_dir_all(root.join("src")).unwrap();
-    let file = root.join("src/main.rs");
-    std::fs::write(&file, "fn main() {}\n").unwrap();
+    let mut rig = rust_rig(&tmp);
+    let old_sid = rig.sid("rust-analyzer");
 
-    let mut ed = editor_from("-[w]>ord\n");
-    ed.lsp = LspState::new_inline();
-    ed.state
-        .config
-        .languages
-        .register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
-    let mut host = ScriptingHost::new();
-    eval_register(
-        &mut ed,
-        &mut host,
-        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
-        tmp.path(),
-    );
+    restart(&mut rig.ed, LspServerTarget::Name(name("rust-analyzer")));
 
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    let old_sid = ed
-        .state
-        .buffers
-        .get(bid)
-        .lsp_server
-        .expect("attached on open");
-
-    let n = ed.lsp_restart(&hume_scripting::LspServerTarget::Language(
-        "rust".to_string(),
-    ));
-    assert_eq!(n, 1);
-
-    let new_sid = ed
-        .state
-        .buffers
-        .get(bid)
-        .lsp_server
-        .expect("re-attached after restart");
+    let new_sid = rig.sid("rust-analyzer");
     assert_ne!(
         old_sid, new_sid,
         "restart must yield a fresh ServerId, not reuse the old one"
     );
+    assert_eq!(rig.attached(), vec![new_sid]);
+    assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 1);
     assert_eq!(
-        ed.lsp.server_count_for_test(),
-        1,
-        "the old server entry must be gone, exactly one fresh one inserted"
+        rig.ed.state.status_msg.as_deref(),
+        Some("lsp: restarted 1 server(s)")
     );
 }
 
-/// Without `DiagnosticsStore::remove_server`, a restarted
-/// server's fresh `ServerId` would coexist with the old (frozen, detached)
-/// server's entry for the same buffer (`replace`'s "push if no matching
-/// sid" path), doubling the count instead of replacing it.
+/// A restarted server's fresh `ServerId` must not coexist with the old
+/// server's diagnostics for the same buffer: the detach dropped them.
 #[test]
 fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
     let tmp = safe_tempdir();
-    let root = std::fs::canonicalize(tmp.path()).unwrap();
-    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
-    std::fs::create_dir_all(root.join("src")).unwrap();
-    let file = root.join("src/main.rs");
-    std::fs::write(&file, "fn main() {}\n").unwrap();
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[f]>n main() {}\n"), backend);
+    let old_sid = rig.sid("rust-analyzer");
+    let diagnostic = serde_json::json!([{
+        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 2}},
+        "severity": 1,
+        "message": "boom",
+    }]);
+    rig.publish(old_sid, diagnostic.clone());
+    assert_eq!(rig.ed.diagnostic_counts(rig.bid), (1, 0));
 
-    let mut ed = editor_from("-[w]>ord\n");
-    ed.lsp = LspState::new_inline();
-    ed.state
-        .config
-        .languages
-        .register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
-    let mut host = ScriptingHost::new();
-    eval_register(
-        &mut ed,
-        &mut host,
-        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
-        tmp.path(),
-    );
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    let old_sid = ed
-        .state
-        .buffers
-        .get(bid)
-        .lsp_server
-        .expect("attached on open");
-
-    let uri = hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap();
-    let current_gen = ed.state.buffers.get(bid).text().generation() as i32;
-    let mut params = serde_json::json!({
-        "uri": uri.as_str(),
-        "version": current_gen,
-        "diagnostics": [{
-            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 2}},
-            "severity": 1,
-            "message": "boom",
-        }],
-    });
-    ed.ingest_publish_diagnostics(old_sid, serde_json::from_value(params.clone()).unwrap());
-    assert_eq!(
-        ed.diagnostic_counts(bid),
-        (1, 0),
-        "seed publish from the original server must land"
-    );
-
-    ed.lsp_restart(&hume_scripting::LspServerTarget::Language(
-        "rust".to_string(),
-    ));
-    let new_sid = ed
-        .state
-        .buffers
-        .get(bid)
-        .lsp_server
-        .expect("re-attached after restart");
+    restart(&mut rig.ed, LspServerTarget::Name(name("rust-analyzer")));
+    rig.ed.drain_lsp();
+    let new_sid = rig.sid("rust-analyzer");
     assert_ne!(old_sid, new_sid, "restart must yield a fresh ServerId");
-
-    // The fresh server republishes the same diagnostic. This must replace
-    // the old, now-detached server's entry, not stack alongside it.
-    params["version"] = serde_json::json!(ed.state.buffers.get(bid).text().generation() as i32);
-    ed.ingest_publish_diagnostics(new_sid, serde_json::from_value(params).unwrap());
+    rig.publish(new_sid, diagnostic);
 
     assert_eq!(
-        ed.diagnostic_counts(bid),
+        rig.ed.diagnostic_counts(rig.bid),
         (1, 0),
         "the old server's diagnostics must not coexist with the new server's republish"
     );
@@ -322,16 +238,10 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
 
 #[test]
 fn stderr_action_is_logged_at_trace_with_the_server_name_prefix() {
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
-    ed.lsp
-        .insert_server_name_for_test(sid, "rust-analyzer".to_string());
+    let tmp = safe_tempdir();
+    let rig = rust_rig(&tmp);
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
 
     ed.dispatch_lsp_action(sid, ClientAction::Stderr("panic: oh no".to_string()));
 
@@ -344,16 +254,10 @@ fn stderr_action_is_logged_at_trace_with_the_server_name_prefix() {
 
 #[test]
 fn log_message_error_type_is_reported_at_error_severity() {
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
-    ed.lsp
-        .insert_server_name_for_test(sid, "rust-analyzer".to_string());
+    let tmp = safe_tempdir();
+    let rig = rust_rig(&tmp);
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
 
     ed.dispatch_lsp_action(
         sid,
@@ -372,16 +276,10 @@ fn log_message_error_type_is_reported_at_error_severity() {
 
 #[test]
 fn log_message_info_type_is_reported_at_trace_not_shown_as_status() {
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
-    ed.lsp
-        .insert_server_name_for_test(sid, "rust-analyzer".to_string());
+    let tmp = safe_tempdir();
+    let rig = rust_rig(&tmp);
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
 
     ed.dispatch_lsp_action(
         sid,
@@ -399,16 +297,10 @@ fn log_message_info_type_is_reported_at_trace_not_shown_as_status() {
 
 #[test]
 fn show_message_is_reported_at_info_severity() {
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
-    ed.lsp
-        .insert_server_name_for_test(sid, "rust-analyzer".to_string());
+    let tmp = safe_tempdir();
+    let rig = rust_rig(&tmp);
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
 
     ed.dispatch_lsp_action(
         sid,
@@ -424,16 +316,11 @@ fn show_message_is_reported_at_info_severity() {
 
 #[test]
 fn progress_report_events_are_dropped_without_any_log_line() {
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
-    ed.lsp
-        .insert_server_name_for_test(sid, "rust-analyzer".to_string());
+    let tmp = safe_tempdir();
+    let rig = rust_rig(&tmp);
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
+    let before = ed.state.message_log.entries().count();
 
     ed.dispatch_lsp_action(
         sid,
@@ -461,7 +348,7 @@ fn progress_report_events_are_dropped_without_any_log_line() {
         ),
     );
 
-    let entries: Vec<_> = ed.state.message_log.entries().collect();
+    let entries: Vec<_> = ed.state.message_log.entries().skip(before).collect();
     assert_eq!(
         entries.len(),
         2,
@@ -473,24 +360,19 @@ fn progress_report_events_are_dropped_without_any_log_line() {
 
 #[test]
 fn lsp_shutdown_all_transitions_every_running_client_to_dead() {
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("/tmp/hume-shutdown-test"));
-    client.set_state_for_test(ServerState::Running);
-    ed.lsp.insert_client_for_test(client);
+    let tmp = safe_tempdir();
+    let rig = rust_rig(&tmp);
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
 
     // Duration::ZERO means the grace-window loop's `Instant::now() < deadline`
     // is false on first check: no sleep, no waiting for a real process.
     ed.lsp_shutdown_all(std::time::Duration::ZERO);
 
-    let client = ed
-        .lsp
-        .client_for_test(sid)
-        .expect("the client stays tracked (only its state changes): lsp_stop is what deregisters");
+    let client =
+        ed.state.lsp.client_for_test(sid).expect(
+            "the client stays tracked (only its state changes): a stop is what deregisters",
+        );
     assert_eq!(client.state(), ServerState::Dead);
 }
 
@@ -500,18 +382,19 @@ fn lsp_shutdown_all_on_a_starting_client_skips_the_protocol_but_still_tears_down
     // shutdown/exit (nothing but `initialize` is legal before `initialized`),
     // but it must still not be left dangling forever; the transport-level
     // `backend.shutdown` call covers it regardless of protocol state.
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
+    let tmp = safe_tempdir();
+    let rig = LspRig::open(
+        tmp.path(),
+        RigSpec::rust("-[f]>n main() {}\n"),
+        RecordingLspBackend::new().0,
+    );
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
 
     ed.lsp_shutdown_all(std::time::Duration::ZERO);
 
     let client = ed
+        .state
         .lsp
         .client_for_test(sid)
         .expect("still tracked, but untouched by begin_shutdown");

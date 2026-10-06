@@ -2,55 +2,32 @@
 // apply-workspace-edit!, goto-location!, and the workspace/applyEdit
 // server-request swap.
 
-use std::path::Path;
-
+use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
 use crate::editor::buffer::Buffer;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::test_util::RecordingLspBackend;
 
-/// Attaches the focused buffer to a `Running` scripted server negotiated on
+/// `marked` in a file attached to a `Running` scripted server negotiated on
 /// UTF-8, after handing `configure` the backend to script canned responses
-/// on (called before the handshake). Negotiating the non-default encoding here does not by
-/// itself prove `apply-text-edits!` consults it rather than assuming
-/// UTF-16. A wire offset only diverges between the two encodings on a line
-/// with a multi-byte character, so most fixtures below (all ASCII) would
-/// pass identically either way. The actual proof is
+/// on (called before the handshake). Negotiating the non-default encoding
+/// here does not by itself prove `apply-text-edits!` consults it rather
+/// than assuming UTF-16. A wire offset only diverges between the two
+/// encodings on a line with a multi-byte character, so most fixtures below
+/// (all ASCII) would pass identically either way. The actual proof is
 /// `apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units`, whose
 /// fixture is chosen specifically to make that divergence observable.
-fn attach_running_utf8_server_with(
-    ed: &mut Editor,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
-) -> ServerId {
-    let mut backend = InlineLspBackend::new();
+fn utf8_rig(
+    tmp: &std::path::Path,
+    marked: &str,
+    configure: impl FnOnce(&mut RecordingLspBackend),
+) -> LspRig {
+    let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to(
         "initialize",
         serde_json::json!({"capabilities": {"positionEncoding": "utf-8"}}),
     );
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.start_handshake(&mut backend);
-    let (sid2, ev) = backend.drain().into_iter().next().unwrap();
-    let actions = client.on_event(ev);
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp.insert_client_for_test(client);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    sid
-}
-
-/// [`attach_running_utf8_server_with`] for a test with no canned response of
-/// its own to script.
-fn attach_running_utf8_server(ed: &mut Editor) -> ServerId {
-    attach_running_utf8_server_with(ed, |_, _| {})
+    configure(&mut backend);
+    LspRig::drained(tmp, RigSpec::rust(marked), backend)
 }
 
 /// One wire `TextEdit` JSON object, the shape `apply-text-edits!`
@@ -65,21 +42,21 @@ fn wire_edit(start: (u32, u32), end: (u32, u32), new_text: &str) -> serde_json::
     })
 }
 
-/// Sends `edits` (built with [`wire_edit`]) through a scripted
-/// `test/textEdits` request/response round trip and applies the response to
-/// the focused buffer via `apply-text-edits!`: the one way a test can hand
-/// it a server-tagged value.
+/// [`utf8_rig`]'s editor, with `edits` (built with [`wire_edit`]) as the
+/// canned response to a `test/textEdits` request.
+fn text_edits_editor(tmp: &std::path::Path, marked: &str, edits: Vec<serde_json::Value>) -> Editor {
+    utf8_rig(tmp, marked, |backend| {
+        backend.respond_to("test/textEdits", serde_json::Value::Array(edits));
+    })
+    .ed
+}
+
+/// Sends the `test/textEdits` request [`text_edits_editor`] scripted and
+/// applies the response to the focused buffer via `apply-text-edits!`: the
+/// one way a test can hand it a server-tagged value.
 /// `expect_gen_clause` is spliced into the call verbatim (empty string to
 /// omit `#:expect-generation`).
-fn apply_wire_text_edits(
-    ed: &mut Editor,
-    tmp: &std::path::Path,
-    edits: Vec<serde_json::Value>,
-    expect_gen_clause: &str,
-) {
-    attach_running_utf8_server_with(ed, |backend, _sid| {
-        backend.respond_to("test/textEdits", serde_json::Value::Array(edits));
-    });
+fn apply_wire_text_edits(ed: &mut Editor, tmp: &std::path::Path, expect_gen_clause: &str) {
     run(
         ed,
         tmp,
@@ -99,13 +76,12 @@ fn apply_wire_text_edits(
 #[test]
 fn apply_text_edits_single_edit() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    apply_wire_text_edits(
-        &mut ed,
+    let mut ed = text_edits_editor(
         tmp.path(),
+        "-[a]>bcdef\n",
         vec![wire_edit((0, 1), (0, 3), "XY")],
-        "",
     );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(ed.doc().text().to_string(), "aXYdef\n");
 }
 
@@ -114,13 +90,12 @@ fn apply_text_edits_single_edit() {
 #[test]
 fn apply_text_edits_whole_document_replace_keeps_the_final_newline() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\ndef\n");
-    apply_wire_text_edits(
-        &mut ed,
+    let mut ed = text_edits_editor(
         tmp.path(),
+        "-[a]>bc\ndef\n",
         vec![wire_edit((0, 0), (2, 0), "xyz")],
-        "",
     );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(ed.doc().text().to_string(), "xyz\n");
 }
 
@@ -128,8 +103,12 @@ fn apply_text_edits_whole_document_replace_keeps_the_final_newline() {
 #[test]
 fn apply_text_edits_deleting_the_final_newline_keeps_it() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\ndef\n");
-    apply_wire_text_edits(&mut ed, tmp.path(), vec![wire_edit((1, 3), (2, 0), "")], "");
+    let mut ed = text_edits_editor(
+        tmp.path(),
+        "-[a]>bc\ndef\n",
+        vec![wire_edit((1, 3), (2, 0), "")],
+    );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(ed.doc().text().to_string(), "abc\ndef\n");
 }
 
@@ -138,13 +117,12 @@ fn apply_text_edits_deleting_the_final_newline_keeps_it() {
 #[test]
 fn apply_text_edits_insert_after_the_final_newline_ends_with_one() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\ndef\n");
-    apply_wire_text_edits(
-        &mut ed,
+    let mut ed = text_edits_editor(
         tmp.path(),
+        "-[a]>bc\ndef\n",
         vec![wire_edit((2, 0), (2, 0), "tail")],
-        "",
     );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(ed.doc().text().to_string(), "abc\ndef\ntail\n");
 }
 
@@ -154,13 +132,12 @@ fn apply_text_edits_insert_after_the_final_newline_ends_with_one() {
 #[test]
 fn apply_text_edits_normalizes_crlf_in_new_text() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    apply_wire_text_edits(
-        &mut ed,
+    let mut ed = text_edits_editor(
         tmp.path(),
+        "-[a]>bcdef\n",
         vec![wire_edit((0, 1), (0, 3), "X\r\nY")],
-        "",
     );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(ed.doc().text().to_string(), "aX\nYdef\n");
 }
 
@@ -173,31 +150,29 @@ fn apply_text_edits_normalizes_crlf_in_new_text() {
 #[test]
 fn apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>ébcdef\n");
-    apply_wire_text_edits(
-        &mut ed,
+    let mut ed = text_edits_editor(
         tmp.path(),
+        "-[a]>ébcdef\n",
         vec![wire_edit((0, 3), (0, 4), "X")],
-        "",
     );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(ed.doc().text().to_string(), "aéXcdef\n");
 }
 
 #[test]
 fn apply_text_edits_multiple_edits_same_line_apply_descending() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
     // Two edits on the same line, given out of order: must not corrupt
     // each other's offsets (the classic ascending-with-fixups bug).
-    apply_wire_text_edits(
-        &mut ed,
+    let mut ed = text_edits_editor(
         tmp.path(),
+        "-[a]>bcdef\n",
         vec![
             wire_edit((0, 0), (0, 1), "Z"),
             wire_edit((0, 4), (0, 5), "W"),
         ],
-        "",
     );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(ed.doc().text().to_string(), "ZbcdWf\n");
 }
 
@@ -209,16 +184,15 @@ fn apply_text_edits_multiple_edits_same_line_apply_descending() {
 #[test]
 fn apply_text_edits_same_position_inserts_apply_in_array_order() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    apply_wire_text_edits(
-        &mut ed,
+    let mut ed = text_edits_editor(
         tmp.path(),
+        "-[a]>bcdef\n",
         vec![
             wire_edit((0, 0), (0, 0), "1"),
             wire_edit((0, 0), (0, 0), "2"),
         ],
-        "",
     );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(
         ed.doc().text().to_string(),
         "12abcdef\n",
@@ -229,32 +203,30 @@ fn apply_text_edits_same_position_inserts_apply_in_array_order() {
 #[test]
 fn apply_text_edits_adjacent_not_overlapping_accepted() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    apply_wire_text_edits(
-        &mut ed,
+    let mut ed = text_edits_editor(
         tmp.path(),
+        "-[a]>bcdef\n",
         vec![
             wire_edit((0, 0), (0, 2), "AA"),
             wire_edit((0, 2), (0, 4), "BB"),
         ],
-        "",
     );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(ed.doc().text().to_string(), "AABBef\n");
 }
 
 #[test]
 fn apply_text_edits_overlapping_rejected() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    apply_wire_text_edits(
-        &mut ed,
+    let mut ed = text_edits_editor(
         tmp.path(),
+        "-[a]>bcdef\n",
         vec![
             wire_edit((0, 0), (0, 3), "A"),
             wire_edit((0, 2), (0, 5), "B"),
         ],
-        "",
     );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(
         ed.doc().text().to_string(),
         "abcdef\n",
@@ -265,13 +237,12 @@ fn apply_text_edits_overlapping_rejected() {
 #[test]
 fn apply_text_edits_reversed_range_rejected() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    apply_wire_text_edits(
-        &mut ed,
+    let mut ed = text_edits_editor(
         tmp.path(),
+        "-[a]>bcdef\n",
         vec![wire_edit((0, 3), (0, 0), "X")],
-        "",
     );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(
         ed.doc().text().to_string(),
         "abcdef\n",
@@ -282,16 +253,15 @@ fn apply_text_edits_reversed_range_rejected() {
 #[test]
 fn apply_text_edits_is_one_undo_step() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    apply_wire_text_edits(
-        &mut ed,
+    let mut ed = text_edits_editor(
         tmp.path(),
+        "-[a]>bcdef\n",
         vec![
             wire_edit((0, 0), (0, 1), "Z"),
             wire_edit((0, 5), (0, 6), "W"),
         ],
-        "",
     );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
     assert_eq!(ed.doc().text().to_string(), "Zbcdew\n".replace('w', "W"));
 
     ed.handle_key(key('u'));
@@ -305,7 +275,11 @@ fn apply_text_edits_is_one_undo_step() {
 #[test]
 fn apply_text_edits_version_mismatch_rejected() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
+    let mut ed = text_edits_editor(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        vec![wire_edit((0, 0), (0, 1), "Z")],
+    );
     let stale_gen = ed.doc().text().generation();
     // Make an unrelated edit first so the buffer's generation moves past
     // what the (fictional) LSP response was computed against.
@@ -317,7 +291,6 @@ fn apply_text_edits_version_mismatch_rejected() {
     apply_wire_text_edits(
         &mut ed,
         tmp.path(),
-        vec![wire_edit((0, 0), (0, 1), "Z")],
         &format!(" #:expect-generation {stale_gen}"),
     );
     assert_eq!(
@@ -335,8 +308,7 @@ fn apply_text_edits_version_mismatch_rejected() {
 #[test]
 fn apply_text_edits_rejects_a_hand_built_edit() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_utf8_server(&mut ed);
+    let mut ed = utf8_rig(tmp.path(), "-[a]>bcdef\n", |_| {}).ed;
     run(
         &mut ed,
         tmp.path(),
@@ -357,14 +329,21 @@ fn apply_text_edits_rejects_a_hand_built_edit() {
 
 // ── apply-workspace-edit! ────────────────────────────────────────────────────
 
-/// Sends `wsedit` (a `WorkspaceEdit` JSON blob) through a scripted
-/// `test/workspaceEdit` request/response round trip and applies the
-/// response via `apply-workspace-edit!`: the one way a test can hand it a
-/// server-tagged value, since a hand-built hashmap carries no encoding.
-fn apply_wire_workspace_edit(ed: &mut Editor, tmp: &std::path::Path, wsedit: serde_json::Value) {
-    attach_running_utf8_server_with(ed, |backend, _sid| {
+/// [`utf8_rig`]'s editor on a one-line `x`, with `wsedit` (a
+/// `WorkspaceEdit` JSON blob) as the canned response to a
+/// `test/workspaceEdit` request.
+fn workspace_edit_editor(tmp: &std::path::Path, wsedit: serde_json::Value) -> Editor {
+    utf8_rig(tmp, "-[x]>\n", |backend| {
         backend.respond_to("test/workspaceEdit", wsedit);
-    });
+    })
+    .ed
+}
+
+/// Sends the `test/workspaceEdit` request [`workspace_edit_editor`]
+/// scripted and applies the response via `apply-workspace-edit!`: the one
+/// way a test can hand it a server-tagged value, since a hand-built hashmap
+/// carries no encoding.
+fn apply_wire_workspace_edit(ed: &mut Editor, tmp: &std::path::Path) {
     run(
         ed,
         tmp,
@@ -385,15 +364,14 @@ fn apply_workspace_edit_changes_shape() {
     let canonical = std::fs::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
-    let mut ed = editor_from("-[x]>\n");
-    apply_wire_workspace_edit(
-        &mut ed,
+    let mut ed = workspace_edit_editor(
         tmp.path(),
         serde_json::json!({"changes": {uri.as_str(): [
             {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
              "newText": "XYZ"},
         ]}}),
     );
+    apply_wire_workspace_edit(&mut ed, tmp.path());
     assert_eq!(
         std::fs::read_to_string(&file).unwrap(),
         "abcdef\n",
@@ -415,9 +393,7 @@ fn apply_workspace_edit_document_changes_shape() {
     let canonical = std::fs::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
-    let mut ed = editor_from("-[x]>\n");
-    apply_wire_workspace_edit(
-        &mut ed,
+    let mut ed = workspace_edit_editor(
         tmp.path(),
         serde_json::json!({"documentChanges": [
             {"textDocument": {"uri": uri.as_str(), "version": null},
@@ -425,6 +401,7 @@ fn apply_workspace_edit_document_changes_shape() {
                          "newText": "Z"}]},
         ]}),
     );
+    apply_wire_workspace_edit(&mut ed, tmp.path());
     let bid = ed.state.buffers.find_by_path(&canonical).unwrap();
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "Zbcdef\n");
 }
@@ -443,15 +420,14 @@ fn apply_workspace_edit_into_unopened_file_uses_the_responses_encoding() {
     let canonical = std::fs::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
-    let mut ed = editor_from("-[x]>\n");
-    apply_wire_workspace_edit(
-        &mut ed,
+    let mut ed = workspace_edit_editor(
         tmp.path(),
         serde_json::json!({"changes": {uri.as_str(): [
             {"range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 4}},
              "newText": "X"},
         ]}}),
     );
+    apply_wire_workspace_edit(&mut ed, tmp.path());
 
     let bid = ed
         .state
@@ -477,13 +453,7 @@ fn apply_workspace_edit_mixed_open_and_unopened_files() {
     let opened_uri = hume_lsp::uri::path_to_uri(&opened_canonical).unwrap();
     let unopened_uri = hume_lsp::uri::path_to_uri(&unopened_canonical).unwrap();
 
-    let mut ed = editor_from("-[x]>\n");
-    ed.execute_typed("e", Some(opened_path.to_str().unwrap()))
-        .unwrap();
-    assert!(ed.state.buffers.find_by_path(&unopened_canonical).is_none());
-
-    apply_wire_workspace_edit(
-        &mut ed,
+    let mut ed = workspace_edit_editor(
         tmp.path(),
         serde_json::json!({"changes": {
             opened_uri.as_str(): [
@@ -496,6 +466,12 @@ fn apply_workspace_edit_mixed_open_and_unopened_files() {
             ],
         }}),
     );
+    // Opened without focusing it: the request goes out from the attached
+    // buffer.
+    ed.open_extra_file(&opened_path).expect("opened.txt opens");
+    assert!(ed.state.buffers.find_by_path(&unopened_canonical).is_none());
+
+    apply_wire_workspace_edit(&mut ed, tmp.path());
 
     let opened_bid = ed.state.buffers.find_by_path(&opened_canonical).unwrap();
     assert_eq!(
@@ -529,9 +505,7 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
     let invalid_uri =
         hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&invalid_dir).unwrap()).unwrap();
 
-    let mut ed = editor_from("-[x]>\n");
-    apply_wire_workspace_edit(
-        &mut ed,
+    let mut ed = workspace_edit_editor(
         tmp.path(),
         // The invalid entry is listed FIRST: documentChanges is an ordered
         // list (unlike `changes`' hashmap), so validation reaches it before
@@ -545,6 +519,7 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
                          "newText": "Z"}]},
         ]}),
     );
+    apply_wire_workspace_edit(&mut ed, tmp.path());
 
     assert_eq!(
         std::fs::read_to_string(&ok_path).unwrap(),
@@ -665,9 +640,7 @@ fn apply_workspace_edit_duplicate_entry_for_the_same_file_is_rejected_not_a_pani
     let canonical = std::fs::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
-    let mut ed = editor_from("-[x]>\n");
-    apply_wire_workspace_edit(
-        &mut ed,
+    let mut ed = workspace_edit_editor(
         tmp.path(),
         serde_json::json!({"documentChanges": [
             {"textDocument": {"uri": uri.as_str(), "version": null},
@@ -677,7 +650,8 @@ fn apply_workspace_edit_duplicate_entry_for_the_same_file_is_rejected_not_a_pani
              "edits": [{"range": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 2}},
                          "newText": "Y"}]},
         ]}),
-    ); // must not panic
+    );
+    apply_wire_workspace_edit(&mut ed, tmp.path()); // must not panic
 
     let bid = ed
         .state
@@ -919,8 +893,7 @@ fn goto_location_wire_shape_decodes_with_the_responses_encoding() {
     let canonical = std::fs::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
-    let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_utf8_server_with(&mut ed, |backend, _sid| {
+    let mut ed = utf8_rig(tmp.path(), "-[a]>bcdef\n", |backend| {
         backend.respond_to(
             "test/gotoTarget",
             serde_json::json!({
@@ -928,7 +901,8 @@ fn goto_location_wire_shape_decodes_with_the_responses_encoding() {
                 "range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 3}},
             }),
         );
-    });
+    })
+    .ed;
     run(
         &mut ed,
         tmp.path(),
@@ -1004,8 +978,9 @@ fn server_initiated_apply_edit_into_unopened_file_uses_the_requesting_servers_en
     let canonical = std::fs::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
-    let mut ed = editor_from("-[x]>\n");
-    let sid = attach_running_utf8_server(&mut ed);
+    let rig = utf8_rig(tmp.path(), "-[x]>\n", |_| {});
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
     let params = serde_json::json!({
         "edit": {
             "changes": {
@@ -1039,8 +1014,9 @@ fn server_initiated_apply_edit_actually_applies_and_answers_true() {
     let canonical = std::fs::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
-    let mut ed = editor_from("-[x]>\n");
-    let sid = attach_running_utf8_server(&mut ed);
+    let rig = utf8_rig(tmp.path(), "-[x]>\n", |_| {});
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
     let params = serde_json::json!({
         "edit": {
             "changes": {
@@ -1080,17 +1056,9 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
     let canonical = std::fs::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
-    let mut ed = editor_from("-[x]>\n");
-    let sid = attach_running_utf8_server(&mut ed);
-    ed.state
-        .config
-        .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None);
-    ed.state
-        .config
-        .languages
-        .rebuild_glob_set()
-        .expect("rebuild ok");
+    let rig = utf8_rig(tmp.path(), "-[x]>\n", |_| {});
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
 
     let params = serde_json::json!({
         "edit": {
@@ -1119,8 +1087,10 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
 
 #[test]
 fn server_initiated_apply_edit_answers_false_with_a_reason_on_bad_uri() {
-    let mut ed = editor_from("-[x]>\n");
-    let sid = attach_running_utf8_server(&mut ed);
+    let tmp = safe_tempdir();
+    let rig = utf8_rig(tmp.path(), "-[x]>\n", |_| {});
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
     let params = serde_json::json!({
         "edit": { "changes": { "not-a-uri": [] } }
     });

@@ -1,6 +1,6 @@
-//! The introspection surface: capabilities, server status, generation, and
-//! ready-made wire-position params. All read-only: no queueing, unlike
-//! request/notify (which must defer to the eval-result drain boundary
+//! The introspection surface: capabilities, attached servers, server status,
+//! wire-position decoding and diagnostics reads. All read-only: no queueing,
+//! unlike request/notify (which must defer to the eval-result drain boundary
 //! because they mutate the transport). These run through `EditorHostImpl`
 //! directly since a Steel caller needs the value back inline.
 
@@ -10,114 +10,139 @@ use hume_lsp::backend::ServerId;
 
 use super::LspState;
 use super::diagnostics::DiagSeverity;
-use super::registry::LanguageName;
+use super::features::provider;
 use crate::editor::Editor;
 use crate::editor::EditorState;
-
-/// Resolves `bid`'s own attached server to a running `ServerId`. Never a
-/// fallback to whichever buffer happens to be focused when this runs, so a caller
-/// resolving a follow-up request from inside a response callback gets the
-/// buffer the original request was about, not one a user's intervening
-/// keystrokes moved focus to.
-///
-/// Errors loudly on a Crashed (or otherwise untracked) server rather than
-/// resolving to it: its sends are silently dropped (`send_or_queue`), so a
-/// caller would otherwise learn of the problem only as a generic timeout at
-/// the request's deadline. `Starting` still resolves: `send_or_queue`'s
-/// Starting-queue correctly defers the send until the handshake completes.
-pub(super) fn resolve_server_for_buffer(
-    state: &EditorState,
-    lsp: &LspState,
-    bid: BufferId,
-) -> Result<ServerId, String> {
-    let sid = state
-        .buffers
-        .try_get(bid)
-        .ok_or_else(|| format!("invalid buffer id {bid:?}"))?
-        .lsp_server
-        .ok_or_else(|| "no LSP server attached to this buffer".to_string())?;
-    match lsp.servers.get(&sid).map(|e| e.client.state()) {
-        Some(hume_lsp::client::ServerState::Starting | hume_lsp::client::ServerState::Running) => {
-            Ok(sid) // send_or_queue handles Starting's deferred send correctly
-        }
-        Some(hume_lsp::client::ServerState::Crashed) => {
-            Err("lsp server crashed (run :lsp-restart)".to_string())
-        }
-        Some(hume_lsp::client::ServerState::Dead) | None => Err("lsp server stopped".to_string()),
-    }
-}
-
-/// The registered language for `server_id`: reverse of the
-/// `(language, root) -> ServerId` lookup `core:lsp-install/register.scm` uses to
-/// attach a buffer to a server.
-pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<LanguageName> {
-    lsp.servers.get(&server_id)?.language.clone()
-}
+use hume_scripting::{ListEntry, LspFeature, ServerName};
 
 /// Whether `server` advertises `completionProvider.resolveProvider`, the
-/// gate `BufferSession::accept`'s resolve round trip reads. A narrow reader rather than
-/// widening `LspState.servers`/`ServerEntry.client` themselves: the
-/// completion store lives outside this module now, and one bool is all it
-/// needs.
+/// gate `BufferSession::accept`'s resolve round trip reads.
 pub(in crate::editor) fn completion_resolve_provider(lsp: &LspState, server: ServerId) -> bool {
-    lsp.servers
-        .get(&server)
-        .and_then(|e| e.client.capabilities_json())
-        .and_then(|caps| caps.get("completionProvider"))
+    lsp.instances
+        .get(server)
+        .and_then(|i| i.client.capabilities_json())
+        .and_then(|caps| provider(caps, Some(LspFeature::Completion), None))
         .and_then(|cp| cp.get("resolveProvider"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false)
 }
 
-/// The server's raw wire capabilities. See `LspClient::capabilities_json`'s
-/// doc comment for why this, not the typed decode, is what
-/// `(lsp-capabilities …)` must hand to Steel. `Arc`-wrapped: this clone is
-/// just a refcount bump, not a deep copy of the capabilities blob.
-pub(in crate::editor) fn capabilities(
-    state: &EditorState,
-    lsp: &LspState,
-    bid: BufferId,
-) -> Option<std::sync::Arc<serde_json::Value>> {
-    let sid = resolve_server_for_buffer(state, lsp, bid).ok()?;
-    lsp.servers.get(&sid)?.client.capabilities_json().cloned()
+/// The feature a standard request `method` belongs to.
+pub(in crate::editor) fn method_feature(method: &str) -> Option<LspFeature> {
+    super::features::requirement(method).map(|r| r.feature)
 }
 
-/// One entry per running (language, root) server: `:lsp-status`'s data in
+/// What `(lsp-capability …)` hands to Steel: `server`'s capability for
+/// `feature` or `method`, or `None` when it advertises none or is not
+/// running.
+pub(in crate::editor) fn capability(
+    lsp: &LspState,
+    server: ServerId,
+    feature: Option<LspFeature>,
+    method: Option<&str>,
+) -> Option<std::sync::Arc<serde_json::Value>> {
+    let caps = lsp.instances.get(server)?.client.capabilities_json()?;
+    provider(caps, feature, method).map(|value| std::sync::Arc::new(value.clone()))
+}
+
+/// `server`'s raw wire capabilities. See `LspClient::capabilities_json`'s
+/// doc comment for why this, not the typed decode, is what
+/// `(lsp-capabilities …)` hands to Steel. `Arc`-wrapped: this clone is a
+/// refcount bump, not a deep copy of the capabilities blob.
+pub(in crate::editor) fn capabilities(
+    lsp: &LspState,
+    server: ServerId,
+) -> Option<std::sync::Arc<serde_json::Value>> {
+    lsp.instances
+        .get(server)?
+        .client
+        .capabilities_json()
+        .cloned()
+}
+
+/// `bid`'s attached servers: every one, in any state, with neither
+/// `feature` nor `method`; otherwise the ones a request of that feature or
+/// method reaches now, none when the route reaches none.
+pub(in crate::editor) fn servers(
+    state: &EditorState,
+    bid: BufferId,
+    feature: Option<hume_scripting::LspFeature>,
+    method: Option<&str>,
+) -> Result<Vec<hume_scripting::ServerRef>, String> {
+    if state.buffers.try_get(bid).is_none() {
+        return Err(format!("invalid buffer id {bid:?}"));
+    }
+    if feature.is_none() && method.is_none() {
+        return Ok(state
+            .buffer_positions
+            .lsp
+            .servers(bid)
+            .filter_map(|sid| state.lsp.instances.server_ref(sid))
+            .collect());
+    }
+    let spec = hume_scripting::RouteSpec { feature, to: None };
+    Ok(super::route::route(state, bid, method, &spec)
+        .map(|routed| routed.into_iter().map(|r| r.server).collect())
+        .unwrap_or_default())
+}
+
+/// One entry per running server instance: `:lsp-status`'s data in
 /// structured form.
 pub(in crate::editor) fn server_status(
     lsp: &LspState,
 ) -> Vec<hume_scripting::LspServerStatusEntry> {
-    lsp.servers
-        .values()
-        .filter_map(|e| {
-            let language = e.language.clone()?;
-            Some(hume_scripting::LspServerStatusEntry {
-                language,
-                root: e.client.root().to_path_buf(),
-                state: e.client.state().name(),
-                pending: e.client.pending_count(),
-            })
+    sorted_instances(lsp)
+        .into_iter()
+        .map(|i| hume_scripting::LspServerStatusEntry {
+            name: i.name.clone(),
+            languages: lsp
+                .registry
+                .languages_of(&i.name)
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            root: i.client.root().to_path_buf(),
+            state: i.client.state().name(),
+            pending: i.client.pending_count(),
         })
         .collect()
 }
 
-/// The registered language for the server attached to buffer `id`.
-pub(in crate::editor) fn server_for_buffer(
-    state: &EditorState,
-    lsp: &LspState,
-    id: BufferId,
-) -> Option<LanguageName> {
-    let sid = state.buffers.try_get(id)?.lsp_server?;
-    server_language(lsp, sid)
+/// Every running instance, ordered by name then root.
+fn sorted_instances(lsp: &LspState) -> Vec<&super::instances::Instance> {
+    let mut instances: Vec<_> = lsp.instances.iter().map(|(_, i)| i).collect();
+    instances.sort_by(|a, b| {
+        a.name
+            .cmp(&b.name)
+            .then_with(|| a.client.root().cmp(b.client.root()))
+    });
+    instances
 }
 
-/// A buffer's attached server's loading state. Drives the statusline's
+/// Whether `name` is registered.
+pub(in crate::editor) fn server_registered(lsp: &LspState, name: &ServerName) -> bool {
+    lsp.registry.contains(name)
+}
+
+/// The servers `language`'s buffers attach to, in order, with their filters.
+pub(in crate::editor) fn language_servers(lsp: &LspState, language: &str) -> Vec<ListEntry> {
+    lsp.registry
+        .plan(language)
+        .into_iter()
+        .map(|p| ListEntry {
+            name: p.name.clone(),
+            filter: p.filter,
+        })
+        .collect()
+}
+
+/// A buffer's attached servers' loading state. Drives the statusline's
 /// loading spinner (`statusline::elements::diagnostics`).
 pub(crate) enum LspActivity {
-    /// No attached server, a `Running` server with no progress task in
-    /// flight, or a `Crashed`/`Dead` one: nothing to animate.
+    /// No attached server, or none starting or reporting progress: nothing
+    /// to animate.
     Idle,
-    /// Mid `initialize` handshake.
+    /// Some attached server is mid `initialize` handshake.
     Starting,
     /// A `$/progress` task (indexing, loading, ...) is in flight: the most
     /// recently begun one, if the server is running more than one. Carries
@@ -128,93 +153,37 @@ pub(crate) enum LspActivity {
     Progress { percentage: Option<u32> },
 }
 
-/// `id`'s attached server's current [`LspActivity`].
-pub(crate) fn activity(state: &EditorState, lsp: &LspState, id: BufferId) -> LspActivity {
-    let Some(sid) = state.buffers.try_get(id).and_then(|b| b.lsp_server) else {
-        return LspActivity::Idle;
+/// `id`'s attached servers' current [`LspActivity`]: `Starting` while any
+/// is starting, otherwise the progress of the first, in attachment order,
+/// that reports any.
+pub(crate) fn activity(state: &EditorState, id: BufferId) -> LspActivity {
+    let instances = || {
+        state
+            .buffer_positions
+            .lsp
+            .servers(id)
+            .filter_map(|sid| state.lsp.instances.get(sid))
     };
-    let Some(entry) = lsp.servers.get(&sid) else {
-        return LspActivity::Idle;
-    };
-    if entry.client.state() == hume_lsp::client::ServerState::Starting {
+    if instances().any(|i| i.client.state() == hume_lsp::client::ServerState::Starting) {
         return LspActivity::Starting;
     }
-    match entry.progress.last() {
-        Some((_, task)) => LspActivity::Progress {
+    instances()
+        .find_map(|i| i.progress.last())
+        .map_or(LspActivity::Idle, |(_, task)| LspActivity::Progress {
             percentage: task.percentage,
-        },
-        None => LspActivity::Idle,
-    }
-}
-
-/// Whether `language` currently has a `register-lsp-server!` config:
-/// registered, not necessarily attached/running. Distinguishes "no server
-/// registered" from "registered but still starting", which
-/// `server_for_buffer` (attachment, not registration) can't tell apart.
-pub(in crate::editor) fn registered_for_language(lsp: &LspState, language: &str) -> bool {
-    lsp.configs.contains_key(language)
-}
-
-/// Shared setup for both params builders: the buffer's URI and its attached
-/// server's negotiated encoding. `None` if `id` has no path or no attached
-/// (tracked) server.
-fn uri_and_encoding(
-    state: &EditorState,
-    lsp: &LspState,
-    id: BufferId,
-) -> Option<(String, hume_rope::position_encoding::PositionEncoding)> {
-    let buf = state.buffers.try_get(id)?;
-    let path = buf.path()?;
-    let sid = buf.lsp_server?;
-    let entry = lsp.servers.get(&sid)?;
-    let uri = hume_lsp::uri::path_to_uri(path).ok()?;
-    Some((uri.as_str().to_string(), entry.client.encoding()))
-}
-
-/// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
-/// params from the primary cursor head in `t`'s own pane. `None` only when
-/// `t`'s buffer has no path or no attached server. `t` is already resolved
-/// (see `commands::CommandPane::resolve`), so there is no "not shown" case left.
-pub(in crate::editor) fn position_params(
-    state: &EditorState,
-    view: &EngineView,
-    lsp: &LspState,
-    t: crate::editor::commands::CommandPane,
-) -> Option<serde_json::Value> {
-    let id = t.bid(view);
-    let head = crate::editor::commands::pane_view(state, view, t)
-        .primary()
-        .head();
-    offset_params(state, lsp, id, head.offset())
-}
-
-/// [`position_params`] for `offset` of `id`'s live text instead of a pane's
-/// cursor. `None` when `id` is closed, has no path, or has no attached
-/// server.
-pub(in crate::editor) fn offset_params(
-    state: &EditorState,
-    lsp: &LspState,
-    id: BufferId,
-    offset: hume_rope::offset::CharOffset,
-) -> Option<serde_json::Value> {
-    let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
-    let text = state.buffers.try_get(id)?.text();
-    let pos = hume_rope::position_encoding::char_to_wire(text.rope(), offset, encoding);
-    Some(serde_json::json!({
-        "textDocument": {"uri": uri},
-        "position": hume_lsp::position::to_json_position(pos),
-    }))
+        })
 }
 
 /// The negotiated encoding of a specific running server: the counterpart
 /// for a caller that already has a `ServerId` in hand instead of resolving
-/// one from a `BufferId` (a server-initiated request, or a response being
-/// tagged at dispatch time). `None` if the server is no longer tracked.
+/// one from a `BufferId` (a server-initiated request, `publishDiagnostics`,
+/// or a workspace edit a server sent). `None` for a server that is not
+/// tracked.
 pub(in crate::editor) fn server_encoding(
     lsp: &LspState,
     sid: ServerId,
 ) -> Option<hume_rope::position_encoding::PositionEncoding> {
-    lsp.servers.get(&sid).map(|e| e.client.encoding())
+    lsp.instances.get(sid).map(|i| i.client.encoding())
 }
 
 /// Wire `(line, character)` → char offset, decoded in `encoding`, for
@@ -368,6 +337,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
                 code: d.code.clone(),
                 source: d.source.clone(),
                 raw: std::sync::Arc::clone(&d.raw),
+                server: d.server.clone(),
                 encoding: d.encoding,
             }
         })
@@ -381,11 +351,8 @@ pub(crate) fn diagnostic_counts(state: &EditorState, bid: BufferId) -> (usize, u
 }
 
 /// Current animation frame for the statusline loading spinner.
-///
-/// Here rather than on `Editor` because `LspState::spinner` is private to
-/// `mod lsp`, and the statusline reads this holding only an `&LspState`.
-pub(crate) fn spinner_frame(lsp: &LspState) -> usize {
-    lsp.spinner.frame
+pub(crate) fn spinner_frame(state: &EditorState) -> usize {
+    state.lsp.spinner.frame
 }
 
 /// `line`/`character` clamped into `text`'s addressable range and converted
@@ -432,6 +399,11 @@ fn wire_pos_to_grapheme_col(
 /// equals the grapheme column unless non-ASCII text precedes it on the line.
 /// This is the only place HUME renders a wire unit.
 ///
+/// Rows naming the same path, line and column collapse into the first, so
+/// several servers' answers to one request merge. Two servers counting one
+/// unopened non-ASCII position in different encodings still show twice: the
+/// column of an unopened target is the wire one.
+///
 /// Buffer lookups are cached per distinct path, so many locations in few files
 /// cost one resolve and buffer-store scan per file.
 pub(in crate::editor) fn location_display_parts(
@@ -440,8 +412,10 @@ pub(in crate::editor) fn location_display_parts(
 ) -> Result<Vec<hume_scripting::host::LocationDisplay>, String> {
     let mut open_buffer_cache: rustc_hash::FxHashMap<std::path::PathBuf, Option<BufferId>> =
         rustc_hash::FxHashMap::default();
+    let mut seen = rustc_hash::FxHashSet::default();
 
-    locs.iter()
+    let rows: Vec<hume_scripting::host::LocationDisplay> = locs
+        .iter()
         .map(|handle| {
             let encoding = handle.position_encoding("lsp-locations->display-parts")?;
             let wl = hume_lsp::location::decode_location(
@@ -480,88 +454,14 @@ pub(in crate::editor) fn location_display_parts(
                 line: wl.pos.line,
                 grapheme_col_or_wire,
                 buffer: open_bid,
+                location: handle.clone(),
             })
         })
-        .collect()
-}
-
-/// Clusters → wire `{"start" "end"}`, half-open like the clusters' own
-/// chars.
-fn clusters_to_wire(
-    text: &hume_editing::text::BufferText,
-    encoding: hume_rope::position_encoding::PositionEncoding,
-    range: hume_rope::cluster::ClusterRange,
-) -> serde_json::Value {
-    let wire_range = hume_rope::position_encoding::char_range_to_wire_range(
-        text.rope(),
-        range.chars(),
-        encoding,
-    );
-    hume_lsp::position::to_json_range(wire_range)
-}
-
-/// Ready-made range params from the primary selection alone, in `t`'s own
-/// pane: the shape `:lsp-code-actions` needs, since its diagnostics context
-/// (`lsp/primary-selection-range` in `actions.scm`) is primary-scoped too.
-pub(in crate::editor) fn primary_range_params(
-    state: &EditorState,
-    view: &EngineView,
-    lsp: &LspState,
-    t: crate::editor::commands::CommandPane,
-) -> Option<serde_json::Value> {
-    let id = t.bid(view);
-    let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
-    let text = state.buffers.get(id).text();
-    let covered = crate::editor::commands::pane_view(state, view, t)
-        .primary()
-        .covered();
-    Some(serde_json::json!({
-        "textDocument": {"uri": uri},
-        "range": clusters_to_wire(text, encoding, covered),
-    }))
-}
-
-/// Ready-made `{"textDocument" {"uri"} "ranges" [...]}` params covering
-/// every *linewise* selection in `id`'s buffer, run-length-coalesced: a run
-/// of selections that touch end-to-end (the next starts where the previous
-/// ends)
-/// collapses into one range, since an LSP range is naturally contiguous and
-/// splitting a touching run into separate ranges would buy nothing. A
-/// non-linewise selection is simply skipped: the caller decides what an
-/// all-linewise, all-partial, or mixed selection set means
-/// (`(selections-linewise? id)` is the "all of them" read; `ranges` empty
-/// here is the "none of them" read). An ambiguous selection (see
-/// `SelectionView::linewise_classification`) is skipped the same
-/// way, including from the touch check, so a stray cursor can't bridge two
-/// real linewise neighbors into one coalesced range that silently reformats
-/// the blank line between them too. `None` only when `t`'s buffer has no
-/// path or no attached server, matching every other params builder in this
-/// file.
-pub(in crate::editor) fn linewise_ranges_params(
-    state: &EditorState,
-    view: &EngineView,
-    lsp: &LspState,
-    t: crate::editor::commands::CommandPane,
-) -> Option<serde_json::Value> {
-    let id = t.bid(view);
-    let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
-    let text = state.buffers.get(id).text();
-    let selections = t.state(&state.panes.state, view).view(text);
-
-    let linewise: Vec<_> = selections
-        .iter()
-        .filter(|sel| sel.linewise_classification() == Some(true))
-        .map(|sel| sel.covered())
-        .collect();
-    let ranges: Vec<_> = linewise
-        .chunk_by(|a, b| hume_rope::cluster::ClusterBound::from(b.start()) == a.end())
-        .map(|run| clusters_to_wire(text, encoding, run[0].hull(run[run.len() - 1])))
-        .collect();
-
-    Some(serde_json::json!({
-        "textDocument": {"uri": uri},
-        "ranges": ranges,
-    }))
+        .collect::<Result<_, String>>()?;
+    Ok(rows
+        .into_iter()
+        .filter(|row| seen.insert((row.path.clone(), row.line, row.grapheme_col_or_wire)))
+        .collect())
 }
 
 /// `pane`'s visible line range, end-exclusive, clamped to a buffer of
@@ -608,47 +508,61 @@ pub(in crate::editor) fn viewport_range(
 }
 
 impl crate::editor::Editor {
-    /// `:lsp-status` text: one line per registered server (language, root,
-    /// lifecycle state, in-flight request count, negotiated encoding),
-    /// followed by one line per attached buffer with its diagnostic counts.
+    /// `:lsp-status` text: one line per running server (name, languages,
+    /// root, lifecycle state, in-flight request count, negotiated
+    /// encoding), followed by one line per attached buffer with its
+    /// servers and diagnostic counts, then the servers a stop left
+    /// stopped.
     pub(in crate::editor) fn lsp_status_text(&self) -> String {
-        let mut servers: Vec<(&str, &hume_lsp::client::LspClient)> = self
-            .lsp
-            .servers
-            .values()
-            .filter_map(|e| e.language.as_deref().map(|lang| (lang, &e.client)))
-            .collect();
-        servers.sort_by(|a, b| a.0.cmp(b.0).then_with(|| a.1.root().cmp(b.1.root())));
+        let lsp = &self.state.lsp;
+        let instances = sorted_instances(lsp);
 
         let mut lines = Vec::new();
-        if servers.is_empty() {
-            lines.push("No LSP servers registered.".to_string());
+        if instances.is_empty() {
+            lines.push("No LSP servers running.".to_string());
         }
-        for (language, client) in servers {
+        for instance in instances {
+            let languages = lsp.registry.languages_of(&instance.name);
             lines.push(format!(
-                "{language} @ {}: {}, {} in flight, encoding: {:?}",
-                client.root().display(),
-                client.state().name(),
-                client.pending_count(),
-                client.encoding(),
+                "{} [{}] @ {}: {}, {} in flight, encoding: {:?}",
+                instance.name,
+                languages.join(", "),
+                instance.client.root().display(),
+                instance.client.state().name(),
+                instance.client.pending_count(),
+                instance.client.encoding(),
             ));
         }
 
-        let mut buffer_lines: Vec<String> = self
-            .state
-            .buffers
+        for (bid, buf) in self.state.buffers.iter() {
+            let names: Vec<String> = self
+                .state
+                .buffer_positions
+                .lsp
+                .servers(bid)
+                .filter_map(|sid| lsp.instances.get(sid).map(|i| i.name.to_string()))
+                .collect();
+            if names.is_empty() {
+                continue;
+            }
+            let (errors, warnings) = self.state.buffer_positions.diagnostics.counts(bid);
+            lines.push(format!(
+                "  {} [{}]: {errors} error(s), {warnings} warning(s)",
+                buf.display_name(),
+                names.join(", ")
+            ));
+        }
+
+        let mut stopped: Vec<String> = lsp
+            .stopped
             .iter()
-            .filter_map(|(bid, buf)| {
-                buf.lsp_server.map(|_| {
-                    let (errors, warnings) = self.state.buffer_positions.diagnostics.counts(bid);
-                    format!(
-                        "  {}: {errors} error(s), {warnings} warning(s)",
-                        buf.display_name()
-                    )
-                })
-            })
+            .map(|(name, root)| format!("  {name} @ {}", root.display()))
             .collect();
-        lines.append(&mut buffer_lines);
+        if !stopped.is_empty() {
+            stopped.sort_unstable();
+            lines.push("Stopped (:lsp-restart starts them again):".to_string());
+            lines.extend(stopped);
+        }
 
         lines.join("\n")
     }

@@ -68,6 +68,7 @@ mod theme;
 mod timer_bridge;
 mod timers;
 mod tracked_positions;
+mod triggers;
 mod visual_move;
 
 pub(in crate::editor) use search::SearchState;
@@ -128,20 +129,13 @@ pub(crate) struct ConfigState {
     pub(in crate::editor) completion_sources: completion::SourceRegistry,
     /// Registry of configured language identities.
     pub(crate) languages: LanguageRegistry,
-    /// Chars that fire `OnTriggerChar` in Insert mode: the shared,
-    /// listener-agnostic table set by `(set-hook-triggers! source
-    /// language chars)`, keyed by `(source, language)`: a call only ever
-    /// replaces its own `(source, language)` entry, so two languages
-    /// sharing a source (e.g. the `"lsp"` completion source registered
-    /// separately for `"rust"` and `"python"`) never clobber each other.
-    /// An empty `chars` removes the entry entirely (matches
-    /// `on-lsp-detach`'s clear-on-detach usage). Distinct from a `Buffer`
-    /// completion source's own trigger chars (`SourceRegistry`'s
-    /// `BufferSourceEntry::trigger_chars`, set by
-    /// `set-completion-triggers!`). *That* table, not this one,
-    /// decides which completion sources a keystroke invokes
-    /// (`EditorState::trigger_buffer_completion`'s `Trigger::Char` arm).
-    pub(in crate::editor) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,
+    /// Trigger characters set for a language, keyed by `(kind, source,
+    /// language)`, so a call only replaces its own entry and two languages
+    /// sharing a source never clobber each other. An attachment-scoped set
+    /// lives on the attachment instead (`lsp/document.rs`); see
+    /// `triggers.rs`.
+    pub(in crate::editor) trigger_chars:
+        rustc_hash::FxHashMap<(hume_scripting::TriggerKind, String, String), Vec<char>>,
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, EOL text, extra highlights, line backgrounds). The render
     /// providers read these.
@@ -240,6 +234,9 @@ pub(crate) struct EditorState {
     pub(crate) buffers: BufferStore,
     /// Each buffer's diagnostics and last insertion, carried with its text.
     pub(in crate::editor) buffer_positions: position_stores::BufferPositions,
+    /// LSP backend, server registry, running instances and in-flight
+    /// requests: threaded in production, synchronous-inline in tests.
+    pub(in crate::editor) lsp: lsp::LspState,
     /// Config-owned state reset wholesale by `:reload-config`. See
     /// [`ConfigState`]'s doc for exactly what that means and why it's a
     /// separate struct.
@@ -493,6 +490,7 @@ impl Default for EditorState {
         Self {
             buffers: BufferStore::new(),
             buffer_positions: position_stores::BufferPositions::default(),
+            lsp: lsp::LspState::new_threaded(Arc::new(|| {})),
             // `kitty_enabled: false` matches: the real probe result isn't known
             // until `set_kitty_support` runs, after `Editor::open`.
             config: ConfigState::new(false, 0),
@@ -714,28 +712,6 @@ impl EditorState {
         self.should_quit = true;
     }
 
-    /// Every source registered for `(ch, language)`. `OnTriggerChar`'s fire
-    /// site (input_stack/insert.rs) fires once per entry, so two sources
-    /// registering the same char for the same language each get their own
-    /// hook fire. A buffer with no language (`language: None`) never
-    /// matches anything: trigger chars are always server-derived, and a
-    /// server attach implies a language.
-    pub(in crate::editor) fn trigger_sources_for(
-        &self,
-        ch: char,
-        language: Option<&str>,
-    ) -> Vec<String> {
-        let Some(language) = language else {
-            return Vec::new();
-        };
-        self.config
-            .trigger_chars
-            .iter()
-            .filter(|((_, lang), chars)| lang == language && chars.contains(&ch))
-            .map(|((source, _), _)| source.clone())
-            .collect()
-    }
-
     /// Pushes a mode layer: the single write path for mode transitions.
     /// `OnModeChange` fires later, from `Editor::detect_mode_change` at the
     /// next `settle()`.
@@ -944,9 +920,6 @@ pub(crate) struct Editor {
     /// whose stamp happens to match the old one; otherwise it would keep
     /// mirroring the previous buffer's virtual lines.
     virtual_lines_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
-    /// LSP backend + client state: threaded in production,
-    /// synchronous-inline in tests, mirroring `parse_worker` above.
-    lsp: lsp::LspState,
     /// Whether [`Editor::run`]'s event loop owns the terminal, and the
     /// handle to drive it when it does. See [`Tui`]'s own module doc for
     /// why these are one field. Tests and headless `run_keys` dispatch

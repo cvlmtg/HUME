@@ -24,9 +24,10 @@ use std::sync::Arc;
 
 use num_traits::ToPrimitive;
 use steel::HashMap as SteelHashMap;
-use steel::gc::{Gc, ShareableMut as _};
+use steel::gc::Gc;
 use steel::rvals::{Custom, IntoSteelVal as _, SteelVal, as_underlying_type};
 
+use hume_lsp::backend::ServerId;
 use hume_rope::position_encoding::PositionEncoding;
 
 /// Converts a `serde_json::Value` into the equivalent `SteelVal`. Total:
@@ -78,6 +79,18 @@ fn number_to_steel(n: &serde_json::Number) -> SteelVal {
 /// than [`JsonHandle`], …). The error names the offending kind rather than
 /// silently producing `null`.
 pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
+    steel_to_json_with(v, &mut |_| None)
+}
+
+/// `steel_to_json`, with `custom` consulted for every custom value that is
+/// not a [`JsonHandle`]: `Some` is that value's JSON (or the error to fail
+/// with), `None` falls through to the usual error. The LSP request path
+/// passes the hook that encodes [`crate::DocPos`]/[`crate::DocRange`] for
+/// the server it is sending to.
+pub fn steel_to_json_with(
+    v: &SteelVal,
+    custom: &mut dyn FnMut(&SteelVal) -> Option<Result<serde_json::Value, String>>,
+) -> Result<serde_json::Value, String> {
     match v {
         SteelVal::Void => Ok(serde_json::Value::Null),
         SteelVal::BoolV(b) => Ok(serde_json::Value::Bool(*b)),
@@ -98,7 +111,7 @@ pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
         SteelVal::ListV(items) => {
             let items = items
                 .iter()
-                .map(steel_to_json)
+                .map(|item| steel_to_json_with(item, custom))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(serde_json::Value::Array(items))
         }
@@ -112,7 +125,7 @@ pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
                         return Err(format!("hashmap key is not a string: {}", type_name(other)));
                     }
                 };
-                map.insert(key, steel_to_json(value)?);
+                map.insert(key, steel_to_json_with(value, custom)?);
             }
             Ok(serde_json::Value::Object(map))
         }
@@ -121,9 +134,21 @@ pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
         // `workspace/executeCommand`) resolves to its own value at zero
         // reconversion cost: no walk of the handle's contents, just a clone
         // of the `Value` it already points at.
-        SteelVal::Custom(_) => downcast_json_handle(v)
-            .map(|h| h.value().clone())
-            .ok_or_else(|| format!("cannot convert {} to JSON", type_name(v))),
+        SteelVal::Custom(_) => match downcast_json_handle(v) {
+            Some(h) => Ok(h.value().clone()),
+            None => custom(v).unwrap_or_else(|| {
+                if crate::DocPos::from_steel_val(v).is_some()
+                    || crate::DocRange::from_steel_val(v).is_some()
+                {
+                    Err(
+                        "a position value can only be sent through lsp-request!/lsp-notify!"
+                            .to_string(),
+                    )
+                } else {
+                    Err(format!("cannot convert {} to JSON", type_name(v)))
+                }
+            }),
+        },
         other => Err(format!("cannot convert {} to JSON", type_name(other))),
     }
 }
@@ -183,9 +208,12 @@ pub struct JsonHandle {
 /// Where a [`JsonHandle`]'s root value came from (see the field's own doc).
 #[derive(Debug, Clone, Copy)]
 pub enum WireOrigin {
-    /// A response from a server negotiated at this encoding: every wire
+    /// A message from server `id`, negotiated at `encoding`: every wire
     /// position anywhere in the tree is counted in it.
-    Server(PositionEncoding),
+    Server {
+        id: ServerId,
+        encoding: PositionEncoding,
+    },
     /// Not a server response: `json-parse`, `lsp-capabilities`, or a
     /// hashmap/handle a plugin built by hand. No encoding to decode a wire
     /// position with (see [`JsonHandle::position_encoding`]).
@@ -334,15 +362,23 @@ impl JsonHandle {
     /// Test-only: builds a handle already tagged as a server response, for a
     /// unit test that decodes wire positions directly against a hand-built
     /// JSON tree rather than going through a real request/response round
-    /// trip (`bridge.rs`'s `outcome_to_steel` is the production tagging
+    /// trip (`bridge.rs`'s `slot_values` is the production tagging
     /// site).
     #[cfg(test)]
     pub(crate) fn server_for_test(value: serde_json::Value, encoding: PositionEncoding) -> Self {
         Self {
             root: Arc::new(value),
             path: Arc::from(Vec::new()),
-            origin: WireOrigin::Server(encoding),
+            origin: WireOrigin::Server {
+                id: ServerId(0),
+                encoding,
+            },
         }
+    }
+
+    /// Where this handle's tree came from.
+    pub fn origin(&self) -> WireOrigin {
+        self.origin
     }
 
     /// This handle's tree's negotiated encoding, or `Err` if it didn't come
@@ -353,7 +389,7 @@ impl JsonHandle {
     /// *currently* attached server may have restarted or detached since.
     pub fn position_encoding(&self, ctx_name: &str) -> Result<PositionEncoding, String> {
         match self.origin {
-            WireOrigin::Server(encoding) => Ok(encoding),
+            WireOrigin::Server { encoding, .. } => Ok(encoding),
             WireOrigin::Local => Err(format!(
                 "{ctx_name}: not a value from an LSP server response: no encoding to decode a \
                  wire position with"
@@ -534,11 +570,7 @@ fn hash_json_value<H: std::hash::Hasher>(v: &serde_json::Value, state: &mut H) {
 
 /// `Some` if `val` is a [`JsonHandle`].
 pub fn downcast_json_handle(val: &SteelVal) -> Option<JsonHandle> {
-    if let SteelVal::Custom(v) = val {
-        v.read().as_any_ref().downcast_ref::<JsonHandle>().cloned()
-    } else {
-        None
-    }
+    crate::builtins::ids::downcast(val)
 }
 
 #[cfg(test)]

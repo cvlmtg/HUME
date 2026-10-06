@@ -6,18 +6,16 @@
 
 (register-completion-source! "lsp"
   (lambda (id pane prefix)
-    (if (lsp/supports? pane "completionProvider")
-        (lsp-request! pane "textDocument/completion" (lsp-position-params pane)
-          (lambda (err res)
-            (cond
-              (err (lsp/report-error! "completion" err)
-                   (completion-emit! id '()))
-              ((void? res) (completion-emit! id '()))
-              (else (completion-emit! id res))))
-          #:supersede "completion")
-        (completion-emit! id '())))
+    (if (null? (lsp-servers pane #:feature 'completion))
+        (completion-emit! id '())
+        (lsp-request-all! pane "textDocument/completion" (lsp-position-params pane)
+          (lambda (err results)
+            (when err (lsp/report-error! "completion" err))
+            (lsp/report-answer-errors! "completion" results)
+            (completion-emit! id (lsp/answers results)))
+          #:supersede "completion")))
   #:target 'buffer #:priority 10 #:resolve #t)
 
 ;; ── Trigger chars ─────────────────────────────────────────────────────────────
 
-(lsp/setup-trigger-chars! "completionProvider" "lsp" '() #f)
+(lsp/setup-trigger-chars! 'completion "lsp" '() #f)

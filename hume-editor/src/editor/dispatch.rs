@@ -3,7 +3,7 @@
 //! [`commands::run`] handles the `&mut EditorState + &mut
 //! EngineView` half (native commands, and the BEFORE/AFTER pipeline stages
 //! shared with Steel-backed commands). This module holds the Steel-backed
-//! path, which additionally needs `self.scripting`, `self.lsp`, and the
+//! path, which additionally needs `self.scripting` and the
 //! timer bridge: fields only reachable through `&mut Editor`.
 
 use super::event::EditorEvent;
@@ -377,7 +377,6 @@ impl Editor {
             let mut impl_host = crate::editor::host_impl::EditorHostImpl::full(
                 &mut self.state,
                 &mut self.view,
-                &mut self.lsp,
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
                 self.tui.clone(),

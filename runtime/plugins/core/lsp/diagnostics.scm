@@ -174,24 +174,19 @@
     #:hide-on-insert-line (not (get-option "lsp.diagnostics-on-insert-line")))
   (set-signs! "lsp-diagnostics" pane (lsp/diagnostic-signs diags)))
 
-(register-hook! 'on-diagnostics-changed
-  (lambda (pane)
-    (let ((diags (diagnostics-for-buffer pane)))
-      (lsp/refresh-diagnostic-decorations! pane diags)
-      (lsp/refresh-diagnostics-drawer! pane diags))))
+(define (lsp/refresh-diagnostics! pane)
+  (let ((diags (diagnostics-for-buffer pane)))
+    (lsp/refresh-diagnostic-decorations! pane diags)
+    (lsp/refresh-diagnostics-drawer! pane diags)))
 
+(register-hook! 'on-diagnostics-changed lsp/refresh-diagnostics!)
+
+;; A detached server's diagnostics are already gone from the store; what the
+;; buffer's other servers published stays.
 (register-hook! 'on-lsp-detach
-  (lambda (pane language)
-    (register-sign-source! "lsp-diagnostics" pane lsp/*sign-priority*)
-    (set-eol-text! "lsp-diagnostics" pane '())
-    (set-signs! "lsp-diagnostics" pane '())
-    (lsp/refresh-diagnostics-drawer! pane '())))
+  (lambda (pane server) (lsp/refresh-diagnostics! pane)))
 
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (member key '("lsp.diagnostics-severity-floor" "lsp.diagnostics-on-insert-line"))
-      (for-each (lambda (pane)
-                  (let ((diags (diagnostics-for-buffer pane)))
-                    (lsp/refresh-diagnostic-decorations! pane diags)
-                    (lsp/refresh-diagnostics-drawer! pane diags)))
-                (buffers)))))
+      (for-each lsp/refresh-diagnostics! (buffers)))))

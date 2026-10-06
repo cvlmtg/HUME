@@ -2,47 +2,19 @@
 // set-signs!, set-virtual-lines!, set-extra-highlights!, set-eol-text!) and
 // the diagnostics pull (diagnostics-for-buffer, diagnostic-counts).
 
-use std::path::Path;
-
+use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::test_util::RecordingLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// Attaches the focused buffer to a `Running` scripted server (UTF-16
-/// encoding, the negotiated default) and gives it a path: several tests
-/// below compose `lsp-position->offset`, which needs a resolvable server to
-/// convert a wire position, and `inlay_hints_remap_through_an_edit` needs
-/// the path for the remap chokepoint to have somewhere to (not) send a
+/// `marked` in a file attached to a `Running` scripted server (UTF-16
+/// encoding, the negotiated default): several tests below compose
+/// `lsp-position->offset`, which needs a resolvable server to convert a
+/// wire position, and `inlay_hints_remap_through_an_edit` needs a real
+/// attachment for the remap chokepoint to have somewhere to (not) send a
 /// `didChange`.
-fn attach_running_server(ed: &mut Editor) -> ServerId {
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    // `flush_lsp_pending_changes` (and therefore the remap chokepoint)
-    // bails out for a pathless buffer; a real attach always has one.
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_path(Some(std::path::PathBuf::from(
-            "/tmp/hume-decorations-test.rs",
-        )));
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    sid
+fn attached_editor(tmp: &std::path::Path, marked: &str) -> Editor {
+    LspRig::rust(tmp, marked, serde_json::json!({"capabilities": {}})).ed
 }
 
 #[test]
@@ -57,31 +29,13 @@ fn set_inlay_hints_composes_with_lsp_position_to_offset() {
     // The position must arrive as a real tagged handle (`lsp-position->
     // offset` rejects a hand-built (untagged) one outright), so this echoes
     // it through a scripted `test/echo` request/response round trip rather
-    // than reusing `attach_running_server`, which sets up no such response.
-    let mut ed = editor_from("-[x]>🎉bcdef\n");
-    let mut backend = InlineLspBackend::new();
+    // than reusing `attached_editor`, which sets up no such response.
+    let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
     backend.respond_to("test/echo", serde_json::json!({"line": 0, "character": 2}));
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_path(Some(std::path::PathBuf::from(
-            "/tmp/hume-decorations-test.rs",
-        )));
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
+    let rig = LspRig::drained(tmp.path(), RigSpec::rust("-[x]>🎉bcdef\n"), backend);
+    let bid = rig.bid;
+    let mut ed = rig.ed;
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -117,8 +71,7 @@ fn set_inlay_hints_composes_with_lsp_position_to_offset() {
 #[test]
 fn set_inlay_hints_replaces_wholesale_not_appends() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>abcdef\n");
-    attach_running_server(&mut ed);
+    let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -157,8 +110,7 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
 #[test]
 fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>abcdef\n");
-    attach_running_server(&mut ed);
+    let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -198,8 +150,7 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
 #[test]
 fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>abcdef\n"); // "xabcdef\n", 8 chars; offset 7 is the trailing '\n'
-    attach_running_server(&mut ed);
+    let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n"); // "xabcdef\n", 8 chars; offset 7 is the trailing '\n'
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -344,8 +295,7 @@ fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudl
 #[test]
 fn inlay_hints_remap_through_an_edit() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>abcdef\n");
-    attach_running_server(&mut ed);
+    let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -392,7 +342,7 @@ fn inlay_hints_remap_through_an_edit() {
 #[test]
 fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
     let tmp = safe_tempdir();
-    // No attach_running_server call: this buffer has no LSP
+    // No attached server: this buffer has no LSP
     // server and no path, nothing but the decoration itself.
     let mut ed = editor_from("-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
@@ -444,7 +394,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
 /// `signs`/`virtual_lines`/`eol_text` remap through edits like every other
 /// kind. A line-indexed sign that never remapped would silently drift onto
 /// the wrong line the moment a line was inserted or deleted above it.
-/// No `attach_running_server` call: `has_any`
+/// No attached server: `has_any`
 /// covers every kind, so a signs-only buffer with no LSP server still
 /// gets its edits queued for the remap chokepoint.
 #[test]
@@ -963,51 +913,34 @@ fn line_background_remaps_through_a_line_inserted_above_it() {
 #[test]
 fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    std::fs::write(&file, "abcdefghij\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    backend.push_from_server(
-        sid,
-        hume_lsp::codec::Message::Notification {
-            method: "textDocument/publishDiagnostics".to_string(),
-            params: serde_json::json!({
-                "uri": uri.as_str(),
-                "diagnostics": [
-                    {
-                        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
-                        "severity": 1,
-                        "message": "an error",
-                    },
-                    {
-                        "range": {"start": {"line": 0, "character": 2}, "end": {"line": 0, "character": 3}},
-                        "severity": 2,
-                        "message": "a warning",
-                    },
-                    {
-                        "range": {"start": {"line": 0, "character": 8}, "end": {"line": 0, "character": 9}},
-                        "severity": 4,
-                        "message": "a hint",
-                    },
-                ],
-            }),
-        },
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdefghij\n",
+        serde_json::json!({"capabilities": {}}),
     );
-
-    let mut ed = editor_from("-[x]>\n");
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, std::path::PathBuf::from(".")));
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    ed.drain_lsp();
+    let sid = rig.sid("rust-analyzer");
+    rig.publish(
+        sid,
+        serde_json::json!([
+            {
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                "severity": 1,
+                "message": "an error",
+            },
+            {
+                "range": {"start": {"line": 0, "character": 2}, "end": {"line": 0, "character": 3}},
+                "severity": 2,
+                "message": "a warning",
+            },
+            {
+                "range": {"start": {"line": 0, "character": 8}, "end": {"line": 0, "character": 9}},
+                "severity": 4,
+                "message": "a hint",
+            },
+        ]),
+    );
+    let bid = rig.bid;
+    let mut ed = rig.ed;
 
     assert_eq!(
         ed.diagnostic_counts(bid),

@@ -17,6 +17,7 @@ fn invalid_glob_in_define_language_warns_and_skips() {
         globs: vec!["valid/*.xyz".to_owned(), "[invalid-glob".to_owned()],
         shebangs: vec![],
         lsp_language_id: None,
+        roots: vec![],
     }];
     ed.apply_pending_language_regs(regs);
     // Valid glob must be registered; extension lookup must work.

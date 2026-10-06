@@ -599,6 +599,26 @@ fn define_language_language_id_keyword_round_trips_through_real_prelude() {
     );
 }
 
+/// `define-language!`'s `#:roots` keyword round-trips through the real
+/// prelude into the language registry; a call without it leaves no roots.
+#[test]
+fn define_language_roots_keyword_round_trips_through_real_prelude() {
+    let languages_scm = r#"
+        (define-language! "plain-lang" '("pln"))
+        (define-language! "rooted-lang" '("rtd") #:roots '("proj.toml" "proj.lock"))
+    "#;
+
+    let (ed, _dirs) = setup_editor_with_languages_scm(languages_scm, "test.rtd");
+
+    let registry = &ed.state.config.languages;
+    let plain = registry.id_of("plain-lang").expect("plain-lang registered");
+    let rooted = registry
+        .id_of("rooted-lang")
+        .expect("rooted-lang registered");
+    assert!(registry.roots_of(plain).is_empty());
+    assert_eq!(registry.roots_of(rooted), ["proj.toml", "proj.lock"]);
+}
+
 /// The actual bug report this whole feature exists for: opening a `.tsx`
 /// file made `typescript-language-server` log "Invalid languageId \"tsx\"
 /// ... Correcting to \"typescriptreact\"", because the bundled
@@ -1124,4 +1144,40 @@ fn installed_grammars_sorts_by_stem_not_filename() {
         err.contains("b,b-x"),
         "installed-grammars must sort stems after stripping the extension: {err:?}"
     );
+}
+
+/// The bundled `languages.scm` carries each language's Helix root markers:
+/// `go` lists two, `gomod` none.
+#[test]
+fn bundled_languages_carry_helix_roots() {
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let config_tmp = safe_tempdir();
+    let data_tmp = safe_tempdir();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(hume_config.join("init.scm"), "").unwrap();
+    let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
+
+    let mut ed = editor_from("-[a]>b\n");
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", real_runtime);
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+    ed.init_scripting(&mut Default::default());
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    let languages = &ed.state.config.languages;
+    let go = languages
+        .id_of("go")
+        .expect("go must be a bundled language");
+    let gomod = languages
+        .id_of("gomod")
+        .expect("gomod must be a bundled language");
+    assert_eq!(languages.roots_of(go), ["go.work", "go.mod"]);
+    assert!(languages.roots_of(gomod).is_empty());
 }

@@ -363,7 +363,7 @@ fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
     };
 
     ed.with_dot_capture(None, |ed| {
-        if let Err(msg) = session.accept(&mut ed.state, &ed.view, &mut ed.lsp, selected) {
+        if let Err(msg) = session.accept(&mut ed.state, &ed.view, selected) {
             ed.report(Severity::Error, msg);
         }
     });

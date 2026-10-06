@@ -20,6 +20,9 @@ bash scripts/fetch-test-grammars.sh
 # ~39MB dev dependency the rest of this local loop has no other use for.
 (cd tools/theme-editor && npm test)
 
+# The sync scripts' parsing logic, against fixtures: no network, instant.
+python3 -m unittest discover -s scripts/tests
+
 # Denies only `disallowed_methods` — the workspace-wide bans `clippy.toml`
 # lists (raw `unicode-width` calls, `std::env::set_var`/`remove_var`, raw
 # `ropey` line-index methods). Every other clippy lint stays at its default

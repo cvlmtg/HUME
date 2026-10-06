@@ -154,15 +154,15 @@ fn hume_globals_scm_matches_generated_host_names() {
 /// (`runtime/plugins/core/steel-server/plugin.scm`): loading it and calling
 /// `steel-server/register!` directly (bypassing the `which
 /// "steel-language-server"` gate, since the binary need not be installed to
-/// run this suite) must register `"scheme"` with `#:env` pointing
-/// `STEEL_LSP_HOME` at the real, existing `lsp-home/` directory this same
-/// module's drift test keeps in sync.
+/// run this suite) must register `"steel-language-server"` with `#:env`
+/// pointing `STEEL_LSP_HOME` at the real, existing `lsp-home/` directory this
+/// same module's drift test keeps in sync.
 ///
 /// PATH-independent: `plugin.scm`'s own load-time tail may
-/// have already registered `"scheme"` if `steel-language-server` happens to
-/// be on this machine's `$PATH` (harmless no-op then, guarded by `unless
-/// (lsp-registered-for-language? "scheme")`), so this test explicitly
-/// unregisters first and asserts the cleared pre-state, proving the
+/// have already registered `"steel-language-server"` if that binary happens
+/// to be on this machine's `$PATH` (harmless no-op then, guarded by `unless
+/// (lsp-server-registered? "steel-language-server")`), so this test
+/// explicitly unregisters first and asserts the cleared pre-state, proving the
 /// `Some("steel-language-server")` assertion below can only be satisfied by
 /// the `steel-server/register!` call under test, not by that load-time tail.
 ///
@@ -171,7 +171,7 @@ fn hume_globals_scm_matches_generated_host_names() {
 /// through to the `#f`/no-`#:env` branch and the `STEEL_LSP_HOME` assertion
 /// would fail.
 #[test]
-fn steel_server_plugin_registers_scheme_with_generated_globals_env() {
+fn steel_server_plugin_registers_its_server_with_generated_globals_env() {
     let (mut host, mut ed, builtin_names) = host_and_editor_after_runtime_layers();
     let runtime_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -191,12 +191,15 @@ fn steel_server_plugin_registers_scheme_with_generated_globals_env() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(unregister-lsp-server! "scheme")"#,
+        r#"(unregister-lsp-server! "steel-language-server")"#,
         tmp.path(),
     );
     assert!(
-        ed.lsp.config_command_for_test("scheme").is_none(),
-        "pre-state: scheme must be unregistered before the register! call under test"
+        ed.state
+            .lsp
+            .registered_command_for_test("steel-language-server")
+            .is_none(),
+        "pre-state: steel-language-server must be unregistered before the register! call under test"
     );
 
     eval_with_real_host(
@@ -207,14 +210,18 @@ fn steel_server_plugin_registers_scheme_with_generated_globals_env() {
     );
 
     assert_eq!(
-        ed.lsp.config_command_for_test("scheme").as_deref(),
+        ed.state
+            .lsp
+            .registered_command_for_test("steel-language-server")
+            .as_deref(),
         Some("steel-language-server"),
-        "steel-server/register! must register the scheme language"
+        "steel-server/register! must register steel-language-server"
     );
     let env = ed
+        .state
         .lsp
-        .config_env_for_test("scheme")
-        .expect("scheme must be registered");
+        .registered_env_for_test("steel-language-server")
+        .expect("steel-language-server must be registered");
     let lsp_home = env
         .iter()
         .find(|(k, _)| k == "STEEL_LSP_HOME")
@@ -236,5 +243,42 @@ fn steel_server_plugin_registers_scheme_with_generated_globals_env() {
     assert!(
         actual.join("hume-globals.scm").is_file(),
         "STEEL_LSP_HOME must contain the generated hume-globals.scm"
+    );
+}
+
+/// `core:steel-server` redefines `scheme` with the `cog.scm` root and gives
+/// it its server list: once the server is registered, scheme buffers
+/// resolve to it, and the language keeps the bundled extensions.
+#[test]
+fn steel_server_plugin_gives_scheme_its_root_and_server_list() {
+    let (mut host, mut ed, builtin_names) = host_and_editor_after_runtime_layers();
+    let plugin_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root")
+        .join("runtime/plugins/core/steel-server/plugin.scm");
+    let effects = {
+        let mut ih = init_host!(ed);
+        host.eval_init(&plugin_path, 10_000, &mut ih, builtin_names)
+            .unwrap_or_else(|e| panic!("evaluating plugin.scm: {}", e.message))
+    };
+    ed.apply_script_effects(effects);
+    let tmp = safe_tempdir();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(steel-server/register!)"#,
+        tmp.path(),
+    );
+
+    let languages = &ed.state.config.languages;
+    let scheme = languages.id_of("scheme").expect("scheme is a language");
+    assert_eq!(languages.roots_of(scheme), ["cog.scm"]);
+    assert_eq!(languages.by_extension("scm"), Some(scheme));
+    assert_eq!(
+        crate::editor::lsp::introspect::language_servers(&ed.state.lsp, "scheme")
+            .into_iter()
+            .map(|entry| entry.name.to_string())
+            .collect::<Vec<_>>(),
+        ["steel-language-server"]
     );
 }

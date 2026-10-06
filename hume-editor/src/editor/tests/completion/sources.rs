@@ -354,8 +354,9 @@ fn an_answer_after_the_session_closed_is_dropped() {
     assert!(ed.state.input.buffer_completion().is_none());
 }
 
-/// A malformed item (missing the spec-required `label`) must not take down
-/// the whole batch: the well-formed item next to it still survives.
+/// A malformed item in a server's response (missing the spec-required
+/// `label`) must not take down the whole batch: the well-formed item next
+/// to it still survives.
 #[test]
 fn a_malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
     let tmp = safe_tempdir();
@@ -363,7 +364,7 @@ fn a_malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
     insert_with_source(
         &mut ed,
         tmp.path(),
-        r#"(list (hash "label" "good") (hash "kind" 1))"#,
+        r#"(list (json-parse "[{\"label\": \"good\"}, {\"kind\": 1}]"))"#,
     );
     assert_eq!(labels(&ed), vec!["good"]);
     assert!(
@@ -383,7 +384,7 @@ fn an_all_malformed_answer_behaves_like_an_empty_one() {
     insert_with_source(
         &mut ed,
         tmp.path(),
-        r#"(list (hash "kind" 1) (hash "kind" 2))"#,
+        r#"(list (json-parse "[{\"kind\": 1}, {\"kind\": 2}]"))"#,
     );
     assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(status(&ed), "no completions");
@@ -487,62 +488,90 @@ fn a_raising_source_is_not_retried_on_every_keystroke() {
     );
 }
 
-// ── JSON handle responses ───────────────────────────────────────────────────
+// ── Answer parts ─────────────────────────────────────────────────────────────
 
-/// A bare `CompletionItem[]` handle has no `isIncomplete` field of its own,
-/// so an explicit `#:incomplete #t` still applies and the source is
-/// reinvoked on the next keystroke, same as the plain-list `Items` shape.
-#[test]
-fn a_bare_array_handle_honors_incomplete() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    insert_with_script(
-        &mut ed,
-        tmp.path(),
+/// A source answering with `parts`, a Scheme list expression, and `#:incomplete
+/// incomplete`, counting its calls; `report` logs the count.
+fn answering_source(parts: &str, incomplete: &str) -> String {
+    format!(
         r#"(define calls 0)
            (register-completion-source! "test"
              (lambda (id bid prefix)
                (set! calls (+ calls 1))
-               (completion-emit! id (json-parse "[{\"label\": \"foobar\"}]") #:incomplete #t))
+               (completion-emit! id {parts} #:incomplete {incomplete}))
              #:target 'buffer)
-           (define-command! "report" "" (lambda () (log! 'info (number->string calls))))"#,
-    );
+           (define-command! "report" "" (lambda () (log! 'info (number->string calls))))"#
+    )
+}
+
+/// Typing `fo` with a source open, then reports how often it was called.
+fn calls_after_typing(ed: &mut Editor) -> String {
     ed.feed_key(key('f'));
     ed.settle();
     ed.feed_key(key('o'));
     ed.settle();
     ed.execute_keymap_command("report".into(), None, false);
-    assert_eq!(status(&ed), "3", "one trigger call plus one per keystroke");
+    status(ed).to_string()
 }
 
-/// A handle that isn't a `textDocument/completion` response shape (here, an
-/// object with no `items`) raises rather than silently completing nothing:
-/// `completion-emit!`'s decode is a caller contract, not a best-effort one.
+/// A bare `CompletionItem[]` response has no `isIncomplete` field of its
+/// own, so an explicit `#:incomplete #t` still applies and the source is
+/// reinvoked on the next keystroke.
 #[test]
-fn a_non_completion_handle_raises() {
+fn a_bare_array_part_honors_incomplete() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
         tmp.path(),
-        r#"(register-completion-source! "test"
-             (lambda (id bid prefix)
-               (completion-emit! id (json-parse "{\"isIncomplete\": false}")))
-             #:target 'buffer)"#,
+        &answering_source(r#"(list (json-parse "[{\"label\": \"foobar\"}]"))"#, "#t"),
     );
-    assert!(
-        ed.state
-            .message_log
-            .entries()
-            .any(|e| e.severity == Severity::Error && e.text.contains("completion-emit!")),
-        "expected a raised completion-emit! error in the message log"
+    assert_eq!(
+        calls_after_typing(&mut ed),
+        "3",
+        "one trigger call plus one per keystroke"
     );
 }
 
-/// A `CompletionList` handle's own `isIncomplete` conflicting with an
-/// explicit `#:incomplete #t` raises.
+/// A `CompletionList` marked incomplete makes the whole answer incomplete,
+/// with no `#:incomplete` of its own.
 #[test]
-fn a_completion_list_handle_rejects_incomplete() {
+fn a_completion_list_part_is_incomplete_when_its_own_flag_is_set() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        &answering_source(
+            r#"(list (json-parse "{\"items\": [{\"label\": \"foobar\"}], \"isIncomplete\": true}")
+                     (json-parse "{\"items\": [{\"label\": \"fooqux\"}], \"isIncomplete\": false}"))"#,
+            "#f",
+        ),
+    );
+    assert_eq!(calls_after_typing(&mut ed), "3");
+}
+
+/// An explicit `#:incomplete #t` applies even when every list says it is
+/// complete: the answer is incomplete if anything says so.
+#[test]
+fn an_explicit_incomplete_applies_over_a_complete_list() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        &answering_source(
+            r#"(list (json-parse "{\"items\": [{\"label\": \"foobar\"}], \"isIncomplete\": false}"))"#,
+            "#t",
+        ),
+    );
+    assert_eq!(calls_after_typing(&mut ed), "3");
+}
+
+/// One answer can mix plain labels, item hashes, and whole responses: each
+/// response's items join the others.
+#[test]
+fn completion_emit_decodes_a_mixed_items_list() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
@@ -551,8 +580,30 @@ fn a_completion_list_handle_rejects_incomplete() {
         r#"(register-completion-source! "test"
              (lambda (id bid prefix)
                (completion-emit! id
-                 (json-parse "{\"items\": [{\"label\": \"foobar\"}], \"isIncomplete\": false}")
-                 #:incomplete #t))
+                 (list "plain"
+                       (hash "label" "hashed")
+                       (json-parse "[{\"label\": \"arrayed\"}]")
+                       (json-parse "{\"items\": [{\"label\": \"listed\"}]}"))))
+             #:target 'buffer)"#,
+    );
+    let mut got = labels(&ed);
+    got.sort();
+    assert_eq!(got, vec!["arrayed", "hashed", "listed", "plain"]);
+}
+
+/// A part that is neither an item nor a `textDocument/completion` response
+/// (here, an object with no `items` or `label`) raises rather than
+/// completing nothing.
+#[test]
+fn a_part_that_is_neither_an_item_nor_a_response_raises() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "test"
+             (lambda (id bid prefix)
+               (completion-emit! id (list (json-parse "{\"isIncomplete\": false}"))))
              #:target 'buffer)"#,
     );
     assert!(
@@ -714,7 +765,7 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
            ;; Same eval as the "dot" registration above: `register-
            ;; completion-source!` only queues an `Effect`, applied after
            ;; this whole eval returns, and `set-completion-triggers!`
-           ;; is queued too (`Effect::SetCompletionTriggers`), so the
+           ;; is queued too (`Effect::SetTriggers`), so the
            ;; two apply in emission order rather than racing each other.
            (set-completion-triggers! "dot" "rust" (list "."))"#,
     );

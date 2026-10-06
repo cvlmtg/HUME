@@ -98,11 +98,11 @@ fn scripted_initialize_round_trip_through_editor() {
     use hume_lsp::transport::InboundEvent;
 
     let mut ed = editor_from("-[w]>ord\n");
-    ed.lsp = super::super::lsp::LspState::from_backend_for_test(Box::new(
+    ed.state.lsp = super::super::lsp::LspState::with_backend(Box::new(
         InlineLspBackend::with_default_handshake(),
     ));
 
-    let backend = ed.lsp.backend_mut();
+    let backend = ed.state.lsp.backend_mut();
     let server = backend
         .start("rust-analyzer", &[], std::path::Path::new("."), &[])
         .expect("inline start never fails");
@@ -132,56 +132,33 @@ fn scripted_initialize_round_trip_through_editor() {
 /// while a client is `Starting` or reporting `$/progress`. These tests pin
 /// that rewrite directly against `wake_timeout`.
 mod next_wake_covers_client_state {
+    use super::super::lsp_rig::{LspRig, RigSpec};
     use super::*;
-    use hume_lsp::backend::LspBackend;
-    use hume_lsp::client::{ClientAction, LspClient, RequestMeta, ServerState};
-    use hume_lsp::inline::InlineLspBackend;
-    use std::path::{Path, PathBuf};
+    use hume_lsp::client::{ClientAction, RequestMeta};
+    use hume_lsp::test_util::RecordingLspBackend;
 
     /// The spinner's own cadence (`SPINNER_INTERVAL` in `lsp/mod.rs`, which
     /// is private to that module), duplicated here as a literal rather than
     /// widening that constant's visibility just for test comparisons.
     const SPINNER_INTERVAL: Duration = Duration::from_millis(100);
 
-    fn wired_editor() -> (Editor, hume_lsp::backend::ServerId) {
-        let mut ed = editor_from("-[w]>ord\n");
-        let mut backend = InlineLspBackend::new();
-        let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-        ed.lsp = super::super::super::lsp::LspState::from_backend_for_test(Box::new(backend));
-        (ed, sid)
+    /// One `rust-analyzer` instance, `Running` with nothing in flight.
+    fn running_rig(tmp: &std::path::Path) -> LspRig {
+        LspRig::rust(tmp, "-[w]>ord\n", serde_json::json!({ "capabilities": {} }))
     }
 
     #[test]
-    fn starting_client_wakes_at_spinner_cadence() {
+    fn starting_client_with_pending_initialize_wakes_at_spinner_cadence() {
         // Mid-handshake, the initialize response could land any moment, and
-        // the statusline spinner must keep animating while it waits, so
-        // `Starting` must be folded into the spinner-cadence condition
-        // directly rather than relying on a separate pending-poll arm.
-        let (mut ed, sid) = wired_editor();
-        ed.lsp
-            .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
+        // the statusline spinner must keep animating while it waits. The
+        // in-flight `initialize` request carries a 30s deadline, far longer
+        // than the spinner cadence, and the spinner arm must still win.
+        let tmp = safe_tempdir();
+        let (backend, _, _) = RecordingLspBackend::new();
+        let rig = LspRig::open(tmp.path(), RigSpec::rust("-[w]>ord\n"), backend);
 
-        let timeout = ed
-            .wake_timeout()
-            .expect("a Starting client must force a wake");
-        assert!(
-            timeout <= SPINNER_INTERVAL,
-            "a Starting client must wake at the spinner cadence, got {timeout:?}"
-        );
-    }
-
-    #[test]
-    fn starting_client_with_pending_initialize_keeps_spinner_cadence() {
-        // The in-flight `initialize` request itself carries a 30s deadline,
-        // far longer than the spinner cadence. The spinner arm must still
-        // win so the handshake animation doesn't freeze for 30 seconds.
-        let (mut ed, sid) = wired_editor();
-        let mut client = LspClient::new(sid, PathBuf::from("."));
-        let mut backend = InlineLspBackend::new();
-        client.start_handshake(&mut backend);
-        ed.lsp.insert_client_for_test(client);
-
-        let timeout = ed
+        let timeout = rig
+            .ed
             .wake_timeout()
             .expect("a Starting client must force a wake");
         assert!(
@@ -193,21 +170,22 @@ mod next_wake_covers_client_state {
     #[test]
     fn running_request_deadline_bounds_wake() {
         // A Running client with an ordinary request in flight: `next_wake`
-        // must report that request's own deadline (not a poll cadence, and
-        // not the (now-deleted) coarser heartbeat).
-        let (mut ed, sid) = wired_editor();
-        let mut client = LspClient::new(sid, PathBuf::from("."));
-        client.set_state_for_test(ServerState::Running);
-        ed.lsp.insert_client_for_test(client);
+        // must report that request's own deadline, not a poll cadence.
+        let tmp = safe_tempdir();
+        let mut rig = running_rig(tmp.path());
+        let sid = rig.sid("rust-analyzer");
 
         let meta = RequestMeta {
             method: "textDocument/hover".to_string(),
             deadline: Instant::now() + Duration::from_secs(10),
         };
-        ed.lsp
+        rig.ed
+            .state
+            .lsp
             .send_request(sid, "textDocument/hover", serde_json::Value::Null, meta);
 
-        let timeout = ed
+        let timeout = rig
+            .ed
             .wake_timeout()
             .expect("a pending request sets its own deadline");
         assert!(
@@ -222,20 +200,24 @@ mod next_wake_covers_client_state {
         // `next_wake` aggregates `earliest_deadline()` across every server
         // with `.min()`: a far deadline on one server must never hide a
         // near one on another.
-        let mut ed = editor_from("-[w]>ord\n");
-        let mut backend = InlineLspBackend::new();
-        let sid_near = backend.start("x", &[], Path::new("."), &[]).unwrap();
-        let sid_far = backend.start("y", &[], Path::new("."), &[]).unwrap();
-        ed.lsp = super::super::super::lsp::LspState::from_backend_for_test(Box::new(backend));
+        let tmp = safe_tempdir();
+        let (mut backend, _, _) = RecordingLspBackend::new();
+        backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+        backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+        let init = r#"
+            (register-lsp-server! "near" #:command "near")
+            (register-lsp-server! "far" #:command "far")
+            (set-language-servers! "rust" '("near" "far"))
+        "#;
+        let mut rig = LspRig::drained(
+            tmp.path(),
+            RigSpec::rust("-[w]>ord\n").with_init(init),
+            backend,
+        );
+        let sid_near = rig.sid("near");
+        let sid_far = rig.sid("far");
 
-        let mut client_near = LspClient::new(sid_near, PathBuf::from("."));
-        client_near.set_state_for_test(ServerState::Running);
-        ed.lsp.insert_client_for_test(client_near);
-        let mut client_far = LspClient::new(sid_far, PathBuf::from("."));
-        client_far.set_state_for_test(ServerState::Running);
-        ed.lsp.insert_client_for_test(client_far);
-
-        ed.lsp.send_request(
+        rig.ed.state.lsp.send_request(
             sid_far,
             "textDocument/hover",
             serde_json::Value::Null,
@@ -244,7 +226,7 @@ mod next_wake_covers_client_state {
                 deadline: Instant::now() + Duration::from_secs(20),
             },
         );
-        ed.lsp.send_request(
+        rig.ed.state.lsp.send_request(
             sid_near,
             "textDocument/hover",
             serde_json::Value::Null,
@@ -254,7 +236,7 @@ mod next_wake_covers_client_state {
             },
         );
 
-        let timeout = ed.wake_timeout().expect("two pending requests");
+        let timeout = rig.ed.wake_timeout().expect("two pending requests");
         assert!(
             timeout <= Duration::from_secs(2),
             "must be bounded by the nearer (2s) server's deadline, not the farther (20s) one, \
@@ -267,20 +249,17 @@ mod next_wake_covers_client_state {
         // A Running client with nothing pending and no progress must not
         // force any wake at all: arrival is wake-driven, so an idle
         // Running client has nothing to wake for.
-        let (mut ed, sid) = wired_editor();
-        let mut client = LspClient::new(sid, PathBuf::from("."));
-        client.set_state_for_test(ServerState::Running);
-        ed.lsp.insert_client_for_test(client);
+        let tmp = safe_tempdir();
+        let rig = running_rig(tmp.path());
 
-        assert_eq!(ed.wake_timeout(), None);
+        assert_eq!(rig.ed.wake_timeout(), None);
     }
 
     #[test]
     fn progress_task_wakes_at_spinner_cadence() {
-        let (mut ed, sid) = wired_editor();
-        let mut client = LspClient::new(sid, PathBuf::from("."));
-        client.set_state_for_test(ServerState::Running);
-        ed.lsp.insert_client_for_test(client);
+        let tmp = safe_tempdir();
+        let mut rig = running_rig(tmp.path());
+        let sid = rig.sid("rust-analyzer");
 
         let action = ClientAction::Progress(
             serde_json::from_value(serde_json::json!({
@@ -289,9 +268,10 @@ mod next_wake_covers_client_state {
             }))
             .unwrap(),
         );
-        ed.dispatch_lsp_action(sid, action);
+        rig.ed.dispatch_lsp_action(sid, action);
 
-        let timeout = ed
+        let timeout = rig
+            .ed
             .wake_timeout()
             .expect("an active progress task must force a wake");
         assert!(

@@ -679,7 +679,6 @@ macro_rules! live_host {
         crate::editor::host_impl::EditorHostImpl::full(
             &mut $ed.state,
             &mut $ed.view,
-            &mut $ed.lsp,
             &mut $ed.timer_wheel,
             &mut $ed.timer_payloads,
             $ed.tui.clone(),
@@ -840,6 +839,7 @@ impl Editor {
         Self {
             state: EditorState {
                 buffers,
+                lsp: super::lsp::LspState::new_inline(),
                 settings,
                 panes: {
                     let mut jumps = super::jump_list::JumpLists::default();
@@ -875,7 +875,6 @@ impl Editor {
             last_visible_range: rustc_hash::FxHashMap::default(),
             last_tabline_signature: None,
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
-            lsp: super::lsp::LspState::new_inline(),
             tui: super::tui::Tui::Off,
             applied_mouse_mode: initial_mouse_mode,
             startup_positions: Vec::new(),
@@ -1509,10 +1508,14 @@ mod lsp_inlay_hints;
 mod lsp_introspect;
 mod lsp_line_backgrounds;
 mod lsp_menu;
+mod lsp_multi_attach;
 mod lsp_popup;
 mod lsp_popup_markdown;
 mod lsp_prompt;
 mod lsp_render;
+mod lsp_rig;
+mod lsp_routing;
+mod lsp_servers;
 mod lsp_signs;
 mod lsp_status;
 mod lsp_statusline;
@@ -1556,6 +1559,7 @@ mod terminator;
 mod test_globals;
 mod theme_loading;
 mod timers;
+mod triggers;
 mod undo_levels;
 #[cfg(unix)]
 mod unix;

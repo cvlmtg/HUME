@@ -1,37 +1,46 @@
-//! Editor-side LSP state: holds the backend and per-server client state,
-//! and drains events at frame cadence. Wires the backend + `AsyncSource`
-//! plumbing, per-client lifecycle state, request/callback bookkeeping and
-//! server->client dispatch (`drain.rs`), document sync, diagnostics,
-//! registration, and observability commands.
+//! Editor-side LSP state: the server registry (`registry.rs`), running
+//! instances (`instances.rs`), per-buffer documents and their attachments
+//! (`document.rs`, mutated only through `attach.rs`), document sync,
+//! request/callback bookkeeping and server->client dispatch (`drain.rs`),
+//! diagnostics, and observability commands.
 
+mod attach;
 mod bridge;
 pub(in crate::editor) mod diagnostics;
+pub(in crate::editor) mod document;
 mod drain;
 pub(in crate::editor) mod edits;
+mod features;
+mod instances;
 pub(crate) mod introspect;
+pub(in crate::editor) mod params;
 mod progress;
 mod registry;
+mod route;
 pub(in crate::editor) mod sync;
 
-#[cfg(test)]
 use std::path::PathBuf;
 use std::time::Instant;
 
-use rustc_hash::FxHashMap;
+use rustc_hash::FxHashSet;
 
 use hume_editing::text::TextVersion;
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend};
-use hume_lsp::client::{LspClient, Outcome, RequestMeta, ServerState};
+use hume_lsp::client::{LspClient, RequestMeta, ServerState};
 use hume_lsp::codec::RequestId;
 #[cfg(test)]
 use hume_lsp::inline::InlineLspBackend;
 use hume_lsp::transport::WakeCallback;
+use hume_scripting::ServerName;
 
 use super::Editor;
 use super::async_source::AsyncSource;
-use progress::{ProgressTask, SpinnerClock};
-use registry::{LanguageName, LspServerConfig};
+use bridge::Deliveries;
+pub(in crate::editor) use bridge::RustResponder;
+use instances::Instances;
+use progress::SpinnerClock;
+use registry::Registry;
 
 /// `lsp_types::Range` → char-offset span via
 /// [`hume_lsp::position::from_lsp_range`] and
@@ -66,34 +75,21 @@ pub(in crate::editor) fn wire_to_cluster(
     text.columns().place_char(line, char_col)
 }
 
-/// A Rust closure run with a completed request's outcome. `hume-lsp` never
-/// holds this: it only ever sees the `(ServerId, RequestId)` pair the
-/// editor keys its callback under, which `hume-lsp` already hands back from
-/// `send_request`/`take_completed`/`drain_pending`. `pub(in crate::editor)`
-/// for the same reason as `wire_range_to_chars` above: the completion
-/// accept path builds one for its `completionItem/resolve` round trip.
-///
-/// Takes the answering `ServerId` alongside the outcome: `bridge.rs`'s own
-/// callback needs it to tag a successful `Ok(value)`'s `JsonHandle` with the
-/// server's negotiated encoding (`introspect::server_encoding`) at dispatch
-/// time, not send time (a `Starting` server hasn't negotiated yet when the
-/// request goes out). A callback with no use for it (e.g. completion's
-/// resolve, which decodes `additionalTextEdits` through its own already-
-/// resolved `encoding`) just ignores the parameter.
-pub(in crate::editor) type LspCallback = Box<dyn FnOnce(&mut Editor, ServerId, Outcome)>;
+/// How a crashed server is named to the user, with the command that
+/// restarts it.
+pub(in crate::editor) fn crashed_text(name: &str, error: Option<&str>) -> String {
+    let detail = error.map(|e| format!(": {e}")).unwrap_or_default();
+    format!("{name} crashed{detail} (:lsp-restart {name})")
+}
 
-/// Everything a registered callback needs checked against once its response
-/// lands, gathered at send time (from `PendingLspRequest`, or an internal
-/// caller building its own request) so `Editor::anchor_admits` (`drain.rs`)
-/// has one place to apply both checks, instead of one living in a per-request
-/// closure and the other read off `hume_lsp::client::RequestMeta`. Not
-/// optional: `bid` is mandatory on every request source (`PendingLspRequest`,
-/// `completionItem/resolve`), so every callback has one.
+/// Everything a delivery's callback needs checked against once its answers
+/// land, gathered at send time so `EditorState::anchor_admits` (`drain.rs`)
+/// has one place to apply both checks.
 ///
 /// `Copy`: a queued `PendingWork::Call` carries its own copy alongside the
-/// `CallbackEntry`'s (`Editor::run_pending_batch` re-checks it at dequeue
-/// time; see that function's doc for why one check at drain isn't enough),
-/// and the struct is four primitives, cheap to duplicate.
+/// delivery's (`Editor::run_pending_batch` re-checks it at dequeue time;
+/// see that function's doc for why one check at drain isn't enough), and
+/// the struct is four primitives, cheap to duplicate.
 #[derive(Debug, Clone, Copy)]
 pub(in crate::editor) struct ResponseAnchor {
     pub(in crate::editor) bid: BufferId,
@@ -111,73 +107,55 @@ pub(in crate::editor) struct ResponseAnchor {
     /// a request whose delivery doesn't depend on focus.
     pub(in crate::editor) require_focus: Option<PaneId>,
     /// `#:tracked`: a tracked position the request holds, released once its
-    /// callback has run or will never run (`Editor::release_request_position`),
+    /// callback has run or will never run (`release_request_position`),
     /// unless the callback kept it.
     pub(in crate::editor) tracked: Option<hume_scripting::host::HostToken>,
 }
 
-struct CallbackEntry {
-    callback: LspCallback,
-    anchor: ResponseAnchor,
-}
-
-/// Everything tracked per running (or starting) LSP server, one entry per
-/// `ServerId`, single source of truth, no separate (language, root) index:
-/// `client.root()` already carries the workspace root, so an attach/resolve
-/// lookup scans `LspState.servers` (at most a handful of entries running at
-/// once) instead of maintaining a second map that could drift out of sync
-/// with this one.
-struct ServerEntry {
-    client: LspClient,
-    /// The language this server was registered under
-    /// (`register-lsp-server!`'s key); `None` only for a client inserted
-    /// directly by a test without going through `lsp_attach_buffer`.
-    language: Option<LanguageName>,
-    /// Display name (the registered `command`, e.g. `"rust-analyzer"`),
-    /// used to prefix stderr/log lines so `:messages` reads legibly
-    /// with multiple servers running.
-    name: String,
-    /// Active `$/progress` tasks, in begin order: a server can run more
-    /// than one concurrently (e.g. rust-analyzer indexing + a flycheck run).
-    /// The statusline shows the most recent (last); a token is removed on
-    /// its `end` notification. Empty ⇒ nothing to show for this server.
-    progress: Vec<(String, ProgressTask)>,
+/// Whether attachment changes apply now. `:reload-config` clears every
+/// buffer's language before `init.scm` re-registers servers, so reconciling
+/// in between would detach (and stop) every server the new config keeps.
+/// `reset_config` suspends; `resync_config_state` resumes and reconciles
+/// once, against the complete new config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReconcilePhase {
+    Live,
+    Suspended,
 }
 
 pub(crate) struct LspState {
     backend: Box<dyn LspBackend>,
-    servers: FxHashMap<ServerId, ServerEntry>,
-    /// Keyed by the `(ServerId, RequestId)` pair a callback's own request
-    /// was sent under: `drain_lsp` already has both in scope at dispatch
-    /// time (the per-server loop, then the response/timeout's own id), so
-    /// no separate token needs to be minted or round-tripped.
-    callbacks: FxHashMap<(ServerId, RequestId), CallbackEntry>,
-    /// Config recorded by `register-lsp-server!`, keyed by language.
-    configs: FxHashMap<LanguageName, LspServerConfig>,
+    registry: Registry,
+    instances: Instances,
+    /// Steel requests in flight, each waiting for every server it went to.
+    deliveries: Deliveries,
     /// Drives the statusline loading spinner's animation frame. Advanced
     /// (at most) once per `drain_lsp` call, gated on its own interval so
     /// the animation speed doesn't depend on the event loop's wake cadence.
     spinner: SpinnerClock,
-    /// `(server, supersede-key) -> the in-flight request id filed under that
-    /// key`, for `lsp-request!`'s `#:supersede` option: a new request under
-    /// the same key cancels the previous one first. Entries are removed in
-    /// `dispatch_completed` (response/timeout/crash-drain/stop-drain all
-    /// funnel there) and swept per-server in `lsp_stop_one`, so an id can
-    /// never linger past the request it names.
-    supersede: FxHashMap<(ServerId, String), RequestId>,
+    /// `publishDiagnostics` not yet ingested: gathered by a drain, and left
+    /// over when its `canonicalize()` budget runs out.
+    publishes: diagnostics::PublishQueue,
+    reconcile: ReconcilePhase,
+    /// The `(name, root)` instances a stop ended. A reconcile does not
+    /// start them again: `:lsp-restart` and registering the name clear them.
+    stopped: FxHashSet<(ServerName, PathBuf)>,
 }
 
 impl LspState {
-    /// Shared constructor body: every entry point differs only in which
-    /// backend it plugs in.
-    fn with_backend(backend: Box<dyn LspBackend>) -> Self {
+    /// State over `backend`, the one constructor body every entry point
+    /// shares. Tests pass an already-scripted `InlineLspBackend`, which
+    /// `backend_mut` cannot reach through the trait object.
+    pub(in crate::editor) fn with_backend(backend: Box<dyn LspBackend>) -> Self {
         Self {
             backend,
-            servers: FxHashMap::default(),
-            callbacks: FxHashMap::default(),
-            configs: FxHashMap::default(),
+            registry: Registry::default(),
+            instances: Instances::default(),
+            deliveries: Deliveries::default(),
             spinner: SpinnerClock::default(),
-            supersede: FxHashMap::default(),
+            publishes: diagnostics::PublishQueue::default(),
+            reconcile: ReconcilePhase::Live,
+            stopped: FxHashSet::default(),
         }
     }
 
@@ -188,66 +166,39 @@ impl LspState {
     /// tick) and `drain_lsp` (*whether* to advance the frame once woken). If
     /// they diverged, the spinner would freeze or wake without advancing.
     pub(in crate::editor) fn has_animating_server(&self) -> bool {
-        self.servers
-            .values()
-            .any(|e| e.client.state() == ServerState::Starting || !e.progress.is_empty())
-    }
-
-    /// Clears state `:reload-config`'s reset must not let survive; see
-    /// `Editor::reset_config_state`. `callbacks` holds `Box<dyn FnOnce>`
-    /// closures that capture `SteelVal`s from the outgoing engine
-    /// (`lsp/bridge.rs`'s `lsp_callback`); `dispatch_completed` already
-    /// tolerates a missing callback entry (early-returns, logging only for
-    /// the internal fire-and-forget `shutdown` request), so dropping them
-    /// here is safe. `configs` is the `register-lsp-server!` registration
-    /// store the new `init.scm` re-populates. `supersede` indexes in-flight
-    /// `#:supersede`-tagged requests (an open completion session's
-    /// `isIncomplete` re-request among them) filed by an engine
-    /// that no longer exists, meaningless once it's gone; the completion
-    /// session itself lives on `EditorState.input` now and is dropped by
-    /// `input.truncate_to_base()` alongside every other layer, not here.
-    /// Leaves `servers`/`diagnostics` alone: an
-    /// already-spawned process keeps running on its old config until
-    /// `:lsp-restart`, and its last-known diagnostics are what
-    /// `resync_config_state` replays.
-    ///
-    /// Every field above is named explicitly, not `..Self::with_backend(..)`
-    /// struct-update syntax: `backend` is `Box<dyn LspBackend>`, which has no
-    /// meaningful default to reconstruct against. A field added to this
-    /// struct in the future needs an explicit line here (keep or clear):
-    /// there's no compiler nudge for that the way `ConfigState`'s wholesale
-    /// rebuild gets one, so a reviewer must check this list by hand against
-    /// each new field.
-    pub(in crate::editor) fn reset_config(&mut self) {
-        self.callbacks.clear();
-        self.configs.clear();
-        self.supersede.clear();
-    }
-
-    /// Buffers currently attached to a `Running` server, paired with the
-    /// server's registered language: the exact set `:reload-config`'s
-    /// `resync_config_state` re-fires `OnLspAttach`/`OnDiagnosticsChanged`
-    /// for. `Starting` is excluded: it fires its own `OnLspAttach` shortly
-    /// after, from this same struct's `BecameRunning` handling in
-    /// `dispatch_lsp_action`, and firing here too would double it. `Crashed`
-    /// must not fire at all.
-    pub(super) fn running_attached_buffers(
-        &self,
-        buffers: &crate::editor::BufferStore,
-    ) -> Vec<(BufferId, LanguageName)> {
-        buffers
+        self.instances
             .iter()
-            .filter_map(|(bid, buf)| {
-                let entry = self.servers.get(&buf.lsp_server?)?;
-                if entry.client.state() != ServerState::Running {
-                    return None;
-                }
-                Some((bid, entry.language.clone()?))
-            })
-            .collect()
+            .any(|(_, i)| i.client.state() == ServerState::Starting || !i.progress.is_empty())
     }
 
-    /// Production constructor: one real server process per registration.
+    /// Clears what `:reload-config` must not let survive; see
+    /// `Editor::reset_config_state`. `registry` is the `init.scm`-built
+    /// config the new eval re-populates. `deliveries` holds closures and
+    /// `SteelVal`s from the outgoing engine; `lsp_dispatch_completed`
+    /// tolerates an answer no delivery waits for, so dropping it is safe.
+    /// Running instances, the
+    /// documents attached to them and their diagnostics survive: reconcile
+    /// is suspended until `resync_config_state` matches them against the
+    /// new registry.
+    pub(in crate::editor) fn reset_config(&mut self) {
+        self.registry = Registry::default();
+        self.stopped.clear();
+        self.deliveries.clear();
+        self.reconcile = ReconcilePhase::Suspended;
+    }
+
+    /// Drops the stop of every root of `name`, so the next reconcile may
+    /// start it.
+    pub(in crate::editor) fn forget_stopped(&mut self, name: &ServerName) {
+        self.stopped.retain(|(stopped, _)| stopped != name);
+    }
+
+    /// Lets attachment changes apply again after a reload's `reset_config`.
+    pub(in crate::editor) fn resume_reconcile(&mut self) {
+        self.reconcile = ReconcilePhase::Live;
+    }
+
+    /// Production constructor: one real server process per instance.
     /// `wake` is forwarded to every spawned server's reader/stderr threads,
     /// so the main loop wakes instead of polling for completion.
     pub(in crate::editor) fn new_threaded(wake: WakeCallback) -> Self {
@@ -260,134 +211,72 @@ impl LspState {
         Self::with_backend(Box::new(InlineLspBackend::new()))
     }
 
-    /// Test-only: swap in an already-scripted backend (e.g. one built via
-    /// `InlineLspBackend::with_default_handshake` plus extra `respond_to`
-    /// calls): `backend_mut` only exposes the trait object, which can't
-    /// reach `InlineLspBackend`'s scripting methods.
-    #[cfg(test)]
-    pub(in crate::editor) fn from_backend_for_test(backend: Box<dyn LspBackend>) -> Self {
-        Self::with_backend(backend)
-    }
-
-    /// Reach the raw backend directly. Test-only: production code goes
-    /// through `drain_lsp`'s direct field access instead.
+    /// Reach the raw backend directly, to push server-initiated traffic.
     #[cfg(test)]
     pub(in crate::editor) fn backend_mut(&mut self) -> &mut dyn LspBackend {
         self.backend.as_mut()
     }
 
-    /// Test-only direct client insertion; the real registration
-    /// path (`register-lsp-server!` -> spawn-on-first-open) populates
-    /// this map in production. Inserted with no language; tests that need
-    /// one call `insert_server_key_for_test` next.
+    /// Number of running server instances.
     #[cfg(test)]
-    pub(in crate::editor) fn insert_client_for_test(&mut self, client: LspClient) -> ServerId {
-        let id = client.id();
-        self.servers.insert(
-            id,
-            ServerEntry {
-                client,
-                language: None,
-                name: "lsp".to_string(),
-                progress: Vec::new(),
-            },
-        );
-        id
+    pub(in crate::editor) fn instance_count_for_test(&self) -> usize {
+        self.instances.iter().count()
     }
 
-    /// `root` must match the client's own `root` (`LspClient::new`'s
-    /// second argument). A real attach never has these disagree, since
-    /// both come from the same `resolve_root` call.
+    /// Every running instance of the server called `name`.
     #[cfg(test)]
-    pub(in crate::editor) fn insert_server_key_for_test(
-        &mut self,
-        language: String,
-        root: PathBuf,
-        server_id: ServerId,
-    ) {
-        let entry = self
-            .servers
-            .get_mut(&server_id)
-            .expect("insert_client_for_test first");
-        assert_eq!(
-            entry.client.root(),
-            root,
-            "test key root must match the client's own root"
-        );
-        entry.language = Some(language);
+    pub(in crate::editor) fn instances_named_for_test(&self, name: &str) -> Vec<ServerId> {
+        self.instances
+            .iter()
+            .filter(|(_, i)| i.name.as_str() == name)
+            .map(|(sid, _)| sid)
+            .collect()
+    }
+
+    /// The config `name` is registered with, or `None` if it is not.
+    #[cfg(test)]
+    fn config_for_test(&self, name: &str) -> Option<&registry::LspServerConfig> {
+        let name = hume_scripting::ServerName::parse(name).ok()?;
+        self.registry.get(&name)
     }
 
     #[cfg(test)]
-    pub(in crate::editor) fn insert_server_name_for_test(
-        &mut self,
-        server_id: ServerId,
-        name: String,
-    ) {
-        if let Some(entry) = self.servers.get_mut(&server_id) {
-            entry.name = name;
-        }
+    pub(in crate::editor) fn registered_command_for_test(&self, name: &str) -> Option<String> {
+        self.config_for_test(name).map(|c| c.command.clone())
     }
 
+    #[cfg(test)]
+    pub(in crate::editor) fn registered_env_for_test(
+        &self,
+        name: &str,
+    ) -> Option<Vec<(String, String)>> {
+        self.config_for_test(name).map(|c| c.env.clone())
+    }
+
+    #[cfg(all(test, unix))]
+    pub(in crate::editor) fn registered_settings_for_test(
+        &self,
+        name: &str,
+    ) -> Option<serde_json::Value> {
+        self.config_for_test(name).and_then(|c| c.settings.clone())
+    }
+
+    #[cfg(all(test, unix))]
+    pub(in crate::editor) fn registered_init_options_for_test(
+        &self,
+        name: &str,
+    ) -> Option<serde_json::Value> {
+        self.config_for_test(name)
+            .and_then(|c| c.init_options.clone())
+    }
+
+    /// `server`'s client, for a test that drives its state directly.
     #[cfg(test)]
     pub(in crate::editor) fn client_for_test(
         &mut self,
         server: ServerId,
     ) -> Option<&mut LspClient> {
-        self.servers.get_mut(&server).map(|e| &mut e.client)
-    }
-
-    /// The registered `command` for `language`, or `None` if unregistered.
-    /// Lets tests observe last-wins replacement and unregistration without
-    /// reaching into the private `configs` map directly.
-    #[cfg(test)]
-    pub(in crate::editor) fn config_command_for_test(&self, language: &str) -> Option<String> {
-        self.configs.get(language).map(|c| c.command.clone())
-    }
-
-    /// The registered `settings` JSON for `language`, or `None` if
-    /// unregistered or registered with no settings. Lets tests assert the
-    /// Steel-to-JSON settings conversion without reaching into the private
-    /// `configs` map directly.
-    #[cfg(all(test, unix))]
-    pub(in crate::editor) fn config_settings_for_test(
-        &self,
-        language: &str,
-    ) -> Option<serde_json::Value> {
-        self.configs.get(language).and_then(|c| c.settings.clone())
-    }
-
-    /// Same as `config_settings_for_test`, for `init_options`: the seeded
-    /// catalog registers the same blob under both keywords (see
-    /// `core:lsp-install/register.scm`), so a test asserting the conversion
-    /// needs both, not just `settings`.
-    #[cfg(all(test, unix))]
-    pub(in crate::editor) fn config_init_options_for_test(
-        &self,
-        language: &str,
-    ) -> Option<serde_json::Value> {
-        self.configs
-            .get(language)
-            .and_then(|c| c.init_options.clone())
-    }
-
-    /// The registered `#:env` pairs for `language`, or `None` if
-    /// unregistered. Lets a test assert the `#:env` decode/round-trip into
-    /// `LspServerConfig.env` without reaching into the private `configs`
-    /// map directly.
-    #[cfg(test)]
-    pub(in crate::editor) fn config_env_for_test(
-        &self,
-        language: &str,
-    ) -> Option<Vec<(String, String)>> {
-        self.configs.get(language).map(|c| c.env.clone())
-    }
-
-    /// Number of tracked servers: one entry per `backend.start`, so a
-    /// second buffer attaching under the same (language, root) key (rather
-    /// than spawning) leaves this unchanged.
-    #[cfg(test)]
-    pub(in crate::editor) fn server_count_for_test(&self) -> usize {
-        self.servers.len()
+        self.instances.get_mut(server).map(|i| &mut i.client)
     }
 
     /// The most recent active `$/progress` task's title for `server`. Lets
@@ -396,62 +285,48 @@ impl LspState {
     /// doesn't carry `title` (it's not rendered; see `introspect::activity`).
     #[cfg(test)]
     pub(in crate::editor) fn progress_title_for_test(&self, server: ServerId) -> Option<&str> {
-        self.servers
-            .get(&server)?
+        self.instances
+            .get(server)?
             .progress
             .last()
             .map(|(_, task)| task.title.as_str())
     }
 
-    /// Number of registered callbacks still awaiting dispatch, a leak
-    /// check: every callback must eventually be removed by `dispatch_completed`
-    /// (response, timeout, or teardown), never orphaned.
+    /// Number of requests a delivery still waits on, a leak check: every one
+    /// must be answered, timed out or cancelled (response, timeout, or
+    /// teardown), never orphaned.
     #[cfg(test)]
     pub(in crate::editor) fn callback_count_for_test(&self) -> usize {
-        self.callbacks.len()
+        self.deliveries.waiting_requests()
     }
 
-    /// Number of tracked `#:supersede` keys, a leak check: an entry must be
-    /// removed once its request finishes (response/timeout) or its server
-    /// stops, never orphaned.
+    /// Number of publishes a drain deferred.
     #[cfg(test)]
-    pub(in crate::editor) fn supersede_count_for_test(&self) -> usize {
-        self.supersede.len()
+    pub(in crate::editor) fn deferred_publishes_for_test(&self) -> usize {
+        self.publishes.len()
+    }
+
+    /// Number of Steel deliveries still waiting for an answer, a leak check.
+    #[cfg(test)]
+    pub(in crate::editor) fn delivery_count_for_test(&self) -> usize {
+        self.deliveries.len()
     }
 
     /// Disjoint-borrow accessor for callers that need to drive a client and
-    /// its backend in the same call (`send_or_queue`, `start_handshake`):
-    /// a plain two-method-call sequence can't do this from outside
-    /// `LspState` since `backend_mut`/`client_for_test` each borrow the
-    /// whole struct.
+    /// its backend in the same call (`send_or_queue`, `cancel`).
     pub(in crate::editor) fn client_and_backend(
         &mut self,
         server: ServerId,
     ) -> Option<(&mut LspClient, &mut dyn LspBackend)> {
         let LspState {
-            servers, backend, ..
+            instances, backend, ..
         } = self;
-        let client = &mut servers.get_mut(&server)?.client;
+        let client = &mut instances.get_mut(server)?.client;
         Some((client, backend.as_mut()))
     }
 
-    /// Files `callback` under an already-sent request's `(server, id)`:
-    /// `drain_lsp`'s per-server loop already has both in scope at dispatch
-    /// time, so no separate token needs to be minted.
-    pub(in crate::editor) fn register_callback(
-        &mut self,
-        server: ServerId,
-        id: RequestId,
-        anchor: ResponseAnchor,
-        callback: LspCallback,
-    ) {
-        self.callbacks
-            .insert((server, id), CallbackEntry { callback, anchor });
-    }
-
-    /// Sends a request through `server`'s client, if one is registered.
-    /// `None` if `server` has no tracked client (can't happen with the real
-    /// registration path; still must not panic).
+    /// Sends a request through `server`'s client. `None` if `server` is not
+    /// a running instance.
     pub(in crate::editor) fn send_request(
         &mut self,
         server: ServerId,
@@ -459,14 +334,14 @@ impl LspState {
         params: serde_json::Value,
         meta: RequestMeta,
     ) -> Option<RequestId> {
-        let client = &mut self.servers.get_mut(&server)?.client;
-        Some(client.send_request(self.backend.as_mut(), method, params, meta))
+        let (client, backend) = self.client_and_backend(server)?;
+        Some(client.send_request(backend, method, params, meta))
     }
 }
 
 impl AsyncSource for LspState {
     fn next_wake(&self, now: Instant) -> Option<Instant> {
-        // Real deadlines only: response *arrival* needs no wake here: the
+        // Deadlines only: response *arrival* needs no wake here: the
         // transport threads wake the event loop directly via
         // `termina::PlatformWaker` the moment a message lands. What remains
         // is the earliest pending-request timeout across every server
@@ -474,9 +349,9 @@ impl AsyncSource for LspState {
         // so a silent server's timeout sweep in `take_completed` still
         // fires promptly.
         let deadline = self
-            .servers
-            .values()
-            .filter_map(|e| e.client.earliest_deadline())
+            .instances
+            .iter()
+            .filter_map(|(_, i)| i.client.earliest_deadline())
             .min();
 
         // A server mid-handshake or reporting `$/progress` (indexing,
@@ -488,26 +363,24 @@ impl AsyncSource for LspState {
             .has_animating_server()
             .then(|| now + progress::SPINNER_INTERVAL);
 
-        [deadline, spinner].into_iter().flatten().min()
+        // Publishes a drain left unresolved are due at once; input is still
+        // polled first, so waiting on them never starves the keyboard.
+        let deferred = (!self.publishes.is_empty()).then_some(now);
+
+        [deadline, spinner, deferred].into_iter().flatten().min()
     }
 }
 
 impl Editor {
-    /// `(errors, warnings)` for `bid` from the diagnostics store: the
-    /// statusline's `Diagnostics` element reads this directly (never through
-    /// Steel; `self.lsp` is private to `editor` and its descendants, so
-    /// callers outside it, like `statusline`, go through this).
+    /// `(errors, warnings)` for `bid` from the diagnostics store.
     #[cfg(test)]
     pub(in crate::editor) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
         introspect::diagnostic_counts(&self.state, bid)
     }
 
-    /// `bid`'s attached server's lifecycle/loading state: the statusline's
-    /// `Diagnostics` element reads this to decide whether to show the
-    /// loading spinner instead of counts. Same access rationale as
-    /// `diagnostic_counts` above.
+    /// `bid`'s attached servers' lifecycle/loading state.
     #[cfg(test)]
     pub(in crate::editor) fn lsp_activity(&self, bid: BufferId) -> introspect::LspActivity {
-        introspect::activity(&self.state, &self.lsp, bid)
+        introspect::activity(&self.state, bid)
     }
 }

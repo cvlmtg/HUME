@@ -1,61 +1,69 @@
 ;;; core:lsp/lib.scm — shared helpers used by every feature file. See
 ;;; docs/architecture.md.
 
-(provide lsp/supports? lsp/guard-capability lsp/report-error!
+(provide lsp/report-error! lsp/answers lsp/report-answer-errors! lsp/with-position-params
          lsp/visible-lines lsp/resolve-pane
-         lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?)
+         lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?
+         lsp/with-servers)
 
-;; ── Capability guard ────────────────────────────────────────────────────────
+;; ── Capabilities ────────────────────────────────────────────────────────────
 
-(define (lsp/caps-has-cap? caps cap-key)
-  (and caps
-       (let ((v (json-ref-or caps #f cap-key)))
-         (not (or (equal? v #f) (void? v))))))
+;; `cap` is a server's `(lsp-capability …)`: `#t`, an options object, or `#f`.
+(define (lsp/cap-field cap field default)
+  (if (json-object? cap) (json-ref-or cap default field) default))
 
-(define (lsp/supports? pane cap-key)
-  (lsp/caps-has-cap? (lsp-capabilities pane) cap-key))
+(define (lsp/cap-flag? cap field)
+  (equal? (lsp/cap-field cap field #f) #t))
 
-(define (lsp/guard-capability pane cap-key thunk)
-  (if (lsp/supports? pane cap-key)
-      (thunk)
-      (log! 'info
-            (string-append "not supported by "
-                           (let ((name (lsp-server-for-buffer pane)))
-                             (if name name "server"))))))
+;; Calls `(proceed params)` with `pane`'s position params, or logs that the
+;; buffer has no file when it has none.
+(define (lsp/with-position-params pane what proceed)
+  (let ((params (lsp-position-params pane)))
+    (if params
+        (proceed params)
+        (log! 'info (string-append "lsp " what ": this buffer has no file")))))
 
-(define (lsp/cap-field caps cap-key field default)
-  (let ((cap (and caps (json-ref-or caps #f cap-key))))
-    (if (json-object? cap) (json-ref-or cap default field) default)))
-
-(define (lsp/cap-flag? pane cap-key field)
-  (equal? (lsp/cap-field (lsp-capabilities pane) cap-key field #f) #t))
+;; Calls `(proceed servers)` with `servers`, or logs that `what` is unsupported when empty.
+(define (lsp/with-servers servers what proceed)
+  (if (null? servers)
+      (log! 'info (string-append what " is not supported by this buffer's language servers"))
+      (proceed servers)))
 
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
 
-(define (lsp/setup-trigger-chars! cap-key source-name extra-chars on-trigger)
-  (define (set-chars! language chars)
+(define (lsp/setup-trigger-chars! feature source-name extra-chars on-trigger)
+  (define (set-chars! pane server chars)
     (if on-trigger
-        (set-hook-triggers! source-name language chars)
-        (set-completion-triggers! source-name language chars)))
+        (set-attachment-hook-triggers! source-name pane server chars)
+        (set-attachment-completion-triggers! source-name pane server chars)))
   (register-hook! 'on-lsp-attach
-    (lambda (pane language)
-      (let ((caps (lsp-capabilities pane)))
-        (when (and caps (json-contains? caps cap-key))
-          (let ((tc (lsp/cap-field caps cap-key "triggerCharacters" #f)))
-            (set-chars! language (append extra-chars (if tc (json-list tc) (list)))))))))
-  (register-hook! 'on-lsp-detach
-    (lambda (pane language)
-      (set-chars! language '())))
+    (lambda (pane server)
+      (when (member server (lsp-servers pane #:feature feature))
+        (let ((tc (lsp/cap-field (lsp-capability server #:feature feature) "triggerCharacters" #f)))
+          (set-chars! pane server (append extra-chars (if tc (json-list tc) (list))))))))
   (when on-trigger
     (register-hook! 'on-trigger-char
       (lambda (pane ch source)
         (when (equal? source source-name)
           (on-trigger pane ch))))))
 
+;; No server able to take a request, or a server that stopped before answering, is
+;; logged at Info (a stop or crash is reported on its own); every other error at Error.
 (define (lsp/report-error! what err)
-  (log! 'error
-        (string-append "lsp " what ": "
-                       (if (string? err) err (hash-ref err 'message)))))
+  (log! (if (member (hash-ref err 'kind) '(unavailable stopped)) 'info 'error)
+        (string-append "lsp " what ": " (hash-ref err 'message))))
+
+;; The results of an `lsp-request-all!` answer that are neither an error nor
+;; null, in server order.
+(define (lsp/answers results)
+  (map (lambda (r) (hash-ref r 'result))
+       (filter (lambda (r) (not (or (hash-ref r 'err) (void? (hash-ref r 'result)))))
+               results)))
+
+;; Reports each server's error in an `lsp-request-all!` answer.
+(define (lsp/report-answer-errors! what results)
+  (for-each (lambda (r) (when (hash-ref r 'err) (lsp/report-error! what (hash-ref r 'err))))
+            results))
 
 ;; ── Pane resolution ──────────────────────────────────────────────────────────
 

@@ -8,12 +8,14 @@ use std::sync::Arc;
 use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
+use hume_lsp::client::{PublishedDiagnostics, WireDiagnostic};
 use hume_lsp::sync::wire_version;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
+#[cfg(test)]
 use lsp_types::PublishDiagnosticsParams;
 use ropey::Rope;
+use rustc_hash::FxHashMap;
 
-use super::introspect;
 use crate::editor::Editor;
 use crate::editor::message_log::Severity;
 use hume_decorations::{Positioned, RangeAnchored, SourceStore};
@@ -72,23 +74,22 @@ pub(in crate::editor) struct StoredDiag {
     pub(in crate::editor) message: String,
     pub(in crate::editor) code: Option<String>,
     pub(in crate::editor) source: Option<String>,
-    /// The original wire-shaped `Diagnostic`, serialized back from the
-    /// parsed `lsp_types::Diagnostic` (`textDocument/codeAction` needs to
-    /// echo this back verbatim as `context.diagnostics`: the server's
-    /// quickfixes are gated on the client showing the diagnostic it's
-    /// fixing, and rebuilding this from `start`/`end`'s char offsets would
-    /// mean Steel fabricating wire positions itself, which the
-    /// encoding-safety rule forbids). The roundtrip preserves every spec
-    /// field, including `data` (some servers need it echoed back for
-    /// `codeAction` too). `Arc`-wrapped so `diagnostics-for-buffer` can hand
+    /// The `Diagnostic` exactly as the server sent it
+    /// (`textDocument/codeAction` needs to echo this back verbatim as
+    /// `context.diagnostics`: the server's quickfixes are gated on the
+    /// client showing the diagnostic it's fixing, and rebuilding this from
+    /// `start`/`end`'s char offsets would mean Steel fabricating wire
+    /// positions itself, which the encoding-safety rule forbids). Fields
+    /// `lsp_types` does not model, and `data`, survive. `Arc`-wrapped so
+    /// `diagnostics-for-buffer` can hand
     /// each entry's `"raw"` to Scheme as a `JsonHandle` sharing this same
     /// allocation, instead of cloning the value to build one.
     pub(in crate::editor) raw: Arc<serde_json::Value>,
-    /// The publishing server's negotiated encoding at ingest time. Tags
-    /// `raw`'s `JsonHandle` (`introspect::diagnostics_for_buffer`) so a
-    /// wire position inside it (`context.diagnostics`' own positions, once
-    /// a plugin reads them back out) decodes correctly even after the
-    /// server that sent it has since restarted or detached.
+    /// The publishing server, and its negotiated encoding at ingest time.
+    /// Together they tag `raw`'s `JsonHandle`
+    /// (`introspect::diagnostics_for_buffer`) so a wire position inside it
+    /// decodes correctly even after that server has restarted or detached.
+    pub(in crate::editor) server: hume_scripting::ServerRef,
     pub(in crate::editor) encoding: hume_rope::position_encoding::PositionEncoding,
 }
 
@@ -143,19 +144,15 @@ impl DiagnosticsStore {
         self.store.remap_ranges(bid, cs);
     }
 
-    /// Drops every `StoredDiag` published by `server`. Called when a
-    /// server is stopped (`lsp_stop_one`) so its diagnostics don't survive
-    /// the stop or duplicate a fresh instance's
-    /// entry after `:lsp-restart` (a new `ServerId` would otherwise coexist
-    /// with the old, frozen one via `replace`'s "push if no matching sid"
-    /// path). A buffer left with no remaining server entry is dropped
-    /// entirely, not kept as an empty `Vec` (`SourceStore::retain_sources`).
-    /// Returns the buffers actually touched, so the caller can fire
-    /// `OnDiagnosticsChanged` for exactly those: same "only the buffers
-    /// this batch touched" discipline as `drain_lsp`'s `publishDiagnostics`
-    /// ingest.
-    pub(in crate::editor::lsp) fn remove_server(&mut self, server: ServerId) -> Vec<BufferId> {
-        self.store.retain_sources(|&sid| sid != server)
+    /// Drops what `server` published for `bid`, when `server` detaches from
+    /// it or stops being asked for its diagnostics. `false` when it had
+    /// published nothing for `bid`.
+    pub(in crate::editor::lsp) fn remove_source_for_buffer(
+        &mut self,
+        server: ServerId,
+        bid: BufferId,
+    ) -> bool {
+        self.store.remove_source_for_buffer(&server, bid)
     }
 
     /// Drops every diagnostic for `bid`, across every server. Called when
@@ -171,10 +168,10 @@ impl DiagnosticsStore {
     }
 
     /// Every buffer with at least one stored diagnostic, from any server,
-    /// including one whose server has since crashed or stopped: `remove_server`
-    /// drops a stopped server's own entries, but a crash leaves them here
-    /// (see `LspState::reset_config`'s doc), so `:reload-config`'s
-    /// resync can still replay `OnDiagnosticsChanged` for them.
+    /// including one whose server has since crashed: a crash leaves its
+    /// buffers attached and their entries in place, so `:reload-config`'s
+    /// resync can still replay `OnDiagnosticsChanged` for them. A stopped
+    /// server's entries go when its buffers detach.
     pub(in crate::editor) fn buffers_with_diagnostics(
         &self,
     ) -> impl Iterator<Item = BufferId> + '_ {
@@ -285,28 +282,144 @@ fn widen_zero_length(rope: &Rope, pos: CharOffset) -> ExclusiveRange<CharOffset>
     }
 }
 
+/// How many `canonicalize()` calls one `drain_lsp` may spend resolving the
+/// files servers publish for. A call costs about 15 µs with a warm cache
+/// (measured in a release build), so this bounds the resolution to about a
+/// millisecond; the publishes beyond it wait for the next drain. A publish
+/// naming an open buffer's own path spends none.
+pub(in crate::editor) const CANONICALIZE_PER_DRAIN: usize = 64;
+
+/// What ingesting one publish came to.
+pub(in crate::editor) enum Ingest {
+    /// Ingested, or dropped; the buffer that took diagnostics, if any.
+    Done(Option<BufferId>),
+    /// The drain's `canonicalize()` budget was spent before this publish
+    /// could be resolved to a file.
+    Deferred(PublishedDiagnostics),
+}
+
+/// Publishes waiting to be ingested, the newest per `(server, uri)`: what
+/// one drain gathers, and what a drain whose budget ran out leaves for the
+/// next.
+#[derive(Default)]
+pub(in crate::editor) struct PublishQueue {
+    // clippy's `mutable_key_type` flags `lsp_types::Uri` for the `Cell`s
+    // inside its underlying `fluent_uri::Uri`'s parse-offset cache, but
+    // `Uri`'s `Hash`/`PartialEq`/`Eq` are hand-implemented against
+    // `.as_str()` only (lsp-types 0.97.0's uri.rs), which those cells
+    // never affect. A false positive for this specific type.
+    #[allow(clippy::mutable_key_type)]
+    queued: FxHashMap<(ServerId, lsp_types::Uri), PublishedDiagnostics>,
+}
+
+#[allow(clippy::mutable_key_type)]
+impl PublishQueue {
+    /// Queues `published`, replacing an older publish for the same server
+    /// and URI.
+    pub(in crate::editor) fn offer(&mut self, server: ServerId, published: PublishedDiagnostics) {
+        self.queued
+            .insert((server, published.uri.clone()), published);
+    }
+
+    /// Puts back a publish that could not be ingested yet, unless a newer
+    /// one for the same server and URI has been offered since.
+    pub(in crate::editor) fn defer(&mut self, server: ServerId, published: PublishedDiagnostics) {
+        self.queued
+            .entry((server, published.uri.clone()))
+            .or_insert(published);
+    }
+
+    pub(in crate::editor) fn take_all(&mut self) -> Vec<(ServerId, PublishedDiagnostics)> {
+        self.queued
+            .drain()
+            .map(|((server, _), published)| (server, published))
+            .collect()
+    }
+
+    /// Drops what `server` published: it is gone, and nothing it sent
+    /// should cost a path lookup.
+    pub(in crate::editor) fn forget_server(&mut self, server: ServerId) {
+        self.queued.retain(|(sid, _), _| *sid != server);
+    }
+
+    pub(in crate::editor) fn is_empty(&self) -> bool {
+        self.queued.is_empty()
+    }
+
+    #[cfg(test)]
+    pub(in crate::editor) fn len(&self) -> usize {
+        self.queued.len()
+    }
+}
+
+/// `params` as a classified publish: each diagnostic's wire value is its
+/// serialization.
+#[cfg(test)]
+pub(in crate::editor) fn published_for_test(
+    params: PublishDiagnosticsParams,
+) -> PublishedDiagnostics {
+    PublishedDiagnostics {
+        uri: params.uri,
+        version: params.version,
+        diagnostics: params
+            .diagnostics
+            .into_iter()
+            .map(|diagnostic| WireDiagnostic {
+                raw: serde_json::to_value(&diagnostic).expect("a diagnostic serializes"),
+                diagnostic,
+            })
+            .collect(),
+        skipped: Vec::new(),
+    }
+}
+
 impl Editor {
+    /// [`Self::ingest_publish_diagnostics`] for a publish built as typed
+    /// params.
+    #[cfg(test)]
+    pub(in crate::editor) fn ingest_typed_publish_for_test(
+        &mut self,
+        server_id: ServerId,
+        params: PublishDiagnosticsParams,
+    ) -> Option<BufferId> {
+        self.ingest_now(server_id, published_for_test(params))
+    }
+
     /// Ingests one already-coalesced, already-classified `publishDiagnostics`
     /// payload (the caller kept only the last one per (server, uri) within
-    /// this drain batch; a malformed payload never reaches here, since
-    /// `hume-lsp` classifies it as a `ServerNotification` fallthrough
-    /// instead). Drops silently (one Trace line) when the URI doesn't
+    /// this drain batch; a payload `hume-lsp` cannot read at all never
+    /// reaches here, it is classified as a `ServerNotification` instead, and
+    /// a diagnostic that does not parse was left out of it). Drops silently
+    /// (one Trace line) when the URI doesn't
     /// resolve to an open buffer: v1 never opens a buffer just to hold
-    /// diagnostics. Returns the buffer actually ingested into, so the caller
-    /// can fire `OnDiagnosticsChanged` once per touched buffer; `None` on
-    /// any drop path.
+    /// diagnostics. Gives back the buffer actually ingested into, so the
+    /// caller can fire `OnDiagnosticsChanged` once per touched buffer.
+    ///
+    /// A URI path that is already an open buffer's own path names that
+    /// buffer, with no filesystem call; a buffer whose file is not on disk
+    /// yet is found this way. Any other path is resolved with a
+    /// `canonicalize()`, which `canonicalize_budget` meters across a drain:
+    /// each costs one unit, and the publish is deferred when none is left.
     pub(in crate::editor) fn ingest_publish_diagnostics(
         &mut self,
         server_id: ServerId,
-        parsed: PublishDiagnosticsParams,
-    ) -> Option<BufferId> {
-        let Ok(path) = hume_lsp::uri::uri_to_path(&parsed.uri) else {
+        published: PublishedDiagnostics,
+        canonicalize_budget: &mut usize,
+    ) -> Ingest {
+        let Ok(path) = hume_lsp::uri::uri_to_path(&published.uri) else {
             self.report(
                 Severity::Trace,
                 "lsp: publishDiagnostics with an unresolvable URI".to_string(),
             );
-            return None;
+            return Ingest::Done(None);
         };
+        if let Some(bid) = self.state.buffers.find_by_path(&path) {
+            return Ingest::Done(self.ingest_into(server_id, published, bid, &path));
+        }
+        if *canonicalize_budget == 0 {
+            return Ingest::Deferred(published);
+        }
+        *canonicalize_budget -= 1;
         let Ok(canonical) = path.canonicalize() else {
             self.report(
                 Severity::Trace,
@@ -315,7 +428,7 @@ impl Editor {
                     path.display()
                 ),
             );
-            return None;
+            return Ingest::Done(None);
         };
         let Some(bid) = self.state.buffers.find_by_path(&canonical) else {
             self.report(
@@ -325,8 +438,81 @@ impl Editor {
                     canonical.display()
                 ),
             );
-            return None;
+            return Ingest::Done(None);
         };
+        Ingest::Done(self.ingest_into(server_id, published, bid, &canonical))
+    }
+
+    /// Reports the diagnostics of `published` that did not parse: a Warning
+    /// the first time for `server_id`, a Trace line after, so a server that
+    /// republishes on every keystroke does not fill the log.
+    pub(in crate::editor) fn note_skipped_diagnostics(
+        &mut self,
+        server_id: ServerId,
+        published: &PublishedDiagnostics,
+    ) {
+        let Some(first) = published.skipped.first() else {
+            return;
+        };
+        let severity = if self.state.lsp.instances.first_skipped_report(server_id) {
+            Severity::Warning
+        } else {
+            Severity::Trace
+        };
+        let name = self.lsp_server_name(server_id);
+        self.report(
+            severity,
+            format!(
+                "lsp: '{name}' sent {} diagnostic(s) that do not parse and were skipped; \
+                 the rest are shown (first error: {first})",
+                published.skipped.len()
+            ),
+        );
+    }
+
+    /// [`Self::ingest_publish_diagnostics`] with no budget, for a test's
+    /// publish ingested at once.
+    #[cfg(test)]
+    fn ingest_now(
+        &mut self,
+        server_id: ServerId,
+        published: PublishedDiagnostics,
+    ) -> Option<BufferId> {
+        let mut unlimited = usize::MAX;
+        match self.ingest_publish_diagnostics(server_id, published, &mut unlimited) {
+            Ingest::Done(bid) => bid,
+            Ingest::Deferred(_) => unreachable!("an unlimited budget never defers"),
+        }
+    }
+
+    /// The part of an ingest that follows finding the buffer: the publish
+    /// checked and stored. `path` only names the file in Trace lines.
+    fn ingest_into(
+        &mut self,
+        server_id: ServerId,
+        published: PublishedDiagnostics,
+        bid: BufferId,
+        path: &std::path::Path,
+    ) -> Option<BufferId> {
+        // Only a server attached to the buffer, and asked for its
+        // diagnostics there, has them shown. A server detached since
+        // publishing, or whose list entry excludes diagnostics, is dropped.
+        let admitted = self
+            .state
+            .buffer_positions
+            .lsp
+            .filter_of(bid, server_id)
+            .is_some_and(|filter| filter.admits(hume_scripting::LspFeature::Diagnostics));
+        if !admitted {
+            self.report(
+                Severity::Trace,
+                format!(
+                    "lsp: dropping publishDiagnostics from a server not reporting diagnostics for {}",
+                    path.display()
+                ),
+            );
+            return None;
+        }
 
         // A publish computed against an older version would convert its
         // positions against text that has since moved on. The server has
@@ -335,7 +521,7 @@ impl Editor {
         // positions that are quietly wrong until then; the existing
         // (already-remapped) stored diagnostics keep displaying meanwhile.
         // Absent version is always ingested (older/simpler servers omit it).
-        if let Some(v) = parsed.version
+        if let Some(v) = published.version
             && v != wire_version(self.state.buffers.get(bid).text().generation())
         {
             self.report(
@@ -349,7 +535,7 @@ impl Editor {
         // between sending this and it being drained) has no negotiated
         // encoding to decode against, and a wrong silent answer is only
         // visible on a non-ASCII line.
-        let Some(encoding) = introspect::server_encoding(&self.lsp, server_id) else {
+        let Some((server, encoding)) = self.state.lsp.instances.origin(server_id) else {
             self.report(
                 Severity::Trace,
                 "lsp: dropping publishDiagnostics from an untracked server".to_string(),
@@ -358,11 +544,11 @@ impl Editor {
         };
         let rope = self.state.buffers.get(bid).text().rope().clone();
 
-        let stored: Vec<StoredDiag> = parsed
+        let stored: Vec<StoredDiag> = published
             .diagnostics
             .into_iter()
-            .map(|d| {
-                let raw = Arc::new(serde_json::to_value(&d).unwrap_or(serde_json::Value::Null));
+            .map(|WireDiagnostic { diagnostic: d, raw }| {
+                let raw = Arc::new(raw);
                 let range = super::wire_range_to_chars(&rope, &d.range, encoding);
                 let range = if range.start == range.end {
                     widen_zero_length(&rope, range.start)
@@ -380,6 +566,7 @@ impl Editor {
                     }),
                     source: d.source,
                     raw,
+                    server: server.clone(),
                     encoding,
                 }
             })

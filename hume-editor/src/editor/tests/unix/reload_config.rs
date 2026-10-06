@@ -458,7 +458,7 @@ fn reload_config_under_no_config_errors() {
 /// what makes `"rust"` detectable at all.
 #[test]
 fn reload_config_reapplies_on_language_set_buffer_overrides() {
-    let init_scm = r#"(%define-language! "rust" '("rs") '() '() #f)
+    let init_scm = r#"(%define-language! "rust" '("rs") '() '() #f '())
         (register-hook! 'on-language-set (lambda (bid lang)
           (when (equal? lang "rust") (set-buffer-option! bid "tab-width" 7))))"#;
     let fixture = ReloadFixture::new(init_scm);
@@ -528,7 +528,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
     std::fs::write(&companion, "fn companion() {}\n").unwrap();
     let companion_str = steel_path(&companion);
 
-    let init_scm = r#"(%define-language! "rust" '("rs") '() '() #f)
+    let init_scm = r#"(%define-language! "rust" '("rs") '() '() #f '())
         (declare-plugin! "user/opener" #:languages '("rust"))"#;
     let fixture = ReloadFixture::new(init_scm);
 
@@ -627,7 +627,7 @@ fn reload_config_does_not_report_success_when_init_scm_errors() {
 /// explicit assertion detection could never have produced in the first place.
 #[test]
 fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover() {
-    let init_scm = r#"(%define-language! "notes" '() '() '() #f)"#;
+    let init_scm = r#"(%define-language! "notes" '() '() '() #f '())"#;
     let fixture = ReloadFixture::new(init_scm);
 
     let file_tmp = safe_tempdir();
@@ -912,7 +912,7 @@ fn reload_config_twice_in_a_row_both_apply_cleanly() {
 /// the sweep's window.
 #[test]
 fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_snapshot() {
-    let init_scm = r#"(%define-language! "notes" '() '() '() #f)"#;
+    let init_scm = r#"(%define-language! "notes" '() '() '() #f '())"#;
     let fixture = ReloadFixture::new(init_scm);
 
     let file_tmp = safe_tempdir();

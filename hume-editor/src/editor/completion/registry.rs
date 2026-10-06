@@ -68,13 +68,6 @@ pub(in crate::editor) struct BufferSourceEntry {
     /// `#:token-chars`: characters that belong to this source's token on top
     /// of the buffer's word characters ([`Self::token_chars_over`]).
     pub(in crate::editor) token_chars: Box<str>,
-    /// This source's own trigger characters, per language, set by
-    /// `(set-completion-triggers! name language chars)`
-    /// ([`SourceRegistry::set_buffer_trigger_chars`]), not at registration
-    /// time (a server's own trigger characters usually aren't known until
-    /// it attaches). Empty until then; an empty `chars` for a language
-    /// removes that language's entry rather than leaving a stale empty one.
-    pub(in crate::editor) trigger_chars: rustc_hash::FxHashMap<String, Vec<char>>,
 }
 
 impl BufferSourceEntry {
@@ -178,22 +171,14 @@ impl SourceRegistry {
     /// `Buffer` source. Replacing keeps the entry's [`BufferSourceId`]
     /// stable for any session still referring to it (a plugin swapping in
     /// its own source under a name it already owns is a feature, not a
-    /// collision), and carries the old entry's `trigger_chars` forward:
-    /// that routing table is set by a separate call
-    /// ([`Self::set_buffer_trigger_chars`]), at a different time than
-    /// registration, so a `proc`/`match_kind`/`priority`/`resolve` swap has
-    /// no business clearing it.
+    /// collision).
     pub(in crate::editor) fn register_buffer(
         &mut self,
         entry: BufferSourceEntry,
     ) -> RegisterOutcome {
         match self.buffer_id_of(&entry.name) {
             Some(id) => {
-                let trigger_chars = std::mem::take(&mut self.buffer[id.0 as usize].trigger_chars);
-                self.buffer[id.0 as usize] = BufferSourceEntry {
-                    trigger_chars,
-                    ..entry
-                };
+                self.buffer[id.0 as usize] = entry;
                 RegisterOutcome::Replaced
             }
             None => {
@@ -201,35 +186,6 @@ impl SourceRegistry {
                 RegisterOutcome::Added
             }
         }
-    }
-
-    /// Sets `name`'s own trigger characters for `language`, replacing that
-    /// exact `(name, language)` pair's previous set: the completion-
-    /// specific counterpart to `set-hook-triggers!`'s shared,
-    /// listener-agnostic table (`EditorState.config.trigger_chars`), for
-    /// the one reader (`orchestrate.rs`'s `Trigger::Char` arm) that needs a
-    /// completion source's own answer, not a hook fire. An empty `chars`
-    /// removes the `(name, language)` entry. `Err` when `name` names no
-    /// registered `Buffer` source: a plugin's own typo or stale rename,
-    /// not something to silently ignore the way the shared table has to
-    /// (it also serves non-completion listeners, where an unregistered
-    /// name isn't necessarily a mistake).
-    pub(in crate::editor) fn set_buffer_trigger_chars(
-        &mut self,
-        name: &str,
-        language: String,
-        chars: Vec<char>,
-    ) -> Result<(), String> {
-        let id = self.buffer_id_of(name).ok_or_else(|| {
-            format!("set-completion-triggers!: no buffer completion source named {name:?}")
-        })?;
-        let trigger_chars = &mut self.buffer[id.0 as usize].trigger_chars;
-        if chars.is_empty() {
-            trigger_chars.remove(&language);
-        } else {
-            trigger_chars.insert(language, chars);
-        }
-        Ok(())
     }
 
     /// [`Self::register_buffer`]'s `Minibuf` counterpart. Overriding a
@@ -249,6 +205,14 @@ impl SourceRegistry {
                 RegisterOutcome::Added
             }
         }
+    }
+
+    /// The `Buffer` source `set-completion-triggers!` names, or the error
+    /// that call reports.
+    pub(in crate::editor) fn trigger_source(&self, name: &str) -> Result<BufferSourceId, String> {
+        self.buffer_id_of(name).ok_or_else(|| {
+            format!("set-completion-triggers!: no buffer completion source named {name:?}")
+        })
     }
 
     pub(in crate::editor) fn buffer_id_of(&self, name: &str) -> Option<BufferSourceId> {
@@ -279,29 +243,13 @@ impl SourceRegistry {
         (0..self.buffer.len() as u32).map(BufferSourceId).collect()
     }
 
-    /// Every `Buffer` source whose own `(language, chars)` set
-    /// ([`Self::set_buffer_trigger_chars`]) includes `ch` for `language`:
-    /// what a trigger-char keystroke invokes (`orchestrate.rs`'s
-    /// `Trigger::Char`). `[]` with no language (a buffer with no detected
-    /// language never matches anything: a completion source's own trigger
-    /// chars are always server-derived, and a server attach implies a
-    /// language).
-    pub(in crate::editor) fn buffer_sources_for_trigger(
-        &self,
-        ch: char,
-        language: Option<&str>,
-    ) -> Vec<BufferSourceId> {
-        let Some(language) = language else {
-            return Vec::new();
-        };
+    /// The ids of the `Buffer` sources called any of `names`, in
+    /// registration order.
+    pub(in crate::editor) fn buffer_sources_named(&self, names: &[String]) -> Vec<BufferSourceId> {
         self.buffer
             .iter()
             .enumerate()
-            .filter(|(_, e)| {
-                e.trigger_chars
-                    .get(language)
-                    .is_some_and(|cs| cs.contains(&ch))
-            })
+            .filter(|(_, e)| names.iter().any(|n| **n == *e.name))
             .map(|(i, _)| BufferSourceId(i as u32))
             .collect()
     }

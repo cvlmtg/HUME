@@ -53,31 +53,27 @@ pub struct PendingCompletionSource {
 /// [`EditorHost::completions`](super::EditorHost::completions).
 pub trait CompletionHost {
     /// `(completion-emit! id items #:incomplete f)`: a source's answer to
-    /// invocation `id`. `response` is `items` funneled through `json_arg`
-    /// (`builtins/completion.rs`): an already-handle argument (an
-    /// `lsp-request!` response passed straight through) crosses as-is; a
-    /// plain Steel list (of item hashmaps/bare strings) becomes a handle
-    /// onto a fresh JSON array, no deep copy either way, an empty list
-    /// meaning "nothing from this source". `incomplete` is the caller's
-    /// own `#:incomplete` request. The host implementation alone knows the
-    /// LSP response shape (`hume_lsp::completion_item::
-    /// completion_response_items`), so it decides there whether `response`
-    /// is a `CompletionList` with its own flag (which then wins over
-    /// `incomplete`) or a bare array (which has none, so `incomplete`
-    /// applies). See [`crate::json::JsonHandle`]'s own doc for why a
-    /// source hands over a handle instead of a decoded list either way.
+    /// invocation `id`. `parts` is `items`, each element funneled through
+    /// `json_arg` (`builtins/completion.rs`), so a response handle crosses
+    /// as-is and a hashmap or string becomes a fresh handle. Each part is
+    /// one item (a label string, or an object with a `label`) or a whole
+    /// `textDocument/completion` response (a `CompletionItem[]` array or a
+    /// `CompletionList`), whose items join the others: several servers'
+    /// answers to one request become one answer. An empty `parts` means
+    /// "nothing from this source". The answer is incomplete when
+    /// `incomplete` (the caller's `#:incomplete`) is set or any
+    /// `CompletionList` part says so.
     ///
     /// Returns whether the answer applied: `false` when `id` is no longer
     /// the latest call of any source in the open session (superseded by a
     /// later keystroke, or the session was replaced or dismissed):
     /// expected-normal for a late async source, never an error. `Err` for a
-    /// `response` that isn't a `textDocument/completion` response shape, or
-    /// whose `CompletionList.isIncomplete` conflicts with an explicit
-    /// `#:incomplete #t`, a caller error, not silently dropped.
+    /// part that is neither an item nor a response, a caller error, not
+    /// dropped.
     fn completion_emit(
         &mut self,
         id: u64,
-        response: crate::json::JsonHandle,
+        parts: Vec<crate::json::JsonHandle>,
         incomplete: bool,
     ) -> Result<bool, String>;
 

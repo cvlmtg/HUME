@@ -16,6 +16,8 @@ use std::time::{Duration, Instant};
 
 use hume_scripting::ScriptingHost;
 
+use crate::editor::tests::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec};
+
 const BUFFER_WORDS_PLUGIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../runtime/plugins/core/buffer-words/plugin.scm"
@@ -45,6 +47,23 @@ fn setup(guard: &HumeRuntimeGuard, tmp: &Path, config_expr: Option<&str>) -> Edi
 fn open(ed: &mut Editor, path: &Path) -> BufferId {
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
     ed.focused_buffer_id()
+}
+
+/// `src/main.rs` holding `marked`'s text, opened with `core:stdlib`,
+/// `core:buffer-words` and `core:lsp` loaded and one `rust-analyzer`
+/// attached over `backend`: handshake done, `on-lsp-attach` processed. The
+/// caller holds a `RealRuntimeGuard`.
+fn open_with_lsp(
+    tmp: &Path,
+    marked: &str,
+    backend: hume_lsp::test_util::RecordingLspBackend,
+) -> Editor {
+    let init = format!(
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\") (%activate-plugin-inline! \"core:lsp\" #f)\n{RUST_ANALYZER}"
+    );
+    let mut rig = LspRig::drained(tmp, RigSpec::rust(marked).with_init(&init), backend);
+    rig.ed.settle();
+    rig.ed
 }
 
 /// The ranked labels the open completion session would show, top 20: a
@@ -861,8 +880,6 @@ fn a_global_word_chars_change_reindexes_an_already_open_buffer() {
 /// no separate staging needed.
 #[test]
 fn buffer_words_and_lsp_rank_together_lsp_first() {
-    use hume_lsp::backend::ServerId;
-    use hume_lsp::client::LspClient;
     use hume_lsp::test_util::RecordingLspBackend;
 
     let tmp = safe_tempdir();
@@ -877,41 +894,8 @@ fn buffer_words_and_lsp_rank_together_lsp_first() {
         "textDocument/completion",
         serde_json::json!([{"label": "lsp_item"}]),
     );
-    let sid: ServerId = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
 
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = crate::editor::lsp::LspState::from_backend_for_test(Box::new(backend));
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\") (%activate-plugin-inline! \"core:lsp\" #f)",
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
-
-    let file_dir = safe_tempdir();
-    let path = file_dir.path().join("main.rs");
-    std::fs::write(&path, "buffer_word\n").unwrap();
-    let bid = open(&mut ed, &path);
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    let lang = ed.state.config.languages.intern("rust");
-    ed.state.buffers.get_mut(bid).language = Some(lang);
-
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), std::path::PathBuf::from("."), sid);
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    ed.settle();
+    let mut ed = open_with_lsp(tmp.path(), "-[b]>uffer_word\n", backend);
 
     ed.feed_key(key('i'));
     trigger(&mut ed);
@@ -944,8 +928,6 @@ fn buffer_words_and_lsp_rank_together_lsp_first() {
 /// server would have been sent an item it never produced.
 #[test]
 fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
-    use hume_lsp::backend::ServerId;
-    use hume_lsp::client::LspClient;
     use hume_lsp::test_util::RecordingLspBackend;
 
     let tmp = safe_tempdir();
@@ -961,44 +943,11 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
         }),
     );
     backend.respond_to("textDocument/completion", serde_json::json!([]));
-    let sid: ServerId = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
 
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = crate::editor::lsp::LspState::from_backend_for_test(Box::new(backend));
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\") (%activate-plugin-inline! \"core:lsp\" #f)",
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
-
-    let file_dir = safe_tempdir();
-    let path = file_dir.path().join("main.rs");
     // Mixed-case identifier, not `bw/case-twin`-eligible (an inner capital
     // means its tail isn't already all-lowercase). This test's exact-list
     // assertion needs buffer-words to answer with exactly one item.
-    std::fs::write(&path, "bufferWord\n").unwrap();
-    let bid = open(&mut ed, &path);
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    let lang = ed.state.config.languages.intern("rust");
-    ed.state.buffers.get_mut(bid).language = Some(lang);
-
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), std::path::PathBuf::from("."), sid);
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    ed.settle();
+    let mut ed = open_with_lsp(tmp.path(), "-[b]>ufferWord\n", backend);
 
     ed.feed_key(key('i'));
     trigger(&mut ed);
@@ -1027,8 +976,6 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
 /// `core:lsp`'s higher `#:priority` decides which one survives.
 #[test]
 fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_priority_ones() {
-    use hume_lsp::backend::ServerId;
-    use hume_lsp::client::LspClient;
     use hume_lsp::test_util::RecordingLspBackend;
 
     let tmp = safe_tempdir();
@@ -1043,45 +990,12 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
         "textDocument/completion",
         serde_json::json!([{"label": "bufferWord", "insertText": "bufferWord"}]),
     );
-    let sid: ServerId = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
 
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = crate::editor::lsp::LspState::from_backend_for_test(Box::new(backend));
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\") (%activate-plugin-inline! \"core:lsp\" #f)",
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
-
-    let file_dir = safe_tempdir();
-    let path = file_dir.path().join("main.rs");
     // Mixed-case identifier, not `bw/case-twin`-eligible: see the sibling
     // test above's identical comment; this test needs LSP's and
     // buffer-words' items to carry the exact same one label for the dedup
     // check below to mean anything.
-    std::fs::write(&path, "bufferWord\n").unwrap();
-    let bid = open(&mut ed, &path);
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    let lang = ed.state.config.languages.intern("rust");
-    ed.state.buffers.get_mut(bid).language = Some(lang);
-
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), std::path::PathBuf::from("."), sid);
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    ed.settle();
+    let mut ed = open_with_lsp(tmp.path(), "-[b]>ufferWord\n", backend);
 
     ed.feed_key(key('i'));
     trigger(&mut ed);
@@ -1120,8 +1034,6 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
 /// alone.
 #[test]
 fn once_something_is_typed_lsp_always_outranks_buffer_words() {
-    use hume_lsp::backend::ServerId;
-    use hume_lsp::client::LspClient;
     use hume_lsp::test_util::RecordingLspBackend;
 
     let tmp = safe_tempdir();
@@ -1136,41 +1048,8 @@ fn once_something_is_typed_lsp_always_outranks_buffer_words() {
         "textDocument/completion",
         serde_json::json!([{"label": "buffer_analog", "insertText": "buffer_analog"}]),
     );
-    let sid: ServerId = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
 
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = crate::editor::lsp::LspState::from_backend_for_test(Box::new(backend));
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\") (%activate-plugin-inline! \"core:lsp\" #f)",
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
-
-    let file_dir = safe_tempdir();
-    let path = file_dir.path().join("main.rs");
-    std::fs::write(&path, "buffer_word_target\n\n").unwrap();
-    let bid = open(&mut ed, &path);
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    let lang = ed.state.config.languages.intern("rust");
-    ed.state.buffers.get_mut(bid).language = Some(lang);
-
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), std::path::PathBuf::from("."), sid);
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    ed.settle();
+    let mut ed = open_with_lsp(tmp.path(), "-[b]>uffer_word_target\n\n", backend);
 
     // Second (blank) line, so buffer-words' own index (built from the
     // whole buffer, "buffer_word_target" included) has a real candidate

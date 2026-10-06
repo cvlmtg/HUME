@@ -31,7 +31,7 @@ fn core_lsp_real_manifest_scm_resolves_via_load_plugin() {
 
     let (ed, _dirs) = setup_editor_with_init_scripting(
         r#"(load-plugin! "core:stdlib")
-           (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
+           (register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
            (load-plugin! "core:lsp")"#,
         Some(&runtime_dir),
     );

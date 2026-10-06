@@ -3,94 +3,72 @@
 // `ScopedHighlighter` (Diagnostic/Extra tiers) from the diagnostics store
 // and the extra-highlights store.
 //
-// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s
-// bare `Pane::new`): highlight providers are only registered by
-// `build_pane`, which only the real `Editor::open`/`:e` construction path
-// runs (see `editor/mod.rs`'s `for_testing` doc comment on why its own
-// pane has no `PaneHighlights` entry at all).
+// Every test here renders a pane made by `build_pane` (`Editor::open`'s
+// initial pane, or a split's): highlight providers are only registered
+// there (see `editor/mod.rs`'s `for_testing` doc comment on why
+// `editor_from`'s bare pane has no `PaneHighlights` entry at all).
 
 use hume_grid::Rect;
-use std::path::Path;
 
+use super::lsp_rig::LspRig;
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_engine::pipeline::{PaneId, RenderContext};
+use crate::editor::commands::open_pane_in_layout;
+use hume_engine::pipeline::{Direction, PaneId, RenderContext};
 use hume_engine::providers::HighlightTier;
-use hume_lsp::backend::LspBackend;
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
 /// `((start_line, start_char), (end_line, end_char), severity)`.
 type DiagFixture = ((u32, u32), (u32, u32), i64);
 
-fn publish_diagnostics_notification(
-    uri: &str,
-    ranges_and_severity: &[DiagFixture],
-) -> hume_lsp::codec::Message {
-    let diagnostics: Vec<serde_json::Value> = ranges_and_severity
-        .iter()
-        .map(|&((sl, sc), (el, ec), severity)| {
-            serde_json::json!({
-                "range": {"start": {"line": sl, "character": sc}, "end": {"line": el, "character": ec}},
-                "severity": severity,
-                "message": "boom",
-            })
-        })
-        .collect();
-    hume_lsp::codec::Message::Notification {
-        method: "textDocument/publishDiagnostics".to_string(),
-        params: serde_json::json!({"uri": uri, "diagnostics": diagnostics}),
-    }
-}
-
-/// Keeps the temp file alive for the test's duration (dropped at the end of
-/// the owning test function).
+/// Keeps the rig's root alive for the test's duration (dropped at the end
+/// of the owning test function).
 struct DiagCtx {
-    _file_dir: tempfile::TempDir,
+    _tmp: tempfile::TempDir,
     ed: Editor,
     pid: PaneId,
 }
 
-/// Opens a real file (via `Editor::open` + `:e`, so `build_pane`'s providers
-/// are wired), publishes `diags` against it through a scripted server,
-/// drains, and runs one `prepare_frame` so `update_highlight_providers` has
+/// Opens `content` in a file attached to a scripted server, shows it in a
+/// split (so `build_pane`'s providers are wired), publishes `diags` against
+/// it, and runs one `prepare_frame` so `update_highlight_providers` has
 /// populated the pane's Arcs.
 fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    std::fs::write(&file, content).unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+    let tmp = safe_tempdir();
+    let marked = format!("-[{}]>{}", &content[..1], &content[1..]);
+    let mut rig = LspRig::rust(tmp.path(), &marked, serde_json::json!({"capabilities": {}}));
+    let bare = rig.ed.state.focus.id();
+    let pid = open_pane_in_layout(
+        &mut rig.ed.state,
+        &mut rig.ed.view,
+        bare,
+        rig.bid,
+        Direction::Horizontal,
+    )
+    .expect("split must succeed");
+    rig.ed.state.focus.set_for_test(pid);
 
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
     if !diags.is_empty() {
-        backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
+        let diagnostics: Vec<serde_json::Value> = diags
+            .iter()
+            .map(|&((sl, sc), (el, ec), severity)| {
+                serde_json::json!({
+                    "range": {"start": {"line": sl, "character": sc}, "end": {"line": el, "character": ec}},
+                    "severity": severity,
+                    "message": "boom",
+                })
+            })
+            .collect();
+        let sid = rig.sid("rust-analyzer");
+        rig.publish(sid, serde_json::Value::Array(diagnostics));
     }
 
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, std::path::PathBuf::from(".")));
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    ed.drain_lsp();
-
-    let pid = ed.state.focus.id();
+    let mut ed = rig.ed;
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    DiagCtx {
-        _file_dir: file_dir,
-        ed,
-        pid,
-    }
+    DiagCtx { _tmp: tmp, ed, pid }
 }
 
 // ── Diagnostic underlines ────────────────────────────────────────────────────

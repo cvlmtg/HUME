@@ -7,7 +7,7 @@
 use hume_engine::pipeline::BufferId;
 use hume_scripting::host::OptionValue;
 use hume_scripting::json::JsonHandle;
-use hume_scripting::{PaneHandle, SteelPane};
+use hume_scripting::{PaneHandle, ServerRef, SteelPane};
 use steel::rvals::SteelVal;
 
 use super::Mode;
@@ -72,21 +72,22 @@ pub(in crate::editor) enum EditorEvent {
         buffer: BufferId,
         language: Option<String>,
     },
-    /// Fires when an LSP client reaches `Running` for a buffer attached to
-    /// it: once per already-attached buffer at that moment, and again for
-    /// any buffer that attaches later while the server stays Running.
+    /// Fires once per (buffer, server) when a server is `Running` for a
+    /// buffer attached to it: for every attached buffer when the server's
+    /// handshake completes, and for each buffer that attaches later while it
+    /// stays Running.
     OnLspAttach {
         buffer: BufferId,
-        language: String,
+        server: ServerRef,
     },
-    /// Fires once per buffer detached by `:lsp-stop`/`:lsp-restart`, right
-    /// after `buf.lsp_server` is cleared: the counterpart to `OnLspAttach`,
-    /// so a plugin holding buffer-scoped state derived from that server
-    /// (e.g. inlay hints) can clear it instead of leaving it to drift with
-    /// no server left to keep it in sync.
+    /// Fires once per (buffer, server) detach: `:lsp-stop`/`:lsp-restart`,
+    /// a server list or language change that drops the server, a buffer
+    /// close. The counterpart to `OnLspAttach`, so a plugin holding
+    /// buffer-scoped state derived from that server (e.g. inlay hints) can
+    /// refresh it from the servers that remain.
     OnLspDetach {
         buffer: BufferId,
-        language: String,
+        server: ServerRef,
     },
     /// Fires once per drain batch that ingested at least one
     /// `publishDiagnostics` for `buffer`, payload-free signal by design;
@@ -136,17 +137,13 @@ pub(in crate::editor) enum EditorEvent {
     },
     /// Fires for a server notification HUME doesn't handle itself (it
     /// handles `window/logMessage`, `window/showMessage`, `$/progress`, and
-    /// `publishDiagnostics`). `server` is the server's registered language,
-    /// `None` if it has none. `params` crosses through `to_steel_handle`
-    /// tagged with `origin` (the server's position encoding), so a handler
-    /// can read a wire position out of it. A `register-hook!` handler sees
-    /// every method; a `register-lsp-notification-hook!` one only the
-    /// methods it lists. `server_name` is the server's display name, used
-    /// only to prefix the "unhandled notification" Trace when no handler
-    /// takes `method`; it is not passed to Steel.
+    /// `publishDiagnostics`). `server` is the sending server. `params`
+    /// crosses through `to_steel_handle` tagged with `origin` (the server
+    /// and its position encoding), so a handler can read a wire position
+    /// out of it. A `register-hook!` handler sees every method; a
+    /// `register-lsp-notification-hook!` one only the methods it lists.
     OnLspNotification {
-        server_name: String,
-        server: Option<String>,
+        server: ServerRef,
         method: String,
         params: std::sync::Arc<serde_json::Value>,
         origin: hume_scripting::json::WireOrigin,
@@ -273,11 +270,9 @@ impl EditorEvent {
     /// reason as `handle`.
     pub(in crate::editor) fn unhandled_trace(&self) -> Option<String> {
         match self {
-            EditorEvent::OnLspNotification {
-                server_name,
-                method,
-                ..
-            } => Some(format!("{server_name}: unhandled notification {method}")),
+            EditorEvent::OnLspNotification { server, method, .. } => {
+                Some(format!("{}: unhandled notification {method}", server.name))
+            }
             EditorEvent::OnBufferOpen { .. }
             | EditorEvent::OnBufferClose { .. }
             | EditorEvent::OnBufferSave { .. }
@@ -387,11 +382,11 @@ impl EditorEvent {
                     SteelVal::StringV(language.unwrap_or_default().into()),
                 ]
             }
-            EditorEvent::OnLspAttach { buffer, language }
-            | EditorEvent::OnLspDetach { buffer, language } => {
+            EditorEvent::OnLspAttach { buffer, server }
+            | EditorEvent::OnLspDetach { buffer, server } => {
                 vec![
                     SteelPane::new(PaneHandle::buffer_only(buffer)).into_steel_val(),
-                    SteelVal::StringV(language.into()),
+                    server.into_steel_val(),
                 ]
             }
             EditorEvent::OnViewportChange {
@@ -422,14 +417,13 @@ impl EditorEvent {
                 vec![SteelVal::StringV(key.into()), SteelVal::from(value)]
             }
             EditorEvent::OnLspNotification {
-                server_name: _,
                 server,
                 method,
                 params,
                 origin,
             } => {
                 vec![
-                    server.map_or(SteelVal::BoolV(false), |s| SteelVal::StringV(s.into())),
+                    server.into_steel_val(),
                     SteelVal::StringV(method.into()),
                     hume_scripting::json::to_steel_handle(params, origin),
                 ]

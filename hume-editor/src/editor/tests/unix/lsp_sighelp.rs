@@ -11,17 +11,17 @@ use std::time::Duration;
 
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
+use crate::editor::tests::lsp_rig::stop_server;
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 
 fn setup(
-    file: &Path,
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, RequestLog) {
     setup_trigger_char_feature(
-        file,
         tmp,
+        FOO,
         serde_json::json!({"signatureHelpProvider": {"triggerCharacters": ["(", ","]}}),
         configure,
     )
@@ -70,22 +70,17 @@ fn signature_help_response(
 
 /// Detach must be a true no-op: `*sighelp-chars*`/`"lsp-sighelp"`'s
 /// trigger-char registration is global, set once at attach, so
-/// `on-lsp-detach` must clear it. The `on-trigger-char` handler also needs
-/// its own `lsp/guard-capability` check (unlike completion.scm, which
-/// doesn't need one). Without it, a trigger char left registered past
-/// `:lsp-stop` would hit `lsp-request!`'s server-resolution failure and log
-/// an Error, not a polite Info skip, on every matching keystroke.
+/// `on-lsp-detach` must clear it. The request itself also checks
+/// `lsp-servers` for a signature-help server first: without that, a trigger
+/// char left registered past `:lsp-stop` would reach `lsp-request!`'s
+/// routing failure and log an Error on every matching keystroke.
 #[test]
 fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_foo_fixture(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |_backend, _sid| {});
+    let (mut ed, _guard, requests) = setup(tmp.path(), |_backend, _sid| {});
     position_after_foo(&mut ed);
 
-    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
-        "rust".to_string(),
-    ));
+    stop_server(&mut ed, "rust-analyzer");
     ed.settle(); // on-lsp-detach clears *sighelp-chars*
 
     ed.feed_key(key('i'));
@@ -105,9 +100,7 @@ fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
 #[test]
 fn trigger_char_after_debounce_shows_signature_with_marked_param() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_foo_fixture(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
             signature_help_response("fn foo(a: i32, b: i32)", &["a: i32", "b: i32"], 0),
@@ -128,9 +121,7 @@ fn trigger_char_after_debounce_shows_signature_with_marked_param() {
 #[test]
 fn comma_advances_the_marked_parameter() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_foo_fixture(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
             signature_help_response("fn foo(a: i32, b: i32)", &["a: i32", "b: i32"], 0),
@@ -156,9 +147,7 @@ fn comma_advances_the_marked_parameter() {
 #[test]
 fn close_paren_closes_the_popup_without_a_request() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_foo_fixture(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
             signature_help_response("fn foo(a: i32)", &["a: i32"], 0),
@@ -195,9 +184,7 @@ fn close_paren_closes_the_popup_without_a_request() {
 #[test]
 fn esc_ending_insert_closes_the_sticky_popup() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_foo_fixture(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
             signature_help_response("fn foo(a: i32)", &["a: i32"], 0),
@@ -221,9 +208,7 @@ fn esc_ending_insert_closes_the_sticky_popup() {
 #[test]
 fn rapid_trigger_chars_coalesce_to_one_request() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_foo_fixture(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
             signature_help_response("fn foo()", &[], 0),
@@ -261,9 +246,7 @@ fn rapid_trigger_chars_coalesce_to_one_request() {
 #[test]
 fn null_response_closes_the_popup() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_foo_fixture(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
             signature_help_response("fn foo(a: i32)", &["a: i32"], 0),
@@ -290,9 +273,7 @@ fn null_response_closes_the_popup() {
 #[test]
 fn offset_form_parameter_label_marks_the_correct_slice() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_foo_fixture(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
             serde_json::json!({
@@ -324,9 +305,7 @@ fn offset_form_parameter_label_marks_the_correct_slice() {
 #[test]
 fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_foo_fixture(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
             serde_json::json!({
@@ -358,11 +337,9 @@ fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
 #[test]
 fn offset_form_label_is_read_in_the_negotiated_encoding_not_always_utf16() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, _requests) = setup_trigger_char_feature(
-        &file,
         tmp.path(),
+        FOO,
         serde_json::json!({
             "signatureHelpProvider": {"triggerCharacters": ["(", ","]},
             "positionEncoding": "utf-8",
@@ -414,9 +391,7 @@ fn offset_form_label_is_read_in_the_negotiated_encoding_not_always_utf16() {
 #[test]
 fn stale_response_after_a_pane_switch_shows_no_popup() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_foo_fixture(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
             signature_help_response("fn foo(a: i32, b: i32)", &["a: i32", "b: i32"], 0),
@@ -428,7 +403,7 @@ fn stale_response_after_a_pane_switch_shows_no_popup() {
     ed.feed_key(key('('));
     ed.settle(); // on-trigger-char fires, schedules the debounce timer
 
-    let extra = file_dir.path().join("other.rs");
+    let extra = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
     let other_bid = ed
         .open_extra_file(&extra)

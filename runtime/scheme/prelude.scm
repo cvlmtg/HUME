@@ -18,8 +18,9 @@
 
 (define (define-language! name
                           [exts '()] [globs '()] [shebangs '()]
-                          #:language-id [language-id #f])
-  (%define-language! name exts globs shebangs language-id))
+                          #:language-id [language-id #f]
+                          #:roots [roots '()])
+  (%define-language! name exts globs shebangs language-id roots))
 
 (define (register-grammar! name grammar-path symbol highlights-path
                            #:injections [injections-path #f]

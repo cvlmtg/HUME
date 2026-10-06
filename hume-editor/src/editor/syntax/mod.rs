@@ -136,11 +136,9 @@ impl Editor {
         });
         // Wire up (or tear down) tree-sitter highlighting for this buffer.
         self.setup_buffer_syntax(bid);
-        // Spawn-or-attach an LSP server for this buffer's (possibly new)
-        // language. Idempotent: `open_buffer`'s detect-then-fire-OnBufferOpen
-        // sequence means this and the open-path hook can both observe the
-        // same language-set.
-        self.lsp_attach_buffer(bid);
+        // Attach this buffer to the servers its (possibly new, possibly
+        // absent) language plans, detaching any it no longer does.
+        self.state.lsp_reconcile_buffer(&self.view, bid);
     }
 
     pub(super) fn detect_and_set_language(&mut self, bid: BufferId) {
@@ -231,9 +229,11 @@ impl Editor {
                     globs,
                     shebangs,
                     lsp_language_id,
+                    roots,
                 } => {
                     let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
                     let shebangs_ref: Vec<&str> = shebangs.iter().map(String::as_str).collect();
+                    let roots_ref: Vec<&str> = roots.iter().map(String::as_str).collect();
                     let mut valid_globs: Vec<globset::Glob> = Vec::with_capacity(globs.len());
                     for g in &globs {
                         match globset::Glob::new(g) {
@@ -250,6 +250,7 @@ impl Editor {
                         &valid_globs,
                         &shebangs_ref,
                         lsp_language_id.as_deref(),
+                        &roots_ref,
                     );
                     any_identity = true;
                 }

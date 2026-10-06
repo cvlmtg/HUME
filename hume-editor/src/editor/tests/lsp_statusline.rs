@@ -5,24 +5,18 @@
 // glyphs/spacing, which are pinned as inline snapshots in
 // `statusline::tests`.
 
-use std::path::Path;
-
+use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
-use crate::editor::lsp::LspState;
 use crate::editor::lsp::introspect::LspActivity;
 use crate::statusline::StatusElement;
-use hume_lsp::backend::LspBackend;
-use hume_lsp::client::{ClientAction, LspClient, ServerState};
-use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::client::ClientAction;
+use hume_lsp::test_util::RecordingLspBackend;
 
 /// `((start_line, start_char), (end_line, end_char), severity)`.
 type DiagFixture = ((u32, u32), (u32, u32), i64);
 
-fn publish_diagnostics_notification(
-    uri: &str,
-    ranges_and_severity: &[DiagFixture],
-) -> hume_lsp::codec::Message {
-    let diagnostics: Vec<serde_json::Value> = ranges_and_severity
+fn diagnostics(ranges_and_severity: &[DiagFixture]) -> serde_json::Value {
+    ranges_and_severity
         .iter()
         .map(|&((sl, sc), (el, ec), severity)| {
             serde_json::json!({
@@ -31,56 +25,34 @@ fn publish_diagnostics_notification(
                 "message": "boom",
             })
         })
-        .collect();
-    hume_lsp::codec::Message::Notification {
-        method: "textDocument/publishDiagnostics".to_string(),
-        params: serde_json::json!({"uri": uri, "diagnostics": diagnostics}),
-    }
+        .collect()
 }
 
 struct DiagCtx {
-    _file_dir: tempfile::TempDir,
+    _tmp: tempfile::TempDir,
     ed: Editor,
+    sid: hume_lsp::backend::ServerId,
 }
 
-/// `publishes`: one or more diagnostic batches for the same file, pushed to
-/// the scripted backend in order *before* the single `drain_lsp()` call:
-/// multiple publishes in one drain batch coalesce to the last one (same
-/// semantics `lsp_diagnostics.rs`'s
-/// `two_publishes_in_one_drain_batch_coalesce_to_the_last` locks in), which
-/// is exactly the "server republishes with the error fixed" scenario.
+/// A `Running` server on a file holding `content`, which then publishes
+/// each of `publishes` in order: a later publish replaces an earlier one,
+/// the "server republishes with the error fixed" scenario.
 fn setup(content: &str, publishes: &[&[DiagFixture]]) -> DiagCtx {
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    std::fs::write(&file, content).unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
+    let tmp = safe_tempdir();
+    let marked = format!("-[{}]>{}", &content[..1], &content[1..]);
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        &marked,
+        serde_json::json!({ "capabilities": {} }),
+    );
+    let sid = rig.sid("rust-analyzer");
     for diags in publishes {
-        backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
+        rig.publish(sid, diagnostics(diags));
     }
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    // A server publishing diagnostics is, in reality, always past its
-    // handshake. It's `Running` here so the `Diagnostics` element renders
-    // counts rather than the `Starting` loading spinner. `insert_client_for_test`
-    // otherwise leaves it at `LspClient::new`'s default `Starting`.
-    client.set_state_for_test(ServerState::Running);
-    ed.lsp.insert_client_for_test(client);
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    ed.drain_lsp();
-
     DiagCtx {
-        _file_dir: file_dir,
-        ed,
+        _tmp: tmp,
+        ed: rig.ed,
+        sid,
     }
 }
 
@@ -161,9 +133,8 @@ fn configure_statusline_round_trips_diagnostics_element_name() {
     );
 }
 
-/// Tier 2: counts must track a second, corrected publish for the same file,
-/// not just the first snapshot. Both publishes are queued before the single
-/// `drain_lsp()` call (see `setup`'s doc comment).
+/// Counts must track a second, corrected publish for the same file, not
+/// just the first snapshot.
 #[test]
 fn diagnostic_counts_update_across_a_corrected_publish() {
     let c = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 1)], &[]]);
@@ -189,20 +160,15 @@ fn progress_action(token: &str, value: serde_json::Value) -> ClientAction {
 
 #[test]
 fn starting_server_displays_a_loading_indicator() {
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    // `LspClient::new` defaults to `Starting`, exactly like a real server
-    // between spawn and `initialize` completing. No `drain_lsp()` call here,
-    // so the spinner frame stays at its initial 0.
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, std::path::PathBuf::from(".")));
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    let tmp = safe_tempdir();
+    // No scripted `initialize` response: the server stays `Starting`, so
+    // the spinner frame stays at its initial 0.
+    let rig = LspRig::open(
+        tmp.path(),
+        RigSpec::rust("-[f]>n main() {}\n"),
+        RecordingLspBackend::new().0,
+    );
+    let (ed, bid) = (&rig.ed, rig.bid);
 
     assert!(matches!(ed.lsp_activity(bid), LspActivity::Starting));
 
@@ -221,18 +187,9 @@ fn starting_server_displays_a_loading_indicator() {
 
 #[test]
 fn progress_begin_report_end_tracks_the_active_task() {
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.set_state_for_test(ServerState::Running);
-    ed.lsp.insert_client_for_test(client);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    let mut c = setup("abcdefgh\n", &[]);
+    let (sid, bid) = (c.sid, c.ed.focused_buffer_id());
+    let ed = &mut c.ed;
 
     assert!(
         matches!(ed.lsp_activity(bid), LspActivity::Idle),
@@ -252,7 +209,7 @@ fn progress_begin_report_end_tracks_the_active_task() {
         }
         _ => panic!("expected Progress after begin"),
     }
-    assert_eq!(ed.lsp.progress_title_for_test(sid), Some("Indexing"));
+    assert_eq!(ed.state.lsp.progress_title_for_test(sid), Some("Indexing"));
 
     // report: percentage arrives; title must persist (merged, not replaced:
     // an absent field means "unchanged" per the LSP spec).
@@ -270,7 +227,7 @@ fn progress_begin_report_end_tracks_the_active_task() {
         _ => panic!("expected Progress after report"),
     }
     assert_eq!(
-        ed.lsp.progress_title_for_test(sid),
+        ed.state.lsp.progress_title_for_test(sid),
         Some("Indexing"),
         "title must survive an unrelated report"
     );
@@ -287,36 +244,30 @@ fn progress_begin_report_end_tracks_the_active_task() {
 
 /// A `$/progress` begin missing the (lsp_types-required) `title`. Real
 /// servers treat it as optional in practice. Drives the *real* transport
-/// path (`push_from_server` + `drain_lsp`, not the `progress_action` helper
+/// path (the client's `on_event`, not the `progress_action` helper
 /// above, which builds a `ClientAction::Progress` via a strict deserialize
 /// that would itself panic on this input) so `classify_notification`'s
 /// lenient recovery is what's under test, not a hand-built action.
 #[test]
 fn progress_begin_missing_title_still_animates_the_spinner() {
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    backend.push_from_server(
+    let tmp = safe_tempdir();
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdefgh\n",
+        serde_json::json!({ "capabilities": {} }),
+    );
+    let (sid, bid) = (rig.sid("rust-analyzer"), rig.bid);
+    rig.push(
         sid,
         hume_lsp::codec::Message::Notification {
             method: "$/progress".to_string(),
             params: serde_json::json!({"token": "t1", "value": {"kind": "begin"}}),
         },
     );
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.set_state_for_test(ServerState::Running);
-    ed.lsp.insert_client_for_test(client);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    ed.drain_lsp();
+    let ed = rig.ed;
 
     assert!(
-        ed.lsp.has_animating_server(),
+        ed.state.lsp.has_animating_server(),
         "a recovered progress task must still animate the spinner"
     );
     assert!(
@@ -326,23 +277,14 @@ fn progress_begin_missing_title_still_animates_the_spinner() {
 }
 
 /// A server that crashes mid-index must not leave the spinner animating for
-/// a task it will never finish: `ClientAction::Crashed` clears
-/// `ServerEntry.progress`, so `activity()` falls through to `Idle` even
-/// though the entry (unlike `:lsp-stop`'s teardown) stays in `lsp.servers`.
+/// a task it will never finish: `ClientAction::Crashed` clears the
+/// instance's progress, so `activity()` falls through to `Idle` even though
+/// the crashed instance stays attached.
 #[test]
 fn crash_clears_progress_so_the_spinner_stops() {
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.set_state_for_test(ServerState::Running);
-    ed.lsp.insert_client_for_test(client);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    let c = setup("abcdefgh\n", &[]);
+    let (sid, bid) = (c.sid, c.ed.focused_buffer_id());
+    let mut ed = c.ed;
 
     ed.dispatch_lsp_action(
         sid,
@@ -368,13 +310,7 @@ fn crash_clears_progress_so_the_spinner_stops() {
 #[test]
 fn loading_state_keeps_diagnostic_counts_available() {
     let mut c = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 1)]]);
-    let bid = c.ed.focused_buffer_id();
-    let sid =
-        c.ed.state
-            .buffers
-            .get(bid)
-            .lsp_server
-            .expect("setup attaches a server");
+    let (sid, bid) = (c.sid, c.ed.focused_buffer_id());
     assert_ne!(
         c.ed.diagnostic_counts(bid),
         (0, 0),

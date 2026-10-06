@@ -629,8 +629,7 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
 #[test]
 fn an_edit_above_the_token_from_a_script_keeps_the_session_and_shifts_its_token() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("a -[c]>def\n");
-    super::super::lsp_bridge::setup_with(&mut ed, |backend, _sid| {
+    let rig = super::super::lsp_bridge::setup_with(tmp.path(), "a -[c]>def\n", |backend, _sid| {
         // `apply-text-edits!` now only accepts a server-tagged wire edit
         // (via a real response); this canned response is what `:stash`
         // (dispatched below, before Insert mode) turns into one.
@@ -639,6 +638,7 @@ fn an_edit_above_the_token_from_a_script_keeps_the_session_and_shifts_its_token(
             serde_json::json!([{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}, "newText": "Q"}]),
         );
     });
+    let mut ed = rig.ed;
     run(
         &mut ed,
         tmp.path(),

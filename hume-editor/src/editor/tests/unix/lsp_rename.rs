@@ -6,93 +6,27 @@
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
+use hume_lsp::backend::ServerId;
+use hume_lsp::test_util::RecordingLspBackend;
 
-/// Writes "fn main() {\n    helper();\n}\n" and returns its (path, uri).
-/// The cursor lands inside "helper" on line 1 (0-indexed), matching the search
-/// each test does before invoking `lsp-rename`.
-fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
-    let file = file_dir.join("main.rs");
-    std::fs::write(&file, "fn main() {\n    helper();\n}\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical)
-        .unwrap()
-        .as_str()
-        .to_string();
-    (file, uri)
-}
-
+/// A [`core_lsp_rig`] over "fn main() {\n    helper();\n}\n" with a
+/// rename provider. The cursor sits on the 'h' of "helper" (line 1, col 4)
+/// so `symbol-under-cursor` has something real to extract.
 fn setup(
-    file: &Path,
     tmp: &Path,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, ServerId) {
-    let guard = RealRuntimeGuard::new();
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({"capabilities": {"renameProvider": true}}),
-    );
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    // Land the cursor inside "helper" (line 1, col 4) so
-    // symbol-under-cursor has something real to extract.
-    let pid = ed.state.focus.id();
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.set_selections(
-        test_fixtures::testing::single(
-            ed.state.buffers.get(bid).text(),
-            // 'h' of "helper" on line 1
-            test_fixtures::testing::cursor(ed.state.buffers.get(bid).text(), 16),
-        ),
-        ed.state.buffers.get(bid).text(),
-    );
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
+    let (rig, guard) = core_lsp_rig(
         tmp,
+        "fn main() {\n    -[h]>elper();\n}\n",
+        serde_json::json!({"capabilities": {"renameProvider": true}}),
+        configure,
     );
-    ed.scripting = Some(host);
-
-    (ed, guard, sid)
+    let sid = rig.sid("rust-analyzer");
+    (rig.ed, guard, sid)
 }
 
 fn run_rename(ed: &mut Editor) {
@@ -105,9 +39,7 @@ fn run_rename(ed: &mut Editor) {
 #[test]
 fn prompt_prefill_shows_the_symbol_under_cursor() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |_backend, _sid| {});
+    let (mut ed, _guard, _sid) = setup(tmp.path(), |_backend, _sid| {});
 
     run_rename(&mut ed);
 
@@ -121,11 +53,10 @@ fn prompt_prefill_shows_the_symbol_under_cursor() {
 #[test]
 fn cancel_sends_no_rename_request() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
+    let uri = rust_rig_uri(tmp.path());
     // Script a response that WOULD apply visibly if the request were sent
     // despite the cancel. This proves the guard, not just "nothing crashed".
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/rename",
             serde_json::json!({"changes": {uri: [
@@ -159,9 +90,7 @@ fn cancel_sends_no_rename_request() {
 #[test]
 fn null_result_reports_nothing_to_rename() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/rename", serde_json::Value::Null);
     });
 
@@ -182,16 +111,15 @@ fn null_result_reports_nothing_to_rename() {
 #[test]
 fn multi_file_workspace_edit_applies_and_logs_the_summary() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let other_file = file_dir.path().join("lib.rs");
+    let uri = rust_rig_uri(tmp.path());
+    let other_file = rig_root(tmp.path()).join("lib.rs");
     std::fs::write(&other_file, "fn helper() {}\n").unwrap();
     let other_uri = hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&other_file).unwrap())
         .unwrap()
         .as_str()
         .to_string();
 
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), move |backend, _sid| {
+    let (mut ed, _guard, _sid) = setup(tmp.path(), move |backend, _sid| {
         backend.respond_to(
             "textDocument/rename",
             serde_json::json!({"changes": {
@@ -234,9 +162,8 @@ fn multi_file_workspace_edit_applies_and_logs_the_summary() {
 #[test]
 fn rename_reports_a_stale_buffer_after_an_intervening_edit() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), move |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), move |backend, _sid| {
         backend.respond_to(
             "textDocument/rename",
             serde_json::json!({"changes": {
@@ -291,9 +218,8 @@ fn rename_reports_a_stale_buffer_after_an_intervening_edit() {
 #[test]
 fn multi_file_workspace_edit_detects_language_of_the_newly_opened_file() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let other_file = file_dir.path().join("lib.rs");
+    let uri = rust_rig_uri(tmp.path());
+    let other_file = rig_root(tmp.path()).join("lib.rs");
     std::fs::write(&other_file, "fn helper() {}\n").unwrap();
     let other_canonical = std::fs::canonicalize(&other_file).unwrap();
     let other_uri = hume_lsp::uri::path_to_uri(&other_canonical)
@@ -301,7 +227,7 @@ fn multi_file_workspace_edit_detects_language_of_the_newly_opened_file() {
         .as_str()
         .to_string();
 
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), move |backend, _sid| {
+    let (mut ed, _guard, _sid) = setup(tmp.path(), move |backend, _sid| {
         backend.respond_to(
             "textDocument/rename",
             serde_json::json!({"changes": {
@@ -314,15 +240,6 @@ fn multi_file_workspace_edit_detects_language_of_the_newly_opened_file() {
             }}),
         );
     });
-    ed.state
-        .config
-        .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None);
-    ed.state
-        .config
-        .languages
-        .rebuild_glob_set()
-        .expect("rebuild ok");
 
     run_rename(&mut ed);
     ed.feed_key(key_enter());

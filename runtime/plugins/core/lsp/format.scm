@@ -21,7 +21,7 @@
         (lsp/report-error! "lsp-fmt" err)
         (lsp/format-apply! pane gen (lsp/format-edits res)))))
 
-(define (lsp/format-fan-out! pane gen td ranges)
+(define (lsp/format-fan-out! pane server gen td ranges)
   (let ((pending (box (length ranges)))
         (edits (box (list)))
         (aborted (box #f))
@@ -41,19 +41,24 @@
                     (set-box! pending (- (unbox pending) 1))
                     (when (= (unbox pending) 0)
                       (lsp/format-apply! pane gen (unbox edits)))))))
+          #:to server
           #:allow-stale #t))
       ranges)))
 
+;; Every range goes to the first server with range formatting, so the
+;; joined edits all come from one server.
 (define (lsp/format-linewise! pane gen td ranges)
-  (lsp/guard-capability pane "documentRangeFormattingProvider"
-    (lambda ()
-      (let ((n (length ranges))
+  (lsp/with-servers (lsp-servers pane #:method "textDocument/rangeFormatting") "range formatting"
+    (lambda (servers)
+      (let ((server (car servers))
+            (n (length ranges))
             (cap (get-option "lsp.format-max-ranges")))
         (cond
-          ((and (> n 1) (lsp/cap-flag? pane "documentRangeFormattingProvider" "rangesSupport"))
+          ((and (> n 1) (lsp/cap-flag? (lsp-capability server #:method "textDocument/rangeFormatting") "rangesSupport"))
            (lsp-request! pane "textDocument/rangesFormatting"
              (hash "textDocument" td "ranges" ranges "options" (lsp/format-options pane))
              (lsp/format-callback pane gen)
+             #:to server
              #:allow-stale #t))
           ((> n cap)
            (log! 'info
@@ -61,26 +66,22 @@
                                  " ranges exceeds lsp.format-max-ranges ("
                                  (number->string cap)
                                  ") — nothing formatted")))
-          (else (lsp/format-fan-out! pane gen td ranges)))))))
+          (else (lsp/format-fan-out! pane server gen td ranges)))))))
 
 (define (lsp/format-source! pane)
   (let ((rp (lsp-linewise-ranges-params pane)))
     (if (not rp)
-        (log! 'info (if (lsp-server-for-buffer pane)
-                         "buffer has no path — nothing to format"
-                         "no LSP server attached to this buffer"))
+        (log! 'info "buffer has no path — nothing to format")
         (let* ((td (hash-ref rp "textDocument"))
                (ranges (hash-ref rp "ranges"))
                (gen (buffer-generation pane)))
           (cond
             ((selections-linewise? pane) (lsp/format-linewise! pane gen td ranges))
             ((selections-charwise? pane)
-             (lsp/guard-capability pane "documentFormattingProvider"
-               (lambda ()
-                 (lsp-request! pane "textDocument/formatting"
-                   (hash "textDocument" td "options" (lsp/format-options pane))
-                   (lsp/format-callback pane gen)
-                   #:allow-stale #t))))
+             (lsp-request! pane "textDocument/formatting"
+               (hash "textDocument" td "options" (lsp/format-options pane))
+               (lsp/format-callback pane gen)
+               #:allow-stale #t))
             (else (log! 'info "mixed whole-line and partial selections — nothing formatted")))))))
 
 (define-command! "lsp-fmt"

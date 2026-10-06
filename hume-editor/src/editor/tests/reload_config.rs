@@ -20,14 +20,12 @@ use super::*;
 use hume_engine::types::Scope;
 use hume_scripting::ScriptingHost;
 
+use super::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec};
 use crate::editor::commands::open_pane_in_layout;
 use crate::editor::keymap::{BindMode, Keymap, WalkResult};
-use crate::editor::lsp::LspState;
 use crate::editor::reload::ReloadSnapshot;
 use crate::statusline::StatusElement;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::test_util::RecordingLspBackend;
 
 // ── Keymap ───────────────────────────────────────────────────────────────────
 
@@ -377,32 +375,30 @@ fn reset_clears_stale_buffer_language_ids() {
 
 // ── LSP ──────────────────────────────────────────────────────────────────────
 
-/// `register-lsp-server!` clears from `lsp.configs` on reset. A language a
+/// `register-lsp-server!` registrations are cleared on reset. A server a
 /// plugin registered but the new `init.scm` no longer does must not keep its
-/// stale config lying around (`lsp.servers`, the running processes
-/// themselves, are untouched; see `LspState::reset_config`'s doc).
+/// stale registration lying around (running instances themselves are
+/// untouched until resync; see `LspState::reset_config`'s doc).
 #[test]
 fn reset_clears_lsp_server_configs() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '())"#,
-        tmp.path(),
-    );
+    eval_with_real_host(&mut ed, &mut host, RUST_ANALYZER, tmp.path());
     ed.scripting = Some(host);
 
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some("rust-analyzer".to_string()),
         "sanity: the registration must land"
     );
 
     ed.reset_config_state();
 
-    assert_eq!(ed.lsp.config_command_for_test("rust"), None);
+    assert_eq!(
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
+        None
+    );
 }
 
 // ── Decorations ──────────────────────────────────────────────────────────────
@@ -724,33 +720,20 @@ fn reset_clears_dynamic_commands() {
 // (the replay that fires those hooks) rather than the full reset+rebuild
 // dance, since the hook hand-off is the part under test.
 
-/// Wires a scripted server attached to the focused buffer under `language`,
-/// handshake not yet driven (client is `Starting`).
-fn wire_starting_server(ed: &mut Editor, language: &str) -> ServerId {
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
-    let sid = backend
-        .start("test-server", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test(language.to_string(), std::path::PathBuf::from("."), sid);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    sid
-}
+/// An `on-lsp-attach` handler that moves the cursor once for a `rust`
+/// buffer.
+const ATTACH_MOVES_RIGHT: &str = r#"(register-hook! 'on-lsp-attach (lambda (pane server)
+     (when (equal? (get-buffer-option pane "language") "rust") (call! "move-right" (focused-pane)))))"#;
 
-/// Drives the queued `initialize` response through to `BecameRunning`.
-fn complete_handshake(ed: &mut Editor, sid: ServerId) {
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    assert_eq!(sid2, sid);
+/// The rig's file, opened on `marked` and attached to a `Running`
+/// `rust-analyzer`, with the `OnLspAttach` its handshake queued dropped
+/// (mirroring what `reset_config_state`'s wholesale `ConfigState` rebuild
+/// does to any work queued before a reload), so only a resync's own fire
+/// is under test.
+fn running_rig(tmp: &Path, marked: &str) -> LspRig {
+    let mut rig = LspRig::rust(tmp, marked, serde_json::json!({"capabilities": {}}));
+    rig.ed.state.config.pending_work.clear();
+    rig
 }
 
 /// A `Running` server's attachment must re-fire `OnLspAttach` on resync:
@@ -760,24 +743,12 @@ fn complete_handshake(ed: &mut Editor, sid: ServerId) {
 #[test]
 fn resync_refires_lsp_attach_for_a_running_server() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>b\n");
-    let sid = wire_starting_server(&mut ed, "rust");
-    complete_handshake(&mut ed, sid);
-    // `complete_handshake`'s `BecameRunning` arm already queued an
-    // `OnLspAttach` for this attachment, with no scripting host yet to
-    // handle it. Drop it, mirroring what `reset_config_state`'s wholesale
-    // `ConfigState` rebuild does to any work queued before a reload, so
-    // only `resync_config_state`'s own fire is under test below.
-    ed.state.config.pending_work.clear();
+    let rig = running_rig(tmp.path(), "-[a]>b\n");
+    let sid = rig.sid("rust-analyzer");
+    let mut ed = rig.ed;
 
     let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
-             (when (equal? server-name "rust") (call! "move-right" (focused-pane)))))"#,
-        tmp.path(),
-    );
+    eval_with_real_host(&mut ed, &mut host, ATTACH_MOVES_RIGHT, tmp.path());
     ed.scripting = Some(host);
     let before = state(&ed);
 
@@ -790,6 +761,114 @@ fn resync_refires_lsp_attach_for_a_running_server() {
         before,
         "on-lsp-attach must re-fire for a still-Running server on resync"
     );
+    let notifications = rig.notifications.borrow();
+    let count = |method: &str| {
+        notifications
+            .iter()
+            .filter(|(s, m, _)| *s == sid && m == method)
+            .count()
+    };
+    assert_eq!(
+        count("textDocument/didOpen"),
+        1,
+        "the attach's own didOpen only"
+    );
+    assert_eq!(count("textDocument/didClose"), 0);
+}
+
+/// A full reload that registers the same server again keeps the running
+/// instance and its attachment: no `didClose`/`didOpen` traffic, the same
+/// `ServerId`, and `OnLspAttach` re-fired for the new engine's handlers.
+/// Reconcile stays suspended between the reset and the resync, so the
+/// cleared registry never detaches the buffer in between.
+#[test]
+fn reload_keeps_an_instance_the_new_config_still_plans() {
+    let tmp = safe_tempdir();
+    let rig = running_rig(tmp.path(), "-[a]>b\n");
+    let sid = rig.sid("rust-analyzer");
+    let bid = rig.bid;
+    let mut ed = rig.ed;
+
+    let snapshot = ed.reset_config_state();
+    assert!(
+        ed.state.buffer_positions.lsp.is_attached(bid, sid),
+        "the reset alone must not detach anything"
+    );
+    // The new config, as `init.scm` would re-run it: the language identity,
+    // the server, and a fresh `on-lsp-attach` handler.
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &format!(
+            "(%define-language! \"rust\" '(\"rs\") '() '() #f '())\n{RUST_ANALYZER}\n{ATTACH_MOVES_RIGHT}"
+        ),
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    // `init_scripting`'s post-reload re-detect sweep.
+    ed.detect_and_set_language(bid);
+    let before = state(&ed);
+
+    ed.resync_config_state(&snapshot);
+    ed.settle();
+
+    assert_eq!(
+        ed.state
+            .buffer_positions
+            .lsp
+            .servers(bid)
+            .collect::<Vec<_>>(),
+        vec![sid],
+        "the buffer must stay attached to the same instance"
+    );
+    assert_ne!(
+        state(&ed),
+        before,
+        "on-lsp-attach must re-fire for the kept attachment"
+    );
+    let notifications = rig.notifications.borrow();
+    let methods: Vec<&str> = notifications
+        .iter()
+        .filter(|(s, _, _)| *s == sid)
+        .map(|(_, m, _)| m.as_str())
+        .collect();
+    assert_eq!(
+        methods,
+        vec!["initialized", "textDocument/didOpen"],
+        "a kept instance gets no didClose/didOpen from the reload"
+    );
+}
+
+/// A full reload whose new config does not register the server detaches
+/// the buffer from it (with `didClose`) and stops the instance.
+#[test]
+fn reload_detaches_and_stops_an_instance_the_new_config_drops() {
+    let tmp = safe_tempdir();
+    let rig = running_rig(tmp.path(), "-[a]>b\n");
+    let sid = rig.sid("rust-analyzer");
+    let bid = rig.bid;
+    let mut ed = rig.ed;
+
+    let snapshot = ed.reset_config_state();
+    ed.resync_config_state(&snapshot);
+
+    assert!(
+        !ed.state.buffer_positions.lsp.has_doc(bid),
+        "the buffer must be detached"
+    );
+    assert_eq!(
+        ed.state.lsp.instance_count_for_test(),
+        0,
+        "the unreferenced instance must stop"
+    );
+    let closes = rig
+        .notifications
+        .borrow()
+        .iter()
+        .filter(|(s, m, _)| *s == sid && m == "textDocument/didClose")
+        .count();
+    assert_eq!(closes, 1);
 }
 
 /// A `Starting` server's attachment must NOT re-fire here: it fires its own
@@ -798,27 +877,20 @@ fn resync_refires_lsp_attach_for_a_running_server() {
 ///
 /// Drained with `drain_pending_work()`, never `settle()`: `settle()` also
 /// runs `drain_async_sources` first, which would drive the mock backend's
-/// pre-queued `initialize` response to completion for real. This test
-/// never does that (unlike `complete_handshake`, which the
-/// "refires for a Running server" test above calls), firing `OnLspAttach`
-/// via the legitimate `BecameRunning` path and confounding "resync fired it"
-/// with "the handshake completed here." `drain_pending_work()`
-/// drains only `resync_config_state`'s own queued hooks, leaving the
-/// backend's response untouched.
+/// pre-queued `initialize` response to completion for real, firing
+/// `OnLspAttach` via the legitimate `BecameRunning` path and confounding
+/// "resync fired it" with "the handshake completed here."
+/// `drain_pending_work()` drains only `resync_config_state`'s own queued
+/// hooks, leaving the backend's response untouched.
 #[test]
 fn resync_does_not_refire_attach_for_a_starting_server() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>b\n");
-    wire_starting_server(&mut ed, "rust");
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
+    let mut ed = LspRig::open(tmp.path(), RigSpec::rust("-[a]>b\n"), backend).ed;
 
     let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
-             (when (equal? server-name "rust") (call! "move-right" (focused-pane)))))"#,
-        tmp.path(),
-    );
+    eval_with_real_host(&mut ed, &mut host, ATTACH_MOVES_RIGHT, tmp.path());
     ed.scripting = Some(host);
     let before = state(&ed);
 
@@ -969,28 +1041,17 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
     );
 }
 
-/// `on-diagnostics-changed` re-fires from the surviving `LspState::diagnostics`
-/// cache (`LspState::reset_config` never touches it), not from
+/// `on-diagnostics-changed` re-fires from the surviving diagnostics
+/// store (`LspState::reset_config` never touches it), not from
 /// a fresh wire publish. Exactly the reported symptom: decorations empty
 /// after a reload while the underlying diagnostics data is still there.
 #[test]
 fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
     let tmp = safe_tempdir();
-    let file = tmp.path().join("diag.rs");
-    std::fs::write(&file, "aa\nbb\n").unwrap();
-    let canonical = file.canonicalize().unwrap();
-
-    let mut ed = editor_from("-[a]>b\n");
-    let bid = ed.focused_buffer_id();
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_path(Some(canonical.clone()));
-    let sid = wire_starting_server(&mut ed, "rust");
-    complete_handshake(&mut ed, sid);
-    ed.state.config.pending_work.clear(); // see resync_refires_lsp_attach_for_a_running_server's comment
-
-    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+    let mut rig = running_rig(tmp.path(), "-[a]>a\nbb\n");
+    let sid = rig.sid("rust-analyzer");
+    let bid = rig.bid;
+    let uri = rig.uri();
     let parsed: lsp_types::PublishDiagnosticsParams = serde_json::from_value(serde_json::json!({
         "uri": uri,
         "diagnostics": [{
@@ -1001,13 +1062,14 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
     }))
     .expect("well-formed PublishDiagnosticsParams");
     assert_eq!(
-        ed.ingest_publish_diagnostics(sid, parsed),
+        rig.ed.ingest_typed_publish_for_test(sid, parsed),
         Some(bid),
         "sanity: diagnostics must ingest into the buffer"
     );
+    let mut ed = rig.ed;
 
     // The state a real `reset_config_state` would leave behind: rendered
-    // decorations wiped, `LspState::diagnostics` untouched.
+    // decorations wiped, the diagnostics store untouched.
     ed.state.config.decorations =
         hume_decorations::DecorationStores::reset(ed.state.config.decorations.clock());
 
@@ -1043,31 +1105,20 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
 }
 
 /// `on-diagnostics-changed` must still re-fire from the surviving cache when
-/// the server that published it has since crashed. `running_attached_buffers`
+/// the server that published it has since crashed. `lsp_running_attachments`
 /// excludes `Crashed` servers by design (it drives `OnLspAttach`, which must
 /// not fire for a dead server), but `LspState::reset_config` never clears
 /// `diagnostics` for a crash either, so the buffer's last-known diagnostics
 /// are still there to replay. Filtering the resync's diagnostics loop through
-/// `running_attached_buffers` (rather than the diagnostics cache itself)
+/// `lsp_running_attachments` (rather than the diagnostics cache itself)
 /// would silently skip exactly this buffer.
 #[test]
 fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
     let tmp = safe_tempdir();
-    let file = tmp.path().join("diag.rs");
-    std::fs::write(&file, "aa\nbb\n").unwrap();
-    let canonical = file.canonicalize().unwrap();
-
-    let mut ed = editor_from("-[a]>b\n");
-    let bid = ed.focused_buffer_id();
-    ed.state
-        .buffers
-        .get_mut(bid)
-        .set_path(Some(canonical.clone()));
-    let sid = wire_starting_server(&mut ed, "rust");
-    complete_handshake(&mut ed, sid);
-    ed.state.config.pending_work.clear(); // see resync_refires_lsp_attach_for_a_running_server's comment
-
-    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+    let mut rig = running_rig(tmp.path(), "-[a]>a\nbb\n");
+    let sid = rig.sid("rust-analyzer");
+    let bid = rig.bid;
+    let uri = rig.uri();
     let parsed: lsp_types::PublishDiagnosticsParams = serde_json::from_value(serde_json::json!({
         "uri": uri,
         "diagnostics": [{
@@ -1078,35 +1129,22 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
     }))
     .expect("well-formed PublishDiagnosticsParams");
     assert_eq!(
-        ed.ingest_publish_diagnostics(sid, parsed),
+        rig.ed.ingest_typed_publish_for_test(sid, parsed),
         Some(bid),
         "sanity: diagnostics must ingest into the buffer"
     );
 
-    // Crash the server via the same path a real transport failure takes
-    // (`LspClient::on_event` transitions its internal state to `Crashed` and
-    // returns the action). `dispatch_lsp_action`'s `Crashed` arm clears its
-    // progress/pending requests but never touches `diagnostics`
-    // or `buf.lsp_server`.
-    let actions =
-        ed.lsp
-            .client_for_test(sid)
-            .unwrap()
-            .on_event(hume_lsp::transport::InboundEvent::Eof {
-                error: Some("boom".to_string()),
-            });
-    for action in actions {
-        ed.dispatch_lsp_action(sid, action);
-    }
+    // Crash the server via the same path a real transport failure takes.
+    // A crashed instance keeps its attachments and its diagnostics.
+    rig.crash(sid);
+    let mut ed = rig.ed;
     assert!(
-        ed.lsp
-            .running_attached_buffers(&ed.state.buffers)
-            .is_empty(),
-        "sanity: a crashed server must not appear in running_attached_buffers"
+        ed.state.lsp_running_attachments().is_empty(),
+        "sanity: a crashed server must not appear in lsp_running_attachments"
     );
 
     // The state a real `reset_config_state` would leave behind: rendered
-    // decorations wiped, `LspState::diagnostics` untouched.
+    // decorations wiped, the diagnostics store untouched.
     ed.state.config.decorations =
         hume_decorations::DecorationStores::reset(ed.state.config.decorations.clock());
 

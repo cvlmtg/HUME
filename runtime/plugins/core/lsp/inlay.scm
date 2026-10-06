@@ -24,23 +24,32 @@
                "range" (hash "start" (hash "line" first "character" 0)
                               "end" (hash "line" end "character" 0))))))
 
+;; When every server failed the hints already shown stay (docs/decorations.md).
+(define (lsp/every-slot-failed? results)
+  (and (pair? results)
+       (null? (filter (lambda (r) (not (hash-ref r 'err))) results))))
+
 ;;; `pane` must already be a real, live pane — see docs/decorations.md's "Inlay hints".
+;; Every server's hints merge into one set; a buffer left with no server
+;; giving hints is cleared.
 (define lsp/refresh-hints
   (debounce-by 200
     (lambda (pane)
       (let ((range (viewport-range pane)))
-        (when (and (get-option "lsp.inlay-hints")
-                   (lsp/supports? pane "inlayHintProvider"))
-          (let ((params (lsp/inlay-hint-params pane (hash-ref range 'start) (hash-ref range 'end))))
-            (when params
-              (lsp-request! pane "textDocument/inlayHint" params
-                (lambda (err res)
-                  (unless err
-                    (set-inlay-hints! "lsp-inlay-hints" pane
-                      (if (void? res)
-                          '()
+        (when (get-option "lsp.inlay-hints")
+          (if (null? (lsp-servers pane #:feature 'inlay-hints))
+              (set-inlay-hints! "lsp-inlay-hints" pane '())
+              (let ((params (lsp/inlay-hint-params pane (hash-ref range 'start) (hash-ref range 'end))))
+                (when params
+                  (lsp-request-all! pane "textDocument/inlayHint" params
+                    (lambda (err results)
+                      (when err (lsp/report-error! "inlay hints" err))
+                      (lsp/report-answer-errors! "inlay hints" results)
+                      (unless (or err (lsp/every-slot-failed? results))
+                        (set-inlay-hints! "lsp-inlay-hints" pane
                           (filter (lambda (e) e)
-                                  (map (lambda (h) (lsp/hint->store-entry pane h)) (json-list res)))))))))))))
+                                  (map (lambda (h) (lsp/hint->store-entry pane h))
+                                       (apply append (map json-list (lsp/answers results)))))))))))))))
     #:key (lambda (p . _) (buffer-key p))))
 
 ;;; `pane` need not itself be live — see docs/decorations.md's "Inlay hints".
@@ -56,7 +65,7 @@
 (register-hook! 'on-text-changed lsp/refresh-hints-for-buffer)
 
 (register-hook! 'on-lsp-detach
-  (lambda (pane language) (set-inlay-hints! "lsp-inlay-hints" pane '())))
+  (lambda (pane server) (lsp/refresh-hints-for-buffer pane)))
 
 (register-hook! 'on-option-change
   (lambda (key value)

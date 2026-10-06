@@ -54,7 +54,7 @@ pub(super) struct ProgressTask {
 
 impl Editor {
     /// Typed handling of `$/progress`: begin/end logged at Trace; the task
-    /// itself is tracked on `ServerEntry.progress` for the statusline
+    /// itself is tracked on `Instance.progress` for the statusline
     /// spinner, with `report`s merged into it (absent fields mean
     /// "unchanged" per the LSP spec).
     pub(super) fn handle_progress(
@@ -72,7 +72,7 @@ impl Editor {
         match progress {
             lsp_types::WorkDoneProgress::Begin(begin) => {
                 self.report(Severity::Trace, format!("{name}: {} started", begin.title));
-                if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
+                if let Some(entry) = self.state.lsp.instances.get_mut(server_id) {
                     entry.progress.push((
                         token,
                         ProgressTask {
@@ -84,7 +84,7 @@ impl Editor {
                 }
             }
             lsp_types::WorkDoneProgress::Report(report) => {
-                let Some(entry) = self.lsp.servers.get_mut(&server_id) else {
+                let Some(entry) = self.state.lsp.instances.get_mut(server_id) else {
                     return;
                 };
                 let Some((_, task)) = entry.progress.iter_mut().find(|(t, _)| *t == token) else {
@@ -97,7 +97,7 @@ impl Editor {
             }
             lsp_types::WorkDoneProgress::End(_) => {
                 self.report(Severity::Trace, format!("{name}: progress finished"));
-                if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
+                if let Some(entry) = self.state.lsp.instances.get_mut(server_id) {
                     entry.progress.retain(|(t, _)| *t != token);
                 }
             }

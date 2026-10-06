@@ -40,6 +40,10 @@ fn diag(start: usize, end: usize, severity: DiagSeverity) -> StoredDiag {
         code: None,
         source: None,
         raw: std::sync::Arc::new(serde_json::Value::Null),
+        server: hume_scripting::ServerRef {
+            id: ServerId(0),
+            name: hume_scripting::ServerName::parse("test-server").unwrap(),
+        },
         encoding: hume_rope::position_encoding::PositionEncoding::Utf16,
     }
 }
@@ -69,28 +73,33 @@ fn counts_is_zero_for_an_unknown_buffer() {
 }
 
 #[test]
-fn remove_server_clears_that_servers_diagnostics_only() {
+fn remove_source_for_buffer_clears_that_servers_diagnostics_for_that_buffer_only() {
     let mut store = DiagnosticsStore::default();
-    let bid = make_bid();
+    let (bid, other) = make_two_bids();
     store.replace(ServerId(0), bid, vec![diag(0, 1, DiagSeverity::Error)]);
     store.replace(ServerId(1), bid, vec![diag(2, 3, DiagSeverity::Warning)]);
+    store.replace(ServerId(0), other, vec![diag(0, 1, DiagSeverity::Error)]);
 
-    let touched = store.remove_server(ServerId(0));
-    assert_eq!(touched, vec![bid]);
+    assert!(store.remove_source_for_buffer(ServerId(0), bid));
     assert_eq!(
         store.counts(bid),
         (0, 1),
         "server 1's diagnostic must survive"
     );
+    assert_eq!(
+        store.counts(other),
+        (1, 0),
+        "server 0's diagnostic for another buffer must survive"
+    );
 }
 
 #[test]
-fn remove_server_drops_the_buffer_entry_once_no_server_remains() {
+fn remove_source_for_buffer_drops_the_buffer_entry_once_no_server_remains() {
     let mut store = DiagnosticsStore::default();
     let bid = make_bid();
     store.replace(ServerId(0), bid, vec![diag(0, 1, DiagSeverity::Error)]);
 
-    store.remove_server(ServerId(0));
+    store.remove_source_for_buffer(ServerId(0), bid);
     assert_eq!(store.counts(bid), (0, 0));
     assert!(
         store
@@ -123,15 +132,14 @@ fn for_range_is_globally_sorted_across_multiple_servers() {
 }
 
 #[test]
-fn remove_server_is_a_no_op_for_a_server_with_nothing_stored() {
+fn remove_source_for_buffer_is_a_no_op_for_a_server_with_nothing_stored() {
     let mut store = DiagnosticsStore::default();
     let bid = make_bid();
     store.replace(ServerId(0), bid, vec![diag(0, 1, DiagSeverity::Error)]);
 
-    let touched = store.remove_server(ServerId(99));
     assert!(
-        touched.is_empty(),
-        "removing a server with nothing stored must report no buffers touched"
+        !store.remove_source_for_buffer(ServerId(99), bid),
+        "removing a server with nothing stored must report nothing removed"
     );
     assert_eq!(
         store.counts(bid),
@@ -390,4 +398,78 @@ fn widen_zero_length_widens_backward_at_end_of_buffer() {
 fn widen_zero_length_widens_onto_the_newline_on_the_minimal_buffer() {
     let rope = Rope::from_str("\n");
     assert_eq!(widen_zero_length(&rope, co(0)), ex(0, 1));
+}
+
+// ── PublishQueue ─────────────────────────────────────────────────────────
+
+fn published(uri: &str, message: &str) -> PublishedDiagnostics {
+    PublishedDiagnostics {
+        uri: uri.parse().unwrap(),
+        version: None,
+        diagnostics: vec![WireDiagnostic {
+            diagnostic: lsp_types::Diagnostic {
+                message: message.to_string(),
+                ..Default::default()
+            },
+            raw: serde_json::json!({ "message": message }),
+        }],
+        skipped: Vec::new(),
+    }
+}
+
+fn messages(taken: &[(ServerId, PublishedDiagnostics)]) -> Vec<(ServerId, String)> {
+    let mut out: Vec<_> = taken
+        .iter()
+        .map(|(sid, p)| (*sid, p.diagnostics[0].diagnostic.message.clone()))
+        .collect();
+    out.sort_by_key(|(sid, _)| sid.0);
+    out
+}
+
+#[test]
+fn a_newer_publish_for_the_same_server_and_uri_replaces_the_queued_one() {
+    let mut queue = PublishQueue::default();
+    queue.offer(ServerId(0), published("file:///a", "first"));
+    queue.offer(ServerId(0), published("file:///a", "second"));
+    queue.offer(ServerId(0), published("file:///b", "other"));
+
+    let mut taken = messages(&queue.take_all());
+    taken.sort();
+    assert_eq!(
+        taken,
+        vec![
+            (ServerId(0), "other".to_string()),
+            (ServerId(0), "second".to_string()),
+        ]
+    );
+    assert!(queue.is_empty());
+}
+
+#[test]
+fn a_deferred_publish_does_not_replace_a_newer_one() {
+    let mut queue = PublishQueue::default();
+    queue.offer(ServerId(0), published("file:///a", "newer"));
+    queue.defer(ServerId(0), published("file:///a", "older"));
+    assert_eq!(
+        messages(&queue.take_all()),
+        vec![(ServerId(0), "newer".to_string())]
+    );
+
+    queue.defer(ServerId(0), published("file:///a", "kept"));
+    assert_eq!(
+        messages(&queue.take_all()),
+        vec![(ServerId(0), "kept".to_string())]
+    );
+}
+
+#[test]
+fn forgetting_a_server_drops_only_its_publishes() {
+    let mut queue = PublishQueue::default();
+    queue.offer(ServerId(0), published("file:///a", "zero"));
+    queue.offer(ServerId(1), published("file:///a", "one"));
+    queue.forget_server(ServerId(0));
+    assert_eq!(
+        messages(&queue.take_all()),
+        vec![(ServerId(1), "one".to_string())]
+    );
 }

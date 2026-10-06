@@ -34,16 +34,13 @@ use crate::editor::{EditorState, Severity};
 pub(in crate::editor) enum Trigger {
     /// Ctrl-Space / the `completion-trigger` command: every `Buffer` source.
     Explicit,
-    /// A char landed in Insert mode: every `Buffer` source registered for
-    /// `(ch, language)` via `(set-completion-triggers! …)`
-    /// (`SourceRegistry::buffer_sources_for_trigger` is the join), with its own
-    /// table, separate from `set-hook-triggers!`'s shared one, which
-    /// only ever feeds the generic `on-trigger-char` hook. `language` is
-    /// owned, not borrowed from the caller's own `&str` (`LanguageRegistry::
-    /// name_of`'s return): the caller passes this straight into a `&mut
-    /// EditorState` method, so a borrow tied to that same state would
-    /// conflict with the method's own `&mut self`.
-    Char { ch: char, language: Option<String> },
+    /// A char landed in Insert mode in `bid`: every `Buffer` source
+    /// `(set-completion-triggers! …)` registered `ch` for, by `bid`'s
+    /// language or by a server attached to it
+    /// (`EditorState::completion_sources_for_trigger` is the join). Separate
+    /// from `set-hook-triggers!`'s tables, which only feed the generic
+    /// `on-trigger-char` hook.
+    Char { ch: char, bid: BufferId },
 }
 
 /// A Steel proc plus its args, minted while a session is borrowed and
@@ -72,12 +69,9 @@ impl EditorState {
             );
             return;
         }
-        let sources = &self.config.completion_sources;
         let ids: Vec<BufferSourceId> = match trigger {
-            Trigger::Explicit => sources.buffer_sources(),
-            Trigger::Char { ch, ref language } => {
-                sources.buffer_sources_for_trigger(ch, language.as_deref())
-            }
+            Trigger::Explicit => self.config.completion_sources.buffer_sources(),
+            Trigger::Char { ch, bid } => self.completion_sources_for_trigger(ch, bid),
         };
         if ids.is_empty() {
             if let Trigger::Explicit = trigger {

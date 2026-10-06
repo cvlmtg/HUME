@@ -5,14 +5,12 @@
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
+use crate::editor::tests::lsp_rig::stop_server;
+use hume_lsp::backend::ServerId;
+use hume_lsp::test_util::RecordingLspBackend;
 
 /// Every test's buffer content unless a test needs a different line shape.
 /// Char offsets: line0 'line1' = 0..5 (+\n at 5), line1 'line2' = 6..11
@@ -23,23 +21,20 @@ const THREE_LINES: &str = "line1\nline2\nline3\n";
 /// Handshake caps advertise `rangeFormatting` without `rangesSupport`: the
 /// common case, and what every fan-out test wants.
 fn setup(
-    file: &Path,
     tmp: &Path,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard) {
-    setup_with_content(file, tmp, THREE_LINES, configure)
+    setup_with_content(tmp, THREE_LINES, configure)
 }
 
 /// Same as `setup`, with the file content under caller control, for a test
 /// needing a different line shape (e.g. a blank line).
 fn setup_with_content(
-    file: &Path,
     tmp: &Path,
     content: &str,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard) {
     setup_with_caps(
-        file,
         tmp,
         content,
         serde_json::json!({"capabilities": {
@@ -53,51 +48,13 @@ fn setup_with_content(
 /// Same as `setup_with_content`, with the handshake's `initialize` result
 /// also under caller control.
 fn setup_with_caps(
-    file: &Path,
     tmp: &Path,
     content: &str,
     initialize_result: serde_json::Value,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard) {
-    let guard = RealRuntimeGuard::new();
-    std::fs::write(file, content).unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to("initialize", initialize_result);
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
-        tmp,
-    );
-    ed.scripting = Some(host);
-
-    (ed, guard)
+    let (rig, guard) = core_lsp_rig(tmp, &marked_at_start(content), initialize_result, configure);
+    (rig.ed, guard)
 }
 
 fn select_full_line_1(ed: &mut Editor) {
@@ -145,23 +102,18 @@ fn text_edit(sl: u64, sc: u64, el: u64, ec: u64, new_text: &str) -> serde_json::
 #[test]
 fn whole_buffer_edit_is_one_undo_step() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            backend.respond_to(
-                "textDocument/formatting",
-                serde_json::json!([text_edit(
-                    0,
-                    0,
-                    3,
-                    0,
-                    "formatted1\nformatted2\nformatted3\n"
-                )]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(
+                0,
+                0,
+                3,
+                0,
+                "formatted1\nformatted2\nformatted3\n"
+            )]),
+        );
+    });
     let before = ed.doc().text().to_string();
 
     run_fmt(&mut ed);
@@ -185,23 +137,18 @@ fn whole_buffer_edit_is_one_undo_step() {
 #[test]
 fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            backend.respond_to(
-                "textDocument/formatting",
-                serde_json::json!([text_edit(
-                    0,
-                    0,
-                    3,
-                    0,
-                    "formatted1\nformatted2\nformatted3\n"
-                )]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(
+                0,
+                0,
+                3,
+                0,
+                "formatted1\nformatted2\nformatted3\n"
+            )]),
+        );
+    });
 
     // lsp-fmt is key-bindable, not typed: dispatch through the keymap
     // pipeline, the way an `on-buffer-save` hook's `(call! "lsp-fmt" bid)`
@@ -222,24 +169,19 @@ fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
 fn sub_line_selection_still_formats_the_whole_buffer() {
     // Default cursor: a bare collapsed selection, never spans a full line.
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            backend.respond_to(
-                "textDocument/formatting",
-                serde_json::json!([text_edit(0, 0, 3, 0, "WHOLE_BUFFER\n")]),
-            );
-            // If the decision were wrong and a sub-line selection triggered
-            // range formatting instead, this response would apply and the
-            // assertion below would fail loudly (not silently match).
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_RANGE_PATH\n")]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, "WHOLE_BUFFER\n")]),
+        );
+        // If the decision were wrong and a sub-line selection triggered
+        // range formatting instead, this response would apply and the
+        // assertion below would fail loudly (not silently match).
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_RANGE_PATH\n")]),
+        );
+    });
 
     run_fmt(&mut ed);
 
@@ -249,21 +191,16 @@ fn sub_line_selection_still_formats_the_whole_buffer() {
 #[test]
 fn full_line_selection_sends_range_formatting() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE_FORMATTED\n")]),
-            );
-            backend.respond_to(
-                "textDocument/formatting",
-                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(0, 0, 1, 0, "RANGE_FORMATTED\n")]),
+        );
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+        );
+    });
     select_full_line_1(&mut ed);
 
     run_fmt(&mut ed);
@@ -283,30 +220,25 @@ fn full_line_selection_sends_range_formatting() {
 #[test]
 fn disjoint_full_line_selections_send_two_range_formatting_requests() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            // FIFO per method: line 1's request gets this one first...
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
-            );
-            // ...line 3's request gets this one second.
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(2, 0, 3, 0, "RANGE3\n")]),
-            );
-            // If the decision were wrong and this sent one whole-buffer
-            // request instead, this response would apply and the assertion
-            // below would fail loudly.
-            backend.respond_to(
-                "textDocument/formatting",
-                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        // FIFO per method: line 1's request gets this one first...
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
+        );
+        // ...line 3's request gets this one second.
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(2, 0, 3, 0, "RANGE3\n")]),
+        );
+        // If the decision were wrong and this sent one whole-buffer
+        // request instead, this response would apply and the assertion
+        // below would fail loudly.
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+        );
+    });
     select_full_lines_1_and_3(&mut ed);
 
     run_fmt(&mut ed);
@@ -325,9 +257,7 @@ fn disjoint_full_line_selections_send_two_range_formatting_requests() {
 #[test]
 fn disjoint_full_line_selections_send_one_ranges_formatting_request_when_supported() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let (mut ed, _guard) = setup_with_caps(
-        &file_dir.path().join("main.rs"),
         tmp.path(),
         THREE_LINES,
         serde_json::json!({"capabilities": {
@@ -375,9 +305,7 @@ fn disjoint_full_line_selections_send_one_ranges_formatting_request_when_support
 #[test]
 fn single_full_line_selection_sends_range_formatting_even_when_ranges_supported() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let (mut ed, _guard) = setup_with_caps(
-        &file_dir.path().join("main.rs"),
         tmp.path(),
         THREE_LINES,
         serde_json::json!({"capabilities": {
@@ -421,9 +349,7 @@ fn single_full_line_selection_sends_range_formatting_even_when_ranges_supported(
 #[test]
 fn ranges_formatting_is_not_capped_by_format_max_ranges() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let (mut ed, _guard) = setup_with_caps(
-        &file_dir.path().join("main.rs"),
         tmp.path(),
         THREE_LINES,
         serde_json::json!({"capabilities": {
@@ -459,20 +385,14 @@ fn ranges_formatting_is_not_capped_by_format_max_ranges() {
 #[test]
 fn no_attached_server_reports_and_sends_nothing() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            // Decoy proving no request at all is sent.
-            backend.respond_to(
-                "textDocument/formatting",
-                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
-            );
-        },
-    );
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = None;
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        // Decoy proving no request at all is sent.
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+        );
+    });
+    stop_server(&mut ed, "rust-analyzer");
     let before = ed.doc().text().to_string();
 
     run_fmt(&mut ed);
@@ -495,18 +415,13 @@ fn no_attached_server_reports_and_sends_nothing() {
 #[test]
 fn buffer_with_no_path_reports_and_sends_nothing() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            // Decoy proving no request at all is sent.
-            backend.respond_to(
-                "textDocument/formatting",
-                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        // Decoy proving no request at all is sent.
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+        );
+    });
     ed.doc_mut().set_path(None);
     let before = ed.doc().text().to_string();
 
@@ -530,22 +445,17 @@ fn buffer_with_no_path_reports_and_sends_nothing() {
 #[test]
 fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            // Decoys proving no request at all is sent for a mixed set.
-            backend.respond_to(
-                "textDocument/formatting",
-                serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
-            );
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_RANGE_PATH\n")]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        // Decoys proving no request at all is sent for a mixed set.
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+        );
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_RANGE_PATH\n")]),
+        );
+    });
     let before = ed.doc().text().to_string();
     select_full_line_1_and_a_sub_line_selection(&mut ed);
 
@@ -570,24 +480,18 @@ fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
 #[test]
 fn stray_blank_line_cursor_does_not_trigger_the_mixed_selection_refusal() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup_with_content(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        "line1\n\nline3\n",
-        |backend, _sid| {
-            backend.respond_to(
-                "textDocument/formatting",
-                serde_json::json!([text_edit(0, 0, 3, 0, "WHOLE_BUFFER\n")]),
-            );
-            // Decoy proving the range path (mixed refusal's usual
-            // companion) was not taken instead.
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_RANGE_PATH\n")]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup_with_content(tmp.path(), "line1\n\nline3\n", |backend, _sid| {
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, "WHOLE_BUFFER\n")]),
+        );
+        // Decoy proving the range path (mixed refusal's usual
+        // companion) was not taken instead.
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_RANGE_PATH\n")]),
+        );
+    });
     select_mid_line_and_a_blank_line_cursor(&mut ed);
 
     run_fmt(&mut ed);
@@ -607,18 +511,13 @@ fn stray_blank_line_cursor_does_not_trigger_the_mixed_selection_refusal() {
 #[test]
 fn fan_out_past_the_cap_warns_and_formats_nothing() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            // Decoy proving no request at all is sent past the cap.
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_PRIMARY_ONLY_PATH\n")]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        // Decoy proving no request at all is sent past the cap.
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_PRIMARY_ONLY_PATH\n")]),
+        );
+    });
     type_cmd(&mut ed, ":set global lsp.format-max-ranges=1");
     let before = ed.doc().text().to_string();
     select_full_lines_1_and_3(&mut ed);
@@ -642,21 +541,16 @@ fn fan_out_past_the_cap_warns_and_formats_nothing() {
 #[test]
 fn fan_out_at_the_cap_formats_normally() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
-            );
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(2, 0, 3, 0, "RANGE3\n")]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
+        );
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(2, 0, 3, 0, "RANGE3\n")]),
+        );
+    });
     type_cmd(&mut ed, ":set global lsp.format-max-ranges=2");
     select_full_lines_1_and_3(&mut ed);
 
@@ -674,21 +568,16 @@ fn fan_out_at_the_cap_formats_normally() {
 #[test]
 fn fan_out_applies_as_one_undo_step() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
-            );
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(2, 0, 3, 0, "RANGE3\n")]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
+        );
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(2, 0, 3, 0, "RANGE3\n")]),
+        );
+    });
     let before = ed.doc().text().to_string();
     select_full_lines_1_and_3(&mut ed);
 
@@ -708,18 +597,13 @@ fn fan_out_applies_as_one_undo_step() {
 #[test]
 fn fan_out_error_response_applies_nothing() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            backend.respond_to(
-                "textDocument/rangeFormatting",
-                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
-            );
-            backend.fail_with("textDocument/rangeFormatting", -32603, "boom");
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
+        );
+        backend.fail_with("textDocument/rangeFormatting", -32603, "boom");
+    });
     let before = ed.doc().text().to_string();
     select_full_lines_1_and_3(&mut ed);
 
@@ -735,14 +619,9 @@ fn fan_out_error_response_applies_nothing() {
 #[test]
 fn null_result_reports_already_formatted() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            backend.respond_to("textDocument/formatting", serde_json::Value::Null);
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to("textDocument/formatting", serde_json::Value::Null);
+    });
 
     run_fmt(&mut ed);
 
@@ -756,19 +635,14 @@ fn null_result_reports_already_formatted() {
 #[test]
 fn loading_the_plugin_registers_no_save_hook() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
-        &file_dir.path().join("main.rs"),
-        tmp.path(),
-        |backend, _sid| {
-            // If a save hook incorrectly fired :lsp-fmt, this response landing
-            // would visibly rewrite the buffer.
-            backend.respond_to(
-                "textDocument/formatting",
-                serde_json::json!([text_edit(0, 0, 3, 0, "SHOULD_NOT_APPEAR\n")]),
-            );
-        },
-    );
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        // If a save hook incorrectly fired :lsp-fmt, this response landing
+        // would visibly rewrite the buffer.
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, "SHOULD_NOT_APPEAR\n")]),
+        );
+    });
     let before = ed.doc().text().to_string();
 
     let bid = ed.focused_buffer_id();

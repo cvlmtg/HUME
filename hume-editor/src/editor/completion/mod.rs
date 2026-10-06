@@ -30,7 +30,8 @@ pub(in crate::editor) use item::CompletionItem;
 pub(in crate::editor) use orchestrate::Trigger;
 pub(in crate::editor) use path::{PATH_DIRS_ONLY_SOURCE, PATH_SOURCE};
 pub(in crate::editor) use registry::{
-    BufferSourceEntry, MinibufBody, MinibufSourceEntry, RegisterOutcome, SourceRegistry,
+    BufferSourceEntry, BufferSourceId, MinibufBody, MinibufSourceEntry, RegisterOutcome,
+    SourceRegistry,
 };
 pub(in crate::editor) use session::{BufferSession, MatchKind, MinibufSession};
 pub(in crate::editor) use set::SET_SOURCE;

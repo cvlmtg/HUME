@@ -320,7 +320,6 @@ fn draw_section(
 /// buffer, read out once up front as a `Copy` id.
 pub(crate) struct HumeStatusline<'a> {
     pub(crate) state: &'a EditorState,
-    pub(crate) lsp: &'a crate::editor::lsp::LspState,
     pub(crate) kitty_enabled: bool,
     pub(crate) focused_bid: BufferId,
 }
@@ -359,11 +358,11 @@ impl HumeStatusline<'_> {
         &self,
         bid: BufferId,
     ) -> crate::editor::lsp::introspect::LspActivity {
-        crate::editor::lsp::introspect::activity(self.state, self.lsp, bid)
+        crate::editor::lsp::introspect::activity(self.state, bid)
     }
 
     pub(in crate::statusline) fn lsp_spinner_frame(&self) -> usize {
-        crate::editor::lsp::introspect::spinner_frame(self.lsp)
+        crate::editor::lsp::introspect::spinner_frame(self.state)
     }
 }
 

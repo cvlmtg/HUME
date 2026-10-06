@@ -306,7 +306,7 @@ fn on_buffer_open_queued_after_on_language_set() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None);
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None, &[]);
     ed.state
         .config
         .languages
@@ -375,7 +375,7 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None);
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None, &[]);
     ed.state
         .config
         .languages

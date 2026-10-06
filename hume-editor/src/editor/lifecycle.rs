@@ -135,6 +135,7 @@ impl Editor {
             state: super::EditorState {
                 buffers,
                 buffer_positions: super::position_stores::BufferPositions::default(),
+                lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
                 clipboard: clipboard::SystemClipboard::new(),
                 settings,
                 panes: {
@@ -175,7 +176,6 @@ impl Editor {
             last_visible_range: rustc_hash::FxHashMap::default(),
             last_tabline_signature: None,
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
-            lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
             tui: Tui::Off,
             applied_mouse_mode: initial_mouse_mode,
             startup_positions: Vec::new(),

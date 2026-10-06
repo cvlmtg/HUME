@@ -150,3 +150,60 @@ fn with_default_handshake_answers_initialize() {
         _ => panic!("expected Response"),
     }
 }
+
+fn hover_request(id: i64) -> Message {
+    Message::Request {
+        id: RequestId::Int(id),
+        method: "textDocument/hover".to_string(),
+        params: serde_json::Value::Null,
+    }
+}
+
+fn drained_results(backend: &mut InlineLspBackend) -> Vec<(ServerId, serde_json::Value)> {
+    backend
+        .drain()
+        .into_iter()
+        .map(|(server, event)| match event {
+            InboundEvent::Message(Message::Response { result, .. }) => {
+                (server, result.expect("a scripted success"))
+            }
+            _ => panic!("expected a Response event"),
+        })
+        .collect()
+}
+
+#[test]
+fn respond_to_server_answers_only_that_server() {
+    let mut backend = InlineLspBackend::new();
+    let first = backend.start("a", &[], Path::new("."), &[]).unwrap();
+    let second = backend.start("b", &[], Path::new("."), &[]).unwrap();
+    backend.respond_to_server(second, "textDocument/hover", serde_json::json!("second"));
+
+    backend.send(first, hover_request(1));
+    backend.send(second, hover_request(2));
+
+    assert_eq!(
+        drained_results(&mut backend),
+        vec![(second, serde_json::json!("second"))]
+    );
+}
+
+#[test]
+fn method_wide_response_is_the_fallback_for_an_unscripted_server() {
+    let mut backend = InlineLspBackend::new();
+    let first = backend.start("a", &[], Path::new("."), &[]).unwrap();
+    let second = backend.start("b", &[], Path::new("."), &[]).unwrap();
+    backend.respond_to("textDocument/hover", serde_json::json!("shared"));
+    backend.respond_to_server(second, "textDocument/hover", serde_json::json!("second"));
+
+    backend.send(first, hover_request(1));
+    backend.send(second, hover_request(2));
+
+    assert_eq!(
+        drained_results(&mut backend),
+        vec![
+            (first, serde_json::json!("shared")),
+            (second, serde_json::json!("second")),
+        ]
+    );
+}

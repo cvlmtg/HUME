@@ -1,6 +1,7 @@
 use super::*;
 use crate::json::JsonHandle;
 use crate::test_support::{SteelCtxTestHarness, default_bid, default_pane, default_pane_with_pane};
+use crate::types::{RequestMode, RequestParams, RouteSpec};
 use hume_rope::position_encoding::PositionEncoding;
 use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;
@@ -75,10 +76,9 @@ fn queues_a_pending_registration_in_init_mode() {
     let mut ctx = h.ctx_init();
     let result = register_lsp_server(
         &mut ctx,
-        "rust".into_steelval().unwrap(),
+        "rust-analyzer".into_steelval().unwrap(),
         "rust-analyzer".into_steelval().unwrap(),
         list_of(&[]),
-        list_of(&["Cargo.toml"]),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
         list_of(&[]),
@@ -86,9 +86,8 @@ fn queues_a_pending_registration_in_init_mode() {
     assert!(result.is_ok());
     drop(ctx);
     let reg = expect_register(&h);
-    assert_eq!(reg.language, "rust");
+    assert_eq!(reg.name.as_str(), "rust-analyzer");
     assert_eq!(reg.command, "rust-analyzer");
-    assert_eq!(reg.root_markers, vec!["Cargo.toml".to_string()]);
     assert_eq!(reg.init_options, None);
     assert_eq!(reg.settings, None);
     assert_eq!(reg.env, Vec::<(String, String)>::new());
@@ -109,9 +108,8 @@ fn decodes_env_dotted_pairs() {
     let env_list: SteelVal = vec![env_val].into_steelval().unwrap();
     let result = register_lsp_server(
         &mut ctx,
-        "scheme".into_steelval().unwrap(),
         "steel-language-server".into_steelval().unwrap(),
-        list_of(&[]),
+        "steel-language-server".into_steelval().unwrap(),
         list_of(&[]),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
@@ -140,9 +138,8 @@ fn decodes_steel_hashmap_blobs_to_json() {
     let mut ctx = h.ctx_init();
     let result = register_lsp_server(
         &mut ctx,
-        "rust".into_steelval().unwrap(),
         "rust-analyzer".into_steelval().unwrap(),
-        list_of(&[]),
+        "rust-analyzer".into_steelval().unwrap(),
         list_of(&[]),
         SteelVal::HashMapV(Gc::new(init_opts).into()),
         SteelVal::HashMapV(Gc::new(settings).into()),
@@ -164,9 +161,8 @@ fn queues_a_pending_registration_from_command_mode() {
     let mut ctx = h.ctx();
     let result = register_lsp_server(
         &mut ctx,
-        "rust".into_steelval().unwrap(),
         "rust-analyzer".into_steelval().unwrap(),
-        list_of(&[]),
+        "rust-analyzer".into_steelval().unwrap(),
         list_of(&[]),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
@@ -175,7 +171,7 @@ fn queues_a_pending_registration_from_command_mode() {
     assert!(result.is_ok());
     drop(ctx);
     let reg = expect_register(&h);
-    assert_eq!(reg.language, "rust");
+    assert_eq!(reg.name.as_str(), "rust-analyzer");
 }
 
 #[test]
@@ -187,9 +183,8 @@ fn allowed_during_plugin_activation_even_though_is_init_is_false() {
     ));
     let result = register_lsp_server(
         &mut ctx,
-        "rust".into_steelval().unwrap(),
         "rust-analyzer".into_steelval().unwrap(),
-        list_of(&[]),
+        "rust-analyzer".into_steelval().unwrap(),
         list_of(&[]),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
@@ -204,9 +199,8 @@ fn unconvertible_init_options_is_a_type_mismatch_error() {
     let mut ctx = h.ctx_init();
     let result = register_lsp_server(
         &mut ctx,
-        "rust".into_steelval().unwrap(),
         "rust-analyzer".into_steelval().unwrap(),
-        list_of(&[]),
+        "rust-analyzer".into_steelval().unwrap(),
         list_of(&[]),
         SteelVal::FuncV(|_| unreachable!()),
         SteelVal::BoolV(false),
@@ -221,13 +215,13 @@ fn unconvertible_init_options_is_a_type_mismatch_error() {
 fn unregister_queues_an_unregister_op() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = unregister_lsp_server(&mut ctx, "rust".into_steelval().unwrap());
+    let result = unregister_lsp_server(&mut ctx, "rust-analyzer".into_steelval().unwrap());
     assert!(result.is_ok());
     drop(ctx);
     let ops = lsp_server_ops(&h);
     assert_eq!(ops.len(), 1);
     match ops[0] {
-        PendingLspServerOp::Unregister { language } => assert_eq!(language, "rust"),
+        PendingLspServerOp::Unregister { name } => assert_eq!(name.as_str(), "rust-analyzer"),
         other => panic!("expected Unregister, got {other:?}"),
     }
 }
@@ -238,7 +232,7 @@ fn unregister_is_callable_from_init_mode_too() {
     // eval kind.
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    let result = unregister_lsp_server(&mut ctx, "rust".into_steelval().unwrap());
+    let result = unregister_lsp_server(&mut ctx, "rust-analyzer".into_steelval().unwrap());
     assert!(result.is_ok());
 }
 
@@ -251,22 +245,20 @@ fn register_unregister_register_ordering_is_preserved() {
     let mut ctx = h.ctx();
     register_lsp_server(
         &mut ctx,
-        "rust".into_steelval().unwrap(),
         "rust-analyzer".into_steelval().unwrap(),
-        list_of(&[]),
+        "rust-analyzer".into_steelval().unwrap(),
         list_of(&[]),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
         list_of(&[]),
     )
     .unwrap();
-    unregister_lsp_server(&mut ctx, "rust".into_steelval().unwrap()).unwrap();
+    unregister_lsp_server(&mut ctx, "rust-analyzer".into_steelval().unwrap()).unwrap();
     register_lsp_server(
         &mut ctx,
-        "rust".into_steelval().unwrap(),
+        "rust-analyzer".into_steelval().unwrap(),
         "rust-analyzer".into_steelval().unwrap(),
         list_of(&["--new-flag"]),
-        list_of(&[]),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
         list_of(&[]),
@@ -282,7 +274,7 @@ fn register_unregister_register_ordering_is_preserved() {
     ));
     assert!(matches!(
         ops[1],
-        PendingLspServerOp::Unregister { language } if language == "rust"
+        PendingLspServerOp::Unregister { name } if name.as_str() == "rust-analyzer"
     ));
     assert!(matches!(
         ops[2],
@@ -292,20 +284,27 @@ fn register_unregister_register_ordering_is_preserved() {
 
 // ── lsp-stop! / lsp-restart! / lsp-show-status! ──────────────────────────
 
+fn server_name(s: &str) -> ServerName {
+    ServerName::parse(s).unwrap()
+}
+
 #[test]
-fn lsp_stop_queues_a_stop_op_with_the_given_language() {
+fn lsp_stop_queues_a_stop_op_with_the_given_name() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = lsp_stop(&mut ctx, LspServerTarget::Language("rust".to_string()));
+    let result = lsp_stop(
+        &mut ctx,
+        LspServerTarget::Name(server_name("rust-analyzer")),
+    );
     assert!(result.is_ok());
     drop(ctx);
     let ops = lsp_server_ops(&h);
     assert_eq!(ops.len(), 1);
     match &ops[0] {
         PendingLspServerOp::Stop {
-            target: LspServerTarget::Language(lang),
-        } => assert_eq!(lang, "rust"),
-        other => panic!("expected Stop{{Language}}, got {other:?}"),
+            target: LspServerTarget::Name(name),
+        } => assert_eq!(name.as_str(), "rust-analyzer"),
+        other => panic!("expected Stop{{Name}}, got {other:?}"),
     }
 }
 
@@ -337,19 +336,22 @@ fn lsp_stop_rejects_init_context() {
 }
 
 #[test]
-fn lsp_restart_queues_a_restart_op_with_the_given_language() {
+fn lsp_restart_queues_a_restart_op_with_the_given_name() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = lsp_restart(&mut ctx, LspServerTarget::Language("rust".to_string()));
+    let result = lsp_restart(
+        &mut ctx,
+        LspServerTarget::Name(server_name("rust-analyzer")),
+    );
     assert!(result.is_ok());
     drop(ctx);
     let ops = lsp_server_ops(&h);
     assert_eq!(ops.len(), 1);
     match &ops[0] {
         PendingLspServerOp::Restart {
-            target: LspServerTarget::Language(lang),
-        } => assert_eq!(lang, "rust"),
-        other => panic!("expected Restart{{Language}}, got {other:?}"),
+            target: LspServerTarget::Name(name),
+        } => assert_eq!(name.as_str(), "rust-analyzer"),
+        other => panic!("expected Restart{{Name}}, got {other:?}"),
     }
 }
 
@@ -390,19 +392,17 @@ fn lsp_show_status_rejects_init_context() {
 }
 
 /// Unlike the buffer/pane-touching LSP builtins above,
-/// `lsp-registered-for-language?` is a pure registry read and must stay
-/// callable during init: `core:lsp`'s load-time scan
-/// (`core:lsp-install`'s `register.scm`) calls it directly to skip already-registered
-/// languages, with no `with-handler` fallback to catch a gate error.
-///
-/// Its table entry is `open` for that reason. A `cmd` entry would make this
-/// return `Err`.
+/// `lsp-server-registered?` is a pure registry read and must stay callable
+/// during init: `core:lsp-install`'s load-time scan (`register.scm`) calls
+/// it directly to skip already-registered names, with no `with-handler`
+/// fallback to catch a gate error. Its table entry is `open` for that
+/// reason.
 #[test]
-fn lsp_registered_for_language_is_callable_during_init() {
+fn lsp_server_registered_is_callable_during_init() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     ctx.session = crate::context::EvalSession::Init;
-    let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
+    let result = lsp_server_registered(&mut ctx, "rust-analyzer".into_steelval().unwrap());
     assert_eq!(
         result.unwrap(),
         SteelVal::BoolV(false),
@@ -410,75 +410,56 @@ fn lsp_registered_for_language_is_callable_during_init() {
     );
 }
 
-fn pending_register(language: &str) -> Effect {
+fn pending_register(name: &str) -> Effect {
     Effect::LspServerOp(PendingLspServerOp::Register(crate::PendingLspServerReg {
-        language: language.to_string(),
+        name: server_name(name),
         command: "rust-analyzer".to_string(),
         args: Vec::new(),
-        root_markers: Vec::new(),
         init_options: None,
         settings: None,
         env: Vec::new(),
     }))
 }
 
-fn pending_unregister(language: &str) -> Effect {
+fn pending_unregister(name: &str) -> Effect {
     Effect::LspServerOp(PendingLspServerOp::Unregister {
-        language: language.to_string(),
+        name: server_name(name),
     })
 }
 
-/// `lsp-registered-for-language?` reads through the `Effect::LspServerOp`
-/// entries queued this eval before falling back to the host. A
-/// `Register` queued this eval must be visible immediately, not only
-/// after the next drain.
-#[test]
-fn a_queued_register_reports_true_within_the_same_eval() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    ctx.push_effect(pending_register("rust"));
-    let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
-    assert_eq!(result.unwrap(), SteelVal::BoolV(true));
+fn registered(ctx: &mut SteelCtx, name: &str) -> SteelVal {
+    lsp_server_registered(ctx, name.into_steelval().unwrap()).unwrap()
 }
 
-/// Queue order, not queue presence, decides the answer: a later
-/// `Unregister` overrides an earlier `Register` for the same language,
-/// matching `Editor::apply_lsp_server_op`'s own last-wins application
-/// order exactly.
+/// `lsp-server-registered?` reads through the `Effect::LspServerOp`
+/// entries queued this eval before falling back to the host, in queue
+/// order: the last `Register`/`Unregister` of the name wins, matching
+/// `Editor::apply_lsp_server_ops`'s own application order.
 #[test]
-fn register_then_unregister_in_queue_order_reports_false() {
+fn lsp_server_registered_reads_through_queued_ops() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    ctx.push_effect(pending_register("rust"));
-    ctx.push_effect(pending_unregister("rust"));
-    let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
-    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
-}
-
-/// The reverse order: this is exactly the install-path shape:
-/// `lsp-install/install-server!` queues `Unregister` for every seeded language
-/// before the post-install rescan queues `Register` behind it.
-#[test]
-fn unregister_then_register_in_queue_order_reports_true() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    ctx.push_effect(pending_unregister("rust"));
-    ctx.push_effect(pending_register("rust"));
-    let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
-    assert_eq!(result.unwrap(), SteelVal::BoolV(true));
-}
-
-/// A queued op for a *different* language must not affect the answer.
-#[test]
-fn a_queued_op_for_a_different_language_does_not_flip_the_answer() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    ctx.push_effect(pending_register("python"));
-    let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
+    ctx.push_effect(pending_register("rust-analyzer"));
+    assert_eq!(registered(&mut ctx, "rust-analyzer"), SteelVal::BoolV(true));
+    ctx.push_effect(pending_unregister("rust-analyzer"));
     assert_eq!(
-        result.unwrap(),
+        registered(&mut ctx, "rust-analyzer"),
+        SteelVal::BoolV(false)
+    );
+    ctx.push_effect(pending_register("rust-analyzer"));
+    assert_eq!(registered(&mut ctx, "rust-analyzer"), SteelVal::BoolV(true));
+}
+
+/// A queued op for a *different* name must not affect the answer.
+#[test]
+fn a_queued_op_for_a_different_name_does_not_flip_the_answer() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    ctx.push_effect(pending_register("pyright"));
+    assert_eq!(
+        registered(&mut ctx, "rust-analyzer"),
         SteelVal::BoolV(false),
-        "NullHost reports rust unregistered, and python's queued op is irrelevant"
+        "NullHost reports rust-analyzer unregistered, and pyright's queued op is irrelevant"
     );
 }
 
@@ -489,32 +470,250 @@ fn a_stop_op_alone_does_not_flip_the_answer() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Stop {
-        target: LspServerTarget::Language("rust".to_string()),
+        target: LspServerTarget::Name(server_name("rust-analyzer")),
     }));
-    let result = lsp_registered_for_language(&mut ctx, "rust".into_steelval().unwrap());
     assert_eq!(
-        result.unwrap(),
+        registered(&mut ctx, "rust-analyzer"),
         SteelVal::BoolV(false),
         "a Stop op must not be mistaken for an Unregister"
     );
+}
+
+// ── register-lsp-server!'s name ──────────────────────────────────────────
+
+fn register_named(ctx: &mut SteelCtx, name: &str) -> SteelResult {
+    register_lsp_server(
+        ctx,
+        name.into_steelval().unwrap(),
+        "cmd".into_steelval().unwrap(),
+        list_of(&[]),
+        SteelVal::BoolV(false),
+        SteelVal::BoolV(false),
+        list_of(&[]),
+    )
+}
+
+#[test]
+fn register_queues_the_name() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    register_named(&mut ctx, "tsls").unwrap();
+    drop(ctx);
+    assert_eq!(expect_register(&h).name.as_str(), "tsls");
+}
+
+#[test]
+fn register_rejects_a_name_with_whitespace() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let err = register_named(&mut ctx, "rust analyzer").unwrap_err();
+    assert!(err.to_string().contains("whitespace"), "{err}");
+}
+
+// ── set-language-servers! / set-default-language-servers! ──────────────────
+
+fn symbols(items: &[&str]) -> SteelVal {
+    SteelVal::ListV(
+        items
+            .iter()
+            .map(|s| SteelVal::SymbolV((*s).into()))
+            .collect::<Vec<_>>()
+            .into(),
+    )
+}
+
+fn set_list(ctx: &mut SteelCtx, entries: SteelVal) -> SteelResult {
+    set_language_servers(ctx, "python".into_steelval().unwrap(), entries)
+}
+
+fn queued_lists(h: &SteelCtxTestHarness) -> Vec<(ListLayer, Option<Vec<ListEntry>>)> {
+    lsp_server_ops(h)
+        .into_iter()
+        .map(|op| match op {
+            PendingLspServerOp::SetLanguageServers {
+                language,
+                layer,
+                entries,
+            } => {
+                assert_eq!(language, "python");
+                (*layer, entries.clone())
+            }
+            other => panic!("expected SetLanguageServers, got {other:?}"),
+        })
+        .collect()
+}
+
+#[test]
+fn set_language_servers_queues_names_and_filters() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let entries = SteelVal::ListV(
+        vec![
+            "ty".into_steelval().unwrap(),
+            hashmap(vec![
+                ("name", "ruff".into_steelval().unwrap()),
+                ("only-features", symbols(&["format", "diagnostics"])),
+            ]),
+        ]
+        .into(),
+    );
+    set_list(&mut ctx, entries).unwrap();
+    set_default_language_servers(
+        &mut ctx,
+        "python".into_steelval().unwrap(),
+        SteelVal::ListV(vec!["jedi".into_steelval().unwrap()].into()),
+    )
+    .unwrap();
+    drop(ctx);
+
+    assert_eq!(
+        queued_lists(&h),
+        vec![
+            (
+                ListLayer::User,
+                Some(vec![
+                    ListEntry {
+                        name: server_name("ty"),
+                        filter: FeatureFilter::All,
+                    },
+                    ListEntry {
+                        name: server_name("ruff"),
+                        filter: FeatureFilter::Only(
+                            [LspFeature::Format, LspFeature::Diagnostics]
+                                .into_iter()
+                                .collect()
+                        ),
+                    },
+                ])
+            ),
+            (
+                ListLayer::Default,
+                Some(vec![ListEntry {
+                    name: server_name("jedi"),
+                    filter: FeatureFilter::All,
+                }])
+            ),
+        ]
+    );
+}
+
+#[test]
+fn set_language_servers_false_clears_the_layer() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    set_list(&mut ctx, SteelVal::BoolV(false)).unwrap();
+    drop(ctx);
+    assert_eq!(queued_lists(&h), vec![(ListLayer::User, None)]);
+}
+
+#[test]
+fn set_language_servers_rejects_a_duplicate_name() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = set_list(&mut ctx, list_of(&["ty", "ty"])).unwrap_err();
+    assert!(err.to_string().contains("listed twice"), "{err}");
+}
+
+#[test]
+fn set_language_servers_rejects_both_filters_on_one_entry() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let entry = hashmap(vec![
+        ("name", "ruff".into_steelval().unwrap()),
+        ("only-features", symbols(&["format"])),
+        ("except-features", symbols(&["hover"])),
+    ]);
+    let err = set_list(&mut ctx, SteelVal::ListV(vec![entry].into())).unwrap_err();
+    assert!(err.to_string().contains("both"), "{err}");
+}
+
+#[test]
+fn set_language_servers_rejects_an_unknown_feature() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let entry = hashmap(vec![
+        ("name", "ruff".into_steelval().unwrap()),
+        ("only-features", symbols(&["formatting"])),
+    ]);
+    assert!(set_list(&mut ctx, SteelVal::ListV(vec![entry].into())).is_err());
+}
+
+/// `%lsp-request!`'s arguments, each `#f` unless a test sets it.
+struct RequestArgs {
+    pane: PaneHandle,
+    params: SteelVal,
+    feature: SteelVal,
+    to: SteelVal,
+    supersede: SteelVal,
+    require_focus: SteelVal,
+    tracked: SteelVal,
+}
+
+impl Default for RequestArgs {
+    fn default() -> Self {
+        Self {
+            pane: default_pane(),
+            params: hashmap(vec![]),
+            feature: SteelVal::BoolV(false),
+            to: SteelVal::BoolV(false),
+            supersede: SteelVal::BoolV(false),
+            require_focus: SteelVal::BoolV(false),
+            tracked: SteelVal::BoolV(false),
+        }
+    }
+}
+
+fn request(ctx: &mut SteelCtx, args: RequestArgs) -> SteelResult {
+    lsp_request(
+        ctx,
+        args.pane,
+        "textDocument/hover".into_steelval().unwrap(),
+        args.params,
+        SteelVal::FuncV(noop_proc),
+        args.feature,
+        args.to,
+        SteelVal::BoolV(false),
+        args.supersede,
+        args.require_focus,
+        args.tracked,
+    )
+}
+
+fn request_all(ctx: &mut SteelCtx, params: SteelVal) -> SteelResult {
+    lsp_request_all(
+        ctx,
+        default_pane(),
+        "textDocument/codeAction".into_steelval().unwrap(),
+        params,
+        SteelVal::FuncV(noop_proc),
+        SteelVal::BoolV(false),
+        SteelVal::BoolV(false),
+        SteelVal::BoolV(false),
+        SteelVal::BoolV(false),
+        SteelVal::BoolV(false),
+    )
+}
+
+fn server(id: u32, name: &str) -> SteelVal {
+    crate::ServerRef {
+        id: hume_lsp::backend::ServerId(id),
+        name: ServerName::parse(name).unwrap(),
+    }
+    .into_steel_val()
 }
 
 #[test]
 fn lsp_request_queues_the_supersede_key() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = lsp_request(
+    request(
         &mut ctx,
-        default_pane(),
-        "textDocument/completion".into_steelval().unwrap(),
-        list_of(&[]),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
-        "completion".into_steelval().unwrap(),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
-    );
-    assert!(result.is_ok());
+        RequestArgs {
+            supersede: "completion".into_steelval().unwrap(),
+            ..RequestArgs::default()
+        },
+    )
+    .expect("a well-formed request queues");
     let requests = lsp_requests(&ctx);
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].supersede, Some("completion".to_string()));
@@ -528,16 +727,12 @@ fn lsp_request_queues_the_tracked_token_and_none_for_false() {
     ] {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
-        lsp_request(
+        request(
             &mut ctx,
-            default_pane(),
-            "textDocument/definition".into_steelval().unwrap(),
-            list_of(&[]),
-            SteelVal::BoolV(false),
-            SteelVal::BoolV(false),
-            SteelVal::BoolV(false),
-            SteelVal::BoolV(false),
-            tracked,
+            RequestArgs {
+                tracked,
+                ..RequestArgs::default()
+            },
         )
         .expect("a well-formed request queues");
         assert_eq!(lsp_requests(&ctx)[0].tracked, expected);
@@ -548,18 +743,7 @@ fn lsp_request_queues_the_tracked_token_and_none_for_false() {
 fn lsp_request_with_false_supersede_queues_none() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = lsp_request(
-        &mut ctx,
-        default_pane(),
-        "textDocument/hover".into_steelval().unwrap(),
-        list_of(&[]),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
-    );
-    assert!(result.is_ok());
+    request(&mut ctx, RequestArgs::default()).expect("a well-formed request queues");
     let requests = lsp_requests(&ctx);
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].supersede, None);
@@ -569,21 +753,166 @@ fn lsp_request_with_false_supersede_queues_none() {
 fn lsp_request_decodes_require_focus() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = lsp_request(
+    request(
         &mut ctx,
-        default_pane_with_pane(),
-        "textDocument/hover".into_steelval().unwrap(),
-        list_of(&[]),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(true),
-        SteelVal::BoolV(false),
-    );
-    assert!(result.is_ok());
+        RequestArgs {
+            pane: default_pane_with_pane(),
+            require_focus: SteelVal::BoolV(true),
+            ..RequestArgs::default()
+        },
+    )
+    .expect("a well-formed request queues");
     let requests = lsp_requests(&ctx);
     assert_eq!(requests.len(), 1);
     assert!(requests[0].require_focus.is_some());
+}
+
+#[test]
+fn lsp_request_decodes_feature_method_and_to() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    request(
+        &mut ctx,
+        RequestArgs {
+            feature: SteelVal::SymbolV("hover".into()),
+            to: server(3, "rust-analyzer"),
+            ..RequestArgs::default()
+        },
+    )
+    .expect("a well-formed request queues");
+    let requests = lsp_requests(&ctx);
+    assert_eq!(requests[0].mode, RequestMode::Single);
+    assert_eq!(
+        requests[0].route,
+        RouteSpec {
+            feature: Some(LspFeature::Hover),
+            to: Some(crate::ServerRef {
+                id: hume_lsp::backend::ServerId(3),
+                name: ServerName::parse("rust-analyzer").unwrap(),
+            }),
+        }
+    );
+}
+
+#[test]
+fn lsp_request_rejects_an_unknown_feature() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = request(
+        &mut ctx,
+        RequestArgs {
+            feature: SteelVal::SymbolV("hovering".into()),
+            ..RequestArgs::default()
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("'hover"), "{err}");
+    assert!(lsp_requests(&ctx).is_empty());
+}
+
+#[test]
+fn lsp_request_rejects_a_to_that_is_not_a_server() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = request(
+        &mut ctx,
+        RequestArgs {
+            to: "rust-analyzer".into_steelval().unwrap(),
+            ..RequestArgs::default()
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("#:to"), "{err}");
+}
+
+#[test]
+fn lsp_request_rejects_params_that_cannot_become_json() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = request(
+        &mut ctx,
+        RequestArgs {
+            params: SteelVal::FuncV(noop_proc),
+            ..RequestArgs::default()
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("lsp-request! params"), "{err}");
+}
+
+#[test]
+fn lsp_request_all_decodes_per_server_pairs() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let pairs = SteelVal::ListV(
+        vec![
+            crate::builtins::args::cons_pair(server(1, "ty"), hashmap(vec![])).unwrap(),
+            crate::builtins::args::cons_pair(server(2, "ruff"), hashmap(vec![])).unwrap(),
+        ]
+        .into(),
+    );
+    request_all(&mut ctx, pairs).expect("a pair list queues");
+    let requests = lsp_requests(&ctx);
+    assert_eq!(requests[0].mode, RequestMode::All);
+    let RequestParams::PerServer(members) = &requests[0].params else {
+        panic!("expected per-server params");
+    };
+    let ids: Vec<u32> = members.iter().map(|(server, _)| server.id.0).collect();
+    assert_eq!(ids, vec![1, 2]);
+}
+
+#[test]
+fn lsp_request_all_takes_a_hash_as_shared_params() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    request_all(&mut ctx, hashmap(vec![])).expect("a hash queues");
+    assert!(matches!(
+        lsp_requests(&ctx)[0].params,
+        RequestParams::Shared(_)
+    ));
+}
+
+#[test]
+fn lsp_request_all_rejects_a_pair_without_a_server() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let pairs = SteelVal::ListV(
+        vec![
+            crate::builtins::args::cons_pair("ty".into_steelval().unwrap(), hashmap(vec![]))
+                .unwrap(),
+        ]
+        .into(),
+    );
+    let err = request_all(&mut ctx, pairs).unwrap_err();
+    assert!(err.to_string().contains("(server . params)"), "{err}");
+    assert!(lsp_requests(&ctx).is_empty());
+}
+
+#[test]
+fn position_params_hash_carries_a_doc_pos() {
+    let pos = crate::DocPos {
+        buffer: default_bid(),
+        version: hume_editing::text::BufferText::from("a\n").version(),
+        offset: hume_rope::offset::CharOffset::new(4),
+    };
+    let params = position_params_value(crate::host::PositionParams {
+        uri: "file:///a.rs".to_string(),
+        pos,
+    });
+    let SteelVal::HashMapV(map) = params else {
+        panic!("expected a hash");
+    };
+    let position = map
+        .get(&"position".into_steelval().unwrap())
+        .expect("a position key");
+    assert_eq!(crate::DocPos::from_steel_val(position), Some(pos));
+    let document = map
+        .get(&"textDocument".into_steelval().unwrap())
+        .expect("a textDocument key");
+    assert_eq!(
+        crate::json::steel_to_json(document).unwrap(),
+        serde_json::json!({ "uri": "file:///a.rs" })
+    );
 }
 
 /// A hand-built (untagged) position/range (`wire_pos`/`hashmap`'s own

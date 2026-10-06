@@ -12,12 +12,4 @@ pub trait LanguageHost {
     fn attach_grammar(&mut self, reg: &GrammarReg) -> Result<(), String>;
 
     fn has_grammar(&self, language: &str) -> bool;
-
-    /// `(set-hook-triggers! source language chars)`: registers `chars`
-    /// as `OnTriggerChar`-firing chars for `(source, language)`, replacing
-    /// that exact pair's previous set (a plugin's own reload doesn't
-    /// accumulate duplicates; a second language attaching under the same
-    /// source doesn't clobber the first's). An empty `chars` removes the
-    /// entry.
-    fn set_hook_triggers(&mut self, source: String, language: String, chars: Vec<char>);
 }

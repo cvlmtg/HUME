@@ -280,8 +280,31 @@ fn mark_written_and_synced(
     // save-triggered server action (e.g. lint-on-save) must see a
     // document state at least as current as the file just written,
     // not one edit behind (didSave itself carries no text).
-    ed.flush_lsp_pending_changes();
-    ed.lsp_did_save(bid);
+    ed.state.lsp_flush_pending();
+    ed.state.lsp_did_save(bid);
+}
+
+impl Editor {
+    /// Gives `bid` the path a write resolved to. A buffer whose path
+    /// changes is a different document to its language servers: the
+    /// reconcile closes it under the old URI and reopens it under the new
+    /// one, keeping each instance, so `didSave` afterwards names a document
+    /// every attached server has open.
+    fn rekey_buffer_path(
+        &mut self,
+        bid: BufferId,
+        meta: hume_platform::io::FileMeta,
+        display_path: Option<String>,
+    ) {
+        let changed = self.state.buffers.get(bid).path() != Some(meta.resolved_path());
+        let buf = self.state.buffers.get_mut(bid);
+        buf.set_path(Some(meta.resolved_path().to_path_buf()));
+        buf.set_display_path(display_path);
+        buf.file_meta = Some(meta);
+        if changed {
+            self.state.lsp_reconcile_buffer(&self.view, bid);
+        }
+    }
 }
 
 /// Write a specific buffer to its file path. No save-as: only writes to the
@@ -336,10 +359,7 @@ fn write_buffer_by_id(
                 // keeps working. `display_path` is preserved across the
                 // `set_path` re-derivation, matching the save-as branch below.
                 let display_path = ed.state.buffers.get(bid).display_path().map(str::to_owned);
-                let buf = ed.state.buffers.get_mut(bid);
-                buf.set_path(Some(meta.resolved_path().to_path_buf()));
-                buf.set_display_path(display_path);
-                buf.file_meta = Some(meta);
+                ed.rekey_buffer_path(bid, meta, display_path);
                 mark_written_and_synced(ed, bid, line_count, retried);
                 Ok(())
             }
@@ -445,15 +465,13 @@ fn write_file(
                 // legitimately become the file at `path`. :w <path> on one
                 // of these is an export, not a save-as: dump the content,
                 // leave the source buffer's identity and dirty state alone.
-                let doc = ed.state.buffers.get_mut(bid);
+                let doc = ed.state.buffers.get(bid);
                 let is_save_as = !doc.is_synthetic() && !doc.is_read_only();
                 if is_save_as {
                     // Store the canonicalized path so path and
                     // file_meta.resolved_path always agree, even when the
                     // user supplied a relative or symlink path.
-                    doc.set_path(Some(meta.resolved_path().to_path_buf()));
-                    doc.set_display_path(Some(display_path));
-                    doc.file_meta = Some(meta);
+                    ed.rekey_buffer_path(bid, meta, Some(display_path));
                     mark_written_and_synced(ed, bid, line_count, retried);
                 } else {
                     ed.report(write_severity(retried), write_msg(line_count, retried));

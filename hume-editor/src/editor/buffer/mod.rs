@@ -148,16 +148,6 @@ pub(crate) struct Buffer {
     /// Display name used for synthetic, path-less view buffers (e.g. `"[messages]"`).
     /// Shown in the statusline and `:ls` instead of `*scratch*`.
     pub(in crate::editor) label: Option<String>,
-    /// The LSP server this buffer is attached to, if any. Set by
-    /// `Editor::lsp_attach_buffer`; `None` for unnamed buffers, buffers with
-    /// no registered server, before the open-time attach attempt runs, or
-    /// after the attached server is detached.
-    pub(in crate::editor) lsp_server: Option<hume_lsp::backend::ServerId>,
-    /// BufferText mutations queued for `textDocument/didChange` conversion, in
-    /// order. Recorded at the same chokepoint as tree-sitter's pending
-    /// edits (`doc_ops.rs`'s five apply functions); drained by the LSP
-    /// per-frame flush. Always empty when `lsp_server` is `None`.
-    pub(in crate::editor) lsp_pending: Vec<super::lsp::sync::LspPendingChange>,
     /// True from chokepoint open (`lifecycle::open_buffer_and_notify`, or
     /// `lifecycle::close_buffer_and_notify`'s own `queue_open_announcement`
     /// call for the fresh scratch buffer a last-buffer close allocates)
@@ -218,8 +208,6 @@ impl Buffer {
             syntax: None,
             read_only: false,
             label: None,
-            lsp_server: None,
-            lsp_pending: Vec::new(),
             open_hook_pending: false,
             disk_state: disk::DiskState::InSync,
             pending_dump: None,

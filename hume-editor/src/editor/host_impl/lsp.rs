@@ -3,40 +3,56 @@
 use hume_engine::pipeline::BufferId;
 
 use super::EditorHostImpl;
-use hume_scripting::PaneHandle;
-use hume_scripting::host::{HostToken, LocationDisplay, LspHost};
+use hume_lsp::backend::ServerId;
+use hume_scripting::host::{
+    HostToken, LocationDisplay, LspHost, PositionParams, RangeParams, RangesParams,
+};
+use hume_scripting::{LspFeature, PaneHandle, ServerRef};
+
+use crate::editor::lsp::{introspect, params};
 
 impl<'a> LspHost for EditorHostImpl<'a> {
-    fn lsp_capabilities(&self, bid: BufferId) -> Option<std::sync::Arc<serde_json::Value>> {
-        let lsp = self.lsp.as_deref()?;
-        crate::editor::lsp::introspect::capabilities(self.state, lsp, bid)
+    fn lsp_capabilities(&self, server: ServerId) -> Option<std::sync::Arc<serde_json::Value>> {
+        introspect::capabilities(&self.state.lsp, server)
+    }
+
+    fn lsp_capability(
+        &self,
+        server: ServerId,
+        feature: Option<LspFeature>,
+        method: Option<&str>,
+    ) -> Option<std::sync::Arc<serde_json::Value>> {
+        introspect::capability(&self.state.lsp, server, feature, method)
+    }
+
+    fn lsp_method_feature(&self, method: &str) -> Option<LspFeature> {
+        introspect::method_feature(method)
+    }
+
+    fn lsp_servers(
+        &self,
+        bid: BufferId,
+        feature: Option<LspFeature>,
+        method: Option<&str>,
+    ) -> Result<Vec<ServerRef>, String> {
+        introspect::servers(self.state, bid, feature, method)
     }
 
     fn lsp_server_status(&self) -> Vec<hume_scripting::LspServerStatusEntry> {
-        self.lsp
-            .as_deref()
-            .map(crate::editor::lsp::introspect::server_status)
-            .unwrap_or_default()
+        crate::editor::lsp::introspect::server_status(&self.state.lsp)
     }
 
-    fn lsp_server_for_buffer(&self, id: BufferId) -> Option<String> {
-        crate::editor::lsp::introspect::server_for_buffer(self.state, self.lsp.as_deref()?, id)
+    fn lsp_server_registered(&self, name: &hume_scripting::ServerName) -> bool {
+        crate::editor::lsp::introspect::server_registered(&self.state.lsp, name)
     }
 
-    fn lsp_registered_for_language(&self, language: &str) -> bool {
-        self.lsp.as_deref().is_some_and(|lsp| {
-            crate::editor::lsp::introspect::registered_for_language(lsp, language)
-        })
+    fn lsp_language_servers(&self, language: &str) -> Vec<hume_scripting::ListEntry> {
+        crate::editor::lsp::introspect::language_servers(&self.state.lsp, language)
     }
 
-    fn lsp_position_params(&self, pane: PaneHandle) -> Result<Option<serde_json::Value>, String> {
+    fn lsp_position_params(&self, pane: PaneHandle) -> Result<Option<PositionParams>, String> {
         let t = self.command_pane(pane)?;
-        let Some(lsp) = self.lsp.as_deref() else {
-            return Ok(None);
-        };
-        Ok(crate::editor::lsp::introspect::position_params(
-            self.state, self.view, lsp, t,
-        ))
+        Ok(params::position_params(self.state, self.view, t))
     }
 
     fn track_position(&mut self, pane: PaneHandle) -> Result<HostToken, String> {
@@ -51,14 +67,13 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         Ok(self.state.panes.tracked.track(bid, &text, head))
     }
 
-    fn tracked_position_params(&self, token: HostToken) -> Option<serde_json::Value> {
-        let lsp = self.lsp.as_deref()?;
+    fn tracked_position_params(&self, token: HostToken) -> Option<PositionParams> {
         let (bid, offset) = self
             .state
             .panes
             .tracked
             .position(token, &self.state.buffers)?;
-        crate::editor::lsp::introspect::offset_params(self.state, lsp, bid, offset)
+        params::offset_params(self.state, bid, offset)
     }
 
     fn untrack_position(&mut self, token: HostToken) {
@@ -69,30 +84,14 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         self.state.panes.tracked.keep(token);
     }
 
-    fn lsp_primary_range_params(
-        &self,
-        pane: PaneHandle,
-    ) -> Result<Option<serde_json::Value>, String> {
+    fn lsp_primary_range_params(&self, pane: PaneHandle) -> Result<Option<RangeParams>, String> {
         let t = self.command_pane(pane)?;
-        let Some(lsp) = self.lsp.as_deref() else {
-            return Ok(None);
-        };
-        Ok(crate::editor::lsp::introspect::primary_range_params(
-            self.state, self.view, lsp, t,
-        ))
+        Ok(params::primary_range_params(self.state, self.view, t))
     }
 
-    fn lsp_linewise_ranges_params(
-        &self,
-        pane: PaneHandle,
-    ) -> Result<Option<serde_json::Value>, String> {
+    fn lsp_linewise_ranges_params(&self, pane: PaneHandle) -> Result<Option<RangesParams>, String> {
         let t = self.command_pane(pane)?;
-        let Some(lsp) = self.lsp.as_deref() else {
-            return Ok(None);
-        };
-        Ok(crate::editor::lsp::introspect::linewise_ranges_params(
-            self.state, self.view, lsp, t,
-        ))
+        Ok(params::linewise_ranges_params(self.state, self.view, t))
     }
 
     fn lsp_wire_to_char(

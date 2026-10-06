@@ -17,7 +17,8 @@ use crate::textobjects::TextObjectsQuery;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct LanguageId(u32);
 
-/// Detection identity for one language: extensions, glob patterns, shebangs.
+/// Identity of one language: detection data (extensions, glob patterns,
+/// shebangs), the wire `languageId`, and its workspace root markers.
 ///
 /// Immutable once registered: re-registration (`register_identity_no_rebuild`)
 /// replaces the whole record rather than mutating it in place. The name is
@@ -36,6 +37,9 @@ pub struct LanguageIdentity {
     /// differs from the name (e.g. `"tsx"` needs `"typescriptreact"`).
     /// `None` means callers should fall back to the name (see `lsp_language_id_of`).
     pub lsp_language_id: Option<String>,
+    /// File or directory names that make a directory this language's
+    /// workspace root (e.g. `"Cargo.toml"`, `".git"`).
+    pub roots: Vec<String>,
 }
 
 /// Tree-sitter grammar + precompiled highlight query, shared across all buffers
@@ -240,10 +244,18 @@ impl LanguageRegistry {
             .unwrap_or_else(|| self.name_of(id))
     }
 
+    /// The workspace root markers registered for `id`; empty when `id` has no
+    /// identity.
+    pub fn roots_of(&self, id: LanguageId) -> &[String] {
+        self.identities[id.0 as usize]
+            .as_ref()
+            .map_or(&[], |i| i.roots.as_slice())
+    }
+
     // ── Identity ──────────────────────────────────────────────────────────────
 
     /// Register a language identity: name, extensions, glob patterns, shebangs,
-    /// LSP `languageId` override.
+    /// LSP `languageId` override. It carries no root markers.
     ///
     /// Returns `Err(RegisterError::GlobBuild)` if the combined glob set would exceed
     /// globset's NFA size limit.
@@ -258,8 +270,14 @@ impl LanguageRegistry {
         shebangs: &[&str],
         lsp_language_id: Option<&str>,
     ) -> Result<LanguageId, RegisterError> {
-        let id =
-            self.register_identity_no_rebuild(name, extensions, globs, shebangs, lsp_language_id);
+        let id = self.register_identity_no_rebuild(
+            name,
+            extensions,
+            globs,
+            shebangs,
+            lsp_language_id,
+            &[],
+        );
         self.rebuild_glob_set()?;
         Ok(id)
     }
@@ -269,7 +287,7 @@ impl LanguageRegistry {
     /// Intended for batch registration: call this N times then call
     /// `rebuild_glob_set` once, avoiding O(N²) NFA constructions at startup.
     ///
-    /// Replaces extensions/globs/shebangs/lsp_language_id for `name`; an
+    /// Replaces extensions/globs/shebangs/lsp_language_id/roots for `name`; an
     /// already-attached grammar is kept. Identity and grammar are independent
     /// facts about a language, and re-registering one must not silently undo
     /// the other. (Symmetric with `attach_grammar`, which likewise preserves an
@@ -281,6 +299,7 @@ impl LanguageRegistry {
         globs: &[Glob],
         shebangs: &[&str],
         lsp_language_id: Option<&str>,
+        roots: &[&str],
     ) -> LanguageId {
         let id = self.intern(name);
         if let Some(old) = self.identities[id.0 as usize].take() {
@@ -291,6 +310,7 @@ impl LanguageRegistry {
             globs: globs.to_vec(),
             shebangs: shebangs.iter().map(|s| s.to_string()).collect(),
             lsp_language_id: lsp_language_id.map(str::to_owned),
+            roots: roots.iter().map(|s| s.to_string()).collect(),
         };
         for ext in &new_identity.extensions {
             self.by_ext.insert(ext.clone(), id);

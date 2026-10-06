@@ -3,65 +3,48 @@
 
 #[cfg(unix)]
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 #[cfg(unix)]
 use std::rc::Rc;
 
+use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::{LspClient, ServerState};
+#[cfg(unix)]
+use hume_lsp::backend::LspBackend;
+use hume_lsp::backend::ServerId;
 use hume_lsp::codec::Message;
+#[cfg(unix)]
 use hume_lsp::inline::InlineLspBackend;
-use hume_lsp::test_util::{NotificationLog, RecordingLspBackend, RequestLog};
+use hume_lsp::test_util::RecordingLspBackend;
 #[cfg(unix)]
 use hume_lsp::transport::InboundEvent;
 use hume_scripting::ScriptingHost;
 
-/// Wires a scripted backend with a Running client attached to the focused
-/// buffer's `lsp_server` and registered under language `"rust"`, enough
-/// for both a `bid`-resolved lookup and a `"rust"`-named one.
-pub(super) fn setup_with(
-    ed: &mut Editor,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
-) -> ServerId {
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.set_state_for_test(ServerState::Running);
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    sid
+/// The capabilities the bridge tests' servers advertise: every standard
+/// method those tests send is routed by one.
+pub(super) fn bridge_initialize_result() -> serde_json::Value {
+    serde_json::json!({
+        "capabilities": {
+            "hoverProvider": true,
+            "completionProvider": {},
+            "definitionProvider": true,
+        }
+    })
 }
 
-/// Same wiring as `setup_with`, but over `RecordingLspBackend` so outgoing
-/// requests/notifications (e.g. `$/cancelRequest`) stay observable after
-/// the backend is boxed into `LspState`.
-pub(super) fn setup_with_recording(
-    ed: &mut Editor,
+/// One `rust-analyzer` server, `Running` on a `src/main.rs` holding
+/// `marked`. `configure` scripts the backend before the rig opens; the
+/// server it spawns is `ServerId(0)`, and anything `configure` pushes from
+/// that server arrives during the rig's own drain.
+pub(super) fn setup_with(
+    tmp: &Path,
+    marked: &str,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (ServerId, NotificationLog, RequestLog) {
-    let (mut backend, log, requests) = RecordingLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.set_state_for_test(ServerState::Running);
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    (sid, log, requests)
+) -> LspRig {
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", bridge_initialize_result());
+    configure(&mut backend, ServerId(0));
+    LspRig::drained(tmp, RigSpec::rust(marked), backend)
 }
 
 // ── #:supersede ──────────────────────────────────────────────────────────────
@@ -71,8 +54,7 @@ pub(super) fn setup_with_recording(
 #[test]
 fn requests_without_a_supersede_key_do_not_cancel_each_other() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    let (_sid, notifications, _requests) = setup_with_recording(&mut ed, |b, _sid| {
+    let rig = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to(
             "textDocument/completion",
             serde_json::json!({"marker": "A"}),
@@ -82,6 +64,9 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
             serde_json::json!({"marker": "B"}),
         );
     });
+    let sid = rig.sid("rust-analyzer");
+    let notifications = rig.notifications;
+    let mut ed = rig.ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -112,21 +97,20 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
         !notifications
             .borrow()
             .iter()
-            .any(|(method, _)| method == "$/cancelRequest"),
+            .any(|(s, method, _)| *s == sid && method == "$/cancelRequest"),
         "no supersede key means no cancellation"
     );
 }
 
-/// `:lsp-stop` must clear any tracked supersede-key entries for that
-/// server, alongside its existing timed-out-callback contract. Otherwise a
-/// stopped server's stale request id could linger in the map forever.
+/// `:lsp-stop` completes the in-flight request of a `#:supersede` key, so no
+/// delivery lingers for the stopped server.
 #[test]
-fn lsp_stop_clears_supersede_entries() {
+fn lsp_stop_completes_a_superseding_delivery() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |_b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {
         // No canned response: the request stays pending until :lsp-stop.
-    });
+    })
+    .ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -140,26 +124,32 @@ fn lsp_stop_clears_supersede_entries() {
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":test-cmd");
-    assert_eq!(ed.lsp.supersede_count_for_test(), 1, "sanity: key tracked");
+    assert_eq!(
+        ed.state.lsp.delivery_count_for_test(),
+        1,
+        "sanity: delivery in flight"
+    );
 
-    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
-        "rust".to_string(),
-    ));
+    ed.apply_lsp_server_op(hume_scripting::PendingLspServerOp::Stop {
+        target: hume_scripting::LspServerTarget::Name(
+            hume_scripting::ServerName::parse("rust-analyzer").unwrap(),
+        ),
+    });
 
     assert_eq!(
-        ed.lsp.supersede_count_for_test(),
+        ed.state.lsp.delivery_count_for_test(),
         0,
-        "supersede entries for the stopped server must not linger"
+        "deliveries for the stopped server must not linger"
     );
 }
 
 #[test]
 fn response_delivers_a_handle_to_callback() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
-    });
+    })
+    .ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -189,13 +179,13 @@ fn response_delivers_a_handle_to_callback() {
 #[test]
 fn request_delivers_an_opaque_handle_not_a_hashmap() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to(
             "textDocument/completion",
             serde_json::json!({"items": [], "isIncomplete": false}),
         );
-    });
+    })
+    .ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -226,10 +216,10 @@ fn request_delivers_an_opaque_handle_not_a_hashmap() {
 #[test]
 fn request_with_a_null_response_still_gives_void() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/completion", serde_json::Value::Null);
-    });
+    })
+    .ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -257,10 +247,10 @@ fn request_with_a_null_response_still_gives_void() {
 #[test]
 fn protocol_error_delivers_err_hashmap_to_callback() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.fail_with("textDocument/hover", -32601, "nope");
-    });
+    })
+    .ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -286,12 +276,11 @@ fn protocol_error_delivers_err_hashmap_to_callback() {
 }
 
 #[test]
-fn timeout_delivers_err_string_timeout_to_callback() {
+fn timeout_delivers_a_timeout_err_to_callback() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
     // No canned response for textDocument/hover, so it sits pending forever
     // until the (zeroed) deadline scan in `take_completed` claims it.
-    setup_with(&mut ed, |_b, _sid| {});
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {}).ed;
     ed.state.settings.lsp_request_timeout_ms = 0;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -299,7 +288,7 @@ fn timeout_delivers_err_string_timeout_to_callback() {
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
              (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
-               (when (equal? err "timeout")
+               (when (equal? (hash-ref err 'kind) 'timeout)
                  (call! "move-right" bid))))))"#,
         tmp.path(),
     );
@@ -313,44 +302,35 @@ fn timeout_delivers_err_string_timeout_to_callback() {
     assert_ne!(
         state(&ed),
         before,
-        "callback must receive the string \"timeout\" as err"
+        "callback must receive an err of kind 'timeout"
     );
 }
 
 #[test]
 fn on_lsp_notification_fires_the_registered_handler() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    // `push_from_server` (not `send`, which is outbound client->server) is
-    // the double's way to simulate a server-initiated notification.
-    setup_with(&mut ed, |b, sid| {
-        b.push_from_server(
-            sid,
-            hume_lsp::codec::Message::Notification {
-                method: "custom/event".to_string(),
-                params: serde_json::json!({"x": 1}),
-            },
-        );
-    });
+    let mut rig = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {});
+    let sid = rig.sid("rust-analyzer");
 
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
+    rig.eval(
         r#"(register-hook! 'on-lsp-notification (lambda (server method params)
              (when (and (equal? method "custom/event")
                         (equal? (json-ref params "x") 1))
                (call! "move-right" (focused-pane)))))"#,
-        tmp.path(),
     );
-    ed.scripting = Some(host);
 
-    let before = state(&ed);
-    ed.drain_lsp();
-    ed.settle();
+    let before = state(&rig.ed);
+    rig.push(
+        sid,
+        Message::Notification {
+            method: "custom/event".to_string(),
+            params: serde_json::json!({"x": 1}),
+        },
+    );
+    rig.ed.settle();
 
     assert_ne!(
-        state(&ed),
+        state(&rig.ed),
         before,
         "an on-lsp-notification hook must fire with the method and decoded params"
     );
@@ -358,47 +338,43 @@ fn on_lsp_notification_fires_the_registered_handler() {
 
 #[test]
 fn unhandled_notification_without_a_registered_handler_only_logs_trace() {
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |b, sid| {
-        b.push_from_server(
-            sid,
-            hume_lsp::codec::Message::Notification {
-                method: "custom/unhandled".to_string(),
-                params: serde_json::Value::Null,
-            },
-        );
-    });
+    let tmp = safe_tempdir();
+    let mut rig = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {});
+    let sid = rig.sid("rust-analyzer");
 
-    ed.drain_lsp();
-    ed.settle();
+    rig.push(
+        sid,
+        Message::Notification {
+            method: "custom/unhandled".to_string(),
+            params: serde_json::Value::Null,
+        },
+    );
+    rig.ed.settle();
 
-    let log = ed.state.message_log.format_for_display();
+    let log = rig.ed.state.message_log.format_for_display();
     assert!(
         log.contains("unhandled notification custom/unhandled"),
         "no handler registered; must fall back to the existing Trace log: {log:?}"
     );
 }
 
-/// Wires `ed` with one pushed server notification per entry of `methods`
-/// and evaluates `source` against a real host.
+/// Evaluates `source` against the rig's host, then delivers one server
+/// notification per entry of `methods`, in order; the caller settles.
 fn editor_with_notifications(methods: &[&str], source: &str) -> (Editor, tempfile::TempDir) {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdefgh\n");
-    setup_with(&mut ed, |b, sid| {
-        for method in methods {
-            b.push_from_server(
-                sid,
-                Message::Notification {
-                    method: method.to_string(),
-                    params: serde_json::Value::Null,
-                },
-            );
-        }
-    });
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(&mut ed, &mut host, source, tmp.path());
-    ed.scripting = Some(host);
-    (ed, tmp)
+    let mut rig = setup_with(tmp.path(), "-[a]>bcdefgh\n", |_b, _sid| {});
+    let sid = rig.sid("rust-analyzer");
+    rig.eval(source);
+    for method in methods {
+        rig.push(
+            sid,
+            Message::Notification {
+                method: method.to_string(),
+                params: serde_json::Value::Null,
+            },
+        );
+    }
+    (rig.ed, tmp)
 }
 
 #[test]
@@ -467,8 +443,7 @@ fn catch_all_lsp_notification_hook_sees_every_method_untraced() {
 #[test]
 fn callback_calling_lsp_request_does_not_reenter_synchronously() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdefgh\n");
-    setup_with(&mut ed, |b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdefgh\n", |b, _sid| {
         b.respond_to(
             "textDocument/hover",
             serde_json::json!({"contents": "first"}),
@@ -477,7 +452,8 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
             "textDocument/definition",
             serde_json::json!({"contents": "second"}),
         );
-    });
+    })
+    .ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -513,10 +489,10 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
 #[test]
 fn callback_error_lands_in_message_log_not_a_crash() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
-    });
+    })
+    .ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -601,45 +577,34 @@ impl LspBackend for OrderedLogBackend {
 }
 
 #[test]
-fn lsp_request_with_no_attached_server_reports_an_error_and_fires_callback_with_err() {
+fn lsp_request_with_no_attached_server_fires_callback_with_err() {
     // Regression: a resolution failure must never silently drop the
     // callback: the documented `(err result)` contract (exactly one
     // non-`#f`) must hold even when no request/response pair could ever
     // exist.
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |_b, _sid| {});
-    // `setup_with` attaches the server to the focused buffer unconditionally.
-    // Detach it again so `bid` resolves to no server,
-    // reproducing the resolution-failure path this test targets.
-    let focused = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(focused).lsp_server = None;
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
-               (when (string? err)
-                 (call! "move-right" bid))))))"#,
-        tmp.path(),
+    let mut rig = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {});
+    // Clearing the buffer's language detaches its server, so `bid` resolves
+    // to no server: the resolution-failure path this test targets.
+    rig.probe(r#"(set-buffer-option! pane "language" "")"#);
+    rig.probe(r#"(log! 'warn (to-string (lsp-servers pane)))"#);
+    assert_eq!(
+        rig.warnings(),
+        vec!["()".to_string()],
+        "setup: bid is detached"
     );
-    ed.scripting = Some(host);
 
-    let before = state(&ed);
-    type_cmd(&mut ed, ":test-cmd");
-    ed.drain_lsp();
-    ed.settle();
+    let before = state(&rig.ed);
+    rig.probe(
+        r#"(lsp-request! pane "textDocument/hover" (hash) (lambda (err result)
+             (when (equal? (hash-ref err 'kind) 'unavailable)
+               (call! "move-right" pane))))"#,
+    );
 
     assert_ne!(
-        state(&ed),
+        state(&rig.ed),
         before,
-        "callback must fire immediately with a string err when the buffer has no attached server"
-    );
-    let log = ed.state.message_log.format_for_display();
-    assert!(
-        log.contains("lsp-request!:"),
-        "resolution failure must also be reported: {log:?}"
+        "callback must fire immediately with an 'unavailable err when the buffer has no attached server"
     );
 }
 
@@ -650,12 +615,10 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
     // registration time but has since crashed. A plugin relying on the err
     // branch (e.g. sighelp's popup-close-on-error) must still see it.
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    let sid = setup_with(&mut ed, |_b, _sid| {});
-    ed.lsp
-        .client_for_test(sid)
-        .unwrap()
-        .set_state_for_test(ServerState::Crashed);
+    let mut rig = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {});
+    let sid = rig.sid("rust-analyzer");
+    rig.crash(sid);
+    let mut ed = rig.ed;
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -663,7 +626,7 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
              (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
-               (when (string? err)
+               (when (equal? (hash-ref err 'kind) 'unavailable)
                  (call! "move-right" bid))))))"#,
         tmp.path(),
     );
@@ -677,7 +640,25 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
     assert_ne!(
         state(&ed),
         before,
-        "callback must fire immediately with a string err when the server has crashed"
+        "callback must fire immediately with an 'unavailable err when the server has crashed"
+    );
+}
+
+#[test]
+fn lsp_request_against_a_crashed_server_names_it_and_the_restart_command() {
+    let tmp = safe_tempdir();
+    let mut rig = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {});
+    let sid = rig.sid("rust-analyzer");
+    rig.crash(sid);
+
+    rig.probe(
+        r#"(lsp-request! pane "textDocument/hover" (hash) (lambda (err result)
+             (log! 'warn (hash-ref err 'message))))"#,
+    );
+
+    assert_eq!(
+        rig.warnings(),
+        vec!["rust-analyzer crashed (:lsp-restart rust-analyzer)".to_string()]
     );
 }
 
@@ -689,8 +670,7 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
 #[test]
 fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |_b, _sid| {});
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {}).ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -721,10 +701,10 @@ fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
 fn require_focus_drops_the_callback_after_a_buffer_switch() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
-    });
+    })
+    .ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -769,10 +749,10 @@ fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
     use hume_scripting::host::CommandHost;
 
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
-    });
+    })
+    .ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -821,10 +801,10 @@ fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
 fn no_require_focus_still_delivers_after_a_buffer_switch() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
-    });
+    })
+    .ed;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
@@ -866,14 +846,14 @@ fn no_require_focus_still_delivers_after_a_buffer_switch() {
 fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "one"}));
         b.respond_to(
             "textDocument/completion",
             serde_json::json!({"contents": "two"}),
         );
-    });
+    })
+    .ed;
 
     let other = file_dir.path().join("other.txt");
     std::fs::write(&other, "abc\n").unwrap();
@@ -918,8 +898,7 @@ fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
 #[test]
 fn queued_callback_restales_against_an_earlier_siblings_edit_in_the_same_batch() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    setup_with(&mut ed, |b, _sid| {
+    let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to(
             "test/edit",
             serde_json::json!([{
@@ -931,7 +910,8 @@ fn queued_callback_restales_against_an_earlier_siblings_edit_in_the_same_batch()
             "textDocument/completion",
             serde_json::json!({"contents": "hi"}),
         );
-    });
+    })
+    .ed;
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(

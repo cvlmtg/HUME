@@ -7,14 +7,17 @@
          (let ([dir (path-join rt "plugins" "core" "steel-server" "lsp-home")])
            (and (path-exists? (path-join dir "hume-globals.scm")) dir)))))
 
+(define-language! "scheme" '("ss" "scm" "sld") '() '("scheme" "guile" "chicken")
+                  #:roots '("cog.scm"))
+(set-default-language-servers! "scheme" '("steel-language-server"))
+
 (define (steel-server/register!)
-  (unless (lsp-registered-for-language? "scheme")
+  (unless (lsp-server-registered? "steel-language-server")
     (let ([home (steel-server/lsp-home)])
       (unless home
         (log! 'warn "steel-server: host-globals dir missing — HUME builtins will be flagged as unknown identifiers"))
-      (register-lsp-server! "scheme"
+      (register-lsp-server! "steel-language-server"
                             #:command "steel-language-server"
-                            #:root-markers '("cog.scm")
                             #:env (if home (list (cons "STEEL_LSP_HOME" home)) '())))))
 
 (define-typed-command! "steel-server-install"

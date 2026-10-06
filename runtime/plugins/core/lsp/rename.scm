@@ -4,8 +4,8 @@
 
 (define-command! "lsp-rename" "Rename the symbol under the cursor."
   (lambda (pane)
-    (lsp/guard-capability pane "renameProvider"
-      (lambda ()
+    (lsp/with-servers (lsp-servers pane #:feature 'rename-symbol) "rename"
+      (lambda (servers)
         (prompt! pane "Rename: "
           (lambda (new-name)
             (when new-name

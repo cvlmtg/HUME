@@ -10,70 +10,120 @@
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
-use crate::editor::lsp::LspState;
-use hume_engine::pipeline::RenderContext;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
+use hume_engine::pipeline::{BufferId, RenderContext};
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
-use hume_scripting::ScriptingHost;
 
-fn write_fixture_file(file_dir: &Path) -> PathBuf {
-    let file = file_dir.join("main.rs");
-    std::fs::write(&file, "let x = 1;\n").unwrap();
-    file
-}
+/// The rig's file, "let x = 1;\n", with the cursor at its start.
+const MARKED_FIXTURE: &str = "-[l]>et x = 1;\n";
 
+/// A [`core_lsp_rig`] over [`MARKED_FIXTURE`] with an inlay-hint provider.
 fn setup(
-    file: &Path,
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, RequestLog) {
-    let guard = RealRuntimeGuard::new();
-
-    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
-    );
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
+    let (rig, guard) = core_lsp_rig(
         tmp,
+        MARKED_FIXTURE,
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+        configure,
     );
-    ed.scripting = Some(host);
+    (rig.ed, guard, rig.requests)
+}
 
-    (ed, guard, requests)
+/// Everything [`setup_two_servers`] builds: the rig's `src/main.rs`
+/// (`bid_a`, on `rust-analyzer`) focused, and `main.py` (`bid_b`, on
+/// `pylsp`) shown in `pane_b` beside it.
+struct TwoServers {
+    ed: Editor,
+    _guard: RealRuntimeGuard,
+    requests: RequestLog,
+    sid_a: ServerId,
+    sid_b: ServerId,
+    bid_a: BufferId,
+    bid_b: BufferId,
+    pane_b: hume_engine::pipeline::PaneId,
+}
+
+/// Two buffers, each attached to its own server: `rust-analyzer` answers
+/// `initialize` with `initialize_a`, `pylsp` with `initialize_b`, and the
+/// shared FIFO holds `inlay_answers` empty `textDocument/inlayHint` results.
+fn setup_two_servers(
+    tmp: &Path,
+    initialize_a: serde_json::Value,
+    initialize_b: serde_json::Value,
+    inlay_answers: usize,
+) -> TwoServers {
+    let guard = RealRuntimeGuard::new();
+    let (mut backend, _notifications, _requests) = RecordingLspBackend::new();
+    backend.respond_to_server(ServerId(0), "initialize", initialize_a);
+    backend.respond_to_server(ServerId(1), "initialize", initialize_b);
+    for _ in 0..inlay_answers {
+        backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
+    }
+    let init = format!(
+        "{}\n{}",
+        core_lsp_init(),
+        r#"(register-lsp-server! "pylsp" #:command "pylsp")
+(set-language-servers! "python" '("pylsp"))"#
+    );
+    let mut rig = LspRig::drained(tmp, RigSpec::rust(MARKED_FIXTURE).with_init(&init), backend);
+    rig.ed
+        .state
+        .config
+        .languages
+        .register_identity("python", &["py"], &[], &[], None)
+        .unwrap();
+    let file_b = rig.root.join("main.py");
+    std::fs::write(&file_b, "x = 1\n").unwrap();
+    let bid_b = rig
+        .ed
+        .open_extra_file(&file_b)
+        .expect("main.py opens as a buffer");
+    // Both buffers must be *shown*: `lsp/refresh-hints` skips a hidden bid.
+    let pid_a = rig.ed.state.focus.id();
+    let pane_b = open_pane_in_layout(
+        &mut rig.ed.state,
+        &mut rig.ed.view,
+        pid_a,
+        bid_b,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+
+    let sid_a = rig.sid("rust-analyzer");
+    let sid_b = rig.sid("pylsp");
+    assert_eq!(
+        rig.attached(),
+        vec![sid_a],
+        "sanity: main.rs is on rust-analyzer"
+    );
+    assert_eq!(
+        rig.ed
+            .state
+            .buffer_positions
+            .lsp
+            .servers(bid_b)
+            .collect::<Vec<_>>(),
+        vec![sid_b],
+        "sanity: main.py is on pylsp"
+    );
+    TwoServers {
+        bid_a: rig.bid,
+        requests: rig.requests,
+        ed: rig.ed,
+        _guard: guard,
+        sid_a,
+        sid_b,
+        bid_b,
+        pane_b,
+    }
 }
 
 fn fire_viewport_change(ed: &mut Editor) {
@@ -122,9 +172,7 @@ fn inlay_hint_response(entries: &[(u32, u32, serde_json::Value)]) -> serde_json:
 #[test]
 fn viewport_change_triggers_one_debounced_request() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
     ed.state.settings.lsp_inlay_hints = true;
@@ -146,9 +194,7 @@ fn viewport_change_triggers_one_debounced_request() {
 #[test]
 fn inlay_hint_request_range_matches_the_viewport() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
     ed.state.settings.lsp_inlay_hints = true;
@@ -170,9 +216,7 @@ fn inlay_hint_request_range_matches_the_viewport() {
 #[test]
 fn setting_off_sends_no_request() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
     // lsp_inlay_hints defaults to false: left untouched.
@@ -186,11 +230,9 @@ fn setting_off_sends_no_request() {
 #[test]
 fn hints_land_in_the_store_at_the_correct_char_offset() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
     // "let x = 1;\n": wire {line:0, character:4} is 'x' (char offset 4,
     // ASCII text, UTF-16 code units == char offsets).
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/inlayHint",
             inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
@@ -222,9 +264,7 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
 #[test]
 fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/inlayHint",
             inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
@@ -274,9 +314,7 @@ fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
 #[test]
 fn setting_on_via_a_non_true_spelling_still_requests_hints() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         // Three responses queued: the seeding "true" phase below sends two
         // requests (the direct fire `fire_viewport_change` queues, plus the
         // second, independent one `prepare_frame`'s scroll step arms via
@@ -366,9 +404,7 @@ fn setting_on_via_a_non_true_spelling_still_requests_hints() {
 #[test]
 fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/inlayHint",
             serde_json::json!([{
@@ -401,18 +437,17 @@ fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
 #[test]
 fn diagnostics_changed_also_refreshes_hints() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
     ed.state.settings.lsp_inlay_hints = true;
     let sid = ed
         .state
-        .buffers
-        .get(ed.focused_buffer_id())
-        .lsp_server
+        .buffer_positions
+        .lsp
+        .servers(ed.focused_buffer_id())
+        .next()
         .expect("buffer must be attached");
 
     // Fire a real viewport-change first: the request count assertions
@@ -422,9 +457,12 @@ fn diagnostics_changed_also_refreshes_hints() {
     assert_eq!(request_count(&requests, "textDocument/inlayHint"), 1);
 
     let bid = ed.focused_buffer_id();
-    ed.ingest_publish_diagnostics(
+    ed.ingest_typed_publish_for_test(
         sid,
-        serde_json::from_value(serde_json::json!({"uri": hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap().as_str(), "diagnostics": []})).unwrap(),
+        serde_json::from_value(
+            serde_json::json!({"uri": rust_rig_uri(tmp.path()), "diagnostics": []}),
+        )
+        .unwrap(),
     );
     ed.queue_diagnostics_changed(bid);
     settle_after_debounce(&mut ed);
@@ -439,24 +477,23 @@ fn diagnostics_changed_also_refreshes_hints() {
 #[test]
 fn hidden_buffer_skips_diagnostics_triggered_refresh() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
     ed.state.settings.lsp_inlay_hints = true;
     let sid = ed
         .state
-        .buffers
-        .get(ed.focused_buffer_id())
-        .lsp_server
+        .buffer_positions
+        .lsp
+        .servers(ed.focused_buffer_id())
+        .next()
         .expect("buffer must be attached");
     let bid = ed.focused_buffer_id();
 
     // Switch the (only) pane to a second file. `bid` stays open in the
     // buffer list (and stays attached to `sid`) but is no longer shown in
     // any pane, so `(viewport-range bid)` must be `#f`.
-    let other_file = file_dir.path().join("other.rs");
+    let other_file = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other_file, "let y = 2;\n").unwrap();
     ed.execute_typed("e", Some(other_file.to_str().unwrap()))
         .unwrap();
@@ -466,9 +503,12 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
         "test setup: pane must have switched"
     );
 
-    ed.ingest_publish_diagnostics(
+    ed.ingest_typed_publish_for_test(
         sid,
-        serde_json::from_value(serde_json::json!({"uri": hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&file).unwrap()).unwrap().as_str(), "diagnostics": []})).unwrap(),
+        serde_json::from_value(
+            serde_json::json!({"uri": rust_rig_uri(tmp.path()), "diagnostics": []}),
+        )
+        .unwrap(),
     );
     ed.queue_diagnostics_changed(bid);
     settle_after_debounce(&mut ed);
@@ -483,9 +523,7 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
 #[test]
 fn an_empty_response_clears_previously_stored_hints() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/inlayHint",
             inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
@@ -525,6 +563,76 @@ fn an_empty_response_clears_previously_stored_hints() {
     );
 }
 
+/// Detaching the only server that gives hints clears them: with no server
+/// left to ask, the refresh the detach triggers empties the store.
+#[test]
+fn stopping_the_only_server_clears_its_hints() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/inlayHint",
+            inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
+        );
+    });
+    ed.state.settings.lsp_inlay_hints = true;
+    let bid = ed.focused_buffer_id();
+    fire_viewport_change(&mut ed);
+    settle_after_debounce(&mut ed);
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        1,
+        "sanity: the hint landed"
+    );
+
+    super::super::lsp_rig::stop_server(&mut ed, "rust-analyzer");
+    settle_after_debounce(&mut ed);
+
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        0
+    );
+}
+
+/// A refresh every server fails keeps the hints already shown and reports
+/// the error, where an empty answer clears them.
+#[test]
+fn a_failed_response_keeps_the_stored_hints_and_reports_the_error() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/inlayHint",
+            inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
+        );
+        backend.fail_with("textDocument/inlayHint", -32603, "hints exploded");
+    });
+    ed.state.settings.lsp_inlay_hints = true;
+    let bid = ed.focused_buffer_id();
+
+    fire_viewport_change(&mut ed);
+    settle_after_debounce(&mut ed);
+    ed.queue_diagnostics_changed(bid);
+    settle_after_debounce(&mut ed);
+
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        1
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(log.contains("lsp inlay hints: hints exploded"), "{log:?}");
+}
+
 /// Two attached, visible
 /// buffers each get an `on-diagnostics-changed` fire within the same
 /// debounce window. A plain `debounce` shares one pending timer across
@@ -534,82 +642,21 @@ fn an_empty_response_clears_previously_stored_hints() {
 #[test]
 fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file_a = write_fixture_file(file_dir.path());
-    let file_b = file_dir.path().join("main.py");
-    std::fs::write(&file_b, "x = 1\n").unwrap();
-
-    let _guard = RealRuntimeGuard::new();
-    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
-    );
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
-    );
-    let sid_a = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    let sid_b = backend.start("pylsp", &[], Path::new("."), &[]).unwrap();
-    backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
-    backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-
-    let mut client_a = LspClient::new(sid_a, PathBuf::from("."));
-    client_a.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client_a);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid_a);
-
-    let mut client_b = LspClient::new(sid_b, PathBuf::from("."));
-    client_b.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client_b);
-    ed.lsp
-        .insert_server_key_for_test("python".to_string(), PathBuf::from("."), sid_b);
-
-    ed.execute_typed("e", Some(file_a.to_str().unwrap()))
-        .unwrap();
-    let bid_a = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid_a).lsp_server = Some(sid_a);
-
-    ed.open_extra_file(&file_b);
-    let bid_b = ed
-        .state
-        .buffers
-        .find_by_path(&std::fs::canonicalize(&file_b).unwrap())
-        .expect("file_b opened via open_extra_file");
-    ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
-    // Both buffers must be *shown*: `lsp/refresh-hints` skips a hidden bid.
-    let pid_a = ed.state.focus.id();
-    open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
+    let TwoServers {
+        mut ed,
+        _guard,
+        requests,
+        sid_a,
+        sid_b,
+        bid_a,
         bid_b,
-        hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
-
-    for (sid, ev) in ed.lsp.backend_mut().drain() {
-        let actions = ed.lsp.client_for_test(sid).unwrap().on_event(ev);
-        for action in actions {
-            ed.dispatch_lsp_action(sid, action);
-        }
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
+        ..
+    } = setup_two_servers(
         tmp.path(),
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+        2,
     );
-    ed.scripting = Some(host);
     ed.state.settings.lsp_inlay_hints = true;
 
     let mut ctx = RenderContext::new();
@@ -645,79 +692,19 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
 #[test]
 fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file_a = write_fixture_file(file_dir.path());
-    let file_b = file_dir.path().join("main.py");
-    std::fs::write(&file_b, "x = 1\n").unwrap();
-
-    let _guard = RealRuntimeGuard::new();
-    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
-    // Popped in start order: server A first (no inlayHintProvider), then
-    // server B (inlayHintProvider: true).
-    backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
-    );
-    let sid_a = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    let sid_b = backend.start("pylsp", &[], Path::new("."), &[]).unwrap();
-    backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-
-    let mut client_a = LspClient::new(sid_a, PathBuf::from("."));
-    client_a.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client_a);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid_a);
-
-    let mut client_b = LspClient::new(sid_b, PathBuf::from("."));
-    client_b.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client_b);
-    ed.lsp
-        .insert_server_key_for_test("python".to_string(), PathBuf::from("."), sid_b);
-
-    ed.execute_typed("e", Some(file_a.to_str().unwrap()))
-        .unwrap();
-    let bid_a = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid_a).lsp_server = Some(sid_a);
-
-    ed.open_extra_file(&file_b);
-    let bid_b = ed
-        .state
-        .buffers
-        .find_by_path(&std::fs::canonicalize(&file_b).unwrap())
-        .expect("file_b opened via open_extra_file");
-    ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
-    let pid_a = ed.state.focus.id();
-    let pane_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
-        bid_b,
-        hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
-
-    for (sid, ev) in ed.lsp.backend_mut().drain() {
-        let actions = ed.lsp.client_for_test(sid).unwrap().on_event(ev);
-        for action in actions {
-            ed.dispatch_lsp_action(sid, action);
-        }
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
+    let TwoServers {
+        mut ed,
+        _guard,
+        requests,
+        sid_b,
+        pane_b,
+        ..
+    } = setup_two_servers(
         tmp.path(),
+        serde_json::json!({"capabilities": {}}),
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+        1,
     );
-    ed.scripting = Some(host);
     ed.state.settings.lsp_inlay_hints = true;
 
     // Buffer A (focused, server A, no inlayHintProvider) never changes
@@ -745,9 +732,7 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
 #[test]
 fn undo_also_refreshes_hints() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });

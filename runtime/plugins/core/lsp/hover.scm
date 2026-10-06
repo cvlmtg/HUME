@@ -47,9 +47,9 @@
 (define-command! "lsp-hover" "Show hover info for the symbol under the cursor."
   (lambda (pane)
     (lsp/close-hover!)
-    (lsp/guard-capability pane "hoverProvider"
-      (lambda ()
-        (lsp-request! pane "textDocument/hover" (lsp-position-params pane)
+    (lsp/with-position-params pane "hover"
+      (lambda (params)
+        (lsp-request! pane "textDocument/hover" params
           (lambda (err res)
             (cond
               (err (lsp/report-error! "hover" err))

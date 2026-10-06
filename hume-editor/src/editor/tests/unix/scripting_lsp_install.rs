@@ -1,5 +1,5 @@
 // Editor-level tests for core:lsp-install's server install pipeline:
-// scan-on-load registration, :lsp-install/:lsp-uninstall/:lsp-servers,
+// scan-on-load registration, :lsp-install/:lsp-uninstall/:lsp-catalog,
 // receipts, orphan warnings, and the on-language-set discovery hint.
 //
 // Fixture servers, chosen from the real core:lsp-install
@@ -99,7 +99,7 @@ fn plum_alone_does_not_register_installed_servers() {
     load_plum(&mut ed, data_tmp.path());
 
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         None,
         "loading core:plum alone must never register an installed server"
     );
@@ -138,10 +138,44 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
         .join("rust-analyzer")
         .join("rust-analyzer");
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some(expected_cmd.to_string_lossy().into_owned()),
         "scan must register rust-analyzer's command as the absolute managed path, \
          not a bare command name relying on $PATH lookup"
+    );
+}
+
+/// Registering installed servers needs only the registration catalogs:
+/// `requirements.scm` is read when an install or the discovery hint asks for
+/// a server's requirements, so an unreadable one does not stop the scan.
+#[test]
+fn scan_does_not_read_the_install_requirements() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    fabricate_server(data_tmp.path(), "gopls", "0.20.0", "gopls");
+    let runtime = runtime_with_sources("()");
+    std::fs::write(
+        runtime
+            .path()
+            .join("plugins/core/lsp-install/requirements.scm"),
+        "(",
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init_in_runtime(
+        &mut ed,
+        runtime.path(),
+        data_tmp.path(),
+        &format!(
+            "(load-plugin! \"core:stdlib\")\n{}",
+            hume_scripting::eager_load_scm("core:lsp-install", None)
+        ),
+    );
+
+    assert!(
+        ed.state.lsp.registered_command_for_test("gopls").is_some(),
+        "the scan must register an installed server without reading requirements.scm"
     );
 }
 
@@ -176,16 +210,18 @@ fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_object
         }
     });
     let sv_settings = ed
+        .state
         .lsp
-        .config_settings_for_test("systemverilog")
+        .registered_settings_for_test("svlangserver")
         .expect("svlangserver settings must be registered");
     assert_eq!(
         sv_settings, expected_sv,
         "a #(...) settings array must decode to a JSON array, not an object or a string"
     );
     let sv_init_options = ed
+        .state
         .lsp
-        .config_init_options_for_test("systemverilog")
+        .registered_init_options_for_test("svlangserver")
         .expect("svlangserver init-options must be registered");
     assert_eq!(
         sv_init_options, expected_sv,
@@ -205,16 +241,18 @@ fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_object
         }
     });
     let ra_settings = ed
+        .state
         .lsp
-        .config_settings_for_test("rust")
+        .registered_settings_for_test("rust-analyzer")
         .expect("rust-analyzer settings must be registered");
     assert_eq!(
         ra_settings, expected_ra,
         "nested-object settings entries must round-trip through the converter exactly"
     );
     let ra_init_options = ed
+        .state
         .lsp
-        .config_init_options_for_test("rust")
+        .registered_init_options_for_test("rust-analyzer")
         .expect("rust-analyzer init-options must be registered");
     assert_eq!(
         ra_init_options, expected_ra,
@@ -237,7 +275,7 @@ fn interrupted_install_is_warned_and_not_registered() {
     load_lsp_install_eager(&mut ed, data_tmp.path());
 
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         None,
         "a server dir without a readable receipt must never be registered"
     );
@@ -313,50 +351,16 @@ fn stray_non_directory_file_under_servers_dir_is_never_scanned_as_a_server() {
     );
 }
 
-/// Exposed for out-of-band installs (a server installed outside
-/// `:lsp-install`), and used internally by `servers.scm`'s own install and
-/// uninstall commands to pick up what they just wrote to disk.
+/// A mid-session rescan (the one `:lsp-install` runs after a
+/// successful/up-to-date install) must never replace a
+/// registration the user made under the catalog server's own name: the scan
+/// registers only names nothing has registered yet. An unconditional
+/// re-registration would replace a manual `register-lsp-server!` override
+/// (documented workflow: a local build, a version the catalog doesn't
+/// carry, or a `$PATH` copy the user wants to take precedence; see
+/// user-manual/docs/lsp.md) on the next rescan.
 #[test]
-fn lsp_rescan_servers_command_registers_newly_installed() {
-    let _lock = lock();
-    let data_tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>\n");
-    load_lsp_install(&mut ed, data_tmp.path());
-    assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
-        None,
-        "precondition: nothing installed yet"
-    );
-
-    fabricate_server(
-        data_tmp.path(),
-        "rust-analyzer",
-        "2026-07-06",
-        "rust-analyzer",
-    );
-    type_cmd(&mut ed, ":lsp-rescan-servers");
-
-    let expected_cmd = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("rust-analyzer")
-        .join("rust-analyzer");
-    assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
-        Some(expected_cmd.to_string_lossy().into_owned()),
-        ":lsp-rescan-servers must pick up a receipt written after the initial load-time scan"
-    );
-}
-
-/// A mid-session rescan (`:lsp-rescan-servers`, or the one `:lsp-install`
-/// runs after a successful/up-to-date install) must never clobber a
-/// language the user registered by hand. Only languages nothing has
-/// claimed yet get the catalog default. An unconditional re-registration
-/// of every catalog language would silently replace a manual
-/// `register-lsp-server!` override (documented workflow: a local build, a
-/// version the catalog doesn't carry, or a `$PATH` copy the user wants to
-/// take precedence; see user-manual/docs/lsp.md) on the next rescan.
-#[test]
-fn rescan_does_not_clobber_a_manually_registered_language() {
+fn rescan_does_not_clobber_a_manual_registration_of_the_same_name() {
     let _lock = lock();
     let data_tmp = safe_tempdir();
 
@@ -366,11 +370,11 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
         data_tmp.path(),
         "(load-plugin! \"core:stdlib\")\n\
          (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)\n\
-         (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
-         #:root-markers '(\"Cargo.toml\"))",
+         (register-lsp-server! \"rust-analyzer\" \
+         #:command \"my-custom-rust-analyzer\")",
     );
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some("my-custom-rust-analyzer".to_owned()),
         "precondition: the manual registration from init.scm took effect"
     );
@@ -378,15 +382,58 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
-        "2026-07-06",
+        &seeded_version("rust-analyzer"),
         "rust-analyzer",
     );
-    type_cmd(&mut ed, ":lsp-rescan-servers");
+    type_cmd(&mut ed, ":lsp-install rust-analyzer");
 
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some("my-custom-rust-analyzer".to_owned()),
-        "a rescan must not overwrite a language the user registered manually"
+        "a rescan must not overwrite a server the user registered manually under the same name"
+    );
+}
+
+/// A manual registration under a name of its own is a separate server for
+/// the language: a rescan registers the catalog server beside it and leaves
+/// the manual one as it was.
+#[test]
+fn rescan_registers_the_catalog_server_beside_a_manual_one_of_another_name() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n\
+         (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)\n\
+         (register-lsp-server! \"my-rust-server\" \
+         #:command \"my-custom-rust-analyzer\")",
+    );
+
+    fabricate_server(
+        data_tmp.path(),
+        "rust-analyzer",
+        &seeded_version("rust-analyzer"),
+        "rust-analyzer",
+    );
+    type_cmd(&mut ed, ":lsp-install rust-analyzer");
+
+    let expected_cmd = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("rust-analyzer")
+        .join("rust-analyzer");
+    assert_eq!(
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
+        Some(expected_cmd.to_string_lossy().into_owned()),
+        "a manual registration under another name must not stop the scan registering \
+         the catalog server"
+    );
+    assert_eq!(
+        ed.state.lsp.registered_command_for_test("my-rust-server"),
+        Some("my-custom-rust-analyzer".to_owned()),
+        "the manual registration under its own name must survive the rescan"
     );
 }
 
@@ -395,10 +442,10 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
 /// startup scan, in the very same eval as anything that follows. The user's
 /// own `register-lsp-server!` queued *after* that `load-plugin!` line must
 /// win: `register-lsp-server!` is last-wins over queue order. Differs from
-/// `rescan_does_not_clobber_a_manually_registered_language` above: there,
-/// the receipt is fabricated *after* init.scm's eval, so `load-plugin!`'s own
-/// scan queues nothing competing for "rust" in that eval, so it never
-/// exercises this same-eval race at all.
+/// `rescan_does_not_clobber_a_manual_registration_of_the_same_name` above:
+/// there, the receipt is fabricated *after* init.scm's eval, so
+/// `load-plugin!`'s own scan queues nothing competing for "rust-analyzer" in
+/// that eval, so it never exercises this same-eval race at all.
 #[test]
 fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registration() {
     let _lock = lock();
@@ -416,12 +463,12 @@ fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registrat
         data_tmp.path(),
         "(load-plugin! \"core:stdlib\")\n\
          (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)\n\
-         (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
-         #:root-markers '(\"Cargo.toml\"))",
+         (register-lsp-server! \"rust-analyzer\" \
+         #:command \"my-custom-rust-analyzer\")",
     );
 
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some("my-custom-rust-analyzer".to_owned()),
         "register-lsp-server! queued after load-plugin! must win over the scan's \
          own registration of the already-installed catalog server"
@@ -429,10 +476,9 @@ fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registrat
 }
 
 /// Unlike the sibling test above, this queues the override *before* the
-/// eager `load-plugin!` line. `lsp-registered-for-language?` reads through
-/// the pending op queue, so the scan's no-clobber filter sees this
-/// earlier-queued registration and skips "rust" entirely regardless of
-/// call order.
+/// eager `load-plugin!` line. `lsp-server-registered?` reads through the
+/// pending op queue, so the scan sees this earlier-queued registration and
+/// skips "rust-analyzer" regardless of call order.
 #[test]
 fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
     let _lock = lock();
@@ -449,13 +495,13 @@ fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
         &mut ed,
         data_tmp.path(),
         "(load-plugin! \"core:stdlib\")\n\
-         (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
-         #:root-markers '(\"Cargo.toml\"))\n\
+         (register-lsp-server! \"rust-analyzer\" \
+         #:command \"my-custom-rust-analyzer\")\n\
          (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)",
     );
 
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some("my-custom-rust-analyzer".to_owned()),
         "register-lsp-server! queued before load-plugin! must survive the scan's \
          no-clobber filter, which now reads through the same-eval pending queue"
@@ -469,14 +515,14 @@ fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
 /// same call, with no need to wait for a later effects-applying drain.
 ///
 /// `activate_lazy_language_plugins` (called from `set_buffer_language`,
-/// before `lsp_attach_buffer`) evaluates the plugin inline via
+/// before `lsp_reconcile_buffer`) evaluates the plugin inline via
 /// `activate_and_register` (mappings/lazy.rs), which applies the activating
 /// body's queued side effects (including any `register-lsp-server!`)
 /// through `apply_script_effects` before returning.
 ///
-/// The buffer is given a real path (`lsp_attach_buffer` no-ops on a pathless
-/// buffer) so the attach assertions below actually exercise the attach path,
-/// not just the registration.
+/// The buffer is given a real path (a pathless buffer attaches to no
+/// server) so the attach assertions below exercise the attach path, not
+/// just the registration.
 #[test]
 fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     let _lock = lock();
@@ -498,7 +544,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
         "(load-plugin! \"core:stdlib\")\n(declare-plugin! \"core:lsp-install\" #:languages '(\"rust\"))",
     );
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         None,
         "precondition: core:lsp-install must not have activated yet"
     );
@@ -509,7 +555,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
 
     let bid = ed.focused_buffer_id();
     assert!(
-        ed.state.buffers.get(bid).lsp_server.is_none(),
+        !ed.state.buffer_positions.lsp.has_doc(bid),
         "precondition: buffer must be unattached before core:lsp-install activates"
     );
     let lang = ed.state.config.languages.intern("rust");
@@ -520,17 +566,20 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
         .join("rust-analyzer")
         .join("rust-analyzer");
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some(expected_cmd.to_string_lossy().into_owned()),
         "activating core:lsp-install via a language-set trigger must apply its startup scan \
          immediately, in the same set_buffer_language call"
     );
-    assert!(
-        ed.state.buffers.get(bid).lsp_server.is_some(),
-        "the buffer whose language-set triggered activation must attach in that same \
-         call, not wait for a later effects-applying drain"
+    let attached: Vec<_> = ed.state.buffer_positions.lsp.servers(bid).collect();
+    assert_eq!(
+        attached,
+        ed.state.lsp.instances_named_for_test("rust-analyzer"),
+        "the buffer whose language-set triggered activation must attach to rust-analyzer \
+         in that same call, not wait for a later effects-applying drain"
     );
-    assert_eq!(ed.lsp.server_count_for_test(), 1);
+    assert_eq!(attached.len(), 1);
+    assert_eq!(ed.state.lsp.instance_count_for_test(), 1);
 }
 
 /// Setting a language activates only the registration entry; the install
@@ -585,11 +634,11 @@ fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
 
     type_cmd(&mut ed, ":lsp-install not-a-real-language-xyz");
 
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let log = ed.state.message_log.format_for_display();
     assert!(
-        msg.contains("no language server is seeded"),
+        log.contains("[error] lsp-install: no language or server named"),
         "dispatching :lsp-install must activate the lazily-declared plugin \
-         and then run normally: {msg}"
+         and then run normally: {log}"
     );
 }
 
@@ -631,7 +680,7 @@ fn lsp_install_cargo_git_stub_kind_names_the_kind() {
 }
 
 #[test]
-fn lsp_install_unknown_language_warns() {
+fn lsp_install_unknown_language_reports_an_error() {
     let _lock = lock();
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -639,10 +688,10 @@ fn lsp_install_unknown_language_warns() {
 
     type_cmd(&mut ed, ":lsp-install not-a-real-language-xyz");
 
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
+    let log = ed.state.message_log.format_for_display();
     assert!(
-        msg.contains("no language server is seeded"),
-        "an unseeded language must report, not silently no-op: {msg}"
+        log.contains("[error] lsp-install: no language or server named"),
+        "an unseeded language must report, not no-op: {log}"
     );
 }
 
@@ -797,7 +846,7 @@ fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
 // ── :lsp-install up-to-date path ──────────────────────────────────────────────
 
 /// The up-to-date path still re-registers: a receipt written after the
-/// load-time scan already ran (e.g. installed out-of-band) must be picked
+/// load-time scan already ran must be picked
 /// up by `:lsp-install`'s own post-check rescan, not just reported as
 /// up-to-date and left unregistered.
 #[test]
@@ -808,7 +857,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         None,
         "precondition: nothing installed at load time, so core:lsp-install's load-time scan \
          registered nothing"
@@ -820,7 +869,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
-        "2026-07-13",
+        "2026-10-05",
         "rust-analyzer",
     );
 
@@ -828,7 +877,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
 
     assert_eq!(
         ed.state.status_msg.as_deref(),
-        Some("LSP: rust-analyzer already installed (v2026-07-13) — up to date"),
+        Some("LSP: rust-analyzer already installed (v2026-10-05) — up to date"),
         "must report the up-to-date status"
     );
     let expected_cmd = canonical_data_dir(data_tmp.path())
@@ -836,7 +885,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
         .join("rust-analyzer")
         .join("rust-analyzer");
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some(expected_cmd.to_string_lossy().into_owned()),
         "registration must survive the up-to-date :lsp-install rescan"
     );
@@ -883,7 +932,7 @@ fn lsp_uninstall_removes_registration_and_directory() {
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",
-        "2026-07-06",
+        &seeded_version("rust-analyzer"),
         "rust-analyzer",
     );
 
@@ -893,9 +942,12 @@ fn lsp_uninstall_removes_registration_and_directory() {
         data_tmp.path(),
         "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")",
     );
-    type_cmd(&mut ed, ":lsp-rescan-servers");
+    type_cmd(&mut ed, ":lsp-install rust-analyzer");
     assert!(
-        ed.lsp.config_command_for_test("rust").is_some(),
+        ed.state
+            .lsp
+            .registered_command_for_test("rust-analyzer")
+            .is_some(),
         "precondition: scan must have registered the fabricated install"
     );
 
@@ -904,9 +956,9 @@ fn lsp_uninstall_removes_registration_and_directory() {
     ed.settle();
 
     assert_eq!(
-        ed.lsp.config_command_for_test("rust"),
+        ed.state.lsp.registered_command_for_test("rust-analyzer"),
         None,
-        "uninstall must unregister every language the server served"
+        "uninstall must unregister the server"
     );
     let dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -1031,7 +1083,7 @@ fn lsp_uninstall_rejects_path_traversal_name() {
     );
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("invalid server name") && log.contains("../plugins"),
+        log.contains("[error] lsp-uninstall: invalid server name: ../plugins"),
         "must warn loudly about the rejected name: {log}"
     );
 }
@@ -1051,7 +1103,7 @@ fn lsp_uninstall_rejects_colon_and_quote_in_name() {
     ed.settle();
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("invalid server name") && log.contains("c:evil"),
+        log.contains("[error] lsp-uninstall: invalid server name: c:evil"),
         "must warn loudly about a drive-relative-root name: {log}"
     );
 
@@ -1060,21 +1112,37 @@ fn lsp_uninstall_rejects_colon_and_quote_in_name() {
     ed.settle();
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("invalid server name") && log.contains("a\"b"),
+        log.contains("[error] lsp-uninstall: invalid server name: a\"b"),
         "must warn loudly about a quote-embedded name: {log}"
     );
 }
 
-// ── :lsp-servers ──────────────────────────────────────────────────────────────
-
 #[test]
-fn lsp_servers_command_runs_without_error() {
+fn lsp_uninstall_without_a_name_reports_an_error() {
     let _lock = lock();
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
-    type_cmd(&mut ed, ":lsp-servers");
+    type_cmd(&mut ed, ":lsp-uninstall");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("[error] lsp-uninstall: requires a server name"),
+        "{log}"
+    );
+}
+
+// ── :lsp-catalog ──────────────────────────────────────────────────────────────
+
+#[test]
+fn lsp_catalog_command_runs_without_error() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp_install(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-catalog");
 
     let errors: Vec<&str> = ed
         .state
@@ -1083,7 +1151,7 @@ fn lsp_servers_command_runs_without_error() {
         .filter(|e| e.severity == Severity::Error)
         .map(|e| e.text.as_str())
         .collect();
-    assert!(errors.is_empty(), ":lsp-servers must not error: {errors:?}");
+    assert!(errors.is_empty(), ":lsp-catalog must not error: {errors:?}");
 
     // The trailing `'info` summary lands in `status_msg` (see the
     // `lsp_uninstall_of_never_installed_server_is_silent` comment on
@@ -1093,7 +1161,7 @@ fn lsp_servers_command_runs_without_error() {
         .state
         .status_msg
         .as_deref()
-        .expect("lsp-servers must report a seeded-server count");
+        .expect("lsp-catalog must report a seeded-server count");
     assert!(
         status.starts_with("LSP: ") && status.ends_with(" seeded servers"),
         "unexpected status message: {status}"
@@ -1115,7 +1183,7 @@ fn lsp_servers_command_runs_without_error() {
 // `lsp-show-status!`/`lsp-stop!`/`lsp-restart!` builtins.
 
 #[test]
-fn lsp_status_opens_a_read_only_view_when_no_servers_are_registered() {
+fn lsp_status_opens_a_read_only_view_when_no_servers_are_running() {
     let _lock = lock();
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -1124,7 +1192,7 @@ fn lsp_status_opens_a_read_only_view_when_no_servers_are_registered() {
     type_cmd(&mut ed, ":lsp-status");
 
     assert_eq!(ed.doc().display_name(), "[lsp-status]");
-    assert_eq!(ed.doc().text().to_string(), "No LSP servers registered.\n");
+    assert_eq!(ed.doc().text().to_string(), "No LSP servers running.\n");
 }
 
 #[test]
@@ -1165,12 +1233,7 @@ fn lsp_client_alone_exposes_no_install_commands_and_registers_nothing() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
-    for cmd in [
-        ":lsp-install",
-        ":lsp-uninstall",
-        ":lsp-servers",
-        ":lsp-rescan-servers",
-    ] {
+    for cmd in [":lsp-install", ":lsp-uninstall", ":lsp-catalog"] {
         type_cmd(&mut ed, cmd);
         let log = ed.state.message_log.format_for_display();
         assert!(
@@ -1179,7 +1242,10 @@ fn lsp_client_alone_exposes_no_install_commands_and_registers_nothing() {
         );
     }
     assert!(
-        ed.lsp.config_command_for_test("rust").is_none(),
+        ed.state
+            .lsp
+            .registered_command_for_test("rust-analyzer")
+            .is_none(),
         "core:lsp alone must not scan installed servers"
     );
 }
@@ -1206,7 +1272,7 @@ fn plum_alone_does_not_expose_lsp_status_stop_restart() {
 // `ed.set_buffer_language` + `ed.settle()` is not a `:`-typed command
 // dispatch: it is the same path a buffer opened via a CLI argument at
 // startup takes. These tests therefore also cover that the hook body's
-// ctx-gated `lsp-registered-for-language?` call is safe outside a typed
+// `lsp-language-servers` call is safe outside a typed
 // command's dispatch, not only after one.
 
 #[test]
@@ -1498,8 +1564,9 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
     );
 
     let cmd = ed
+        .state
         .lsp
-        .config_command_for_test("pest")
+        .registered_command_for_test("pest-language-server")
         .expect("pest must be registered after a successful cargo install");
     assert_eq!(
         Path::new(&cmd),
@@ -1540,7 +1607,10 @@ fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
         "no receipt must be committed when the post-install binary check fails"
     );
     assert!(
-        ed.lsp.config_command_for_test("pest").is_none(),
+        ed.state
+            .lsp
+            .registered_command_for_test("pest-language-server")
+            .is_none(),
         "pest must not be registered when the install failed"
     );
 }
@@ -1677,8 +1747,9 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
         "the downloaded archive must be deleted after unpacking"
     );
     let cmd = ed
+        .state
         .lsp
-        .config_command_for_test("lua")
+        .registered_command_for_test("lua-language-server")
         .expect("lua must be registered after a successful install");
     assert_eq!(Path::new(&cmd), bin);
 }
@@ -1758,10 +1829,54 @@ fn lsp_install_raw_binary_is_marked_executable_and_kept() {
         0o755
     );
     let cmd = ed
+        .state
         .lsp
-        .config_command_for_test("markdown")
+        .registered_command_for_test("marksman")
         .expect("markdown must be registered after a successful install");
     assert_eq!(Path::new(&cmd), bin);
+}
+
+/// An install over an existing one touches the server's files only after
+/// the unregister the command queued has stopped the running server: a
+/// running binary cannot be replaced on every platform.
+#[test]
+fn lsp_install_over_an_existing_install_waits_for_the_server_to_stop() {
+    let _lock = lock();
+    let work = safe_tempdir();
+    let asset = work.path().join("marksman-fake");
+    std::fs::write(&asset, b"#!/bin/sh\necho new\n").unwrap();
+    let sources = github_source("marksman", "marksman-fake", &asset, "marksman-fake");
+    let (_shim, path) = write_fake_curl_shim(&asset, &asset.with_extension("curl-argv"));
+    let data_tmp = safe_tempdir();
+    fabricate_server(data_tmp.path(), "marksman", "0.0.1", "marksman-fake");
+    let mut ed = editor_from("-[x]>\n");
+    let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
+    let bin = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("marksman")
+        .join("marksman-fake");
+    let _path = EnvVarGuard::set("PATH", &path);
+
+    type_cmd(&mut ed, ":lsp-install markdown");
+    assert_eq!(
+        std::fs::read_to_string(&bin).unwrap(),
+        "#!/bin/sh\n",
+        "the existing install's files stay until the server has stopped"
+    );
+
+    ed.drain_async_sources();
+    ed.settle();
+    assert_eq!(
+        std::fs::read_to_string(&bin).unwrap(),
+        "#!/bin/sh\necho new\n"
+    );
+    assert_eq!(
+        ed.state
+            .lsp
+            .registered_command_for_test("marksman")
+            .as_deref(),
+        bin.to_str()
+    );
 }
 
 #[test]
@@ -1804,8 +1919,9 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
         .join("terraform-ls")
         .join("terraform-ls");
     let cmd = ed
+        .state
         .lsp
-        .config_command_for_test("hcl")
+        .registered_command_for_test("terraform-ls")
         .expect("hcl must be registered after a successful install");
     assert_eq!(Path::new(&cmd), bin);
 }
@@ -1828,6 +1944,67 @@ fn install_from_fixture(
         type_cmd(&mut ed, &format!(":lsp-install {lang}"));
     }
     (data_tmp, ed, runtime)
+}
+
+/// Install `server` for `lang` from a gzip fixture while an executable named
+/// `command` is on `$PATH`, and return the status message the install leaves.
+fn install_status_with_command_on_path(server: &str, lang: &str, command: &str) -> String {
+    use std::os::unix::fs::PermissionsExt;
+
+    let work = safe_tempdir();
+    let plain = work.path().join("fixture-bin");
+    std::fs::write(&plain, b"#!/bin/sh\n").unwrap();
+    assert!(
+        std::process::Command::new("gzip")
+            .arg("-k")
+            .arg(&plain)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let archive = work.path().join("fixture-bin.gz");
+    let sources = github_source(server, "fixture-bin.gz", &archive, command);
+    let (shim, _) = write_fake_curl_shim(&archive, &archive.with_extension("curl-argv"));
+    let on_path = shim.path().join(command);
+    std::fs::write(&on_path, b"#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&on_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!("{}:/usr/bin:/bin", shim.path().display());
+
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
+    {
+        let _path = EnvVarGuard::set("PATH", &path);
+        type_cmd(&mut ed, &format!(":lsp-install {lang}"));
+    }
+    ed.state.status_msg.clone().unwrap_or_default()
+}
+
+/// A server whose catalog has no `server-commands.scm` row runs a command
+/// named like itself.
+#[test]
+fn install_notes_a_path_command_named_like_the_server() {
+    let _lock = lock();
+
+    let msg = install_status_with_command_on_path("rust-analyzer", "rust", "rust-analyzer");
+
+    assert!(
+        msg.contains("rust-analyzer is also on $PATH"),
+        "the note must name the server's own name as its command: {msg}"
+    );
+}
+
+#[test]
+fn install_notes_a_path_command_from_the_commands_catalog() {
+    let _lock = lock();
+
+    let msg =
+        install_status_with_command_on_path("ada-language-server", "ada", "ada_language_server");
+
+    assert!(
+        msg.contains("ada_language_server is also on $PATH"),
+        "the note must name the command the commands catalog lists: {msg}"
+    );
 }
 
 #[test]
@@ -1867,8 +2044,9 @@ fn lsp_install_gz_asset_is_decoded_and_marked_executable() {
     );
     assert!(!server_dir.join("rust-analyzer-fake.gz").exists());
     let cmd = ed
+        .state
         .lsp
-        .config_command_for_test("rust")
+        .registered_command_for_test("rust-analyzer")
         .expect("rust must be registered after a successful install");
     assert_eq!(Path::new(&cmd), bin);
 }
@@ -1932,7 +2110,12 @@ fn lsp_install_zip_marks_every_regular_file_executable_and_never_follows_symlink
         0o644,
         "a symlink's target must never be chmod'd"
     );
-    assert!(ed.lsp.config_command_for_test("hcl").is_some());
+    assert!(
+        ed.state
+            .lsp
+            .registered_command_for_test("terraform-ls")
+            .is_some()
+    );
 }
 
 #[test]
@@ -1972,7 +2155,12 @@ fn lsp_install_missing_binary_after_unpack_fails_loudly() {
         .join("servers")
         .join("lua-language-server");
     assert!(!server_dir.join("receipt.scm").exists());
-    assert!(ed.lsp.config_command_for_test("lua").is_none());
+    assert!(
+        ed.state
+            .lsp
+            .registered_command_for_test("lua-language-server")
+            .is_none()
+    );
 }
 
 #[test]
@@ -1997,7 +2185,12 @@ fn lsp_install_sha256_mismatch_deletes_the_archive_and_fails() {
         .join("marksman");
     assert!(!server_dir.join("marksman-fake").exists());
     assert!(!server_dir.join("receipt.scm").exists());
-    assert!(ed.lsp.config_command_for_test("markdown").is_none());
+    assert!(
+        ed.state
+            .lsp
+            .registered_command_for_test("marksman")
+            .is_none()
+    );
 }
 
 fn set_lock_mtime(lock_path: &Path, offset_secs: i64) {
@@ -2098,8 +2291,9 @@ fn lsp_install_golang_runs_go_install_into_gobin_and_registers() {
         .join("servers")
         .join("gopls");
     let cmd = ed
+        .state
         .lsp
-        .config_command_for_test("go")
+        .registered_command_for_test("gopls")
         .expect("go must be registered after a successful go install");
     assert_eq!(
         Path::new(&cmd),
@@ -2130,7 +2324,7 @@ fn lsp_install_golang_missing_binary_after_install_fails_loudly() {
         "a go install that produces no binary must fail loudly: {log}"
     );
     assert!(
-        ed.lsp.config_command_for_test("go").is_none(),
+        ed.state.lsp.registered_command_for_test("gopls").is_none(),
         "go must not be registered when the install failed"
     );
 }
@@ -2225,8 +2419,9 @@ fn lsp_install_pypi_creates_a_venv_pip_installs_and_registers() {
     );
 
     let cmd = ed
+        .state
         .lsp
-        .config_command_for_test("python")
+        .registered_command_for_test("ty")
         .expect("python must be registered after a successful pip install");
     assert_eq!(Path::new(&cmd), server_dir.join("venv/bin/ty"));
 }
@@ -2282,7 +2477,7 @@ fn lsp_install_pypi_missing_binary_after_install_fails_loudly() {
         log.contains("expected binary not found after pip install"),
         "a pip install that produces no binary must fail loudly: {log}"
     );
-    assert!(ed.lsp.config_command_for_test("python").is_none());
+    assert!(ed.state.lsp.registered_command_for_test("ty").is_none());
 }
 
 #[test]
@@ -2372,7 +2567,7 @@ fn lsp_install_allows_a_server_whose_platform_list_includes_this_one() {
     }
 
     assert!(
-        ed.lsp.config_command_for_test("python").is_some(),
+        ed.state.lsp.registered_command_for_test("ty").is_some(),
         "an install on a listed platform must register"
     );
 }
@@ -2429,14 +2624,16 @@ fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
     assert_eq!(argv[7], "ruby-lsp-rails", "extra packages follow: {argv:?}");
 
     let cmd = ed
+        .state
         .lsp
-        .config_command_for_test("ruby")
+        .registered_command_for_test("ruby-lsp")
         .expect("ruby must be registered after a successful gem install");
     assert_eq!(Path::new(&cmd), server_dir.join("bin").join("ruby-lsp"));
 
     let env = ed
+        .state
         .lsp
-        .config_env_for_test("ruby")
+        .registered_env_for_test("ruby-lsp")
         .expect("ruby is registered");
     for key in ["GEM_HOME", "GEM_PATH"] {
         let value = env
@@ -2472,7 +2669,12 @@ fn lsp_install_gem_missing_binary_after_install_fails_loudly() {
         log.contains("expected binary not found after gem install"),
         "a gem install that produces no binary must fail loudly: {log}"
     );
-    assert!(ed.lsp.config_command_for_test("ruby").is_none());
+    assert!(
+        ed.state
+            .lsp
+            .registered_command_for_test("ruby-lsp")
+            .is_none()
+    );
 }
 
 #[test]
@@ -2550,8 +2752,9 @@ fn lsp_install_nuget_installs_a_dotnet_tool_and_registers() {
     );
 
     let cmd = ed
+        .state
         .lsp
-        .config_command_for_test("c-sharp")
+        .registered_command_for_test("roslyn-language-server")
         .expect("c-sharp must be registered after a successful dotnet tool install");
     assert_eq!(
         Path::new(&cmd),
@@ -2580,7 +2783,12 @@ fn lsp_install_nuget_missing_binary_after_install_fails_loudly() {
         log.contains("expected binary not found after dotnet install"),
         "a dotnet tool install that produces no binary must fail loudly: {log}"
     );
-    assert!(ed.lsp.config_command_for_test("c-sharp").is_none());
+    assert!(
+        ed.state
+            .lsp
+            .registered_command_for_test("roslyn-language-server")
+            .is_none()
+    );
 }
 
 #[test]
@@ -2601,4 +2809,232 @@ fn lsp_install_nuget_requires_dotnet_on_path() {
         log.contains("requires 'dotnet' on $PATH"),
         "a nuget-kind install must name the missing toolchain: {log}"
     );
+}
+
+/// The servers `language` uses, in order.
+fn effective(ed: &Editor, language: &str) -> Vec<String> {
+    crate::editor::lsp::introspect::language_servers(&ed.state.lsp, language)
+        .into_iter()
+        .map(|entry| entry.name.to_string())
+        .collect()
+}
+
+/// The version `sources.scm` seeds for `server`, read from the file so the
+/// test follows a re-pin.
+fn seeded_version(server: &str) -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../runtime/plugins/core/lsp-install/sources.scm");
+    let text = std::fs::read_to_string(path).unwrap();
+    let row = text
+        .lines()
+        .find(|line| line.trim_start().starts_with(&format!("(\"{server}\" ")))
+        .unwrap_or_else(|| panic!("{server} is not in sources.scm"));
+    let after = &row[row.find("(version . \"").unwrap() + "(version . \"".len()..];
+    after[..after.find('"').unwrap()].to_string()
+}
+
+#[test]
+fn scan_registers_secondary_and_sets_default_order() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    // Fabricated ruff before ty, the reverse of Helix's order, so the
+    // result shows the catalog order, not the install order.
+    fabricate_server(data_tmp.path(), "ruff", "0.0.1", "ruff");
+    fabricate_server(data_tmp.path(), "ty", "0.0.1", "ty");
+    fabricate_server(
+        data_tmp.path(),
+        "typescript-language-server",
+        "0.0.1",
+        "typescript-language-server",
+    );
+
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp_install_eager(&mut ed, data_tmp.path());
+
+    assert_eq!(
+        effective(&ed, "python"),
+        ["ty", "ruff"],
+        "Helix lists python as ty, ruff, jedi, pylsp, zuban: installed ones in that order"
+    );
+    let gjs = crate::editor::lsp::introspect::language_servers(&ed.state.lsp, "gjs");
+    let entry = &gjs[0];
+    assert_eq!(entry.name.as_str(), "typescript-language-server");
+    assert!(!entry.filter.admits(hume_scripting::LspFeature::Format));
+    assert!(!entry.filter.admits(hume_scripting::LspFeature::Diagnostics));
+    assert!(entry.filter.admits(hume_scripting::LspFeature::Hover));
+}
+
+#[test]
+fn user_set_language_servers_overrides_install_default() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    fabricate_server(data_tmp.path(), "ruff", "0.0.1", "ruff");
+    fabricate_server(data_tmp.path(), "ty", "0.0.1", "ty");
+
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n\
+         (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)\n\
+         (set-language-servers! \"python\" '(\"ruff\"))",
+    );
+
+    assert_eq!(effective(&ed, "python"), ["ruff"]);
+}
+
+#[test]
+fn a_manual_registration_no_list_names_does_not_attach() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    fabricate_server(data_tmp.path(), "ruff", "0.0.1", "ruff");
+    fabricate_server(data_tmp.path(), "ty", "0.0.1", "ty");
+
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n\
+         (register-lsp-server! \"mypy\" #:command \"mypy-ls\")\n\
+         (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)",
+    );
+
+    assert_eq!(effective(&ed, "python"), ["ty", "ruff"]);
+}
+
+/// A user list may name any registered server for any language, including a
+/// language the catalog does not list the server under.
+#[test]
+fn a_user_list_attaches_a_server_its_catalog_row_does_not_list() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    for server in [
+        "typescript-language-server",
+        "vscode-eslint-language-server",
+    ] {
+        fabricate_server(data_tmp.path(), server, "0.0.1", server);
+    }
+
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n\
+         (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)\n\
+         (set-language-servers! \"jsx\" '(\"typescript-language-server\" \"vscode-eslint-language-server\"))",
+    );
+
+    assert_eq!(
+        effective(&ed, "jsx"),
+        [
+            "typescript-language-server",
+            "vscode-eslint-language-server"
+        ]
+    );
+    let warnings: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Warning)
+        .map(|e| e.text.as_str())
+        .collect();
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+/// Every catalog language gets its default list at load, with no server
+/// installed: a server registered by hand is then picked up by name.
+#[test]
+fn default_lists_cover_every_catalog_language_with_nothing_installed() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n\
+         (register-lsp-server! \"typescript-language-server\" #:command \"my-tsls\")\n\
+         (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)",
+    );
+
+    assert_eq!(effective(&ed, "jsx"), ["typescript-language-server"]);
+}
+
+#[test]
+fn install_by_server_name_runs_the_same_pipeline() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let version = seeded_version("ruff");
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp_install(&mut ed, data_tmp.path());
+    fabricate_server(data_tmp.path(), "ruff", &version, "ruff");
+
+    type_cmd(&mut ed, ":lsp-install ruff");
+
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some(format!("LSP: ruff already installed (v{version}) — up to date").as_str())
+    );
+    assert!(ed.state.lsp.registered_command_for_test("ruff").is_some());
+    assert_eq!(effective(&ed, "python"), ["ruff"]);
+}
+
+#[test]
+fn install_rejects_a_name_that_is_neither_language_nor_server() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp_install(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-install nosuch");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("[error] lsp-install: no language or server named \"nosuch\" is seeded"),
+        "{log}"
+    );
+}
+
+/// `:lsp-install <name>` reads a name that is both a language and a server as
+/// the server, so such a name must be its own language's primary.
+#[test]
+fn a_name_that_is_both_language_and_server_is_its_own_primary() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../runtime/plugins/core/lsp-install");
+    let servers = std::fs::read_to_string(dir.join("servers.scm")).unwrap();
+    let languages = std::fs::read_to_string(dir.join("language-servers.scm")).unwrap();
+    for row in languages.lines().filter(|l| l.starts_with(" (\"")) {
+        let language = row[3..].split('"').next().unwrap();
+        let primary = row
+            .split("(servers (\"")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        let is_server = servers.contains(&format!("\n (\"{language}\" (args"));
+        assert!(
+            !is_server || primary == language,
+            "{language} is a server name but its language's primary is {primary}"
+        );
+    }
+}
+
+/// The Python sync's feature vocabulary is the one HUME routes by.
+#[test]
+fn sync_script_feature_vocabulary_matches_lsp_feature_all() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/sync-grammars.py");
+    let src = std::fs::read_to_string(path).unwrap();
+    let block = &src[src.find("LSP_FEATURES = (").unwrap()..];
+    let block = &block[..block.find("\n)\n").unwrap()];
+    let mut script: Vec<&str> = block
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix('"')?.strip_suffix("\","))
+        .collect();
+    let mut hume: Vec<&str> = hume_scripting::LspFeature::ALL
+        .iter()
+        .map(|f| f.name())
+        .collect();
+    script.sort_unstable();
+    hume.sort_unstable();
+    assert_eq!(script, hume);
 }

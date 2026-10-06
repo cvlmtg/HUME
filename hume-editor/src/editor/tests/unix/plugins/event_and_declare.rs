@@ -802,7 +802,7 @@ fn plugin_lsp_notification_hook_rolled_back_on_failed_activation() {
 fn on_lsp_notification_event_trigger_activates_on_first_fire() {
     use hume_scripting::attribution::PluginId;
 
-    let (mut ed, _dir) = setup_lazy_editor(
+    let (mut lazy, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:events '(on-lsp-notification))"#,
         r#"(register-hook! 'on-lsp-notification (lambda (server method params)
              (when (equal? method "custom/event")
@@ -813,19 +813,21 @@ fn on_lsp_notification_event_trigger_activates_on_first_fire() {
         repo: "tp".to_string(),
     };
 
-    crate::editor::tests::lsp_bridge::setup_with(&mut ed, |b, sid| {
-        b.push_from_server(
-            sid,
-            hume_lsp::codec::Message::Notification {
-                method: "custom/event".to_string(),
-                params: serde_json::Value::Null,
-            },
-        );
-    });
+    let tmp = safe_tempdir();
+    let mut rig = crate::editor::tests::lsp_bridge::setup_with(tmp.path(), "-[a]>b\n", |_, _| {});
+    rig.ed.scripting = lazy.scripting.take();
+    let sid = rig.sid("rust-analyzer");
 
-    let before = state(&ed);
-    ed.drain_lsp();
-    ed.settle();
+    let before = state(&rig.ed);
+    rig.push(
+        sid,
+        hume_lsp::codec::Message::Notification {
+            method: "custom/event".to_string(),
+            params: serde_json::Value::Null,
+        },
+    );
+    rig.ed.settle();
+    let ed = rig.ed;
 
     assert_ne!(
         state(&ed),
@@ -851,7 +853,7 @@ fn on_lsp_notification_event_trigger_activates_on_first_fire() {
 fn lazy_plugin_activated_by_unlisted_method_traces_unhandled() {
     use hume_scripting::attribution::PluginId;
 
-    let (mut ed, _dir) = setup_lazy_editor(
+    let (mut lazy, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:events '(on-lsp-notification))"#,
         r#"(register-lsp-notification-hook! "m/y"
              (lambda (server method params) (call! "move-right" (focused-pane))))"#,
@@ -861,19 +863,21 @@ fn lazy_plugin_activated_by_unlisted_method_traces_unhandled() {
         repo: "tp".to_string(),
     };
 
-    crate::editor::tests::lsp_bridge::setup_with(&mut ed, |b, sid| {
-        b.push_from_server(
-            sid,
-            hume_lsp::codec::Message::Notification {
-                method: "m/x".to_string(),
-                params: serde_json::Value::Null,
-            },
-        );
-    });
+    let tmp = safe_tempdir();
+    let mut rig = crate::editor::tests::lsp_bridge::setup_with(tmp.path(), "-[a]>b\n", |_, _| {});
+    rig.ed.scripting = lazy.scripting.take();
+    let sid = rig.sid("rust-analyzer");
 
-    let before = state(&ed);
-    ed.drain_lsp();
-    ed.settle();
+    let before = state(&rig.ed);
+    rig.push(
+        sid,
+        hume_lsp::codec::Message::Notification {
+            method: "m/x".to_string(),
+            params: serde_json::Value::Null,
+        },
+    );
+    rig.ed.settle();
+    let ed = rig.ed;
 
     assert_eq!(state(&ed), before, "the m/y handler must not run for m/x");
     assert!(

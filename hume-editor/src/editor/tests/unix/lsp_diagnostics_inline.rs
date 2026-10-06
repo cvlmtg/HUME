@@ -24,7 +24,7 @@ fn single_diagnostic_on_a_line_shows_a_bare_message() {
     // Severity 1 = error, per the LSP DiagnosticSeverity enum.
     let diag: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
     let DiagSetup {
-        ed, _guard, _dirs, ..
+        ed, _guard, _root, ..
     } = setup_diagnostics(FIXTURE, &[diag]);
     let bid = ed.focused_buffer_id();
 
@@ -59,7 +59,7 @@ fn two_diagnostics_on_the_same_line_show_count_and_leftmost_message() {
     let d1: DiagFixture = ((1, 0), (1, 1), 2, "warn near start");
     let d2: DiagFixture = ((1, 1), (1, 2), 1, "error further right");
     let DiagSetup {
-        ed, _guard, _dirs, ..
+        ed, _guard, _root, ..
     } = setup_diagnostics(FIXTURE, &[d1, d2]);
     let bid = ed.focused_buffer_id();
 
@@ -90,7 +90,7 @@ fn inline_color_follows_the_highest_severity_on_the_line_not_the_leftmost() {
     let d1: DiagFixture = ((1, 0), (1, 1), 2, "warn near start");
     let d2: DiagFixture = ((1, 1), (1, 2), 1, "error further right");
     let DiagSetup {
-        ed, _guard, _dirs, ..
+        ed, _guard, _root, ..
     } = setup_diagnostics(FIXTURE, &[d1, d2]);
     let bid = ed.focused_buffer_id();
 
@@ -115,7 +115,7 @@ fn eol_summary_is_flagged_by_default_and_unflagged_when_the_option_is_set() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics(FIXTURE, &[diag]);
     let bid = ed.focused_buffer_id();
@@ -145,7 +145,7 @@ fn eol_summary_respects_the_severity_floor_and_updates_when_it_changes() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics(FIXTURE, &[diag]);
     let bid = ed.focused_buffer_id();
@@ -171,7 +171,7 @@ fn diagnostics_on_different_lines_get_independent_entries() {
     let diag_a: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
     let diag_b: DiagFixture = ((3, 0), (3, 2), 2, "problem B");
     let DiagSetup {
-        ed, _guard, _dirs, ..
+        ed, _guard, _root, ..
     } = setup_diagnostics(FIXTURE, &[diag_a, diag_b]);
     let bid = ed.focused_buffer_id();
 
@@ -209,7 +209,7 @@ fn goto_next_diagnostic_opens_a_dismiss_on_key_popup_with_the_full_message() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics(FIXTURE, &[diag]);
 
@@ -243,7 +243,7 @@ fn the_next_key_after_gn_dismisses_the_popup_but_still_executes() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics(FIXTURE, &[diag_a, diag_b]);
 
@@ -276,7 +276,7 @@ fn diagnostics_drawer_selection_does_not_open_a_popup() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics(FIXTURE, &[diag_a, diag_b]);
 

@@ -4,7 +4,7 @@
 
 use std::time::{Duration, Instant};
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
@@ -13,9 +13,10 @@ use hume_lsp::codec::{Message, RequestId};
 use lsp_types::request::Request as _;
 
 use super::LspState;
-use super::introspect;
+use super::diagnostics::{CANONICALIZE_PER_DRAIN, Ingest};
 use crate::editor::commands::FocusedPane;
-use crate::editor::{Editor, Severity};
+use crate::editor::{Editor, EditorState, Severity};
+use hume_engine::pipeline::EngineView;
 use hume_scripting::PaneHandle;
 
 impl Editor {
@@ -24,75 +25,68 @@ impl Editor {
     /// each client's completed requests (responses + timeouts) via
     /// `take_completed` and dispatches those too.
     pub(in crate::editor) fn drain_lsp(&mut self) {
-        self.flush_lsp_pending_changes();
+        self.state.lsp_flush_pending();
 
-        let events = self.lsp.backend.drain();
-        // Coalesce publishDiagnostics within this batch: keep only the last
-        // one per (server, uri): servers burst-publish and only the newest
-        // matters. Ingested after the loop so a later action for the same
-        // (server, uri) always wins regardless of arrival order within the
-        // batch.
-        // clippy's `mutable_key_type` flags `lsp_types::Uri` for the `Cell`s
-        // inside its underlying `fluent_uri::Uri`'s parse-offset cache, but
-        // `Uri`'s `Hash`/`PartialEq`/`Eq` are hand-implemented against
-        // `.as_str()` only (lsp-types 0.97.0's uri.rs), which those cells
-        // never affect. A false positive for this specific type.
-        #[allow(clippy::mutable_key_type)]
-        let mut diag_batch: FxHashMap<
-            (ServerId, lsp_types::Uri),
-            lsp_types::PublishDiagnosticsParams,
-        > = FxHashMap::default();
+        let events = self.state.lsp.backend.drain();
         for (server_id, ev) in events {
-            let actions = match self.lsp.servers.get_mut(&server_id) {
-                Some(entry) => entry.client.on_event(ev),
+            let actions = match self.state.lsp.instances.get_mut(server_id) {
+                Some(instance) => instance.client.on_event(ev),
                 None => continue,
             };
             for action in actions {
-                if let ClientAction::Diagnostics(params) = action {
-                    diag_batch.insert((server_id, params.uri.clone()), params);
-                    continue;
-                }
                 self.dispatch_lsp_action(server_id, action);
             }
         }
-        // OnDiagnosticsChanged fires once per buffer this batch actually
-        // touched: a FxHashSet dedupes two (server, uri) entries that both
-        // resolved to the same buffer (multiple roots, same file; not a v1
-        // scenario, but cheap to get right).
-        let mut touched: FxHashSet<BufferId> = FxHashSet::default();
-        for ((server_id, _uri), params) in diag_batch {
-            if let Some(bid) = self.ingest_publish_diagnostics(server_id, params) {
-                touched.insert(bid);
-            }
-        }
-        for bid in touched {
-            self.queue_diagnostics_changed(bid);
-        }
+        self.ingest_published();
 
         let now = Instant::now();
 
         // Advance the statusline loading spinner while any server is mid-
         // handshake or reporting `$/progress`, idle otherwise, so the
         // frame counter doesn't drift while there's nothing to animate.
-        if self.lsp.has_animating_server() {
-            self.lsp.spinner.maybe_advance(now);
+        if self.state.lsp.has_animating_server() {
+            self.state.lsp.spinner.maybe_advance(now);
         }
 
-        let server_ids: Vec<ServerId> = self.lsp.servers.keys().copied().collect();
-        for server_id in server_ids {
+        for server_id in self.state.lsp.instances.ids() {
             let LspState {
-                servers, backend, ..
-            } = &mut self.lsp;
-            let (completed, actions) = match servers.get_mut(&server_id) {
-                Some(entry) => entry.client.take_completed(backend.as_mut(), now),
+                instances, backend, ..
+            } = &mut self.state.lsp;
+            let (completed, actions) = match instances.get_mut(server_id) {
+                Some(instance) => instance.client.take_completed(backend.as_mut(), now),
                 None => continue,
             };
             for action in actions {
                 self.dispatch_lsp_action(server_id, action);
             }
             for (id, meta, outcome) in completed {
-                self.dispatch_completed(server_id, id, meta, outcome);
+                self.state
+                    .lsp_dispatch_completed(&self.view, server_id, id, meta, outcome);
             }
+        }
+    }
+
+    /// Ingests the queued `publishDiagnostics`, within one `canonicalize()`
+    /// budget, and defers what the budget leaves. `OnDiagnosticsChanged`
+    /// fires once per buffer this batch actually touched: a `FxHashSet`
+    /// dedupes two (server, uri) entries that both resolved to the same
+    /// buffer.
+    pub(in crate::editor) fn ingest_published(&mut self) {
+        let mut touched: FxHashSet<BufferId> = FxHashSet::default();
+        let mut canonicalize_budget = CANONICALIZE_PER_DRAIN;
+        for (server_id, published) in self.state.lsp.publishes.take_all() {
+            match self.ingest_publish_diagnostics(server_id, published, &mut canonicalize_budget) {
+                Ingest::Done(Some(bid)) => {
+                    touched.insert(bid);
+                }
+                Ingest::Done(None) => {}
+                Ingest::Deferred(published) => {
+                    self.state.lsp.publishes.defer(server_id, published);
+                }
+            }
+        }
+        for bid in touched {
+            self.queue_diagnostics_changed(bid);
         }
     }
 
@@ -115,20 +109,20 @@ impl Editor {
     /// lingering response or stderr line has nowhere useful to go while the
     /// editor is tearing down.
     pub(crate) fn lsp_shutdown_all(&mut self, grace: Duration) {
-        if self.lsp.servers.is_empty() {
+        let server_ids = self.state.lsp.instances.ids();
+        if server_ids.is_empty() {
             return;
         }
 
-        let server_ids: Vec<ServerId> = self.lsp.servers.keys().copied().collect();
         let mut awaiting_eof: FxHashSet<ServerId> = FxHashSet::default();
         for &server_id in &server_ids {
             let LspState {
-                servers, backend, ..
-            } = &mut self.lsp;
-            if let Some(entry) = servers.get_mut(&server_id)
-                && entry.client.state() == ServerState::Running
+                instances, backend, ..
+            } = &mut self.state.lsp;
+            if let Some(instance) = instances.get_mut(server_id)
+                && instance.client.state() == ServerState::Running
             {
-                entry.client.begin_shutdown(backend.as_mut());
+                instance.client.begin_shutdown(backend.as_mut());
                 awaiting_eof.insert(server_id);
             }
         }
@@ -136,7 +130,7 @@ impl Editor {
         if !awaiting_eof.is_empty() {
             let deadline = Instant::now() + grace;
             while !awaiting_eof.is_empty() && Instant::now() < deadline {
-                for (server_id, ev) in self.lsp.backend.drain() {
+                for (server_id, ev) in self.state.lsp.backend.drain() {
                     if matches!(ev, hume_lsp::transport::InboundEvent::Eof { .. }) {
                         awaiting_eof.remove(&server_id);
                     }
@@ -148,7 +142,7 @@ impl Editor {
         }
 
         for server_id in server_ids {
-            self.lsp.backend.shutdown(server_id);
+            self.state.lsp.backend.shutdown(server_id);
         }
     }
 
@@ -160,44 +154,34 @@ impl Editor {
         match action {
             ClientAction::BecameRunning { send } => {
                 for msg in send {
-                    self.lsp.backend.send(server_id, msg);
+                    self.state.lsp.backend.send(server_id, msg);
                 }
                 // Fire on-lsp-attach for every buffer already attached to
-                // this server: it was Starting until now, so `lsp_attach_buffer`
+                // this server: it was Starting until now, so attaching
                 // skipped firing it for them.
-                if let Some(lang) = introspect::server_language(&self.lsp, server_id) {
-                    let bids: Vec<BufferId> = self
-                        .state
-                        .buffers
-                        .iter()
-                        .filter(|(_, buf)| buf.lsp_server == Some(server_id))
-                        .map(|(bid, _)| bid)
-                        .collect();
-                    for bid in bids {
-                        self.queue_lsp_attach(bid, &lang);
-                    }
+                for bid in self.state.buffer_positions.lsp.buffers_of(server_id) {
+                    self.state.queue_lsp_attach(bid, server_id);
                 }
             }
             ClientAction::Crashed { error } => {
                 let name = self.lsp_server_name(server_id);
                 self.report(
                     Severity::Error,
-                    format!(
-                        "lsp: {name} crashed{}",
-                        error.map(|e| format!(": {e}")).unwrap_or_default()
-                    ),
+                    format!("lsp: {}", super::crashed_text(&name, error.as_deref())),
                 );
                 // Fail every in-flight request immediately rather than
                 // leaving each to expire on its own deadline. The crash is
-                // already known, so there's nothing to wait for. Mirrors
-                // `:lsp-stop`'s own teardown (`lsp_stop_one`).
-                if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
+                // already known, so there's nothing to wait for. Buffers
+                // stay attached: routing skips a crashed server, and
+                // `:lsp-restart` reconciles them onto a fresh instance.
+                if let Some(instance) = self.state.lsp.instances.get_mut(server_id) {
                     // A crashed server can't finish whatever it was loading:
                     // drop its tracked progress so the statusline spinner
                     // doesn't keep animating for a server that's gone.
-                    entry.progress.clear();
-                    for (id, meta) in entry.client.drain_pending() {
-                        self.dispatch_completed(server_id, id, meta, Outcome::TimedOut);
+                    instance.progress.clear();
+                    for (id, meta, outcome) in instance.client.drain_pending() {
+                        self.state
+                            .lsp_dispatch_completed(&self.view, server_id, id, meta, outcome);
                     }
                 }
             }
@@ -207,23 +191,28 @@ impl Editor {
                 let result = if method == lsp_types::request::ApplyWorkspaceEdit::METHOD {
                     self.apply_edit_request_response(&params, server_id)
                 } else {
-                    let settings = introspect::server_language(&self.lsp, server_id)
-                        .and_then(|lang| self.lsp.configs.get(&lang))
-                        .and_then(|cfg| cfg.settings.as_ref());
+                    let settings = self
+                        .state
+                        .lsp
+                        .instances
+                        .get(server_id)
+                        .and_then(|i| i.client.settings());
                     server_request_response(&method, &params, settings)
                 };
-                self.lsp
+                self.state
+                    .lsp
                     .backend
                     .send(server_id, Message::Response { id, result });
             }
-            ClientAction::Diagnostics(params) => {
-                // The uncoalesced single-notification path: `drain_lsp`'s
-                // batching loop intercepts and coalesces `Diagnostics`
-                // before dispatch, so this arm only fires for a test or any
-                // future caller that dispatches one directly.
-                if let Some(bid) = self.ingest_publish_diagnostics(server_id, params) {
-                    self.queue_diagnostics_changed(bid);
-                }
+            ClientAction::Diagnostics(published) => {
+                // Queued, the newest per (server, uri): servers
+                // burst-publish and only the newest matters. `drain_lsp`
+                // ingests the queue after dispatching a whole batch, so a
+                // later action for the same (server, uri) wins whatever its
+                // arrival order, and a publish an earlier drain deferred is
+                // still waiting there.
+                self.note_skipped_diagnostics(server_id, &published);
+                self.state.lsp.publishes.offer(server_id, published);
             }
             ClientAction::Progress(params) => {
                 self.handle_progress(server_id, params);
@@ -253,14 +242,14 @@ impl Editor {
         }
     }
 
-    /// Name used to prefix this server's log lines: the registered
-    /// `command` string, or `"lsp"` if the server was never registered
-    /// through the normal path (shouldn't happen outside tests).
+    /// Name used to prefix this server's log lines: its registration name,
+    /// or `"lsp"` for one no longer running.
     pub(super) fn lsp_server_name(&self, server_id: ServerId) -> String {
-        self.lsp
-            .servers
-            .get(&server_id)
-            .map(|e| e.name.clone())
+        self.state
+            .lsp
+            .instances
+            .get(server_id)
+            .map(|i| i.name.to_string())
             .unwrap_or_else(|| "lsp".to_string())
     }
 
@@ -279,84 +268,68 @@ impl Editor {
         method: &str,
         params: serde_json::Value,
     ) {
-        let name = self.lsp_server_name(server_id);
-        // The registered language is the "server name" the Steel surface deals
-        // in, since that's what `register-lsp-server!` uses, the sole
-        // server-name-string argument on the LSP builtins surface.
-        let server = introspect::server_language(&self.lsp, server_id);
         // No untagged fallback: a notification's params may carry wire
         // positions (e.g. a server-defined custom notification echoing a
-        // range), so an untracked server (crashed between sending this and
+        // range), so an untracked server (stopped between sending this and
         // it being drained) is dropped rather than tagged with a guessed
         // encoding.
-        let Some(encoding) = introspect::server_encoding(&self.lsp, server_id) else {
+        let Some((server, encoding)) = self.state.lsp.instances.origin(server_id) else {
             self.report(
                 Severity::Trace,
-                format!("{name}: dropping {method} from an untracked server"),
+                format!("lsp: dropping {method} from an untracked server"),
             );
             return;
         };
         self.state
             .queue_event(crate::editor::event::EditorEvent::OnLspNotification {
-                server_name: name,
                 server,
                 method: method.to_owned(),
                 params: std::sync::Arc::new(params),
-                origin: hume_scripting::json::WireOrigin::Server(encoding),
+                origin: hume_scripting::json::WireOrigin::Server {
+                    id: server_id,
+                    encoding,
+                },
             });
     }
+}
 
-    pub(super) fn dispatch_completed(
+impl EditorState {
+    /// Hands `server_id`'s answer to request `id` to the delivery slot that
+    /// waits for it. Every way a request ends (response, timeout, crash,
+    /// stop) arrives here.
+    pub(in crate::editor) fn lsp_dispatch_completed(
         &mut self,
+        view: &EngineView,
         server_id: ServerId,
         id: RequestId,
         meta: RequestMeta,
         outcome: Outcome,
     ) {
-        // A tracked `#:supersede` entry for this id is finished with:
-        // response, timeout, crash-drain, and `:lsp-stop`-drain all arrive
-        // here, so this is the one chokepoint that can't miss any of them.
-        self.lsp
-            .supersede
-            .retain(|(sid, _), rid| !(*sid == server_id && *rid == id));
-
-        let Some(entry) = self.lsp.callbacks.remove(&(server_id, id)) else {
-            // No callback is ever registered for the internal `shutdown`
-            // request (it's fire-and-forget from `begin_shutdown`): a
-            // server-side error on it would otherwise vanish silently.
-            if meta.method == lsp_types::request::Shutdown::METHOD
-                && let Outcome::Err(e) = &outcome
-            {
-                self.report(
-                    Severity::Trace,
-                    format!("lsp: shutdown failed: {} ({})", e.message, e.code),
-                );
-            }
+        let Some(outcome) = self.lsp_fill_slot(view, server_id, id, &meta, outcome) else {
             return;
         };
-
-        if matches!(outcome, Outcome::TimedOut) {
-            self.report(Severity::Trace, format!("lsp: {} timed out", meta.method));
-            // Dispatched (not dropped): a callback that never fires on
-            // timeout means a caller (e.g. a Steel err-mapped callback)
-            // has no way to notice and would hang silently. TimedOut still
-            // goes through the staleness check below like any other outcome.
+        // No delivery is ever filed for the internal `shutdown` request
+        // (it's fire-and-forget from `begin_shutdown`): a server-side error
+        // on it would otherwise vanish silently.
+        if meta.method == lsp_types::request::Shutdown::METHOD
+            && let Outcome::Err(e) = &outcome
+        {
+            self.report(
+                Severity::Trace,
+                format!("lsp: shutdown failed: {} ({})", e.message, e.code),
+            );
         }
-
-        if !self.anchor_admits(&entry.anchor) {
-            self.release_request_position(&entry.anchor);
-            return;
-        }
-
-        (entry.callback)(self, server_id, outcome);
     }
 
-    /// Releases the position `anchor`'s request holds, unless its callback
-    /// kept it: every place a request's callback has run, or is dropped
-    /// without running, calls this.
-    pub(in crate::editor) fn release_request_position(&mut self, anchor: &super::ResponseAnchor) {
-        if let Some(token) = anchor.tracked {
-            self.state.panes.tracked.release_unless_kept(token);
+    /// Releases the position a request holds through `#:tracked`, unless its
+    /// callback kept it: every place a request's callback has run, or is
+    /// dropped without running, calls this.
+    pub(in crate::editor) fn release_request_position(
+        &mut self,
+        tracked: Option<hume_scripting::host::HostToken>,
+    ) {
+        if let Some(token) = tracked {
+            self.panes.tracked.release_unless_kept(token);
         }
     }
 
@@ -367,22 +340,22 @@ impl Editor {
     /// is the more targeted opt-out (a single request's own reason for
     /// tolerating staleness), so it decides before focus is even considered.
     ///
-    /// Two call points, not one: [`Self::dispatch_completed`] (this file)
-    /// checks it at LSP drain time, the only gate at all for a response
-    /// with no Steel callback to queue (`completionItem/resolve`'s inline
-    /// Rust path), and an early drop for a Steel one, before its `(proc,
-    /// args)` is even queued. `Editor::run_pending_batch`
+    /// Two call points, not one: `finish_delivery` (`bridge.rs`) checks it at
+    /// LSP drain time, the only gate at all for a delivery answered by a
+    /// Rust responder (`completionItem/resolve`), and an early drop for a
+    /// Steel one, before its `(proc, args)` is even queued.
+    /// `Editor::run_pending_batch`
     /// (`scripting_setup.rs`) re-checks the same anchor for a queued Steel
     /// callback right before it actually runs: arbitrary other queued work
     /// (a hook, an earlier callback in the same batch) can execute between
     /// the two checks and change the state the first one saw, so admission
     /// at drain time alone doesn't guarantee admission at run time.
-    pub(in crate::editor) fn anchor_admits(&mut self, anchor: &super::ResponseAnchor) -> bool {
-        let current_gen = self
-            .state
-            .buffers
-            .try_get(anchor.bid)
-            .map(|b| b.text().version());
+    pub(in crate::editor) fn anchor_admits(
+        &mut self,
+        view: &EngineView,
+        anchor: &super::ResponseAnchor,
+    ) -> bool {
+        let current_gen = self.buffers.try_get(anchor.bid).map(|b| b.text().version());
         if current_gen != Some(anchor.version) && !anchor.allow_stale {
             return false; // dropped silently, per parse-worker staleness discipline
         }
@@ -396,7 +369,7 @@ impl Editor {
             // menu over the wrong pane. Exactly `FocusedPane::resolve`'s own
             // check, against the handle the request was made from.
             let handle = PaneHandle::with_pane(anchor.bid, pid);
-            if FocusedPane::resolve(&self.state, &self.view, handle).is_err() {
+            if FocusedPane::resolve(self, view, handle).is_err() {
                 self.report(
                     Severity::Trace,
                     "lsp-request!: the focused pane moved before the response could open; ignored"

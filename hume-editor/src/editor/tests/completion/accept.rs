@@ -132,11 +132,11 @@ fn accept_over_a_list_default_edit_range() {
         tmp.path(),
         &completion_source(
             "test",
-            r#"(hash "isIncomplete" #f
-                     "itemDefaults" (hash "editRange" (hash "start" (hash "line" 0 "character" 1)
-                                                            "end" (hash "line" 0 "character" 4)))
-                     "items" (list (hash "label" "format!" "filterText" ".format!"
-                                         "textEditText" "->format!")))"#,
+            r#"(list (hash "isIncomplete" #f
+                           "itemDefaults" (hash "editRange" (hash "start" (hash "line" 0 "character" 1)
+                                                                  "end" (hash "line" 0 "character" 4)))
+                           "items" (list (hash "label" "format!" "filterText" ".format!"
+                                               "textEditText" "->format!"))))"#,
             "",
         ),
     );
@@ -240,8 +240,7 @@ fn dismiss_clears_the_session_so_a_later_accept_errors() {
 #[test]
 fn a_buffer_edit_outside_the_token_does_not_invalidate_the_session() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    super::super::lsp_bridge::setup_with(&mut ed, |backend, _sid| {
+    let rig = super::super::lsp_bridge::setup_with(tmp.path(), "-[a]>bcdef\n", |backend, _sid| {
         // `apply-text-edits!` now only accepts a server-tagged wire edit
         // (via a real response). This canned response is what the
         // `:stash` dispatch below (run before `finish`, which reads it
@@ -251,6 +250,7 @@ fn a_buffer_edit_outside_the_token_does_not_invalidate_the_session() {
             serde_json::json!([{"range": {"start": {"line": 0, "character": 6}, "end": {"line": 0, "character": 6}}, "newText": "Q"}]),
         );
     });
+    let mut ed = rig.ed;
     raw_insert_with_source(
         &mut ed,
         tmp.path(),

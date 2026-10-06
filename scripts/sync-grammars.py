@@ -6,11 +6,17 @@ Reads the pinned SHA from runtime/scheme/helix-pin.scm, fetches helix's
 languages.toml at that commit, and rewrites:
   - languages.scm       — (define-language! …) for every [[language]] block
   - grammar-sources.scm — tree-sitter grammar source catalog
-  - lsp-install/servers.scm — LSP server registration catalog, derived from
-    [[language]].language-servers and [language-server.*]
+  - lsp-install/servers.scm — each server's args and config, derived from
+    [language-server.*]
+  - lsp-install/language-servers.scm — each language's root markers and ordered
+    server list, with Helix's only-features/except-features per entry
+  - lsp-install/server-commands.scm — the command of each server whose command
+    differs from its name, read by the install pipeline and by sync-lsp-sources.py
 
 Idempotent: running twice produces byte-identical files.
 """
+
+from __future__ import annotations
 
 import json
 import sys
@@ -41,6 +47,12 @@ HELIX_PIN_SCM = REPO / "runtime" / "scheme" / "helix-pin.scm"
 LANGUAGES_SCM = REPO / "runtime" / "scheme" / "languages.scm"
 GRAMMAR_SOURCES_SCM = REPO / "runtime" / "scheme" / "grammar-sources.scm"
 LSP_SERVERS_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "servers.scm"
+LANGUAGE_SERVERS_SCM = (
+    REPO / "runtime" / "plugins" / "core" / "lsp-install" / "language-servers.scm"
+)
+SERVER_COMMANDS_SCM = (
+    REPO / "runtime" / "plugins" / "core" / "lsp-install" / "server-commands.scm"
+)
 
 LANGUAGES_HEADER = """\
 ;;; runtime/scheme/languages.scm — HUME bundled default language identities.
@@ -54,8 +66,47 @@ GRAMMAR_SOURCES_HEADER = """\
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
 
+LANGUAGE_SERVERS_HEADER = """\
+;;; runtime/plugins/core/lsp-install/language-servers.scm — each language's ordered LSP server list.
+;;; Generated — do not hand-edit. Record format: README.md, this directory.
+;;; Source: helix-editor/helix languages.toml @ {sha}
+"""
+
+# Helix's `language-servers` feature vocabulary (its LanguageServerFeature
+# enum), which HUME's own LspFeature::ALL mirrors; a drift test in
+# hume-editor compares the two.
+LSP_FEATURES = (
+    "format",
+    "goto-declaration",
+    "goto-definition",
+    "goto-type-definition",
+    "goto-reference",
+    "goto-implementation",
+    "signature-help",
+    "hover",
+    "document-highlight",
+    "completion",
+    "code-action",
+    "document-links",
+    "workspace-command",
+    "document-symbols",
+    "workspace-symbols",
+    "diagnostics",
+    "pull-diagnostics",
+    "rename-symbol",
+    "inlay-hints",
+    "document-colors",
+    "call-hierarchy",
+)
+
 LSP_SERVERS_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/servers.scm — HUME bundled LSP server registration catalog.
+;;; Generated — do not hand-edit. Record format: README.md, this directory.
+;;; Source: helix-editor/helix languages.toml @ {sha}
+"""
+
+SERVER_COMMANDS_HEADER = """\
+;;; runtime/plugins/core/lsp-install/server-commands.scm — the command of each bundled LSP server whose command differs from its name.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
@@ -90,7 +141,7 @@ def parse_grammars(doc: dict) -> dict[str, dict]:
 
 
 def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
-    """Return [{name, extensions, globs, shebangs, grammar_name, language_id}] for each language."""
+    """Return [{name, extensions, globs, shebangs, roots, grammar_name, language_id}] for each language."""
     langs = []
     overrides = []
     no_grammar = []
@@ -126,6 +177,7 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
                 "extensions": extensions,
                 "globs": globs,
                 "shebangs": shebangs,
+                "roots": entry.get("roots", []),
                 "grammar_name": grammar_name,
                 "language_id": entry.get("language-id"),
             }
@@ -195,22 +247,25 @@ def emit_language_identities(langs: list[dict]) -> list[str]:
         globs = lang["globs"]
         shebangs = lang["shebangs"]
         language_id = lang.get("language_id")
-        language_id_suffix = f" #:language-id {scheme_str(language_id)}" if language_id else ""
+        roots = lang["roots"]
+        suffix = f" #:language-id {scheme_str(language_id)}" if language_id else ""
+        if roots:
+            suffix += f" #:roots {scheme_list(roots)}"
 
         if shebangs:
             lines.append(
                 f"(define-language! {name_s} {scheme_list(exts)} {scheme_list(globs)} "
-                f"{scheme_list(shebangs)}{language_id_suffix})"
+                f"{scheme_list(shebangs)}{suffix})"
             )
         elif globs:
             lines.append(
                 f"(define-language! {name_s} {scheme_list(exts)} {scheme_list(globs)}"
-                f"{language_id_suffix})"
+                f"{suffix})"
             )
         elif exts:
-            lines.append(f"(define-language! {name_s} {scheme_list(exts)}{language_id_suffix})")
+            lines.append(f"(define-language! {name_s} {scheme_list(exts)}{suffix})")
         else:
-            lines.append(f"(define-language! {name_s}{language_id_suffix})")
+            lines.append(f"(define-language! {name_s}{suffix})")
     return lines
 
 
@@ -234,59 +289,78 @@ CONFIG_OVERRIDES: dict[str, Callable[[dict], dict]] = {
 }
 
 
-def parse_language_servers(doc: dict) -> dict[str, dict]:
-    """Return {server_name: {command, args, config, languages}}.
+def server_list_entry(element, lang_name: str) -> tuple[str, tuple[str, list[str]] | None]:
+    """One [[language]].language-servers element as (name, filter).
 
-    Only the primary (first-listed) language-server per language is kept —
-    HUME's client is single-server-per-buffer in v1, so Helix's non-primary
-    servers for a language (e.g. python's ["ty", "ruff", "jedi", "pylsp"])
-    are not seeded. This also guarantees no two servers ever claim the same
-    language, checked by check_lsp_invariants below.
+    An element is a bare name, or an inline table (`{ name = "...",
+    only-features = [...] }`, e.g. gjs/gts/hare) carrying one feature filter:
+    `None`, ("only", features) or ("except", features). A table giving both
+    filters is fatal, matching what HUME's own `set-language-servers!` rejects.
+    """
+    if isinstance(element, str):
+        return element, None
+    name = element["name"]
+    only = element.get("only-features")
+    except_ = element.get("except-features")
+    if only is not None and except_ is not None:
+        sys.exit(
+            f"error: language '{lang_name}': server '{name}' gives both "
+            f"only-features and except-features"
+        )
+    if only is not None:
+        return name, ("only", list(only))
+    if except_ is not None:
+        return name, ("except", list(except_))
+    return name, None
 
-    A language whose primary server has no [language-server.*] table at all
-    (upstream gap — e.g. haxe -> haxe-language-server at helix-pin
-    8c41b1160792) is skipped with a report, not fatal: the language simply
-    has no seedable server, same as a language with no grammar.
+
+def parse_language_servers(
+    doc: dict,
+) -> tuple[dict[str, dict], dict[str, list[tuple[str, tuple[str, list[str]] | None]]]]:
+    """Return (servers, language_lists).
+
+    `servers` is {server_name: {command, args, config}} for every server any
+    language lists. `language_lists` is {language: [(server_name, filter)]}:
+    the language's servers in Helix's order (their order is priority order).
+
+    A server with no [language-server.*] command table at all (upstream gap
+    — e.g. haxe -> haxe-language-server at helix-pin 8c41b1160792) is left
+    out of both, with a report, not fatal: the language simply has no
+    seedable entry for it, same as a language with no grammar.
     """
     server_defs = doc.get("language-server", {})
     servers: dict[str, dict] = {}
+    language_lists: dict[str, list[tuple[str, tuple[str, list[str]] | None]]] = {}
     ignored_keys: set[str] = set()
     broken_servers: dict[str, list[str]] = {}
 
     for entry in doc.get("language", []):
         lang_name = entry["name"]
-        ls_list = entry.get("language-servers", [])
-        if not ls_list:
-            continue
-        primary = ls_list[0]
-        # Some entries are inline tables ({ name = "...", except-features = [...] },
-        # e.g. gjs/gts/hare) — except-features filters are meaningless to a
-        # single-server client, so only the name is kept.
-        server_name = primary["name"] if isinstance(primary, dict) else primary
-        roots = entry.get("roots", [])
 
-        if server_name in broken_servers:
-            broken_servers[server_name].append(lang_name)
-            continue
+        for element in entry.get("language-servers", []):
+            server_name, feature_filter = server_list_entry(element, lang_name)
 
-        if server_name not in servers:
-            ls_def = server_defs.get(server_name)
-            if ls_def is None or "command" not in ls_def:
-                broken_servers[server_name] = [lang_name]
+            if server_name in broken_servers:
+                broken_servers[server_name].append(lang_name)
                 continue
-            config = ls_def.get("config")
-            if config and "hostInfo" in config:
-                config = {**config, "hostInfo": "hume"}
-            if config and server_name in CONFIG_OVERRIDES:
-                config = CONFIG_OVERRIDES[server_name](config)
-            ignored_keys.update(k for k in ls_def if k not in ("command", "args", "config"))
-            servers[server_name] = {
-                "command": ls_def["command"],
-                "args": ls_def.get("args", []),
-                "config": config,
-                "languages": [],
-            }
-        servers[server_name]["languages"].append((lang_name, *roots))
+
+            if server_name not in servers:
+                ls_def = server_defs.get(server_name)
+                if ls_def is None or "command" not in ls_def:
+                    broken_servers[server_name] = [lang_name]
+                    continue
+                config = ls_def.get("config")
+                if config and "hostInfo" in config:
+                    config = {**config, "hostInfo": "hume"}
+                if config and server_name in CONFIG_OVERRIDES:
+                    config = CONFIG_OVERRIDES[server_name](config)
+                ignored_keys.update(k for k in ls_def if k not in ("command", "args", "config"))
+                servers[server_name] = {
+                    "command": ls_def["command"],
+                    "args": ls_def.get("args", []),
+                    "config": config,
+                }
+            language_lists.setdefault(lang_name, []).append((server_name, feature_filter))
 
     if ignored_keys:
         print(
@@ -296,61 +370,92 @@ def parse_language_servers(doc: dict) -> dict[str, dict]:
     if broken_servers:
         total = sum(len(v) for v in broken_servers.values())
         print(
-            f"skipped {total} language(s) — primary language-server has no "
+            f"skipped {total} language(s) — a listed language-server has no "
             f"[language-server.*] command table ({len(broken_servers)} server(s)):",
             file=sys.stderr,
         )
         for server_name, lang_names in sorted(broken_servers.items()):
             print(f"  {server_name}: {', '.join(sorted(lang_names))}", file=sys.stderr)
 
-    return servers
+    return servers, language_lists
 
 
-def check_lsp_invariants(servers: dict[str, dict], langs: list[dict]) -> None:
-    """Fatal cross-checks: every emitted language exists and belongs to exactly
-    one server. Both hold by construction (parse_language_servers only ever
-    appends a language to the first server it names) — asserted here so a
-    future refactor cannot silently break the invariant."""
+def check_lsp_invariants(
+    servers: dict[str, dict],
+    langs: list[dict],
+    language_lists: dict[str, list[tuple[str, tuple[str, list[str]] | None]]],
+) -> None:
+    """Fatal cross-checks on what the emitted files will say: every language
+    exists, every listed server is seeded, no list names a server twice, and
+    every feature name is one HUME routes by."""
     lang_names = {lang["name"] for lang in langs}
-    owner: dict[str, str] = {}
-    for server_name, s in servers.items():
-        for lang_tuple in s["languages"]:
-            lang_name = lang_tuple[0]
-            if lang_name not in lang_names:
+    for lang_name, entries in language_lists.items():
+        if lang_name not in lang_names:
+            sys.exit(f"error: language-servers.scm: '{lang_name}' is not a known language")
+        seen: set[str] = set()
+        for server_name, feature_filter in entries:
+            if server_name not in servers:
                 sys.exit(
-                    f"error: servers.scm invariant violated: language "
-                    f"'{lang_name}' (server '{server_name}') is not a known language"
+                    f"error: language-servers.scm: '{lang_name}' lists "
+                    f"'{server_name}', which servers.scm does not seed"
                 )
-            if lang_name in owner and owner[lang_name] != server_name:
+            if server_name in seen:
                 sys.exit(
-                    f"error: servers.scm invariant violated: language "
-                    f"'{lang_name}' claimed by both '{owner[lang_name]}' and '{server_name}'"
+                    f"error: language-servers.scm: '{lang_name}' lists "
+                    f"'{server_name}' twice"
                 )
-            owner[lang_name] = server_name
+            seen.add(server_name)
+            for feature in feature_filter[1] if feature_filter else []:
+                if feature not in LSP_FEATURES:
+                    sys.exit(
+                        f"error: language-servers.scm: '{lang_name}' / '{server_name}': "
+                        f"unknown feature '{feature}'"
+                    )
 
 
 def emit_lsp_servers(servers: dict[str, dict]) -> list[str]:
     rows = []
     for name in sorted(servers):
         s = servers[name]
-        langs_sexpr = " ".join(
-            "({})".format(" ".join(scheme_str(x) for x in lang_tuple))
-            for lang_tuple in s["languages"]
-        )
         args_sexpr = " ".join(scheme_str(a) for a in s["args"])
         config_field = (
             " (config . {})".format(scheme_str(json.dumps(s["config"], sort_keys=True)))
             if s["config"]
             else " (config)"
         )
-        row = " ({} (languages {}) (command . {}) (args{}){})".format(
+        row = " ({} (args{}){})".format(
             scheme_str(name),
-            langs_sexpr,
-            scheme_str(s["command"]),
             f" {args_sexpr}" if args_sexpr else "",
             config_field,
         )
         rows.append(row)
+    return ["("] + rows + [")"]
+
+
+def emit_server_commands(servers: dict[str, dict]) -> list[str]:
+    rows = [
+        f" ({scheme_str(name)} . {scheme_str(servers[name]['command'])})"
+        for name in sorted(servers)
+        if servers[name]["command"] != name
+    ]
+    return ["("] + rows + [")"]
+
+
+def emit_language_servers(
+    language_lists: dict[str, list[tuple[str, tuple[str, list[str]] | None]]],
+) -> list[str]:
+    rows = []
+    for lang_name in sorted(language_lists):
+        entries = []
+        for server_name, feature_filter in language_lists[lang_name]:
+            parts = [scheme_str(server_name)]
+            if feature_filter:
+                kind, features = feature_filter
+                parts.append(
+                    "({}-features {})".format(kind, " ".join(scheme_str(f) for f in features))
+                )
+            entries.append("({})".format(" ".join(parts)))
+        rows.append(" ({} (servers {}))".format(scheme_str(lang_name), " ".join(entries)))
     return ["("] + rows + [")"]
 
 
@@ -361,8 +466,8 @@ def main() -> None:
     doc = fetch_toml(sha)
     grammars = parse_grammars(doc)
     langs = parse_languages(doc, grammars)
-    servers = parse_language_servers(doc)
-    check_lsp_invariants(servers, langs)
+    servers, language_lists = parse_language_servers(doc)
+    check_lsp_invariants(servers, langs, language_lists)
 
     print(
         f"parsed: {len(langs)} languages, {len(grammars)} direct grammars with git source, "
@@ -370,7 +475,7 @@ def main() -> None:
         file=sys.stderr,
     )
 
-    # languages.scm — identity-only. Not a single-literal-sexpr file (a
+    # languages.scm — identity and root markers. Not a single-literal-sexpr file (a
     # sequence of top-level (define-language! …) forms), so unlike the two
     # below it has no read_sexpr self-check.
     write_generated_file(
@@ -385,11 +490,27 @@ def main() -> None:
     )
     read_sexpr(GRAMMAR_SOURCES_SCM)  # self-check: emitted file must re-parse
 
-    # servers.scm — LSP server registration catalog
+    # servers.scm — LSP server args and config
     write_generated_file(
         LSP_SERVERS_SCM, LSP_SERVERS_HEADER.format(sha=sha), emit_lsp_servers(servers)
     )
     read_sexpr(LSP_SERVERS_SCM)  # self-check: emitted file must re-parse
+
+    # server-commands.scm — each server's command
+    write_generated_file(
+        SERVER_COMMANDS_SCM,
+        SERVER_COMMANDS_HEADER.format(sha=sha),
+        emit_server_commands(servers),
+    )
+    read_sexpr(SERVER_COMMANDS_SCM)  # self-check: emitted file must re-parse
+
+    # language-servers.scm — each language's ordered server list
+    write_generated_file(
+        LANGUAGE_SERVERS_SCM,
+        LANGUAGE_SERVERS_HEADER.format(sha=sha),
+        emit_language_servers(language_lists),
+    )
+    read_sexpr(LANGUAGE_SERVERS_SCM)  # self-check: emitted file must re-parse
 
 
 if __name__ == "__main__":

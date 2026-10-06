@@ -12,9 +12,7 @@ use super::super::item::CompletionItem;
 use super::buffer::{BufferSession, BufferSpan};
 use super::contains_cursor;
 use crate::editor::event::EditorEvent;
-use crate::editor::lsp::{
-    LspCallback, LspState, ResponseAnchor, edits, introspect, wire_range_to_chars,
-};
+use crate::editor::lsp::{RustResponder, edits, introspect, wire_range_to_chars};
 use crate::editor::{EditorState, Severity};
 use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors};
 
@@ -44,7 +42,7 @@ impl BufferSession {
     /// has_additional_text_edits`]) and the server advertises
     /// `completionProvider.resolveProvider`, sends `completionItem/resolve`
     /// and applies whatever it returns once the response lands (via the
-    /// ordinary `LspCallback`/`stale_check` machinery every other
+    /// same delivery and anchor machinery every other
     /// `lsp-request!` uses, dropped silently if the buffer has moved past
     /// the accept's own generation by then, same staleness discipline as
     /// any other LSP response). Without the source's own flag, an item from
@@ -58,7 +56,6 @@ impl BufferSession {
         &self,
         state: &mut EditorState,
         view: &EngineView,
-        lsp: &mut LspState,
         idx: usize,
     ) -> Result<(), String> {
         let (source, invocation, item) = self
@@ -431,12 +428,13 @@ impl BufferSession {
         });
 
         if may_resolve && !item.has_additional_text_edits {
-            self.maybe_send_resolve(state, lsp, item, rope_pre, accept_cs, encoding);
+            self.maybe_send_resolve(state, item, rope_pre, accept_cs, encoding);
         }
         Ok(())
     }
 
-    /// Sends `completionItem/resolve` when the server advertised
+    /// Sends `completionItem/resolve` to the server the item came from, when
+    /// that server is still attached to the buffer, running, and advertised
     /// `completionProvider.resolveProvider`. Best-effort: a resolution error,
     /// timeout, or a server that's gone by send time only logs, it never fails
     /// the accept that already landed. `self`'s own pane/buffer (already
@@ -447,19 +445,12 @@ impl BufferSession {
     fn maybe_send_resolve(
         &self,
         state: &mut EditorState,
-        lsp: &mut LspState,
         item: &CompletionItem,
         rope_pre: ropey::Rope,
         accept_cs: hume_editing::changeset::ChangeSet,
         encoding: hume_rope::position_encoding::PositionEncoding,
     ) {
         let (pid, bid) = (self.pane_id, self.bid());
-        let Some(server_id) = state.buffers.try_get(bid).and_then(|b| b.lsp_server) else {
-            return;
-        };
-        if !introspect::completion_resolve_provider(lsp, server_id) {
-            return;
-        }
         // A `#:resolve #t` source's items are always real LSP items in
         // practice, so `raw` is always `Some` here, but resolving is
         // best-effort by this function's own contract, so a plain item (no
@@ -468,28 +459,15 @@ impl BufferSession {
         let Some(raw) = &item.raw else {
             return;
         };
+        let hume_scripting::json::WireOrigin::Server { id: server_id, .. } = raw.origin() else {
+            return;
+        };
+        if !introspect::completion_resolve_provider(&state.lsp, server_id) {
+            return;
+        }
 
-        // Same discipline `lsp-request!` itself uses (bridge.rs): a request
-        // minted here must not reach the wire ahead of the didChange
-        // describing the edit `accept` just applied.
-        crate::editor::lsp::sync::flush_lsp_pending_changes(state, lsp);
-        let timeout_ms = state.settings.lsp_request_timeout_ms as u64;
-        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
-        let meta = hume_lsp::client::RequestMeta {
-            method: "completionItem/resolve".to_string(),
-            deadline,
-        };
-        let gen_after = state.buffers.get(bid).text().version();
-        let Some(id) = lsp.send_request(
-            server_id,
-            "completionItem/resolve",
-            raw.value().clone(),
-            meta,
-        ) else {
-            return; // server gone between the capability check and now
-        };
-        let callback: LspCallback = Box::new(move |editor, _server_id, outcome| match outcome {
-            hume_lsp::client::Outcome::Ok(resolved) => {
+        let respond: RustResponder = Box::new(move |state, view, result| match result {
+            Ok(resolved) => {
                 let resolved_edits = parse_additional_text_edits_lenient(&resolved);
                 let result = edits::build_edits_from_earlier_document(
                     &rope_pre,
@@ -498,38 +476,26 @@ impl BufferSession {
                     &resolved_edits,
                 )
                 .and_then(|char_edits| {
-                    edits::commit_char_edits(
-                        &mut editor.state,
-                        &editor.view.panes,
-                        pid,
-                        bid,
-                        char_edits,
-                    )
+                    edits::commit_char_edits(state, &view.panes, pid, bid, char_edits)
                 });
                 if let Err(e) = result {
-                    editor.report(Severity::Error, format!("lsp completion resolve: {e}"));
+                    state.report(Severity::Error, format!("lsp completion resolve: {e}"));
                 }
             }
-            hume_lsp::client::Outcome::Err(e) => {
-                editor.report(
+            Err(message) => {
+                state.report(
                     Severity::Error,
-                    format!("lsp completion resolve: {} ({})", e.message, e.code),
-                );
-            }
-            hume_lsp::client::Outcome::TimedOut => {
-                editor.report(
-                    Severity::Error,
-                    "lsp completion resolve: timeout".to_string(),
+                    format!("lsp completion resolve: {message}"),
                 );
             }
         });
-        let anchor = ResponseAnchor {
+        state.lsp_request_json(
             bid,
-            version: gen_after,
-            allow_stale: false,
-            require_focus: None,
-            tracked: None,
-        };
-        lsp.register_callback(server_id, id, anchor, callback);
+            server_id,
+            "completionItem/resolve",
+            raw.value().clone(),
+            false,
+            respond,
+        );
     }
 }

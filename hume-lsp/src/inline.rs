@@ -23,20 +23,33 @@ pub struct InlineLspBackend {
     /// method -> FIFO of canned results; a request pops one and enqueues
     /// the Response event for the next drain.
     responses: FxHashMap<String, VecDeque<Result<serde_json::Value, ResponseError>>>,
+    /// Same shape as `responses`, scoped to one server. Checked first, so a
+    /// test with several servers can script each one's answers separately.
+    server_responses:
+        FxHashMap<(ServerId, String), VecDeque<Result<serde_json::Value, ResponseError>>>,
     /// Everything the editor sent, for assertions.
     pub sent: Vec<(ServerId, Message)>,
     queue: VecDeque<(ServerId, InboundEvent)>,
     next: u32,
+    /// Commands `start` fails for, as a missing executable does.
+    refused: Vec<String>,
 }
 
 impl InlineLspBackend {
     pub fn new() -> Self {
         Self {
             responses: FxHashMap::default(),
+            server_responses: FxHashMap::default(),
             sent: Vec::new(),
             queue: VecDeque::new(),
             next: 0,
+            refused: Vec::new(),
         }
+    }
+
+    /// Makes `start` fail for `command`.
+    pub fn refuse_start(&mut self, command: &str) {
+        self.refused.push(command.to_string());
     }
 
     pub fn respond_to(&mut self, method: &str, result: serde_json::Value) {
@@ -50,11 +63,21 @@ impl InlineLspBackend {
         self.responses
             .entry(method.to_string())
             .or_default()
-            .push_back(Err(ResponseError {
-                code,
-                message: msg.to_string(),
-                data: None,
-            }));
+            .push_back(Err(response_error(code, msg)));
+    }
+
+    pub fn respond_to_server(&mut self, server: ServerId, method: &str, result: serde_json::Value) {
+        self.server_responses
+            .entry((server, method.to_string()))
+            .or_default()
+            .push_back(Ok(result));
+    }
+
+    pub fn fail_with_server(&mut self, server: ServerId, method: &str, code: i64, msg: &str) {
+        self.server_responses
+            .entry((server, method.to_string()))
+            .or_default()
+            .push_back(Err(response_error(code, msg)));
     }
 
     /// Server-initiated traffic (publishDiagnostics, server->client requests).
@@ -90,11 +113,17 @@ impl Default for InlineLspBackend {
 impl LspBackend for InlineLspBackend {
     fn start(
         &mut self,
-        _cmd: &str,
+        cmd: &str,
         _args: &[String],
         _root: &Path,
         _env: &[(String, String)],
     ) -> std::io::Result<ServerId> {
+        if self.refused.iter().any(|refused| refused == cmd) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no such command",
+            ));
+        }
         let id = ServerId(self.next);
         self.next += 1;
         Ok(id)
@@ -104,8 +133,11 @@ impl LspBackend for InlineLspBackend {
         // Delivered on the *next* drain, never inline here. Callers depend
         // on the drain boundary, same discipline as InlineParseBackend.
         if let Message::Request { id, method, .. } = &msg
-            && let Some(q) = self.responses.get_mut(method)
-            && let Some(result) = q.pop_front()
+            && let Some(result) = self
+                .server_responses
+                .get_mut(&(server, method.clone()))
+                .and_then(VecDeque::pop_front)
+                .or_else(|| self.responses.get_mut(method)?.pop_front())
         {
             self.queue.push_back((
                 server,
@@ -123,6 +155,14 @@ impl LspBackend for InlineLspBackend {
     }
 
     fn shutdown(&mut self, _server: ServerId) {}
+}
+
+fn response_error(code: i64, msg: &str) -> ResponseError {
+    ResponseError {
+        code,
+        message: msg.to_string(),
+        data: None,
+    }
 }
 
 fn default_initialize_result() -> serde_json::Value {

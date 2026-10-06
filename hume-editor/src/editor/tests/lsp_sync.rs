@@ -4,62 +4,25 @@
 // (hume_lsp's string-mirror, reused via the `test-util` feature) must
 // reproduce the buffer's real final text and generation.
 
-use std::path::Path;
-
+use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
 use crate::editor::lsp::LspState;
 use hume_engine::pipeline::BufferId;
-use hume_lsp::backend::LspBackend;
-use hume_lsp::client::LspClient;
 use hume_lsp::sync::apply_events_to_string_mirror;
 use hume_lsp::test_util::{NotificationLog, RecordingLspBackend};
-use hume_scripting::ScriptingHost;
 
-fn eval_register(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &Path) {
-    let init_path = tmp.join("init.scm");
-    std::fs::write(&init_path, source).unwrap();
-    let effects = {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("eval_init");
-    ed.apply_script_effects(effects);
-}
+/// The seed file every rust-buffer test below opens, cursor on its first
+/// char.
+const SEED: &str = "-[h]>ello world\n";
 
-/// Sets up an editor with a `RecordingLspBackend` (handshake pre-scripted
-/// to succeed), a registered "rust" server, and a real on-disk file
-/// matching (so `:e` triggers a genuine attach through
-/// `lsp_attach_buffer`). Drains once so the handshake completes and
-/// anything queued while `Starting` (currently just `didOpen`) flushes.
+/// A `src/main.rs` holding [`SEED`], attached through the rig to a server
+/// whose handshake is pre-scripted to succeed (INCREMENTAL sync), drained
+/// once so the handshake completes and the queued `didOpen` flushes.
 /// Returns the editor, the buffer id, and the shared notification log.
 fn attached_editor(tmp: &tempfile::TempDir) -> (Editor, BufferId, NotificationLog) {
-    let root = std::fs::canonicalize(tmp.path()).unwrap();
-    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
-    std::fs::create_dir_all(root.join("src")).unwrap();
-    let file = root.join("src/main.rs");
-    std::fs::write(&file, "hello world\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
     let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.state
-        .config
-        .languages
-        .register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
-
-    let mut host = ScriptingHost::new();
-    eval_register(
-        &mut ed,
-        &mut host,
-        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
-        tmp.path(),
-    );
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    ed.drain_lsp();
-    let bid = ed.focused_buffer_id();
-    (ed, bid, log)
+    let rig = LspRig::drained(tmp.path(), RigSpec::rust(SEED), backend);
+    (rig.ed, rig.bid, log)
 }
 
 /// Same attach as `attached_editor`, but against a server that answers
@@ -70,40 +33,16 @@ fn attached_editor_with_handshake(
     tmp: &tempfile::TempDir,
     initialize_result: serde_json::Value,
 ) -> (Editor, BufferId, NotificationLog) {
-    let root = std::fs::canonicalize(tmp.path()).unwrap();
-    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
-    std::fs::create_dir_all(root.join("src")).unwrap();
-    let file = root.join("src/main.rs");
-    std::fs::write(&file, "hello world\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
     let (mut backend, log, _requests) = RecordingLspBackend::new();
     backend.respond_to("initialize", initialize_result);
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.state
-        .config
-        .languages
-        .register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
-
-    let mut host = ScriptingHost::new();
-    eval_register(
-        &mut ed,
-        &mut host,
-        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
-        tmp.path(),
-    );
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    ed.drain_lsp();
-    let bid = ed.focused_buffer_id();
-    (ed, bid, log)
+    let rig = LspRig::drained(tmp.path(), RigSpec::rust(SEED), backend);
+    (rig.ed, rig.bid, log)
 }
 
 /// Replays a recorded `(method, params)` stream against a plain `String`
 /// mirror. `didOpen` seeds the mirror and the version; `didChange` applies
 /// each `contentChanges` entry (ranged via the hume-lsp mirror, or whole-
-/// document when `range` is absent: the `:e!`/`reload` case).
+/// document when `range` is absent: a FULL-sync server's case).
 fn replay(log: &[(String, serde_json::Value)]) -> (String, Option<i64>) {
     let mut mirror = String::new();
     let mut version = None;
@@ -196,29 +135,19 @@ fn did_open_carries_full_text_and_language_id() {
 #[test]
 fn did_open_carries_the_lsp_language_id_override_not_the_hume_name() {
     let tmp = safe_tempdir();
-    let root = std::fs::canonicalize(tmp.path()).unwrap();
-    let file = root.join("component.tsx");
-    std::fs::write(&file, "const x = 1;\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
     let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.state
-        .config
-        .languages
-        .register_identity("tsx", &["tsx"], &[], &[], Some("typescriptreact"))
-        .unwrap();
-
-    let mut host = ScriptingHost::new();
-    eval_register(
-        &mut ed,
-        &mut host,
-        r#"(register-lsp-server! "tsx" #:command "typescript-language-server")"#,
-        tmp.path(),
-    );
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    ed.drain_lsp();
+    let spec = RigSpec {
+        language: "tsx",
+        extension: "tsx",
+        file: "component.tsx",
+        marked: "-[c]>onst x = 1;\n",
+        markers: &[],
+        init: r#"(%define-language! "tsx" '("tsx") '() '() "typescriptreact" '())
+                 (register-lsp-server! "typescript-language-server"
+                                       #:command "typescript-language-server")
+                 (set-language-servers! "tsx" '("typescript-language-server"))"#,
+    };
+    let _rig = LspRig::drained(tmp.path(), spec, backend);
 
     let log = log.borrow();
     let (method, params) = log
@@ -229,7 +158,7 @@ fn did_open_carries_the_lsp_language_id_override_not_the_hume_name() {
     assert_eq!(params["textDocument"]["languageId"], "typescriptreact");
 }
 
-/// `lsp_did_open` must queue behind the handshake, never write to
+/// `didOpen` must queue behind the handshake, never write to
 /// the wire before `initialize` completes: the spec forbids anything else
 /// arriving first. Before the drain that carries the initialize response,
 /// nothing has been sent at all; after it, the log is exactly
@@ -237,36 +166,15 @@ fn did_open_carries_the_lsp_language_id_override_not_the_hume_name() {
 #[test]
 fn did_open_is_queued_until_the_handshake_completes_then_flushes_in_order() {
     let tmp = safe_tempdir();
-    let root = std::fs::canonicalize(tmp.path()).unwrap();
-    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
-    std::fs::create_dir_all(root.join("src")).unwrap();
-    let file = root.join("src/main.rs");
-    std::fs::write(&file, "hello world\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
     let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.state
-        .config
-        .languages
-        .register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
-    let mut host = ScriptingHost::new();
-    eval_register(
-        &mut ed,
-        &mut host,
-        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))"#,
-        tmp.path(),
-    );
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    let mut rig = LspRig::open(tmp.path(), RigSpec::rust(SEED), backend);
     assert!(
         log.borrow().is_empty(),
         "didOpen must not reach the wire before the handshake completes, got: {:?}",
         log.borrow()
     );
 
-    ed.drain_lsp();
+    rig.ed.drain_lsp();
 
     let log = log.borrow();
     let methods: Vec<&str> = log.iter().map(|(m, _)| m.as_str()).collect();
@@ -281,7 +189,7 @@ fn did_open_is_queued_until_the_handshake_completes_then_flushes_in_order() {
 fn no_notifications_for_a_buffer_without_a_server() {
     let (backend, log, _requests) = RecordingLspBackend::new();
     let mut ed = editor_from("-[w]>ord\n");
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    ed.state.lsp = LspState::with_backend(Box::new(backend));
 
     // No register-lsp-server! call at all: a scratch buffer must never attach.
     ed.step(key('i'));
@@ -316,7 +224,7 @@ fn version_sync_invariant_across_insert_delete_paste_undo_redo() {
 /// The case that exercises the composed walk: a counted `u` that
 /// crosses several revisions must reach an INCREMENTAL-sync server as one
 /// `didChange` for the net change, not one per revision it walked. Queuing
-/// one `LspPendingChange` per revision would make this count 3.
+/// one change per revision would make this count 3.
 #[test]
 fn counted_undo_on_an_incremental_server_sends_one_didchange_for_the_whole_walk() {
     let tmp = safe_tempdir();
@@ -364,22 +272,23 @@ fn did_save_and_did_close_each_fire_once() {
         .map(|m| match m {
             "textDocument/didSave" => "didSave",
             "textDocument/didClose" => "didClose",
+            "exit" => "exit",
             other => panic!("unexpected notification: {other}"),
         })
         .collect();
-    assert_eq!(methods, vec!["didSave", "didClose"]);
+    // Closing the server's last buffer stops the instance, hence the `exit`.
+    assert_eq!(methods, vec!["didSave", "didClose", "exit"]);
 }
 
-/// Regression: `:e!` under macro replay, with an edit queued but not yet
-/// drained (`drain_replay_queue` loops `handle_input` with no `drain_lsp`
-/// between keys), immediately followed by a reload in the same window.
-/// The still-queued incremental `didChange` (computed against the pre-reload
-/// text, at an older version) must reach the wire before the reload's
-/// whole-document one. The reverse order is a version regression the server
-/// can't recover from, and its copy of the document stays out of sync for
-/// the rest of the session.
+/// `:e!` under macro replay, with an edit queued but not yet drained
+/// (`drain_replay_queue` loops `handle_input` with no `drain_lsp` between
+/// keys), immediately followed by a reload in the same window. The reload's
+/// replacement is recorded like any other edit, so an INCREMENTAL server
+/// gets it as one ranged `didChange` after the queued edit's own, at a
+/// strictly higher version, and the replayed stream reproduces the reloaded
+/// buffer.
 #[test]
-fn reload_flushes_pending_change_before_the_whole_document_didchange() {
+fn reload_sends_one_incremental_didchange_through_the_ordinary_record_path() {
     let tmp = safe_tempdir();
     let (mut ed, bid, log) = attached_editor(&tmp);
 
@@ -392,35 +301,34 @@ fn reload_flushes_pending_change_before_the_whole_document_didchange() {
 
     ed.drain_lsp();
 
-    let changes: Vec<(Option<i64>, bool)> = log
-        .borrow()
+    let changes: Vec<(Option<i64>, bool)> = did_changes(&log.borrow())
         .iter()
-        .filter(|(m, _)| m == "textDocument/didChange")
         .map(|(_, p)| {
             let version = p["textDocument"]["version"].as_i64();
-            let whole_document = p["contentChanges"][0].get("range").is_none();
-            (version, whole_document)
+            let ranged = p["contentChanges"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|c| c.get("range").is_some());
+            (version, ranged)
         })
         .collect();
 
     assert_eq!(
         changes.len(),
         2,
-        "expected one incremental change (the queued edit) then one whole-document \
-         reload change, got: {changes:?}"
+        "expected the queued edit's didChange then the reload's, got: {changes:?}"
     );
     assert!(
-        !changes[0].1,
-        "the queued edit's incremental didChange must reach the wire first: {changes:?}"
-    );
-    assert!(
-        changes[1].1,
-        "the reload's whole-document didChange must reach the wire second: {changes:?}"
+        changes.iter().all(|&(_, ranged)| ranged),
+        "an INCREMENTAL server must get ranged events only, never a whole document: {changes:?}"
     );
     assert!(
         changes[0].0 < changes[1].0,
         "versions must strictly increase across the two didChange notifications: {changes:?}"
     );
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "hi\n");
+    assert_mirror_matches(&ed, bid, &log.borrow(), "a queued edit then a reload");
 }
 
 /// A byte-identical `:e!` reload (the file on disk hasn't actually changed)
@@ -430,17 +338,13 @@ fn reload_flushes_pending_change_before_the_whole_document_didchange() {
 /// buffer's unchanged version (which would be a version regression from the
 /// server's point of view: a second notification carrying a version it
 /// already has).
-///
-/// Sending `lsp_did_change_whole_document` unconditionally from
-/// `reload_buffer_in_place` would add a second `didChange` at the same
-/// version as the last one on file.
 #[test]
 fn identical_reload_sends_no_didchange() {
     let tmp = safe_tempdir();
     let (mut ed, bid, log) = attached_editor(&tmp);
 
     let path = ed.state.buffers.get(bid).path().unwrap().to_path_buf();
-    std::fs::write(&path, "hello world\n").unwrap(); // identical to attached_editor's seed content
+    std::fs::write(&path, "hello world\n").unwrap(); // identical to SEED's text
     ed.execute_typed("e!", None).unwrap();
     ed.drain_lsp();
 
@@ -524,7 +428,7 @@ fn full_sync_server_gets_one_whole_document_didchange_per_flush() {
 }
 
 /// The INCREMENTAL-sync sibling of `full_sync_server_gets_one_whole_document_
-/// didchange_per_flush`: an insert session queues one `LspPendingChange` per
+/// didchange_per_flush`: an insert session queues one change per
 /// keystroke, and each queued entry must reach the wire as its own
 /// `didChange`. Replaying the whole sequence must still reproduce the
 /// buffer exactly, checked against the independent string mirror.
@@ -565,57 +469,32 @@ fn insert_session_sends_one_didchange_per_keystroke() {
 #[test]
 fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
     let tmp = safe_tempdir();
-    let root = std::fs::canonicalize(tmp.path()).unwrap();
-    let file = root.join("main.rs");
-    std::fs::write(&file, "hello world\n").unwrap();
-
     let (mut backend, log, _requests) = RecordingLspBackend::new();
     backend.respond_to(
         "initialize",
         serde_json::json!({"capabilities": {"textDocumentSync": 0}}),
     );
-    let sid = backend.start("x", &[], &root, &[]).unwrap();
-    let mut client = LspClient::new(sid, root.clone());
-    client.start_handshake(&mut backend);
-    let (_sid, ev) = backend.drain().into_iter().next().unwrap();
-    let actions = client.on_event(ev);
-
-    // "world" is chars 6..11 of "hello world\n".
-    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
-    backend.push_from_server(
-        sid,
-        hume_lsp::codec::Message::Notification {
-            method: "textDocument/publishDiagnostics".to_string(),
-            params: serde_json::json!({
-                "uri": uri.as_str(),
-                "diagnostics": [{
-                    "range": {"start": {"line": 0, "character": 6}, "end": {"line": 0, "character": 11}},
-                    "severity": 1,
-                    "message": "boom",
-                }],
-            }),
-        },
-    );
-
-    // `apply-text-edits!` now only accepts a server-tagged wire edit (via a
+    // `apply-text-edits!` only accepts a server-tagged wire edit (via a
     // real response); this canned response is what the `:stash` dispatch
     // below turns into one.
     backend.respond_to(
         "test/textEdits",
         serde_json::json!([{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}, "newText": "X"}]),
     );
+    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust(SEED), backend);
 
-    let mut ed = editor_from("-[w]>ord\n");
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp.insert_client_for_test(client);
-    for action in actions {
-        ed.dispatch_lsp_action(sid, action);
-    }
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    ed.drain_lsp();
+    // "world" is chars 6..11 of "hello world\n".
+    let sid = rig.sid("rust-analyzer");
+    rig.publish(
+        sid,
+        serde_json::json!([{
+            "range": {"start": {"line": 0, "character": 6}, "end": {"line": 0, "character": 11}},
+            "severity": 1,
+            "message": "boom",
+        }]),
+    );
+    let bid = rig.bid;
+    let mut ed = rig.ed;
 
     let before: Vec<(usize, usize)> = ed
         .state
@@ -671,32 +550,13 @@ fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
 #[test]
 fn register_lsp_server_init_options_reach_the_initialize_request() {
     let tmp = safe_tempdir();
-    let root = std::fs::canonicalize(tmp.path()).unwrap();
-    std::fs::write(root.join("Cargo.toml"), b"").unwrap();
-    std::fs::create_dir_all(root.join("src")).unwrap();
-    let file = root.join("src/main.rs");
-    std::fs::write(&file, "hello world\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
     let (backend, _notifications, requests) = RecordingLspBackend::with_default_handshake();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.state
-        .config
-        .languages
-        .register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
-
-    let mut host = ScriptingHost::new();
-    eval_register(
-        &mut ed,
-        &mut host,
-        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml")
-                                       #:init-options (hash "check" (hash "command" "clippy")))"#,
-        tmp.path(),
+    let spec = RigSpec::rust(SEED).with_init(
+        r#"(register-lsp-server! "rust-analyzer" #:command "rust-analyzer"
+                                 #:init-options (hash "check" (hash "command" "clippy")))
+           (set-language-servers! "rust" '("rust-analyzer"))"#,
     );
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    ed.drain_lsp();
+    let _rig = LspRig::drained(tmp.path(), spec, backend);
 
     let recorded = requests.borrow();
     let initialize_calls: Vec<_> = recorded

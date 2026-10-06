@@ -6,72 +6,26 @@
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
+use hume_lsp::backend::ServerId;
+use hume_lsp::test_util::RecordingLspBackend;
 
-fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
-    let file = file_dir.join("main.rs");
-    std::fs::write(&file, "fn main() {\n    foo();\n}\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical)
-        .unwrap()
-        .as_str()
-        .to_string();
-    (file, uri)
-}
-
+/// A [`core_lsp_rig`] over "fn main() {\n    foo();\n}\n" with a
+/// references provider.
 fn setup(
-    file: &Path,
     tmp: &Path,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, ServerId) {
-    let guard = RealRuntimeGuard::new();
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({"capabilities": {"referencesProvider": true}}),
-    );
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
+    let (rig, guard) = core_lsp_rig(
         tmp,
+        "-[f]>n main() {\n    foo();\n}\n",
+        serde_json::json!({"capabilities": {"referencesProvider": true}}),
+        configure,
     );
-    ed.scripting = Some(host);
-
-    (ed, guard, sid)
+    let sid = rig.sid("rust-analyzer");
+    (rig.ed, guard, sid)
 }
 
 fn run_references(ed: &mut Editor) {
@@ -93,9 +47,8 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
 #[test]
 fn three_locations_list_three_rows() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/references",
             serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4), loc(&uri, 2, 0)]),
@@ -110,9 +63,8 @@ fn three_locations_list_three_rows() {
 #[test]
 fn enter_jumps_and_drawer_stays_open() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/references",
             serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4), loc(&uri, 2, 0)]),
@@ -141,9 +93,8 @@ fn enter_jumps_and_drawer_stays_open() {
 #[test]
 fn single_result_still_opens_the_drawer() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/references",
             serde_json::json!([loc(&uri, 1, 4)]),
@@ -161,9 +112,7 @@ fn single_result_still_opens_the_drawer() {
 #[test]
 fn null_result_reports_no_references() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/references", serde_json::Value::Null);
     });
 
@@ -185,9 +134,8 @@ fn null_result_reports_no_references() {
 #[test]
 fn stale_response_after_a_buffer_switch_opens_no_drawer() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/references",
             serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4), loc(&uri, 2, 0)]),
@@ -199,7 +147,7 @@ fn stale_response_after_a_buffer_switch_opens_no_drawer() {
     // `stale_response_after_a_buffer_switch_shows_no_popup`.
     ed.execute_keymap_command("lsp-references".into(), Some(1), false);
 
-    let other = file_dir.path().join("other.rs");
+    let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();
     ed.execute_typed("e", Some(other.to_str().unwrap()))
         .unwrap();
@@ -210,5 +158,28 @@ fn stale_response_after_a_buffer_switch_opens_no_drawer() {
     assert!(
         ed.state.views.drawer.read().is_none(),
         "a references response for a buffer that's no longer focused must not open a drawer"
+    );
+}
+
+#[test]
+fn buffer_with_no_path_reports_and_tracks_nothing() {
+    let tmp = safe_tempdir();
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/references",
+            serde_json::json!([loc(&uri, 0, 0)]),
+        );
+    });
+    ed.doc_mut().set_path(None);
+
+    run_references(&mut ed);
+
+    assert_eq!(ed.state.panes.tracked.len(), 0);
+    assert!(ed.state.views.drawer.read().is_none());
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("no file"),
+        "expected a no-file message, got {msg:?}"
     );
 }

@@ -14,11 +14,11 @@ use lsp_types::{
     DidChangeConfigurationParams, FailureHandlingKind, GeneralClientCapabilities, GotoCapability,
     HoverClientCapabilities, InitializeParams, InitializeResult, InitializedParams, MarkupKind,
     ParameterInformationSettings, PositionEncodingKind, PublishDiagnosticsClientCapabilities,
-    RenameClientCapabilities, ResourceOperationKind, ServerCapabilities,
-    SignatureHelpClientCapabilities, SignatureInformationSettings, TextDocumentClientCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncClientCapabilities, TextDocumentSyncKind,
-    TextDocumentSyncOptions, WindowClientCapabilities, WorkspaceClientCapabilities,
-    WorkspaceEditClientCapabilities, WorkspaceFolder,
+    RenameClientCapabilities, ResourceOperationKind, SignatureHelpClientCapabilities,
+    SignatureInformationSettings, TextDocumentClientCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncClientCapabilities, TextDocumentSyncKind, TextDocumentSyncOptions,
+    WindowClientCapabilities, WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
+    WorkspaceFolder,
 };
 
 use crate::backend::{LspBackend, ServerId};
@@ -49,6 +49,28 @@ impl ServerState {
     }
 }
 
+/// One diagnostic of a publish: the parsed form, and the wire value it was
+/// parsed from. A diagnostic echoed back to a server (a code action's
+/// context) is `raw`, so every field the server sent survives, including
+/// ones `lsp_types` does not model.
+#[derive(Debug)]
+pub struct WireDiagnostic {
+    pub diagnostic: lsp_types::Diagnostic,
+    pub raw: serde_json::Value,
+}
+
+/// A `textDocument/publishDiagnostics` payload with each diagnostic paired
+/// with its wire value.
+#[derive(Debug)]
+pub struct PublishedDiagnostics {
+    pub uri: lsp_types::Uri,
+    pub version: Option<i32>,
+    pub diagnostics: Vec<WireDiagnostic>,
+    /// The parse error of each diagnostic the server sent that is not in
+    /// `diagnostics`.
+    pub skipped: Vec<String>,
+}
+
 /// One action for the editor glue to take in response to a lifecycle event.
 #[derive(Debug)]
 pub enum ClientAction {
@@ -68,7 +90,7 @@ pub enum ClientAction {
         params: serde_json::Value,
     },
     /// `textDocument/publishDiagnostics`, classified and parsed.
-    Diagnostics(lsp_types::PublishDiagnosticsParams),
+    Diagnostics(PublishedDiagnostics),
     /// `$/progress`, classified and parsed.
     Progress(lsp_types::ProgressParams),
     /// `window/logMessage`, classified and parsed.
@@ -95,14 +117,14 @@ pub enum ClientAction {
 /// `ServerNotification` for an unknown method, or params neither pass
 /// parses. Deserializes by reference so a malformed payload leaves
 /// `params` intact for that fallback (`from_value` would consume it).
-fn classify_notification(method: String, params: serde_json::Value) -> ClientAction {
+fn classify_notification(method: String, mut params: serde_json::Value) -> ClientAction {
     use lsp_types::notification::{LogMessage, Progress, PublishDiagnostics, ShowMessage};
     use serde::Deserialize as _;
 
     match method.as_str() {
         PublishDiagnostics::METHOD => {
-            if let Ok(p) = lsp_types::PublishDiagnosticsParams::deserialize(&params) {
-                return ClientAction::Diagnostics(p);
+            if let Some(published) = classify_publish(&mut params) {
+                return ClientAction::Diagnostics(published);
             }
         }
         Progress::METHOD => {
@@ -132,6 +154,50 @@ fn classify_notification(method: String, params: serde_json::Value) -> ClientAct
         _ => {}
     }
     ClientAction::ServerNotification { method, params }
+}
+
+/// A `publishDiagnostics` payload with each diagnostic parsed on its own, so
+/// one the server got wrong does not cost the file the others. `None`, with
+/// `params` untouched, when the payload has no usable `uri`, `version` or
+/// `diagnostics` array, or when it holds diagnostics and none parse: storing
+/// an empty list would read as the server clearing the file.
+fn classify_publish(params: &mut serde_json::Value) -> Option<PublishedDiagnostics> {
+    use serde::Deserialize as _;
+
+    let uri = lsp_types::Uri::deserialize(params.get("uri")?).ok()?;
+    let version = match params.get("version") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(v) => Some(i32::deserialize(v).ok()?),
+    };
+    let parsed: Vec<Result<lsp_types::Diagnostic, String>> = params
+        .get("diagnostics")?
+        .as_array()?
+        .iter()
+        .map(|wire| lsp_types::Diagnostic::deserialize(wire).map_err(|e| e.to_string()))
+        .collect();
+    if !parsed.is_empty() && parsed.iter().all(Result::is_err) {
+        return None;
+    }
+    let Some(serde_json::Value::Array(raw)) =
+        params.get_mut("diagnostics").map(serde_json::Value::take)
+    else {
+        unreachable!("the diagnostics array was just read");
+    };
+    let mut published = PublishedDiagnostics {
+        uri,
+        version,
+        diagnostics: Vec::with_capacity(parsed.len()),
+        skipped: Vec::new(),
+    };
+    for (parsed, raw) in parsed.into_iter().zip(raw) {
+        match parsed {
+            Ok(diagnostic) => published
+                .diagnostics
+                .push(WireDiagnostic { diagnostic, raw }),
+            Err(error) => published.skipped.push(error),
+        }
+    }
+    Some(published)
 }
 
 /// Recovers a `$/progress` whose `WorkDoneProgress::Begin` omits the
@@ -191,6 +257,8 @@ pub enum Outcome {
     Ok(serde_json::Value),
     Err(ResponseError),
     TimedOut,
+    /// The server stopped or crashed before it answered.
+    Stopped,
 }
 
 /// How long `initialize` may go unanswered before the client gives up and
@@ -211,26 +279,19 @@ const SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 pub struct LspClient {
     id: ServerId,
     state: ServerState,
-    /// Typed decode of `caps_json`, read only by `change_sync` (needs the
-    /// `TextDocumentSyncCapability` enum's `Kind`/`Options` distinction),
-    /// lossy, since `ServerCapabilities` only models whatever the pinned
-    /// `lsp_types` version knows about, so this is never the answer to "what
-    /// did the server advertise". `caps_json` is that answer.
-    caps: Option<ServerCapabilities>,
     /// The server's raw `capabilities` object, verbatim off the wire:
-    /// the capabilities source of truth. Every consumer outside this file
-    /// reads this, not `caps`: a typed round-trip through `caps` silently
-    /// drops any field the pinned `lsp_types` version doesn't model (e.g.
-    /// LSP 3.18's `documentRangeFormattingProvider.rangesSupport`), and
-    /// `(lsp-capabilities …)` must hand Steel the wire value verbatim.
+    /// the capabilities source of truth. A typed `ServerCapabilities` decode
+    /// would drop any field the pinned `lsp_types` version doesn't model
+    /// (e.g. LSP 3.18's `documentRangeFormattingProvider.rangesSupport`),
+    /// and `(lsp-capabilities …)` must hand Steel the wire value verbatim.
     /// `Arc`-wrapped so every capability-guarded command's read of it (a
     /// `JsonHandle`, once it crosses to Steel) shares this one allocation
     /// instead of cloning the whole capabilities blob per read.
     caps_json: Option<Arc<serde_json::Value>>,
     /// Negotiated position encoding; UTF-16 until `initialize` proves UTF-8.
-    /// A decode-once cache of `caps.position_encoding` (`handle_initialize_
-    /// response` is the only writer of either field, an invariant field
-    /// privacy enforces), kept separate so callers don't re-derive it from
+    /// A decode-once cache of the capabilities' `positionEncoding`
+    /// (`handle_initialize_response` is the only writer of either field, an
+    /// invariant field privacy enforces), kept separate so callers don't re-derive it from
     /// the raw capability on every position conversion, not an independent
     /// fact that could drift on its own.
     encoding: PositionEncoding,
@@ -267,7 +328,6 @@ impl LspClient {
         Self {
             id,
             state: ServerState::Starting,
-            caps: None,
             caps_json: None,
             encoding: PositionEncoding::Utf16,
             root,
@@ -308,6 +368,11 @@ impl LspClient {
         self.settings = settings;
     }
 
+    /// The configuration blob the server was started with.
+    pub fn settings(&self) -> Option<&serde_json::Value> {
+        self.settings.as_ref()
+    }
+
     pub fn encoding(&self) -> PositionEncoding {
         self.encoding
     }
@@ -318,14 +383,17 @@ impl LspClient {
     /// handshake there is no declaration to read, so this answers `FULL`: a
     /// whole-document event is the one form every server accepts, and
     /// dropping edits queued while `Starting` would desync the mirror
-    /// permanently. Derived from `caps` rather than cached: read once per
-    /// flush, not once per position conversion, so `encoding`'s decode-once
-    /// rationale doesn't apply here.
+    /// permanently. Derived from `caps_json` rather than cached: read once
+    /// per flush, not once per position conversion, so `encoding`'s
+    /// decode-once rationale doesn't apply here.
     pub fn change_sync(&self) -> Option<TextDocumentSyncKind> {
-        let Some(caps) = self.caps.as_ref() else {
+        let Some(caps) = self.caps_json.as_deref() else {
             return Some(TextDocumentSyncKind::FULL); // pre-handshake: nothing declared yet
         };
-        let kind = match caps.text_document_sync.as_ref()? {
+        let sync = caps.get("textDocumentSync").filter(|v| !v.is_null())?;
+        // The initialize result decoded as a whole, so this shape is valid.
+        let sync: TextDocumentSyncCapability = serde_json::from_value(sync.clone()).ok()?;
+        let kind = match &sync {
             TextDocumentSyncCapability::Kind(k) => *k,
             TextDocumentSyncCapability::Options(TextDocumentSyncOptions { change, .. }) => {
                 (*change)?
@@ -411,12 +479,15 @@ impl LspClient {
         }
     }
 
-    /// Removes and returns every still-pending request, for teardown paths
-    /// that drop the client (e.g. `:lsp-stop`) so the caller can dispatch
-    /// each as timed out rather than silently orphaning a registered
-    /// callback along with the client.
-    pub fn drain_pending(&mut self) -> Vec<(RequestId, RequestMeta)> {
-        self.pending.drain().collect()
+    /// Removes and returns every still-pending request as
+    /// [`Outcome::Stopped`], for teardown paths that drop the client (e.g.
+    /// `:lsp-stop`, a crash) so the caller can dispatch each rather than
+    /// silently orphaning a registered callback along with the client.
+    pub fn drain_pending(&mut self) -> Vec<(RequestId, RequestMeta, Outcome)> {
+        self.pending
+            .drain()
+            .map(|(id, meta)| (id, meta, Outcome::Stopped))
+            .collect()
     }
 
     /// Forces every pending deadline into the past, so the next
@@ -642,7 +713,6 @@ impl LspClient {
         } else {
             PositionEncoding::Utf16
         };
-        self.caps = Some(parsed.capabilities);
         self.caps_json = raw_caps;
         self.state = ServerState::Running;
 
@@ -677,7 +747,7 @@ impl LspClient {
     /// for it, and never a synchronous round-trip. The `shutdown` response
     /// correlates through `pending`/`take_completed` like any other request;
     /// a caller that drops the client immediately (e.g. `:lsp-stop`) instead
-    /// dispatches it as timed out via `drain_pending`.
+    /// dispatches it as stopped via `drain_pending`.
     pub fn begin_shutdown(&mut self, backend: &mut dyn LspBackend) {
         if self.state == ServerState::Running {
             let id = self.ids.next();

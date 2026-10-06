@@ -6,29 +6,14 @@
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
-use hume_scripting::ScriptingHost;
 
 /// `foo` sits at line 1, column 4, offset 16.
 const FOO_OFFSET: usize = 16;
-
-fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
-    let file = file_dir.join("main.rs");
-    std::fs::write(&file, "fn main() {\n    foo();\n}\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical)
-        .unwrap()
-        .as_str()
-        .to_string();
-    (file, uri)
-}
 
 fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
     serde_json::json!({
@@ -38,11 +23,10 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
 }
 
 fn setup(
-    file: &Path,
     tmp: &Path,
     references: Vec<serde_json::Value>,
 ) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
-    setup_with(file, tmp, |backend| {
+    setup_with(tmp, |backend| {
         for answer in references {
             backend.respond_to("textDocument/references", answer);
         }
@@ -50,54 +34,20 @@ fn setup(
 }
 
 /// [`setup`] with the references answers scripted by `script`, for a test
-/// that needs an error among them.
+/// that needs an error among them. The file is
+/// "fn main() {\n    foo();\n}\n".
 fn setup_with(
-    file: &Path,
     tmp: &Path,
     script: impl FnOnce(&mut RecordingLspBackend),
 ) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
-    let guard = RealRuntimeGuard::new();
-
-    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({"capabilities": {"referencesProvider": true}}),
-    );
-    script(&mut backend);
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
+    let (rig, guard) = core_lsp_rig(
         tmp,
+        "-[f]>n main() {\n    foo();\n}\n",
+        serde_json::json!({"capabilities": {"referencesProvider": true}}),
+        |backend, _sid| script(backend),
     );
-    ed.scripting = Some(host);
-    ed.settle();
-
-    (ed, guard, sid, requests)
+    let sid = rig.sid("rust-analyzer");
+    (rig.ed, guard, sid, rig.requests)
 }
 
 fn run_references(ed: &mut Editor) {
@@ -147,10 +97,8 @@ fn drawer_is_open(ed: &Editor) -> bool {
 #[test]
 fn inserting_a_line_above_the_symbol_asks_the_server_again_at_its_new_line() {
     let tmp = safe_tempdir();
-    let dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(dir.path());
+    let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup(
-        &file,
         tmp.path(),
         vec![
             serde_json::json!([loc(&uri, 1, 4), loc(&uri, 2, 0)]),
@@ -178,10 +126,8 @@ fn inserting_a_line_above_the_symbol_asks_the_server_again_at_its_new_line() {
 #[test]
 fn a_closed_drawer_is_not_refreshed_and_releases_the_position() {
     let tmp = safe_tempdir();
-    let dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(dir.path());
+    let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup(
-        &file,
         tmp.path(),
         vec![serde_json::json!([loc(&uri, 1, 4), loc(&uri, 2, 0)])],
     );
@@ -201,10 +147,8 @@ fn a_closed_drawer_is_not_refreshed_and_releases_the_position() {
 #[test]
 fn several_inserts_within_the_debounce_ask_once() {
     let tmp = safe_tempdir();
-    let dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(dir.path());
+    let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup(
-        &file,
         tmp.path(),
         vec![
             serde_json::json!([loc(&uri, 1, 4), loc(&uri, 2, 0)]),
@@ -227,10 +171,8 @@ fn several_inserts_within_the_debounce_ask_once() {
 #[test]
 fn an_edit_that_keeps_the_line_count_asks_nothing() {
     let tmp = safe_tempdir();
-    let dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(dir.path());
+    let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup(
-        &file,
         tmp.path(),
         vec![serde_json::json!([loc(&uri, 1, 4), loc(&uri, 2, 0)])],
     );
@@ -248,10 +190,8 @@ fn an_edit_that_keeps_the_line_count_asks_nothing() {
 #[test]
 fn a_refresh_that_finds_nothing_closes_the_drawer_with_a_message() {
     let tmp = safe_tempdir();
-    let dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(dir.path());
+    let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup(
-        &file,
         tmp.path(),
         vec![
             serde_json::json!([loc(&uri, 1, 4), loc(&uri, 2, 0)]),
@@ -273,17 +213,15 @@ fn a_refresh_that_finds_nothing_closes_the_drawer_with_a_message() {
 #[test]
 fn a_drawer_replaced_by_another_list_is_not_refreshed() {
     let tmp = safe_tempdir();
-    let dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(dir.path());
+    let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, sid, requests) = setup(
-        &file,
         tmp.path(),
         vec![serde_json::json!([loc(&uri, 1, 4), loc(&uri, 2, 0)])],
     );
     set_cursor(&mut ed, FOO_OFFSET);
     run_references(&mut ed);
 
-    ed.ingest_publish_diagnostics(
+    ed.ingest_typed_publish_for_test(
         sid,
         serde_json::from_value(serde_json::json!({"uri": uri, "diagnostics": [
             {"range": {"start": {"line": 1, "character": 4}, "end": {"line": 1, "character": 7}},
@@ -316,9 +254,8 @@ fn selected_row(ed: &Editor) -> usize {
 #[test]
 fn a_refresh_answered_with_an_error_keeps_the_rows() {
     let tmp = safe_tempdir();
-    let dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(dir.path());
-    let (mut ed, _guard, _sid, requests) = setup_with(&file, tmp.path(), |backend| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid, requests) = setup_with(tmp.path(), |backend| {
         backend.respond_to(
             "textDocument/references",
             serde_json::json!([loc(&uri, 1, 4), loc(&uri, 2, 0)]),
@@ -341,10 +278,8 @@ fn a_refresh_answered_with_an_error_keeps_the_rows() {
 #[test]
 fn a_refresh_keeps_the_selected_row() {
     let tmp = safe_tempdir();
-    let dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(dir.path());
+    let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, _requests) = setup(
-        &file,
         tmp.path(),
         vec![
             serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4), loc(&uri, 2, 0)]),
@@ -371,10 +306,8 @@ fn a_refresh_keeps_the_selected_row() {
 #[test]
 fn a_refresh_with_fewer_rows_clamps_the_selected_row() {
     let tmp = safe_tempdir();
-    let dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(dir.path());
+    let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, _requests) = setup(
-        &file,
         tmp.path(),
         vec![
             serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4), loc(&uri, 2, 0)]),
@@ -399,16 +332,16 @@ fn a_refresh_with_fewer_rows_clamps_the_selected_row() {
 #[test]
 fn a_line_count_change_in_another_listed_buffer_refreshes_the_list() {
     let tmp = safe_tempdir();
-    let dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(dir.path());
-    let other = dir.path().join("other.rs");
+    let file = rig_root(tmp.path()).join("src/main.rs");
+    let uri = rust_rig_uri(tmp.path());
+    let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "fn bar() {\n    foo();\n}\n").unwrap();
     let other_uri = hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&other).unwrap())
         .unwrap()
         .as_str()
         .to_string();
     let answer = serde_json::json!([loc(&uri, 1, 4), loc(&other_uri, 1, 4)]);
-    let (mut ed, _guard, _sid, requests) = setup(&file, tmp.path(), vec![answer.clone(), answer]);
+    let (mut ed, _guard, _sid, requests) = setup(tmp.path(), vec![answer.clone(), answer]);
     ed.execute_typed("e", Some(other.to_str().unwrap()))
         .unwrap();
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();

@@ -17,6 +17,7 @@
 //! Display uses the slotmap `as_ffi` u64 so that `(log! "info" pane)` prints
 //! something readable without revealing internal structure.
 
+use hume_editing::text::TextVersion;
 use hume_engine::pipeline::BufferId;
 use slotmap::Key as _;
 use steel::{
@@ -24,7 +25,10 @@ use steel::{
     rvals::{Custom, IntoSteelVal as _, SteelVal, as_underlying_type},
 };
 
-use crate::types::PaneHandle;
+use hume_lsp::backend::ServerId;
+use hume_rope::offset::CharOffset;
+
+use crate::types::{PaneHandle, ServerName};
 
 // ── Wrapper types ─────────────────────────────────────────────────────────────
 
@@ -88,28 +92,148 @@ impl Custom for SteelBufferKey {
     }
 }
 
+/// Opaque Steel value for one running language-server process. Equality
+/// and hashing use `id` alone: a server that stops or restarts is a
+/// different process with a different id, so a value kept across a restart
+/// never names its successor.
+#[derive(Debug, Clone)]
+pub struct ServerRef {
+    pub id: ServerId,
+    pub name: ServerName,
+}
+
+impl ServerRef {
+    /// Convert to a `SteelVal` without returning `Result`; see
+    /// [`SteelPane::into_steel_val`].
+    pub fn into_steel_val(self) -> SteelVal {
+        self.into_steelval().expect("ServerRef into_steelval")
+    }
+
+    /// The server `val` holds, or `None` if it is some other value.
+    pub fn from_steel_val(val: &SteelVal) -> Option<Self> {
+        downcast(val)
+    }
+}
+
+impl PartialEq for ServerRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for ServerRef {}
+
+impl std::hash::Hash for ServerRef {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl Custom for ServerRef {
+    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
+        Some(Ok(format!("#<lsp-server {}>", self.name)))
+    }
+
+    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
+        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
+    }
+
+    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
+        Some(self)
+    }
+}
+
+/// A buffer position in a request's params, encoded as a wire `Position`
+/// only when the request is serialized for a server, in that server's
+/// position encoding. `offset` is a char offset into the text of `buffer`
+/// that was at `version` when the value was built; it means nothing for any
+/// other version.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DocPos {
+    pub buffer: BufferId,
+    pub version: TextVersion,
+    pub offset: CharOffset,
+}
+
+/// The [`DocPos`] counterpart for a wire `Range`: half-open `start..end`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DocRange {
+    pub buffer: BufferId,
+    pub version: TextVersion,
+    pub start: CharOffset,
+    pub end: CharOffset,
+}
+
+impl DocPos {
+    pub fn into_steel_val(self) -> SteelVal {
+        self.into_steelval().expect("DocPos into_steelval")
+    }
+
+    pub fn from_steel_val(val: &SteelVal) -> Option<Self> {
+        downcast(val)
+    }
+}
+
+impl DocRange {
+    pub fn into_steel_val(self) -> SteelVal {
+        self.into_steelval().expect("DocRange into_steelval")
+    }
+
+    pub fn from_steel_val(val: &SteelVal) -> Option<Self> {
+        downcast(val)
+    }
+}
+
+impl Custom for DocPos {
+    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
+        Some(Ok(format!(
+            "#<doc-pos buffer={} offset={}>",
+            self.buffer.data().as_ffi(),
+            self.offset.index()
+        )))
+    }
+
+    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
+        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
+    }
+}
+
+impl Custom for DocRange {
+    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
+        Some(Ok(format!(
+            "#<doc-range buffer={} {}..{}>",
+            self.buffer.data().as_ffi(),
+            self.start.index(),
+            self.end.index()
+        )))
+    }
+
+    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
+        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
+    }
+}
+
+/// The `T` a Steel custom value holds, cloned out, or `None` for any other
+/// value.
+pub(crate) fn downcast<T: Clone + 'static>(val: &SteelVal) -> Option<T> {
+    if let SteelVal::Custom(v) = val {
+        v.read().as_any_ref().downcast_ref::<T>().cloned()
+    } else {
+        None
+    }
+}
+
 // ── Predicate builtins ────────────────────────────────────────────────────────
 
 /// `(pane? v)`: return `#t` if `v` is an opaque pane handle.
 pub(crate) fn is_pane(val: SteelVal) -> bool {
-    if let SteelVal::Custom(v) = &val {
-        v.read().as_any_ref().downcast_ref::<SteelPane>().is_some()
-    } else {
-        false
-    }
+    downcast_pane(&val).is_some()
 }
 
 // ── Decode ────────────────────────────────────────────────────────────────────
 
 pub(crate) fn downcast_pane(val: &SteelVal) -> Option<PaneHandle> {
-    if let SteelVal::Custom(v) = val {
-        v.read()
-            .as_any_ref()
-            .downcast_ref::<SteelPane>()
-            .map(|p| p.0)
-    } else {
-        None
-    }
+    downcast::<SteelPane>(val).map(|p| p.0)
 }
 
 #[cfg(test)]

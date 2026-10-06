@@ -1,78 +1,45 @@
-// Introspection builtins: lsp-capabilities,
-// lsp-server-status, lsp-server-for-buffer, buffer-generation,
-// lsp-position-params, lsp-primary-range-params, lsp-linewise-ranges-params,
+// Introspection builtins: lsp-capabilities, lsp-servers,
+// lsp-server-status, buffer-generation, lsp-position-params,
+// lsp-primary-range-params, lsp-linewise-ranges-params,
 // lsp-position->offset, lsp-range->offsets.
 
-use std::path::{Path, PathBuf};
-
+use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::test_util::RecordingLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// Wires a scripted backend, drives its handshake to completion (so the
-/// client records `caps_json` the way production does), and attaches the
-/// focused buffer to it under language `"rust"`.
-fn attach_running_server(ed: &mut Editor, initialize_result: serde_json::Value) -> ServerId {
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to("initialize", initialize_result);
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    sid
+/// The JSON `rust-analyzer` receives for the params `expr` (a Scheme
+/// expression over `pane`) builds: positions inside are encoded in its
+/// negotiated encoding only when the request is sent.
+fn sent_params(rig: &mut LspRig, expr: &str) -> serde_json::Value {
+    rig.probe(&format!(
+        r#"(lsp-request! pane "test/params" {expr} (lambda (err res) (begin)))"#
+    ));
+    let sid = rig.sid("rust-analyzer");
+    rig.requests_to(sid, "test/params")
+        .pop()
+        .expect("the params were sent")
 }
 
-/// [`attach_running_server`] plus one canned response for `"test/echo"`:
-/// the setup every `lsp-position->offset`/`lsp-range->offsets` test below
-/// needs to hand the builtin a position that carries a real producing-server
-/// tag, since an untagged (hand-built) hash is rejected outright.
-fn attach_running_server_with_echo(
-    ed: &mut Editor,
+/// [`LspRig::rust`] plus one canned response for `"test/echo"`: the setup
+/// every `lsp-position->offset`/`lsp-range->offsets` test below needs to
+/// hand the builtin a position that carries a real producing-server tag,
+/// since an untagged (hand-built) hash is rejected outright.
+fn rig_with_echo(
+    tmp: &std::path::Path,
+    marked: &str,
     initialize_result: serde_json::Value,
     echo: serde_json::Value,
-) -> ServerId {
-    let mut backend = InlineLspBackend::new();
+) -> LspRig {
+    let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", initialize_result);
     backend.respond_to("test/echo", echo);
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    sid
+    LspRig::drained(tmp, RigSpec::rust(marked), backend)
 }
 
 /// [`run_probe`]'s async-response sibling: dispatches a `test/echo` request
-/// (queued by [`attach_running_server_with_echo`]'s canned response) and
+/// (queued by [`rig_with_echo`]'s canned response) and
 /// evaluates `assertion` (a Scheme expression referencing `bid` and `res`
 /// (the echoed, now-tagged value)) once it lands, moving the cursor iff it
 /// holds.
@@ -96,17 +63,17 @@ fn run_tagged_probe(ed: &mut Editor, tmp: &std::path::Path, assertion: &str) -> 
 #[test]
 fn lsp_capabilities_reads_raw_wire_caps_after_handshake() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_server(
-        &mut ed,
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdef\n",
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
     );
 
     let fired = run_probe(
-        &mut ed,
+        &mut rig.ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (json-ref (lsp-capabilities bid) "hoverProvider") #t)"#,
+        r#"(equal? (json-ref (lsp-capabilities (car (lsp-servers bid))) "hoverProvider") #t)"#,
     );
     assert!(
         fired,
@@ -124,19 +91,19 @@ fn lsp_capabilities_reads_raw_wire_caps_after_handshake() {
 #[test]
 fn lsp_capabilities_surfaces_a_field_lsp_types_does_not_model() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_server(
-        &mut ed,
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdef\n",
         serde_json::json!({"capabilities": {
             "documentRangeFormattingProvider": {"rangesSupport": true}
         }}),
     );
 
     let fired = run_probe(
-        &mut ed,
+        &mut rig.ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (json-ref (lsp-capabilities bid) "documentRangeFormattingProvider" "rangesSupport")
+        r#"(equal? (json-ref (lsp-capabilities (car (lsp-servers bid))) "documentRangeFormattingProvider" "rangesSupport")
                    #t)"#,
     );
     assert!(
@@ -148,25 +115,15 @@ fn lsp_capabilities_surfaces_a_field_lsp_types_does_not_model() {
 #[test]
 fn lsp_capabilities_is_false_before_running() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    // Client wired but handshake never driven; stays Starting.
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    // No `initialize` answer is scripted, so the server stays Starting.
+    let (backend, _, _) = RecordingLspBackend::new();
+    let mut rig = LspRig::open(tmp.path(), RigSpec::rust("-[a]>bcdef\n"), backend);
 
     let fired = run_probe(
-        &mut ed,
+        &mut rig.ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (lsp-capabilities bid) #f)"#,
+        r#"(equal? (lsp-capabilities (car (lsp-servers bid))) #f)"#,
     );
     assert!(
         fired,
@@ -177,17 +134,25 @@ fn lsp_capabilities_is_false_before_running() {
 #[test]
 fn lsp_server_status_lists_the_running_server() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        serde_json::json!({"capabilities": {}}),
+    );
 
     let fired = run_probe(
-        &mut ed,
+        &mut rig.ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let ((entry (car (lsp-server-status))))
-             (and (equal? (hash-ref entry 'language) "rust")
-                  (equal? (hash-ref entry 'state) 'running)
-                  (equal? (hash-ref entry 'pending) 0)))"#,
+        &format!(
+            r#"(let ((entry (car (lsp-server-status))))
+                 (and (equal? (hash-ref entry 'name) "rust-analyzer")
+                      (equal? (hash-ref entry 'languages) '("rust"))
+                      (equal? (hash-ref entry 'root) "{}")
+                      (equal? (hash-ref entry 'state) 'running)
+                      (equal? (hash-ref entry 'pending) 0)))"#,
+            rig.root.display()
+        ),
     );
     assert!(
         fired,
@@ -196,32 +161,28 @@ fn lsp_server_status_lists_the_running_server() {
 }
 
 #[test]
-fn lsp_server_for_buffer_reflects_attachment() {
+fn lsp_servers_names_the_attached_server() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
-
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
+    let mut rig = LspRig::rust(
         tmp.path(),
-        r#"(equal? (lsp-server-for-buffer bid) "rust")"#,
+        "-[a]>bcdef\n",
+        serde_json::json!({"capabilities": {}}),
     );
-    assert!(
-        fired,
-        "lsp-server-for-buffer must return the attached language"
-    );
+
+    rig.probe(r#"(log! 'warn (to-string (map lsp-server-name (lsp-servers pane))))"#);
+
+    assert_eq!(rig.warnings(), vec![r#"("rust-analyzer")"#.to_string()]);
 }
 
 #[test]
-fn lsp_registered_for_language_reflects_registration() {
+fn lsp_server_registered_reflects_registration() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '())"#,
+        r#"(register-lsp-server! "rust-analyzer" #:command "rust-analyzer")"#,
         tmp.path(),
     );
 
@@ -229,16 +190,16 @@ fn lsp_registered_for_language_reflects_registration() {
         &mut ed,
         host,
         tmp.path(),
-        r#"(lsp-registered-for-language? "rust")"#,
+        r#"(and (lsp-server-registered? "rust-analyzer") (not (lsp-server-registered? "rust")))"#,
     );
     assert!(
         fired,
-        "lsp-registered-for-language? must be true once the language is registered"
+        "lsp-server-registered? must be true for the registered name only"
     );
 }
 
 #[test]
-fn lsp_registered_for_language_is_false_when_unregistered() {
+fn lsp_server_registered_is_false_when_unregistered() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
 
@@ -246,11 +207,11 @@ fn lsp_registered_for_language_is_false_when_unregistered() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(not (lsp-registered-for-language? "rust"))"#,
+        r#"(not (lsp-server-registered? "rust-analyzer"))"#,
     );
     assert!(
         fired,
-        "lsp-registered-for-language? must be false when nothing is registered"
+        "lsp-server-registered? must be false when nothing is registered"
     );
 }
 
@@ -294,22 +255,17 @@ fn buffer_generation_changes_after_an_edit() {
 fn lsp_position_params_uses_the_negotiated_utf16_encoding_for_multibyte_chars() {
     let tmp = safe_tempdir();
     // Buffer: "🎉" (char 0, one grapheme, 2 UTF-16 code units) then cursor on 'x' (char 1).
-    let mut ed = editor_from("🎉-[x]>rest\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-introspect.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}})); // UTF-16 default
-
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
+    let mut rig = LspRig::rust(
         tmp.path(),
-        r#"(let ((p (lsp-position-params bid)))
-             (and p
-                  (equal? (hash-ref (hash-ref p "position") "line") 0)
-                  (equal? (hash-ref (hash-ref p "position") "character") 2)))"#,
-    );
-    assert!(
-        fired,
+        "🎉-[x]>rest\n",
+        serde_json::json!({"capabilities": {}}),
+    ); // UTF-16 default
+
+    let params = sent_params(&mut rig, "(lsp-position-params pane)");
+
+    assert_eq!(
+        params["position"],
+        serde_json::json!({"line": 0, "character": 2}),
         "UTF-16 negotiated: 🎉 is a surrogate pair, so char index 1 must be wire character 2"
     );
 }
@@ -317,24 +273,16 @@ fn lsp_position_params_uses_the_negotiated_utf16_encoding_for_multibyte_chars() 
 #[test]
 fn lsp_position_params_uses_the_negotiated_utf8_encoding_for_multibyte_chars() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("🎉-[x]>rest\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-introspect-utf8.rs")));
-    attach_running_server(
-        &mut ed,
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "🎉-[x]>rest\n",
         serde_json::json!({"capabilities": {"positionEncoding": "utf-8"}}),
     );
 
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
-        tmp.path(),
-        r#"(let ((p (lsp-position-params bid)))
-             (and p
-                  (equal? (hash-ref (hash-ref p "position") "character") 4)))"#,
-    );
-    assert!(
-        fired,
+    let params = sent_params(&mut rig, "(lsp-position-params pane)");
+
+    assert_eq!(
+        params["position"]["character"], 4,
         "UTF-8 negotiated: 🎉 is 4 bytes, so char index 1 must be wire character 4"
     );
 }
@@ -344,22 +292,20 @@ fn lsp_primary_range_params_reflects_the_primary_selection() {
     let tmp = safe_tempdir();
     // Selection covers "bcd" (chars 1..=3, inclusive head at 3): half-open
     // wire range must be [1, 4).
-    let mut ed = editor_from("a<[bcd]-ef\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-introspect-range.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
-
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
+    let mut rig = LspRig::rust(
         tmp.path(),
-        r#"(let* ((p (lsp-primary-range-params bid))
-                  (r (hash-ref p "range")))
-             (and (equal? (hash-ref (hash-ref r "start") "character") 1)
-                  (equal? (hash-ref (hash-ref r "end") "character") 4)))"#,
+        "a<[bcd]-ef\n",
+        serde_json::json!({"capabilities": {}}),
     );
-    assert!(
-        fired,
+
+    let params = sent_params(&mut rig, "(lsp-primary-range-params pane)");
+
+    assert_eq!(
+        params["range"],
+        serde_json::json!({
+            "start": {"line": 0, "character": 1},
+            "end": {"line": 0, "character": 4},
+        }),
         "range params must span the primary selection, half-open"
     );
 }
@@ -375,28 +321,20 @@ fn lsp_linewise_ranges_params_coalesces_touching_selections() {
     // "line1\nline2\nline3\n": selection 1 covers line0 whole (0..=5),
     // selection 2 covers line1 whole (6..=11); they touch, so the hull is
     // one range [0, 12).
-    let mut ed = editor_from("-{line1\n}>-[line2\n]>line3\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-touch.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
-
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
+    let mut rig = LspRig::rust(
         tmp.path(),
-        r#"(let* ((p (lsp-linewise-ranges-params bid))
-                  (ranges (hash-ref p "ranges"))
-                  (r (car ranges))
-                  (start (hash-ref r "start"))
-                  (end (hash-ref r "end")))
-             (and (equal? (length ranges) 1)
-                  (equal? (hash-ref start "line") 0)
-                  (equal? (hash-ref start "character") 0)
-                  (equal? (hash-ref end "line") 2)
-                  (equal? (hash-ref end "character") 0)))"#,
+        "-{line1\n}>-[line2\n]>line3\n",
+        serde_json::json!({"capabilities": {}}),
     );
-    assert!(
-        fired,
+
+    let params = sent_params(&mut rig, "(lsp-linewise-ranges-params pane)");
+
+    assert_eq!(
+        params["ranges"],
+        serde_json::json!([{
+            "start": {"line": 0, "character": 0},
+            "end": {"line": 2, "character": 0},
+        }]),
         "two touching linewise selections must coalesce into one range"
     );
 }
@@ -411,13 +349,14 @@ fn lsp_linewise_ranges_params_splits_on_a_gap() {
     let tmp = safe_tempdir();
     // "line1\nline2\nline3\n": selection 1 covers line0 (0..=5), selection 2
     // covers line2 (12..=17); line1 sits untouched between them.
-    let mut ed = editor_from("-{line1\n}>line2\n-[line3\n]>");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-gap.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-{line1\n}>line2\n-[line3\n]>",
+        serde_json::json!({"capabilities": {}}),
+    );
 
     let fired = run_probe(
-        &mut ed,
+        &mut rig.ed,
         ScriptingHost::new(),
         tmp.path(),
         r#"(equal? (length (hash-ref (lsp-linewise-ranges-params bid) "ranges")) 2)"#,
@@ -440,14 +379,14 @@ fn lsp_linewise_ranges_params_does_not_bridge_across_a_collapsed_blank_line_sele
     // "line1\n\nline3\n": selection 1 covers line0 whole (0..=5), selection
     // 2 is a collapsed cursor on the empty line1 (char 6, touching both
     // neighbors), selection 3 covers line2 whole (7..=12).
-    let mut ed = editor_from("-{line1\n}>-[\n]>-[line3\n]>");
-    ed.doc_mut().set_path(Some(
-        tmp.path().join("fake-lsp-linewise-ranges-blank-bridge.rs"),
-    ));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-{line1\n}>-[\n]>-[line3\n]>",
+        serde_json::json!({"capabilities": {}}),
+    );
 
     let fired = run_probe(
-        &mut ed,
+        &mut rig.ed,
         ScriptingHost::new(),
         tmp.path(),
         r#"(equal? (length (hash-ref (lsp-linewise-ranges-params bid) "ranges")) 2)"#,
@@ -467,14 +406,14 @@ fn lsp_linewise_ranges_params_does_not_bridge_across_a_collapsed_blank_line_sele
 fn lsp_linewise_ranges_params_is_empty_for_a_lone_collapsed_blank_line_selection() {
     let tmp = safe_tempdir();
     // "a\n\nb\n": collapsed cursor on the empty line1 (char 2).
-    let mut ed = editor_from("a\n-[\n]>b\n");
-    ed.doc_mut().set_path(Some(
-        tmp.path().join("fake-lsp-linewise-ranges-lone-blank.rs"),
-    ));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "a\n-[\n]>b\n",
+        serde_json::json!({"capabilities": {}}),
+    );
 
     let fired = run_probe(
-        &mut ed,
+        &mut rig.ed,
         ScriptingHost::new(),
         tmp.path(),
         r#"(equal? (hash-ref (lsp-linewise-ranges-params bid) "ranges") '())"#,
@@ -496,24 +435,22 @@ fn lsp_linewise_ranges_params_skips_non_linewise_selections() {
     let tmp = safe_tempdir();
     // "line1\nline2\n": selection 1 covers line0 whole (0..=5, linewise),
     // selection 2 covers just "lin" on line1 (6..=8, not linewise).
-    let mut ed = editor_from("-{line1\n}>-[lin]>e2\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-mixed.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
-
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
+    let mut rig = LspRig::rust(
         tmp.path(),
-        r#"(let* ((p (lsp-linewise-ranges-params bid))
-                  (ranges (hash-ref p "ranges"))
-                  (r (car ranges))
-                  (end (hash-ref r "end")))
-             (and (equal? (length ranges) 1)
-                  (equal? (hash-ref end "line") 1)
-                  (equal? (hash-ref end "character") 0)))"#,
+        "-{line1\n}>-[lin]>e2\n",
+        serde_json::json!({"capabilities": {}}),
     );
-    assert!(fired, "only the linewise selection must appear in ranges");
+
+    let params = sent_params(&mut rig, "(lsp-linewise-ranges-params pane)");
+
+    assert_eq!(
+        params["ranges"],
+        serde_json::json!([{
+            "start": {"line": 0, "character": 0},
+            "end": {"line": 1, "character": 0},
+        }]),
+        "only the linewise selection must appear in ranges"
+    );
 }
 
 /// No linewise selection at all still resolves (`textDocument` present):
@@ -521,13 +458,14 @@ fn lsp_linewise_ranges_params_skips_non_linewise_selections() {
 #[test]
 fn lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("a<[bcd]-ef\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-none.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "a<[bcd]-ef\n",
+        serde_json::json!({"capabilities": {}}),
+    );
 
     let fired = run_probe(
-        &mut ed,
+        &mut rig.ed,
         ScriptingHost::new(),
         tmp.path(),
         r#"(let ((p (lsp-linewise-ranges-params bid)))
@@ -551,24 +489,18 @@ fn lsp_primary_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
     // "caf" + é (U+0065 U+0301, two chars) + "\n". Grapheme boundaries:
     // 0,1,2,3,5,6; é occupies chars 3..5. Selection anchor=0, head=3
     // (inclusive) covers "caf" plus é's first char only.
-    let content = "caf\u{0065}\u{0301}\n";
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(content)));
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-range-grapheme.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
-
-    select(&mut ed, &[(0, 3)], 0);
-
-    let fired = run_probe(
-        &mut ed,
-        ScriptingHost::new(),
+    let mut rig = LspRig::rust(
         tmp.path(),
-        r#"(let* ((p (lsp-primary-range-params bid))
-                  (r (hash-ref p "range")))
-             (equal? (hash-ref (hash-ref r "end") "character") 5))"#,
+        "-[c]>af\u{0065}\u{0301}\n",
+        serde_json::json!({"capabilities": {}}),
     );
-    assert!(
-        fired,
+
+    select(&mut rig.ed, &[(0, 3)], 0);
+
+    let params = sent_params(&mut rig, "(lsp-primary-range-params pane)");
+
+    assert_eq!(
+        params["range"]["end"]["character"], 5,
         "end must land after the full é cluster (char 5), not mid-cluster (char 4)"
     );
 }
@@ -801,34 +733,38 @@ fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
 #[test]
 fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-introspect-hidden.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        serde_json::json!({"capabilities": {}}),
+    );
 
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    ed.open_extra_file(&extra);
-    let other_bid = ed
+    rig.ed.open_extra_file(&extra);
+    let other_bid = rig
+        .ed
         .state
         .buffers
         .find_by_path(&std::fs::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), other_bid);
+    rig.ed
+        .switch_to_buffer_with_jump(FocusedPane::current(&rig.ed.state), other_bid);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
-        &mut ed,
+        &mut rig.ed,
         &mut host,
         r#"(define-typed-command! "probe" "" (lambda (bid)
-             (let ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers)))))
+             (let ((hidden (car (filter (lambda (b) (and (buffer-path b) (not (equal? (buffer-key b) (buffer-key bid))))) (buffers)))))
                (lsp-position-params hidden))))"#,
         tmp.path(),
     );
-    ed.scripting = Some(host);
+    rig.ed.scripting = Some(host);
 
-    type_cmd(&mut ed, ":probe");
-    let msg = ed
+    type_cmd(&mut rig.ed, ":probe");
+    let msg = rig
+        .ed
         .state
         .status_msg
         .clone()
@@ -848,35 +784,37 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
 #[test]
 fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-introspect-split.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        serde_json::json!({"capabilities": {}}),
+    );
 
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    ed.open_extra_file(&extra);
-    let other_bid = ed
+    rig.ed.open_extra_file(&extra);
+    let other_bid = rig
+        .ed
         .state
         .buffers
         .find_by_path(&std::fs::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
-    let start_pid = ed.state.focus.id();
+    let start_pid = rig.ed.state.focus.id();
     let other_pid = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
+        &mut rig.ed.state,
+        &mut rig.ed.view,
         start_pid,
         other_bid,
         hume_engine::pipeline::Direction::Horizontal,
     )
     .unwrap();
-    ed.state.focus.set_for_test(other_pid);
+    rig.ed.state.focus.set_for_test(other_pid);
 
     let fired = run_probe(
-        &mut ed,
+        &mut rig.ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let* ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers))))
+        r#"(let* ((hidden (car (filter (lambda (b) (and (buffer-path b) (not (equal? (buffer-key b) (buffer-key bid))))) (buffers))))
                   (shown (car (buffer-panes hidden))))
              (and (lsp-position-params shown) #t))"#,
     );
@@ -895,23 +833,32 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
 #[test]
 fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    let tab_a = ed.state.tabs.current();
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        serde_json::json!({"capabilities": {}}),
+    );
+    let tab_a = rig.ed.state.tabs.current();
 
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    ed.execute_typed("tabnew", Some(extra.to_str().unwrap()))
+    rig.ed
+        .execute_typed("tabnew", Some(extra.to_str().unwrap()))
         .unwrap();
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let other_bid = rig.ed.focused_buffer_id();
+    assert!(
+        rig.ed.state.buffer_positions.lsp.has_doc(other_bid),
+        "setup: the background-tab buffer is attached"
+    );
 
-    ed.execute_typed("tabprev", None).unwrap();
-    assert_eq!(ed.state.tabs.current(), tab_a, "setup: back on A");
+    rig.ed.execute_typed("tabprev", None).unwrap();
+    assert_eq!(rig.ed.state.tabs.current(), tab_a, "setup: back on A");
 
     let fired = run_probe(
-        &mut ed,
+        &mut rig.ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let* ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers))))
+        r#"(let* ((hidden (car (filter (lambda (b) (and (buffer-path b) (not (equal? (buffer-key b) (buffer-key bid))))) (buffers))))
                   (shown (car (buffer-panes hidden))))
              (and (lsp-position-params shown) #t))"#,
     );
@@ -941,17 +888,15 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf16_encoding() {
     let tmp = safe_tempdir();
     // "🎉" is 1 char, 2 UTF-16 code units: wire character 2 (the emoji's
     // full UTF-16 width) must land on char index 1, the char right after it.
-    let mut ed = editor_from("-[x]>🎉rest\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-position-to-offset.rs")));
-    attach_running_server_with_echo(
-        &mut ed,
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[x]>🎉rest\n",
         serde_json::json!({"capabilities": {}}), // UTF-16 default
         serde_json::json!({"line": 0, "character": 2}),
     );
 
     let fired = run_tagged_probe(
-        &mut ed,
+        &mut rig.ed,
         tmp.path(),
         r#"(equal? (lsp-position->offset bid res) 1)"#,
     );
@@ -965,17 +910,15 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf16_encoding() {
 fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
     let tmp = safe_tempdir();
     // "🎉" is 4 UTF-8 bytes: wire character 4 must land on char index 1.
-    let mut ed = editor_from("-[x]>🎉rest\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-position-to-offset-utf8.rs")));
-    attach_running_server_with_echo(
-        &mut ed,
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[x]>🎉rest\n",
         serde_json::json!({"capabilities": {"positionEncoding": "utf-8"}}),
         serde_json::json!({"line": 0, "character": 4}),
     );
 
     let fired = run_tagged_probe(
-        &mut ed,
+        &mut rig.ed,
         tmp.path(),
         r#"(equal? (lsp-position->offset bid res) 1)"#,
     );
@@ -994,18 +937,21 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
 #[test]
 fn lsp_position_to_offset_untagged_handle_errors() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        serde_json::json!({"capabilities": {}}),
+    );
 
     run(
-        &mut ed,
+        &mut rig.ed,
         tmp.path(),
         r#"(define-typed-command! "probe" "" (lambda (bid)
              (lsp-position->offset bid (hash "line" 0 "character" 0))))"#,
     );
-    type_cmd(&mut ed, ":probe");
+    type_cmd(&mut rig.ed, ":probe");
 
-    let log = ed.state.message_log.format_for_display();
+    let log = rig.ed.state.message_log.format_for_display();
     assert!(
         log.contains("not a value from an LSP server"),
         "an untagged position must error, not silently decode via bid's attached server: {log:?}"
@@ -1016,45 +962,51 @@ fn lsp_position_to_offset_untagged_handle_errors() {
 /// decodes correctly even when `bid` currently has no server attached at
 /// all: the encoding travels with the response, not with `bid`'s live
 /// attachment. The request is dispatched (and its response tagged) while
-/// the server is still attached; `bid`'s attachment is cleared directly
-/// before the response is drained, so only the tag remains by the time
-/// `lsp-position->offset` actually runs, mirroring
+/// the server is still attached; `bid`'s document is closed before the
+/// response is drained (a second open file keeps the instance alive), so
+/// only the tag remains by the time `lsp-position->offset` actually runs,
+/// mirroring
 /// `lsp_request_with_no_attached_server_reports_an_error_and_fires_callback_with_err`'s
 /// own detach-after-send shape.
 #[test]
 fn lsp_position_to_offset_decodes_via_the_tag_even_after_the_server_detaches() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>🎉rest\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-position-detached.rs")));
-    attach_running_server_with_echo(
-        &mut ed,
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[x]>🎉rest\n",
         serde_json::json!({"capabilities": {}}), // UTF-16
         serde_json::json!({"line": 0, "character": 2}),
     );
 
     run(
-        &mut ed,
+        &mut rig.ed,
         tmp.path(),
         r#"(define-typed-command! "probe" "" (lambda (bid)
              (lsp-request! bid "test/echo" (hash) (lambda (err res)
                (when (equal? (lsp-position->offset bid res) 1)
-                 (call! "move-right" bid))))))"#,
+                 (call! "move-right" bid))))))
+           (define-typed-command! "detach" "" (lambda (bid)
+             (set-buffer-option! bid "language" "")))"#,
     );
-    let before = state(&ed);
-    let bid = ed.focused_buffer_id();
-    type_cmd(&mut ed, ":probe");
+    let other = rig.root.join("src/other.rs");
+    std::fs::write(&other, "fn other() {}\n").unwrap();
+    rig.ed.open_extra_file(&other);
+    let before = state(&rig.ed);
+    type_cmd(&mut rig.ed, ":probe");
     // The request is already in flight; detaching now proves the later
     // decode reads the response's own tag, not bid's live attachment.
-    ed.state.buffers.get_mut(bid).lsp_server = None;
-    ed.drain_lsp();
-    ed.settle();
+    // `other.rs` keeps the server running, so the response still arrives.
+    type_cmd(&mut rig.ed, ":detach");
+    rig.ed.drain_lsp();
+    rig.ed.settle();
 
     assert_ne!(
-        state(&ed),
+        state(&rig.ed),
         before,
         "a tagged position must still decode correctly with no server attached"
     );
+    rig.probe(r#"(log! 'warn (to-string (lsp-servers pane)))"#);
+    assert_eq!(rig.warnings(), vec!["()".to_string()], "bid was detached");
 }
 
 #[test]
@@ -1067,17 +1019,15 @@ fn lsp_position_to_offset_is_false_when_it_would_land_on_the_trailing_phantom_li
     // offset outright, so `lsp-position->offset` must refuse here too,
     // rather than handing back a value only useful for failing one step
     // later (and, inside a hint batch, failing every *other* hint with it).
-    let mut ed = editor_from("-[x]>abc\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-position-phantom-line.rs")));
-    attach_running_server_with_echo(
-        &mut ed,
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[x]>abc\n",
         serde_json::json!({"capabilities": {}}),
         serde_json::json!({"line": 5, "character": 0}),
     );
 
     let fired = run_tagged_probe(
-        &mut ed,
+        &mut rig.ed,
         tmp.path(),
         r#"(equal? (lsp-position->offset bid res) #f)"#,
     );
@@ -1093,11 +1043,9 @@ fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
     // "🎉" occupies char 0 (2 UTF-16 code units); 'b' is char 1, wire
     // character 2. A wire range [0, 2) must convert to char offsets (0 . 1),
     // covering just the emoji, half-open.
-    let mut ed = editor_from("-[x]>🎉bcdef\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-range-to-offsets.rs")));
-    attach_running_server_with_echo(
-        &mut ed,
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[x]>🎉bcdef\n",
         serde_json::json!({"capabilities": {}}), // UTF-16 default
         serde_json::json!({
             "start": {"line": 0, "character": 0},
@@ -1106,7 +1054,7 @@ fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
     );
 
     let fired = run_tagged_probe(
-        &mut ed,
+        &mut rig.ed,
         tmp.path(),
         r#"(equal? (lsp-range->offsets bid res) (hash 'start 0 'end 1))"#,
     );
@@ -1127,11 +1075,9 @@ fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
     // "-[x]>abc\n" is "xabc\n" (the marked 'x' is real buffer content), 5
     // chars.
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>abc\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-lsp-range-end-at-length.rs")));
-    attach_running_server_with_echo(
-        &mut ed,
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[x]>abc\n",
         serde_json::json!({"capabilities": {}}),
         serde_json::json!({
             "start": {"line": 0, "character": 0},
@@ -1140,7 +1086,7 @@ fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
     );
 
     let fired = run_tagged_probe(
-        &mut ed,
+        &mut rig.ed,
         tmp.path(),
         r#"(equal? (lsp-range->offsets bid res) (hash 'start 0 'end 5))"#,
     );
@@ -1155,20 +1101,23 @@ fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
 #[test]
 fn lsp_range_to_offsets_untagged_handle_errors() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        serde_json::json!({"capabilities": {}}),
+    );
 
     run(
-        &mut ed,
+        &mut rig.ed,
         tmp.path(),
         r#"(define-typed-command! "probe" "" (lambda (bid)
              (lsp-range->offsets bid
                (hash "start" (hash "line" 0 "character" 0)
                      "end" (hash "line" 0 "character" 1)))))"#,
     );
-    type_cmd(&mut ed, ":probe");
+    type_cmd(&mut rig.ed, ":probe");
 
-    let log = ed.state.message_log.format_for_display();
+    let log = rig.ed.state.message_log.format_for_display();
     assert!(
         log.contains("not a value from an LSP server"),
         "an untagged range must error, not silently decode via bid's attached server: {log:?}"
@@ -1202,11 +1151,10 @@ fn lsp_locations_display_parts_untagged_handle_errors() {
 #[test]
 fn lsp_locations_display_parts_name_the_open_buffer_of_each_row() {
     let tmp = safe_tempdir();
-    let dir = safe_tempdir();
-    let file = dir.path().join("open.rs");
-    std::fs::write(&file, "abc\ndef\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical)
+    let file = std::fs::canonicalize(tmp.path())
+        .unwrap()
+        .join("src/main.rs");
+    let uri = hume_lsp::uri::path_to_uri(&file)
         .unwrap()
         .as_str()
         .to_string();
@@ -1216,20 +1164,81 @@ fn lsp_locations_display_parts_name_the_open_buffer_of_each_row() {
             "range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": 0}},
         })
     };
-    let mut ed = editor_from("-[a]>bc\ndef\n");
-    ed.doc_mut().set_path(Some(canonical));
-    attach_running_server_with_echo(
-        &mut ed,
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[a]>bc\ndef\n",
         serde_json::json!({"capabilities": {}}),
         serde_json::json!([loc(&uri, 1), loc("file:///nowhere/other.rs", 0)]),
     );
 
     let fired = run_tagged_probe(
-        &mut ed,
+        &mut rig.ed,
         tmp.path(),
         r#"(let ((parts (lsp-locations->display-parts (json-list res))))
              (and (> (buffer-line-count (hash-ref (car parts) 'buffer)) 0)
                   (equal? (hash-ref (cadr parts) 'buffer) #f)))"#,
+    );
+    assert!(fired);
+}
+
+fn echo_location(line: u64, character: u64) -> serde_json::Value {
+    serde_json::json!({
+        "uri": "file:///nowhere/other.rs",
+        "range": {
+            "start": {"line": line, "character": character},
+            "end": {"line": line, "character": character},
+        },
+    })
+}
+
+/// Two servers often answer with the same location: rows naming the same
+/// path, line and column collapse into the first.
+#[test]
+fn display_parts_dedupes_identical_rows_keeping_the_first() {
+    let tmp = safe_tempdir();
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[a]>bc\n",
+        serde_json::json!({"capabilities": {}}),
+        serde_json::json!([
+            echo_location(3, 1),
+            echo_location(4, 0),
+            echo_location(3, 1)
+        ]),
+    );
+
+    let fired = run_tagged_probe(
+        &mut rig.ed,
+        tmp.path(),
+        r#"(equal? (map (lambda (p) (hash-ref p 'line))
+                        (lsp-locations->display-parts (json-list res)))
+                   '(3 4))"#,
+    );
+    assert!(fired);
+}
+
+/// Each row carries the location it was decoded from, so a caller jumps to
+/// the row it shows rather than indexing a list the dedupe reshaped.
+#[test]
+fn display_parts_rows_carry_their_location() {
+    let tmp = safe_tempdir();
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[a]>bc\n",
+        serde_json::json!({"capabilities": {}}),
+        serde_json::json!([
+            echo_location(3, 1),
+            echo_location(3, 1),
+            echo_location(7, 2)
+        ]),
+    );
+
+    let fired = run_tagged_probe(
+        &mut rig.ed,
+        tmp.path(),
+        r#"(let ((parts (lsp-locations->display-parts (json-list res))))
+             (equal? (map (lambda (p) (json-ref (hash-ref p 'location) "range" "start" "line")) parts)
+                     '(3 7)))"#,
     );
     assert!(fired);
 }
@@ -1243,16 +1252,29 @@ const TRACKING_COMMANDS: &str = r#"
 (define-typed-command! "report" ""
   (lambda (bid)
     (let ((p (tracked-position-params *tok*)))
-      (log! 'info (if p (number->string (hash-ref (hash-ref p "position") "line")) "none")))))
+      (if p
+          (lsp-request! bid "test/params" p (lambda (err res) (begin)))
+          (log! 'info "none")))))
 "#;
 
-fn tracked_editor(tmp: &std::path::Path) -> Editor {
-    let mut ed = editor_from("abc\nd-[e]>f\n");
-    ed.doc_mut().set_path(Some(tmp.join("fake-tracked.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
-    install_source(&mut ed, ScriptingHost::new(), TRACKING_COMMANDS, tmp);
-    type_cmd(&mut ed, ":arm");
-    ed
+fn tracked_rig(tmp: &std::path::Path) -> LspRig {
+    let mut rig = LspRig::rust(
+        tmp,
+        "abc\nd-[e]>f\n",
+        serde_json::json!({"capabilities": {}}),
+    );
+    install_source(&mut rig.ed, ScriptingHost::new(), TRACKING_COMMANDS, tmp);
+    type_cmd(&mut rig.ed, ":arm");
+    rig
+}
+
+/// The line of the position the last `:report` sent.
+fn reported_line(rig: &LspRig) -> serde_json::Value {
+    let sid = rig.sid("rust-analyzer");
+    rig.requests_to(sid, "test/params")
+        .pop()
+        .expect(":report sent the params")["position"]["line"]
+        .clone()
 }
 
 /// The params name the tracked symbol's line after lines were inserted above
@@ -1260,41 +1282,92 @@ fn tracked_editor(tmp: &std::path::Path) -> Editor {
 #[test]
 fn tracked_position_params_follow_lines_inserted_above() {
     let tmp = safe_tempdir();
-    let mut ed = tracked_editor(tmp.path());
-    type_cmd(&mut ed, ":report");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("1"), "setup: line 1");
+    let mut rig = tracked_rig(tmp.path());
+    type_cmd(&mut rig.ed, ":report");
+    assert_eq!(reported_line(&rig), 1, "setup: line 1");
 
-    set_cursor(&mut ed, 0);
-    ed.handle_key(key('O'));
-    ed.handle_key(key_esc());
-    assert_eq!(ed.doc().text().to_string(), "\nabc\ndef\n");
+    set_cursor(&mut rig.ed, 0);
+    rig.ed.handle_key(key('O'));
+    rig.ed.handle_key(key_esc());
+    assert_eq!(rig.ed.doc().text().to_string(), "\nabc\ndef\n");
 
-    type_cmd(&mut ed, ":report");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("2"));
+    type_cmd(&mut rig.ed, ":report");
+    assert_eq!(reported_line(&rig), 2);
 }
 
 #[test]
 fn a_released_position_answers_false() {
     let tmp = safe_tempdir();
-    let mut ed = tracked_editor(tmp.path());
-    type_cmd(&mut ed, ":disarm");
+    let mut rig = tracked_rig(tmp.path());
+    type_cmd(&mut rig.ed, ":disarm");
 
-    type_cmd(&mut ed, ":report");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("none"));
+    type_cmd(&mut rig.ed, ":report");
+    assert_eq!(rig.ed.state.status_msg.as_deref(), Some("none"));
 }
 
 #[test]
 fn a_false_token_answers_false_and_never_raises() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bc\n");
-    ed.doc_mut()
-        .set_path(Some(tmp.path().join("fake-false.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bc\n",
+        serde_json::json!({"capabilities": {}}),
+    );
     let fired = run_probe(
-        &mut ed,
+        &mut rig.ed,
         ScriptingHost::new(),
         tmp.path(),
         "(and (equal? (tracked-position-params #f) #f) (begin (untrack-position! #f) #t))",
     );
     assert!(fired);
+}
+
+#[test]
+fn lsp_capability_reads_the_provider_of_a_feature_or_a_method() {
+    let tmp = safe_tempdir();
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        serde_json::json!({"capabilities": {
+            "hoverProvider": true,
+            "completionProvider": {"triggerCharacters": ["."]},
+            "documentFormattingProvider": true,
+            "documentRangeFormattingProvider": {"rangesSupport": true},
+            "renameProvider": false,
+        }}),
+    );
+
+    rig.probe(
+        r#"(let ((s (car (lsp-servers pane))))
+             (log! 'warn (to-string (lsp-capability s #:feature 'hover)))
+             (log! 'warn (to-string (json-list (json-ref (lsp-capability s #:feature 'completion) "triggerCharacters"))))
+             (log! 'warn (to-string (json-ref (lsp-capability s #:method "textDocument/rangeFormatting") "rangesSupport")))
+             (log! 'warn (to-string (lsp-capability s #:method "textDocument/formatting")))
+             (log! 'warn (to-string (lsp-capability s #:feature 'rename-symbol)))
+             (log! 'warn (to-string (lsp-capability s #:method "custom/method"))))"#,
+    );
+
+    assert_eq!(
+        rig.warnings(),
+        vec!["#true", r#"(".")"#, "#true", "#true", "#false", "#false"]
+    );
+}
+
+#[test]
+fn lsp_capability_needs_exactly_one_of_feature_and_method() {
+    let tmp = safe_tempdir();
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        serde_json::json!({"capabilities": {}}),
+    );
+
+    rig.probe(
+        r#"(let ((s (car (lsp-servers pane))))
+             (log! 'warn (to-string (with-handler (lambda (e) 'raised) (lsp-capability s))))
+             (log! 'warn (to-string (with-handler (lambda (e) 'raised)
+               (lsp-capability s #:feature 'hover #:method "textDocument/hover")))))"#,
+    );
+
+    assert_eq!(rig.warnings(), vec!["raised", "raised"]);
 }

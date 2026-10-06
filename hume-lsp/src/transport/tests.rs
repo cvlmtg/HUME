@@ -259,29 +259,33 @@ fn reader_loop_delivers_through_a_bounded_channel_in_order() {
 // ── wait_for_finish ──────────────────────────────────────────────────────
 
 #[test]
-fn wait_for_finish_returns_true_once_thread_completes() {
-    let handle = thread::spawn(|| {
+fn wait_for_finish_returns_true_once_the_thread_holding_the_sender_ends() {
+    let (done, finished) = mpsc::channel::<()>();
+    let handle = thread::spawn(move || {
+        let _done = done;
         std::thread::sleep(std::time::Duration::from_millis(20));
     });
     assert!(wait_for_finish(
-        &handle,
+        &finished,
         std::time::Duration::from_millis(500)
     ));
     let _ = handle.join();
 }
 
 #[test]
-fn wait_for_finish_times_out_on_a_thread_that_never_finishes_in_time() {
-    let (tx, rx) = mpsc::channel::<()>();
+fn wait_for_finish_times_out_while_the_thread_is_still_running() {
+    let (done, finished) = mpsc::channel::<()>();
+    let (release, hold) = mpsc::channel::<()>();
     let handle = thread::spawn(move || {
-        // Blocks until `tx` is dropped below.
-        let _ = rx.recv();
+        let _done = done;
+        // Blocks until `release` is dropped below.
+        let _ = hold.recv();
     });
     assert!(!wait_for_finish(
-        &handle,
+        &finished,
         std::time::Duration::from_millis(50)
     ));
-    drop(tx);
+    drop(release);
     let _ = handle.join();
 }
 

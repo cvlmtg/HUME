@@ -141,7 +141,8 @@ impl Editor {
         // plain Rust enum, not a rooted `SteelVal`), so it needs even less
         // than the others: dropping it is the entire teardown. `PopupLayer`
         // likewise carries no Steel callback.
-        self.lsp.reset_config();
+        self.state.lsp.reset_config();
+        self.state.buffer_positions.lsp.clear_all_triggers();
         // Only the Steel `after!` thunks. Native `ViewportDebounce` timers
         // keep their wheel entries and their `viewport_debounce` back-index
         // intact, since nothing about them is Steel-VM-specific. Exhaustive
@@ -223,9 +224,11 @@ impl Editor {
     /// which a reload, by itself, causes. Firing those hooks here is the
     /// other half of ":reload-config behaves like closing and reopening
     /// every already-open buffer": running LSP servers and their published
-    /// diagnostics survive the reload (`LspState::reset_config`
-    /// keeps `servers` and `diagnostics`), so this re-fires the attach and
-    /// diagnostics hooks from that surviving state rather than re-opening
+    /// diagnostics survive the reload (`LspState::reset_config` keeps
+    /// instances, documents and diagnostics, and suspends reconcile until
+    /// here, where the buffers are matched against the new config once),
+    /// so this re-fires the attach and diagnostics hooks from that
+    /// surviving state rather than re-opening
     /// documents over the wire: a real close+reopen would round-trip
     /// `textDocument/didClose`+`didOpen` to a server we're keeping alive,
     /// and a server that only republishes diagnostics on change would leave
@@ -257,14 +260,23 @@ impl Editor {
     /// each buffer's *own* hooks still fire in the same relative order a real
     /// open would use. Only the cross-buffer interleaving differs.
     pub(in crate::editor) fn resync_config_state(&mut self, snapshot: &ReloadSnapshot) {
+        // Attachments made before the reload, to a server already running:
+        // reconcile keeps the ones the new config still plans, without
+        // reopening them, so their `OnLspAttach` is replayed for the new
+        // engine's handlers. An attachment reconcile makes fresh fires its
+        // own.
         let running_attachments: Vec<_> = self
-            .lsp
-            .running_attached_buffers(&self.state.buffers)
+            .state
+            .lsp_running_attachments()
             .into_iter()
             .filter(|(bid, _)| snapshot.survives(*bid, &self.state.buffers))
             .collect();
-        for (bid, language) in &running_attachments {
-            self.queue_lsp_attach(*bid, language);
+        self.state.lsp.resume_reconcile();
+        self.state.lsp_reconcile_all(&self.view);
+        for (bid, sid) in running_attachments {
+            if self.state.buffer_positions.lsp.is_attached(bid, sid) {
+                self.state.queue_lsp_attach(bid, sid);
+            }
         }
 
         let open_bids: Vec<BufferId> = self

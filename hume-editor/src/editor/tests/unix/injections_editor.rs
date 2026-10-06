@@ -400,7 +400,7 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
-    type_cmd(&mut ed, ":lsp-servers");
+    type_cmd(&mut ed, ":lsp-catalog");
 
     assert_eq!(
         ed.inline_output_enter_count(),
@@ -412,7 +412,7 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
             .status_msg
             .as_deref()
             .is_some_and(|m| m.contains("seeded servers")),
-        "lsp-servers must still log its summary line, got: {:?}",
+        "lsp-catalog must still log its summary line, got: {:?}",
         ed.state.status_msg
     );
 }

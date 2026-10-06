@@ -21,7 +21,6 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::edit::{Edited, TextChange};
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
-use hume_editing::text::BufferText;
 
 /// [`apply_doc_history_walk`]'s result: keeps a read-only refusal
 /// distinguishable from genuine root/leaf exhaustion, so each caller reports
@@ -38,39 +37,11 @@ pub(in crate::editor) enum HistoryWalk {
     Took(usize),
 }
 
-/// Queues the edit for the attached language server's `didChange`, sent at
-/// the LSP per-frame flush (`Editor::flush_lsp_pending_changes`) instead of
-/// inline. No-op when `buf_id` has no server attached.
-fn record_lsp_edits(
-    buffers: &mut BufferStore,
-    buf_id: BufferId,
-    generation: u64,
-    cs: &ChangeSet,
-    rope_pre: &ropey::Rope,
-) {
-    let buf = buffers.get_mut(buf_id);
-    if buf.lsp_server.is_some() {
-        buf.lsp_pending
-            .push(crate::editor::lsp::sync::LspPendingChange {
-                cs: cs.clone(),
-                before: rope_pre.clone(),
-                version: generation,
-            });
-    }
-}
-
 /// Shared post-mutation bookkeeping for every text-mutating path: write
-/// `new_sels` back to the acting pane, bump the edit seq, and feed the
-/// LSP `didChange` stream. A path that forgets one of these steps would
-/// desync the server, with no compile error, so this is the one place that
-/// sequence is spelled out. Stored positions (other panes, jump lists,
-/// prompt snapshots) and the syntax edit chain are not here: the `Buffer`
+/// `new_sels` back to the acting pane and bump the edit seq. Stored
+/// positions (other panes, jump lists, prompt snapshots), the syntax edit
+/// chain and the language servers' change queue are not here: the `Buffer`
 /// mutator already carried them through the change.
-///
-/// `text_pre` is the pre-mutation text the LSP stream maps its positions
-/// from; this runs after the mutation, so it cannot re-derive it from
-/// `buffers`.
-#[allow(clippy::too_many_arguments)]
 fn finish_edit(
     buffers: &mut BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -78,15 +49,13 @@ fn finish_edit(
     buf_id: BufferId,
     new_sels: SelectionSet,
     cs: &ChangeSet,
-    text_pre: &BufferText,
 ) {
     // An identity `cs` moved no bytes: `Buffer::apply_edit*` skipped
     // `install` for it directly, and `commit_edit_group` never records it as
     // a revision for `undo`/`redo` to later replay, so the text generation did
-    // not move either way. Feeding the LSP stream an edit tagged with
-    // an already-parsed generation would be actively wrong, and paste-stamping
-    // must not count a no-op as an edit. Selections are still written: a
-    // no-op edit can still move cursors.
+    // not move either way. Paste-stamping must not count a no-op as an
+    // edit. Selections are still written: a no-op edit can still move
+    // cursors.
     if cs.is_identity() {
         pane_state[pane_id][buf_id].set_selections(new_sels, buffers.get(buf_id).text());
         return;
@@ -96,8 +65,6 @@ fn finish_edit(
     // left this pane's selections for the new ones to replace.
     pane_state[pane_id][buf_id].set_selections_after_edit(new_sels);
     buffers.bump_edit_seq();
-    let generation = buffers.get(buf_id).text().generation();
-    record_lsp_edits(buffers, buf_id, generation, cs, text_pre.rope());
 }
 
 /// `Err` when [`EditorState::active_session`](crate::editor::EditorState::active_session)
@@ -184,21 +151,11 @@ pub(in crate::editor) fn apply_doc_edit(
     {
         commit_paste_group(buffers, stores.panes, active_session);
     }
-    // O(1) clone: ropey uses structural sharing (reference-counted tree nodes).
-    let text_pre = buffers.get(buf_id).text().clone();
     let sels = stores.panes[pane_id][buf_id].selections().clone();
     let (new_sels, cs) = buffers
         .get_mut(buf_id)
         .apply_edit(buf_id, stores, pane_id, sels, cmd);
-    finish_edit(
-        buffers,
-        stores.panes,
-        pane_id,
-        buf_id,
-        new_sels,
-        &cs,
-        &text_pre,
-    );
+    finish_edit(buffers, stores.panes, pane_id, buf_id, new_sels, &cs);
     Ok(())
 }
 
@@ -242,15 +199,7 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
         );
     let (new_sels, cs) =
         doc.apply_edit_grouped(buf_id, stores, pane_id, sels, session.group_mut(), cmd);
-    finish_edit(
-        buffers,
-        stores.panes,
-        pane_id,
-        buf_id,
-        new_sels,
-        &cs,
-        &text_pre,
-    );
+    finish_edit(buffers, stores.panes, pane_id, buf_id, new_sels, &cs);
     // This is the one funnel every grouped edit goes through, so it's the
     // one place `DotCapture::chain` (`edit_session.rs`) can be fed without
     // every caller remembering to do it itself; see that type's own doc.
@@ -281,7 +230,6 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     if buffers.get(buf_id).is_read_only() {
         return;
     }
-    let text_pre = buffers.get(buf_id).text().clone();
     let group = active_session
         .as_mut()
         .filter(|s| s.is_paste_at(pane_id, buf_id))
@@ -299,7 +247,6 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
         buf_id,
         new_sels,
         &propagation_cs,
-        &text_pre,
     );
 }
 
@@ -356,20 +303,11 @@ pub(in crate::editor) fn apply_doc_history_walk(
             ));
         }
     }
-    let text_pre = buffers.get(buf_id).text().clone();
     let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), buf_id, stores, pane_id)?
     else {
         return Ok(HistoryWalk::Took(0));
     };
-    finish_edit(
-        buffers,
-        stores.panes,
-        pane_id,
-        buf_id,
-        new_sels,
-        &cs,
-        &text_pre,
-    );
+    finish_edit(buffers, stores.panes, pane_id, buf_id, new_sels, &cs);
     // `finish_edit` skips `bump_edit_seq` for an identity `cs` (correctly:
     // a normal edit that cancels to identity records no revision at all, so
     // nothing happened). A history walk is different: `current` moved to a

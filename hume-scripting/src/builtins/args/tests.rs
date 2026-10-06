@@ -291,14 +291,14 @@ fn lsp_target_arg_accepts_a_pane() {
 }
 
 #[test]
-fn lsp_target_arg_accepts_a_string_or_symbol_language() {
+fn lsp_target_arg_accepts_a_string_or_symbol_server_name() {
     assert!(matches!(
-        LspTargetArg::from_steelval(&SteelVal::StringV("rust".into())).unwrap(),
-        LspTargetArg::Language(lang) if lang == "rust"
+        LspTargetArg::from_steelval(&SteelVal::StringV("rust-analyzer".into())).unwrap(),
+        LspTargetArg::Name(name) if name == "rust-analyzer"
     ));
     assert!(matches!(
-        LspTargetArg::from_steelval(&SteelVal::SymbolV("rust".into())).unwrap(),
-        LspTargetArg::Language(lang) if lang == "rust"
+        LspTargetArg::from_steelval(&SteelVal::SymbolV("rust-analyzer".into())).unwrap(),
+        LspTargetArg::Name(name) if name == "rust-analyzer"
     ));
 }
 
@@ -308,8 +308,7 @@ fn lsp_target_arg_accepts_a_string_or_symbol_language() {
 fn lsp_target_arg_rejects_false() {
     let err = LspTargetArg::from_steelval(&SteelVal::BoolV(false)).unwrap_err();
     assert!(
-        err.to_string()
-            .contains("expected a pane or a language name"),
+        err.to_string().contains("expected a pane or a server name"),
         "got: {err}"
     );
 }

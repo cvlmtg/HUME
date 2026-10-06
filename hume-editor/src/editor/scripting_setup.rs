@@ -53,8 +53,10 @@ impl Editor {
     /// `Effect::LanguageReg` entries are grouped into one
     /// `apply_pending_language_regs` call so a large run (e.g.
     /// `languages.scm`'s ~700 `define-language!` calls) rebuilds the glob
-    /// matcher once, not once per entry; every other effect kind applies one
-    /// at a time.
+    /// matcher once, not once per entry. Consecutive `Effect::LspServerOp`
+    /// entries are likewise one `apply_lsp_server_ops` call, so buffers
+    /// reconcile to a run of registry changes once. Every other effect kind
+    /// applies one at a time.
     ///
     /// Finishes by draining `state.config.pending_language_detection`, which covers every
     /// buffer a disjoint-borrow Steel path opened via `buffer::lifecycle::
@@ -76,7 +78,16 @@ impl Editor {
                     }
                     self.apply_pending_language_regs(batch);
                 }
-                Effect::LspServerOp(op) => self.apply_lsp_server_op(op),
+                Effect::LspServerOp(op) => {
+                    let mut batch = vec![op];
+                    while matches!(effects.front(), Some(Effect::LspServerOp(_))) {
+                        let Some(Effect::LspServerOp(next)) = effects.pop_front() else {
+                            unreachable!("front() just confirmed an LspServerOp variant")
+                        };
+                        batch.push(next);
+                    }
+                    self.apply_lsp_server_ops(batch);
+                }
                 Effect::SetBufferLanguage { buffer, language } => {
                     // `buffer` may have closed between the Steel call that
                     // queued this effect and this drain (e.g. `(set-buffer-
@@ -100,14 +111,8 @@ impl Editor {
                     );
                     self.sweep_buffers_for_grammars(vec![id])
                 }
-                Effect::LspRequest(req) => {
-                    self.flush_lsp_pending_changes();
-                    self.send_one_lsp_request(req);
-                }
-                Effect::LspNotify(notify) => {
-                    self.flush_lsp_pending_changes();
-                    self.send_one_lsp_notify(notify);
-                }
+                Effect::LspRequest(req) => self.state.lsp_send_request(&self.view, req),
+                Effect::LspNotify(notify) => self.state.lsp_send_notify(notify),
                 Effect::BindKey {
                     mode,
                     keys,
@@ -132,21 +137,18 @@ impl Editor {
                     .keymap
                     .unbind_user(to_editor_bind_mode(mode), &keys),
                 Effect::RegisterCompletionSource(reg) => self.register_completion_source(reg),
-                Effect::SetCompletionTriggers {
+                Effect::SetTriggers {
+                    kind,
                     source,
-                    language,
+                    scope,
                     chars,
                 } => {
                     // Checked at apply time, not by the builtin that queued
                     // this effect: an earlier effect in the same batch may
                     // have just registered `source`, so whether it exists
                     // can't be known any sooner than this.
-                    if let Err(e) = self
-                        .state
-                        .config
-                        .completion_sources
-                        .set_buffer_trigger_chars(&source, language, chars)
-                    {
+                    let applied = self.state.set_triggers(kind, source, scope, chars);
+                    if let Err(e) = applied {
                         self.report(Severity::Error, e);
                     }
                 }
@@ -215,17 +217,6 @@ impl Editor {
     pub(super) fn queue_buffer_save(&mut self, bid: BufferId) {
         self.state
             .queue_event(EditorEvent::OnBufferSave { buffer: bid });
-    }
-
-    /// Fire `OnLspAttach (bid language)`, called both when a buffer
-    /// attaches to an already-Running server (`lsp_attach_buffer`) and, for
-    /// every buffer already attached, when a Starting client reaches
-    /// Running (`dispatch_lsp_action`'s `BecameRunning` arm).
-    pub(super) fn queue_lsp_attach(&mut self, bid: BufferId, language: &str) {
-        self.state.queue_event(EditorEvent::OnLspAttach {
-            buffer: bid,
-            language: language.to_owned(),
-        });
     }
 
     /// Fire `OnDiagnosticsChanged (bid)`: a payload-free signal, once per
@@ -538,10 +529,10 @@ impl Editor {
                         // before any of the calls actually ran. One call,
                         // one session, one check, one run; see
                         // `PendingWork::Call`'s own doc.
-                        if self.anchor_admits(&anchor) {
+                        if self.state.anchor_admits(&self.view, &anchor) {
                             self.run_call_batch(vec![(proc, args)]);
                         }
-                        self.release_request_position(&anchor);
+                        self.state.release_request_position(anchor.tracked);
                         continue;
                     }
                     if let Some(cap) = dot_capture {
@@ -634,7 +625,6 @@ impl Editor {
             let mut impl_host = EditorHostImpl::full(
                 &mut self.state,
                 &mut self.view,
-                &mut self.lsp,
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
                 self.tui.clone(),
@@ -661,7 +651,6 @@ impl Editor {
             let mut impl_host = EditorHostImpl::full(
                 &mut self.state,
                 &mut self.view,
-                &mut self.lsp,
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
                 self.tui.clone(),
@@ -867,10 +856,9 @@ impl Editor {
         // later detection pass would otherwise silently overwrite that
         // assertion with whatever plain detection finds. Restoring the
         // snapshot *inside* this loop, rather than as a second
-        // detect-then-correct pass afterward, also avoids attaching an LSP
-        // server for the buffer's *detected* language before its real,
-        // explicit one goes back: `lsp_attach_buffer` is a no-op once
-        // attached, so that wrong attach would otherwise stick.
+        // detect-then-correct pass afterward, also avoids firing language
+        // hooks for the buffer's *detected* language before its real,
+        // explicit one goes back.
         let explicit_restore: rustc_hash::FxHashMap<BufferId, Option<String>> =
             snapshot.take_explicit_languages().into_iter().collect();
         let open_bids: Vec<_> = self.state.buffers.iter().map(|(id, _)| id).collect();

@@ -463,7 +463,7 @@ fn queued_effects_before_failure_are_rolled_back() {
         &dir,
         "effects.scm",
         r#"(register-lsp-server! "rust" #:command "rust-analyzer")
-               (%define-language! "foo" '() '() '() #f)
+               (%define-language! "foo" '() '() '() #f '())
                (error "intentional mid-body error")"#,
     );
     let id = plugin_id("core:effects");
@@ -552,7 +552,7 @@ fn committed_activation_effects_survive_failed_outer_command() {
     assert!(
         matches!(
             &err.effects[0],
-            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.language == "b-lang"
+            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.name.as_str() == "b-lang"
         ),
         "surviving effect must be B's 'b-lang' registration, not 'before'/'after'; got: {:?}",
         err.effects[0]
@@ -627,7 +627,7 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
     assert!(
         matches!(
             &effects[0],
-            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.language == "c-lang"
+            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.name.as_str() == "c-lang"
         ),
         "surviving effect must be C's 'c-lang' registration, not B's 'b-lang'; got: {:?}",
         effects[0]

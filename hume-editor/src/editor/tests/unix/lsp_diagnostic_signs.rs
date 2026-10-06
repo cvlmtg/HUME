@@ -17,7 +17,7 @@ fn error_line_gets_a_sign_with_the_error_scope() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics("abcdefgh\n", &[diag]);
     let pid = ed.state.focus.id();
@@ -53,7 +53,7 @@ fn sign_and_buffer_text_use_different_scopes_for_the_same_severity() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics("abcdefgh\n", &[diag]);
     let pid = ed.state.focus.id();
@@ -96,7 +96,7 @@ fn error_beats_warning_on_the_same_line() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics("abcdefgh\n", &[warning, error]);
     let pid = ed.state.focus.id();
@@ -122,7 +122,7 @@ fn multiline_diagnostic_marks_every_line_it_touches() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics("abc\ndef\n", &[diag]);
     let pid = ed.state.focus.id();
@@ -146,7 +146,7 @@ fn end_line_equals_line_for_single_line_and_diverges_for_multiline() {
     let single: DiagFixture = ((0, 2), (0, 5), 1, "single-line");
     let multi: DiagFixture = ((0, 2), (1, 3), 1, "multi-line");
     let DiagSetup {
-        ed, _guard, _dirs, ..
+        ed, _guard, _root, ..
     } = setup_diagnostics("abc\ndef\n", &[single, multi]);
     let bid = ed.focused_buffer_id();
 
@@ -179,7 +179,7 @@ fn zero_diagnostics_produce_no_signs() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics("abcdefgh\n", &[]);
     let bid = ed.focused_buffer_id();
@@ -201,7 +201,7 @@ fn gutter_width_is_the_default_when_a_diagnostic_exists() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics("abcdefgh\n", &[diag]);
     let pid = ed.state.focus.id();
@@ -219,7 +219,7 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
     let DiagSetup {
         mut ed,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics("abcdefgh\n", &[diag]);
     let bid = ed.focused_buffer_id();
@@ -256,7 +256,7 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
         mut ed,
         tmp,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics("abcdefgh\n", &[diag]);
 
@@ -325,7 +325,7 @@ fn ladder_is_buffer_wide_not_viewport_restricted() {
         mut ed,
         tmp,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics(&content, &[diag]);
 
@@ -372,7 +372,7 @@ fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
         mut ed,
         file,
         _guard,
-        _dirs,
+        _root,
         ..
     } = setup_diagnostics("one two three four five six\n", &[diag]);
     let bid = ed.focused_buffer_id();

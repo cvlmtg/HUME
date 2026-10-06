@@ -83,6 +83,8 @@ pub(crate) struct ServerHandle {
     /// `begin_shutdown`'s `shutdown`/`exit` pair) before the process is
     /// killed out from under it.
     writer: Option<thread::JoinHandle<()>>,
+    /// Disconnects when the writer thread ends: it holds the only sender.
+    writer_done: mpsc::Receiver<()>,
     other_threads: Vec<thread::JoinHandle<()>>,
 }
 
@@ -147,9 +149,13 @@ impl ServerHandle {
                 reader_loop(BufReader::new(stdout), &tx_events, &reader_wake)
             })?;
 
+        let (writer_done_tx, writer_done) = mpsc::channel::<()>();
         let writer = thread::Builder::new()
             .name("hume-lsp-writer".into())
-            .spawn(move || writer_loop(stdin, rx_out))?;
+            .spawn(move || {
+                let _done = writer_done_tx;
+                writer_loop(stdin, rx_out)
+            })?;
 
         let stderr_wake = Arc::clone(&wake);
         let stderr_thread = thread::Builder::new()
@@ -165,6 +171,7 @@ impl ServerHandle {
             rx_stderr: Some(rx_stderr),
             child: TrackedChild::new(child.into_inner()),
             writer: Some(writer),
+            writer_done,
             other_threads: vec![reader, stderr_thread],
         })
     }
@@ -213,20 +220,15 @@ pub fn writer_flush_grace() -> std::time::Duration {
     WRITER_FLUSH_GRACE
 }
 
-/// Polls `handle` up to `timeout`, returning whether it finished in time.
+/// Waits up to `timeout` for the thread that holds the sender of `done` to
+/// end, which disconnects the channel; returns whether it ended in time.
 /// Extracted from `Drop` so the bounded-wait mechanism is unit-testable
 /// without spawning a real child process.
-fn wait_for_finish(handle: &thread::JoinHandle<()>, timeout: std::time::Duration) -> bool {
-    let deadline = std::time::Instant::now() + timeout;
-    loop {
-        if handle.is_finished() {
-            return true;
-        }
-        if std::time::Instant::now() >= deadline {
-            return false;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
+fn wait_for_finish(done: &mpsc::Receiver<()>, timeout: std::time::Duration) -> bool {
+    matches!(
+        done.recv_timeout(timeout),
+        Err(mpsc::RecvTimeoutError::Disconnected)
+    )
 }
 
 impl Drop for ServerHandle {
@@ -238,9 +240,7 @@ impl Drop for ServerHandle {
         // (shutdown request + exit notification) to a plain kill. Give the
         // writer a bounded window to actually finish first.
         self.tx = None;
-        if let Some(writer) = &self.writer {
-            wait_for_finish(writer, WRITER_FLUSH_GRACE);
-        }
+        wait_for_finish(&self.writer_done, WRITER_FLUSH_GRACE);
         // Killing the child closes its stdout/stderr, which ends the reader
         // and stderr threads' blocking reads.
         self.child.reap();

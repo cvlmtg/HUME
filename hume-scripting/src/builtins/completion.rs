@@ -6,11 +6,13 @@ use steel::rvals::SteelVal;
 
 use crate::host::{CompletionSourceTarget, MatchKind};
 use crate::json::json_to_steel;
+use crate::types::{PaneHandle, TriggerKind, TriggerScope};
 use crate::{Effect, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, callable_arg, chars_arg, int_arg, json_arg, string_arg, symbol_enum_arg, usize_arg,
+    bool_arg, callable_arg, chars_arg, int_arg, json_arg, list_items, server_arg, string_arg,
+    symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -50,28 +52,73 @@ fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
     )
 }
 
-/// `(set-hook-triggers! source language chars)`: `chars` is a list of
-/// 1-char strings, registered for exactly `(source, language)`. Callable
-/// from any context, including command bodies and hook handlers:
-/// signature help registers a server's trigger characters from inside an
-/// `on-lsp-attach` handler, which runs as plain command context (no
-/// `EvalMode` gate applies here, unlike `register-hook!`). `chars` landing in Insert mode fires the
-/// `on-trigger-char` hook for any listener named `source`, a shared,
-/// listener-agnostic table, *not* how a completion source's own trigger
-/// chars are joined (that's `set-completion-triggers!`, a completion
-/// source's own routing table, checked before invoking sources directly).
+/// `(set-hook-triggers! source language chars)`: `chars` is a list of 1-char
+/// strings, registered for `(source, language)`. `chars` landing in Insert
+/// mode fires the `on-trigger-char` hook for any listener named `source`, a
+/// shared, listener-agnostic table, *not* how a completion source's own
+/// trigger chars are joined (that's `set-completion-triggers!`, a
+/// completion source's own routing table, checked before invoking sources
+/// directly).
 pub(crate) fn set_hook_triggers(
     ctx: &mut SteelCtx,
     source: SteelVal,
     language: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
-    let source = string_arg(source, "set-hook-triggers! source")?;
-    let language = string_arg(language, "set-hook-triggers! language")?;
-    let chars = chars_arg(chars, "set-hook-triggers! chars")?;
-    ctx.host
-        .language()
-        .set_hook_triggers(source, language, chars);
+    let name = "set-hook-triggers!";
+    let scope = TriggerScope::Language(string_arg(language, &format!("{name} language"))?);
+    queue_triggers(ctx, name, TriggerKind::Hook, source, scope, chars)
+}
+
+/// `(set-attachment-hook-triggers! source pane server chars)`: the same
+/// table for the one attachment of `pane`'s buffer to `server`. Callable
+/// from any context, including command bodies and hook handlers: signature
+/// help sets its trigger characters from inside an `on-lsp-attach` handler,
+/// which runs as plain command context (no `EvalMode` gate applies here,
+/// unlike `register-hook!`). A buffer that is not attached to `server`
+/// when this applies gets nothing.
+pub(crate) fn set_attachment_hook_triggers(
+    ctx: &mut SteelCtx,
+    source: SteelVal,
+    pane: PaneHandle,
+    server: SteelVal,
+    chars: SteelVal,
+) -> SteelResult {
+    let name = "set-attachment-hook-triggers!";
+    let scope = attachment_scope(pane, server, &format!("{name} server"))?;
+    queue_triggers(ctx, name, TriggerKind::Hook, source, scope, chars)
+}
+
+fn attachment_scope(
+    pane: PaneHandle,
+    server: SteelVal,
+    ctx_name: &str,
+) -> Result<TriggerScope, SteelErr> {
+    Ok(TriggerScope::Attachment {
+        buffer: pane.buffer(),
+        server: server_arg(&server, ctx_name)?.id,
+    })
+}
+
+/// The one decode behind every trigger-character builtin: queued as an
+/// `Effect`, not applied here; see `Effect::SetTriggers`. Argument decoding
+/// (a well-formed `chars` list) fails synchronously here.
+fn queue_triggers(
+    ctx: &mut SteelCtx,
+    name: &str,
+    kind: TriggerKind,
+    source: SteelVal,
+    scope: TriggerScope,
+    chars: SteelVal,
+) -> SteelResult {
+    let source = string_arg(source, &format!("{name} source"))?;
+    let chars = chars_arg(chars, &format!("{name} chars"))?;
+    ctx.push_effect(Effect::SetTriggers {
+        kind,
+        source,
+        scope,
+        chars,
+    });
     Ok(SteelVal::Void)
 }
 
@@ -135,18 +182,13 @@ pub(crate) fn register_completion_source(
 }
 
 /// `(%completion-emit! id items incomplete)`: the `completion-emit!`
-/// Scheme wrapper supplies `#:incomplete`'s `#f` default. `items` is either
-/// a list of `CompletionItem` hashmaps/bare-string labels, or one
-/// `JsonHandle` wrapping a whole LSP `textDocument/completion` response,
-/// passed straight through. `json_arg` (the same funnel every other
-/// JSON-taking builtin uses) takes it as either, with no deep copy either
-/// way: an already-handle argument crosses as-is, a plain list becomes a
-/// handle onto a fresh JSON array. The handle's own shape (bare array vs.
-/// `CompletionList`) is only known once it reaches the host implementation,
-/// so `incomplete` is passed through unconditionally rather than decided
-/// here; the host raises if the handle turns out to be a `CompletionList`
-/// whose own `isIncomplete` conflicts with it. Returns whether the answer
-/// applied (`#f` for a superseded or already-closed invocation).
+/// Scheme wrapper supplies `#:incomplete`'s `#f` default. `items` is a list
+/// whose elements are `CompletionItem` hashmaps, bare-string labels, or
+/// whole LSP `textDocument/completion` responses passed straight through;
+/// each crosses `json_arg` (the funnel every JSON-taking builtin uses) with
+/// no deep copy. What each element is only matters to the host
+/// implementation, which decodes them. Returns whether the answer applied
+/// (`#f` for a superseded or already-closed invocation).
 pub(crate) fn completion_emit(
     ctx: &mut SteelCtx,
     id: SteelVal,
@@ -155,9 +197,12 @@ pub(crate) fn completion_emit(
 ) -> SteelResult {
     let id = usize_arg(id, "completion-emit! id")? as u64;
     let incomplete = bool_arg(incomplete, "completion-emit! #:incomplete")?;
-    let response = json_arg(items, "completion-emit! items")?;
+    let parts = list_items(items, "completion-emit! items")?
+        .into_iter()
+        .map(|item| json_arg(item, "completion-emit! items"))
+        .collect::<Result<Vec<_>, _>>()?;
     let applied = require_cap(ctx.host.completions(), "completion-emit!")?
-        .completion_emit(id, response, incomplete)
+        .completion_emit(id, parts, incomplete)
         .map_err(generic_err)?;
     Ok(SteelVal::BoolV(applied))
 }
@@ -194,32 +239,38 @@ pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
 
 /// `(set-completion-triggers! source language chars)`: a `'buffer`
 /// completion source's own trigger characters for `language`, replacing
-/// that pair's previous set (`SourceRegistry::set_buffer_trigger_chars`).
-/// Callable from any context, same as `set-hook-triggers!`
-/// (`on-lsp-attach` runs as plain command context).
+/// that pair's previous set.
+/// Callable from any context, same as `set-hook-triggers!`.
 ///
-/// Queued as an `Effect`, not applied here; see
-/// `Effect::SetCompletionTriggers`'s own doc. Whether `source` names a
-/// registered `Buffer` source can only be checked once the effect applies
-/// (an earlier *queued* `register-completion-source!` in the same eval may
-/// be the one supplying it): a miss is reported as a log message there,
-/// never raised back to the caller. Argument decoding (a well-formed
-/// `chars` list) still fails synchronously here.
+/// Whether `source` names a registered `Buffer` source can only be checked
+/// once the effect applies (an earlier *queued*
+/// `register-completion-source!` in the same eval may be the one supplying
+/// it): a miss is reported as a log message there, never raised back to the
+/// caller.
 pub(crate) fn set_completion_triggers(
     ctx: &mut SteelCtx,
     source: SteelVal,
     language: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
-    let source = string_arg(source, "set-completion-triggers! source")?;
-    let language = string_arg(language, "set-completion-triggers! language")?;
-    let chars = chars_arg(chars, "set-completion-triggers! chars")?;
-    ctx.push_effect(Effect::SetCompletionTriggers {
-        source,
-        language,
-        chars,
-    });
-    Ok(SteelVal::Void)
+    let name = "set-completion-triggers!";
+    let scope = TriggerScope::Language(string_arg(language, &format!("{name} language"))?);
+    queue_triggers(ctx, name, TriggerKind::Completion, source, scope, chars)
+}
+
+/// `(set-attachment-completion-triggers! source pane server chars)`: the
+/// same for the one attachment of `pane`'s buffer to `server`, as
+/// `set-attachment-hook-triggers!` is to `set-hook-triggers!`.
+pub(crate) fn set_attachment_completion_triggers(
+    ctx: &mut SteelCtx,
+    source: SteelVal,
+    pane: PaneHandle,
+    server: SteelVal,
+    chars: SteelVal,
+) -> SteelResult {
+    let name = "set-attachment-completion-triggers!";
+    let scope = attachment_scope(pane, server, &format!("{name} server"))?;
+    queue_triggers(ctx, name, TriggerKind::Completion, source, scope, chars)
 }
 
 #[cfg(test)]

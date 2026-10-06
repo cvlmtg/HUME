@@ -19,31 +19,44 @@
           (log! 'info (string-append "LSP: " name " already installed (v"
                                      (lsp-install/receipt-version receipt) ") — up to date"))
           (lsp-install/register-installed-servers!))
-        (let ((had-dir? (path-exists? (lsp-install/server-dir name))))
-          (if (lsp-install/with-lock! (string-append "install " name)
-                (lambda ()
-                  (log! 'info (string-append "LSP: installing " name "..."))
-                  (lsp-install/install-server! name)))
-              (lsp-install/register-installed-servers!)
-              (when had-dir?
-                (log! 'info "LSP: if the server was running it has now been shut down — run :lsp-install again")))))))
+        (let* ((had-dir? (path-exists? (lsp-install/server-dir name)))
+               (install!
+                 (lambda ()
+                   (if (lsp-install/with-lock! (string-append "install " name)
+                         (lambda ()
+                           (log! 'info (string-append "LSP: installing " name "..."))
+                           (lsp-install/install-server! name)))
+                       (lsp-install/register-installed-servers!)
+                       (when had-dir?
+                         (log! 'info "LSP: if the server was running it has now been shut down — run :lsp-install again"))))))
+          (if had-dir?
+              (begin
+                (unregister-lsp-server! name)
+                (after! 0 install!))
+              (install!))))))
 
-(register-completion-source! "lsp:languages"
+(register-completion-source! "lsp:install-targets"
   (lambda (id input cursor)
-    (completion-emit! id (hash-keys->list lsp-install/lang->server)))
+    (let ((servers (filter lsp-install/source (hash-keys->list lsp-install/servers))))
+      (completion-emit! id
+        (append servers
+                (filter (lambda (lang) (not (member lang servers)))
+                        (hash-keys->list lsp-install/language-lists))))))
   #:target 'minibuf #:match 'string)
 
 (define-typed-command! "lsp-install"
-  "Download and verify the language server for a language (default: the current buffer's language), then register it."
+  "Download and verify a language server, then register it: :lsp-install [language|server] (default: the current buffer's language)."
   (lambda (pane arg)
-    (let ((lang (call! "stdlib/resolve-lang-arg" pane "lsp-install" arg)))
-      (cond
-        ((not lang) (begin))
-        ((not (hash-contains? lsp-install/lang->server lang))
-         (log! 'info (string-append "lsp-install: no language server is seeded for \"" lang "\"")))
-        (else
-         (lsp-install/install-or-report! (hash-ref lsp-install/lang->server lang))))))
-  #:inline-output #t #:complete "lsp:languages")
+    (if (and (string? arg) (hash-contains? lsp-install/servers arg))
+        (lsp-install/install-or-report! arg)
+        (let ((lang (call! "stdlib/resolve-lang-arg" pane "lsp-install" arg)))
+          (cond
+            ((not lang) (begin))
+            ((not (hash-contains? lsp-install/language-lists lang))
+             (log! 'error (string-append "lsp-install: no language or server named \"" lang "\" is seeded")))
+            (else
+             (lsp-install/install-or-report! (lsp-install/primary lang)))))))
+  #:inline-output #t #:complete "lsp:install-targets")
 
 (register-completion-source! "lsp:servers"
   (lambda (id input cursor)
@@ -59,14 +72,14 @@
   (lambda (pane arg)
     (cond
       ((not (string? arg))
-       (log! 'info "lsp-uninstall: requires a server name, e.g. :lsp-uninstall rust-analyzer"))
+       (log! 'error "lsp-uninstall: requires a server name, e.g. :lsp-uninstall rust-analyzer"))
       ((not (eq? #t (call! "stdlib/safe-path-segment?" arg)))
-       (log! 'warn (string-append "lsp-uninstall: invalid server name: " arg)))
+       (log! 'error (string-append "lsp-uninstall: invalid server name: " arg)))
       (else
         (let* ((name arg)
                (dir  (lsp-install/server-dir name)))
           (when (hash-contains? lsp-install/servers name)
-            (lsp-install/unregister-server-languages! name))
+            (unregister-lsp-server! name))
           (if (path-exists? dir)
               (begin
                 (log! 'info (string-append "LSP: shutting down and removing " name "..."))
@@ -77,14 +90,18 @@
               (log! 'info (string-append "LSP: nothing to uninstall for " name)))))))
   #:complete "lsp:servers")
 
-(define-typed-command! "lsp-servers"
+(define-typed-command! "lsp-catalog"
   "Log the LSP server catalog: languages, seeded version, and install status."
   (lambda ()
     (for-each
       (lambda (name)
         (let* ((receipt (lsp-install/read-receipt name))
                (source  (lsp-install/source name))
-               (langs   (map car (lsp-install/ref (hash-ref lsp-install/servers name) 'languages)))
+               (langs   (map (lambda (lang)
+                               (if (equal? (lsp-install/primary lang) name)
+                                   lang
+                                   (string-append lang " (secondary)")))
+                             (lsp-install/server-languages name)))
                (status
                  (cond
                    (receipt

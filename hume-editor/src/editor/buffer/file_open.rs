@@ -200,12 +200,7 @@ impl Editor {
     /// Remove buffer `id`; see [`lifecycle::close_buffer`]'s own doc for
     /// the last-buffer case (a fresh scratch buffer, not `id` reused).
     pub(in crate::editor) fn close_buffer(&mut self, id: BufferId) {
-        lifecycle::close_buffer_and_notify(
-            &mut self.view,
-            &mut self.state,
-            Some(&mut self.lsp),
-            id,
-        );
+        lifecycle::close_buffer_and_notify(&mut self.view, &mut self.state, id);
         // Mirrors `open_buffer`'s own call, right above: the last-buffer
         // case queues a fresh scratch buffer for language detection and
         // `OnBufferOpen` (`close_buffer_and_notify`'s `queue_open_announcement`
@@ -265,32 +260,19 @@ impl Editor {
             }
             ReplaceSource::Dump(text) => buf.replace_text_recorded(id, &mut stores, text, fp.pid()),
         };
-        // Flush any didChange already queued for this buffer *before* the
-        // whole-document one below. Otherwise, under macro replay (an edit
-        // followed by `:e!` in the same drain window), the server would see
-        // the full replacement text at the new version first and the queued
-        // incremental change (computed against the replaced text, at an
-        // *older* version) after it: a version regression the server can't
-        // recover from, permanently desyncing its copy of the document.
-        self.flush_lsp_pending_changes();
+        // The replacement went through `install` as a line-diff change, so
+        // the buffer's servers get it as an ordinary queued `didChange`.
         // Everything below discards state computed against the replaced
-        // text: diagnostics/decorations char offsets, and sends a
-        // whole-document didChange at a fresh version. A no-op
-        // replacement (`mutated == false`) never touched `self.text` or
-        // the text generation, so that state is still valid against the
-        // unchanged content and is kept.
+        // text. A no-op replacement (`mutated == false`) never touched
+        // `self.text` or the text generation, so that state is still valid
+        // against the unchanged content and is kept.
         if mutated {
-            // The replacement (a disk reload or a restored dump) moved the text
-            // generation but produced no *queued incremental* change the LSP
-            // pending-queue mechanism can consume, so send it as a
-            // whole-document didChange instead.
-            self.lsp_did_change_whole_document(id);
             // Diagnostics and LSP-sourced decorations were computed against the
             // replaced text; their char offsets are meaningless (and
             // potentially out-of-bounds, e.g. after a shrink) against the new
-            // content. The server republishes diagnostics shortly after seeing
-            // the didChange above; nothing republishes decorations on its own,
-            // so they simply stay cleared until a plugin sets them again.
+            // content. The servers republish diagnostics shortly after seeing
+            // the change; nothing republishes decorations on its own, so they
+            // stay cleared until a plugin sets them again.
             if self.state.buffer_positions.diagnostics.remove_buffer(id) {
                 self.queue_diagnostics_changed(id);
             }

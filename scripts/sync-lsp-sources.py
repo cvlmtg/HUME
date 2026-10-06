@@ -3,12 +3,12 @@
 
 Reads the pinned release tag from runtime/plugins/core/lsp-install/mason-pin.scm, downloads
 that release's compiled registry.json.zip, joins it against the checked-in
-runtime/plugins/core/lsp-install/servers.scm (server names Helix actually wires) through
+runtime/plugins/core/lsp-install/servers.scm and server-commands.scm (server names Helix actually wires) through
 an explicit name-mapping table, and rewrites sources.scm with per-server
 install records, then derives requirements.scm from the sources.scm it wrote: per
 server and platform, the format of the download and the programs the install needs
-on $PATH. The runtime reads requirements.scm whenever a language is set and sources.scm
-only when it installs.
+on $PATH. The runtime reads requirements.scm when it first needs a server's requirements
+and sources.scm only when it installs.
 
     sync-lsp-sources.py                          full sync, writes both files
     sync-lsp-sources.py --requirements-only      rewrite requirements.scm from sources.scm, offline
@@ -57,6 +57,7 @@ REPO = Path(__file__).resolve().parent.parent
 LSP_INSTALL_DIR = REPO / "runtime" / "plugins" / "core" / "lsp-install"
 MASON_PIN_SCM = LSP_INSTALL_DIR / "mason-pin.scm"
 LSP_SERVERS_SCM = LSP_INSTALL_DIR / "servers.scm"
+LSP_SERVER_COMMANDS_SCM = LSP_INSTALL_DIR / "server-commands.scm"
 LSP_SOURCES_SCM = LSP_INSTALL_DIR / "sources.scm"
 LSP_REQUIREMENTS_SCM = LSP_INSTALL_DIR / "requirements.scm"
 
@@ -104,6 +105,7 @@ HELIX_TO_MASON = {
     "vhdl_ls": "rust_hdl",
     "vlang-language-server": "v-analyzer",
     "vscode-css-language-server": "css-lsp",
+    "vscode-eslint-language-server": "eslint-lsp",
     "vscode-html-language-server": "html-lsp",
     "vscode-json-language-server": "json-lsp",
     "vuels": "vue-language-server",
@@ -425,7 +427,7 @@ def build_github_record(
         # download — a "github" record with an empty (targets) list would
         # claim installability that never exists on any platform. Downgrade
         # to the same stub shape used when Mason carries no assets at all
-        # (`not assets` above): `:lsp-servers` reports it uniformly as
+        # (`not assets` above): `:lsp-catalog` reports it uniformly as
         # "not installable (kind github-build) in v1".
         reports["no_usable_targets"].append(name)
         return {"kind": "github-build", "version": version}
@@ -904,16 +906,16 @@ def main() -> None:
     tag = read_pin(MASON_PIN_SCM)
     print(f"mason-pin: {tag}", file=sys.stderr)
 
-    if not LSP_SERVERS_SCM.exists():
-        sys.exit(
-            f"error: {LSP_SERVERS_SCM} does not exist — run scripts/sync-grammars.py first"
-        )
-    servers_data = read_sexpr(LSP_SERVERS_SCM)
-    commands = {}
-    for rec in servers_data:
-        server_name = str(rec[0])
-        command = next(f[1] for f in rec[1:] if isinstance(f, tuple) and str(f[0]) == "command")
-        commands[server_name] = command
+    for path in (LSP_SERVERS_SCM, LSP_SERVER_COMMANDS_SCM):
+        if not path.exists():
+            sys.exit(f"error: {path} does not exist — run scripts/sync-grammars.py first")
+    command_overrides = {
+        str(name): command for name, command in read_sexpr(LSP_SERVER_COMMANDS_SCM)
+    }
+    commands = {
+        str(rec[0]): command_overrides.get(str(rec[0]), str(rec[0]))
+        for rec in read_sexpr(LSP_SERVERS_SCM)
+    }
     helix_names = sorted(commands)
 
     mason_pkgs = fetch_registry(tag)

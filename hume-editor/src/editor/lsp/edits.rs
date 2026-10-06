@@ -588,7 +588,7 @@ impl Editor {
                 }));
             }
         };
-        let Some(encoding) = introspect::server_encoding(&self.lsp, server_id) else {
+        let Some(encoding) = introspect::server_encoding(&self.state.lsp, server_id) else {
             return Ok(serde_json::json!({
                 "applied": false,
                 "failureReason": "lsp server no longer tracked",

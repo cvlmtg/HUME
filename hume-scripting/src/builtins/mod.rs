@@ -173,10 +173,13 @@ macro_rules! builtins {
 // frame is never taken for this call's own. No with-handler (hazard above): a
 // raising body skips the restore; run_steel_session truncates to zero at end.
 //
-// lsp-request!: callback is (lambda (err result)), exactly one non-#f.
-// #:supersede <key> cancels the caller's own pending request under the same
-// (server, key). #:require-focus drops the callback unless pane is still
-// focused when the response arrives.
+// lsp-request!: callback is (lambda (err result)), one of them non-#f; err is
+// (hash 'kind 'message ['code]).
+// lsp-request-all!: callback is (lambda (err results)), results one hash per
+// server. the method, #:feature and #:to choose the servers when the request is
+// sent. #:supersede <key> cancels the caller's own pending request under the
+// same key. #:require-focus drops the callback unless pane is still focused
+// when the answers arrive.
 //
 // debounce / debounce-by: trailing-edge; debounce-by keeps one timer per
 // #:key (default: first argument). A firing timer clears its pending entry
@@ -364,27 +367,33 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "switch-to-buffer!" buffers::switch_to_buffer(pane: args::LivePane, target: args::LivePane);
 
         // Language identity and grammar builtins
-        config "%define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal, lsp_language_id_val: SteelVal);
+        config "%define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal, lsp_language_id_val: SteelVal, roots_val: SteelVal);
         open   "%register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, injections_path: SteelVal, textobjects_path: SteelVal);
 
         // LSP server registration: last-wins, queued (like language regs) and
         // applied at the end of the current eval, from init, plugin activation,
         // or a command/hook body.
-        open "%register-lsp-server!" lsp::register_lsp_server(language: SteelVal, command: SteelVal, args_val: SteelVal, root_markers_val: SteelVal, init_options: SteelVal, settings: SteelVal, env_val: SteelVal);
-        open "unregister-lsp-server!" lsp::unregister_lsp_server(language: SteelVal);
+        open "%register-lsp-server!" lsp::register_lsp_server(name: SteelVal, command: SteelVal, args_val: SteelVal, init_options: SteelVal, settings: SteelVal, env_val: SteelVal);
+        open "unregister-lsp-server!" lsp::unregister_lsp_server(name: SteelVal);
+        open "set-language-servers!" lsp::set_language_servers(language: SteelVal, entries: SteelVal);
+        open "set-default-language-servers!" lsp::set_default_language_servers(language: SteelVal, entries: SteelVal);
+        open "lsp-language-servers" lsp::lsp_language_servers(language: SteelVal);
         // Lifecycle: stop/restart a running server, or open the status view.
         cmd "lsp-stop!" lsp::lsp_stop(target: args::LspTargetArg);
         cmd "lsp-restart!" lsp::lsp_restart(target: args::LspTargetArg);
         cmd "lsp-show-status!" lsp::lsp_show_status(pane: args::LivePane);
         // Generic LSP bridge: any protocol method reachable from Steel.
-        cmd "%lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
-        cmd "lsp-notify!" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal);
+        cmd "%lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, to: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
+        cmd "%lsp-request-all!" lsp::lsp_request_all(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
+        cmd "%lsp-notify!" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal, feature: SteelVal, to: SteelVal);
         config "register-lsp-notification-hook!" lsp::register_lsp_notification_hook(methods: SteelVal, proc: SteelVal);
         // Introspection
-        cmd  "lsp-capabilities" lsp::lsp_capabilities(pane: args::ArgPane);
+        cmd  "lsp-capabilities" lsp::lsp_capabilities(server: SteelVal);
+        cmd  "%lsp-capability" lsp::lsp_capability(server: SteelVal, feature: SteelVal, method: SteelVal);
+        cmd  "%lsp-servers" lsp::lsp_servers(pane: args::LivePane, feature: SteelVal, method: SteelVal);
+        plain "lsp-server-name" lsp::lsp_server_name(server: SteelVal);
         cmd  "lsp-server-status" lsp::lsp_server_status();
-        cmd  "lsp-server-for-buffer" lsp::lsp_server_for_buffer(pane: args::ArgPane);
-        open "lsp-registered-for-language?" lsp::lsp_registered_for_language(language: SteelVal);
+        open "lsp-server-registered?" lsp::lsp_server_registered(name: SteelVal);
         cmd "lsp-position-params" lsp::lsp_position_params(pane: args::LivePane);
         cmd "track-position!" lsp::track_position(pane: args::LivePane);
         cmd "tracked-position-params" lsp::tracked_position_params(token: SteelVal);
@@ -402,6 +411,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "buffer-live?" buffers::buffer_live(pane: args::ArgPane);
         cmd "pane-live?" buffers::pane_live(pane: args::ArgPane);
         open "set-hook-triggers!" completion::set_hook_triggers(source: SteelVal, language: SteelVal, chars: SteelVal);
+        open "set-attachment-hook-triggers!" completion::set_attachment_hook_triggers(source: SteelVal, pane: args::LivePane, server: SteelVal, chars: SteelVal);
 
         // Decoration stores + diagnostics pull.
         cmd "set-inlay-hints!" decorations::set_inlay_hints(source: SteelVal, pane: args::LivePane, hints: SteelVal);
@@ -436,6 +446,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "completion-accept!" completion::completion_accept(idx: SteelVal);
         cmd "completion-dismiss!" completion::completion_dismiss();
         open "set-completion-triggers!" completion::set_completion_triggers(source: SteelVal, language: SteelVal, chars: SteelVal);
+        open "set-attachment-completion-triggers!" completion::set_attachment_completion_triggers(source: SteelVal, pane: args::LivePane, server: SteelVal, chars: SteelVal);
 
         // Cursor-anchored popup widget.
         cmd "%show-popup!" ui::show_popup(pane: args::LivePane, text: SteelVal, anchor: SteelVal, kind: SteelVal, lang: SteelVal);

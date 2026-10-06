@@ -3,29 +3,35 @@
 (require "catalog.scm")
 (require "receipts.scm")
 
-(provide lsp-install/register-installed-servers! lsp-install/unregister-server-languages!)
+(provide lsp-install/register-installed-servers!)
 
-(define (lsp-install/unregister-server-languages! name)
-  (for-each (lambda (lang-entry) (unregister-lsp-server! (car lang-entry)))
-            (lsp-install/ref (hash-ref lsp-install/servers name) 'languages)))
+(define (lsp-install/register-server! name cmd env)
+  (unless (lsp-server-registered? name)
+    (let* ((fields (hash-ref lsp-install/servers name))
+           (args        (lsp-install/ref fields 'args))
+           (config-json (lsp-install/ref fields 'config))
+           (config (if (null? config-json) #f (json-parse config-json))))
+      (register-lsp-server! name
+                            #:command cmd
+                            #:args args
+                            #:init-options config
+                            #:settings config
+                            #:env env))))
 
-(define (lsp-install/register-server-languages! name cmd env)
-  (let* ((fields (hash-ref lsp-install/servers name))
-         (langs  (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
-                         (lsp-install/ref fields 'languages)))
-         (args        (lsp-install/ref fields 'args))
-         (config-json (lsp-install/ref fields 'config))
-         (config (if (null? config-json) #f (json-parse config-json))))
-    (for-each
-      (lambda (lang-entry)
-        (register-lsp-server! (car lang-entry)
-                              #:command cmd
-                              #:args args
-                              #:root-markers (cdr lang-entry)
-                              #:init-options config
-                              #:settings config
-                              #:env env))
-      langs)))
+;; Default lists: see README.md, "Catalogs".
+(define (lsp-install/entry->spec entry)
+  (if (null? (cdr entry))
+      (car entry)
+      (hash 'name (car entry) (car (cadr entry)) (cdr (cadr entry)))))
+
+(define (lsp-install/set-default-lists!)
+  (for-each
+    (lambda (lang)
+      (set-default-language-servers!
+        lang
+        (map lsp-install/entry->spec
+             (lsp-install/ref (hash-ref lsp-install/language-lists lang) 'servers))))
+    (hash-keys->list lsp-install/language-lists)))
 
 (define (lsp-install/register-installed-servers!)
   (let ((sdir (lsp-install/servers-dir)))
@@ -41,10 +47,11 @@
                (log! 'warn (string-append "LSP: orphan server " name
                                           " — not in the seeded catalog, run :lsp-uninstall to remove")))
               (else
-               (lsp-install/register-server-languages!
+               (lsp-install/register-server!
                  name
                  (path-join (lsp-install/server-dir name) (lsp-install/receipt-bin receipt))
                  (map (lambda (entry)
                         (cons (car entry) (path-join (lsp-install/server-dir name) (cdr entry))))
                       (lsp-install/receipt-env-dirs receipt)))))))
-        (call! "stdlib/list-subdirs" sdir)))))
+        (call! "stdlib/list-subdirs" sdir))))
+  (lsp-install/set-default-lists!))

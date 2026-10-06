@@ -3,24 +3,11 @@
 // unit-tested directly in `editor::lsp::diagnostics` (no Editor needed
 // there); this file covers the parts that need a real buffer + backend.
 
-use std::path::Path;
-
+use super::lsp_rig::{LspRig, RigSpec, stop_server};
 use super::*;
-use crate::editor::lsp::LspState;
 use hume_engine::pipeline::BufferId;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
-
-/// Opens `file` (already written to disk) and wires a client for `sid` so
-/// `drain_lsp` routes its events instead of dropping them (`on_event` is
-/// only reached for servers with a tracked client).
-fn open_with_client(ed: &mut Editor, file: &Path, sid: ServerId) -> BufferId {
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, file.parent().unwrap().to_path_buf()));
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    ed.focused_buffer_id()
-}
+use hume_lsp::backend::ServerId;
+use hume_lsp::test_util::RecordingLspBackend;
 
 /// `((start_line, start_char), (end_line, end_char), severity)`.
 type DiagFixture = ((u32, u32), (u32, u32), i64);
@@ -60,35 +47,64 @@ fn publish_diagnostics_notification_versioned(
     }
 }
 
+/// `text` with its first char selected, as `RigSpec` takes it.
+fn marked(text: &str) -> String {
+    let first = text.chars().next().expect("non-empty text");
+    format!("-[{first}]>{}", &text[first.len_utf8()..])
+}
+
+/// The URI of `name` under the rig's root, before the rig exists.
+fn uri_under(tmp: &tempfile::TempDir, name: &str) -> String {
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    hume_lsp::uri::path_to_uri(&root.join(name))
+        .unwrap()
+        .as_str()
+        .to_string()
+}
+
+/// A `rust-analyzer` server (UTF-16, no capabilities) on `src/main.rs`
+/// holding `text`, drained once. `script` queues server traffic before the
+/// file opens, so it arrives in the same drain batch as the handshake;
+/// `ServerId(0)` is the one server's id.
+fn rig_with(
+    tmp: &tempfile::TempDir,
+    text: &str,
+    script: impl FnOnce(&mut RecordingLspBackend),
+) -> LspRig {
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+    script(&mut backend);
+    LspRig::drained(tmp.path(), RigSpec::rust(&marked(text)), backend)
+}
+
+/// [`rig_with`] with no extra server traffic, plus its server, buffer and
+/// URI.
+fn plain_rig(tmp: &tempfile::TempDir, text: &str) -> (LspRig, ServerId, BufferId, String) {
+    let rig = rig_with(tmp, text, |_| {});
+    let (sid, bid, uri) = (rig.sid("rust-analyzer"), rig.bid, rig.uri());
+    (rig, sid, bid, uri)
+}
+
 #[test]
 fn ingest_converts_utf16_positions_across_an_emoji() {
     let tmp = safe_tempdir();
-    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
+    let uri = uri_under(&tmp, "src/main.rs");
     // "😀 error here\n": the emoji is 1 Rust char but 2 UTF-16 code units,
     // so a naive char-count read of the wire position would land one
-    // character early.
-    std::fs::write(&file, "😀 error here\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
-    // UTF-16 units: 0-1 = emoji, 2 = space, 3..8 = "error".
-    backend.push_from_server(
-        sid,
-        publish_diagnostics_notification(uri.as_str(), &[((0, 3), (0, 8), 1)]),
-    );
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-
-    let bid = open_with_client(&mut ed, &file, sid);
-    ed.drain_lsp();
+    // character early. UTF-16 units: 0-1 = emoji, 2 = space, 3..8 = "error".
+    let rig = rig_with(&tmp, "😀 error here\n", |b| {
+        b.push_from_server(
+            ServerId(0),
+            publish_diagnostics_notification(&uri, &[((0, 3), (0, 8), 1)]),
+        );
+    });
+    let (ed, bid) = (&rig.ed, rig.bid);
 
     let stored: Vec<(usize, usize)> = ed
         .state
         .buffer_positions
         .diagnostics
         .spans_for_test(bid)
-        .map(|d| (d.0, d.1))
         .collect();
     assert_eq!(stored.len(), 1);
     let (start, end) = stored[0];
@@ -109,31 +125,23 @@ fn ingest_converts_utf16_positions_across_an_emoji() {
 #[test]
 fn two_publishes_in_one_drain_batch_coalesce_to_the_last() {
     let tmp = safe_tempdir();
-    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
-    std::fs::write(&file, "one two three four\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
+    let uri = uri_under(&tmp, "src/main.rs");
     // First publish: two errors. Second (same uri, same batch): one warning.
     // Only the second must survive: servers burst-publish and only the
     // newest matters.
-    backend.push_from_server(
-        sid,
-        publish_diagnostics_notification(uri.as_str(), &[((0, 0), (0, 3), 1), ((0, 4), (0, 7), 1)]),
-    );
-    backend.push_from_server(
-        sid,
-        publish_diagnostics_notification(uri.as_str(), &[((0, 8), (0, 13), 2)]),
-    );
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-
-    let bid = open_with_client(&mut ed, &file, sid);
-    ed.drain_lsp();
+    let rig = rig_with(&tmp, "one two three four\n", |b| {
+        b.push_from_server(
+            ServerId(0),
+            publish_diagnostics_notification(&uri, &[((0, 0), (0, 3), 1), ((0, 4), (0, 7), 1)]),
+        );
+        b.push_from_server(
+            ServerId(0),
+            publish_diagnostics_notification(&uri, &[((0, 8), (0, 13), 2)]),
+        );
+    });
 
     assert_eq!(
-        ed.diagnostic_counts(bid),
+        rig.ed.diagnostic_counts(rig.bid),
         (0, 1),
         "only the second (later) publish in the batch must survive"
     );
@@ -142,26 +150,17 @@ fn two_publishes_in_one_drain_batch_coalesce_to_the_last() {
 #[test]
 fn publish_for_an_unopened_file_is_dropped_without_spam() {
     let tmp = safe_tempdir();
-    let file = std::fs::canonicalize(tmp.path())
-        .unwrap()
-        .join("never_opened.rs");
     // Never written to disk / never opened: no buffer will ever match it.
+    let uri = uri_under(&tmp, "never_opened.rs");
+    let rig = rig_with(&tmp, "x\n", |b| {
+        b.push_from_server(
+            ServerId(0),
+            publish_diagnostics_notification(&uri, &[((0, 0), (0, 1), 1)]),
+        );
+    });
 
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
-    backend.push_from_server(
-        sid,
-        publish_diagnostics_notification(uri.as_str(), &[((0, 0), (0, 1), 1)]),
-    );
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, tmp.path().to_path_buf()));
-
-    ed.drain_lsp();
-
-    let entries: Vec<_> = ed
+    let entries: Vec<_> = rig
+        .ed
         .state
         .message_log
         .entries()
@@ -177,57 +176,236 @@ fn publish_for_an_unopened_file_is_dropped_without_spam() {
 #[test]
 fn malformed_publish_diagnostics_reaches_the_unhandled_notification_path() {
     let tmp = safe_tempdir();
-    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
-    std::fs::write(&file, "one two three four\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     // `uri` and `diagnostics` both wrong-shaped, so it fails to parse as
     // `PublishDiagnosticsParams`, so `hume-lsp` classifies it as a
     // `ServerNotification` fallthrough instead of `Diagnostics`.
-    backend.push_from_server(
-        sid,
-        hume_lsp::codec::Message::Notification {
-            method: "textDocument/publishDiagnostics".to_string(),
-            params: serde_json::json!({"uri": 42, "diagnostics": "nope"}),
-        },
-    );
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    open_with_client(&mut ed, &file, sid);
+    let mut rig = rig_with(&tmp, "one two three four\n", |b| {
+        b.push_from_server(
+            ServerId(0),
+            hume_lsp::codec::Message::Notification {
+                method: "textDocument/publishDiagnostics".to_string(),
+                params: serde_json::json!({"uri": 42, "diagnostics": "nope"}),
+            },
+        );
+    });
+    rig.ed.settle();
 
-    ed.drain_lsp(); // must not panic
-    ed.settle();
-
-    let log = ed.state.message_log.format_for_display();
+    let log = rig.ed.state.message_log.format_for_display();
     assert!(
         log.contains("unhandled notification textDocument/publishDiagnostics"),
         "expected an unhandled-notification trace line, got: {log}"
     );
 }
 
-// ── Minor B — stale-versioned publishes are dropped ────────────────────────
+#[test]
+fn a_stored_diagnostic_keeps_the_wire_value_a_server_sent() {
+    let tmp = safe_tempdir();
+    let uri = uri_under(&tmp, "src/main.rs");
+    let rig = rig_with(&tmp, "one two three\n", |b| {
+        b.push_from_server(
+            ServerId(0),
+            hume_lsp::codec::Message::Notification {
+                method: "textDocument/publishDiagnostics".to_string(),
+                params: serde_json::json!({
+                    "uri": uri,
+                    "diagnostics": [{
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 3},
+                        },
+                        "severity": 1,
+                        "message": "boom",
+                        "x-ext": {"keep": true},
+                    }],
+                }),
+            },
+        );
+    });
+
+    let entries =
+        crate::editor::lsp::introspect::diagnostics_for_buffer(&rig.ed.state, rig.bid, None, None)
+            .unwrap();
+    assert_eq!(
+        entries[0].raw.get("x-ext"),
+        Some(&serde_json::json!({"keep": true}))
+    );
+}
+
+// ── A diagnostic that does not parse ───────────────────────────────────────
+
+fn skipped_warnings(ed: &Editor) -> usize {
+    ed.state
+        .message_log
+        .entries()
+        .filter(|entry| {
+            entry.severity == crate::editor::Severity::Warning
+                && entry.text.contains("do not parse")
+        })
+        .count()
+}
+
+#[test]
+fn a_diagnostic_that_does_not_parse_does_not_hide_the_rest() {
+    let tmp = safe_tempdir();
+    let uri = uri_under(&tmp, "src/main.rs");
+    let diagnostic = |severity: serde_json::Value| {
+        serde_json::json!({
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 3},
+            },
+            "severity": severity,
+            "message": "boom",
+        })
+    };
+    let rig = rig_with(&tmp, "one two three\n", |b| {
+        b.push_from_server(
+            ServerId(0),
+            hume_lsp::codec::Message::Notification {
+                method: "textDocument/publishDiagnostics".to_string(),
+                params: serde_json::json!({
+                    "uri": uri,
+                    "diagnostics": [
+                        diagnostic(serde_json::json!(1)),
+                        diagnostic(serde_json::json!("loud")),
+                        diagnostic(serde_json::json!(1)),
+                    ],
+                }),
+            },
+        );
+    });
+
+    assert_eq!(rig.ed.diagnostic_counts(rig.bid), (2, 0));
+    assert_eq!(skipped_warnings(&rig.ed), 1);
+    let log = rig.ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("'rust-analyzer' sent 1 diagnostic(s)"),
+        "the warning names the server and the count: {log}"
+    );
+}
+
+#[test]
+fn skipped_diagnostics_are_warned_about_once_per_server() {
+    let tmp = safe_tempdir();
+    let (mut rig, sid, _bid, uri) = plain_rig(&tmp, "one two three\n");
+    let publish = || hume_lsp::client::PublishedDiagnostics {
+        uri: uri.parse().unwrap(),
+        version: None,
+        diagnostics: Vec::new(),
+        skipped: vec!["invalid type".to_string()],
+    };
+
+    rig.ed
+        .dispatch_lsp_action(sid, hume_lsp::client::ClientAction::Diagnostics(publish()));
+    rig.ed
+        .dispatch_lsp_action(sid, hume_lsp::client::ClientAction::Diagnostics(publish()));
+
+    assert_eq!(skipped_warnings(&rig.ed), 1);
+}
+
+// ── Path resolution is bounded per drain ───────────────────────────────────
+
+/// A rig whose first drain holds `misses` publishes for files that do not
+/// exist and one for the open buffer.
+fn rig_with_unknown_file_publishes(tmp: &tempfile::TempDir, misses: usize) -> LspRig {
+    let open_uri = uri_under(tmp, "src/main.rs");
+    rig_with(tmp, "one two three\n", |b| {
+        for i in 0..misses {
+            let uri = uri_under(tmp, &format!("missing/f{i}.rs"));
+            b.push_from_server(
+                ServerId(0),
+                publish_diagnostics_notification(&uri, &[((0, 0), (0, 3), 1)]),
+            );
+        }
+        b.push_from_server(
+            ServerId(0),
+            publish_diagnostics_notification(&open_uri, &[((0, 0), (0, 3), 1)]),
+        );
+    })
+}
+
+#[test]
+fn publishes_for_unknown_files_resolve_in_bounded_chunks() {
+    use crate::editor::async_source::AsyncSource;
+    use crate::editor::lsp::diagnostics::CANONICALIZE_PER_DRAIN;
+
+    let tmp = safe_tempdir();
+    let mut rig = rig_with_unknown_file_publishes(&tmp, CANONICALIZE_PER_DRAIN + 6);
+
+    assert_eq!(
+        rig.ed.diagnostic_counts(rig.bid),
+        (1, 0),
+        "the open buffer's publish spends none of the budget"
+    );
+    assert_eq!(rig.ed.state.lsp.deferred_publishes_for_test(), 6);
+    assert!(
+        rig.ed
+            .state
+            .lsp
+            .next_wake(std::time::Instant::now())
+            .is_some(),
+        "the loop must come back for what is deferred"
+    );
+
+    rig.ed.drain_lsp();
+
+    assert_eq!(rig.ed.state.lsp.deferred_publishes_for_test(), 0);
+    assert!(
+        rig.ed
+            .state
+            .lsp
+            .next_wake(std::time::Instant::now())
+            .is_none()
+    );
+}
+
+#[test]
+fn stopping_a_server_drops_its_deferred_publishes() {
+    use crate::editor::lsp::diagnostics::CANONICALIZE_PER_DRAIN;
+
+    let tmp = safe_tempdir();
+    let mut rig = rig_with_unknown_file_publishes(&tmp, CANONICALIZE_PER_DRAIN + 6);
+    assert_eq!(rig.ed.state.lsp.deferred_publishes_for_test(), 6);
+
+    stop_server(&mut rig.ed, "rust-analyzer");
+
+    assert_eq!(rig.ed.state.lsp.deferred_publishes_for_test(), 0);
+}
+
+#[test]
+fn a_publish_for_a_buffer_whose_file_is_not_on_disk_is_ingested() {
+    let tmp = safe_tempdir();
+    let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three\n");
+    std::fs::remove_file(rig.root.join("src/main.rs")).unwrap();
+
+    let params = params_of(publish_diagnostics_notification(
+        &uri,
+        &[((0, 0), (0, 3), 1)],
+    ));
+    rig.ed.ingest_typed_publish_for_test(sid, params);
+
+    assert_eq!(
+        rig.ed.diagnostic_counts(bid),
+        (1, 0),
+        "a buffer with no file on disk yet still shows its server's diagnostics"
+    );
+}
+
+// ── Stale-versioned publishes are dropped ──────────────────────────────────
 
 #[test]
 fn publish_with_matching_version_is_ingested() {
     let tmp = safe_tempdir();
-    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
-    std::fs::write(&file, "one two three four\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let bid = open_with_client(&mut ed, &file, sid);
-    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
+    let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three four\n");
+    let ed = &mut rig.ed;
     let current_gen = ed.state.buffers.get(bid).text().generation() as i32;
 
     let params = params_of(publish_diagnostics_notification_versioned(
-        uri.as_str(),
+        &uri,
         &[((0, 0), (0, 3), 1)],
         Some(current_gen),
     ));
-    ed.ingest_publish_diagnostics(sid, params);
+    ed.ingest_typed_publish_for_test(sid, params);
 
     assert_eq!(
         ed.diagnostic_counts(bid),
@@ -239,35 +417,28 @@ fn publish_with_matching_version_is_ingested() {
 #[test]
 fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnostics() {
     let tmp = safe_tempdir();
-    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
-    std::fs::write(&file, "one two three four\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let bid = open_with_client(&mut ed, &file, sid);
-    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
+    let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three four\n");
+    let ed = &mut rig.ed;
     let current_gen = ed.state.buffers.get(bid).text().generation() as i32;
 
     // Seed one real (current-version) diagnostic first.
     let seed = params_of(publish_diagnostics_notification_versioned(
-        uri.as_str(),
+        &uri,
         &[((0, 0), (0, 3), 1)],
         Some(current_gen),
     ));
-    ed.ingest_publish_diagnostics(sid, seed);
+    ed.ingest_typed_publish_for_test(sid, seed);
     assert_eq!(ed.diagnostic_counts(bid), (1, 0), "seed publish must land");
 
     // A later publish computed against a version we've already moved past
     // (the server hasn't caught up with our own edits yet) must be dropped,
     // not applied on top of, and not clearing, what's already stored.
     let stale = params_of(publish_diagnostics_notification_versioned(
-        uri.as_str(),
+        &uri,
         &[((0, 4), (0, 7), 2), ((0, 8), (0, 13), 2)],
         Some(current_gen - 1),
     ));
-    ed.ingest_publish_diagnostics(sid, stale);
+    ed.ingest_typed_publish_for_test(sid, stale);
 
     assert_eq!(
         ed.diagnostic_counts(bid),
@@ -287,31 +458,18 @@ fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnosti
     );
 }
 
-// ── Minor — stores pruned on buffer close ───────────────────────────────────
+// ── Stores pruned on buffer close ───────────────────────────────────────────
 
-/// A `BufferId` is a versioned slotmap key, so a future reused slot can
-/// never alias with a closed buffer's stale entries. This is a memory-leak
-/// fix, not a correctness one, but nothing else ever freed these.
-#[test]
-fn close_buffer_prunes_stored_diagnostics_and_decorations() {
-    let tmp = safe_tempdir();
-    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
-    std::fs::write(&file, "one two three\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let bid = open_with_client(&mut ed, &file, sid);
-
-    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
+/// Seeds one diagnostic from `sid` and one inlay hint on `bid`, the state
+/// both close tests below expect gone afterwards.
+fn seed_diagnostic_and_hint(ed: &mut Editor, sid: ServerId, bid: BufferId, uri: &str) {
     let current_gen = ed.state.buffers.get(bid).text().generation() as i32;
     let params = params_of(publish_diagnostics_notification_versioned(
-        uri.as_str(),
+        uri,
         &[((0, 0), (0, 3), 1)],
         Some(current_gen),
     ));
-    ed.ingest_publish_diagnostics(sid, params);
+    ed.ingest_typed_publish_for_test(sid, params);
     ed.state.config.decorations.set_inlay_hints(
         "test".to_string(),
         bid,
@@ -335,6 +493,17 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
             .is_some(),
         "seed hint must land"
     );
+}
+
+/// A `BufferId` is a versioned slotmap key, so a future reused slot can
+/// never alias with a closed buffer's stale entries. This is a memory-leak
+/// fix, not a correctness one, but nothing else ever freed these.
+#[test]
+fn close_buffer_prunes_stored_diagnostics_and_decorations() {
+    let tmp = safe_tempdir();
+    let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three\n");
+    let ed = &mut rig.ed;
+    seed_diagnostic_and_hint(ed, sid, bid, &uri);
 
     ed.close_buffer(bid);
 
@@ -364,71 +533,22 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
 /// assertions below and the hook's log line would all fail.
 #[test]
 fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
-    use hume_scripting::ScriptingHost;
-
     let tmp = safe_tempdir();
-    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
-    std::fs::write(&file, "one two three\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let bid = open_with_client(&mut ed, &file, sid);
-
-    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
-    let current_gen = ed.state.buffers.get(bid).text().generation() as i32;
-    let params = params_of(publish_diagnostics_notification_versioned(
-        uri.as_str(),
-        &[((0, 0), (0, 3), 1)],
-        Some(current_gen),
-    ));
-    ed.ingest_publish_diagnostics(sid, params);
-    ed.state.config.decorations.set_inlay_hints(
-        "test".to_string(),
-        bid,
-        vec![hume_decorations::InlayHintEntry {
-            pos: co(0),
-            text: "x".to_string(),
-            before: true,
-        }],
-    );
-    assert_eq!(
-        ed.diagnostic_counts(bid),
-        (1, 0),
-        "seed diagnostic must land"
-    );
-    assert!(
-        ed.state
-            .config
-            .decorations
-            .inlay_hints_for_buffer(bid)
-            .next()
-            .is_some(),
-        "seed hint must land"
-    );
-
-    // `define-command!` must register into the editor's real `CommandRegistry`
-    // for `:go` to dispatch below; a `MockHost` eval (fine for `register-hook!`,
-    // which only touches `ScriptingHost`'s own state) leaves it unregistered.
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
+    let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three\n");
+    seed_diagnostic_and_hint(&mut rig.ed, sid, bid, &uri);
+    rig.eval(
         r#"(register-hook! 'on-buffer-close (lambda (bid) (log! 'warn "close-hook-fired")))
            (define-typed-command! "go" "" (lambda (bid) (close-buffer! bid)))"#,
-        tmp.path(),
     );
-    ed.scripting = Some(host);
 
-    // `bid` is the focused buffer here (opened via `:e` above), and `:go`
-    // now receives it as its own leading parameter, no path/id embedded
-    // in the Steel source.
-    type_cmd(&mut ed, ":go");
+    // `bid` is the focused buffer here, and `:go` receives it as its own
+    // leading parameter.
+    type_cmd(&mut rig.ed, ":go");
     // Hooks queued during dispatch fire on an explicit drain, not automatically
     // (`Editor::step`, which `type_cmd` rides, doesn't drain).
-    ed.settle();
+    rig.ed.settle();
 
+    let ed = &rig.ed;
     assert_eq!(
         ed.diagnostic_counts(bid),
         (0, 0),
@@ -450,43 +570,28 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
             .contains("close-hook-fired"),
         "OnBufferClose handler must have run"
     );
+    assert_eq!(rig.sent(sid, "textDocument/didClose").len(), 1);
 }
 
 // ── Diagnostics cleared on `:lsp-stop` ─────────────────────────────────
 
-/// Without `DiagnosticsStore::remove_server`, a stopped server's diagnostics
-/// would stay rendered forever (squiggles/signs keep showing) and stop
-/// remapping (the buffer is no longer attached, so `flush_lsp_pending_changes`
-/// never touches it), drifting silently out of sync with further edits.
+/// A stopped server's diagnostics must not stay rendered (squiggles and
+/// signs keep showing) for a buffer no server reports on any more.
 #[test]
 fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
     let tmp = safe_tempdir();
-    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
-    std::fs::write(&file, "one two three four\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let bid = open_with_client(&mut ed, &file, sid);
-    ed.lsp.insert_server_key_for_test(
-        "rust".to_string(),
-        file.parent().unwrap().to_path_buf(),
-        sid,
-    );
-    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
+    let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three four\n");
+    let ed = &mut rig.ed;
     let current_gen = ed.state.buffers.get(bid).text().generation() as i32;
     let params = params_of(publish_diagnostics_notification_versioned(
-        uri.as_str(),
+        &uri,
         &[((0, 0), (0, 3), 1)],
         Some(current_gen),
     ));
-    ed.ingest_publish_diagnostics(sid, params);
+    ed.ingest_typed_publish_for_test(sid, params);
     assert_eq!(ed.diagnostic_counts(bid), (1, 0), "seed publish must land");
 
-    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
-        "rust".to_string(),
-    ));
+    stop_server(ed, "rust-analyzer");
 
     assert_eq!(
         ed.diagnostic_counts(bid),
@@ -495,30 +600,13 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
     );
 }
 
-/// `lsp_stop_one` must drain `buf.lsp_pending` through the decoration remap
-/// chokepoint (`flush_lsp_pending_changes`; `lsp_pending` is its only
-/// carrier) before it nulls `buf.lsp_server` and clears `buf.lsp_pending`.
-/// Otherwise any edit queued since the last frame's flush is discarded
-/// unremapped, leaving a plugin's sign anchored at its pre-edit position
-/// permanently. A detached buffer is not queued for the remap at all, so
-/// it never resyncs later either.
+/// A decoration follows an edit made just before a stop: the stop neither
+/// drops it nor freezes it at its pre-edit position.
 #[test]
-fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
+fn lsp_stop_keeps_a_sign_where_a_preceding_edit_moved_it() {
     let tmp = safe_tempdir();
-    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
-    std::fs::write(&file, "aa\nbb\ncc\n").unwrap();
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let bid = open_with_client(&mut ed, &file, sid);
-    ed.lsp.insert_server_key_for_test(
-        "rust".to_string(),
-        file.parent().unwrap().to_path_buf(),
-        sid,
-    );
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    let (mut rig, _sid, bid, _uri) = plain_rig(&tmp, "aa\nbb\ncc\n");
+    let ed = &mut rig.ed;
 
     // "cc"'s line-start char offset in "aa\nbb\ncc\n" is 6.
     let scope = ed.view.registry.intern_runtime("x");
@@ -533,17 +621,14 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
     );
 
     // Insert a new first line, shifting "cc" one line down, to a line-start
-    // char offset of 8. No `ed.settle()`/`drain_lsp()` here:
-    // the edit's ChangeSet sits unflushed in `buf.lsp_pending` until
-    // `lsp_stop` runs, exactly the race this regression covers.
+    // char offset of 8. No drain: the change is still queued for the server
+    // when the stop runs.
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
     ed.feed_key(key_enter());
     ed.feed_key(key_esc());
 
-    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
-        "rust".to_string(),
-    ));
+    stop_server(ed, "rust-analyzer");
 
     assert_eq!(
         ed.state.buffers.get(bid).text().rope().to_string(),
@@ -560,29 +645,22 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
     );
 }
 
-/// Regression: on the minimal 1-char "\n" buffer, `widen_zero_length` has no
-/// char to widen a zero-width diagnostic onto in either direction under the
-/// general forward/backward rule: it must widen onto the structural
-/// newline itself (matching how a selection can cover that same cell) and
-/// be stored and counted, not silently dropped from `:lsp-status`.
+/// On the minimal 1-char "\n" buffer, `widen_zero_length` has no char to
+/// widen a zero-width diagnostic onto in either direction under the general
+/// forward/backward rule: it must widen onto the structural newline itself
+/// (matching how a selection can cover that same cell) and be stored and
+/// counted, not dropped from `:lsp-status`.
 #[test]
 fn zero_width_diagnostic_on_minimal_buffer_is_widened_onto_the_newline() {
     let tmp = safe_tempdir();
-    let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
-    std::fs::write(&file, "\n").unwrap();
-
-    let mut ed = editor_from("-[w]>ord\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let bid = open_with_client(&mut ed, &file, sid);
-    let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
+    let (mut rig, sid, bid, uri) = plain_rig(&tmp, "\n");
+    let ed = &mut rig.ed;
 
     let params = params_of(publish_diagnostics_notification(
-        uri.as_str(),
+        &uri,
         &[((0, 0), (0, 0), 1)],
     ));
-    ed.ingest_publish_diagnostics(sid, params);
+    ed.ingest_typed_publish_for_test(sid, params);
 
     assert_eq!(
         ed.diagnostic_counts(bid),

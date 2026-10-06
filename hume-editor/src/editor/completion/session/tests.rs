@@ -36,7 +36,6 @@ fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
             proc: SteelVal::Void,
             resolve: false,
             token_chars: "".into(),
-            trigger_chars: rustc_hash::FxHashMap::default(),
         });
     }
     reg
@@ -366,7 +365,6 @@ fn dotted_session() -> (BufferSession, SourceRegistry, BufferText) {
         proc: SteelVal::Void,
         resolve: false,
         token_chars: "".into(),
-        trigger_chars: rustc_hash::FxHashMap::default(),
     });
     let (mut session, text) = buffer_session("> foo.ba\n");
     let id = session.invoke(
@@ -734,7 +732,6 @@ fn a_sources_token_chars_decide_what_typing_at_the_end_does() {
         proc: SteelVal::Void,
         resolve: false,
         token_chars: "-".into(),
-        trigger_chars: rustc_hash::FxHashMap::default(),
     });
     let (mut session, text) = buffer_session("fo\n");
     invoke_and_answer(&mut session, &reg, id_of(&reg, "plain"), &text, 0, &["foo"]);

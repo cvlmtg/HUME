@@ -65,19 +65,38 @@
                                            "' failed to load"))))))
               (%call-native! name args))))))
 
-(define (register-lsp-server! language #:command command
-                                        #:args [args '()]
-                                        #:root-markers [root-markers '()]
-                                        #:init-options [init-options #f]
-                                        #:settings [settings #f]
-                                        #:env [env '()])
-  (%register-lsp-server! language command args root-markers init-options settings env))
+(define (register-lsp-server! name #:command command
+                                    #:args [args '()]
+                                    #:init-options [init-options #f]
+                                    #:settings [settings #f]
+                                    #:env [env '()])
+  (%register-lsp-server! name command args init-options settings env))
 
-(define (lsp-request! pane method params callback #:allow-stale [allow-stale #f]
+(define (lsp-request! pane method params callback #:feature [feature #f]
+                                                   #:to [to #f]
+                                                   #:allow-stale [allow-stale #f]
                                                    #:supersede [supersede #f]
                                                    #:require-focus [require-focus #f]
                                                    #:tracked [tracked #f])
-  (%lsp-request! pane method params callback allow-stale supersede require-focus tracked))
+  (%lsp-request! pane method params callback feature to
+                 allow-stale supersede require-focus tracked))
+
+(define (lsp-request-all! pane method params callback #:feature [feature #f]
+                                                       #:allow-stale [allow-stale #f]
+                                                       #:supersede [supersede #f]
+                                                       #:require-focus [require-focus #f]
+                                                       #:tracked [tracked #f])
+  (%lsp-request-all! pane method params callback feature
+                     allow-stale supersede require-focus tracked))
+
+(define (lsp-notify! pane method params #:feature [feature #f] #:to [to #f])
+  (%lsp-notify! pane method params feature to))
+
+(define (lsp-servers pane #:feature [feature #f] #:method [method #f])
+  (%lsp-servers pane feature method))
+
+(define (lsp-capability server #:feature [feature #f] #:method [method #f])
+  (%lsp-capability server feature method))
 
 (define (debounce ms proc)
   (let ((pending (box #f)))

@@ -164,7 +164,7 @@ fn register_is_blocked_in_command_mode() {
 
 // ── set-completion-triggers! ─────────────────────────────────────────
 
-/// Queues an `Effect::SetCompletionTriggers` with the decoded fields,
+/// Queues an `Effect::SetTriggers` with the decoded fields,
 /// nothing applied inline, same shape as `register-completion-source!`'s
 /// own test above. This is what lets a same-eval
 /// `register-completion-source!` + `set-completion-triggers!` pair
@@ -183,17 +183,82 @@ fn set_trigger_chars_queues_an_effect_with_the_decoded_fields() {
     drop(ctx);
     let effects = effects(&h);
     assert_eq!(effects.len(), 1);
-    let Effect::SetCompletionTriggers {
+    let Effect::SetTriggers {
+        kind,
         source,
-        language,
+        scope,
         chars,
     } = effects[0]
     else {
-        panic!("expected SetCompletionTriggers, got {:?}", effects[0]);
+        panic!("expected SetTriggers, got {:?}", effects[0]);
     };
+    assert_eq!(kind, &crate::types::TriggerKind::Completion);
     assert_eq!(source, "src");
-    assert_eq!(language, "rust");
+    assert_eq!(
+        scope,
+        &crate::types::TriggerScope::Language("rust".to_string())
+    );
     assert_eq!(chars, &['.', ':']);
+}
+
+#[test]
+fn set_attachment_completion_triggers_queues_an_attachment_scope() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let server = crate::ServerRef {
+        id: hume_lsp::backend::ServerId(4),
+        name: crate::ServerName::parse("ra-lint").unwrap(),
+    };
+    let pane = crate::test_support::default_pane();
+    set_attachment_completion_triggers(
+        &mut ctx,
+        SteelVal::StringV("src".into()),
+        pane,
+        server.into_steel_val(),
+        SteelVal::ListV(vec![SteelVal::StringV(".".into())].into()),
+    )
+    .expect("valid call");
+    drop(ctx);
+    let effects = effects(&h);
+    let Effect::SetTriggers { scope, .. } = effects[0] else {
+        panic!("expected SetTriggers, got {:?}", effects[0]);
+    };
+    assert_eq!(
+        scope,
+        &crate::types::TriggerScope::Attachment {
+            buffer: pane.buffer(),
+            server: hume_lsp::backend::ServerId(4),
+        }
+    );
+}
+
+#[test]
+fn a_language_that_is_not_a_string_raises() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = set_completion_triggers(
+        &mut ctx,
+        SteelVal::StringV("src".into()),
+        SteelVal::IntV(3),
+        SteelVal::ListV(vec![SteelVal::StringV(".".into())].into()),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("expected a string"), "{err}");
+}
+
+#[test]
+fn an_attachment_server_that_is_not_a_server_raises() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = set_attachment_hook_triggers(
+        &mut ctx,
+        SteelVal::StringV("src".into()),
+        crate::test_support::default_pane(),
+        SteelVal::StringV("rust".into()),
+        SteelVal::ListV(vec![SteelVal::StringV(".".into())].into()),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("expected a server value"), "{err}");
 }
 
 // ── completion-emit! ──────────────────────────────────────────────────────
@@ -249,4 +314,35 @@ fn register_rejects_token_chars_on_a_minibuf_source() {
         .expect_err("token-chars is buffer-only")
         .to_string();
     assert!(err.contains("#:token-chars"), "got: {err}");
+}
+
+#[test]
+fn set_hook_triggers_queues_a_hook_kind_effect() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    set_hook_triggers(
+        &mut ctx,
+        SteelVal::StringV("sig".into()),
+        SteelVal::StringV("rust".into()),
+        SteelVal::ListV(vec![SteelVal::StringV("(".into())].into()),
+    )
+    .expect("valid call");
+    drop(ctx);
+    let effects = effects(&h);
+    let Effect::SetTriggers {
+        kind,
+        source,
+        scope,
+        chars,
+    } = effects[0]
+    else {
+        panic!("expected SetTriggers, got {:?}", effects[0]);
+    };
+    assert_eq!(kind, &crate::types::TriggerKind::Hook);
+    assert_eq!(source, "sig");
+    assert_eq!(
+        scope,
+        &crate::types::TriggerScope::Language("rust".to_string())
+    );
+    assert_eq!(chars, &['(']);
 }

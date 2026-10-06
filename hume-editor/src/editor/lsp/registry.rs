@@ -1,41 +1,49 @@
-//! Server registration: `register-lsp-server!` config storage, workspace
-//! root resolution, and spawn-on-first-open.
+//! Server registration: `register-lsp-server!` configs by name, each
+//! language's server lists, and workspace root resolution. Pure policy: no
+//! process state. A registration says how to launch a server; only a
+//! language's list makes a server serve that language.
 
 use std::path::{Path, PathBuf};
 
-use hume_engine::pipeline::BufferId;
+use hume_scripting::{FeatureFilter, ListEntry, ListLayer, ServerName};
+use rustc_hash::FxHashMap;
 
-use crate::editor::event::EditorEvent;
-use crate::editor::{Editor, Severity};
-
-/// A `register-lsp-server!`-registered language name: the key
-/// `LspState.configs` and every attached `ServerEntry.language` use today.
-/// Registration identity is language, one-to-one with a running server: a
-/// future multi-server-per-language design would key `LspState.servers` by
-/// a distinct registration name instead, with a
-/// `LanguageName -> [registration name]` map alongside
-/// it. This alias exists so that future re-key finds every language-keyed
-/// signature by type, not by re-reading every `String` in this module.
-pub(in crate::editor::lsp) type LanguageName = String;
-
-/// Config recorded by one `register-lsp-server!` call, keyed by language.
+/// The process a `register-lsp-server!` call spawns and configures.
 #[derive(Debug, Clone)]
 pub(in crate::editor::lsp) struct LspServerConfig {
     pub(in crate::editor) command: String,
     pub(in crate::editor) args: Vec<String>,
-    pub(in crate::editor) root_markers: Vec<String>,
     /// Sent verbatim as `initializationOptions` in the `initialize` request
-    /// (`lsp_attach_buffer`'s spawn branch, via `LspClient::set_init_options`).
+    /// (`Instances::spawn`, via `LspClient::set_init_options`).
     pub(in crate::editor) init_options: Option<serde_json::Value>,
     /// Pushed as `workspace/didChangeConfiguration` after `initialized`
-    /// (`lsp_attach_buffer`'s spawn branch, via `LspClient::set_settings`),
-    /// and resolved per-item to answer `workspace/configuration` pull
-    /// requests (`Editor::dispatch_lsp_action`'s `ServerRequest` arm).
+    /// (`Instances::spawn`, via `LspClient::set_settings`), and resolved
+    /// per-item to answer `workspace/configuration` pull requests from the
+    /// copy the instance was spawned with.
     pub(in crate::editor) settings: Option<serde_json::Value>,
     /// `#:env`: applied additively to the spawned process's inherited
-    /// environment (`lsp_attach_buffer`'s spawn branch, via
-    /// `LspBackend::start`).
+    /// environment (`Instances::spawn`, via `LspBackend::start`).
     pub(in crate::editor) env: Vec<(String, String)>,
+}
+
+impl LspServerConfig {
+    /// Whether a server spawned with `other` is the process this config
+    /// describes: the same command, arguments, environment and the two
+    /// blobs it is told at startup.
+    pub(in crate::editor::lsp) fn same_process(&self, other: &Self) -> bool {
+        let Self {
+            command,
+            args,
+            init_options,
+            settings,
+            env,
+        } = self;
+        *command == other.command
+            && *args == other.args
+            && *init_options == other.init_options
+            && *settings == other.settings
+            && *env == other.env
+    }
 }
 
 /// Walks up from `file`'s directory to the first ancestor containing any of
@@ -57,376 +65,129 @@ pub(in crate::editor::lsp::registry) fn resolve_root(
     cwd.to_path_buf()
 }
 
-impl Editor {
-    /// Applies one queued op. The one apply path
-    /// for LSP server registration/unregistration regardless of which eval
-    /// queued it.
-    pub(in crate::editor) fn apply_lsp_server_op(
+/// A language's two ordered server lists. A `user` list, when set, is the
+/// whole answer; `default` is a plugin's preferred order, used only while
+/// there is no user list.
+#[derive(Debug, Default)]
+struct LanguageLists {
+    user: Option<Vec<ListEntry>>,
+    default: Option<Vec<ListEntry>>,
+}
+
+/// Every server registration and per-language list: pure policy, no
+/// process state. [`Registry::plan`] is the one derivation of which servers
+/// a language's buffers attach to, in what order, with what filter.
+#[derive(Debug, Default)]
+pub(in crate::editor::lsp) struct Registry {
+    registrations: FxHashMap<ServerName, LspServerConfig>,
+    lists: FxHashMap<String, LanguageLists>,
+}
+
+/// One server a language's buffers attach to.
+pub(in crate::editor::lsp) struct Planned<'a> {
+    pub(in crate::editor::lsp) name: &'a ServerName,
+    pub(in crate::editor::lsp) filter: FeatureFilter,
+}
+
+impl Registry {
+    /// Registers `name`, replacing an earlier registration of the same name.
+    /// `true` when it replaced one.
+    pub(in crate::editor::lsp) fn register(
         &mut self,
-        op: hume_scripting::PendingLspServerOp,
+        name: ServerName,
+        config: LspServerConfig,
+    ) -> bool {
+        self.registrations.insert(name, config).is_some()
+    }
+
+    /// Removes `name`'s registration. Lists that name it keep the entry,
+    /// which applies again if the name registers again. `false` when it
+    /// was not registered.
+    pub(in crate::editor::lsp) fn unregister(&mut self, name: &ServerName) -> bool {
+        self.registrations.remove(name).is_some()
+    }
+
+    /// Sets (`Some`) or clears (`None`) one of `language`'s lists.
+    pub(in crate::editor::lsp) fn set_list(
+        &mut self,
+        language: String,
+        layer: ListLayer,
+        entries: Option<Vec<ListEntry>>,
     ) {
-        match op {
-            hume_scripting::PendingLspServerOp::Register(reg) => {
-                self.apply_pending_lsp_server_reg(reg);
-            }
-            hume_scripting::PendingLspServerOp::Unregister { language } => {
-                // Idempotent: removing an absent key and
-                // stopping a language with no running clients are both
-                // no-ops: `:lsp-uninstall` of an orphan or never-spawned
-                // server must succeed silently.
-                self.lsp.configs.remove(&language);
-                self.lsp_stop(&hume_scripting::LspServerTarget::Language(language));
-            }
-            hume_scripting::PendingLspServerOp::Stop { target } => {
-                let n = self.lsp_stop(&target);
-                if n == 0 {
-                    self.report(
-                        Severity::Info,
-                        "lsp: no matching server to stop".to_string(),
-                    );
-                } else {
-                    self.report(Severity::Info, format!("lsp: stopped {n} server(s)"));
-                }
-            }
-            hume_scripting::PendingLspServerOp::Restart { target } => {
-                let n = self.lsp_restart(&target);
-                if n == 0 {
-                    self.report(
-                        Severity::Info,
-                        "lsp: no matching server to restart".to_string(),
-                    );
-                } else {
-                    self.report(Severity::Info, format!("lsp: restarted {n} server(s)"));
-                }
-            }
-            hume_scripting::PendingLspServerOp::ShowStatus => {
-                let content = self.lsp_status_text();
-                // Applied from the effect log after the eval that queued it,
-                // so the pane focused now is where the status view opens.
-                let fp = crate::editor::commands::FocusedPane::current(&self.state);
-                self.open_read_only_view(
-                    fp,
-                    "[lsp-status]",
-                    &content,
-                    Some(hume_rope::line::ContentLine::new(0)),
-                );
-            }
+        let lists = self.lists.entry(language).or_default();
+        match layer {
+            ListLayer::User => lists.user = entries,
+            ListLayer::Default => lists.default = entries,
         }
     }
 
-    /// Last-wins insert: replaces any existing registration for the same
-    /// language (matching `define-language!`'s semantics) rather than
-    /// rejecting the second call. Deliberate, not a missing guard: a user's
-    /// `init.scm` loads after every plugin's own registration, and its
-    /// `register-lsp-server!` call for a language a plugin already
-    /// registered must override that plugin's default; a hard error here
-    /// would make user config unable to win over plugin defaults at all.
-    /// Running clients on the *old* config are left alone until their next
-    /// spawn. A caller that needs a fresh spawn right away (e.g.
-    /// reinstalling a server) unregisters explicitly first, which this does
-    /// not do on its own.
-    ///
-    /// After inserting, sweeps already-open buffers of this language that
-    /// aren't yet attached (`lsp_attach_buffer` is idempotent), so
-    /// registration always implies "this language's open buffers get an
-    /// LSP client", so callers never need a separate attach step.
-    ///
-    /// `init_options`/`settings` arrive already decoded to JSON by
-    /// `hume_scripting::json::steel_to_json` at the Steel boundary.
-    fn apply_pending_lsp_server_reg(&mut self, reg: hume_scripting::PendingLspServerReg) {
-        let replaced = self.lsp.configs.contains_key(&reg.language);
-        let language = reg.language.clone();
+    pub(in crate::editor::lsp) fn contains(&self, name: &ServerName) -> bool {
+        self.registrations.contains_key(name)
+    }
 
-        self.lsp.configs.insert(
-            reg.language,
-            LspServerConfig {
-                command: reg.command,
-                args: reg.args,
-                root_markers: reg.root_markers,
-                init_options: reg.init_options,
-                settings: reg.settings,
-                env: reg.env,
-            },
-        );
+    pub(in crate::editor::lsp) fn get(&self, name: &ServerName) -> Option<&LspServerConfig> {
+        self.registrations.get(name)
+    }
 
-        if replaced {
-            self.report(
-                Severity::Trace,
-                format!("register-lsp-server!: replaced registration for '{language}'"),
-            );
-        }
+    /// The languages whose servers include `name`, sorted.
+    pub(in crate::editor::lsp) fn languages_of(&self, name: &ServerName) -> Vec<&str> {
+        let mut languages: Vec<&str> = self
+            .lists
+            .keys()
+            .map(String::as_str)
+            .filter(|language| self.plan(language).iter().any(|p| p.name == name))
+            .collect();
+        languages.sort_unstable();
+        languages
+    }
 
-        let bids: Vec<BufferId> = self
-            .state
-            .buffers
+    /// The servers `language`'s buffers attach to, in order: the entries of
+    /// its user list, or of its default list while it has no user list,
+    /// that name a registered server. An entry naming an unregistered
+    /// server is skipped; a registered server no list names serves nothing.
+    pub(in crate::editor::lsp) fn plan(&self, language: &str) -> Vec<Planned<'_>> {
+        let Some(lists) = self.lists.get(language) else {
+            return Vec::new();
+        };
+        let Some(entries) = lists.user.as_deref().or(lists.default.as_deref()) else {
+            return Vec::new();
+        };
+        entries
             .iter()
-            .filter(|(_, buf)| {
-                buf.language
-                    .is_some_and(|id| self.state.config.languages.name_of(id) == language)
-                    && buf.lsp_server.is_none()
+            .filter_map(|entry| {
+                let (name, _) = self.registrations.get_key_value(&entry.name)?;
+                Some(Planned {
+                    name,
+                    filter: entry.filter,
+                })
             })
-            .map(|(bid, _)| bid)
-            .collect();
-        for bid in bids {
-            self.lsp_attach_buffer(bid);
-        }
+            .collect()
     }
+}
 
-    /// Attaches buffer `bid` to its language's registered server, spawning
-    /// it if this is the first buffer under that (language, root) pair.
-    /// Idempotent: safe to call from both the open path and
-    /// `set_buffer_language` for the same open (detection fires both).
-    ///
-    /// No-op when the buffer has no path (unnamed buffers never attach) or
-    /// no language, or no server is registered for that language.
-    pub(in crate::editor) fn lsp_attach_buffer(&mut self, bid: BufferId) {
-        let buf = self.state.buffers.get(bid);
-        if buf.lsp_server.is_some() {
-            return; // already attached: idempotent re-entry
-        }
-        let Some(path) = buf.path().map(Path::to_path_buf) else {
-            return;
-        };
-        let Some(lang_id) = buf.language else {
-            return;
-        };
-        let language = self.state.config.languages.name_of(lang_id).to_owned();
-        let Some(config) = self.lsp.configs.get(&language).cloned() else {
-            return;
-        };
+/// Workspace roots resolved during one reconcile pass, by the directory of
+/// the file and the markers searched for: buffers sharing both share one
+/// walk up the directory tree. A marker created while the pass runs is not
+/// seen by the rest of it.
+#[derive(Default)]
+pub(in crate::editor::lsp) struct RootCache {
+    roots: rustc_hash::FxHashMap<(PathBuf, Vec<String>), PathBuf>,
+}
 
-        let root = resolve_root(&path, &config.root_markers, &self.state.cwd);
-
-        // Scan for an existing *viable* server under this (language, root)
-        // pair. `LspState.servers` is the single source of truth, so
-        // there's no separate index that could disagree with it. A Crashed
-        // entry is excluded: nothing removes it from `servers` on its own
-        // (only `:lsp-stop`/`:lsp-restart` do), so without this check every
-        // buffer opened after a crash would silently attach to the corpse.
-        let existing = self.lsp.servers.iter().find_map(|(&sid, entry)| {
-            (entry.language.as_deref() == Some(language.as_str())
-                && entry.client.root() == root.as_path()
-                && entry.client.state() != hume_lsp::client::ServerState::Crashed)
-                .then_some(sid)
-        });
-
-        let server_id = if let Some(existing) = existing {
-            existing
-        } else if self.lsp.servers.values().any(|entry| {
-            entry.language.as_deref() == Some(language.as_str())
-                && entry.client.root() == root.as_path()
-        }) {
-            // The only match for this (language, root) is Crashed, so refuse
-            // to silently attach to it; the buffer stays unattached until
-            // an explicit `:lsp-restart`, which re-attaches every buffer
-            // that was on the stopped server through this same path.
-            self.report(
-                Severity::Error,
-                format!("lsp: {language} server crashed (:lsp-restart {language})"),
-            );
-            return;
-        } else {
-            match self
-                .lsp
-                .backend
-                .start(&config.command, &config.args, &root, &config.env)
-            {
-                Ok(server_id) => {
-                    let mut client = hume_lsp::client::LspClient::new(server_id, root);
-                    client.set_init_options(config.init_options.clone());
-                    client.set_settings(config.settings.clone());
-                    client.start_handshake(self.lsp.backend.as_mut());
-                    self.lsp.servers.insert(
-                        server_id,
-                        super::ServerEntry {
-                            client,
-                            language: Some(language.clone()),
-                            name: config.command.clone(),
-                            progress: Vec::new(),
-                        },
-                    );
-                    server_id
-                }
-                Err(e) => {
-                    self.report(
-                        Severity::Error,
-                        format!("lsp: failed to start '{}': {e}", config.command),
-                    );
-                    return;
-                }
-            }
-        };
-
-        self.state.buffers.get_mut(bid).lsp_server = Some(server_id);
-        self.lsp_did_open(bid);
-        // A brand-new server is still Starting; its BecameRunning arm
-        // fires the attach hook for every buffer attached by then,
-        // including this one. Only fire here for the "attach to an
-        // already-Running server" case (second+ buffer under the same key).
-        if self
-            .lsp
-            .servers
-            .get(&server_id)
-            .is_some_and(|e| e.client.state() == hume_lsp::client::ServerState::Running)
-        {
-            self.queue_lsp_attach(bid, &language);
-        }
-    }
-
-    /// Resolves `:lsp-stop`/`(lsp-stop! target)` (and `:lsp-restart`/
-    /// `(lsp-restart! target)`)'s target set: every server registered for a
-    /// `Language`, or `Buffer(bid)`'s own attached server (if any: `bid`
-    /// may have since detached, so this is not a panic-on-miss `get`).
-    fn lsp_targets(
-        &self,
-        target: &hume_scripting::LspServerTarget,
-    ) -> Vec<hume_lsp::backend::ServerId> {
-        match target {
-            hume_scripting::LspServerTarget::Language(lang) => self
-                .lsp
-                .servers
-                .iter()
-                .filter(|(_, e)| e.language.as_deref() == Some(lang.as_str()))
-                .map(|(&id, _)| id)
-                .collect(),
-            hume_scripting::LspServerTarget::Buffer(bid) => self
-                .state
-                .buffers
-                .try_get(*bid)
-                .and_then(|buf| buf.lsp_server)
-                .into_iter()
-                .collect(),
-        }
-    }
-
-    /// Graceful shutdown + full deregistration of one running server:
-    /// `begin_shutdown` (shutdown request, then exit; `ServerHandle::drop`
-    /// reaps the process regardless), drop its `ServerEntry` and diagnostics,
-    /// and clear `lsp_server` on every buffer that pointed at it so a later
-    /// attach attempt (open or restart) doesn't see it as already attached.
-    /// Every request still in flight on this client is dispatched as
-    /// `TimedOut` before the client itself is dropped; otherwise a
-    /// registered callback (and its `CallbackEntry`) would be orphaned
-    /// along with the removed client, never firing and never freed. Fires
-    /// `OnDiagnosticsChanged` for every buffer whose stored diagnostics
-    /// were actually cleared, and `OnLspDetach` for every buffer that was
-    /// attached. The latter is a plugin's only signal to drop its own
-    /// buffer-scoped state derived from this server (e.g. inlay hints),
-    /// which nothing here owns well enough to clear on its behalf.
-    fn lsp_stop_one(&mut self, server_id: hume_lsp::backend::ServerId) {
-        let mut language = String::new();
-        if let Some(entry) = self.lsp.servers.remove(&server_id) {
-            let super::ServerEntry {
-                mut client,
-                language: entry_language,
-                ..
-            } = entry;
-            language = entry_language.unwrap_or_default();
-            client.begin_shutdown(self.lsp.backend.as_mut());
-            for (id, meta) in client.drain_pending() {
-                self.dispatch_completed(server_id, id, meta, hume_lsp::client::Outcome::TimedOut);
-            }
-        }
-        self.lsp.backend.shutdown(server_id);
-        // Belt over `dispatch_completed`'s cleanup above (via `drain_pending`):
-        // covers a request whose response arrived but was never drained
-        // before the client was dropped, so no id ever leaks past its server.
-        self.lsp.supersede.retain(|(sid, _), _| *sid != server_id);
-        let diag_touched = self
-            .state
-            .buffer_positions
-            .diagnostics
-            .remove_server(server_id);
-
-        let bids: Vec<BufferId> = self
-            .state
-            .buffers
-            .iter()
-            .filter(|(_, buf)| buf.lsp_server == Some(server_id))
-            .map(|(bid, _)| bid)
-            .collect();
-        // Remaps decorations/diagnostics through every buffer's queued
-        // `lsp_pending` edits (this server's buffers among them) before
-        // detaching: those entries are the only carrier for the
-        // decoration remap (`flush_lsp_pending_changes`'s own doc), so
-        // dropping them unremapped below would leave a plugin's
-        // signs/virtual-lines/line-backgrounds anchored at stale,
-        // pre-edit positions permanently, not just until the next attach.
-        // Safe to call this early: `self.lsp.servers.remove(&server_id)`
-        // above already dropped this server's entry, so the didChange
-        // half of the flush finds no client to send to and skips it,
-        // so only the remap runs for these buffers.
-        self.flush_lsp_pending_changes();
-        for &bid in &bids {
-            let buf = self.state.buffers.get_mut(bid);
-            buf.lsp_server = None;
-            // Any edits queued for the now-detached server must not survive
-            // to a future attach: flushed against a new server's didOpen
-            // baseline, they'd desync its document state immediately. The
-            // flush above already drains `lsp_pending` to empty; this is
-            // belt-and-suspenders against a future edit racing in between.
-            buf.lsp_pending.clear();
-        }
-        // An open completion session's items are a snapshot already fetched
-        // from the server, not a live subscription, but leaving it open
-        // would keep showing (and let the user accept) suggestions from a
-        // server that's no longer running for this buffer.
-        if self
-            .state
-            .input
-            .buffer_completion()
-            .is_some_and(|session| bids.contains(&session.bid()))
-        {
-            self.state.dismiss_completion(&self.view);
-        }
-        for bid in diag_touched {
-            self.queue_diagnostics_changed(bid);
-        }
-        for bid in bids {
-            self.state.queue_event(EditorEvent::OnLspDetach {
-                buffer: bid,
-                language: language.clone(),
-            });
-        }
-    }
-
-    /// `(lsp-stop! target)`. Returns the number of servers stopped.
-    pub(in crate::editor) fn lsp_stop(
+impl RootCache {
+    /// The workspace root for a buffer at `file` whose language has the root
+    /// markers `language_roots`.
+    pub(in crate::editor::lsp) fn root_for(
         &mut self,
-        target: &hume_scripting::LspServerTarget,
-    ) -> usize {
-        let targets = self.lsp_targets(target);
-        let count = targets.len();
-        for server_id in targets {
-            self.lsp_stop_one(server_id);
-        }
-        count
-    }
-
-    /// `(lsp-restart! target)`. Stops each target server, then re-attaches
-    /// every buffer that was on it through `lsp_attach_buffer`, the exact
-    /// registration spawn path, not a duplicate. Returns the number of servers
-    /// restarted.
-    pub(in crate::editor) fn lsp_restart(
-        &mut self,
-        target: &hume_scripting::LspServerTarget,
-    ) -> usize {
-        let targets = self.lsp_targets(target);
-        let count = targets.len();
-        for server_id in targets {
-            let bids: Vec<BufferId> = self
-                .state
-                .buffers
-                .iter()
-                .filter(|(_, buf)| buf.lsp_server == Some(server_id))
-                .map(|(bid, _)| bid)
-                .collect();
-            self.lsp_stop_one(server_id);
-            for bid in bids {
-                self.lsp_attach_buffer(bid);
-            }
-        }
-        count
+        language_roots: &[String],
+        file: &Path,
+        cwd: &Path,
+    ) -> PathBuf {
+        let dir = file.parent().unwrap_or(cwd).to_path_buf();
+        self.roots
+            .entry((dir, language_roots.to_vec()))
+            .or_insert_with_key(|(_, markers)| resolve_root(file, markers, cwd))
+            .clone()
     }
 }
 

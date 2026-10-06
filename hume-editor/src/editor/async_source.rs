@@ -2,8 +2,9 @@
 //! (the LSP backend, the timer wheel) behind one `next_wake` predicate so
 //! `run`'s wait primitive doesn't hard-code a single source.
 //!
-//! Sources report *real deadlines only*: a request timeout, a `$/progress`
-//! spinner tick, a timer's fire time. Completion (an LSP response landing, a
+//! Sources report deadlines only: a request timeout, a `$/progress`
+//! spinner tick, a timer's fire time, or `now` for work already waiting
+//! (diagnostics deferred past a drain's path-resolution budget). Completion (an LSP response landing, a
 //! parse finishing) is not a deadline this module tracks: the background
 //! threads that produce it hold a `WakeCallback` and signal the event
 //! loop's wait primitive directly the moment they post a result (the
@@ -34,7 +35,7 @@ impl Editor {
     /// One place to enumerate async sources. Adding a source = one line here
     /// plus its `AsyncSource` impl.
     fn async_sources(&self) -> [&dyn AsyncSource; 2] {
-        [&self.timer_wheel, &self.lsp]
+        [&self.timer_wheel, &self.state.lsp]
     }
 
     /// `Some(timeout)` => wait with it; `None` => block indefinitely.

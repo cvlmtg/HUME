@@ -53,7 +53,6 @@ impl crate::editor::Editor {
                     proc: reg.proc,
                     resolve: reg.resolve,
                     token_chars: reg.token_chars.into(),
-                    trigger_chars: rustc_hash::FxHashMap::default(),
                 }),
             host::CompletionSourceTarget::Minibuf => self
                 .state
@@ -79,66 +78,44 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
     fn completion_emit(
         &mut self,
         id: u64,
-        response: hume_scripting::json::JsonHandle,
+        parts: Vec<hume_scripting::json::JsonHandle>,
         incomplete: bool,
     ) -> Result<bool, String> {
-        // `hume-scripting` funnels both of `completion-emit!`'s item-input
-        // shapes (a plain Steel list, or an `lsp-request!` response passed
-        // straight through) into one `JsonHandle`. It knows nothing about
-        // LSP response shapes itself (the handle is opaque to it, by
-        // design; see `JsonHandle`'s own doc). Deciding the response's own
-        // items/isIncomplete happens here, the one place that already
+        // `hume-scripting` hands each part over as an opaque `JsonHandle`;
+        // telling an item from a response happens here, the one place that
         // depends on both `hume_lsp` and this store's `CompletionItem`.
-        // Both error cases below are caller mistakes (a handle that isn't a
-        // completion response, or a `CompletionList` whose own flag
-        // conflicts with an explicit `#:incomplete #t`), so both raise
-        // rather than leaving the invocation stuck pending forever on a
-        // silent empty answer.
-        // `items_key`: `Some("items")` for a `CompletionList` (its items
-        // live under that key), `None` for a bare `CompletionItem[]` array
-        // (its items are the response's own elements), the same
-        // distinction `completion_response_items` makes, carried forward so
-        // each item's `indexed_child` below walks the correct path.
-        let (items, incomplete, items_key) =
-            match hume_lsp::completion_item::completion_response_items(response.value()) {
-                Some((_, Some(own))) if incomplete => {
-                    return Err(format!(
-                        "completion-emit!: #:incomplete #t has no effect on a CompletionList \
-                         response; the response's own isIncomplete field is used instead \
-                         (here, {})",
-                        if own { "#t" } else { "#f" }
-                    ));
-                }
-                Some((items, Some(own))) => (items, own, Some("items")),
-                Some((items, None)) => (items, incomplete, None),
-                None => {
-                    return Err(
-                        "completion-emit!: handle is not a textDocument/completion response \
-                         shape (expected a CompletionItem[] array or a CompletionList object)"
-                            .to_string(),
-                    );
-                }
-            };
-        let default_range = hume_lsp::completion_item::item_defaults_edit_range(response.value());
-        // A malformed item (missing the spec-required `label`) is skipped,
-        // not fatal to the whole batch: one bad item from a misbehaving
-        // server must not silently drop every good one.
-        let mut parsed = Vec::with_capacity(items.len());
-        for (i, v) in items.iter().enumerate() {
-            let raw_item = response
-                .indexed_child(items_key, i)
-                .expect("index i is within items, already resolved from response.value()");
-            match crate::editor::completion::CompletionItem::from_json(
-                v,
-                raw_item,
-                default_range.as_ref(),
-            ) {
-                Some(item) => parsed.push(item),
-                None => self.state.report(
-                    Severity::Trace,
-                    "completion-emit!: skipped malformed item: missing or non-string label"
-                        .to_string(),
-                ),
+        let mut incomplete = incomplete;
+        let mut parsed = Vec::new();
+        for part in parts {
+            let value = part.value();
+            let is_item = value.is_string() || value.get("label").is_some();
+            if is_item {
+                self.parse_item(value, part.clone(), None, &mut parsed);
+                continue;
+            }
+            // `items_key`: `Some("items")` for a `CompletionList` (its items
+            // live under that key), `None` for a bare `CompletionItem[]`,
+            // so each item's `indexed_child` walks the right path.
+            let (items, own_incomplete, items_key) =
+                match hume_lsp::completion_item::completion_response_items(value) {
+                    Some((items, Some(own))) => (items, own, Some("items")),
+                    Some((items, None)) => (items, false, None),
+                    None => {
+                        return Err(
+                            "completion-emit!: an item must be a label string or an object with \
+                             a label, or a textDocument/completion response (a CompletionItem[] \
+                             array or a CompletionList object)"
+                                .to_string(),
+                        );
+                    }
+                };
+            incomplete |= own_incomplete;
+            let default_range = hume_lsp::completion_item::item_defaults_edit_range(value);
+            for (i, v) in items.iter().enumerate() {
+                let raw_item = part
+                    .indexed_child(items_key, i)
+                    .expect("index i is within items, already resolved from the part's value");
+                self.parse_item(v, raw_item, default_range.as_ref(), &mut parsed);
             }
         }
         Ok(self.state.contribute(self.view, id, parsed, incomplete))
@@ -161,9 +138,6 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
 
     fn completion_accept(&mut self, idx: usize) -> Result<(), String> {
         self.state.refuse_during_dot("completion-accept!")?;
-        let Some(lsp) = self.lsp.as_deref_mut() else {
-            return Err("completion-accept!: no LSP state available".to_string());
-        };
         // Checked *before* `take_buffer_completion`: that call is
         // destructive (truncates the layer off the stack, per its own doc),
         // so erroring here first leaves a `Minibuf` session (and its own
@@ -176,11 +150,32 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         let Some(session) = self.state.take_buffer_completion(self.view) else {
             return Err("completion-accept!: no active completion session".to_string());
         };
-        session.accept(self.state, self.view, lsp, idx)
+        session.accept(self.state, self.view, idx)
     }
 
     fn completion_dismiss(&mut self) -> Result<(), String> {
         self.state.dismiss_completion(self.view);
         Ok(())
+    }
+}
+
+impl EditorHostImpl<'_> {
+    /// Decodes one item into `parsed`. A malformed item (missing the
+    /// spec-required `label`) is skipped, not fatal to the whole answer: one
+    /// bad item from a misbehaving server must not drop every good one.
+    fn parse_item(
+        &mut self,
+        value: &serde_json::Value,
+        raw_item: hume_scripting::json::JsonHandle,
+        default_range: Option<&lsp_types::Range>,
+        parsed: &mut Vec<crate::editor::completion::CompletionItem>,
+    ) {
+        match crate::editor::completion::CompletionItem::from_json(value, raw_item, default_range) {
+            Some(item) => parsed.push(item),
+            None => self.state.report(
+                Severity::Trace,
+                "completion-emit!: skipped malformed item: missing or non-string label".to_string(),
+            ),
+        }
     }
 }

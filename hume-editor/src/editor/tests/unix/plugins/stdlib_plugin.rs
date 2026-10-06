@@ -398,7 +398,7 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("python", &[], &[], &[], None);
+        .register_identity_no_rebuild("python", &[], &[], &[], None, &[]);
 
     let define_probe = r#"
 (define-typed-command! "probe-resolve-lang-arg" ""

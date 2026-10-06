@@ -57,6 +57,7 @@ fn define_language_non_string_name_errors() {
         empty_list(),
         empty_list(),
         SteelVal::BoolV(false),
+        empty_list(),
     );
     assert!(
         result.is_err(),
@@ -77,6 +78,7 @@ fn define_language_queues_pending_reg() {
             empty_list(),
             empty_list(),
             SteelVal::BoolV(false),
+            empty_list(),
         );
         assert!(
             result.is_ok(),
@@ -103,6 +105,7 @@ fn define_language_accepts_symbol_name() {
             empty_list(),
             empty_list(),
             SteelVal::BoolV(false),
+            empty_list(),
         );
         assert!(result.is_ok());
     }
@@ -126,6 +129,7 @@ fn define_language_decodes_lsp_language_id_arg() {
             empty_list(),
             empty_list(),
             str_val("typescriptreact"),
+            empty_list(),
         )
         .expect("%define-language! must succeed with a string lsp-language-id");
     }
@@ -133,6 +137,43 @@ fn define_language_decodes_lsp_language_id_arg() {
         lang_regs(&h)[0],
         PendingLanguageReg::Identity { lsp_language_id, .. }
             if lsp_language_id.as_deref() == Some("typescriptreact")
+    ));
+}
+
+/// `%define-language!`'s 6th arg decodes into `PendingLanguageReg::Identity`'s
+/// `roots`, and a non-list is rejected.
+#[test]
+fn define_language_decodes_roots_arg() {
+    let mut h = SteelCtxTestHarness::new();
+    let roots = vec![str_val("go.work"), str_val("go.mod")]
+        .into_steelval()
+        .unwrap();
+    {
+        let mut ctx = h.ctx_init();
+        define_language(
+            &mut ctx,
+            str_val("go"),
+            empty_list(),
+            empty_list(),
+            empty_list(),
+            SteelVal::BoolV(false),
+            roots,
+        )
+        .expect("%define-language! must succeed with a roots list");
+        let rejected = define_language(
+            &mut ctx,
+            str_val("go"),
+            empty_list(),
+            empty_list(),
+            empty_list(),
+            SteelVal::BoolV(false),
+            str_val("go.mod"),
+        );
+        assert!(rejected.is_err(), "roots must be a list of strings");
+    }
+    assert!(matches!(
+        lang_regs(&h)[0],
+        PendingLanguageReg::Identity { roots, .. } if roots == &["go.work", "go.mod"]
     ));
 }
 

@@ -265,6 +265,29 @@ fn register_identity_then_by_name_returns_entry() {
 }
 
 #[test]
+fn roots_of_returns_the_registered_markers() {
+    let mut reg = LanguageRegistry::new();
+    let id =
+        reg.register_identity_no_rebuild("go", &["go"], &[], &[], None, &["go.work", "go.mod"]);
+    assert_eq!(reg.roots_of(id), ["go.work", "go.mod"]);
+}
+
+#[test]
+fn roots_of_an_interned_language_without_identity_is_empty() {
+    let mut reg = LanguageRegistry::new();
+    let id = reg.intern("bare");
+    assert!(reg.roots_of(id).is_empty());
+}
+
+#[test]
+fn reregistering_an_identity_replaces_its_roots() {
+    let mut reg = LanguageRegistry::new();
+    let id = reg.register_identity_no_rebuild("go", &[], &[], &[], None, &["go.mod"]);
+    reg.register_identity_no_rebuild("go", &[], &[], &[], None, &[]);
+    assert!(reg.roots_of(id).is_empty());
+}
+
+#[test]
 fn register_identity_with_globs_lookup() {
     let mut reg = LanguageRegistry::new();
     reg.register_identity(

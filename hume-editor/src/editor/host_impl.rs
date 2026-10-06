@@ -12,7 +12,6 @@
 
 use hume_engine::pipeline::{BufferId, EngineView};
 
-use crate::editor::lsp::LspState;
 use crate::editor::timer_bridge::TimerHandle;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
@@ -43,19 +42,10 @@ mod ui;
 pub(in crate::editor) struct EditorHostImpl<'a> {
     state: &'a mut EditorState,
     view: &'a mut EngineView,
-    /// `Some` only at the three call sites that can reach an introspection
-    /// builtin (command dispatch, hook fire, queued-call drain), `None`
-    /// everywhere else (init evals, which `require_cmd_ctx!` already blocks
-    /// LSP builtins from anyway), so those sites don't need to thread it in.
-    /// `&mut` (not `&`) because most `LspHost`/`CompletionHost` methods
-    /// mutate it directly (server registry, callbacks, diagnostics) or need
-    /// it mutable to pass along (`completion-accept!`'s `completionItem/
-    /// resolve` round trip).
-    lsp: Option<&'a mut LspState>,
-    /// Same `Some`-at-three-sites shape as `lsp`, for the `(after …)` /
-    /// `(cancel-timer! …)`. These mutate (schedule/cancel), so `&LspState`'s
-    /// shared-borrow shape doesn't fit; `TimerHandle` bundles the two
-    /// `&mut` pieces this needs.
+    /// `Some` only at the three call sites that can reach a timer builtin
+    /// (command dispatch, hook fire, queued-call drain), for `(after …)` /
+    /// `(cancel-timer! …)`. `TimerHandle` bundles the two `&mut` pieces
+    /// those need.
     timers: Option<TimerHandle<'a>>,
     /// This host's inline-output authority: `None` for [`Self::new`]'s
     /// callers, which have no business touching the bracket at all, not
@@ -126,7 +116,6 @@ impl<'a> EditorHostImpl<'a> {
         Self {
             state,
             view,
-            lsp: None,
             timers: None,
             tui,
             kitty_enabled,
@@ -141,7 +130,6 @@ impl<'a> EditorHostImpl<'a> {
     pub(in crate::editor) fn full(
         state: &'a mut EditorState,
         view: &'a mut EngineView,
-        lsp: &'a mut LspState,
         timer_wheel: &'a mut super::timers::TimerWheel,
         timer_payloads: &'a mut rustc_hash::FxHashMap<
             super::timers::TimerId,
@@ -153,7 +141,6 @@ impl<'a> EditorHostImpl<'a> {
         Self {
             state,
             view,
-            lsp: Some(lsp),
             timers: Some(TimerHandle {
                 wheel: timer_wheel,
                 payloads: timer_payloads,
@@ -194,19 +181,16 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     fn decorations(&mut self) -> Option<&mut dyn DecorationHost> {
         Some(self)
     }
-    // `Some(self)` unconditionally, even though `self.lsp` is itself an
-    // `Option`: every method below already self-guards on `self.lsp.as_deref()`,
-    // and a conditional accessor here would change what "no attached server"
-    // vs. "no LSP state at all" reports at the Steel boundary.
     fn lsp(&mut self) -> Option<&mut dyn LspHost> {
         Some(self)
     }
-    // Same unconditional-Some rationale as `lsp()` above.
+    // `Some(self)` unconditionally: every timer method self-guards on
+    // `self.timers`.
     fn timers(&mut self) -> Option<&mut dyn TimerHost> {
         Some(self)
     }
     // The job registry lives on `self.state.config`, always reachable, no
-    // `Option`-wrapped upstream field to gate on (unlike `timers`/`lsp`).
+    // `Option`-wrapped upstream field to gate on (unlike `timers`).
     fn async_process(&mut self) -> Option<&mut dyn AsyncProcessHost> {
         Some(self)
     }

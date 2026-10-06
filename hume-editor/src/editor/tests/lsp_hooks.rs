@@ -1,144 +1,98 @@
 // New hooks: on-lsp-attach, on-diagnostics-changed,
 // on-viewport-change (debounced), on-trigger-char + set-hook-triggers!.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
+use super::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec};
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::backend::ServerId;
+use hume_lsp::test_util::RecordingLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// Wires a scripted backend attached to the focused buffer, and returns the
-/// `ServerId`, handshake not yet driven (client is `Starting`).
-fn wire_starting_server(ed: &mut Editor) -> ServerId {
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    sid
+/// `src/main.rs` holding `abcdef`, its one server still `Starting`, with
+/// `hooks` evaluated before the file opens.
+fn starting_rig(tmp: &tempfile::TempDir, hooks: &str, backend: RecordingLspBackend) -> LspRig {
+    let init = format!("{RUST_ANALYZER}\n{hooks}");
+    LspRig::open(
+        tmp.path(),
+        RigSpec::rust("-[a]>bcdef\n").with_init(&init),
+        backend,
+    )
 }
 
-/// Drives the queued `initialize` response through to `BecameRunning`.
-fn complete_handshake(ed: &mut Editor, sid: ServerId) {
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    assert_eq!(sid2, sid);
+fn answering_initialize() -> RecordingLspBackend {
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+    backend
 }
 
 #[test]
 fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    let sid = wire_starting_server(&mut ed);
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(register-hook! 'on-lsp-attach (lambda (bid language)
-             (when (equal? language "rust") (call! "move-right" (focused-pane)))))"#,
-        tmp.path(),
+    let mut rig = starting_rig(
+        &tmp,
+        r#"(register-hook! 'on-lsp-attach (lambda (pane server) (call! "move-right" (focused-pane))))"#,
+        answering_initialize(),
     );
-    ed.scripting = Some(host);
+    let before = state(&rig.ed);
 
-    let before = state(&ed);
-    complete_handshake(&mut ed, sid);
-    ed.settle();
+    rig.ed.drain_lsp();
+    rig.ed.settle();
 
     assert_ne!(
-        state(&ed),
+        state(&rig.ed),
         before,
-        "on-lsp-attach must fire with the language once the handshake completes"
+        "on-lsp-attach must fire once the handshake completes"
     );
 }
 
-/// `on-lsp-detach`: the counterpart to `on-lsp-attach`, giving a
-/// plugin its only signal to clear buffer-scoped state derived from a
-/// server that `:lsp-stop`/`:lsp-restart` just tore down.
+/// `on-lsp-detach`: the counterpart to `on-lsp-attach`, giving a plugin
+/// its signal to drop buffer-scoped state derived from a server that just
+/// detached.
 #[test]
-fn on_lsp_detach_fires_with_the_language_when_a_server_is_stopped() {
+fn on_lsp_detach_fires_when_a_server_is_stopped() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(register-hook! 'on-lsp-detach (lambda (bid language)
-             (when (equal? language "rust") (call! "move-right" (focused-pane)))))"#,
-        tmp.path(),
+    let mut rig = starting_rig(
+        &tmp,
+        r#"(register-hook! 'on-lsp-detach (lambda (pane server) (call! "move-right" (focused-pane))))"#,
+        answering_initialize(),
     );
-    ed.scripting = Some(host);
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+    let before = state(&rig.ed);
 
-    let before = state(&ed);
-    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
-        "rust".to_string(),
-    ));
-    ed.settle();
+    rig.ed
+        .apply_lsp_server_op(hume_scripting::PendingLspServerOp::Stop {
+            target: hume_scripting::LspServerTarget::Buffer(rig.bid),
+        });
+    rig.ed.settle();
 
     assert_ne!(
-        state(&ed),
+        state(&rig.ed),
         before,
-        "on-lsp-detach must fire with the language once the server is stopped"
+        "on-lsp-detach must fire once the server is stopped"
     );
 }
 
 #[test]
 fn set_hook_triggers_from_inside_a_hook_handler_takes_effect() {
     // set-hook-triggers! must work from command context (not just
-    // init/plugin-load): hover/signature-help register a server's trigger characters from
-    // inside their on-lsp-attach handler, which runs as plain command
-    // context. Like `on_trigger_char_fires_only_for_registered_
-    // chars_in_insert_mode_after_insertion`, compare against a parallel
-    // plain editor so the assertion isolates "did the extra move-right
-    // additionally fire" from "was '.' inserted" (typing '.' changes state
-    // either way, so a bare before/after diff on `ed` alone wouldn't catch
-    // a registration that silently failed).
+    // init/plugin-load): hover/signature-help register a server's trigger
+    // characters from inside their on-lsp-attach handler, which runs as
+    // plain command context. Compare against a parallel plain editor so the
+    // assertion isolates "did the extra move-right additionally fire" from
+    // "was '.' inserted".
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    let sid = wire_starting_server(&mut ed);
-    let bid = ed.focused_buffer_id();
-    let lang = ed.state.config.languages.intern("rust");
-    ed.state.buffers.get_mut(bid).language = Some(lang);
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(register-hook! 'on-lsp-attach (lambda (bid language)
-             (set-hook-triggers! "test" language '("."))))
-           (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right" bid)))"#,
-        tmp.path(),
+    let mut rig = starting_rig(
+        &tmp,
+        r#"(register-hook! 'on-lsp-attach (lambda (pane server)
+             (set-hook-triggers! "test" (get-buffer-option pane "language") '("."))))
+           (register-hook! 'on-trigger-char (lambda (pane ch source) (call! "move-right" pane)))"#,
+        answering_initialize(),
     );
-    ed.scripting = Some(host);
-
-    complete_handshake(&mut ed, sid);
-    ed.settle();
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+    let ed = &mut rig.ed;
 
     let mut plain = editor_from("-[a]>bcdef\n");
     ed.feed_key(key('i'));
@@ -148,7 +102,7 @@ fn set_hook_triggers_from_inside_a_hook_handler_takes_effect() {
     ed.settle();
     plain.feed_key(key('.'));
     assert_ne!(
-        state(&ed),
+        state(ed),
         state(&plain),
         "set-hook-triggers! called from inside a hook handler (command \
          context, not init/plugin-load) must still register the char and \
@@ -156,72 +110,45 @@ fn set_hook_triggers_from_inside_a_hook_handler_takes_effect() {
     );
 }
 
-/// `set-hook-triggers!` is keyed `(source, language)`, not
-/// globally per source: a second language attaching under the same source
-/// must not clobber the first's chars, and a char typed in the wrong
-/// language's buffer must not fire at all.
+/// `set-hook-triggers!` is keyed `(source, language)`, not globally per
+/// source: a second language attaching under the same source must not
+/// clobber the first's chars, and a char typed in the wrong language's
+/// buffer must not fire at all.
 #[test]
 fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each_other() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    let bid_a = ed.focused_buffer_id();
-    let lang = ed.state.config.languages.intern("rust");
-    ed.state.buffers.get_mut(bid_a).language = Some(lang);
-
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
-    backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
-    let sid_a = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    let sid_b = backend.start("pylsp", &[], Path::new("."), &[]).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-
-    let mut client_a = LspClient::new(sid_a, PathBuf::from("."));
-    client_a.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client_a);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid_a);
-    ed.state.buffers.get_mut(bid_a).lsp_server = Some(sid_a);
-
-    let mut client_b = LspClient::new(sid_b, PathBuf::from("."));
-    client_b.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client_b);
-    ed.lsp
-        .insert_server_key_for_test("python".to_string(), PathBuf::from("."), sid_b);
-
-    let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
-    let lang = ed.state.config.languages.intern("python");
-    ed.state.buffers.get_mut(bid_b).language = Some(lang);
-    ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(register-hook! 'on-lsp-attach (lambda (bid language)
-             (set-hook-triggers! "test" language
-               (if (equal? language "rust") '(".") '(",")))))
-           (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right" bid)))"#,
-        tmp.path(),
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+    backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
+    let mut rig = starting_rig(
+        &tmp,
+        r#"(register-lsp-server! "pylsp" #:command "pylsp")
+           (set-language-servers! "python" '("pylsp"))
+           (register-hook! 'on-lsp-attach (lambda (pane server)
+             (let ((language (get-buffer-option pane "language")))
+               (set-hook-triggers! "test" language
+                 (if (equal? language "rust") '(".") '(","))))))
+           (register-hook! 'on-trigger-char (lambda (pane ch source) (call! "move-right" pane)))"#,
+        backend,
     );
-    ed.scripting = Some(host);
-
-    // Both buffers are already attached (lsp_server set above) before either
-    // handshake completes; the BecameRunning sweep fires on-lsp-attach for
-    // both, in whichever order the backend queued their responses.
-    for (sid, ev) in ed.lsp.backend_mut().drain() {
-        let actions = ed.lsp.client_for_test(sid).unwrap().on_event(ev);
-        for action in actions {
-            ed.dispatch_lsp_action(sid, action);
-        }
-    }
-    ed.settle();
+    let bid_a = rig.bid;
+    rig.ed
+        .state
+        .config
+        .languages
+        .register_identity("python", &["py"], &[], &[], None)
+        .unwrap();
+    let py = rig.root.join("x.py");
+    std::fs::write(&py, "x\n").unwrap();
+    rig.ed
+        .execute_typed("e", Some(py.to_str().unwrap()))
+        .unwrap();
+    let bid_b = rig.ed.focused_buffer_id();
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+    let ed = &mut rig.ed;
 
     // Buffer A ("rust", registered "."): "," must not fire, "." must.
-    // Parallel plain editor (no hook) isolates "did the extra move fire"
-    // from "was the char inserted", same pattern as the single-language
-    // trigger-char tests above.
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_a);
     let mut plain_a = editor_from("-[a]>bcdef\n");
     ed.feed_key(key('i'));
@@ -231,7 +158,7 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
     ed.settle();
     plain_a.feed_key(key(','));
     assert_eq!(
-        state(&ed),
+        state(ed),
         state(&plain_a),
         "\",\" is unregistered for \"rust\" and must not fire"
     );
@@ -239,17 +166,14 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
     ed.settle();
     plain_a.feed_key(key('.'));
     assert_ne!(
-        state(&ed),
+        state(ed),
         state(&plain_a),
         "\".\" is registered for \"rust\" and must fire the extra move"
     );
     ed.feed_key(key_esc());
     ed.settle();
 
-    // Buffer B ("python", registered ","): "." must not fire, "," must,
-    // proving "python"'s attach registering under the same "test" source
-    // didn't clobber "rust"'s "." entry (checked above), and that "rust"'s
-    // registration doesn't leak into "python"'s buffer either.
+    // Buffer B ("python", registered ","): "." must not fire, "," must.
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_b);
     let mut plain_b = Editor::for_testing(Buffer::at_start(BufferText::from("x\n")));
     ed.feed_key(key('i'));
@@ -259,7 +183,7 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
     ed.settle();
     plain_b.feed_key(key('.'));
     assert_eq!(
-        state(&ed),
+        state(ed),
         state(&plain_b),
         "\".\" is unregistered for \"python\" and must not fire"
     );
@@ -267,7 +191,7 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
     ed.settle();
     plain_b.feed_key(key(','));
     assert_ne!(
-        state(&ed),
+        state(ed),
         state(&plain_b),
         "\",\" is registered for \"python\" and must fire the extra move"
     );
@@ -276,60 +200,40 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
 #[test]
 fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    std::fs::write(&file, "abcdef\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&root.join("src/main.rs")).unwrap();
+    let mut backend = answering_initialize();
     // Two publishes for the same (server, uri) within one drain batch:
     // `drain_lsp` coalesces to the last one, but the hook must still fire
     // exactly once, not zero (dropped) or twice (one per publish).
     for _ in 0..2 {
         backend.push_from_server(
-            sid,
+            ServerId(0),
             hume_lsp::codec::Message::Notification {
                 method: "textDocument/publishDiagnostics".to_string(),
                 params: serde_json::json!({"uri": uri.as_str(), "diagnostics": []}),
             },
         );
     }
-    let mut ed = editor_from("-[x]>\n");
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, PathBuf::from(".")));
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(register-hook! 'on-diagnostics-changed (lambda (bid) (call! "move-right" (focused-pane))))"#,
-        tmp.path(),
+    let mut rig = starting_rig(
+        &tmp,
+        r#"(register-hook! 'on-diagnostics-changed (lambda (pane) (call! "move-right" (focused-pane))))"#,
+        backend,
     );
-    ed.scripting = Some(host);
 
-    ed.drain_lsp();
-    ed.settle();
-    // Exactly one fire (one move-right), not zero (dropped) or two (one per
-    // publish): the two coalesced publishes must yield one hook call.
+    rig.ed.drain_lsp();
+    rig.ed.settle();
     assert_eq!(
-        state(&ed),
+        state(&rig.ed),
         "a-[b]>cdef\n",
         "on-diagnostics-changed must fire exactly once for the coalesced batch"
     );
 
     // A second drain (nothing new queued) must not fire again.
-    ed.drain_lsp();
-    ed.settle();
+    rig.ed.drain_lsp();
+    rig.ed.settle();
     assert_eq!(
-        state(&ed),
+        state(&rig.ed),
         "a-[b]>cdef\n",
         "a drain with no new publishDiagnostics must not fire the hook again"
     );
@@ -507,5 +411,163 @@ fn on_trigger_char_does_not_fire_in_normal_mode() {
         state(&ed),
         state(&plain),
         "no extra move must occur: on-trigger-char never fires outside Insert mode"
+    );
+}
+
+/// An attachment's trigger fires in the buffer it was set for and nowhere
+/// else, though another buffer is attached to the same server.
+#[test]
+fn set_attachment_hook_triggers_fires_for_that_buffer_only() {
+    let tmp = safe_tempdir();
+    let mut rig = starting_rig(
+        &tmp,
+        r#"(register-hook! 'on-lsp-attach (lambda (pane server)
+             (when (equal? (get-buffer-option pane "language") "rust")
+               (set-attachment-hook-triggers! "test" pane server '(".")))))
+           (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warn source)))"#,
+        answering_initialize(),
+    );
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+    let notes = rig.root.join("notes.txt");
+    std::fs::write(&notes, "x\n").unwrap();
+    rig.ed
+        .execute_typed("e", Some(notes.to_str().unwrap()))
+        .unwrap();
+
+    for _ in 0..2 {
+        rig.ed.feed_key(key('i'));
+        rig.ed.feed_key(key('.'));
+        rig.ed.feed_key(key_esc());
+        rig.ed.settle();
+        let rust = rig.bid;
+        rig.ed
+            .switch_to_buffer_without_jump(FocusedPane::current(&rig.ed.state), rust);
+    }
+
+    assert_eq!(rig.warnings(), vec!["test".to_string()]);
+}
+
+/// Two buffers on one instance each carry their own table: setting it for
+/// one leaves the other with none.
+#[test]
+fn attachment_triggers_are_per_buffer_not_per_instance() {
+    let tmp = safe_tempdir();
+    let mut rig = starting_rig(&tmp, "", answering_initialize());
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+    let lib = rig.root.join("src/lib.rs");
+    std::fs::write(&lib, "// lib\n").unwrap();
+    rig.ed
+        .execute_typed("e", Some(lib.to_str().unwrap()))
+        .unwrap();
+    let lib_bid = rig.ed.focused_buffer_id();
+    assert_ne!(lib_bid, rig.bid);
+
+    rig.probe(r#"(set-attachment-hook-triggers! "test" pane (car (lsp-servers pane)) '("."))"#);
+
+    let tables = |ed: &Editor, bid| {
+        ed.state
+            .buffer_positions
+            .lsp
+            .triggers(bid, hume_scripting::TriggerKind::Hook)
+            .count()
+    };
+    assert_eq!(tables(&rig.ed, lib_bid), 1);
+    assert_eq!(tables(&rig.ed, rig.bid), 0);
+}
+
+#[test]
+fn attachment_triggers_vanish_when_the_server_stops() {
+    let tmp = safe_tempdir();
+    let mut rig = starting_rig(
+        &tmp,
+        r#"(register-hook! 'on-lsp-attach (lambda (pane server)
+             (set-attachment-hook-triggers! "test" pane server '("."))))
+           (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warn source)))"#,
+        answering_initialize(),
+    );
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+    rig.ed
+        .apply_lsp_server_op(hume_scripting::PendingLspServerOp::Stop {
+            target: hume_scripting::LspServerTarget::Buffer(rig.bid),
+        });
+
+    rig.ed.feed_key(key('i'));
+    rig.ed.feed_key(key('.'));
+    rig.ed.settle();
+
+    assert!(rig.warnings().is_empty(), "{:?}", rig.warnings());
+}
+
+/// A list change that excludes a feature clears the attachment's triggers
+/// and fires `on-lsp-attach` again, so a handler that installs triggers
+/// only for admitted features installs none.
+#[test]
+fn a_filter_change_clears_the_attachments_triggers_and_refires_attach() {
+    let tmp = safe_tempdir();
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({ "capabilities": { "hoverProvider": true } }),
+    );
+    let mut rig = starting_rig(
+        &tmp,
+        r#"(register-hook! 'on-lsp-attach (lambda (pane server)
+             (log! 'warn "attach")
+             (when (member server (lsp-servers pane #:feature 'hover))
+               (set-attachment-hook-triggers! "test" pane server '(".")))))"#,
+        backend,
+    );
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+    let hook_chars = |rig: &LspRig| {
+        rig.ed
+            .state
+            .buffer_positions
+            .lsp
+            .triggers(rig.bid, hume_scripting::TriggerKind::Hook)
+            .count()
+    };
+    assert_eq!(hook_chars(&rig), 1, "setup: installed on the first attach");
+
+    rig.eval(
+        r#"(set-language-servers! "rust"
+             (list (hash 'name "rust-analyzer" 'except-features '(hover))))"#,
+    );
+    rig.ed.settle();
+
+    assert_eq!(hook_chars(&rig), 0);
+    assert_eq!(
+        rig.warnings(),
+        vec!["attach".to_string(), "attach".to_string()]
+    );
+}
+
+/// `:reload-config` drops the outgoing engine's attachment triggers; the new
+/// engine's `on-lsp-attach` handlers install their own on resync.
+#[test]
+fn reload_clears_attachment_triggers() {
+    let tmp = safe_tempdir();
+    let mut rig = starting_rig(
+        &tmp,
+        r#"(register-hook! 'on-lsp-attach (lambda (pane server)
+             (set-attachment-hook-triggers! "test" pane server '("."))))"#,
+        answering_initialize(),
+    );
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+
+    rig.ed.reset_config_state();
+
+    assert!(
+        rig.ed
+            .state
+            .buffer_positions
+            .lsp
+            .triggers(rig.bid, hume_scripting::TriggerKind::Hook)
+            .next()
+            .is_none()
     );
 }

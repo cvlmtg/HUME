@@ -33,7 +33,10 @@ fn editor_state_fields_are_classified() {
             // everything else survive
             buffers: _,
             buffer_positions: _, // preserved
-            config: _,           // exempt; see ConfigState's own doc
+            // config: LspState::reset_config clears registrations and
+            // in-flight deliveries; running servers and the spinner survive
+            lsp: _,
+            config: _, // exempt; see ConfigState's own doc
             // config: reset_config_state → input.truncate_to_base() (drops
             // every mode layer's minibuf/completion/prompt-callback payload
             // along with the six overlay widgets, confirm/picker/menu/
@@ -154,7 +157,6 @@ fn editor_fields_are_classified() {
             // DecorationStores::reset bumping the generation
             // counter, not by resetting this map directly
             virtual_lines_synced: _,
-            lsp: _, // config: LspState::reset_config()
             // preserved: Editor::run sets it On on entry and Off on
             // exit, and a :reload-config can only run from inside
             // that loop

@@ -1,286 +1,202 @@
-//! Document sync: mirrors buffer text to attached LSP servers via
+//! Document sync: mirrors buffer text to every attached LSP server via
 //! `textDocument/didOpen` / `didChange` / `didSave` / `didClose`. Pure
-//! protocol, zero Steel involvement. Version = the buffer text's generation, no
-//! second counter.
+//! protocol, zero Steel involvement. Version = the buffer text's generation,
+//! no second counter.
+//!
+//! A buffer's queued changes (`LspDocuments`) are taken once per flush and
+//! sent to each attached server in the form that server negotiated: ranged
+//! events in its position encoding for `INCREMENTAL`, one whole-document
+//! event at the current version for `FULL` (which ignores `range` and reads
+//! every event's `text` as the whole document), nothing for `NONE`. Before
+//! its handshake completes a server is sent `FULL`, so nothing queued while
+//! it is `Starting` depends on an encoding not yet negotiated.
 
-use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::BufferId;
+use hume_lsp::backend::ServerId;
 use hume_lsp::codec::Message;
 use hume_lsp::sync::{changeset_to_content_changes, wire_version};
+use hume_rope::position_encoding::PositionEncoding;
 use lsp_types::TextDocumentSyncKind;
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
     Notification as _,
 };
-use ropey::Rope;
 
-use super::LspState;
-use crate::editor::Editor;
+use super::document::{OpenedAs, PendingChange};
 use crate::editor::EditorState;
-use crate::editor::buffer::Buffer;
 
-/// One text mutation queued for `didChange` conversion. `before` is the
-/// pre-edit rope (an O(1) clone via ropey's structural sharing, the same
-/// discipline `doc_ops.rs` uses for its own `rope_pre`);
-/// `version` is the buffer's `generation` *after* this edit, the version the
-/// eventual `didChange` notification claims.
-pub(in crate::editor) struct LspPendingChange {
-    pub(in crate::editor) cs: ChangeSet,
-    pub(in crate::editor) before: Rope,
-    pub(in crate::editor) version: u64,
-}
-
-impl Editor {
-    /// Shared preamble for every per-buffer document-sync notification. See
-    /// the free [`send_doc_notification`] below for the body; this is a
-    /// thin `self.state`/`self.lsp` delegate, same shape as
-    /// `flush_lsp_pending_changes`.
-    fn send_doc_notification(
-        &mut self,
-        bid: BufferId,
-        method: &str,
-        build_params: impl FnOnce(&Buffer, &lsp_types::Uri) -> serde_json::Value,
-    ) {
-        send_doc_notification(&mut self.state, &mut self.lsp, bid, method, build_params);
+impl EditorState {
+    /// Sends every buffer's queued changes. Called from the LSP per-frame
+    /// drain, before each queued request or notification is sent, and
+    /// before `didSave`, so no message a server receives refers to text it
+    /// has not been told about.
+    pub(in crate::editor) fn lsp_flush_pending(&mut self) {
+        for bid in self.buffer_positions.lsp.with_pending() {
+            self.lsp_flush_buffer(bid);
+        }
     }
 
-    /// Sends the buffer's full text as `textDocument/didOpen`. Called once,
-    /// right after `lsp_attach_buffer` sets `Buffer.lsp_server`. The buffer
-    /// is guaranteed to have a path at that point (unnamed buffers never
-    /// attach). Queued instead of sent if the handshake hasn't completed:
-    /// the spec forbids anything but `initialize` before `initialized`.
-    pub(super) fn lsp_did_open(&mut self, bid: BufferId) {
-        let language_id = self
-            .state
-            .buffers
-            .get(bid)
-            .language
-            .map(|id| {
-                self.state
-                    .config
-                    .languages
-                    .lsp_language_id_of(id)
-                    .to_owned()
-            })
-            .expect("attached buffer always has a language");
-        self.send_doc_notification(bid, DidOpenTextDocument::METHOD, move |buf, uri| {
-            serde_json::json!({
-                "textDocument": {
-                    "uri": uri.as_str(),
-                    "languageId": language_id,
-                    "version": wire_version(buf.text().generation()),
-                    "text": buf.text().to_string(),
-                }
-            })
-        });
-    }
-
-    /// `textDocument/didSave`, which never includes text (`didSave.includeText`
-    /// is never advertised in the handshake). Queued while `Starting`,
-    /// same as every other send site here.
-    pub(in crate::editor) fn lsp_did_save(&mut self, bid: BufferId) {
-        self.send_doc_notification(
-            bid,
-            DidSaveTextDocument::METHOD,
-            |_buf, uri| serde_json::json!({ "textDocument": { "uri": uri.as_str() } }),
-        );
-    }
-
-    /// Whole-document `didChange` (no `range`, legal per spec regardless of
-    /// the server's declared sync kind) for reload paths that replace the
-    /// text outright (`:e!`) rather than applying a `ChangeSet`.
-    /// `Buffer::replace_text_recorded` computes a line-diff CS for *undo*, but the
-    /// wire message here is simplest as a full-text sync. Skipped entirely
-    /// when `change_sync` reads `None`: a server that declared `NONE` (or
-    /// nothing) asked for no change notifications, full-document or
-    /// otherwise. Queued while `Starting`, same as every other send site
-    /// here.
-    pub(in crate::editor) fn lsp_did_change_whole_document(&mut self, bid: BufferId) {
-        if change_sync(&self.state, &self.lsp, bid).is_none() {
+    /// Sends `bid`'s queued changes to each of its attached servers.
+    pub(in crate::editor) fn lsp_flush_buffer(&mut self, bid: BufferId) {
+        let pending = self.buffer_positions.lsp.take_pending(bid);
+        if pending.is_empty() {
             return;
         }
-        self.send_doc_notification(bid, DidChangeTextDocument::METHOD, |buf, uri| {
-            serde_json::json!({
-                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text().generation()) },
-                "contentChanges": [{ "text": buf.text().to_string() }],
-            })
-        });
-    }
-
-    /// Converts and sends every pending change recorded since the last
-    /// flush, one `didChange` notification per entry, in order, draining
-    /// `Buffer.lsp_pending`. Called from the LSP per-frame drain
-    /// (`drain_lsp`). Diagnostics and decorations are not remapped here:
-    /// `Buffer::install` carries them with the text. A buffer with no
-    /// server, path or URI has its entries dropped unsent.
-    pub(in crate::editor) fn flush_lsp_pending_changes(&mut self) {
-        flush_lsp_pending_changes(&mut self.state, &mut self.lsp);
-    }
-}
-
-/// Free-function body of [`Editor::flush_lsp_pending_changes`]. Operates on
-/// disjoint `state`/`lsp` borrows only (no other `Editor` field), so it's
-/// also callable from `EditorHostImpl` (completion's accept path needs this
-/// same flush, synchronously, before sending a `completionItem/resolve`
-/// request; see `completion::BufferSession::accept`).
-pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspState) {
-    let with_pending: Vec<BufferId> = state
-        .buffers
-        .iter()
-        .filter(|(_, buf)| !buf.lsp_pending.is_empty())
-        .map(|(id, _)| id)
-        .collect();
-
-    for bid in with_pending {
-        let buf = state.buffers.get(bid);
-        // Resolved *before* taking the queue below, from the buffer's
-        // state at this instant: a missing server/path/URI means there's
-        // nothing to send.
-        let send_target = buf
-            .lsp_server
-            .and_then(|sid| Some((sid, hume_lsp::uri::path_to_uri(buf.path()?).ok()?)));
-        // The form this flush's didChange(s) must take, resolved once per
-        // buffer rather than per queued entry, since a server's declared sync
-        // kind can't change mid-flush. `None` (declared `NONE`, or no
-        // server at all) means nothing gets sent below, same as an absent
-        // `send_target`.
-        let sync_kind = change_sync(state, lsp, bid);
-
-        let buf = state.buffers.get_mut(bid);
-        let pending = std::mem::take(&mut buf.lsp_pending);
-
-        let LspState {
-            servers, backend, ..
-        } = lsp;
-
-        // A FULL-sync server ignores `range` entirely and treats each
-        // event's `text` as the whole new document, so sending one such event
-        // per queued entry would each carry the *final* text under a
-        // *stale* version. So instead of sending inside the loop, this only
-        // notes whether anything actually changed; the one collapsed event
-        // (current text, current version) goes out once, after the loop.
-        let mut full_doc_pending = false;
-
-        for change in pending {
-            let Some((server_id, uri)) = &send_target else {
-                continue; // no attached server (or no path/URI yet): nothing to send
+        let Some(uri) = self.lsp_opened_uri(bid) else {
+            return;
+        };
+        let servers: Vec<ServerId> = self.buffer_positions.lsp.servers(bid).collect();
+        let mut whole_document: Option<serde_json::Value> = None;
+        let mut incremental: Vec<(PositionEncoding, Vec<serde_json::Value>)> = Vec::new();
+        for sid in servers {
+            let Some((client, backend)) = self.lsp.client_and_backend(sid) else {
+                continue;
             };
-            match sync_kind {
-                None => continue, // server wants no change notifications at all
+            match client.change_sync() {
+                None => {}
                 Some(TextDocumentSyncKind::FULL) => {
-                    full_doc_pending |= !change.cs.is_identity();
+                    let params = whole_document
+                        .get_or_insert_with(|| {
+                            let text = self.buffers.get(bid).text();
+                            serde_json::json!({
+                                "textDocument": {
+                                    "uri": uri,
+                                    "version": wire_version(text.generation()),
+                                },
+                                "contentChanges": [{ "text": text.to_string() }],
+                            })
+                        })
+                        .clone();
+                    client.send_or_queue(
+                        backend,
+                        notification(DidChangeTextDocument::METHOD, params),
+                    );
                 }
                 Some(_) => {
-                    // INCREMENTAL (the only other kind `change_sync` can
-                    // return; `NONE` is already folded into `None` above).
-                    let Some(client) = servers.get_mut(server_id).map(|e| &mut e.client) else {
-                        continue; // can't happen once attached, but never send into the void
+                    let encoding = client.encoding();
+                    let index = match incremental.iter().position(|(e, _)| *e == encoding) {
+                        Some(index) => index,
+                        None => {
+                            incremental
+                                .push((encoding, incremental_changes(&pending, &uri, encoding)));
+                            incremental.len() - 1
+                        }
                     };
-                    let events =
-                        changeset_to_content_changes(&change.before, &change.cs, client.encoding());
-                    if events.is_empty() {
-                        continue;
+                    for params in &incremental[index].1 {
+                        client.send_or_queue(
+                            backend,
+                            notification(DidChangeTextDocument::METHOD, params.clone()),
+                        );
                     }
-                    let params = serde_json::json!({
-                        "textDocument": { "uri": uri.as_str(), "version": wire_version(change.version) },
-                        "contentChanges": events,
-                    });
-                    client.send_or_queue(
-                        backend.as_mut(),
-                        Message::Notification {
-                            method: DidChangeTextDocument::METHOD.to_string(),
-                            params,
-                        },
-                    );
                 }
             }
         }
+    }
 
-        // `full_doc_pending` is only ever set inside the branch above that
-        // already matched `send_target`, reachable here only together
-        // with it, never on its own.
-        if full_doc_pending
-            && let Some((server_id, uri)) = &send_target
-            && let Some(client) = servers.get_mut(server_id).map(|e| &mut e.client)
-        {
-            let buf = state.buffers.get(bid);
-            let params = serde_json::json!({
-                "textDocument": { "uri": uri.as_str(), "version": wire_version(buf.text().generation()) },
-                "contentChanges": [{ "text": buf.text().to_string() }],
-            });
-            client.send_or_queue(
-                backend.as_mut(),
-                Message::Notification {
-                    method: DidChangeTextDocument::METHOD.to_string(),
-                    params,
-                },
+    /// `textDocument/didSave` to every server attached to `bid`. Never
+    /// includes text: `didSave.includeText` is never advertised.
+    pub(in crate::editor) fn lsp_did_save(&mut self, bid: BufferId) {
+        let Some(uri) = self.lsp_opened_uri(bid) else {
+            return;
+        };
+        let servers: Vec<ServerId> = self.buffer_positions.lsp.servers(bid).collect();
+        for sid in servers {
+            self.lsp_send_doc_notification(
+                sid,
+                DidSaveTextDocument::METHOD,
+                serde_json::json!({ "textDocument": { "uri": uri } }),
             );
         }
     }
+
+    /// `textDocument/didOpen` with the full text, to `sid` alone, as
+    /// `opened`. Queued while `sid` is `Starting`: the spec forbids
+    /// anything but `initialize` before `initialized`.
+    pub(in crate::editor::lsp) fn lsp_did_open_to(
+        &mut self,
+        bid: BufferId,
+        sid: ServerId,
+        opened: &OpenedAs,
+    ) {
+        let text = self.buffers.get(bid).text();
+        let params = serde_json::json!({
+            "textDocument": {
+                "uri": opened.uri,
+                "languageId": opened.language_id,
+                "version": wire_version(text.generation()),
+                "text": text.to_string(),
+            }
+        });
+        self.lsp_send_doc_notification(sid, DidOpenTextDocument::METHOD, params);
+    }
+
+    /// `textDocument/didClose` to `sid` alone. A crashed or dead server's
+    /// client drops it.
+    pub(in crate::editor::lsp) fn lsp_did_close_to(&mut self, bid: BufferId, sid: ServerId) {
+        let Some(uri) = self.lsp_opened_uri(bid) else {
+            return;
+        };
+        self.lsp_send_doc_notification(
+            sid,
+            DidCloseTextDocument::METHOD,
+            serde_json::json!({ "textDocument": { "uri": uri } }),
+        );
+    }
+
+    pub(in crate::editor::lsp) fn lsp_send_doc_notification(
+        &mut self,
+        sid: ServerId,
+        method: &str,
+        params: serde_json::Value,
+    ) {
+        if let Some((client, backend)) = self.lsp.client_and_backend(sid) {
+            client.send_or_queue(backend, notification(method, params));
+        }
+    }
+
+    /// The URI `bid`'s servers opened it under, or `None` when it has no
+    /// attachment.
+    fn lsp_opened_uri(&self, bid: BufferId) -> Option<String> {
+        self.buffer_positions
+            .lsp
+            .opened_as(bid)
+            .map(|opened| opened.uri.clone())
+    }
+
+    /// `bid`'s document URI from its current path, or `None` for a buffer
+    /// with no path or one whose path does not convert.
+    pub(in crate::editor::lsp) fn lsp_doc_uri(&self, bid: BufferId) -> Option<lsp_types::Uri> {
+        hume_lsp::uri::path_to_uri(self.buffers.try_get(bid)?.path()?).ok()
+    }
 }
 
-/// The `didChange` form `bid`'s attached server wants, or `None` when there
-/// is no server attached, or its declared `textDocumentSync` is `NONE` (or
-/// absent). Both cases mean "send nothing", so callers don't need to tell
-/// them apart. See [`hume_lsp::client::LspClient::change_sync`] for the
-/// pre-handshake default.
-fn change_sync(state: &EditorState, lsp: &LspState, bid: BufferId) -> Option<TextDocumentSyncKind> {
-    let server_id = state.buffers.get(bid).lsp_server?;
-    lsp.servers.get(&server_id)?.client.change_sync()
+/// One `didChange` params value per change in `pending` that moves text,
+/// its ranges in `encoding`.
+fn incremental_changes(
+    pending: &[PendingChange],
+    uri: &str,
+    encoding: PositionEncoding,
+) -> Vec<serde_json::Value> {
+    pending
+        .iter()
+        .filter_map(|change| {
+            let events = changeset_to_content_changes(&change.before, &change.cs, encoding);
+            (!events.is_empty()).then(|| {
+                serde_json::json!({
+                    "textDocument": {
+                        "uri": uri,
+                        "version": wire_version(change.version),
+                    },
+                    "contentChanges": events,
+                })
+            })
+        })
+        .collect()
 }
 
-/// Free-function body of [`Editor::send_doc_notification`], with the same disjoint
-/// `state`/`lsp` shape as [`flush_lsp_pending_changes`]. Resolves the
-/// buffer's attached server and URI, builds `params` from the buffer, then
-/// sends through the client's Starting-queue discipline. No-op when the
-/// buffer has no attached server, no path, or an unconvertible path.
-fn send_doc_notification(
-    state: &mut EditorState,
-    lsp: &mut LspState,
-    bid: BufferId,
-    method: &str,
-    build_params: impl FnOnce(&Buffer, &lsp_types::Uri) -> serde_json::Value,
-) {
-    let buf = state.buffers.get(bid);
-    let Some(server_id) = buf.lsp_server else {
-        return;
-    };
-    let Some(path) = buf.path() else {
-        return;
-    };
-    let Ok(uri) = hume_lsp::uri::path_to_uri(path) else {
-        return;
-    };
-    let params = build_params(buf, &uri);
-    let Some((client, backend)) = lsp.client_and_backend(server_id) else {
-        return;
-    };
-    client.send_or_queue(
-        backend,
-        Message::Notification {
-            method: method.to_string(),
-            params,
-        },
-    );
-}
-
-/// `textDocument/didClose`, sent from
-/// `crate::editor::buffer::lifecycle::close_buffer_and_notify`, the single
-/// chokepoint both `Editor::close_buffer` and
-/// `EditorHostImpl::close_buffer` (`(close-buffer! …)`) go through, so this
-/// has no other caller and no `impl Editor` wrapper of its own.
-///
-/// Must run *before* the buffer slot is freed: it needs the buffer's path
-/// and `lsp_server` to build the notification. Queued while `Starting`, same
-/// as every other send site here. A queued didClose flushes after a queued
-/// didOpen, in order, so the pair stays coherent even if a buffer opens and
-/// closes before the handshake completes.
-pub(in crate::editor) fn lsp_did_close(state: &mut EditorState, lsp: &mut LspState, bid: BufferId) {
-    send_doc_notification(
-        state,
-        lsp,
-        bid,
-        DidCloseTextDocument::METHOD,
-        |_buf, uri| serde_json::json!({ "textDocument": { "uri": uri.as_str() } }),
-    );
+fn notification(method: &str, params: serde_json::Value) -> Message {
+    Message::Notification {
+        method: method.to_string(),
+        params,
+    }
 }

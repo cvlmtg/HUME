@@ -7,38 +7,20 @@
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
 use hume_lsp::codec::{Message, RequestId};
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
-use hume_scripting::ScriptingHost;
 
-fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
-    write_fixture_file_containing(file_dir, "fn main() {\n    let x = 1;\n}\n")
-}
-
-fn write_fixture_file_containing(file_dir: &Path, content: &str) -> (PathBuf, String) {
-    let file = file_dir.join("main.rs");
-    std::fs::write(&file, content).unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical)
-        .unwrap()
-        .as_str()
-        .to_string();
-    (file, uri)
-}
+/// Every test's buffer content unless a test needs a different one.
+const FIXTURE: &str = "fn main() {\n    let x = 1;\n}\n";
 
 fn setup(
-    file: &Path,
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
     setup_with_capabilities(
-        file,
         tmp,
         serde_json::json!({"codeActionProvider": true}),
         configure,
@@ -50,52 +32,28 @@ fn setup(
 /// CodeActionOptions hash shape (`{"resolveProvider": true}`), not the bare
 /// boolean `setup`'s default uses.
 fn setup_with_capabilities(
-    file: &Path,
     tmp: &Path,
     capabilities: serde_json::Value,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
-    let guard = RealRuntimeGuard::new();
+    setup_over(tmp, FIXTURE, capabilities, configure)
+}
 
-    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({"capabilities": capabilities}),
-    );
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
+/// A [`core_lsp_rig`] over `content` (cursor at its start).
+fn setup_over(
+    tmp: &Path,
+    content: &str,
+    capabilities: serde_json::Value,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
+    let (rig, guard) = core_lsp_rig(
         tmp,
+        &marked_at_start(content),
+        serde_json::json!({"capabilities": capabilities}),
+        configure,
     );
-    ed.scripting = Some(host);
-
-    (ed, guard, sid, requests)
+    let sid = rig.sid("rust-analyzer");
+    (rig.ed, guard, sid, rig.requests)
 }
 
 fn run_actions(ed: &mut Editor) {
@@ -161,9 +119,8 @@ fn diagnostic_params(uri: &str) -> serde_json::Value {
 #[test]
 fn titles_are_listed_in_the_menu() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/codeAction",
             serde_json::json!([
@@ -184,9 +141,8 @@ fn titles_are_listed_in_the_menu() {
 #[test]
 fn selecting_an_edit_action_applies_it() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/codeAction",
             serde_json::json!([edit_action("Fix the thing", &uri)]),
@@ -206,9 +162,8 @@ fn selecting_an_edit_action_applies_it() {
 #[test]
 fn selecting_a_command_action_runs_the_full_server_loop() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, sid, _requests) = setup(&file, tmp.path(), |backend, sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, sid, _requests) = setup(tmp.path(), |backend, sid| {
         backend.respond_to(
             "textDocument/codeAction",
             serde_json::json!([command_action("Run the thing")]),
@@ -256,9 +211,7 @@ fn selecting_a_command_action_runs_the_full_server_loop() {
 #[test]
 fn a_command_execution_error_is_still_reported_after_an_intervening_edit() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/codeAction",
             serde_json::json!([command_action("Run the thing")]),
@@ -294,9 +247,8 @@ fn a_command_execution_error_is_still_reported_after_an_intervening_edit() {
 #[test]
 fn disabled_actions_are_filtered_out() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/codeAction",
             serde_json::json!([
@@ -318,9 +270,7 @@ fn disabled_actions_are_filtered_out() {
 #[test]
 fn empty_response_reports_no_code_actions_and_opens_no_menu() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/codeAction", serde_json::Value::Null);
     });
 
@@ -337,12 +287,11 @@ fn empty_response_reports_no_code_actions_and_opens_no_menu() {
 #[test]
 fn context_diagnostics_echoes_the_raw_diagnostic_overlapping_the_cursor() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, sid, requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, sid, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/codeAction", serde_json::Value::Null);
     });
-    ed.ingest_publish_diagnostics(
+    ed.ingest_typed_publish_for_test(
         sid,
         serde_json::from_value(diagnostic_params(&uri)).unwrap(),
     );
@@ -377,12 +326,16 @@ fn context_diagnostics_covers_a_selection_over_a_multi_char_cluster() {
     // The cursor sits on "e" + U+0301, one cluster of two chars. A diagnostic
     // on the combining mark alone overlaps what the cursor covers.
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file_containing(file_dir.path(), "e\u{301}x\n");
-    let (mut ed, _guard, sid, requests) = setup(&file, tmp.path(), |backend, _sid| {
-        backend.respond_to("textDocument/codeAction", serde_json::Value::Null);
-    });
-    ed.ingest_publish_diagnostics(
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, sid, requests) = setup_over(
+        tmp.path(),
+        "e\u{301}x\n",
+        serde_json::json!({"codeActionProvider": true}),
+        |backend, _sid| {
+            backend.respond_to("textDocument/codeAction", serde_json::Value::Null);
+        },
+    );
+    ed.ingest_typed_publish_for_test(
         sid,
         serde_json::from_value(serde_json::json!({"uri": uri, "diagnostics": [
             {"range": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 2}},
@@ -404,10 +357,8 @@ fn context_diagnostics_covers_a_selection_over_a_multi_char_cluster() {
 #[test]
 fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
+    let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
-        &file,
         tmp.path(),
         serde_json::json!({"codeActionProvider": {"resolveProvider": true}}),
         |backend, _sid| {
@@ -441,10 +392,8 @@ fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
 #[test]
 fn selecting_an_unresolved_action_reports_a_stale_buffer_after_an_intervening_edit() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
+    let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
-        &file,
         tmp.path(),
         serde_json::json!({"codeActionProvider": {"resolveProvider": true}}),
         |backend, _sid| {
@@ -491,10 +440,7 @@ fn selecting_an_unresolved_action_reports_a_stale_buffer_after_an_intervening_ed
 #[test]
 fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
     let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
-        &file,
         tmp.path(),
         serde_json::json!({"codeActionProvider": true}),
         |backend, _sid| {
@@ -532,10 +478,7 @@ fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
 #[test]
 fn selecting_an_unresolved_action_whose_resolve_is_still_bare_reports_it_once() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
     let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
-        &file,
         tmp.path(),
         serde_json::json!({"codeActionProvider": {"resolveProvider": true}}),
         |backend, _sid| {
@@ -574,10 +517,7 @@ fn selecting_an_unresolved_action_whose_resolve_is_still_bare_reports_it_once() 
 #[test]
 fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path());
     let (mut ed, _guard, _sid, _requests) = setup_with_capabilities(
-        &file,
         tmp.path(),
         serde_json::json!({"codeActionProvider": {"resolveProvider": true}}),
         |backend, _sid| {
@@ -617,9 +557,8 @@ fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
 #[test]
 fn stale_response_after_a_buffer_switch_opens_no_menu() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _sid, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/codeAction",
             serde_json::json!([edit_action("Fix the thing", &uri)]),
@@ -633,7 +572,7 @@ fn stale_response_after_a_buffer_switch_opens_no_menu() {
     // `stale_response_after_a_buffer_switch_shows_no_popup`.
     ed.execute_keymap_command("lsp-code-actions".into(), Some(1), false);
 
-    let other = file_dir.path().join("other.rs");
+    let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();
     ed.execute_typed("e", Some(other.to_str().unwrap()))
         .unwrap();

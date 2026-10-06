@@ -14,6 +14,11 @@ use crate::transport::InboundEvent;
 /// `RecordingLspBackend` sends.
 pub type NotificationLog = Rc<RefCell<Vec<(String, serde_json::Value)>>>;
 
+/// Shared log of `(server, method, params)` for every notification a
+/// `RecordingLspBackend` sends: [`NotificationLog`] with the receiving
+/// server kept, for tests with more than one server.
+pub type ServerNotificationLog = Rc<RefCell<Vec<(ServerId, String, serde_json::Value)>>>;
+
 /// Shared log of `(server, method, params)` for every *request* a
 /// `RecordingLspBackend` sends, separate from `NotificationLog` so
 /// existing exact-count assertions over the notification stream (e.g. the
@@ -45,6 +50,7 @@ pub type ResponseLog = Rc<
 pub struct RecordingLspBackend {
     inner: InlineLspBackend,
     log: NotificationLog,
+    server_log: ServerNotificationLog,
     request_log: RequestLog,
     response_log: ResponseLog,
 }
@@ -86,6 +92,7 @@ impl RecordingLspBackend {
             Self {
                 inner,
                 log: log.clone(),
+                server_log: Rc::new(RefCell::new(Vec::new())),
                 request_log: request_log.clone(),
                 response_log: response_log.clone(),
             },
@@ -103,6 +110,33 @@ impl RecordingLspBackend {
 
     pub fn fail_with(&mut self, method: &str, code: i64, msg: &str) {
         self.inner.fail_with(method, code, msg);
+    }
+
+    pub fn refuse_start(&mut self, command: &str) {
+        self.inner.refuse_start(command);
+    }
+
+    pub fn respond_to_server(&mut self, server: ServerId, method: &str, result: serde_json::Value) {
+        self.inner.respond_to_server(server, method, result);
+    }
+
+    pub fn fail_with_server(&mut self, server: ServerId, method: &str, code: i64, msg: &str) {
+        self.inner.fail_with_server(server, method, code, msg);
+    }
+
+    /// A handle to the log of every notification sent, with its server.
+    pub fn server_notification_log(&self) -> ServerNotificationLog {
+        self.server_log.clone()
+    }
+
+    /// A handle to the log of every request sent.
+    pub fn request_log(&self) -> RequestLog {
+        self.request_log.clone()
+    }
+
+    /// A handle to the log of every response sent.
+    pub fn response_log(&self) -> ResponseLog {
+        self.response_log.clone()
     }
 
     pub fn push_from_server(&mut self, server: ServerId, msg: Message) {
@@ -125,6 +159,9 @@ impl LspBackend for RecordingLspBackend {
         match &msg {
             Message::Notification { method, params } => {
                 self.log.borrow_mut().push((method.clone(), params.clone()));
+                self.server_log
+                    .borrow_mut()
+                    .push((server, method.clone(), params.clone()));
             }
             Message::Request { method, params, .. } => {
                 self.request_log

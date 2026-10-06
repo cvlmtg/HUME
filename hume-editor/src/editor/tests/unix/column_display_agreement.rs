@@ -23,11 +23,8 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
+use hume_lsp::backend::ServerId;
+use hume_lsp::test_util::RecordingLspBackend;
 
 /// `"e\u{0301}\u{1D11E}x"`: 'e' + a combining acute accent (one grapheme
 /// cluster, two `char`s, two UTF-16 units) then a musical-symbol astral
@@ -37,6 +34,9 @@ use hume_scripting::ScriptingHost;
 /// = 4: three different values a wire `character: 4` must resolve to
 /// display column 3 (grapheme), never 4 (char) or 5 (UTF-16 + 1).
 const FIXTURE_LINE: &str = "e\u{0301}\u{1D11E}x\n";
+
+/// [`FIXTURE_LINE`] with the cursor on its first cluster: the rig's file.
+const MARKED_FIXTURE_LINE: &str = "-[e\u{0301}]>\u{1D11E}x\n";
 
 /// All-ASCII line, used where the wire-column exception must produce the
 /// *same* number as the exact grapheme column: byte offset, UTF-16 code
@@ -52,63 +52,23 @@ fn write_fixture_file(dir: &Path, name: &str) -> (PathBuf, String) {
 fn write_fixture_file_content(dir: &Path, name: &str, content: &str) -> (PathBuf, String) {
     let file = dir.join(name);
     std::fs::write(&file, content).unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
-    let uri = hume_lsp::uri::path_to_uri(&canonical)
-        .unwrap()
-        .as_str()
-        .to_string();
+    let uri = file_uri(&std::fs::canonicalize(&file).unwrap());
     (file, uri)
 }
 
 // ── `:diagnostics` ───────────────────────────────────────────────────────
 
-fn setup_diagnostics(file: &Path, tmp: &Path) -> (Editor, RealRuntimeGuard) {
-    let guard = RealRuntimeGuard::new();
-    let mut backend = InlineLspBackend::new();
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    let uri = hume_lsp::uri::path_to_uri(file).unwrap();
-    backend.push_from_server(
-        sid,
-        hume_lsp::codec::Message::Notification {
-            method: "textDocument/publishDiagnostics".to_string(),
-            params: serde_json::json!({"uri": uri.as_str(), "diagnostics": [{
-                "range": {"start": {"line": 0, "character": 4}, "end": {"line": 0, "character": 5}},
-                "severity": 1,
-                "message": "astral column check",
-            }]}),
-        },
-    );
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    ed.lsp
-        .insert_client_for_test(LspClient::new(sid, file.parent().unwrap().to_path_buf()));
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    ed.drain_lsp();
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
-        tmp,
-    );
-    ed.scripting = Some(host);
-
-    (ed, guard)
-}
-
 /// A `:diagnostics` row in `diagnostics.scm` that read `"char-col"` would
 /// show `1:4` (the char column) instead of the grapheme column `1:3`.
 #[test]
 fn diagnostics_drawer_shows_grapheme_column() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, _uri) = write_fixture_file(file_dir.path(), "main.rs");
-    let (mut ed, _guard) = setup_diagnostics(&file, tmp.path());
+    let diag: DiagFixture = ((0, 4), (0, 5), 1, "astral column check");
+    let DiagSetup {
+        mut ed,
+        _guard,
+        _root,
+        ..
+    } = setup_diagnostics(FIXTURE_LINE, &[diag]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -125,52 +85,19 @@ fn diagnostics_drawer_shows_grapheme_column() {
 
 // ── LSP references drawer ───────────────────────────────────────────────
 
+/// A [`core_lsp_rig`] over [`FIXTURE_LINE`] with a references provider.
+/// Extra fixture files go in [`rig_root`]`(tmp)`.
 fn setup_refs(
-    file: &Path,
     tmp: &Path,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, ServerId) {
-    let guard = RealRuntimeGuard::new();
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({"capabilities": {"referencesProvider": true}}),
-    );
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (Editor, RealRuntimeGuard) {
+    let (rig, guard) = core_lsp_rig(
         tmp,
+        MARKED_FIXTURE_LINE,
+        serde_json::json!({"capabilities": {"referencesProvider": true}}),
+        configure,
     );
-    ed.scripting = Some(host);
-
-    (ed, guard, sid)
+    (rig.ed, guard)
 }
 
 fn run_references(ed: &mut Editor) {
@@ -213,24 +140,25 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
 #[test]
 fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_targets() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path(), "main.rs");
-    let (_other_file, other_uri) = write_fixture_file(file_dir.path(), "other.rs");
+    let dir = rig_root(tmp.path());
+    let file = dir.join("src/main.rs");
+    let uri = rust_rig_uri(tmp.path());
+    let (_other_file, other_uri) = write_fixture_file(&dir, "other.rs");
     // A space forces `path_to_uri` to percent-encode, so the URI and the
     // path it denotes are no longer the same string.
-    let (_spaced_file, spaced_uri) = write_fixture_file(file_dir.path(), "a name.rs");
+    let (_spaced_file, spaced_uri) = write_fixture_file(&dir, "a name.rs");
     assert!(
         spaced_uri.contains("%20"),
         "fixture must exercise percent-decoding, got {spaced_uri:?}"
     );
-    let missing = file_dir.path().join("definitely_missing.rs");
+    let missing = dir.join("definitely_missing.rs");
     let missing_uri = format!("file://{}", missing.display());
     let (ascii_open_file, ascii_open_uri) =
-        write_fixture_file_content(file_dir.path(), "ascii-open.rs", ASCII_LINE);
+        write_fixture_file_content(&dir, "ascii-open.rs", ASCII_LINE);
     let (_ascii_closed_file, ascii_closed_uri) =
-        write_fixture_file_content(file_dir.path(), "ascii-closed.rs", ASCII_LINE);
+        write_fixture_file_content(&dir, "ascii-closed.rs", ASCII_LINE);
 
-    let (mut ed, _guard, _sid) = setup_refs(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard) = setup_refs(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/references",
             serde_json::json!([
@@ -250,8 +178,8 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
     // A second buffer, open but not focused, so the open-buffer branch has
     // an all-ASCII line to measure. Refocuses `main.rs` afterward: `:e` on
     // an already-open path dedups onto the existing buffer rather than
-    // reopening it, so `main.rs`'s attached LSP server (set below by
-    // `setup_refs`) is unaffected and `:lsp-references` still dispatches
+    // reopening it, so the server `setup_refs` attached to `main.rs` is
+    // unaffected and `:lsp-references` still dispatches
     // through it.
     ed.execute_typed("e", Some(ascii_open_file.to_str().unwrap()))
         .unwrap();
@@ -336,9 +264,8 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
 #[test]
 fn a_column_past_the_line_end_shows_where_goto_lands() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path(), "main.rs");
-    let (mut ed, _guard, _sid) = setup_refs(&file, tmp.path(), |backend, _sid| {
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard) = setup_refs(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/references",
             serde_json::json!([loc(&uri, 0, 50)]),
@@ -362,10 +289,9 @@ fn a_column_past_the_line_end_shows_where_goto_lands() {
 #[test]
 fn a_malformed_location_aborts_the_batch_instead_of_a_degraded_row() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let (file, uri) = write_fixture_file(file_dir.path(), "main.rs");
+    let uri = rust_rig_uri(tmp.path());
 
-    let (mut ed, _guard, _sid) = setup_refs(&file, tmp.path(), |backend, _sid| {
+    let (mut ed, _guard) = setup_refs(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/references",
             serde_json::json!([

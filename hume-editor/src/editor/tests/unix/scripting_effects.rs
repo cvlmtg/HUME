@@ -43,9 +43,9 @@ fn effect_log_preserves_emission_order_across_kinds() {
         // `%define-language!` (the raw builtin), not the `define-language!`
         // macro; that macro lives in `runtime/scheme/prelude.scm`, not
         // loaded by this test's bare `ScriptingHost::new()`.
-        r#"(register-lsp-server! "widget" #:command "widget-lsp" #:root-markers '())
+        r#"(register-lsp-server! "widget" #:command "widget-lsp")
            (set-buffer-option! (car (buffers)) "language" "widget")
-           (%define-language! "widget" '("widget") '() '() #f)
+           (%define-language! "widget" '("widget") '() '() #f '())
            (define-command! "efx-noop" "" (lambda () 0))"#,
         r#"(declare-plugin! "user/efx" #:commands '("efx-noop"))"#,
     );
@@ -84,7 +84,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
     assert!(
         matches!(
             &effects[0],
-            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.language == "widget"
+            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.name.as_str() == "widget"
         ),
         "effect 0 must be the register-lsp-server! call, pushed first; got {:?}",
         effects[0]
@@ -113,7 +113,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
         "language identity must be registered"
     );
     assert_eq!(
-        ed.lsp.config_command_for_test("widget"),
+        ed.state.lsp.registered_command_for_test("widget"),
         Some("widget-lsp".to_string()),
         "LSP server config must be registered"
     );
@@ -134,7 +134,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
 /// (queued before and after the nested activation) must not apply.
 ///
 /// Without the `self.apply_script_effects(e.effects)` call in
-/// `run_steel_command`'s `Err` arm, `config_command_for_test("widget")` would
+/// `run_steel_command`'s `Err` arm, `registered_command_for_test("widget")` would
 /// return `None` even though the plugin is `Loaded`.
 #[test]
 fn failed_command_delivers_committed_activation_effects() {
@@ -165,17 +165,17 @@ fn failed_command_delivers_committed_activation_effects() {
     type_cmd(&mut ed, ":outer-fail");
 
     assert_eq!(
-        ed.lsp.config_command_for_test("widget"),
+        ed.state.lsp.registered_command_for_test("widget"),
         Some("widget-lsp".to_string()),
         "the activated plugin's committed effect must apply despite the outer command's failure"
     );
     assert_eq!(
-        ed.lsp.config_command_for_test("before"),
+        ed.state.lsp.registered_command_for_test("before"),
         None,
         "the outer command's own pre-activation effect must not apply"
     );
     assert_eq!(
-        ed.lsp.config_command_for_test("after"),
+        ed.state.lsp.registered_command_for_test("after"),
         None,
         "the outer command's own post-activation effect must not apply"
     );
@@ -235,7 +235,7 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
     assert!(
         matches!(
             &err.effects[0],
-            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.language == "widget"
+            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.name.as_str() == "widget"
         ),
         "salvaged effect must be the widget registration; got: {:?}",
         err.effects[0]
@@ -243,7 +243,7 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
 
     ed.apply_script_effects(err.effects);
     assert_eq!(
-        ed.lsp.config_command_for_test("widget"),
+        ed.state.lsp.registered_command_for_test("widget"),
         Some("widget-lsp".to_string()),
         "applying the salvaged effect must register the LSP server"
     );
@@ -293,7 +293,7 @@ fn steel_open_buffer_detects_language() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None);
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None, &[]);
     ed.state
         .config
         .languages

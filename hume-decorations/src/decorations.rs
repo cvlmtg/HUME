@@ -323,28 +323,27 @@ impl<K, T> SourceStore<K, T> {
             .is_some_and(|entry| entry.iter().any(|(_, v)| !v.is_empty()))
     }
 
+    /// Drops `source`'s entries for `bid` alone; a buffer left with no
+    /// source is forgotten. `false` when `source` had nothing for `bid`.
+    pub fn remove_source_for_buffer(&mut self, source: &K, bid: BufferId) -> bool
+    where
+        K: PartialEq,
+    {
+        let Some(entry) = self.by_buffer.get_mut(&bid) else {
+            return false;
+        };
+        let before = entry.len();
+        entry.retain(|(k, _)| k != source);
+        let removed = entry.len() != before;
+        if entry.is_empty() {
+            self.by_buffer.remove(&bid);
+        }
+        removed
+    }
+
     /// Every buffer with at least one source registered, of any kind.
     pub fn buffers(&self) -> impl Iterator<Item = BufferId> + '_ {
         self.by_buffer.keys().copied()
-    }
-
-    /// Drops every source `keep` rejects, across every buffer; a buffer left
-    /// with zero sources is dropped from `by_buffer` entirely rather than
-    /// kept as an empty `Vec`. Returns the buffers actually touched.
-    /// Decoration kinds
-    /// have no per-source removal (a source only ever replaces its own
-    /// entries wholesale via `set`, never disappears on its own).
-    pub fn retain_sources(&mut self, mut keep: impl FnMut(&K) -> bool) -> Vec<BufferId> {
-        let mut touched = Vec::new();
-        self.by_buffer.retain(|&bid, entry| {
-            let before = entry.len();
-            entry.retain(|(k, _)| keep(k));
-            if entry.len() != before {
-                touched.push(bid);
-            }
-            !entry.is_empty()
-        });
-        touched
     }
 }
 
@@ -844,13 +843,13 @@ impl DecorationStores {
         self.touch(bid);
     }
 
-    /// Remaps `bid`'s decorations, of every kind, through `cs`, the same
-    /// chokepoint as the diagnostics remap (`flush_lsp_pending_changes`), so
-    /// decoration positions never drift out of sync with the diagnostics
-    /// they're often paired with. Touches `bid`'s stamp only if some kind
-    /// actually had an entry to remap: `record_lsp_edits`
-    /// queues *every* edit in an LSP-attached buffer for this chokepoint,
-    /// decorated or not, so touching unconditionally would stamp a
+    /// Remaps `bid`'s decorations, of every kind, through `cs`, from the same
+    /// chokepoint as the diagnostics remap (`hume-editor`'s
+    /// `PositionStores::carry`), so decoration positions never drift out of
+    /// sync with the diagnostics they're often paired with. Touches `bid`'s
+    /// stamp only if some kind actually had an entry to remap: that
+    /// chokepoint carries *every* edit through here, decorated buffer or
+    /// not, so touching unconditionally would stamp a
     /// zero-decoration buffer on every keystroke, defeating the
     /// virtual-lines pane sync's whole reason to check the stamp in the
     /// first place. A remap that *did* touch something still moved

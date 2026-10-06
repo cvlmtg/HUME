@@ -10,6 +10,7 @@ test-util = []
 [dependencies]
 hume-editing = { path = "../hume-editing" }
 hume-engine = { path = "../hume-engine" }
+hume-lsp = { path = "../hume-lsp" }
 hume-ops = { path = "../hume-ops" }
 hume-platform = { path = "../hume-platform" }
 hume-rope = { path = "../hume-rope" }

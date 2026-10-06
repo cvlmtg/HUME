@@ -7,37 +7,25 @@
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::*;
-use crate::editor::lsp::LspState;
 use hume_engine::pipeline::RenderContext;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
-use hume_lsp::inline::InlineLspBackend;
-use hume_scripting::ScriptingHost;
+use hume_lsp::backend::ServerId;
+use hume_lsp::test_util::RecordingLspBackend;
 
-/// Builds an editor with a real opened file attached to a scripted server
-/// whose handshake has fully completed (so `lsp-capabilities` decodes real
-/// data; a shortcut `client.set_state_for_test(Running)` skips that, per
-/// `lsp_introspect.rs`), then loads the real shipped `core:lsp` plugin.
-/// `lsp-position-params` requires `buf.path()` to be `Some`, so every hover
-/// test needs a real file; a bare `editor_from` buffer won't do.
+/// A [`core_lsp_rig`] whose server answers `initialize` with
+/// `initialize_result` (so `lsp-capabilities` decodes real data). The file
+/// is real because `lsp-position-params` requires `buf.path()` to be
+/// `Some`; a bare `editor_from` buffer won't do.
 ///
 /// `configure` scripts any responses beyond `initialize` (e.g.
-/// `textDocument/hover`). It must run *before* the backend is boxed into
-/// `LspState`, since `client_and_backend`/`backend_mut` only expose the
-/// trait object afterward, which can't reach `InlineLspBackend::respond_to`.
+/// `textDocument/hover`) before the backend is boxed into `LspState`.
 fn setup(
-    file_dir: &Path,
     tmp: &Path,
     initialize_result: serde_json::Value,
-    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, ServerId) {
-    let guard = RealRuntimeGuard::new();
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    let file = file_dir.join("main.rs");
     // 30 lines: comfortably taller than the default pane height's ⅓-cap
     // (`Pane::new`'s default viewport is 24 rows tall; `(viewport-range bid)`
     // resolves against this immediately, no `prepare_frame` needed), so a
@@ -48,42 +36,10 @@ fn setup(
         .map(|i| format!("// line {i}"))
         .collect::<Vec<_>>()
         .join("\n");
-    std::fs::write(&file, format!("fn main() {{}}\n{filler}\n")).unwrap();
-
-    let mut backend = InlineLspBackend::new();
-    backend.respond_to("initialize", initialize_result);
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin! "core:stdlib")
-(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
-        tmp,
-    );
-    ed.scripting = Some(host);
-
-    (ed, guard, sid)
+    let marked = format!("-[f]>n main() {{}}\n{filler}\n");
+    let (rig, guard) = core_lsp_rig(tmp, &marked, initialize_result, configure);
+    let sid = rig.sid("rust-analyzer");
+    (rig.ed, guard, sid)
 }
 
 fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
@@ -112,9 +68,7 @@ fn run_hover(ed: &mut Editor) {
 #[test]
 fn popup_shows_the_fixture_content() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         |backend, _sid| {
@@ -149,9 +103,7 @@ fn popup_shows_the_fixture_content() {
 #[test]
 fn popup_joins_a_marked_string_array_with_language_fences() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         |backend, _sid| {
@@ -190,9 +142,7 @@ fn popup_joins_a_marked_string_array_with_language_fences() {
 #[test]
 fn null_result_logs_and_shows_no_popup() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         |backend, _sid| {
@@ -220,9 +170,7 @@ fn null_result_logs_and_shows_no_popup() {
 #[test]
 fn error_reports_via_the_message_log() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         |backend, _sid| {
@@ -250,7 +198,6 @@ fn error_reports_via_the_message_log() {
 #[test]
 fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     // 50 lines: comfortably taller than any popup's visible window (cursor
     // cap ~⅓ pane, docked cap ~½ terminal), so Ctrl-d/Ctrl-u below exercise a
     // real scroll, not a short popup with nothing to page through.
@@ -259,7 +206,6 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
         .collect::<Vec<_>>()
         .join("\n");
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         move |backend, _sid| {
@@ -323,9 +269,7 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     // buffer's own half-page scroll. `scroll_popup` must not consume the key
     // when `max_scroll == 0`.
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         |backend, _sid| {
@@ -369,13 +313,11 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
 #[test]
 fn visible_lines_threshold_has_no_off_by_one_from_the_old_inclusive_range() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let eight_lines = (0..8)
         .map(|i| format!("line{i}"))
         .collect::<Vec<_>>()
         .join("\n");
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         |backend, _sid| {
@@ -409,7 +351,6 @@ fn visible_lines_threshold_has_no_off_by_one_from_the_old_inclusive_range() {
 #[test]
 fn tall_content_docks_instead_of_using_the_drawer() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     // The fixture file is ~30 lines against the default 24-row pane height,
     // so the popup threshold (⅓ of visible lines) lands around 8, and 20 lines
     // must overflow to the docked layout regardless of the exact figure.
@@ -418,7 +359,6 @@ fn tall_content_docks_instead_of_using_the_drawer() {
         .collect::<Vec<_>>()
         .join("\n");
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         |backend, _sid| {
@@ -466,10 +406,8 @@ fn capability_gate_skips_the_request_when_hover_unsupported() {
     // "not supported". That is enough to tell, without inspecting the
     // (trait-erased, post-boxing unreachable) sent log.
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     // No hoverProvider in the advertised capabilities.
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {}}),
         |_backend, _sid| {},
@@ -490,9 +428,7 @@ fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
     // same check as the missing-key case above, just via an explicit
     // `null` rather than an absent key.
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": null}}),
         |_backend, _sid| {},
@@ -521,9 +457,7 @@ fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
 #[test]
 fn stale_response_after_a_buffer_switch_shows_no_popup() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         |backend, _sid| {
@@ -540,7 +474,7 @@ fn stale_response_after_a_buffer_switch_shows_no_popup() {
     // ever happens.
     ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
 
-    let other = file_dir.path().join("other.rs");
+    let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();
     ed.execute_typed("e", Some(other.to_str().unwrap()))
         .unwrap();
@@ -562,9 +496,7 @@ fn stale_response_after_a_buffer_switch_shows_no_popup() {
 #[test]
 fn allow_stale_is_honored_despite_an_intervening_edit() {
     let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
-        file_dir.path(),
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
         |backend, _sid| {
@@ -600,5 +532,30 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
         popup_lines(&ed),
         Some(vec!["fn main()".to_string()]),
         "hover must pass #:allow-stale #t and still show the popup after an intervening edit"
+    );
+}
+
+#[test]
+fn buffer_with_no_path_reports_and_sends_nothing() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard, _sid) = setup(
+        tmp.path(),
+        serde_json::json!({"capabilities": {"hoverProvider": true}}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/hover",
+                serde_json::json!({"contents": {"kind": "plaintext", "value": "WRONG"}}),
+            );
+        },
+    );
+    ed.doc_mut().set_path(None);
+
+    run_hover(&mut ed);
+
+    assert!(popup_lines(&ed).is_none());
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("no file"),
+        "expected a no-file message, got {msg:?}"
     );
 }

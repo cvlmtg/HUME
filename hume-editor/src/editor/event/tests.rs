@@ -1,5 +1,5 @@
 use hume_engine::pipeline::{BufferId, PaneId};
-use hume_scripting::PaneHandle;
+use hume_scripting::{PaneHandle, ServerRef};
 use steel::rvals::SteelVal;
 
 use super::*;
@@ -26,11 +26,11 @@ fn all_variants() -> Vec<EditorEvent> {
         },
         EditorEvent::OnLspAttach {
             buffer,
-            language: "rust".to_string(),
+            server: sample_server(),
         },
         EditorEvent::OnLspDetach {
             buffer,
-            language: "rust".to_string(),
+            server: sample_server(),
         },
         EditorEvent::OnDiagnosticsChanged { buffer },
         EditorEvent::OnViewportChange {
@@ -52,8 +52,7 @@ fn all_variants() -> Vec<EditorEvent> {
             value: OptionValue::Bool(true),
         },
         EditorEvent::OnLspNotification {
-            server_name: "rust-analyzer".to_string(),
-            server: Some("rust".to_string()),
+            server: sample_server(),
             method: "custom/event".to_string(),
             params: std::sync::Arc::new(serde_json::json!({"x": 1})),
             origin: hume_scripting::json::WireOrigin::Local,
@@ -61,6 +60,14 @@ fn all_variants() -> Vec<EditorEvent> {
         EditorEvent::OnTextChanged { buffer },
         EditorEvent::OnUndoHistoryChanged { buffer },
     ]
+}
+
+/// A server value, for the variants that carry one.
+fn sample_server() -> ServerRef {
+    ServerRef {
+        id: hume_lsp::backend::ServerId(7),
+        name: hume_scripting::ServerName::parse("rust-analyzer").expect("valid name"),
+    }
 }
 
 /// A distinctive, non-default `PaneId` for the pane-carrying variants: a
@@ -208,22 +215,22 @@ fn on_language_set_with_no_language_sends_empty_string() {
 }
 
 #[test]
-fn on_lsp_attach_and_detach_carry_buffer_and_language() {
+fn on_lsp_attach_and_detach_carry_buffer_and_server() {
     let buffer = BufferId::default();
     for event in [
         EditorEvent::OnLspAttach {
             buffer,
-            language: "rust".to_string(),
+            server: sample_server(),
         },
         EditorEvent::OnLspDetach {
             buffer,
-            language: "rust".to_string(),
+            server: sample_server(),
         },
     ] {
         let args = event.into_steel_args();
         assert_eq!(args.len(), 2);
         assert_steel_pane(&args, 0, PaneHandle::buffer_only(buffer));
-        assert_eq!(steel_string(&args, 1), "rust");
+        assert_eq!(ServerRef::from_steel_val(&args[1]), Some(sample_server()));
     }
 }
 
@@ -287,15 +294,14 @@ fn on_completion_accept_item_crosses_as_a_json_handle() {
 fn on_lsp_notification_carries_server_method_and_params_handle() {
     let params = serde_json::json!({"x": 1});
     let event = EditorEvent::OnLspNotification {
-        server_name: "rust-analyzer".to_string(),
-        server: None,
+        server: sample_server(),
         method: "custom/event".to_string(),
         params: std::sync::Arc::new(params.clone()),
         origin: hume_scripting::json::WireOrigin::Local,
     };
     let args = event.into_steel_args();
     assert_eq!(args.len(), 3);
-    assert_eq!(args[0], SteelVal::BoolV(false), "no language crosses as #f");
+    assert_eq!(ServerRef::from_steel_val(&args[0]), Some(sample_server()));
     assert_eq!(steel_string(&args, 1), "custom/event");
     let handle = hume_scripting::json::downcast_json_handle(&args[2])
         .expect("params must cross as a JsonHandle");

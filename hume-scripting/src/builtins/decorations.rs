@@ -367,8 +367,15 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
         ("source", optional_string(entry.source)),
         (
             "raw",
-            to_steel_handle(entry.raw, WireOrigin::Server(entry.encoding)),
+            to_steel_handle(
+                entry.raw,
+                WireOrigin::Server {
+                    id: entry.server.id,
+                    encoding: entry.encoding,
+                },
+            ),
         ),
+        ("server", entry.server.into_steel_val()),
     ])
 }
 

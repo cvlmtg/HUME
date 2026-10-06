@@ -119,6 +119,16 @@ fn generated_scm_headers_match_their_generator_templates() {
             "runtime/plugins/core/lsp-install/servers.scm",
         ),
         (
+            "scripts/sync-grammars.py",
+            "LANGUAGE_SERVERS_HEADER",
+            "runtime/plugins/core/lsp-install/language-servers.scm",
+        ),
+        (
+            "scripts/sync-grammars.py",
+            "SERVER_COMMANDS_HEADER",
+            "runtime/plugins/core/lsp-install/server-commands.scm",
+        ),
+        (
             "scripts/sync-lsp-sources.py",
             "LSP_SOURCES_HEADER",
             "runtime/plugins/core/lsp-install/sources.scm",

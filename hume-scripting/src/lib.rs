@@ -49,14 +49,17 @@ pub(crate) mod watchdog;
 
 // ── Public API re-exports ─────────────────────────────────────────────────────
 // Types the editor and editor tests use directly.
-pub use builtins::ids::SteelPane;
+pub use builtins::args::symbol_hash;
+pub use builtins::ids::{DocPos, DocRange, ServerRef, SteelPane};
 pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
-    Effect, EvalError, GrammarReg, LspServerStatusEntry, LspServerTarget, PaneHandle,
-    PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
-    PendingLspServerReg, SteelCmdDef, SteelCmdResult, SteelTypedCmdDef, VirtualLineSpec,
+    Effect, EvalError, FeatureFilter, GrammarReg, ListEntry, ListLayer, LspFeature, LspFeatureSet,
+    LspServerStatusEntry, LspServerTarget, PaneHandle, Params, PendingLanguageReg,
+    PendingLspNotify, PendingLspRequest, PendingLspServerOp, PendingLspServerReg, RequestMode,
+    RequestParams, RouteSpec, ServerName, SteelCmdDef, SteelCmdResult, SteelTypedCmdDef,
+    TriggerKind, TriggerScope, VirtualLineSpec,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than
