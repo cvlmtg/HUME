@@ -338,7 +338,7 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 | `z a` | `lsp-code-actions`           | Show fixes and refactors available at the cursor |
 | `g n` | `goto-next-diagnostic`       | Jump to the next error/warning after the cursor (wraps) |
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
-| —     | `:diagnostics`               | List every diagnostic in the buffer, each with the server that reported it |
+| —     | `:diagnostics`               | List every diagnostic in the buffer, each with the tool that reported it |
 | —     | `:format-source`             | Format the selected lines if every selection spans one or more whole lines, the whole buffer if none do, or (with a warning) nothing if it's a mix of the two |
 | `Ctrl-Space` (Insert) | `completion-trigger`        | Show completions at the cursor (an editor key, not this plugin's; the plugin supplies the server's candidates) |
 

@@ -94,7 +94,7 @@
 - A language server stops once no open buffer uses it: after its last buffer closes, or a server list or a buffer's language no longer includes it.
 - `:lsp-install` supports many more servers: tar archives and single binaries, terraform-ls, jdtls, and servers installed through `go`, `pip`, `gem` or `dotnet`. See [Installing servers](user-manual/docs/lsp.md#installing-servers).
 - `:lsp-install` says so when a server doesn't support your platform.
-- The `:diagnostics` drawer names the server that reported each diagnostic.
+- The `:diagnostics` drawer names the tool that reported each diagnostic: its `source`, or the server's name when it sets none.
 - Diagnostics from a server that only reports on request, such as ESLint, now show. HUME asks when a file opens, after you stop typing, and on save. `lsp.diagnostics-pull-debounce-ms` sets the delay.
 - Diagnostics are hidden on the line you are typing on in Insert mode. `lsp.diagnostics-on-insert-line` keeps them.
 - `on-viewport-change` fires when the lines a pane shows change, not on a resize or scroll that shows the same lines.

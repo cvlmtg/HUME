@@ -606,7 +606,7 @@ fn diagnostics_detach_one_keeps_other_decorations() {
 }
 
 #[test]
-fn diagnostics_drawer_rows_name_the_publishing_server() {
+fn diagnostics_drawer_rows_name_the_diagnostics_source_else_the_server() {
     let tmp = safe_tempdir();
     let (mut rig, _guard) = two_servers(
         tmp.path(),
@@ -616,15 +616,19 @@ fn diagnostics_drawer_rows_name_the_publishing_server() {
         "",
         |_| {},
     );
-    let diag = |line: u32, message: &str| {
-        serde_json::json!([{
+    let diag = |line: u32, message: &str, source: Option<&str>| {
+        let mut wire = serde_json::json!({
             "range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": 1}},
             "severity": 1,
             "message": message,
-        }])
+        });
+        if let Some(source) = source {
+            wire["source"] = source.into();
+        }
+        serde_json::json!([wire])
     };
-    rig.publish(RA, diag(0, "from ra"));
-    rig.publish(LINT, diag(1, "from lint"));
+    rig.publish(RA, diag(0, "from ra", None));
+    rig.publish(LINT, diag(1, "from lint", Some("eslint")));
     rig.ed.settle();
 
     type_cmd(&mut rig.ed, ":diagnostics");
@@ -633,7 +637,7 @@ fn diagnostics_drawer_rows_name_the_publishing_server() {
     insta::assert_debug_snapshot!(drawer_rows(&rig.ed), @r#"
     [
         "✘ 1:1 rust-analyzer: from ra",
-        "✘ 2:1 ra-lint: from lint",
+        "✘ 2:1 eslint: from lint",
     ]
     "#);
 }

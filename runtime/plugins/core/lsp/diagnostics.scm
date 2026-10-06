@@ -50,10 +50,15 @@
   "Jump to the previous diagnostic before the cursor (wraps to the last)."
   (lambda (pane) (lsp/diag-jump! pane -1)))
 
+;; The tool the server names on the diagnostic, else the server's own name.
+(define (lsp/diag-origin d)
+  (let ((source (hash-ref d 'source)))
+    (if (void? source) (lsp-server-name (hash-ref d 'server)) source)))
+
 (define (lsp/diag-row d)
   (string-append (lsp/severity-glyph (hash-ref d 'severity)) " "
                  (lsp/format-position (hash-ref d 'line) (hash-ref d 'grapheme-col)) " "
-                 (lsp-server-name (hash-ref d 'server)) ": "
+                 (lsp/diag-origin d) ": "
                  (lsp/first-line (hash-ref d 'message))))
 
 (define lsp/*diag-drawer* #f)
