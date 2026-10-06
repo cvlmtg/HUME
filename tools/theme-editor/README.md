@@ -19,6 +19,7 @@ npm install
 npm run dev     # local dev server with HMR
 npm run build   # rebuilds tools/theme-editor/index.html
 npm test        # runs tests/*.test.js against the pure-logic modules
+npm run lint    # ESLint, the Vite React template's rules (eslint.config.js)
 ```
 
 ## Known limitations
