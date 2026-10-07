@@ -362,14 +362,76 @@ fn doc_pos_val(offset: usize) -> SteelVal {
 }
 
 #[test]
-fn steel_to_json_with_routes_a_custom_value_through_the_hook() {
-    let v = SteelVal::ListV(vec![SteelVal::IntV(1), doc_pos_val(7)].into());
-    let json = steel_to_json_with(&v, &mut |custom| {
-        crate::DocPos::from_steel_val(custom)
-            .map(|pos| Ok(serde_json::json!({ "at": pos.offset.index() })))
-    })
-    .expect("the hook encodes the position");
-    assert_eq!(json, serde_json::json!([1, { "at": 7 }]));
+fn steel_to_params_keeps_a_position_where_it_sits() {
+    let pos = doc_pos_val(7);
+    let v = SteelVal::ListV(
+        vec![
+            SteelVal::IntV(1),
+            SteelVal::ListV(vec![SteelVal::IntV(2), pos.clone()].into()),
+        ]
+        .into(),
+    );
+    let params = steel_to_params(&v).expect("a position is a valid param");
+    let span = DocSpan::Pos(crate::DocPos::from_steel_val(&pos).unwrap());
+    assert_eq!(
+        params,
+        Params::Array(vec![
+            Params::Json(serde_json::json!(1)),
+            Params::Array(vec![Params::Json(serde_json::json!(2)), Params::Doc(span)]),
+        ])
+    );
+}
+
+#[test]
+fn steel_to_params_collapses_a_position_free_value_to_json() {
+    let v = SteelVal::ListV(vec![SteelVal::IntV(1), SteelVal::StringV("a".into())].into());
+    assert_eq!(
+        steel_to_params(&v).unwrap(),
+        Params::Json(serde_json::json!([1, "a"]))
+    );
+}
+
+#[test]
+fn steel_to_params_rejects_an_unsupported_value_inside_a_position_holder() {
+    let v = SteelVal::ListV(vec![doc_pos_val(0), SteelVal::FuncV(|_| unreachable!())].into());
+    let err = steel_to_params(&v).unwrap_err();
+    assert!(err.contains("function"), "{err}");
+}
+
+#[test]
+fn render_encodes_each_position_in_place() {
+    let first = DocSpan::Pos(crate::DocPos::from_steel_val(&doc_pos_val(3)).unwrap());
+    let second = DocSpan::Pos(crate::DocPos::from_steel_val(&doc_pos_val(9)).unwrap());
+    let params = Params::Array(vec![
+        Params::Json(serde_json::json!("x")),
+        Params::Doc(first),
+        Params::Object(vec![("at".to_string(), Params::Doc(second))]),
+    ]);
+    let mut seen = Vec::new();
+    let json = params
+        .render(&mut |span| {
+            let DocSpan::Pos(pos) = span else {
+                unreachable!("the test holds positions only")
+            };
+            seen.push(pos.offset.index());
+            Ok(serde_json::json!({ "offset": pos.offset.index() }))
+        })
+        .unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!(["x", { "offset": 3 }, { "at": { "offset": 9 } }])
+    );
+    assert_eq!(seen, [3, 9]);
+}
+
+#[test]
+fn render_fails_with_the_encoders_error() {
+    let span = DocSpan::Pos(crate::DocPos::from_steel_val(&doc_pos_val(0)).unwrap());
+    let params = Params::Array(vec![Params::Doc(span)]);
+    let err = params
+        .render(&mut |_| Err("position belongs to another buffer".to_string()))
+        .unwrap_err();
+    assert_eq!(err, "position belongs to another buffer");
 }
 
 #[test]

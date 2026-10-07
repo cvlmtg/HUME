@@ -27,6 +27,7 @@ use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;
 use steel::rvals::{Custom, IntoSteelVal as _, SteelVal, as_underlying_type};
 
+use crate::types::{DocSpan, Params};
 use hume_lsp::backend::ServerId;
 use hume_rope::position_encoding::PositionEncoding;
 
@@ -76,47 +77,45 @@ fn number_to_steel(n: &serde_json::Number) -> SteelVal {
 
 /// Converts a `SteelVal` into the equivalent `serde_json::Value`. Fails on
 /// values with no JSON representation (functions, ports, custom types other
-/// than [`JsonHandle`], …). The error names the offending kind rather than
-/// silently producing `null`.
+/// than [`JsonHandle`], a buffer position, …). The error names the offending
+/// kind rather than producing `null`.
 pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
-    steel_to_json_with(v, &mut |_| None)
+    match steel_to_params(v)? {
+        Params::Json(json) => Ok(json),
+        _ => Err("a position value can only be sent through lsp-request!/lsp-notify!".to_string()),
+    }
 }
 
-/// `steel_to_json`, with `custom` consulted for every custom value that is
-/// not a [`JsonHandle`]: `Some` is that value's JSON (or the error to fail
-/// with), `None` falls through to the usual error. The LSP request path
-/// passes the hook that encodes [`crate::DocPos`]/[`crate::DocRange`] for
-/// the server it is sending to.
-pub fn steel_to_json_with(
-    v: &SteelVal,
-    custom: &mut dyn FnMut(&SteelVal) -> Option<Result<serde_json::Value, String>>,
-) -> Result<serde_json::Value, String> {
+/// Converts a `SteelVal` into request [`Params`]: the same conversion as
+/// [`steel_to_json`], except a [`crate::DocPos`]/[`crate::DocRange`] stays a
+/// position for the server it is sent to, whose encoding it needs.
+pub fn steel_to_params(v: &SteelVal) -> Result<Params, String> {
+    let json = |value| Ok(Params::Json(value));
     match v {
-        SteelVal::Void => Ok(serde_json::Value::Null),
-        SteelVal::BoolV(b) => Ok(serde_json::Value::Bool(*b)),
-        SteelVal::IntV(i) => Ok(serde_json::Value::Number((*i as i64).into())),
+        SteelVal::Void => json(serde_json::Value::Null),
+        SteelVal::BoolV(b) => json(serde_json::Value::Bool(*b)),
+        SteelVal::IntV(i) => json(serde_json::Value::Number((*i as i64).into())),
         // Only ever produced (by json_to_steel) for a u64-range JSON integer,
         // so it always fits back into u64 exactly, but Steel code could in
         // principle construct a bigger one directly, hence the checked
         // conversion rather than an infallible one.
         SteelVal::BigNum(b) => b
             .to_u64()
-            .map(|u| serde_json::Value::Number(u.into()))
+            .map(|u| Params::Json(serde_json::Value::Number(u.into())))
             .ok_or_else(|| "integer too large to represent in JSON".to_string()),
         SteelVal::NumV(n) => serde_json::Number::from_f64(*n)
-            .map(serde_json::Value::Number)
+            .map(|n| Params::Json(serde_json::Value::Number(n)))
             .ok_or_else(|| format!("number is not finite: {n}")),
-        SteelVal::StringV(s) => Ok(serde_json::Value::String(s.to_string())),
-        SteelVal::SymbolV(s) => Ok(serde_json::Value::String(s.to_string())),
-        SteelVal::ListV(items) => {
-            let items = items
+        SteelVal::StringV(s) => json(serde_json::Value::String(s.to_string())),
+        SteelVal::SymbolV(s) => json(serde_json::Value::String(s.to_string())),
+        SteelVal::ListV(items) => Ok(Params::array(
+            items
                 .iter()
-                .map(|item| steel_to_json_with(item, custom))
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(serde_json::Value::Array(items))
-        }
+                .map(steel_to_params)
+                .collect::<Result<Vec<_>, _>>()?,
+        )),
         SteelVal::HashMapV(hm) => {
-            let mut map = serde_json::Map::new();
+            let mut entries = Vec::with_capacity(hm.len());
             for (key, value) in hm.iter() {
                 let key = match key {
                     SteelVal::StringV(s) => s.to_string(),
@@ -125,30 +124,26 @@ pub fn steel_to_json_with(
                         return Err(format!("hashmap key is not a string: {}", type_name(other)));
                     }
                 };
-                map.insert(key, steel_to_json_with(value, custom)?);
+                entries.push((key, steel_to_params(value)?));
             }
-            Ok(serde_json::Value::Object(map))
+            Ok(Params::object(entries))
         }
         // A handle re-crossing into Rust (e.g. Scheme nests a completion
         // item's `"arguments"` sub-object inside a hash it builds itself for
         // `workspace/executeCommand`) resolves to its own value at zero
         // reconversion cost: no walk of the handle's contents, just a clone
         // of the `Value` it already points at.
-        SteelVal::Custom(_) => match downcast_json_handle(v) {
-            Some(h) => Ok(h.value().clone()),
-            None => custom(v).unwrap_or_else(|| {
-                if crate::DocPos::from_steel_val(v).is_some()
-                    || crate::DocRange::from_steel_val(v).is_some()
-                {
-                    Err(
-                        "a position value can only be sent through lsp-request!/lsp-notify!"
-                            .to_string(),
-                    )
-                } else {
-                    Err(format!("cannot convert {} to JSON", type_name(v)))
-                }
-            }),
-        },
+        SteelVal::Custom(_) => {
+            if let Some(h) = downcast_json_handle(v) {
+                json(h.value().clone())
+            } else if let Some(pos) = crate::DocPos::from_steel_val(v) {
+                Ok(Params::Doc(DocSpan::Pos(pos)))
+            } else if let Some(range) = crate::DocRange::from_steel_val(v) {
+                Ok(Params::Doc(DocSpan::Range(range)))
+            } else {
+                Err(format!("cannot convert {} to JSON", type_name(v)))
+            }
+        }
         other => Err(format!("cannot convert {} to JSON", type_name(other))),
     }
 }

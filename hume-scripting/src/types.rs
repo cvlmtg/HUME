@@ -436,21 +436,91 @@ pub struct RouteSpec {
 /// A request's params: one value every routed server receives, or one
 /// value per named server (`lsp-request-all!` with `(server . params)`
 /// pairs, each server kept whole so its result names it even after it
-/// stopped). Kept as Steel values until the request is serialized for each
-/// server, so a `DocPos`/`DocRange` inside is encoded in that server's
-/// position encoding.
+/// stopped). A `DocPos`/`DocRange` inside stays unencoded until the request
+/// is serialized for each server, in that server's position encoding.
+#[derive(Debug)]
 pub enum RequestParams {
     Shared(Params),
     PerServer(Vec<(crate::ServerRef, Params)>),
 }
 
-/// The params of a request or notification, as the Steel value the caller
-/// built. `json` is its conversion when it holds no `DocPos`/`DocRange`,
-/// which is then the same for every server; otherwise `None`, and each
-/// position encoding converts it anew.
-pub struct Params {
-    pub value: SteelVal,
-    pub json: Option<serde_json::Value>,
+/// A buffer position or range in request params, which each server receives
+/// in its own position encoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocSpan {
+    Pos(crate::DocPos),
+    Range(crate::DocRange),
+}
+
+/// The params of a request or notification, converted from the Steel value
+/// the caller built. A subtree holding no position is already its JSON, the
+/// same for every server; a [`DocSpan`] is encoded per server by
+/// [`Params::render`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum Params {
+    Json(serde_json::Value),
+    Doc(DocSpan),
+    Array(Vec<Params>),
+    Object(Vec<(String, Params)>),
+}
+
+impl Params {
+    /// An array of `items`, collapsed to plain JSON when none holds a position.
+    pub fn array(items: Vec<Params>) -> Self {
+        if items.iter().all(|item| matches!(item, Params::Json(_))) {
+            Params::Json(serde_json::Value::Array(
+                items.into_iter().filter_map(Params::into_json).collect(),
+            ))
+        } else {
+            Params::Array(items)
+        }
+    }
+
+    /// An object of `entries`, collapsed to plain JSON when none holds a position.
+    pub fn object(entries: Vec<(String, Params)>) -> Self {
+        if entries
+            .iter()
+            .all(|(_, value)| matches!(value, Params::Json(_)))
+        {
+            Params::Json(serde_json::Value::Object(
+                entries
+                    .into_iter()
+                    .filter_map(|(key, value)| value.into_json().map(|json| (key, json)))
+                    .collect(),
+            ))
+        } else {
+            Params::Object(entries)
+        }
+    }
+
+    fn into_json(self) -> Option<serde_json::Value> {
+        match self {
+            Params::Json(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// These params as JSON, with each position replaced by what `encode`
+    /// returns for it. `encode`'s first error fails the whole render.
+    pub fn render(
+        &self,
+        encode: &mut dyn FnMut(DocSpan) -> Result<serde_json::Value, String>,
+    ) -> Result<serde_json::Value, String> {
+        match self {
+            Params::Json(value) => Ok(value.clone()),
+            Params::Doc(span) => encode(*span),
+            Params::Array(items) => items
+                .iter()
+                .map(|item| item.render(encode))
+                .collect::<Result<Vec<_>, _>>()
+                .map(serde_json::Value::Array),
+            Params::Object(entries) => entries
+                .iter()
+                .map(|(key, value)| Ok((key.clone(), value.render(encode)?)))
+                .collect::<Result<serde_json::Map<_, _>, String>>()
+                .map(serde_json::Value::Object),
+        }
+    }
 }
 
 /// How many of the routed servers a request goes to, and so how its
@@ -530,7 +600,7 @@ impl std::fmt::Debug for PendingLspRequest {
         f.debug_struct("PendingLspRequest")
             .field("bid", &self.bid)
             .field("method", &self.method)
-            .field("params", &"<steel value>")
+            .field("params", &self.params)
             .field("mode", &self.mode)
             .field("route", &self.route)
             .field("callback", &"<closure>")
@@ -544,22 +614,12 @@ impl std::fmt::Debug for PendingLspRequest {
 
 /// An `lsp-notify!` call, queued the same way as [`PendingLspRequest`]:
 /// sent to every server `route` admits, with no answer to wait for.
+#[derive(Debug)]
 pub struct PendingLspNotify {
     pub bid: BufferId,
     pub method: String,
     pub params: Params,
     pub route: RouteSpec,
-}
-
-impl std::fmt::Debug for PendingLspNotify {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PendingLspNotify")
-            .field("bid", &self.bid)
-            .field("method", &self.method)
-            .field("params", &"<steel value>")
-            .field("route", &self.route)
-            .finish()
-    }
 }
 
 /// Result returned by [`super::ScriptingHost::call_steel_cmd`].

@@ -16,10 +16,10 @@ use hume_lsp::client::{Outcome, RequestMeta};
 use hume_lsp::codec::RequestId;
 use hume_rope::offset::ExclusiveRange;
 use hume_rope::position_encoding::{PositionEncoding, char_range_to_wire_range, char_to_wire};
-use hume_scripting::json::{WireOrigin, steel_to_json_with, to_steel_handle};
+use hume_scripting::json::{WireOrigin, to_steel_handle};
 use hume_scripting::{
-    DocPos, DocRange, Params, PendingLspNotify, PendingLspRequest, RequestMode, RequestParams,
-    RouteSpec, ServerRef, WhenUnavailable, symbol_hash,
+    DocSpan, Params, PendingLspNotify, PendingLspRequest, RequestMode, RequestParams, RouteSpec,
+    ServerRef, WhenUnavailable, symbol_hash,
 };
 use steel::rvals::SteelVal;
 
@@ -415,12 +415,11 @@ impl EditorState {
             Vec::new();
         routed
             .iter()
-            .map(|r| match &params.json {
-                Some(json) => Ok(json.clone()),
-                None => per_encoding(&mut by_encoding, r.encoding, || {
-                    serialize_params(text, bid, r.encoding, &params.value)
+            .map(|r| {
+                per_encoding(&mut by_encoding, r.encoding, || {
+                    serialize_params(text, bid, r.encoding, params)
                 })
-                .clone(),
+                .clone()
             })
             .collect()
     }
@@ -615,15 +614,14 @@ impl Member {
     }
 }
 
-/// `params` as the JSON `encoding`'s server receives: every `DocPos` and
-/// `DocRange` in it becomes a wire position or range in `encoding`. A
-/// position must belong to `bid` and have been taken at its current text
-/// version.
+/// `params` as the JSON `encoding`'s server receives: every position and
+/// range in it becomes a wire position or range in `encoding`. A position
+/// must belong to `bid` and have been taken at its current text version.
 fn serialize_params(
     text: &BufferText,
     bid: BufferId,
     encoding: PositionEncoding,
-    params: &SteelVal,
+    params: &Params,
 ) -> Result<serde_json::Value, String> {
     let check = |buffer: BufferId, version: TextVersion| {
         if buffer != bid {
@@ -634,26 +632,18 @@ fn serialize_params(
             Ok(())
         }
     };
-    let mut positions = |v: &SteelVal| {
-        if let Some(pos) = DocPos::from_steel_val(v) {
-            return Some(check(pos.buffer, pos.version).map(|()| {
-                hume_lsp::position::to_json_position(char_to_wire(
-                    text.rope(),
-                    pos.offset,
-                    encoding,
-                ))
-            }));
-        }
-        let range = DocRange::from_steel_val(v)?;
-        Some(check(range.buffer, range.version).map(|()| {
+    params.render(&mut |span| match span {
+        DocSpan::Pos(pos) => check(pos.buffer, pos.version).map(|()| {
+            hume_lsp::position::to_json_position(char_to_wire(text.rope(), pos.offset, encoding))
+        }),
+        DocSpan::Range(range) => check(range.buffer, range.version).map(|()| {
             hume_lsp::position::to_json_range(char_range_to_wire_range(
                 text.rope(),
                 ExclusiveRange::new(range.start, range.end),
                 encoding,
             ))
-        }))
-    };
-    steel_to_json_with(params, &mut positions)
+        }),
+    })
 }
 
 /// A slot as the `(err result)` pair a callback receives: one of the two

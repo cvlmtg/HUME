@@ -7,7 +7,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::host::{PositionParams, RangeParams, RangesParams};
-use crate::json::steel_to_json_with;
+use crate::json::steel_to_params;
 use crate::types::{
     CapabilityQuery, Effect, FeatureFilter, ListEntry, ListLayer, LspFeature, LspFeatureSet,
     LspServerTarget, PaneHandle, Params, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
@@ -24,7 +24,7 @@ use super::args::{
 };
 use super::errors::generic_err;
 use super::hooks::{register_entry, require_known_event};
-use super::ids::{DocPos, DocRange, ServerRef, SteelPane};
+use super::ids::{DocRange, ServerRef, SteelPane};
 
 /// A registration or list-entry server name, as [`ServerName::parse`]
 /// accepts it.
@@ -317,26 +317,13 @@ fn reject_feature_on_standard_method(
     }
 }
 
-/// Checks that `val` converts to JSON, positions included, so a malformed
-/// params value raises at the call rather than when the request is sent.
-/// The conversion is kept when the value holds no position.
+/// Converts `val` to request params, so a malformed value raises at the
+/// call rather than when the request is sent.
 fn checked_params(val: SteelVal, ctx_name: &str) -> Result<Params, SteelErr> {
     if matches!(val, SteelVal::BoolV(_)) {
         steel::stop!(TypeMismatch => "{}: expected a hashmap or JSON handle, got a boolean", ctx_name);
     }
-    let mut has_position = false;
-    let mut positions = |v: &SteelVal| {
-        let is_position =
-            DocPos::from_steel_val(v).is_some() || DocRange::from_steel_val(v).is_some();
-        has_position |= is_position;
-        is_position.then_some(Ok(serde_json::Value::Null))
-    };
-    let json = steel_to_json_with(&val, &mut positions)
-        .map_err(|e| generic_err(format!("{ctx_name}: {e}")))?;
-    Ok(Params {
-        value: val,
-        json: (!has_position).then_some(json),
-    })
+    steel_to_params(&val).map_err(|e| generic_err(format!("{ctx_name}: {e}")))
 }
 
 /// The one decode behind `%lsp-request!` and `%lsp-request-all!`: the
