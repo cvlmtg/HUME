@@ -777,10 +777,10 @@ define_settings! {
         "scroll-margin" => scroll_margin: usize = 3,
             scope: [Scope::Global],
             parser: usize;
-        "object-jump-align" => object_jump_align: ObjectJumpAlign = ObjectJumpAlign::Center,
+        "object-jump-align" => object_jump_align: ObjectJumpAlign = ObjectJumpAlign::default(),
             scope: [Scope::Global],
             parser: enum_str;
-        "cursor-shape-insert" => cursor_shape_insert: CursorShape = CursorShape::Bar,
+        "cursor-shape-insert" => cursor_shape_insert: CursorShape = CursorShape::default(),
             scope: [Scope::Global],
             parser: enum_str;
         "mouse-scroll-lines" => mouse_scroll_lines: usize = 3,
@@ -825,7 +825,7 @@ define_settings! {
         "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,
             scope: [Scope::Global],
             parser: usize_nonzero;
-        "command-completion" => command_completion: CommandCompletion = CommandCompletion::CommonPrefix,
+        "command-completion" => command_completion: CommandCompletion = CommandCompletion::default(),
             scope: [Scope::Global],
             parser: enum_str;
         "popup-border" => popup_border: bool = true,
@@ -914,10 +914,10 @@ define_settings! {
         "indent-guides" => indent_guides: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
-        "tab-style" => tab_style: TabStyle = TabStyle::Hard,
+        "tab-style" => tab_style: TabStyle = TabStyle::default(),
             scope: [Scope::Global, Scope::Buffer],
             parser: enum_str;
-        "line-number-style" => line_number_style: LineNumberStyle = LineNumberStyle::Hybrid,
+        "line-number-style" => line_number_style: LineNumberStyle = LineNumberStyle::default(),
             scope: [Scope::Global, Scope::Buffer],
             parser: enum_str;
         "auto-pairs" => auto_pairs: bool = true,
