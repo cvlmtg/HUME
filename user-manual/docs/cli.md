@@ -23,7 +23,7 @@ The position only takes effect in the pane HUME opens with; switching to that fi
 | Flag | Description |
 |------|-------------|
 | `--keys <STREAM>` | Headless golf-replay mode. Replay the key `STREAM` (e.g. `dwx`) against a single input file and write the result to `--output`. Requires `--output` and exactly one `FILE`. Loads your `init.scm` and plugins the same as interactive mode. Pair with `--no-config` for a pristine, script-independent run. |
-| `--output <PATH>` | Output path for headless mode. Required by and requires `--keys`. |
+| `--output <PATH>` | Output path for headless mode. Required by and requires `--keys`. A relative `PATH` is resolved against the shell's working directory once, at startup, so a `:cd` in the key stream does not move it. |
 | `--config <FILE>` | Load configuration from `FILE` instead of the default `init.scm`. Themes and the data directory still resolve from the standard directories (see [Configuration](configuration.md#file-locations)). `FILE` must exist and be readable, otherwise it's a startup error. A relative `FILE` is resolved against the shell's working directory once, at startup, and that resolved path is what `:reload-config` re-reads. A later `:cd` in the editor has no effect on it. Not valid with `--no-config`. |
 | `--no-config` | Skip `init.scm`: no plugins, no keybindings or settings from your config. Bundled language detection and syntax highlighting still work. Useful to rule out your own config while tracking down a bug. `:reload-config` refuses to run for the rest of the session. Not valid with `--config`. |
 | `-h`, `--help` | Print help and exit. |

@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 
 /// HUME: a modal text editor.
@@ -57,7 +57,7 @@ struct Invocation {
 // `conflicts_with`. The
 // constraints clap can't express (exactly one input file in headless mode,
 // `config` naming a real file) are checked here.
-fn resolve(cli: Cli) -> Result<Invocation, String> {
+fn resolve(cli: Cli, cwd: &Path) -> Result<Invocation, String> {
     // A missing default `init.scm` is normal and silently skipped (see
     // `Editor::init_scripting`), but a path the user named explicitly is an
     // assertion: a typo here should fail loudly before the terminal even
@@ -68,8 +68,14 @@ fn resolve(cli: Cli) -> Result<Invocation, String> {
     let config = if cli.no_config {
         hume_editor::cli::ConfigSource::Skip
     } else if let Some(path) = cli.config {
-        let file =
-            std::fs::File::open(&path).map_err(|e| format!("--config: {}: {e}", path.display()))?;
+        // The process cwd follows `:cd`, so a relative path is pinned to the
+        // startup cwd here. Otherwise `:reload-config` would re-resolve it
+        // against wherever `:cd` last left the process, miss the file, and
+        // reset to compiled-in defaults instead of erroring (see
+        // `Editor::config_path`).
+        let pinned = hume_platform::path::absolute_unresolved(&path, cwd);
+        let file = std::fs::File::open(&pinned)
+            .map_err(|e| format!("--config: {}: {e}", path.display()))?;
         let is_file = file
             .metadata()
             .map_err(|e| format!("--config: {}: {e}", path.display()))?
@@ -77,14 +83,7 @@ fn resolve(cli: Cli) -> Result<Invocation, String> {
         if !is_file {
             return Err(format!("--config: not a file: {}", path.display()));
         }
-        // HUME moves its own process cwd at runtime (`:cd`), so a relative
-        // path must be pinned to the startup cwd here. Otherwise
-        // `:reload-config` would re-resolve it against wherever `:cd` last
-        // left the process, miss the file, and silently reset to
-        // compiled-in defaults instead of erroring (see `Editor::config_path`).
-        let cwd = std::env::current_dir()
-            .map_err(|e| format!("--config: resolving current directory: {e}"))?;
-        hume_editor::cli::ConfigSource::File(hume_platform::path::absolute_unresolved(&path, &cwd))
+        hume_editor::cli::ConfigSource::File(pinned)
     } else {
         hume_editor::cli::ConfigSource::Default
     };
@@ -99,18 +98,17 @@ fn resolve(cli: Cli) -> Result<Invocation, String> {
                 [input] => Mode::Headless {
                     input: input.clone(),
                     keys,
-                    output,
+                    // Written after the replay, so a `:cd` in `keys` must not move it.
+                    output: hume_platform::path::absolute_unresolved(&output, cwd),
                 },
                 _ => return Err("--keys mode requires exactly one input file".into()),
             }
         }
         None => {
-            let cwd =
-                std::env::current_dir().map_err(|e| format!("resolving current directory: {e}"))?;
             let files = cli
                 .files
                 .iter()
-                .map(|p| hume_editor::cli::parse_file_arg(p, &cwd))
+                .map(|p| hume_editor::cli::parse_file_arg(p, cwd))
                 .collect::<Result<Vec<_>, _>>()?;
             Mode::Normal { files }
         }
@@ -119,7 +117,14 @@ fn resolve(cli: Cli) -> Result<Invocation, String> {
 }
 
 fn main() {
-    let Invocation { mode, config } = match resolve(Cli::parse()) {
+    let cwd = match std::env::current_dir() {
+        Ok(cwd) => cwd,
+        Err(e) => {
+            eprintln!("hume: resolving current directory: {e}");
+            process::exit(1);
+        }
+    };
+    let Invocation { mode, config } = match resolve(Cli::parse(), &cwd) {
         Ok(inv) => inv,
         Err(msg) => {
             eprintln!("hume: {msg}");
@@ -237,6 +242,11 @@ mod tests {
     // ── resolve layer: mode + config-source classification (no clap; touches
     //    the filesystem only to validate/pin a `--config` path) ─────────────
 
+    /// `resolve` against the cwd the test binary started in.
+    fn resolve_here(cli: Cli) -> Result<Invocation, String> {
+        resolve(cli, &std::env::current_dir().unwrap())
+    }
+
     fn make_headless(files: Vec<PathBuf>) -> Cli {
         Cli {
             keys: Some("dw".into()),
@@ -258,9 +268,28 @@ mod tests {
     }
 
     #[test]
-    fn resolve_headless_exactly_one_file_succeeds() {
+    fn resolve_output_relative_path_is_pinned_to_the_startup_cwd() {
+        let dir = tempfile::tempdir().unwrap();
         let cli = make_headless(vec![PathBuf::from("in.txt")]);
-        let inv = resolve(cli).expect("one input file should succeed");
+
+        let inv = resolve(cli, dir.path()).expect("headless invocation should resolve");
+
+        let Mode::Headless { output, .. } = inv.mode else {
+            panic!("expected headless mode");
+        };
+        assert_eq!(
+            output,
+            dir.path().join("out.txt"),
+            "a relative --output must be resolved against the cwd at startup, \
+             so a later `:cd` in the keys cannot move it"
+        );
+    }
+
+    #[test]
+    fn resolve_headless_exactly_one_file_succeeds() {
+        let cwd = std::env::current_dir().unwrap();
+        let cli = make_headless(vec![PathBuf::from("in.txt")]);
+        let inv = resolve(cli, &cwd).expect("one input file should succeed");
         let Mode::Headless {
             input,
             keys,
@@ -271,7 +300,7 @@ mod tests {
         };
         assert_eq!(input, PathBuf::from("in.txt"));
         assert_eq!(keys, "dw");
-        assert_eq!(output, PathBuf::from("out.txt"));
+        assert_eq!(output, cwd.join("out.txt"));
         assert_eq!(
             inv.config,
             ConfigSource::Default,
@@ -281,13 +310,13 @@ mod tests {
 
     #[test]
     fn resolve_headless_zero_files_errors() {
-        let err = resolve(make_headless(vec![]));
+        let err = resolve_here(make_headless(vec![]));
         assert!(err.is_err(), "zero inputs must be rejected");
     }
 
     #[test]
     fn resolve_headless_two_files_errors() {
-        let err = resolve(make_headless(vec![
+        let err = resolve_here(make_headless(vec![
             PathBuf::from("a.txt"),
             PathBuf::from("b.txt"),
         ]));
@@ -297,7 +326,7 @@ mod tests {
     #[test]
     fn resolve_normal_carries_all_files() {
         let files = vec![PathBuf::from("x.rs"), PathBuf::from("y.rs")];
-        let inv = resolve(make_normal(files, None)).expect("normal mode should succeed");
+        let inv = resolve_here(make_normal(files, None)).expect("normal mode should succeed");
         let Mode::Normal { files: got } = inv.mode else {
             panic!("expected Mode::Normal");
         };
@@ -322,7 +351,7 @@ mod tests {
     #[test]
     fn resolve_normal_splits_a_line_column_suffix() {
         let files = vec![PathBuf::from("does-not-exist.rs:12:24")];
-        let inv = resolve(make_normal(files, None)).expect("normal mode should succeed");
+        let inv = resolve_here(make_normal(files, None)).expect("normal mode should succeed");
         let Mode::Normal { files: got } = inv.mode else {
             panic!("expected Mode::Normal");
         };
@@ -344,7 +373,7 @@ mod tests {
     #[test]
     fn resolve_headless_input_path_is_never_split() {
         let cli = make_headless(vec![PathBuf::from("weird:12")]);
-        let inv = resolve(cli).expect("one input file should succeed");
+        let inv = resolve_here(cli).expect("one input file should succeed");
         let Mode::Headless { input, .. } = inv.mode else {
             panic!("expected Mode::Headless");
         };
@@ -353,7 +382,7 @@ mod tests {
 
     #[test]
     fn resolve_normal_no_files() {
-        let inv = resolve(make_normal(vec![], None)).expect("no-file launch should succeed");
+        let inv = resolve_here(make_normal(vec![], None)).expect("no-file launch should succeed");
         let Mode::Normal { files } = inv.mode else {
             panic!("expected Mode::Normal");
         };
@@ -365,7 +394,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("alt.scm");
         std::fs::write(&path, "").unwrap();
-        let inv = resolve(make_normal(vec![], Some(path.clone()))).expect("real file should pass");
+        let inv =
+            resolve_here(make_normal(vec![], Some(path.clone()))).expect("real file should pass");
         // Already absolute with no `.`/`..` components, so pinning to the
         // startup cwd (see `resolve_config_relative_path_is_pinned_to_startup_cwd`)
         // is a no-op here.
@@ -374,7 +404,7 @@ mod tests {
 
     #[test]
     fn resolve_config_missing_file_errors() {
-        let err = resolve(make_normal(
+        let err = resolve_here(make_normal(
             vec![],
             Some(PathBuf::from("/no/such/file/alt.scm")),
         ));
@@ -384,13 +414,13 @@ mod tests {
     #[test]
     fn resolve_config_pointing_at_directory_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let err = resolve(make_normal(vec![], Some(dir.path().to_path_buf())));
+        let err = resolve_here(make_normal(vec![], Some(dir.path().to_path_buf())));
         assert!(err.is_err(), "a directory --config path must be rejected");
     }
 
     #[test]
     fn resolve_default_config_source_when_no_flags_given() {
-        let inv = resolve(make_normal(vec![], None)).expect("no --config should pass");
+        let inv = resolve_here(make_normal(vec![], None)).expect("no --config should pass");
         assert_eq!(inv.config, ConfigSource::Default);
     }
 
@@ -400,7 +430,7 @@ mod tests {
             no_config: true,
             ..make_normal(vec![], None)
         };
-        let inv = resolve(cli).expect("--no-config should pass");
+        let inv = resolve_here(cli).expect("--no-config should pass");
         assert_eq!(inv.config, ConfigSource::Skip);
     }
 
@@ -416,36 +446,30 @@ mod tests {
             config: Some(path.clone()),
             ..make_headless(vec![PathBuf::from("in.txt")])
         };
-        let inv = resolve(cli).expect("real --config file should pass in headless mode");
+        let inv = resolve_here(cli).expect("real --config file should pass in headless mode");
         assert!(matches!(inv.mode, Mode::Headless { .. }));
         assert_eq!(inv.config, ConfigSource::File(path));
     }
 
     // A relative `--config` path must be pinned to the startup cwd, not left
-    // relative: HUME moves its own process cwd at runtime (`:cd`), so a
-    // relative path re-resolved against a later cwd at `:reload-config` time
-    // would silently miss the file it named at startup (see
-    // `Editor::config_path`'s doc and the `--config` flag's doc comment).
-    #[cfg(unix)]
+    // relative: the process cwd follows `:cd`, so a relative path
+    // re-resolved against a later cwd at `:reload-config` time would
+    // miss the file it named at startup (see `Editor::config_path`'s doc and
+    // the `--config` flag's doc comment).
     #[test]
     fn resolve_config_relative_path_is_pinned_to_startup_cwd() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("alt.scm"), "").unwrap();
-        // `getcwd()` resolves symlinks in the path (e.g. macOS's
-        // `/var` → `/private/var`), so the expected value must go through
-        // the same resolution `resolve` will apply via `current_dir()`;
-        // comparing against the raw, un-resolved `dir.path()` would spuriously
-        // fail there.
-        let canonical_dir = dir.path().canonicalize().unwrap();
-        let saved_cwd = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
-        let result = resolve(make_normal(vec![], Some(PathBuf::from("alt.scm"))));
-        std::env::set_current_dir(&saved_cwd).unwrap();
 
-        let inv = result.expect("relative real file should pass");
+        let inv = resolve(
+            make_normal(vec![], Some(PathBuf::from("alt.scm"))),
+            dir.path(),
+        )
+        .expect("relative real file should pass");
+
         assert_eq!(
             inv.config,
-            ConfigSource::File(canonical_dir.join("alt.scm")),
+            ConfigSource::File(dir.path().join("alt.scm")),
             "a relative --config path must be resolved against the cwd at \
              startup, not left relative for a later re-resolution to miss"
         );
@@ -463,7 +487,7 @@ mod tests {
         std::fs::write(&path, "").unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
 
-        let result = resolve(make_normal(vec![], Some(path.clone())));
+        let result = resolve_here(make_normal(vec![], Some(path.clone())));
 
         // Restore permissions before any assertion can panic and leak an
         // unreadable file for the tempdir's own `Drop` cleanup to trip over.

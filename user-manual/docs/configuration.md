@@ -461,6 +461,8 @@ HUME looks for its runtime directory in this order, taking the first that exists
 3. `runtime/` next to the binary (the Windows archive layout)
 4. `runtime/` in the current working directory (handy when running from a source checkout)
 
+A relative value in `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$HUME_RUNTIME` or `$TMPDIR` is resolved against the directory HUME was started in, once, at startup. A later `:cd` does not change where these point.
+
 Notable subpaths inside the data dir: `data/plugins/` (PLUM-managed plugin clones), `data/grammars/` and `data/grammars/sources/` (compiled and source tree-sitter grammars), `data/themes/` (installed third-party themes).
 
 ::: warning Plugins are trusted code

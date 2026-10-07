@@ -74,6 +74,41 @@ fn runtime_dir_none_when_no_candidate_exists() {
     assert_eq!(result, None);
 }
 
+#[test]
+fn resolve_joins_a_relative_runtime_and_tmp_onto_the_startup_cwd() {
+    let cwd = tempfile::tempdir().unwrap();
+    let dirs = Dirs::resolve(
+        |k| match k {
+            "HUME_RUNTIME" => Some("rt".to_string()),
+            _ => None,
+        },
+        None,
+        Some(cwd.path().to_path_buf()),
+        PathBuf::from("scratch"),
+    );
+    assert_eq!(dirs.runtime, Some(cwd.path().join("rt")));
+    assert_eq!(dirs.tmp, Some(cwd.path().join("scratch")));
+}
+
+#[test]
+fn resolve_keeps_absolute_runtime_and_tmp_as_they_are() {
+    let cwd = tempfile::tempdir().unwrap();
+    let rt = tempfile::tempdir().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let rt_str = rt.path().to_string_lossy().into_owned();
+    let dirs = Dirs::resolve(
+        |k| match k {
+            "HUME_RUNTIME" => Some(rt_str.clone()),
+            _ => None,
+        },
+        None,
+        Some(cwd.path().to_path_buf()),
+        tmp.path().to_path_buf(),
+    );
+    assert_eq!(dirs.runtime, Some(rt.path().to_path_buf()));
+    assert_eq!(dirs.tmp, Some(tmp.path().to_path_buf()));
+}
+
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]

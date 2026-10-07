@@ -46,11 +46,34 @@ impl Dirs {
     /// Resolve every directory from the process environment (and, for the
     /// runtime directory, the executable and working directory).
     pub fn from_env() -> Self {
+        Self::resolve(
+            env_var,
+            env::current_exe().ok(),
+            env::current_dir().ok(),
+            env::temp_dir(),
+        )
+    }
+
+    /// The pure form of [`Self::from_env`]. A relative directory (a relative
+    /// `XDG_DATA_HOME`, `HUME_RUNTIME=runtime`, a relative `TMPDIR`) is joined
+    /// onto `cwd` here, once, so it keeps naming the same place after the
+    /// working directory moves. Without a `cwd` there is nothing to join onto
+    /// and values stay as given.
+    fn resolve(
+        env: impl Fn(&str) -> Option<String>,
+        exe: Option<PathBuf>,
+        cwd: Option<PathBuf>,
+        tmp: PathBuf,
+    ) -> Self {
+        let pin = |dir: PathBuf| match &cwd {
+            Some(cwd) => crate::path::absolute_unresolved(&dir, cwd),
+            None => dir,
+        };
         Self {
-            config: config_dir_with(env_var),
-            data: data_dir_with(env_var),
-            runtime: runtime_dir_with(env_var, env::current_exe().ok(), env::current_dir().ok()),
-            tmp: Some(env::temp_dir()),
+            config: config_dir_with(&env).map(&pin),
+            data: data_dir_with(&env).map(&pin),
+            runtime: runtime_dir_with(&env, exe, cwd.clone()).map(&pin),
+            tmp: Some(pin(tmp)),
         }
     }
 
