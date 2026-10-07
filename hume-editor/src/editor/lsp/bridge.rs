@@ -286,8 +286,10 @@ impl EditorState {
     }
 
     /// Sends `method` with wire-form `params` to `server` alone, and calls
-    /// `responder` with its answer. A server that is not attached to `bid`
-    /// and running sends nothing and never calls back.
+    /// `responder` with its answer. A server that [`route`] would not send
+    /// `method` to for `bid` (not attached, not running, its list entry
+    /// excluding the feature, or lacking the capability) sends nothing and
+    /// never calls back.
     pub(in crate::editor) fn lsp_request_json(
         &mut self,
         bid: BufferId,

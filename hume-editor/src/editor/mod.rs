@@ -476,9 +476,9 @@ pub(crate) struct EditorState {
 /// `focus`, an OSC 52 clipboard, and a no-op waker. It exists
 /// so the fields that are identical at both construction sites (`Editor::open`
 /// and `Editor::for_testing`) are written once. Every field whose real value
-/// differs between those two sites is set here to its inert (test) form and
-/// named explicitly by `Editor::open`, so no production value is inherited by
-/// accident. A field added later whose production value must differ from its
+/// differs between those two sites is set here to an inert form (`lsp` is
+/// the threaded backend with a no-op waker) and named explicitly by
+/// `Editor::open`, so no production value is inherited by accident. A field added later whose production value must differ from its
 /// baseline needs the same treatment; the compiler will not ask for it.
 impl Default for EditorState {
     fn default() -> Self {

@@ -207,11 +207,11 @@ impl SourceRegistry {
         }
     }
 
-    /// The `Buffer` source `set-completion-triggers!` names, or the error
-    /// that call reports.
-    pub(in crate::editor) fn trigger_source(&self, name: &str) -> Result<BufferSourceId, String> {
-        self.buffer_id_of(name).ok_or_else(|| {
-            format!("set-completion-triggers!: no buffer completion source named {name:?}")
+    /// Whether `name` is a registered `Buffer` source, as a completion
+    /// trigger registration needs; the error it reports otherwise.
+    pub(in crate::editor) fn require_trigger_source(&self, name: &str) -> Result<(), String> {
+        self.buffer_id_of(name).map(drop).ok_or_else(|| {
+            format!("completion triggers: no buffer completion source named {name:?}")
         })
     }
 

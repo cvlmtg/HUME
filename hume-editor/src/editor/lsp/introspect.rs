@@ -82,7 +82,7 @@ pub(in crate::editor) fn servers(
         .unwrap_or_default())
 }
 
-/// One entry per running server instance: `:lsp-status`'s data in
+/// One entry per server instance: `:lsp-status`'s data in
 /// structured form.
 pub(in crate::editor) fn server_status(
     lsp: &LspState,
@@ -105,7 +105,7 @@ pub(in crate::editor) fn server_status(
         .collect()
 }
 
-/// Every running instance, ordered by name then root.
+/// Every instance, ordered by name then root.
 fn sorted_instances(lsp: &LspState) -> Vec<&super::instances::Instance> {
     let mut instances: Vec<_> = lsp.instances.iter().map(|(_, i)| i).collect();
     instances.sort_by(|a, b| {

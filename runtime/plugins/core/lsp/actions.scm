@@ -43,8 +43,7 @@
          #:allow-stale #t))
       (else (log! 'info "Code action has no edit or command")))))
 
-;; Each server is asked with the diagnostics it published itself, since a
-;; quickfix is offered only for a diagnostic its server knows.
+;; See docs/features.md, "Code actions".
 (define (lsp/code-action-params pane servers diags)
   (let ((base (lsp-primary-range-params pane)))
     (map (lambda (server)

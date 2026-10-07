@@ -25,8 +25,7 @@
                               "end" (hash "line" end "character" 0))))))
 
 ;;; `pane` must already be a real, live pane — see docs/decorations.md's "Inlay hints".
-;; Every server's hints merge into one set; a buffer left with no server
-;; giving hints is cleared.
+;; See docs/decorations.md, "Inlay hints".
 (define lsp/refresh-hints
   (debounce-by 200
     (lambda (pane)
@@ -38,7 +37,7 @@
                 (lambda (err results)
                   (when err (lsp/report-error! "inlay hints" err))
                   (lsp/report-answer-errors! "inlay hints" results)
-                  ;; When every server failed the hints already shown stay (docs/decorations.md).
+                  ;; See docs/decorations.md, "Inlay hints", on the response.
                   (unless (or err (and (pair? results) (lsp/none-answered? results)))
                     (set-inlay-hints! "lsp-inlay-hints" pane
                       (filter (lambda (e) e)

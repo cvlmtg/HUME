@@ -46,8 +46,7 @@
         (when (equal? source source-name)
           (on-trigger pane ch))))))
 
-;; No server able to take a request, or a server that stopped before answering, is
-;; logged at Info (a stop or crash is reported on its own); every other error at Error.
+;; See docs/architecture.md, "Response conventions".
 (define (lsp/report-error! what err)
   (log! (if (member (hash-ref err 'kind) '(unavailable stopped)) 'info 'error)
         (string-append "lsp " what ": " (hash-ref err 'message))))

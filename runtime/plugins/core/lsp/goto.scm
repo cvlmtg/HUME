@@ -6,8 +6,7 @@
 ;; ── Response handling ────────────────────────────────────────────────────────
 ;; Shared by all four goto-family methods and `lsp-references` below.
 
-;; Every server's locations merge into one list, rows naming the same place
-;; once, so two servers agreeing on a definition still jump straight to it.
+;; See docs/features.md, "Goto and references".
 (define (lsp/goto-response err results pane tracked method
                            #:shape [shape (lambda (params) params)]
                            #:always-drawer? [always-drawer? #f]

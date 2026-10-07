@@ -592,9 +592,8 @@ pub struct PendingLspRequest {
     pub tracked: Option<crate::host::HostToken>,
 }
 
-// Manual (not derived): `SteelVal` has no `Debug` impl. Placeholder the
-// closure and params. Everything else is real data, still useful in a
-// panic message.
+// Manual (not derived): the callback prints as a placeholder instead of
+// its closure.
 impl std::fmt::Debug for PendingLspRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PendingLspRequest")
@@ -604,6 +603,7 @@ impl std::fmt::Debug for PendingLspRequest {
             .field("mode", &self.mode)
             .field("route", &self.route)
             .field("callback", &"<closure>")
+            .field("when_unavailable", &self.when_unavailable)
             .field("allow_stale", &self.allow_stale)
             .field("supersede", &self.supersede)
             .field("require_focus", &self.require_focus)

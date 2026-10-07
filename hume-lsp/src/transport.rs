@@ -78,14 +78,13 @@ pub(crate) struct ServerHandle {
     /// Stderr thread output; `None` after `Drop`, same reason as `rx_events`.
     rx_stderr: Option<mpsc::Receiver<String>>,
     child: TrackedChild,
-    /// Tracked separately (not lumped into `other_threads`) so `Drop` can
-    /// give it a bounded window to flush any already-queued message (e.g. a
-    /// `begin_shutdown`'s `shutdown`/`exit` pair) before the process is
-    /// killed out from under it.
-    writer: Option<thread::JoinHandle<()>>,
     /// Disconnects when the writer thread ends: it holds the only sender.
+    /// `Drop` waits on it for a bounded time, so a message already queued
+    /// (e.g. a `begin_shutdown`'s `shutdown`/`exit` pair) is flushed before
+    /// the process is killed out from under it.
     writer_done: mpsc::Receiver<()>,
-    other_threads: Vec<thread::JoinHandle<()>>,
+    /// The reader, writer and stderr threads, joined by `Drop`.
+    threads: Vec<thread::JoinHandle<()>>,
 }
 
 impl ServerHandle {
@@ -170,9 +169,8 @@ impl ServerHandle {
             rx_events: Some(rx_events),
             rx_stderr: Some(rx_stderr),
             child: TrackedChild::new(child.into_inner()),
-            writer: Some(writer),
             writer_done,
-            other_threads: vec![reader, stderr_thread],
+            threads: vec![reader, writer, stderr_thread],
         })
     }
 
@@ -253,10 +251,7 @@ impl Drop for ServerHandle {
         // flooded channel could hang `Drop` forever.
         self.rx_events = None;
         self.rx_stderr = None;
-        if let Some(writer) = self.writer.take() {
-            let _ = writer.join();
-        }
-        for t in self.other_threads.drain(..) {
+        for t in self.threads.drain(..) {
             let _ = t.join();
         }
     }

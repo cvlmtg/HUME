@@ -268,12 +268,11 @@ impl Editor {
         // `self.text` or the text generation, so that state is still valid
         // against the unchanged content and is kept.
         if mutated {
-            // Diagnostics and LSP-sourced decorations were computed against the
-            // replaced text; their char offsets are meaningless (and
-            // potentially out-of-bounds, e.g. after a shrink) against the new
-            // content. The servers republish diagnostics shortly after seeing
-            // the change; nothing republishes decorations on its own, so they
-            // stay cleared until a plugin sets them again.
+            // Diagnostics and LSP-sourced decorations describe the replaced
+            // content, so they are dropped, and so is what each server was
+            // last told in a diagnostics pull. The servers report again
+            // after seeing the change; nothing republishes decorations on
+            // its own, so they stay cleared until a plugin sets them again.
             if self.state.buffer_positions.diagnostics.remove_buffer(id) {
                 self.state
                     .queue_event(EditorEvent::OnDiagnosticsChanged { buffer: id });

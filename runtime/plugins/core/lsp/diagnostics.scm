@@ -187,8 +187,7 @@
 
 (register-hook! 'on-diagnostics-changed lsp/refresh-diagnostics!)
 
-;; A detached server's diagnostics are already gone from the store; what the
-;; buffer's other servers published stays.
+;; See docs/decorations.md, the `on-lsp-detach` row.
 (register-hook! 'on-lsp-detach
   (lambda (pane server) (lsp/refresh-diagnostics! pane)))
 

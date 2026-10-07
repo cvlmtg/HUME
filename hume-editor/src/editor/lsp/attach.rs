@@ -412,7 +412,7 @@ impl EditorState {
 
     /// Shuts `sid` down and forgets it. Every request it still owes an
     /// answer completes first, a landed response with its own outcome and
-    /// the rest as timed out, so no callback outlives its server.
+    /// the rest as stopped, so no callback outlives its server.
     fn lsp_stop_instance(&mut self, view: &EngineView, sid: ServerId) {
         let LspState {
             instances,

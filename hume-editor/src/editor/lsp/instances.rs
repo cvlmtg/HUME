@@ -153,7 +153,7 @@ impl Instances {
         self.map.keys().copied().collect()
     }
 
-    /// Every running instance of `name`, one per workspace root.
+    /// Every instance of `name`, one per workspace root.
     pub(in crate::editor::lsp) fn ids_named(&self, name: &ServerName) -> Vec<ServerId> {
         self.map
             .iter()

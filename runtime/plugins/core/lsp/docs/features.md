@@ -126,6 +126,9 @@ such server logs a message and formats nothing.
 
 ### Range requests
 
+Every range goes to the first server advertising range formatting, so the joined edits all
+come from one server.
+
 Several disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP 3.18)
 when that server advertises `rangesSupport`. Otherwise each range is its own
 `textDocument/rangeFormatting` request, and more than `lsp.format-max-ranges` ranges log a

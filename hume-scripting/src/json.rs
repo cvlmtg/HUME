@@ -16,9 +16,9 @@
 //!                 (closures, ports, ...) is an error naming its kind.
 //! ```
 //!
-//! `json_to_steel`/`steel_to_json` serve HUME-authored JSON that Scheme edits
-//! directly (the `lsp-*-params` builders, error maps) and know nothing about
-//! LSP. [`to_steel_handle`] serves external JSON that Scheme only reads.
+//! `json_to_steel` serves HUME-authored JSON that Scheme edits directly (the
+//! items `completion-top` returns) and knows nothing about LSP.
+//! [`to_steel_handle`] serves external JSON that Scheme only reads.
 
 use std::sync::Arc;
 

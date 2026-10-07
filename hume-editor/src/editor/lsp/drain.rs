@@ -351,7 +351,7 @@ impl EditorState {
     ///
     /// Two call points, not one: `finish_delivery` (`bridge.rs`) checks it at
     /// LSP drain time, the only gate at all for a delivery answered by a
-    /// Rust responder (`completionItem/resolve`), and an early drop for a
+    /// Rust responder (`completionItem/resolve`, a diagnostics pull), and an early drop for a
     /// Steel one, before its `(proc, args)` is even queued.
     /// `Editor::run_pending_batch`
     /// (`scripting_setup.rs`) re-checks the same anchor for a queued Steel

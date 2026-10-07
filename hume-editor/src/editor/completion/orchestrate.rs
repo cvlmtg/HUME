@@ -207,8 +207,7 @@ impl EditorState {
     /// The first Tab on the `:` line: resolves the one source the input
     /// shape names (the command name itself, or the command's declared
     /// argument completer), runs it, and applies the `:` line's own
-    /// eager policy: a sole candidate lands silently with no popup, two or
-    /// more open the popup with the first already applied.
+    /// eager policy ([`Self::settle_minibuf_session`]).
     pub(in crate::editor) fn trigger_minibuf_completion(&mut self, view: &EngineView) {
         let Some(mb) = self.input.minibuf() else {
             return;

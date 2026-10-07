@@ -341,11 +341,11 @@ pub(crate) fn diagnostics_for_buffer(
 }
 
 /// `DiagnosticEntry` -> a symbol-keyed Steel hashmap, field-by-field native
-/// except `'raw`, the one field that crosses as a `JsonHandle` sharing the
-/// entry's own `Arc` rather than a value rebuilt (and reconverted) just to
-/// carry it. Written by hand rather than `json_to_steel` on a
-/// `serde_json::Value` blob precisely so `'raw` can take that different
-/// path from every other field.
+/// except `'raw`, which crosses as a `JsonHandle` sharing the entry's own
+/// `Arc` rather than a value rebuilt (and reconverted) just to carry it, and
+/// `'server`, which is the publishing server's `ServerRef`. Written by hand
+/// rather than `json_to_steel` on a `serde_json::Value` blob so those two
+/// can take a different path from every other field.
 fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
     let optional_string =
         |v: Option<String>| v.map_or(SteelVal::Void, |v| SteelVal::StringV(v.into()));

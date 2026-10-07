@@ -72,10 +72,11 @@ pub(in crate::editor) enum EditorEvent {
         buffer: BufferId,
         language: Option<String>,
     },
-    /// Fires once per (buffer, server) when a server is `Running` for a
-    /// buffer attached to it: for every attached buffer when the server's
-    /// handshake completes, and for each buffer that attaches later while it
-    /// stays Running.
+    /// Fires when a server is `Running` for a buffer attached to it: for
+    /// every attached buffer when the server's handshake completes, for
+    /// each buffer that attaches later while it stays Running, again when
+    /// the attachment's feature filter changes, and again after a
+    /// `:reload-config` that keeps the attachment.
     OnLspAttach {
         buffer: BufferId,
         server: ServerRef,
@@ -90,8 +91,10 @@ pub(in crate::editor) enum EditorEvent {
         buffer: BufferId,
         server: ServerRef,
     },
-    /// Fires once per drain batch that ingested at least one
-    /// `publishDiagnostics` for `buffer`, payload-free signal by design;
+    /// Fires when the diagnostics stored for `buffer` may have changed: a
+    /// drain batch that ingested a `publishDiagnostics` for it, a pull
+    /// report, a server detaching or its filter changing, `:e!` dropping
+    /// them, and a config reload replaying them. Payload-free by design;
     /// pull via `(diagnostics-for-buffer bid …)`.
     OnDiagnosticsChanged {
         buffer: BufferId,

@@ -55,11 +55,9 @@ fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
 
 /// `(set-hook-triggers! source language chars)`: `chars` is a list of 1-char
 /// strings, registered for `(source, language)`. `chars` landing in Insert
-/// mode fires the `on-trigger-char` hook for any listener named `source`, a
-/// shared, listener-agnostic table, *not* how a completion source's own
-/// trigger chars are joined (that's `set-completion-triggers!`, a
-/// completion source's own routing table, checked before invoking sources
-/// directly).
+/// mode fires the `on-trigger-char` hook for any listener named `source`.
+/// `set-completion-triggers!` writes the same table for a completion
+/// source, whose listener invokes the source instead of the hook.
 pub(crate) fn set_hook_triggers(
     ctx: &mut SteelCtx,
     source: SteelVal,

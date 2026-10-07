@@ -45,8 +45,7 @@
           #:allow-stale #t))
       ranges)))
 
-;; Every range goes to the first server with range formatting, so the
-;; joined edits all come from one server.
+;; See docs/features.md, "Range requests".
 (define (lsp/format-linewise! pane gen td ranges)
   (lsp/with-servers (lsp-servers pane #:method "textDocument/rangeFormatting") "range formatting"
     (lambda (servers)

@@ -52,7 +52,9 @@ impl EditorState {
         let listener = match kind {
             TriggerKind::Hook => Listener::Hook(source.into()),
             TriggerKind::Completion => {
-                self.config.completion_sources.trigger_source(&source)?;
+                self.config
+                    .completion_sources
+                    .require_trigger_source(&source)?;
                 Listener::Completion(source.into())
             }
         };

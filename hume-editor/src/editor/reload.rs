@@ -297,9 +297,9 @@ impl Editor {
         }
 
         // Diagnostics: pull-style hook, re-reads the surviving
-        // `LspState::diagnostics` cache rather than needing a payload. Keyed
-        // on the cache itself, not `running_attachments`: a crashed server's
-        // last-published diagnostics stay in the cache (`reset_config`'s doc)
+        // `buffer_positions.diagnostics` store rather than needing a payload.
+        // Keyed on the store itself, not `running_attachments`: a crashed
+        // server's last-published diagnostics stay in it (`reset_config`'s doc)
         // and must still be replayed, or a reload permanently blanks a
         // buffer's diagnostics that only `:lsp-restart` would otherwise
         // bring back.
