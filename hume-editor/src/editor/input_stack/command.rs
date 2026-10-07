@@ -59,7 +59,7 @@ impl Editor {
         let view = (|| -> Option<hume_ui::popup::PopupState> {
             let session = self.state.input.minibuf_completion()?;
             let anchor_byte = session.menu_anchor_byte()?;
-            let selected = self.state.input.completion_selected();
+            let selected = session.selected();
             let anchor_x = self
                 .state
                 .input

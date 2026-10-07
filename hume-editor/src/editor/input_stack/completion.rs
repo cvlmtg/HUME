@@ -167,9 +167,8 @@ impl super::stack::InputStack {
     }
 
     /// The open completion menu's selected row: `None` when neither layer
-    /// is open or a `:` line session has not picked a row yet. The one
-    /// accessor every caller that doesn't already hold the layer (via
-    /// [`Self::at`]/[`Self::at_mut`]) should use.
+    /// is open or a `:` line session has not picked a row yet.
+    #[cfg(test)]
     pub(in crate::editor) fn completion_selected(&self) -> Option<usize> {
         match self.buffer_completion() {
             Some(session) => Some(session.selected()),

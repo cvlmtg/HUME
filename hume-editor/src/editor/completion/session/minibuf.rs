@@ -1,9 +1,9 @@
 //! The `:` command-line completion session: [`MinibufSession`]. Tab and
 //! Shift-Tab pick a row and immediately splice that candidate into the
 //! minibuffer, with no separate accept step; before any row is picked, Tab
-//! splices the candidates' common prefix instead. The popup's own key handler (`input_stack/completion.rs`) dismisses on any other
-//! key, unlike [`super::BufferSession`], which refilters in place as the
-//! user types.
+//! splices the candidates' common prefix instead. The popup's own key
+//! handler (`input_stack/completion.rs`) dismisses on any other key, unlike
+//! [`super::BufferSession`], which refilters in place as the user types.
 
 use std::borrow::Cow;
 use std::ops::Range;
@@ -183,7 +183,9 @@ impl MinibufSession {
     /// nothing picked, the candidates' common prefix over the span. `None`
     /// when there is nothing to apply, including a common prefix that does
     /// not extend what is already typed (a fuzzy match can share less than
-    /// the typed text).
+    /// the typed text). The typed text is the whole token, so with the
+    /// cursor mid-token the prefix rarely extends it and the first Tab only
+    /// opens the popup.
     pub(in crate::editor) fn proposed_apply(&self) -> Option<(Range<usize>, Cow<'_, str>)> {
         if self.picked {
             let (_, inv, item) = self.core.ranked(self.core.selected())?;
@@ -197,10 +199,7 @@ impl MinibufSession {
                 common_prefix(p, item.insert_text())
             });
         let typed = &self.input[span.clone()];
-        let extends = prefix.len() > typed.len()
-            && prefix
-                .get(..typed.len())
-                .is_some_and(|head| head.eq_ignore_ascii_case(typed));
+        let extends = prefix.len() > typed.len() && super::prefix_matches(prefix, typed, false);
         extends.then_some((span, Cow::Borrowed(prefix)))
     }
 }

@@ -267,6 +267,56 @@ fn the_common_prefix_never_splits_a_grapheme_cluster() {
     assert_eq!(minibuf_input(&ed), "greet a");
 }
 
+#[test]
+fn a_later_answer_drops_the_pick_and_proposes_the_common_prefix() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define captured-id #f)
+           (register-completion-source! "names"
+             (lambda (id input cursor) (set! captured-id id))
+             #:target 'minibuf #:match 'string)
+           (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "names")
+           (define-command! "answer-many" "" (lambda ()
+             (completion-emit! captured-id
+               (list (hash "label" "alice") (hash "label" "bob") (hash "label" "carol")))))
+           (define-command! "answer-pair" "" (lambda ()
+             (completion-emit! captured-id
+               (list (hash "label" "bobby") (hash "label" "bobcat")))))"#,
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "greet ");
+    ed.handle_key(key_tab());
+    ed.settle();
+
+    ed.execute_keymap_command("answer-many".into(), None, false);
+    assert_eq!(minibuf_input(&ed), "greet ");
+    assert_eq!(picked_row(&ed), None);
+
+    ed.handle_key(key_tab());
+    ed.handle_key(key_tab());
+    assert_eq!(picked_row(&ed), Some(1));
+    assert_eq!(minibuf_input(&ed), "greet bob");
+
+    ed.execute_keymap_command("answer-pair".into(), None, false);
+    assert_eq!(picked_row(&ed), None, "the new ranking has no pick");
+    assert_eq!(candidates(&ed).len(), 2);
+    assert_eq!(minibuf_input(&ed), "greet bob");
+}
+
+#[test]
+fn a_mid_token_tab_with_several_candidates_leaves_the_line_alone() {
+    let mut ed = editor_from("-[h]>ello\n");
+    command_line(&mut ed, "write-all");
+    for _ in 0.."rite-all".len() {
+        ed.handle_key(key_left());
+    }
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "write-all");
+}
+
 // ── Mid-token Tab: the replaced span is the token, not up to the cursor ─────
 
 #[test]

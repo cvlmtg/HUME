@@ -217,6 +217,14 @@ fn resolve_menu_width_reflects_only_the_visible_window_not_the_whole_list() {
     );
 }
 
+/// With nothing picked the window starts at the top and highlights no row.
+#[test]
+fn menu_window_with_no_selection_starts_at_the_top_and_highlights_nothing() {
+    let window = menu_window(15, None, rect(0, 0, 200, 50));
+    assert_eq!(window.range, 0..10);
+    assert_eq!(window.selected_rel, None);
+}
+
 /// The contract's own tripwire: handing `resolve_menu` anything other than
 /// the window's exact slice (here, the whole list) is a caller bug, caught
 /// in debug builds rather than silently measured.

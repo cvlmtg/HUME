@@ -439,7 +439,8 @@ const MENU_COLUMN_GAP: u16 = 2;
 pub struct MenuWindow {
     /// The `[start, end)` slice of the full ranked list that's visible.
     pub range: std::ops::Range<usize>,
-    /// The highlighted row, window-relative; `None` for an empty list.
+    /// The highlighted row, window-relative; `None` for an empty list or with
+    /// no row picked.
     selected_rel: Option<usize>,
     /// Outer row count including the 1-cell frame, already clamped to the
     /// pane's height.
@@ -461,6 +462,8 @@ pub struct MenuWindow {
 /// geometry stays a pure function of `(total_rows, pane)`, with no
 /// special-cased early return, so a caller never sees a stale rect from
 /// the *previous* nonempty frame linger into this one.
+///
+/// A `None` selection highlights nothing and windows from the top.
 pub fn menu_window(total_rows: usize, selected: Option<usize>, pane_rect: Rect) -> MenuWindow {
     let raw_outer_h = super::menu_box::outer_rows(total_rows, super::menu_box::MAX_MENU_ROWS);
     let outer_h = raw_outer_h.min(pane_rect.height);
