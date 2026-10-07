@@ -515,6 +515,54 @@ fn a_listener_set_in_both_scopes_fires_once() {
     assert_eq!(*hooks[0], *"test");
 }
 
+/// An attachment's completion listener fires the registered source for the
+/// buffer it was set on, and not for another buffer on the same server.
+#[test]
+fn set_attachment_completion_triggers_fires_the_source_for_that_buffer_only() {
+    let tmp = safe_tempdir();
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({ "capabilities": { "completionProvider": {} } }),
+    );
+    let mut rig = starting_rig(
+        &tmp,
+        r#"(register-completion-source! "test-src"
+             (lambda (id bid prefix) (completion-emit! id (list)))
+             #:target 'buffer)"#,
+        backend,
+    );
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+    let lib = rig.root.join("src/lib.rs");
+    std::fs::write(&lib, "// lib\n").unwrap();
+    rig.ed
+        .execute_typed("e", Some(lib.to_str().unwrap()))
+        .unwrap();
+    let lib_bid = rig.ed.focused_buffer_id();
+    assert_ne!(lib_bid, rig.bid);
+
+    rig.probe(
+        r#"(set-attachment-completion-triggers! "test-src" pane (car (lsp-servers pane)) 'completion '("."))"#,
+    );
+
+    assert_eq!(rig.ed.state.triggered_by('.', lib_bid).completions.len(), 1);
+    assert!(
+        rig.ed
+            .state
+            .triggered_by('.', rig.bid)
+            .completions
+            .is_empty()
+    );
+    assert!(
+        rig.ed
+            .state
+            .triggered_by(',', lib_bid)
+            .completions
+            .is_empty()
+    );
+}
+
 /// A completion listener whose source is not registered fires nothing.
 #[test]
 fn an_attachment_completion_listener_naming_no_source_fires_nothing() {

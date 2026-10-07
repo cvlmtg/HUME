@@ -549,6 +549,21 @@ fn inlay_merged_from_two_servers() {
 }
 
 #[test]
+fn inlay_one_server_failing_still_shows_the_others_hints() {
+    let caps = || serde_json::json!({ "inlayHintProvider": true });
+    let tmp = safe_tempdir();
+    let (mut rig, _guard) = two_servers(tmp.path(), "let x = 1;\n", caps(), caps(), "", |b| {
+        b.respond_to_server(RA, "textDocument/inlayHint", hints(&[(0, 5, ": i32")]));
+        b.fail_with_server(LINT, "textDocument/inlayHint", -32603, "lint failed");
+    });
+    rig.ed.state.settings.lsp_inlay_hints = true;
+
+    refresh_hints(&mut rig.ed);
+
+    assert_eq!(hint_texts(&rig.ed), vec![": i32"]);
+}
+
+#[test]
 fn inlay_detach_one_keeps_other_hints() {
     let caps = || serde_json::json!({ "inlayHintProvider": true });
     let tmp = safe_tempdir();

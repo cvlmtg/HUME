@@ -604,6 +604,48 @@ fn stopping_the_only_server_clears_its_hints() {
     );
 }
 
+/// A buffer no pane shows still loses its hints when its server stops.
+#[test]
+fn stopping_the_server_clears_the_hints_of_a_hidden_buffer() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/inlayHint",
+            inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
+        );
+    });
+    ed.state.settings.lsp_inlay_hints = true;
+    let bid = ed.focused_buffer_id();
+    fire_viewport_change(&mut ed);
+    settle_after_debounce(&mut ed);
+    let other_file = rig_root(tmp.path()).join("other.rs");
+    std::fs::write(&other_file, "let y = 2;\n").unwrap();
+    ed.execute_typed("e", Some(other_file.to_str().unwrap()))
+        .unwrap();
+    assert_ne!(ed.focused_buffer_id(), bid, "test setup: the pane switched");
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        1,
+        "sanity: the hint survives the switch"
+    );
+
+    super::super::lsp_rig::stop_server(&mut ed, "rust-analyzer");
+    settle_after_debounce(&mut ed);
+
+    assert_eq!(
+        ed.state
+            .config
+            .decorations
+            .inlay_hints_for_buffer(bid)
+            .count(),
+        0
+    );
+}
+
 /// A refresh every server fails keeps the hints already shown and reports
 /// the error, where an empty answer clears them.
 #[test]

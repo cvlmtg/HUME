@@ -1836,6 +1836,50 @@ fn lsp_install_raw_binary_is_marked_executable_and_kept() {
     assert_eq!(Path::new(&cmd), bin);
 }
 
+/// A download-and-register install replaces a server the user registered by
+/// hand under the same name: the installed copy is what runs afterwards.
+#[test]
+fn lsp_install_replaces_a_manual_registration_of_the_same_name() {
+    let _lock = lock();
+    let work = safe_tempdir();
+    let asset = work.path().join("marksman-fake");
+    std::fs::write(&asset, b"#!/bin/sh\n").unwrap();
+    let sources = github_source("marksman", "marksman-fake", &asset, "marksman-fake");
+    let args_file = asset.with_extension("curl-argv");
+    let (_shim, path) = write_fake_curl_shim(&asset, &args_file);
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    let runtime = runtime_with_sources(&sources);
+    load_with_init_in_runtime(
+        &mut ed,
+        runtime.path(),
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp-install\")\n\
+         (register-lsp-server! \"marksman\" #:command \"my-marksman\")",
+    );
+    assert_eq!(
+        ed.state.lsp.registered_command_for_test("marksman"),
+        Some("my-marksman".to_owned()),
+        "precondition: the manual registration from init.scm took effect"
+    );
+
+    {
+        let _path = EnvVarGuard::set("PATH", &path);
+        type_cmd(&mut ed, ":lsp-install markdown");
+    }
+
+    let bin = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("marksman")
+        .join("marksman-fake");
+    let cmd = ed
+        .state
+        .lsp
+        .registered_command_for_test("marksman")
+        .expect("marksman stays registered");
+    assert_eq!(Path::new(&cmd), bin);
+}
+
 /// An install over an existing one touches the server's files only after
 /// the unregister the command queued has stopped the running server: a
 /// running binary cannot be replaced on every platform.
