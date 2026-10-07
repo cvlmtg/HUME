@@ -37,9 +37,11 @@ pub(in crate::editor) struct Requirement {
 pub(in crate::editor) fn requirement(method: &str) -> Option<Requirement> {
     let (feature, capability) = match method {
         "textDocument/formatting" => (LspFeature::Format, Some(&[FORMATTING][..])),
-        "textDocument/rangeFormatting" | "textDocument/rangesFormatting" => {
-            (LspFeature::Format, Some(&[RANGE_FORMATTING][..]))
-        }
+        "textDocument/rangeFormatting" => (LspFeature::Format, Some(&[RANGE_FORMATTING][..])),
+        "textDocument/rangesFormatting" => (
+            LspFeature::Format,
+            Some(&[RANGE_FORMATTING, "rangesSupport"][..]),
+        ),
         "textDocument/declaration" => (LspFeature::GotoDeclaration, None),
         "textDocument/definition" => (LspFeature::GotoDefinition, None),
         "textDocument/typeDefinition" => (LspFeature::GotoTypeDefinition, None),

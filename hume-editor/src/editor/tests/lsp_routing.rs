@@ -151,6 +151,29 @@ fn lsp_handles_agrees_with_route_for_every_server() {
 }
 
 #[test]
+fn ranges_formatting_needs_ranges_support() {
+    let tmp = safe_tempdir();
+    let range_formatting = serde_json::json!({"documentRangeFormattingProvider": true});
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", range_formatting.clone()),
+            initialize("utf-16", range_formatting),
+            |_| {},
+        ),
+    );
+
+    rig.probe(&format!(
+        r#"(lsp-request! pane "textDocument/rangesFormatting" (hash "ranges" '()) {LOG_ONE})"#
+    ));
+
+    assert_eq!(
+        rig.warnings(),
+        vec!["err:format is not supported by rust-analyzer, ra-lint".to_string()]
+    );
+}
+
+#[test]
 fn lsp_servers_narrows_a_feature_by_method() {
     let tmp = safe_tempdir();
     let mut rig = two_servers(
