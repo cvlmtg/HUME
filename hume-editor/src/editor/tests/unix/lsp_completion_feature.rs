@@ -101,6 +101,24 @@ fn ctrl_space_fires_completion_trigger() {
 }
 
 #[test]
+fn ctrl_space_in_a_buffer_with_no_file_sends_no_request() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard, requests) =
+        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+            backend.respond_to("textDocument/completion", serde_json::json!([]));
+        });
+    ed.doc_mut().set_path(None);
+
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+
+    assert_eq!(request_count(&requests, "textDocument/completion"), 0);
+    assert_eq!(status(&ed), "no completions");
+}
+
+#[test]
 fn capability_gated_no_completion_provider_sends_no_request() {
     let tmp = safe_tempdir();
     let (mut ed, _guard, requests) =
