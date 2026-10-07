@@ -310,3 +310,38 @@ fn language_has_grammar_wrong_type_errors() {
     let result = language_has_grammar(&mut ctx, SteelVal::IntV(0));
     assert!(result.is_err());
 }
+
+/// Relative grammar paths resolve lexically against the editor cwd, the same
+/// way `open-buffer!` and `#:cwd` resolve theirs.
+#[test]
+fn register_grammar_resolves_relative_paths_against_the_editor_cwd() {
+    let mut h = SteelCtxTestHarness::new();
+    {
+        let mut ctx = h.ctx_init();
+        let result = register_grammar(
+            &mut ctx,
+            str_val("rust"),
+            str_val("g/../rust.so"),
+            str_val("tree_sitter_rust"),
+            str_val("g/../highlights.scm"),
+            str_val("g/../injections.scm"),
+            str_val("g/../textobjects.scm"),
+        );
+        assert!(result.is_ok());
+    }
+    match lang_regs(&h)[0] {
+        PendingLanguageReg::Grammar(reg) => {
+            assert_eq!(reg.grammar_path, std::path::Path::new("rust.so"));
+            assert_eq!(reg.highlights_path, std::path::Path::new("highlights.scm"));
+            assert_eq!(
+                reg.injections_path.as_deref(),
+                Some(std::path::Path::new("injections.scm"))
+            );
+            assert_eq!(
+                reg.textobjects_path.as_deref(),
+                Some(std::path::Path::new("textobjects.scm"))
+            );
+        }
+        other => panic!("expected a Grammar entry, got: {other:?}"),
+    }
+}

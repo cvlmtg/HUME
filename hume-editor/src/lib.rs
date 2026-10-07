@@ -39,7 +39,8 @@ pub mod testing;
 /// path, then writes the final buffer content to `output`. No terminal is
 /// initialised. `config` picks what `init_scripting` evaluates (the default
 /// `init.scm`, a `--config` override, or `ConfigSource::Skip` for
-/// `--no-config`), exactly as it would for [`run`].
+/// `--no-config`), exactly as it would for [`run`]. `cwd` is the startup
+/// working directory.
 ///
 /// Exits cleanly when the key sequence contains `:wq` / `:q` / `<c-c>` (the
 /// editor sets `should_quit`); the buffer is written to `output` regardless.
@@ -48,6 +49,7 @@ pub fn run_keys(
     keys: &str,
     output: std::path::PathBuf,
     config: cli::ConfigSource,
+    cwd: std::path::PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let parsed =
         hume_scripting::parse_key_stream(keys).map_err(|e| format!("invalid key stream: {e}"))?;
@@ -59,7 +61,8 @@ pub fn run_keys(
     let mut editor = editor::Editor::open(
         Some(input),
         std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::from_env(),
+        hume_platform::dirs::Dirs::from_env(&cwd),
+        cwd,
     )?;
     // Headless mode: no terminal to negotiate kitty protocol, so assume
     // full capability. Ctrl-letter keys (e.g. `<c-w>`) are no-ops without
@@ -103,7 +106,8 @@ pub fn run_keys(
 /// Start the editor.
 ///
 /// `config` is the validated `ConfigSource` from `main.rs`'s `resolve`; it is
-/// set on the editor before `init_scripting` runs.
+/// set on the editor before `init_scripting` runs. `cwd` is the startup
+/// working directory.
 ///
 /// Scripting init (Steel VM boot and `init.scm`, ~150-200 ms) runs before raw
 /// mode and the alternate screen, so the shell stays visible meanwhile and the
@@ -122,6 +126,7 @@ pub fn run_keys(
 pub fn run(
     files: Vec<cli::FileArg>,
     config: cli::ConfigSource,
+    cwd: std::path::PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let shared = hume_platform::terminal::create()?;
 
@@ -164,7 +169,8 @@ pub fn run(
     let mut editor = editor::Editor::open(
         first.map(|f| f.path.clone()),
         wake,
-        hume_platform::dirs::Dirs::from_env(),
+        hume_platform::dirs::Dirs::from_env(&cwd),
+        cwd,
     )?;
     editor.attach_terminate_flag(terminate.clone());
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;

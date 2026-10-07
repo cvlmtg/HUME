@@ -568,8 +568,8 @@ re-verification against current code.
 **Root cause:** The test-suite lock over process `PATH`
 (`hume-editor/src/editor/tests/mod.rs`) exists so tests that redirect it
 don't race each other, and its own module doc already stated the real
-hazard: mutating one of these "races every other test *reading or writing*
-the same var." But its enforcement lints only
+hazard: mutating it "races every other test *reading or writing* the
+same var." But its enforcement lints only
 ever checked for *mutation* outside a claim-holding file. A test that spawns a subprocess by
 unqualified name (`Command::new("tree-sitter")`, `Command::new("sh")`) is a
 `PATH` reader — the OS resolves that name against the live process `PATH` at

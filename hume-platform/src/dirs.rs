@@ -43,13 +43,14 @@ pub struct Dirs {
 }
 
 impl Dirs {
-    /// Resolve every directory from the process environment (and, for the
-    /// runtime directory, the executable and working directory).
-    pub fn from_env() -> Self {
+    /// Resolve every directory from the process environment and the
+    /// executable. `cwd` is the startup working directory that relative values
+    /// are pinned to.
+    pub fn from_env(cwd: &std::path::Path) -> Self {
         Self::resolve(
             env_var,
             env::current_exe().ok(),
-            env::current_dir().ok(),
+            Some(cwd.to_path_buf()),
             env::temp_dir(),
         )
     }
@@ -70,9 +71,9 @@ impl Dirs {
             None => dir,
         };
         Self {
-            config: config_dir_with(&env).map(&pin),
-            data: data_dir_with(&env).map(&pin),
-            runtime: runtime_dir_with(&env, exe, cwd.clone()).map(&pin),
+            config: config_dir_with(&env).map(pin),
+            data: data_dir_with(&env).map(pin),
+            runtime: runtime_dir_with(&env, exe, cwd.clone()).map(pin),
             tmp: Some(pin(tmp)),
         }
     }

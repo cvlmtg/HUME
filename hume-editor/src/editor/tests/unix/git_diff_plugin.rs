@@ -65,7 +65,7 @@ fn setup_with_source(
     extra: &str,
 ) -> (Editor, RealRuntimeDirs) {
     let guard = RealRuntimeDirs::new();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), guard.dirs()).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), guard.dirs(), test_cwd()).unwrap();
     let mut host = ScriptingHost::new(&ed.state.dirs);
     let load_git_diff = match config_expr {
         Some(cfg) => hume_scripting::eager_load_scm("core:git-diff", Some(cfg)),

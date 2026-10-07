@@ -455,3 +455,23 @@ fn optional_hash_entry_false_is_none_hash_is_some() {
         .expect("a hashmap decodes to Some");
     assert_eq!(string_arg(entry.required("a").unwrap(), "f").unwrap(), "1");
 }
+
+// ── cwd_arg ───────────────────────────────────────────────────────────────
+
+#[test]
+fn cwd_arg_false_is_the_editor_cwd() {
+    let got = cwd_arg(SteelVal::BoolV(false), Path::new("/ed"), "f").unwrap();
+    assert_eq!(got, Path::new("/ed"));
+}
+
+#[test]
+fn cwd_arg_resolves_a_relative_path_lexically_against_the_editor_cwd() {
+    let got = cwd_arg(SteelVal::StringV("sub/../x".into()), Path::new("/ed"), "f").unwrap();
+    assert_eq!(got, Path::new("/ed/x"));
+}
+
+#[test]
+fn cwd_arg_keeps_an_absolute_path() {
+    let got = cwd_arg(SteelVal::StringV("/other".into()), Path::new("/ed"), "f").unwrap();
+    assert_eq!(got, Path::new("/other"));
+}

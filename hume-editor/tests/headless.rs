@@ -22,7 +22,14 @@ fn config_binding_takes_effect_in_headless_replay() {
     let config = dir.path().join("init.scm");
     std::fs::write(&config, r#"(bind-key! 'normal "Z" "delete-char-forward")"#).unwrap();
 
-    hume::run_keys(input, "Z", output.clone(), ConfigSource::File(config)).unwrap();
+    hume::run_keys(
+        input,
+        "Z",
+        output.clone(),
+        ConfigSource::File(config),
+        std::env::current_dir().unwrap(),
+    )
+    .unwrap();
 
     assert_eq!(
         std::fs::read_to_string(&output).unwrap(),
@@ -40,7 +47,13 @@ fn write_failure_still_returns_err() {
     // rather than creating it.
     let output = dir.path().join("missing-dir").join("out.txt");
 
-    let result = hume::run_keys(input, "Z", output, ConfigSource::Skip);
+    let result = hume::run_keys(
+        input,
+        "Z",
+        output,
+        ConfigSource::Skip,
+        std::env::current_dir().unwrap(),
+    );
 
     assert!(
         result.is_err(),
@@ -60,7 +73,14 @@ fn a_crash_dump_next_to_the_file_is_neither_offered_nor_touched() {
         if with_dump {
             std::fs::write(&dump, "crashed\n").unwrap();
         }
-        hume::run_keys(input, "xd", output.clone(), ConfigSource::Default).unwrap();
+        hume::run_keys(
+            input,
+            "xd",
+            output.clone(),
+            ConfigSource::Default,
+            std::env::current_dir().unwrap(),
+        )
+        .unwrap();
         let dump_after = std::fs::read_to_string(&dump).ok();
         (std::fs::read_to_string(&output).unwrap(), dump_after)
     };

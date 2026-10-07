@@ -64,21 +64,22 @@ pub(crate) fn register_grammar(
     textobjects_path: SteelVal,
 ) -> SteelResult {
     let cwd = ctx.host.buffers().cwd();
+    let under_cwd = |p: std::path::PathBuf| hume_platform::path::absolute_unresolved(&p, &cwd);
     let reg = GrammarReg {
         name: string_arg(name, "register-grammar! name")?,
-        grammar_path: cwd.join(path_arg(grammar_path, "register-grammar! grammar-path")?),
+        grammar_path: under_cwd(path_arg(grammar_path, "register-grammar! grammar-path")?),
         symbol: string_arg(symbol, "register-grammar! symbol")?,
-        highlights_path: cwd.join(path_arg(
+        highlights_path: under_cwd(path_arg(
             highlights_path,
             "register-grammar! highlights-path",
         )?),
         injections_path: optional_path_arg(injections_path, "register-grammar! injections-path")?
-            .map(|p| cwd.join(p)),
+            .map(under_cwd),
         textobjects_path: optional_path_arg(
             textobjects_path,
             "register-grammar! textobjects-path",
         )?
-        .map(|p| cwd.join(p)),
+        .map(under_cwd),
     };
 
     if ctx.session == crate::context::EvalSession::Init {

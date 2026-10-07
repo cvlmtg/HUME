@@ -38,9 +38,14 @@ fn editor_from(input: &str) -> Editor {
     Editor::for_testing_with(test_fixtures::testing::state(text, sels))
 }
 
+/// The working directory a test editor starts in: the test binary's own.
+pub(crate) fn test_cwd() -> PathBuf {
+    std::env::current_dir().expect("current_dir")
+}
+
 /// `Editor::open(path, ..)` with no-op wakeup and no resolved directories.
 fn open_headless(path: Option<PathBuf>) -> Editor {
-    Editor::open(path, std::sync::Arc::new(|| {}), Dirs::none()).expect("open")
+    Editor::open(path, std::sync::Arc::new(|| {}), Dirs::none(), test_cwd()).expect("open")
 }
 
 /// Build a kitty-protocol-enabled editor for testing Ctrl-motion bindings.
@@ -1411,6 +1416,7 @@ mod dump_restore;
 // ::tests` subtrees register the same doubles and reach them through here.
 mod dot_repeat;
 pub(in crate::editor) mod doubles;
+mod editor_cwd;
 mod events;
 mod file_io;
 mod find;
@@ -1464,6 +1470,7 @@ mod page_scroll;
 mod pane_focus;
 mod pane_sync;
 mod paste;
+mod path_lock;
 mod per_pane_jumps;
 mod picker;
 mod picker_source_steel;
@@ -1489,7 +1496,6 @@ mod sync_dispatch;
 mod tab;
 mod tabs;
 mod terminator;
-mod test_globals;
 mod theme_loading;
 mod timers;
 mod triggers;

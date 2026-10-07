@@ -109,6 +109,21 @@ fn resolve_keeps_absolute_runtime_and_tmp_as_they_are() {
     assert_eq!(dirs.tmp, Some(tmp.path().to_path_buf()));
 }
 
+#[test]
+fn resolve_without_a_cwd_leaves_relative_values_as_given() {
+    let dirs = Dirs::resolve(
+        |k| match k {
+            "HUME_RUNTIME" => Some("rt".to_string()),
+            _ => None,
+        },
+        None,
+        None,
+        PathBuf::from("scratch"),
+    );
+    assert_eq!(dirs.runtime, Some(PathBuf::from("rt")));
+    assert_eq!(dirs.tmp, Some(PathBuf::from("scratch")));
+}
+
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]

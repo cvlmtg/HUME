@@ -52,12 +52,14 @@ impl Editor {
     /// instead of polling for completion. Works without a terminal too
     /// (headless): the loop simply never enters `run` to wait on it.
     ///
-    /// `dirs` is the session's config, data and runtime directories; the
-    /// editor never reads them from the environment itself.
+    /// `dirs` is the session's config, data, runtime and temp directories and
+    /// `cwd` its startup working directory; the editor never reads either from
+    /// the process.
     pub(crate) fn open(
         file_path: Option<std::path::PathBuf>,
         wake: Arc<dyn Fn() + Send + Sync>,
         dirs: hume_platform::dirs::Dirs,
+        startup_cwd: std::path::PathBuf,
     ) -> io::Result<Self> {
         use super::clipboard;
         use crate::editor::buffer::Buffer;
@@ -69,7 +71,6 @@ impl Editor {
         use hume_engine::pipeline::LayoutTree;
         use slotmap::SecondaryMap;
 
-        let startup_cwd = std::env::current_dir()?;
         let mut doc = match file_path {
             // Missing file, valid basename: `hume newfile.txt` opens an
             // empty buffer bound to the path instead of exiting, same

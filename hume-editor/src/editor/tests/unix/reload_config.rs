@@ -461,7 +461,13 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
     let file = file_tmp.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
-    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {}), fixture.dirs()).unwrap();
+    let mut ed = Editor::open(
+        Some(file),
+        std::sync::Arc::new(|| {}),
+        fixture.dirs(),
+        test_cwd(),
+    )
+    .unwrap();
     ed.init_scripting(&mut Default::default());
     ed.settle();
 
@@ -547,7 +553,13 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
     let file = file_tmp.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
-    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {}), fixture.dirs()).unwrap();
+    let mut ed = Editor::open(
+        Some(file),
+        std::sync::Arc::new(|| {}),
+        fixture.dirs(),
+        test_cwd(),
+    )
+    .unwrap();
     type_cmd(&mut ed, ":reload-config");
     ed.settle();
 
@@ -629,7 +641,13 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
     let file = file_tmp.path().join("README"); // no extension: never auto-detected
     std::fs::write(&file, "hello\n").unwrap();
 
-    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {}), fixture.dirs()).unwrap();
+    let mut ed = Editor::open(
+        Some(file),
+        std::sync::Arc::new(|| {}),
+        fixture.dirs(),
+        test_cwd(),
+    )
+    .unwrap();
     ed.init_scripting(&mut Default::default());
 
     let bid = ed.focused_buffer_id();
@@ -702,7 +720,13 @@ fn reload_config_keeps_a_startup_grammar_registered() {
     let file = file_tmp.path().join("data.json");
     std::fs::write(&file, "{\"x\": 1}\n").unwrap();
 
-    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {}), fixture.dirs()).unwrap();
+    let mut ed = Editor::open(
+        Some(file),
+        std::sync::Arc::new(|| {}),
+        fixture.dirs(),
+        test_cwd(),
+    )
+    .unwrap();
     ed.init_scripting(&mut Default::default());
 
     let bid = ed.focused_buffer_id();
@@ -875,7 +899,13 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
     let file = file_tmp.path().join("README"); // no extension: never auto-detected
     std::fs::write(&file, "hello\n").unwrap();
 
-    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {}), fixture.dirs()).unwrap();
+    let mut ed = Editor::open(
+        Some(file),
+        std::sync::Arc::new(|| {}),
+        fixture.dirs(),
+        test_cwd(),
+    )
+    .unwrap();
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();
     type_cmd(&mut ed, ":set buffer language=notes");

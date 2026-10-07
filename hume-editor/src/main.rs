@@ -136,8 +136,8 @@ fn main() {
             input,
             keys,
             output,
-        } => hume_editor::run_keys(input, &keys, output, config),
-        Mode::Normal { files } => hume_editor::run(files, config),
+        } => hume_editor::run_keys(input, &keys, output, config, cwd),
+        Mode::Normal { files } => hume_editor::run(files, config, cwd),
     };
     if let Err(e) = result {
         eprintln!("hume: {e}");
@@ -287,20 +287,13 @@ mod tests {
 
     #[test]
     fn resolve_headless_exactly_one_file_succeeds() {
-        let cwd = std::env::current_dir().unwrap();
         let cli = make_headless(vec![PathBuf::from("in.txt")]);
-        let inv = resolve(cli, &cwd).expect("one input file should succeed");
-        let Mode::Headless {
-            input,
-            keys,
-            output,
-        } = inv.mode
-        else {
+        let inv = resolve_here(cli).expect("one input file should succeed");
+        let Mode::Headless { input, keys, .. } = inv.mode else {
             panic!("expected Mode::Headless");
         };
         assert_eq!(input, PathBuf::from("in.txt"));
         assert_eq!(keys, "dw");
-        assert_eq!(output, cwd.join("out.txt"));
         assert_eq!(
             inv.config,
             ConfigSource::Default,

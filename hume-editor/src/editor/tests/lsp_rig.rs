@@ -3,6 +3,7 @@
 //! a real file opened through `:e`, and a scripted backend, so every
 //! attachment a test sees was made by the production attach path.
 
+use super::test_cwd;
 use hume_platform::dirs::Dirs;
 use std::path::{Path, PathBuf};
 
@@ -127,8 +128,13 @@ impl LspRig {
         let notifications = backend.server_notification_log();
         let requests = backend.request_log();
         let responses = backend.response_log();
-        let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), spec.dirs.clone())
-            .expect("editor opens");
+        let mut ed = Editor::open(
+            None,
+            std::sync::Arc::new(|| {}),
+            spec.dirs.clone(),
+            test_cwd(),
+        )
+        .expect("editor opens");
         ed.state.lsp = LspState::with_backend(Box::new(backend));
         ed.state
             .config

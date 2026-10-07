@@ -247,7 +247,7 @@ fn every_default_lsp_binding_dispatches_without_error() {
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
     let guard = RealRuntimeDirs::new();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), guard.dirs()).unwrap();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), guard.dirs(), test_cwd()).unwrap();
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
 
     let mut host = ScriptingHost::new(&ed.state.dirs);

@@ -207,7 +207,7 @@ pub fn strip_line_comment(line: &str) -> &str {
 }
 
 /// One violation found by [`scan_lines`], or by a lint
-/// that builds its own `Violation` list directly (`test_globals_spawn.rs`'s
+/// that builds its own `Violation` list directly (`path_lock_spawn.rs`'s
 /// `scan`, whose `detail` is a free-form description ("spawns unqualified
 /// internally") rather than the offending line verbatim.
 pub struct Violation {

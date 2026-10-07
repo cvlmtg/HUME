@@ -162,14 +162,15 @@ pub(crate) fn optional_path_arg(
     }
 }
 
-/// A `#:cwd` argument: `#f` is `editor_cwd`, a relative path joins onto it.
+/// A `#:cwd` argument: `#f` is `editor_cwd`, a relative path resolves
+/// lexically against it, as `:e` resolves a typed path.
 pub(crate) fn cwd_arg(
     val: SteelVal,
     editor_cwd: &Path,
     ctx_name: &str,
 ) -> Result<PathBuf, SteelErr> {
     Ok(match optional_path_arg(val, ctx_name)? {
-        Some(dir) => editor_cwd.join(dir),
+        Some(dir) => hume_platform::path::absolute_unresolved(&dir, editor_cwd),
         None => editor_cwd.to_path_buf(),
     })
 }
