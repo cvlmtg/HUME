@@ -5,6 +5,7 @@
 
 use super::*;
 use crate::editor::buffer::Buffer;
+use crate::editor::settings::CommandCompletion;
 use hume_editing::text::BufferText;
 use pretty_assertions::assert_eq;
 
@@ -22,6 +23,13 @@ fn command_line(ed: &mut Editor, input: &str) {
     for ch in input.chars() {
         ed.handle_key(key(ch));
     }
+}
+
+/// An editor whose `:` line applies the first candidate on Tab.
+fn first_candidate_editor(input: &str) -> Editor {
+    let mut ed = editor_from(input);
+    ed.state.settings.command_completion = CommandCompletion::FirstCandidate;
+    ed
 }
 
 // ── Command-name completion ───────────────────────────────────────────────────
@@ -57,7 +65,7 @@ fn tab_no_match_is_noop() {
 
 #[test]
 fn tab_multiple_matches_opens_popup_with_first_candidate_applied() {
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = first_candidate_editor("-[h]>ello\n");
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
     assert!(ed.state.input.minibuf_completion().is_some(), "popup open");
@@ -68,7 +76,7 @@ fn tab_multiple_matches_opens_popup_with_first_candidate_applied() {
 
 #[test]
 fn second_tab_cycles_to_next_candidate() {
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = first_candidate_editor("-[h]>ello\n");
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
     ed.handle_key(key_tab());
@@ -78,7 +86,7 @@ fn second_tab_cycles_to_next_candidate() {
 
 #[test]
 fn shift_tab_cycles_backward() {
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = first_candidate_editor("-[h]>ello\n");
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
     ed.handle_key(key_tab());
@@ -89,7 +97,7 @@ fn shift_tab_cycles_backward() {
 
 #[test]
 fn tab_wraps_at_end() {
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = first_candidate_editor("-[h]>ello\n");
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
     let n = ed.state.input.minibuf_completion().unwrap().len();
@@ -160,6 +168,103 @@ fn ctrl_w_dismisses_the_open_popup() {
     assert!(ed.state.input.minibuf_completion().is_some(), "sanity");
     ed.handle_key(key_ctrl('w'));
     assert!(ed.state.input.minibuf_completion().is_none());
+}
+
+// ── Common-prefix completion (the default) ───────────────────────────────────
+
+#[test]
+fn tab_extends_the_token_to_the_common_prefix_and_picks_nothing() {
+    // "write", "write-all", "write-quit" share "write".
+    let mut ed = editor_from("-[h]>ello\n");
+    command_line(&mut ed, "w");
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "write");
+    assert_eq!(candidates(&ed), vec!["write", "write-all", "write-quit"]);
+    assert_eq!(picked_row(&ed), None);
+}
+
+#[test]
+fn tab_leaves_the_input_alone_when_the_prefix_adds_nothing() {
+    let mut ed = editor_from("-[h]>ello\n");
+    command_line(&mut ed, "set ");
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "set ");
+    assert!(ed.state.input.minibuf_completion().is_some(), "popup open");
+    assert_eq!(picked_row(&ed), None);
+}
+
+#[test]
+fn tab_after_the_prefix_picks_the_first_candidate_then_cycles() {
+    let mut ed = editor_from("-[h]>ello\n");
+    command_line(&mut ed, "w");
+    ed.handle_key(key_tab());
+    ed.handle_key(key_tab());
+    assert_eq!(picked_row(&ed), Some(0));
+    assert_eq!(minibuf_input(&ed), "write");
+    ed.handle_key(key_tab());
+    assert_eq!(picked_row(&ed), Some(1));
+    assert_eq!(minibuf_input(&ed), "write-all");
+}
+
+#[test]
+fn shift_tab_after_the_prefix_picks_the_last_candidate() {
+    let mut ed = editor_from("-[h]>ello\n");
+    command_line(&mut ed, "w");
+    ed.handle_key(key_tab());
+    ed.handle_key(key_shift_tab());
+    assert_eq!(picked_row(&ed), Some(2));
+    assert_eq!(minibuf_input(&ed), "write-quit");
+}
+
+#[test]
+fn enter_after_a_prefix_only_tab_runs_the_typed_line() {
+    let mut ed = editor_from("-[h]>ello\n");
+    command_line(&mut ed, "w");
+    ed.handle_key(key_tab());
+    ed.handle_key(key_enter());
+    assert!(ed.state.minibuf().is_none());
+    assert!(ed.state.input.minibuf_completion().is_none());
+}
+
+#[test]
+fn a_fuzzy_prefix_shorter_than_the_typed_text_is_not_applied() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "names"
+             (lambda (id input cursor)
+               (completion-emit! id (list (hash "label" "xab1") (hash "label" "xab2"))))
+             #:target 'minibuf #:match 'fuzzy)
+           (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "names")"#,
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "greet ab");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(minibuf_input(&ed), "greet ab");
+    assert_eq!(candidates(&ed).len(), 2);
+}
+
+#[test]
+fn the_common_prefix_never_splits_a_grapheme_cluster() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        "(register-completion-source! \"names\"
+           (lambda (id input cursor)
+             (completion-emit! id (list (hash \"label\" \"ae\u{301}x\") (hash \"label\" \"aey\"))))
+           #:target 'minibuf #:match 'string)
+         (define-typed-command! \"greet\" \"\" (lambda (bid arg) (log! 'info arg)) #:complete \"names\")",
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "greet a");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(minibuf_input(&ed), "greet a");
 }
 
 // ── Mid-token Tab: the replaced span is the token, not up to the cursor ─────
@@ -264,7 +369,7 @@ fn enter_on_directory_candidate_restarts_completion_inside_it() {
     std::fs::write(dir.path().join("alpha/one.txt"), b"").unwrap();
     std::fs::write(dir.path().join("alpha/two.txt"), b"").unwrap();
 
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = first_candidate_editor("-[h]>ello\n");
     command_line(&mut ed, &format!("e {}/", dir.path().display()));
     ed.handle_key(key_tab()); // "alpha/" first (alphabetical)
     assert!(candidates(&ed)[0].ends_with('/'), "sanity: a directory");
@@ -299,7 +404,7 @@ fn enter_on_directory_candidate_restarts_completion_inside_it() {
 #[test]
 fn enter_on_a_non_path_candidate_ending_in_slash_does_not_restart_completion() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = first_candidate_editor("-[h]>ello\n");
     run(
         &mut ed,
         tmp.path(),
@@ -453,7 +558,7 @@ fn tab_on_set_g_silently_completes_global() {
 #[test]
 fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = first_candidate_editor("-[h]>ello\n");
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
     assert!(ed.state.input.minibuf_completion().is_some(), "sanity");
@@ -531,7 +636,7 @@ fn a_raising_minibuf_source_does_not_leave_the_popup_stuck_pending() {
 #[test]
 fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = first_candidate_editor("-[h]>ello\n");
     run(
         &mut ed,
         tmp.path(),

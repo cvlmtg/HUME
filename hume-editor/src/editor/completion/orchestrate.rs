@@ -26,7 +26,7 @@ use crate::editor::input_stack::{
     BufferCompletionLayer, InsertLayer, LayerRef, MinibufCompletionLayer,
 };
 use crate::editor::registry::CommandRegistry;
-use crate::editor::settings::EditorSettings;
+use crate::editor::settings::{CommandCompletion, EditorSettings};
 use crate::editor::{EditorState, Severity};
 
 /// What set an Insert-mode trigger in motion, and so which sources it
@@ -256,15 +256,17 @@ impl EditorState {
 
     /// The `:` line's eager policy, once every source has answered: nothing
     /// → the popup never shows; one candidate → applied silently, popup
-    /// gone; two or more → the first is applied and the popup stays for
-    /// Tab to cycle. Runs at open (native sources answer inline) and again
-    /// when a pending Steel source's answer lands, including a second
-    /// answer to a still-streaming source, so the re-rank (which resets the
-    /// selection itself, per `SlotSet::rank_with`'s own contract) always runs
-    /// first: the previous selection index has no guaranteed meaning
-    /// against the new order, and may point past a narrower list's end
-    /// entirely.
+    /// gone; two or more → under `CommonPrefix` the candidates' common
+    /// prefix is applied and nothing is picked, under `FirstCandidate` the
+    /// first is picked and applied. The popup stays for Tab to cycle. Runs
+    /// at open (native sources answer inline) and again when a pending Steel
+    /// source's answer lands, including a second answer to a
+    /// still-streaming source, so the re-rank (which resets the selection
+    /// itself, per `SlotSet::rank_with`'s own contract) always runs first:
+    /// the previous selection index has no guaranteed meaning against the
+    /// new order, and may point past a narrower list's end entirely.
     fn settle_minibuf_session(&mut self, view: &EngineView, r: LayerRef) {
+        let first_candidate = self.settings.command_completion == CommandCompletion::FirstCandidate;
         let Some(layer) = self.input.at_mut::<MinibufCompletionLayer>(r) else {
             return;
         };
@@ -275,26 +277,31 @@ impl EditorState {
         match layer.session.len() {
             0 => self.dismiss_completion(view),
             1 => {
+                layer.session.step_selection(true);
                 self.apply_minibuf_candidate(r);
                 self.dismiss_completion(view);
             }
-            _ => self.apply_minibuf_candidate(r),
+            _ => {
+                if first_candidate {
+                    layer.session.step_selection(true);
+                }
+                self.apply_minibuf_candidate(r);
+            }
         }
     }
 
-    /// Splices the selected candidate of the `Minibuf` session at `r` into
-    /// the `:` line, over its own source's token, restoring the input the
-    /// sources saw first, so cycling from one candidate to the next never
-    /// has to know what the previous one left behind.
+    /// Splices the session's proposed edit at `r` into the `:` line, over
+    /// its own source's token, restoring the input the sources saw first,
+    /// so cycling from one candidate to the next never has to know what the
+    /// previous one left behind. With no proposal the line is left as typed.
     pub(in crate::editor) fn apply_minibuf_candidate(&mut self, r: LayerRef) {
         let Some(layer) = self.input.at::<MinibufCompletionLayer>(r) else {
             return;
         };
-        let selected = layer.session.selected();
-        let Some((span, text)) = layer.session.selected_apply(selected) else {
+        let Some((span, text)) = layer.session.proposed_apply() else {
             return;
         };
-        let (input, text) = (layer.session.input().to_owned(), text.to_owned());
+        let (input, text) = (layer.session.input().to_owned(), text.into_owned());
         let Some(mb) = self.input.minibuf_mut() else {
             return;
         };

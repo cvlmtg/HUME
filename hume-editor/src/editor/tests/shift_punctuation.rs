@@ -74,6 +74,8 @@ fn question_enters_search_when_shift_set() {
 #[test]
 fn shift_tab_still_backtab() {
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.settings.command_completion =
+        crate::editor::settings::CommandCompletion::FirstCandidate;
     ed.handle_key(key(':'));
     ed.handle_key(key('w'));
     // Open popup (first candidate), then Tab forward once.
@@ -82,5 +84,5 @@ fn shift_tab_still_backtab() {
     // Shift-Tab back to candidate 0.
     ed.handle_key(KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT));
     let selected = ed.state.input.completion_selected();
-    assert_eq!(selected, 0);
+    assert_eq!(selected, Some(0));
 }

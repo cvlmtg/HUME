@@ -140,8 +140,11 @@ impl Editor {
 
         let resolved = placement.and_then(|placement| {
             let model = self.state.input.menu()?;
-            let window =
-                hume_ui::popup::menu_window(model.rows.len(), model.selected, placement.pane_rect);
+            let window = hume_ui::popup::menu_window(
+                model.rows.len(),
+                Some(model.selected),
+                placement.pane_rect,
+            );
             Some(hume_ui::popup::resolve_menu(
                 &model.rows[window.range.clone()],
                 window,

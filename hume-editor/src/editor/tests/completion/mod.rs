@@ -40,10 +40,15 @@ fn labels(ed: &Editor) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The completion popup's selected row index. See `InputStack::
-/// completion_selected`'s own doc for the `0`-default convention.
-fn selected_row(ed: &Editor) -> usize {
+/// The completion popup's picked row, `None` while a `:` line popup has
+/// nothing picked.
+fn picked_row(ed: &Editor) -> Option<usize> {
     ed.state.input.completion_selected()
+}
+
+/// The completion popup's selected row index; panics when no row is picked.
+fn selected_row(ed: &Editor) -> usize {
+    picked_row(ed).expect("a row is picked")
 }
 
 /// Ctrl-Space, then settle so the queued Steel source answers.

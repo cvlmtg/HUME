@@ -297,6 +297,22 @@ settings_enum!(TablineVisibility, "tabline", [
     Dynamic => "dynamic",
 ]);
 
+/// What the first Tab on the `:` line does when several candidates match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CommandCompletion {
+    /// Extends the token to the longest prefix every candidate shares and
+    /// opens the popup with nothing picked. HUME's default.
+    #[default]
+    CommonPrefix,
+    /// Applies the first candidate and opens the popup on it.
+    FirstCandidate,
+}
+
+settings_enum!(CommandCompletion, "command-completion", [
+    CommonPrefix => "common-prefix",
+    FirstCandidate => "first-candidate",
+]);
+
 /// A `:set` scope token: `global`, `buffer`, or `pane`.
 ///
 /// `Global` applies to editor-wide defaults (written to [`EditorSettings`] via
@@ -809,6 +825,9 @@ define_settings! {
         "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,
             scope: [Scope::Global],
             parser: usize_nonzero;
+        "command-completion" => command_completion: CommandCompletion = CommandCompletion::CommonPrefix,
+            scope: [Scope::Global],
+            parser: enum_str;
         "popup-border" => popup_border: bool = true,
             scope: [Scope::Global],
             parser: bool;

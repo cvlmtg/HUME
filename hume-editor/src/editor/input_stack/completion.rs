@@ -130,10 +130,12 @@ impl Editor {
             let anchor = session.menu_anchor(self.state.buffers.get(session.bid()).text())?;
             let placement = popup_placement(self, ctx, anchor)?;
 
-            let selected_idx = self.state.input.completion_selected();
             let session = self.state.input.buffer_completion()?;
-            let window =
-                hume_ui::popup::menu_window(session.len(), selected_idx, placement.pane_rect);
+            let window = hume_ui::popup::menu_window(
+                session.len(),
+                Some(session.selected()),
+                placement.pane_rect,
+            );
             let rows = session.rows_in(window.range.clone());
             Some(hume_ui::popup::resolve_menu(
                 &rows, window, placement, border,
@@ -164,15 +166,15 @@ impl super::stack::InputStack {
             .map(|l| &mut l.session)
     }
 
-    /// The open completion menu's selected row, defaulting to `0` when
-    /// neither layer is open. The one accessor every caller that doesn't
-    /// already hold the layer (via [`Self::at`]/[`Self::at_mut`]) should
-    /// use.
-    pub(in crate::editor) fn completion_selected(&self) -> usize {
-        self.buffer_completion()
-            .map(BufferSession::selected)
-            .or_else(|| self.minibuf_completion().map(MinibufSession::selected))
-            .unwrap_or(0)
+    /// The open completion menu's selected row: `None` when neither layer
+    /// is open or a `:` line session has not picked a row yet. The one
+    /// accessor every caller that doesn't already hold the layer (via
+    /// [`Self::at`]/[`Self::at_mut`]) should use.
+    pub(in crate::editor) fn completion_selected(&self) -> Option<usize> {
+        match self.buffer_completion() {
+            Some(session) => Some(session.selected()),
+            None => self.minibuf_completion()?.selected(),
+        }
     }
 }
 
@@ -254,10 +256,11 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     }
 }
 
-/// Handles one key while a minibuffer completion session is open. Always
-/// cycle-and-apply: Tab/Shift-Tab move the selection *and* immediately
-/// splice the newly-selected candidate into the minibuffer
-/// (there is no separate accept step, unlike the Buffer-target's Enter);
+/// Handles one key while a minibuffer completion session is open.
+/// Tab/Shift-Tab step the selection and immediately splice the proposed
+/// edit into the minibuffer (the picked candidate, or the common prefix
+/// while none is picked; there is no separate accept step, unlike the
+/// Buffer-target's Enter);
 /// every other key dismisses the popup first, then falls through
 /// unchanged: the minibuffer's own always-eager-apply UX.
 fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
@@ -306,7 +309,8 @@ fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
                 .at::<MinibufCompletionLayer>(r)
                 .is_some_and(|l| {
                     l.session
-                        .selected_item(l.session.selected())
+                        .selected()
+                        .and_then(|row| l.session.selected_item(row))
                         .is_some_and(CompletionItem::is_folder)
                 });
             if is_dir {

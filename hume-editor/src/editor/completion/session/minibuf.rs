@@ -1,11 +1,14 @@
-//! The `:` command-line completion session: [`MinibufSession`]. Always
-//! cycle-and-apply (Tab/Shift-Tab move the selection *and* immediately
-//! splice the newly-selected candidate into the minibuffer): the popup's
-//! own key handler (`input_stack/completion.rs`) dismisses on any other
+//! The `:` command-line completion session: [`MinibufSession`]. Tab and
+//! Shift-Tab pick a row and immediately splice that candidate into the
+//! minibuffer, with no separate accept step; before any row is picked, Tab
+//! splices the candidates' common prefix instead. The popup's own key handler (`input_stack/completion.rs`) dismisses on any other
 //! key, unlike [`super::BufferSession`], which refilters in place as the
 //! user types.
 
+use std::borrow::Cow;
 use std::ops::Range;
+
+use unicode_segmentation::UnicodeSegmentation;
 
 use super::super::item::CompletionItem;
 use super::super::registry::{MinibufSourceId, SourceRegistry};
@@ -45,7 +48,22 @@ pub(in crate::editor) struct MinibufSession {
     /// [`super::BufferSession`]'s `menu_anchor` counterpart, a byte offset
     /// into `input`.
     menu_anchor: Option<usize>,
+    /// Whether the user (or the eager policy) has picked a row since the
+    /// last [`Self::rank`]. Until then nothing is highlighted and Tab
+    /// proposes the candidates' common prefix instead of a candidate.
+    picked: bool,
     core: SlotSet<MinibufSourceId, MinibufSpan>,
+}
+
+/// The longest run of whole grapheme clusters `a` and `b` start with.
+fn common_prefix<'a>(a: &'a str, b: &str) -> &'a str {
+    let len = a
+        .grapheme_indices(true)
+        .zip(b.graphemes(true))
+        .take_while(|((_, x), y)| x == y)
+        .last()
+        .map_or(0, |((i, x), _)| i + x.len());
+    &a[..len]
 }
 
 impl MinibufSession {
@@ -55,6 +73,7 @@ impl MinibufSession {
             input,
             cursor,
             menu_anchor: None,
+            picked: false,
             core: SlotSet::new(),
         }
     }
@@ -102,8 +121,10 @@ impl MinibufSession {
             input,
             cursor,
             menu_anchor,
+            picked,
             core,
         } = self;
+        *picked = false;
         *menu_anchor = core.rank_with(sources, None, |inv| {
             let start = inv.span.bytes.start;
             Some(SlotTokens::single(input[start..*cursor].to_owned(), start))
@@ -120,12 +141,23 @@ impl MinibufSession {
         self.core.selected_item(idx)
     }
 
-    pub(in crate::editor) fn selected(&self) -> usize {
-        self.core.selected()
+    /// The highlighted ranked row, `None` until one is picked.
+    pub(in crate::editor) fn selected(&self) -> Option<usize> {
+        self.picked.then(|| self.core.selected())
     }
 
+    /// Moves the selection one row, wrapping. The first step after a rank
+    /// picks a row instead: row 0 going forward, the last row going back.
+    /// `false` on an empty list.
     pub(in crate::editor) fn step_selection(&mut self, forward: bool) -> bool {
-        self.core.step_selection(forward)
+        if self.picked {
+            return self.core.step_selection(forward);
+        }
+        if self.core.is_empty() {
+            return false;
+        }
+        self.picked = true;
+        forward || self.core.step_selection(false)
     }
 
     pub(in crate::editor) fn top(
@@ -147,10 +179,28 @@ impl MinibufSession {
         self.menu_anchor
     }
 
-    /// The `:` line span the ranked candidate at `idx` replaces, with its
-    /// `insert_text`, or `None` for an unranked `idx`.
-    pub(in crate::editor) fn selected_apply(&self, idx: usize) -> Option<(Range<usize>, &str)> {
-        let (_, inv, item) = self.core.ranked(idx)?;
-        Some((inv.span.bytes.clone(), item.insert_text()))
+    /// The edit Tab applies: the picked candidate over its span, or with
+    /// nothing picked, the candidates' common prefix over the span. `None`
+    /// when there is nothing to apply, including a common prefix that does
+    /// not extend what is already typed (a fuzzy match can share less than
+    /// the typed text).
+    pub(in crate::editor) fn proposed_apply(&self) -> Option<(Range<usize>, Cow<'_, str>)> {
+        if self.picked {
+            let (_, inv, item) = self.core.ranked(self.core.selected())?;
+            return Some((inv.span.bytes.clone(), Cow::Borrowed(item.insert_text())));
+        }
+        let (_, inv, first) = self.core.ranked(0)?;
+        let span = inv.span.bytes.clone();
+        let prefix = (1..self.core.len())
+            .filter_map(|i| self.core.selected_item(i))
+            .fold(first.insert_text(), |p, item| {
+                common_prefix(p, item.insert_text())
+            });
+        let typed = &self.input[span.clone()];
+        let extends = prefix.len() > typed.len()
+            && prefix
+                .get(..typed.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(typed));
+        extends.then_some((span, Cow::Borrowed(prefix)))
     }
 }

@@ -45,7 +45,7 @@ Changes apply to the current session and are not persisted. For persistent confi
 (set-option! "option-name" value)
 ```
 
-Sets the global default. The value is a string, symbol, boolean, or integer. An option that takes one of a fixed set of names (`tab-style`, `line-number-style`, `tabline`, `object-jump-align`, `cursor-shape-insert`, `whitespace-space`, `whitespace-tab`, `whitespace-newline`, `lsp.diagnostics-severity-floor`) also accepts, and `get-option` returns, the name as a symbol: `'soft`. Callable from `init.scm`, a plugin body, or a command/hook body: anywhere Scheme code runs.
+Sets the global default. The value is a string, symbol, boolean, or integer. An option that takes one of a fixed set of names also accepts, and `get-option` returns, the name as a symbol: `'soft`. Callable from `init.scm`, a plugin body, or a command/hook body: anywhere Scheme code runs.
 
 ```scheme
 (set-option! "line-number-style" 'absolute)
@@ -96,6 +96,7 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 | `undo-levels` | integer | `0` | Max undo states kept per buffer; `0` means unlimited. Once the limit is reached, the oldest states (including whole abandoned branches) are dropped as new edits are made |
 | `steel-init-budget-ms` | integer ≥ 1 | `10000` | Max evaluation time (ms) for `init.scm` and each plugin activation. Setting it *from* `init.scm` has no effect on that same run: the budget is read before each file/plugin evaluation starts, so a change only takes effect for evaluations after it, i.e. the next plugin activation or the next session |
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
+| `command-completion` | `common-prefix` \| `first-candidate` | `common-prefix` | What the first `Tab` on the `:` line does when several candidates match: `common-prefix` completes the longest text they share and picks nothing, so the next `Tab` picks the first candidate; `first-candidate` fills in the first candidate at once |
 | `popup-border` | bool | `#t` | Show popup borders |
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |

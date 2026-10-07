@@ -775,7 +775,7 @@ fn step_selection_on_an_empty_ranking_does_not_move() {
     let mut session = MinibufSession::open(String::new(), 0);
     assert!(!session.step_selection(true));
     assert!(!session.step_selection(false));
-    assert_eq!(session.selected(), 0);
+    assert_eq!(session.selected(), None);
 }
 
 #[test]
@@ -785,13 +785,15 @@ fn step_selection_wraps_at_either_end() {
     let id = session.invoke(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..1));
     assert!(session.contribute(id, items(&["wa", "wb"]), false));
     session.rank(&reg);
-    assert_eq!(session.selected(), 0, "rank resets to row 0");
+    assert_eq!(session.selected(), None, "rank leaves nothing picked");
     assert!(session.step_selection(true));
-    assert_eq!(session.selected(), 1);
+    assert_eq!(session.selected(), Some(0), "first step picks row 0");
     assert!(session.step_selection(true));
-    assert_eq!(session.selected(), 0, "wraps forward");
+    assert_eq!(session.selected(), Some(1));
+    assert!(session.step_selection(true));
+    assert_eq!(session.selected(), Some(0), "wraps forward");
     assert!(session.step_selection(false));
-    assert_eq!(session.selected(), 1, "wraps backward");
+    assert_eq!(session.selected(), Some(1), "wraps backward");
 }
 
 // ── prefix_matches ───────────────────────────────────────────────────────────

@@ -266,7 +266,7 @@ fn tab_at_zero_matches_falls_through_to_normal_insert() {
     ed.feed_key(key_tab());
 
     assert_eq!(
-        selected_row(&ed),
+        picked_row(&ed).unwrap_or(0),
         0,
         "Tab must not move the selection for a menu that isn't shown"
     );

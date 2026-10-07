@@ -16,7 +16,7 @@ Navigate buffers with `:bprev`/`:bnext` from the command mode prompt. Doing this
 ```
 :::
 
-Most typed commands have a short alias. Both forms are listed below, and both work. Press `Tab` at any point for completion of names and, where it makes sense, arguments.
+Most typed commands have a short alias. Both forms are listed below, and both work. Press `Tab` at any point for completion of names and, where it makes sense, arguments. When several candidates match, the first `Tab` completes the text they share and opens the candidate list; press `Tab` again to pick the first candidate and `Shift-Tab` to pick the last. `:set global command-completion=first-candidate` fills in the first candidate at once instead.
 
 For running HUME from a shell instead, see [Command-line Flags](cli.md).
 

@@ -192,7 +192,7 @@ fn placement(pane: Rect) -> PopupPlacement {
 /// The two-phase call every production menu makes: resolve the window from
 /// counts, slice the list to it, resolve from that slice alone.
 fn menu(rows: &[MenuRow], selected: usize, pane: Rect) -> PopupState {
-    let window = menu_window(rows.len(), selected, pane);
+    let window = menu_window(rows.len(), Some(selected), pane);
     resolve_menu(&rows[window.range.clone()], window, placement(pane), true)
 }
 
@@ -207,7 +207,7 @@ fn resolve_menu_width_reflects_only_the_visible_window_not_the_whole_list() {
 
     // selected = 14 (the last row) centers the window well past the wide
     // row 0: window_range(15, 14 - 10/2 = 9, 10) clamps to [5, 15).
-    let window = menu_window(rows.len(), 14, rect(0, 0, 200, 50));
+    let window = menu_window(rows.len(), Some(14), rect(0, 0, 200, 50));
     assert_eq!(window.range, 5..15, "sanity: the wide row 0 is outside");
     let state = menu(&rows, 14, rect(0, 0, 200, 50));
     assert_eq!(
@@ -226,7 +226,7 @@ fn resolve_menu_width_reflects_only_the_visible_window_not_the_whole_list() {
 fn resolve_menu_rejects_rows_that_are_not_the_windows_slice() {
     let rows: Vec<MenuRow> = (0..15).map(|i| MenuRow::plain(format!("r{i}"))).collect();
     let pane = rect(0, 0, 200, 50);
-    let window = menu_window(rows.len(), 0, pane);
+    let window = menu_window(rows.len(), Some(0), pane);
     resolve_menu(&rows, window, placement(pane), true);
 }
 

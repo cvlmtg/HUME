@@ -60,6 +60,7 @@
 - `show-drawer-list!` and `update-drawer-list!` take `#:render`: the items can be any values, and the drawer asks the render function for the text of only the rows it shows. `core:undotree` uses it, so stepping through a long undo history stays quick.
 
 ### Commands
+- Tab on the `:` line completes the text all candidates share and picks none; the next Tab picks the first. `:set global command-completion=first-candidate` restores filling in the first candidate at once.
 - `:e path:line[:col]` jumps to a position on open.
 - Selections never split a character: text objects, motions, edits, search, `:sort`, join, paste and undo keep a letter with its combining marks, emoji sequences and flags whole.
 - `f`/`t`/`F`/`T` match composed and decomposed forms alike, and `:sort` treats them as equal.

@@ -306,13 +306,13 @@ fn a_second_background_finish_does_not_reset_the_menu_selection() {
     reindex_via_option_change(&mut ed);
     assert_eq!(
         ed.state.input.completion_selected(),
-        0,
+        Some(0),
         "sanity: the first finish under a fresh id does reset the selection"
     );
 
     ed.feed_key(key_down());
     let moved = ed.state.input.completion_selected();
-    assert_ne!(moved, 0, "sanity: selection moved off row 0");
+    assert_ne!(moved, Some(0), "sanity: selection moved off row 0");
 
     // A *second* reindex, no fresh trigger in between: `"live-id"` was
     // already consumed and cleared by the push above, so this one must be

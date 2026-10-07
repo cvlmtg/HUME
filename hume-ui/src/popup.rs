@@ -461,20 +461,20 @@ pub struct MenuWindow {
 /// geometry stays a pure function of `(total_rows, pane)`, with no
 /// special-cased early return, so a caller never sees a stale rect from
 /// the *previous* nonempty frame linger into this one.
-pub fn menu_window(total_rows: usize, selected: usize, pane_rect: Rect) -> MenuWindow {
+pub fn menu_window(total_rows: usize, selected: Option<usize>, pane_rect: Rect) -> MenuWindow {
     let raw_outer_h = super::menu_box::outer_rows(total_rows, super::menu_box::MAX_MENU_ROWS);
     let outer_h = raw_outer_h.min(pane_rect.height);
     let inner_h = outer_h.saturating_sub(2) as usize;
     let (selected_rel, range) = if total_rows == 0 {
         (None, 0..0)
     } else {
-        let selected = selected.min(total_rows - 1);
+        let selected = selected.map(|row| row.min(total_rows - 1));
         let range = super::menu_box::window_range(
             total_rows,
-            selected.saturating_sub(inner_h / 2),
+            selected.unwrap_or(0).saturating_sub(inner_h / 2),
             inner_h,
         );
-        (Some(selected - range.start), range)
+        (selected.map(|row| row - range.start), range)
     };
     MenuWindow {
         range,
