@@ -61,7 +61,10 @@ fn formatting_methods_name_their_own_capability() {
         range.capability,
         Some(&["documentRangeFormattingProvider"][..])
     );
-    assert_eq!(ranges.capability, range.capability);
+    assert_eq!(
+        ranges.capability,
+        Some(&["documentRangeFormattingProvider", "rangesSupport"][..])
+    );
 }
 
 #[test]

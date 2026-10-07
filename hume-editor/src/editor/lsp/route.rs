@@ -256,7 +256,6 @@ impl EditorState {
         let spec = RouteSpec {
             feature: Some(feature),
             to: Some(server),
-            ..RouteSpec::default()
         };
         route(self, bid, None, &spec).is_ok()
     }
