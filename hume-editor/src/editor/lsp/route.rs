@@ -8,7 +8,9 @@ use hume_lsp::client::ServerState;
 use hume_rope::position_encoding::PositionEncoding;
 use hume_scripting::{LspFeature, RouteSpec, ServerName, ServerRef};
 
+use super::document::Attachment;
 use super::features::{advertises, capability_at, requirement};
+use super::instances::Instance;
 use crate::editor::EditorState;
 
 /// One server a request is routed to, with what serializing for it needs.
@@ -126,39 +128,21 @@ pub(in crate::editor) fn route(
         let Some(instance) = state.lsp.instances.get(att.server) else {
             continue;
         };
-        match instance.client.state() {
-            ServerState::Starting => {
-                starting.push(instance.name.clone());
-                continue;
+        match fit(att, instance, feature, capability) {
+            Fit::Dead => {}
+            Fit::Starting => starting.push(instance.name.clone()),
+            Fit::Crashed => crashed.push(instance.name.clone()),
+            Fit::Excluded => {
+                if spec.to.is_some() {
+                    excluded.push(instance.name.clone());
+                }
             }
-            ServerState::Running => {}
-            ServerState::Crashed => {
-                crashed.push(instance.name.clone());
-                continue;
-            }
-            ServerState::Dead => continue,
+            Fit::Unsupported => unsupported.push(instance.name.clone()),
+            Fit::Fits => routed.push(Routed {
+                server: instance.server_ref(att.server),
+                encoding: instance.client.encoding(),
+            }),
         }
-        if feature.is_some_and(|f| !att.filter.admits(f)) {
-            if spec.to.is_some() {
-                excluded.push(instance.name.clone());
-            }
-            continue;
-        }
-        let capabilities = instance
-            .client
-            .capabilities_json()
-            .map(|caps| caps.as_ref())
-            .unwrap_or(&serde_json::Value::Null);
-        let supported = feature.is_none_or(|f| advertises(f, capabilities))
-            && capability.is_none_or(|path| capability_at(capabilities, path).is_some());
-        if !supported {
-            unsupported.push(instance.name.clone());
-            continue;
-        }
-        routed.push(Routed {
-            server: instance.server_ref(att.server),
-            encoding: instance.client.encoding(),
-        });
     }
     if !routed.is_empty() {
         Ok(routed)
@@ -185,6 +169,52 @@ pub(in crate::editor) fn route(
     }
 }
 
+/// How one attachment stands against a request: the single decision
+/// [`route`] and [`EditorState::lsp_handles`] both read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Fit {
+    Dead,
+    Starting,
+    Crashed,
+    /// The attachment's list entry excludes the feature.
+    Excluded,
+    /// The server does not advertise the feature or capability.
+    Unsupported,
+    Fits,
+}
+
+/// Whether `att` can take a request needing `feature` and the capability at
+/// `capability`. A server that is not `Running` has no known capabilities
+/// and never fits.
+fn fit(
+    att: &Attachment,
+    instance: &Instance,
+    feature: Option<LspFeature>,
+    capability: Option<&[&str]>,
+) -> Fit {
+    match instance.client.state() {
+        ServerState::Starting => return Fit::Starting,
+        ServerState::Crashed => return Fit::Crashed,
+        ServerState::Dead => return Fit::Dead,
+        ServerState::Running => {}
+    }
+    if feature.is_some_and(|f| !att.filter.admits(f)) {
+        return Fit::Excluded;
+    }
+    let capabilities = instance
+        .client
+        .capabilities_json()
+        .map(|caps| caps.as_ref())
+        .unwrap_or(&serde_json::Value::Null);
+    let supported = feature.is_none_or(|f| advertises(f, capabilities))
+        && capability.is_none_or(|path| capability_at(capabilities, path).is_some());
+    if supported {
+        Fit::Fits
+    } else {
+        Fit::Unsupported
+    }
+}
+
 impl EditorState {
     /// Whether `sid` is attached to `bid`, running, its list entry admits
     /// `feature` and it advertises it: the condition under which [`route`]
@@ -195,13 +225,39 @@ impl EditorState {
         sid: ServerId,
         feature: LspFeature,
     ) -> bool {
-        self.buffer_positions.lsp.admits(bid, sid, feature)
-            && self.lsp.instances.is_running(sid)
-            && self
-                .lsp
-                .instances
-                .get(sid)
-                .and_then(|instance| instance.client.capabilities_json())
-                .is_some_and(|caps| advertises(feature, caps))
+        let Some(att) = self
+            .buffer_positions
+            .lsp
+            .attachments(bid)
+            .iter()
+            .find(|a| a.server == sid)
+        else {
+            return false;
+        };
+        self.lsp
+            .instances
+            .get(sid)
+            .is_some_and(|instance| fit(att, instance, Some(feature), None) == Fit::Fits)
+    }
+}
+
+#[cfg(test)]
+impl EditorState {
+    /// Whether [`route`] sends a `feature` request named `#:to` `sid` to it.
+    pub(in crate::editor) fn lsp_routes_to(
+        &self,
+        bid: BufferId,
+        sid: ServerId,
+        feature: LspFeature,
+    ) -> bool {
+        let Some(server) = self.lsp.instances.server_ref(sid) else {
+            return false;
+        };
+        let spec = RouteSpec {
+            feature: Some(feature),
+            to: Some(server),
+            ..RouteSpec::default()
+        };
+        route(self, bid, None, &spec).is_ok()
     }
 }

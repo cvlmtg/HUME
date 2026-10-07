@@ -6,6 +6,7 @@ use super::lsp_rig::{LspRig, RigSpec, TWO_RUST_SERVERS};
 use super::*;
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::RecordingLspBackend;
+use hume_scripting::LspFeature;
 use test_fixtures::unicode::ASTRAL;
 
 const RA: ServerId = ServerId(0);
@@ -105,6 +106,47 @@ fn lsp_servers_filters_by_capability_and_filter() {
             r#"("rust-analyzer")"#.to_string(),
             r#"("rust-analyzer" "ra-lint" "ra-extra")"#.to_string(),
         ]
+    );
+}
+
+#[test]
+fn lsp_handles_agrees_with_route_for_every_server() {
+    let tmp = safe_tempdir();
+    let mut rig = LspRig::drained(
+        tmp.path(),
+        spec("-[f]>n main() {}\n").with_init(concat!(
+            r#"(register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
+(register-lsp-server! "ra-lint" #:command "ra-lint")
+(register-lsp-server! "ra-extra" #:command "ra-extra")"#,
+            "\n",
+            r#"(set-language-servers! "rust" (list "rust-analyzer" (hash 'name "ra-lint" 'except-features '(hover)) "ra-extra"))"#
+        )),
+        {
+            let (mut backend, _, _) = RecordingLspBackend::new();
+            backend.respond_to_server(RA, "initialize", initialize("utf-16", hover_caps()));
+            backend.respond_to_server(LINT, "initialize", initialize("utf-16", hover_caps()));
+            backend.respond_to_server(ServerId(2), "initialize", initialize("utf-16", serde_json::json!({})));
+            backend
+        },
+    );
+    let sids = [RA, LINT, ServerId(2)];
+    let agree = |rig: &LspRig| -> Vec<(bool, bool)> {
+        sids.iter()
+            .map(|&sid| {
+                (
+                    rig.ed.state.lsp_handles(rig.bid, sid, LspFeature::Hover),
+                    rig.ed.state.lsp_routes_to(rig.bid, sid, LspFeature::Hover),
+                )
+            })
+            .collect()
+    };
+
+    assert_eq!(agree(&rig), [(true, true), (false, false), (false, false)]);
+
+    rig.crash(RA);
+    assert_eq!(
+        agree(&rig),
+        [(false, false), (false, false), (false, false)]
     );
 }
 
