@@ -245,6 +245,24 @@ fn a_save_right_after_typing_pulls_once() {
 }
 
 #[test]
+fn a_save_with_no_edit_since_the_last_pull_pulls_again() {
+    let tmp = safe_tempdir();
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", pull_capabilities());
+    backend.respond_to(PULL, full_report("r1", &["first"]));
+    backend.respond_to(PULL, full_report("r2", &["second"]));
+    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[w]>ord\n"), backend);
+    settle(&mut rig.ed);
+    let sid = rig.sid("rust-analyzer");
+
+    rig.ed.execute_typed("w", None).unwrap();
+    settle(&mut rig.ed);
+
+    assert_eq!(rig.requests_to(sid, PULL).len(), 2);
+    assert_eq!(stored_messages(&rig), ["second"]);
+}
+
+#[test]
 fn a_buffer_whose_servers_all_pushed_arms_no_pull_timer() {
     let tmp = safe_tempdir();
     let mut rig = attached_to(&tmp, super::lsp_rig::RUST_ANALYZER, pull_capabilities());

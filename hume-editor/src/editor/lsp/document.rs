@@ -6,9 +6,10 @@
 
 use hume_editing::changeset::ChangeSet;
 use hume_editing::edit::TextChange;
+use hume_editing::text::TextVersion;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
-use hume_scripting::FeatureFilter;
+use hume_scripting::{FeatureFilter, LspFeature};
 use ropey::Rope;
 use rustc_hash::FxHashMap;
 use slotmap::SecondaryMap;
@@ -21,13 +22,15 @@ use hume_scripting::TriggerKind;
 /// registered for this buffer under it (kind and source name -> chars).
 /// The trigger characters go with the attachment, and with a change of its
 /// filter. `pull_result_id` is the `resultId` of the last diagnostics report
-/// the server gave for this buffer.
+/// the server gave for this buffer, and `pulled_at` the text version the last
+/// diagnostics pull asked about.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::editor) struct Attachment {
     pub(in crate::editor) server: ServerId,
     pub(in crate::editor) filter: FeatureFilter,
     triggers: FxHashMap<(TriggerKind, String), Vec<char>>,
     pull_result_id: Option<String>,
+    pulled_at: Option<TextVersion>,
 }
 
 impl Attachment {
@@ -37,6 +40,7 @@ impl Attachment {
             filter,
             triggers: FxHashMap::default(),
             pull_result_id: None,
+            pulled_at: None,
         }
     }
 }
@@ -117,6 +121,42 @@ impl LspDocuments {
             .iter()
             .find(|a| a.server == sid)
             .map(|a| a.filter)
+    }
+
+    /// Whether `sid` is attached to `bid` with a filter admitting `feature`.
+    pub(in crate::editor) fn admits(
+        &self,
+        bid: BufferId,
+        sid: ServerId,
+        feature: LspFeature,
+    ) -> bool {
+        self.filter_of(bid, sid)
+            .is_some_and(|filter| filter.admits(feature))
+    }
+
+    /// The text version of `sid`'s last diagnostics pull for `bid`.
+    pub(in crate::editor::lsp) fn pulled_at(
+        &self,
+        bid: BufferId,
+        sid: ServerId,
+    ) -> Option<TextVersion> {
+        self.attachments(bid)
+            .iter()
+            .find(|a| a.server == sid)?
+            .pulled_at
+    }
+
+    /// Replaces the text version of `sid`'s last diagnostics pull for `bid`.
+    /// Does nothing when `sid` is not attached to `bid`.
+    pub(in crate::editor::lsp) fn set_pulled_at(
+        &mut self,
+        bid: BufferId,
+        sid: ServerId,
+        version: Option<TextVersion>,
+    ) {
+        if let Some(att) = self.attachment_mut(bid, sid) {
+            att.pulled_at = version;
+        }
     }
 
     /// The `resultId` of `sid`'s last diagnostics report for `bid`.
@@ -282,7 +322,8 @@ impl LspDocuments {
 
     /// Replaces `sid`'s filter on `bid`. The trigger tables depend on what
     /// the filter admits, so they are emptied for the attach hook to
-    /// register again.
+    /// register again, and the diagnostics pull is forgotten so the new
+    /// filter's pull asks afresh.
     pub(in crate::editor::lsp) fn set_filter(
         &mut self,
         bid: BufferId,
@@ -292,6 +333,7 @@ impl LspDocuments {
         if let Some(att) = self.attachment_mut(bid, sid) {
             att.filter = filter;
             att.triggers.clear();
+            att.pulled_at = None;
         }
     }
 

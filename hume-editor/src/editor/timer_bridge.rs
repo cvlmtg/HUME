@@ -74,7 +74,7 @@ impl Editor {
                 }
                 Some(TimerPayload::DiagnosticPullDebounce(bid)) => {
                     self.diagnostic_pull_debounce.remove(&bid);
-                    self.state.lsp_pull_diagnostics(bid, None);
+                    self.state.lsp_pull_diagnostics(bid);
                 }
                 None => {}
             }
@@ -115,15 +115,6 @@ impl Editor {
         self.timer_payloads
             .insert(id, TimerPayload::DiagnosticPullDebounce(bid));
         self.diagnostic_pull_debounce.insert(bid, id);
-    }
-
-    /// Pulls `bid`'s diagnostics now, in place of the debounced pull for its
-    /// latest edit: two pulls for the same text would be identical. The
-    /// edit is detected first so its debounce exists to be cancelled.
-    pub(super) fn pull_diagnostics_now(&mut self, bid: BufferId) {
-        self.detect_text_changed();
-        self.cancel_diagnostic_pull_debounce(bid);
-        self.state.lsp_pull_diagnostics(bid, None);
     }
 
     fn cancel_diagnostic_pull_debounce(&mut self, bid: BufferId) {

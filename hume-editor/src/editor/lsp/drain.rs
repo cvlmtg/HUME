@@ -160,8 +160,7 @@ impl Editor {
                 // this server: it was Starting until now, so attaching
                 // skipped firing it for them.
                 for bid in self.state.buffer_positions.lsp.buffers_of(server_id) {
-                    self.state.queue_lsp_attach(bid, server_id);
-                    self.state.lsp_pull_diagnostics(bid, Some(server_id));
+                    self.state.lsp_attachment_live(bid, server_id);
                 }
             }
             ClientAction::Crashed { error } => {
@@ -194,7 +193,7 @@ impl Editor {
                     self.apply_edit_request_response(&params, server_id)
                 } else if method == lsp_types::request::WorkspaceDiagnosticRefresh::METHOD {
                     for bid in self.state.buffer_positions.lsp.buffers_of(server_id) {
-                        self.state.lsp_pull_diagnostics(bid, Some(server_id));
+                        self.state.lsp_repull_diagnostics(bid, server_id);
                     }
                     Ok(serde_json::Value::Null)
                 } else {

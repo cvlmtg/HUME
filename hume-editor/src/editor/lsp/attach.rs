@@ -38,6 +38,7 @@ enum Announce {
 #[derive(Default)]
 struct Pass {
     retired: Vec<ServerId>,
+    announced: Vec<(BufferId, ServerId)>,
     roots: RootCache,
     failed: FxHashSet<(ServerName, PathBuf)>,
 }
@@ -73,14 +74,20 @@ impl EditorState {
         self.lsp_stop_unreferenced(view, pass.retired);
     }
 
-    /// [`Self::lsp_reconcile_buffer`] for every open buffer.
-    pub(in crate::editor) fn lsp_reconcile_all(&mut self, view: &EngineView) {
+    /// [`Self::lsp_reconcile_buffer`] for every open buffer. Returns the
+    /// `(buffer, server)` attachments it announced, by a fresh attach or a
+    /// filter change.
+    pub(in crate::editor) fn lsp_reconcile_all(
+        &mut self,
+        view: &EngineView,
+    ) -> Vec<(BufferId, ServerId)> {
         let bids: Vec<BufferId> = self.buffers.iter().map(|(bid, _)| bid).collect();
         let mut pass = Pass::default();
         for bid in bids {
             self.lsp_reconcile_one(view, bid, &mut pass);
         }
         self.lsp_stop_unreferenced(view, pass.retired);
+        pass.announced
     }
 
     /// Detaches every server from `bid`, with `didClose`, for a buffer about
@@ -212,8 +219,14 @@ impl EditorState {
                 continue;
             };
             match self.buffer_positions.lsp.filter_of(bid, sid) {
-                None => self.lsp_attach(bid, sid, w.filter, &opened),
-                Some(filter) if filter != w.filter => self.lsp_set_filter(bid, sid, w.filter),
+                None => {
+                    self.lsp_attach(bid, sid, w.filter, &opened);
+                    pass.announced.push((bid, sid));
+                }
+                Some(filter) if filter != w.filter => {
+                    self.lsp_set_filter(bid, sid, w.filter);
+                    pass.announced.push((bid, sid));
+                }
                 Some(_) => {}
             }
             order.push(sid);
@@ -299,8 +312,14 @@ impl EditorState {
         self.buffer_positions
             .lsp
             .push(bid, Attachment::new(sid, filter), opened);
+        self.lsp_attachment_live(bid, sid);
+    }
+
+    /// Announces `sid`'s attachment to `bid` and pulls its diagnostics, once
+    /// `sid` is `Running`.
+    pub(in crate::editor) fn lsp_attachment_live(&mut self, bid: BufferId, sid: ServerId) {
         self.queue_lsp_attach(bid, sid);
-        self.lsp_pull_diagnostics(bid, Some(sid));
+        self.lsp_pull_diagnostics_from(bid, sid);
     }
 
     /// A kept attachment's new filter. A filter that no longer admits
@@ -310,16 +329,8 @@ impl EditorState {
     /// emptied by the change, so `OnLspAttach` fires again for plugins to
     /// register what the new filter admits.
     fn lsp_set_filter(&mut self, bid: BufferId, sid: ServerId, filter: FeatureFilter) {
-        let pulls = |filter: FeatureFilter| {
-            filter.admits(LspFeature::Diagnostics) && filter.admits(LspFeature::PullDiagnostics)
-        };
-        let pulled_before = self
-            .buffer_positions
-            .lsp
-            .filter_of(bid, sid)
-            .is_some_and(pulls);
         self.buffer_positions.lsp.set_filter(bid, sid, filter);
-        self.queue_lsp_attach(bid, sid);
+        self.lsp_attachment_live(bid, sid);
         if !filter.admits(LspFeature::Diagnostics)
             && self
                 .buffer_positions
@@ -327,9 +338,6 @@ impl EditorState {
                 .remove_source_for_buffer(sid, bid)
         {
             self.queue_event(EditorEvent::OnDiagnosticsChanged { buffer: bid });
-        }
-        if pulls(filter) && !pulled_before {
-            self.lsp_pull_diagnostics(bid, Some(sid));
         }
     }
 
