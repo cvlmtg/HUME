@@ -7,7 +7,6 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::host::{PositionParams, RangeParams, RangesParams};
-use crate::json::steel_to_params;
 use crate::types::{
     CapabilityQuery, Effect, FeatureFilter, ListEntry, ListLayer, LspFeature, LspFeatureSet,
     LspServerTarget, PaneHandle, Params, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
@@ -17,10 +16,11 @@ use crate::{PendingLspServerReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, callable_arg, hash_entry, json_arg, list_items, list_of, list_to_env_pairs,
-    list_to_strings, optional_json_arg, optional_list_items, optional_server_arg,
-    optional_string_arg, optional_symbol_arg, optional_token_arg, pair_fields, server_arg,
-    string_arg, string_hash, string_list, symbol_enum_arg, symbol_hash, token_arg, wire_position,
+    bool_arg, callable_arg, checked_params, hash_entry, json_arg, list_items, list_of,
+    list_to_env_pairs, list_to_strings, optional_json_arg, optional_list_items,
+    optional_server_arg, optional_string_arg, optional_symbol_arg, optional_token_arg, pair_fields,
+    server_arg, string_arg, string_hash, string_list, symbol_enum_arg, symbol_hash, token_arg,
+    wire_position, wire_range,
 };
 use super::errors::generic_err;
 use super::hooks::{register_entry, require_known_event};
@@ -315,15 +315,6 @@ fn reject_feature_on_standard_method(
         ))),
         None => Ok(()),
     }
-}
-
-/// Converts `val` to request params, so a malformed value raises at the
-/// call rather than when the request is sent.
-fn checked_params(val: SteelVal, ctx_name: &str) -> Result<Params, SteelErr> {
-    if matches!(val, SteelVal::BoolV(_)) {
-        steel::stop!(TypeMismatch => "{}: expected a hashmap or JSON handle, got a boolean", ctx_name);
-    }
-    steel_to_params(&val).map_err(|e| generic_err(format!("{ctx_name}: {e}")))
 }
 
 /// The one decode behind `%lsp-request!` and `%lsp-request-all!`: the
@@ -883,21 +874,13 @@ pub(crate) fn lsp_range_to_offsets(
     let encoding = handle
         .position_encoding("lsp-range->offsets")
         .map_err(generic_err)?;
-    let range_json = handle.value();
-    let start_json = range_json
-        .get("start")
-        .ok_or_else(|| generic_err("lsp-range->offsets: range missing 'start'"))?;
-    let end_json = range_json
-        .get("end")
-        .ok_or_else(|| generic_err("lsp-range->offsets: range missing 'end'"))?;
-    let start_pos = wire_position(start_json, "lsp-range->offsets")?;
-    let end_pos = wire_position(end_json, "lsp-range->offsets")?;
+    let range = wire_range(handle.value(), "lsp-range->offsets")?;
     let Some(lsp) = ctx.host.lsp() else {
         return Ok(SteelVal::BoolV(false));
     };
     let (Some(start), Some(end)) = (
-        lsp.lsp_wire_to_char(bid, start_pos, encoding),
-        lsp.lsp_wire_to_char(bid, end_pos, encoding),
+        lsp.lsp_wire_to_char(bid, range.start, encoding),
+        lsp.lsp_wire_to_char(bid, range.end, encoding),
     ) else {
         return Ok(SteelVal::BoolV(false));
     };

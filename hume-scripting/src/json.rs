@@ -79,12 +79,17 @@ fn number_to_steel(n: &serde_json::Number) -> SteelVal {
 /// values with no JSON representation (functions, ports, custom types other
 /// than [`JsonHandle`], a buffer position, …). The error names the offending
 /// kind rather than producing `null`.
+#[cfg(test)]
 pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
     match steel_to_params(v)? {
         Params::Json(json) => Ok(json),
-        _ => Err("a position value can only be sent through lsp-request!/lsp-notify!".to_string()),
+        _ => Err(POSITION_NOT_JSON.to_string()),
     }
 }
+
+/// Why a value holding a position has no plain JSON form.
+pub(crate) const POSITION_NOT_JSON: &str =
+    "a position value can only be sent through lsp-request!, lsp-request-all! or lsp-notify!";
 
 /// Converts a `SteelVal` into request [`Params`]: the same conversion as
 /// [`steel_to_json`], except a [`crate::DocPos`]/[`crate::DocRange`] stays a
