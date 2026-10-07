@@ -1,7 +1,7 @@
 ;;; core:lsp/lib.scm — shared helpers used by every feature file. See
 ;;; docs/architecture.md.
 
-(provide lsp/report-error! lsp/answers lsp/none-answered? lsp/report-answer-errors! lsp/with-position-params
+(provide lsp/report-error! lsp/answered lsp/answers lsp/none-answered? lsp/report-answer-errors! lsp/with-position-params
          lsp/visible-lines lsp/resolve-pane
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?
          lsp/with-servers)
@@ -52,12 +52,15 @@
   (log! (if (member (hash-ref err 'kind) '(unavailable stopped)) 'info 'error)
         (string-append "lsp " what ": " (hash-ref err 'message))))
 
-;; The results of an `lsp-request-all!` answer that are neither an error nor
+;; The entries of an `lsp-request-all!` answer that are neither an error nor
 ;; null, in server order.
+(define (lsp/answered results)
+  (filter (lambda (r) (not (or (hash-ref r 'err) (void? (hash-ref r 'result)))))
+          results))
+
+;; Their results.
 (define (lsp/answers results)
-  (map (lambda (r) (hash-ref r 'result))
-       (filter (lambda (r) (not (or (hash-ref r 'err) (void? (hash-ref r 'result)))))
-               results)))
+  (map (lambda (r) (hash-ref r 'result)) (lsp/answered results)))
 
 ;; Whether no server in an `lsp-request-all!` answer gave a result, errors aside.
 (define (lsp/none-answered? results)

@@ -519,7 +519,7 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
 // ── settle() and the pending-work queue ───────────────────────────────────────
 
 /// **Async events fire with no input.** An event raised from async
-/// work (here, `queue_diagnostics_changed`, the same call `drain_lsp` makes
+/// work (here, an `OnDiagnosticsChanged` event, as `drain_lsp` raises
 /// when a `publishDiagnostics` batch lands) must fire once `settle()` runs,
 /// even with **no input dispatched at all**. `Editor::run`'s poll loops back
 /// on `Ok(false)` without dispatching anything, so this is the path a
@@ -549,7 +549,8 @@ fn event_raised_from_async_work_fires_on_settle_with_no_input() {
     // The async producer's raise call, mirroring what `drain_lsp` does when a
     // `publishDiagnostics` batch lands. No key, mouse, or paste event
     // anywhere in this test.
-    ed.queue_diagnostics_changed(bid);
+    ed.state
+        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
     ed.settle();
 
     assert_ne!(
@@ -2319,7 +2320,8 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
     .unwrap();
     ed.scripting = Some(host);
 
-    ed.queue_diagnostics_changed(bid);
+    ed.state
+        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
     // Reproduces "something else in the same batch closed bid first":
     // here, a direct close between queueing and the drain, rather than a
     // timer thunk queued ahead of the event; the observable failure mode

@@ -1,6 +1,7 @@
 //! The capability each routable [`LspFeature`] needs a server to advertise.
 
 use hume_scripting::{CapabilityQuery, LspFeature};
+use lsp_types::request::{DocumentDiagnosticRequest, Request as _};
 
 /// The value at `path` in `capabilities` (a server's wire
 /// `ServerCapabilities`), or `None` when a step is missing or the value is
@@ -63,7 +64,7 @@ pub(in crate::editor) fn requirement(method: &str) -> Option<Requirement> {
         "textDocument/documentLink" => (LspFeature::DocumentLinks, None),
         "textDocument/documentSymbol" => (LspFeature::DocumentSymbols, None),
         "workspace/symbol" => (LspFeature::WorkspaceSymbols, None),
-        "textDocument/diagnostic" => (LspFeature::PullDiagnostics, None),
+        DocumentDiagnosticRequest::METHOD => (LspFeature::PullDiagnostics, None),
         "textDocument/rename" => (LspFeature::RenameSymbol, None),
         "textDocument/inlayHint" => (LspFeature::InlayHints, None),
         "textDocument/documentColor" => (LspFeature::DocumentColors, None),

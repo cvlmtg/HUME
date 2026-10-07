@@ -7,6 +7,7 @@ use hume_platform::io::FileMeta;
 
 use crate::editor::buffer::Buffer;
 use crate::editor::commands::FocusedPane;
+use crate::editor::event::EditorEvent;
 
 use super::lifecycle;
 use crate::editor::position_stores::PositionStores;
@@ -274,7 +275,8 @@ impl Editor {
             // the change; nothing republishes decorations on its own, so they
             // stay cleared until a plugin sets them again.
             if self.state.buffer_positions.diagnostics.remove_buffer(id) {
-                self.queue_diagnostics_changed(id);
+                self.state
+                    .queue_event(EditorEvent::OnDiagnosticsChanged { buffer: id });
             }
             self.state.buffer_positions.lsp.forget_pulls(id);
             self.state.config.decorations.remove_buffer(id);

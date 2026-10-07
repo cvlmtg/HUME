@@ -107,7 +107,6 @@ impl EditorState {
             }
         }
         triggered.completions.sort_unstable();
-        triggered.completions.dedup();
         triggered
     }
 }

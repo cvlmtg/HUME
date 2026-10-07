@@ -311,7 +311,8 @@ impl Editor {
             .filter(|&bid| snapshot.survives(bid, &self.state.buffers))
             .collect();
         for bid in diagnostic_bids {
-            self.queue_diagnostics_changed(bid);
+            self.state
+                .queue_event(EditorEvent::OnDiagnosticsChanged { buffer: bid });
         }
 
         // Inlay hints (and anything else `on-viewport-change`-gated, e.g.

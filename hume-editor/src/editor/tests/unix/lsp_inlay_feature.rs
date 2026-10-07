@@ -464,7 +464,8 @@ fn diagnostics_changed_also_refreshes_hints() {
         )
         .unwrap(),
     );
-    ed.queue_diagnostics_changed(bid);
+    ed.state
+        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
     settle_after_debounce(&mut ed);
 
     assert_eq!(
@@ -510,7 +511,8 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
         )
         .unwrap(),
     );
-    ed.queue_diagnostics_changed(bid);
+    ed.state
+        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
     settle_after_debounce(&mut ed);
 
     assert_eq!(
@@ -549,7 +551,8 @@ fn an_empty_response_clears_previously_stored_hints() {
 
     // Viewport is already known; on-diagnostics-changed alone re-triggers
     // the debounced refresh without moving anything.
-    ed.queue_diagnostics_changed(bid);
+    ed.state
+        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
     settle_after_debounce(&mut ed);
 
     assert_eq!(
@@ -618,7 +621,8 @@ fn a_failed_response_keeps_the_stored_hints_and_reports_the_error() {
 
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
-    ed.queue_diagnostics_changed(bid);
+    ed.state
+        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
     settle_after_debounce(&mut ed);
 
     assert_eq!(
@@ -666,8 +670,10 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
 
     // Both fires land inside the same 200ms debounce window, with no settle in
     // between.
-    ed.queue_diagnostics_changed(bid_a);
-    ed.queue_diagnostics_changed(bid_b);
+    ed.state
+        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid_a });
+    ed.state
+        .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid_b });
     settle_after_debounce(&mut ed);
 
     let sent_to = |sid: ServerId| {

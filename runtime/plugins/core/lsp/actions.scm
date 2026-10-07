@@ -60,12 +60,10 @@
 (define (lsp/offered-actions results)
   (apply append
     (map (lambda (r)
-           (let ((res (hash-ref r 'result)))
-             (if (or (hash-ref r 'err) (void? res))
-                 '()
-                 (map (lambda (a) (cons (hash-ref r 'server) a))
-                      (filter (lambda (a) (not (lsp/action-disabled? a))) (json-list res))))))
-         results)))
+           (map (lambda (a) (cons (hash-ref r 'server) a))
+                (filter (lambda (a) (not (lsp/action-disabled? a)))
+                        (json-list (hash-ref r 'result)))))
+         (lsp/answered results))))
 
 ;; An action's menu row: its title, followed by its server's name when more
 ;; than one server offered actions.

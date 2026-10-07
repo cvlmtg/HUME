@@ -213,14 +213,6 @@ impl Editor {
             .queue_event(EditorEvent::OnBufferSave { buffer: bid });
     }
 
-    /// Fire `OnDiagnosticsChanged (bid)`: a payload-free signal, once per
-    /// buffer a `publishDiagnostics` drain batch actually touched
-    /// (`drain_lsp`). Handlers pull via `(diagnostics-for-buffer bid …)`.
-    pub(super) fn queue_diagnostics_changed(&mut self, bid: BufferId) {
-        self.state
-            .queue_event(EditorEvent::OnDiagnosticsChanged { buffer: bid });
-    }
-
     /// Fire `OnViewportChange (pane first-line end-line)` for `pane_id`,
     /// called only when its debounce timer actually fires (`timer_bridge`),
     /// reading the pane's *current* bounds rather than whatever they were

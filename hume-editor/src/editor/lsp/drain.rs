@@ -15,6 +15,7 @@ use lsp_types::request::Request as _;
 use super::LspState;
 use super::diagnostics::{CANONICALIZE_PER_DRAIN, Ingest};
 use crate::editor::commands::FocusedPane;
+use crate::editor::event::EditorEvent;
 use crate::editor::{Editor, EditorState, Severity};
 use hume_engine::pipeline::EngineView;
 use hume_scripting::PaneHandle;
@@ -86,7 +87,8 @@ impl Editor {
             }
         }
         for bid in touched {
-            self.queue_diagnostics_changed(bid);
+            self.state
+                .queue_event(EditorEvent::OnDiagnosticsChanged { buffer: bid });
         }
     }
 

@@ -10,13 +10,14 @@ use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::client::parse_wire_diagnostics;
 use hume_scripting::{CapabilityQuery, LspFeature};
+use lsp_types::request::{DocumentDiagnosticRequest, Request as _};
 
 use super::bridge::RustResponder;
 use super::introspect::provider_of;
 use crate::editor::event::EditorEvent;
 use crate::editor::{EditorState, Severity};
 
-const PULL: &str = "textDocument/diagnostic";
+const PULL: &str = DocumentDiagnosticRequest::METHOD;
 
 impl EditorState {
     /// Whether `sid` is a server to pull `bid`'s diagnostics from: running,
