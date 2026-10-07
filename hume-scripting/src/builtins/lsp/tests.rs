@@ -972,8 +972,8 @@ fn position_params_hash_carries_a_doc_pos() {
         .get(&"textDocument".into_steelval().unwrap())
         .expect("a textDocument key");
     assert_eq!(
-        crate::json::steel_to_json(document).unwrap(),
-        serde_json::json!({ "uri": "file:///a.rs" })
+        crate::json::steel_to_params(document).unwrap(),
+        crate::Params::Json(serde_json::json!({ "uri": "file:///a.rs" }))
     );
 }
 

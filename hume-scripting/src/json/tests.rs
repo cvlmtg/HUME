@@ -1,6 +1,16 @@
 use super::*;
 use serde_json::json;
 
+/// `v` as plain JSON, failing when it holds a position.
+fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
+    match steel_to_params(v)? {
+        Params::Json(json) => Ok(json),
+        Params::Doc(_) | Params::Array(_) | Params::Object(_) => {
+            Err("holds a position".to_string())
+        }
+    }
+}
+
 fn round_trip(v: serde_json::Value) {
     let steel = json_to_steel(&v);
     let back = steel_to_json(&steel).expect("round trip must succeed");
@@ -435,7 +445,8 @@ fn render_fails_with_the_encoders_error() {
 }
 
 #[test]
-fn steel_to_json_rejects_a_doc_pos() {
-    let err = steel_to_json(&doc_pos_val(0)).expect_err("a position has no plain JSON form");
-    assert!(err.contains("lsp-request!"), "{err}");
+fn json_params_rejects_a_doc_pos() {
+    let err = crate::builtins::args::json_params(doc_pos_val(0), "ctx")
+        .expect_err("a position has no plain JSON form");
+    assert!(err.to_string().contains(POSITION_NOT_JSON), "{err}");
 }

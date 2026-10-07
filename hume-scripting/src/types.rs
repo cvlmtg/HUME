@@ -327,7 +327,7 @@ pub enum ListLayer {
 /// One `(register-lsp-server! …)` call queued for the end-of-eval drain.
 ///
 /// `init_options`/`settings` are decoded at the Steel boundary via
-/// `crate::json::steel_to_json`: Steel data structures in, real JSON out.
+/// `crate::json::steel_to_params`: Steel data structures in, real JSON out.
 #[derive(Debug)]
 pub struct PendingLspServerReg {
     /// The registration's identity: re-registering a name replaces its

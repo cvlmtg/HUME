@@ -60,7 +60,7 @@ fn number_to_steel(n: &serde_json::Number) -> SteelVal {
         // In (i64::MAX, u64::MAX]: not i64-representable, but still an
         // exact integer (e.g. a large id/hash field). Falling back to f64
         // here would silently lose precision; BigNum represents it exactly
-        // instead, so a value echoed back through steel_to_json still
+        // instead, so a value echoed back through steel_to_params still
         // matches what the server sent.
         SteelVal::BigNum(Gc::new(u.into()))
     } else {
@@ -75,25 +75,16 @@ fn number_to_steel(n: &serde_json::Number) -> SteelVal {
     }
 }
 
-/// Converts a `SteelVal` into the equivalent `serde_json::Value`. Fails on
-/// values with no JSON representation (functions, ports, custom types other
-/// than [`JsonHandle`], a buffer position, …). The error names the offending
-/// kind rather than producing `null`.
-#[cfg(test)]
-pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
-    match steel_to_params(v)? {
-        Params::Json(json) => Ok(json),
-        _ => Err(POSITION_NOT_JSON.to_string()),
-    }
-}
-
 /// Why a value holding a position has no plain JSON form.
 pub(crate) const POSITION_NOT_JSON: &str =
     "a position value can only be sent through lsp-request!, lsp-request-all! or lsp-notify!";
 
-/// Converts a `SteelVal` into request [`Params`]: the plain JSON conversion,
-/// except a [`crate::DocPos`]/[`crate::DocRange`] stays a position for the
-/// server it is sent to, whose encoding it needs.
+/// Converts a `SteelVal` into request [`Params`]: the equivalent
+/// `serde_json::Value`, except a [`crate::DocPos`]/[`crate::DocRange`] stays a
+/// position for the server it is sent to, whose encoding it needs. Fails on
+/// values with no JSON representation (functions, ports, custom types other
+/// than [`JsonHandle`], …). The error names the offending kind rather than
+/// producing `null`.
 pub fn steel_to_params(v: &SteelVal) -> Result<Params, String> {
     let json = |value| Ok(Params::Json(value));
     match v {
