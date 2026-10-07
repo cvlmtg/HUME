@@ -149,10 +149,10 @@ fn lsp_server_status_lists_the_running_server() {
             r#"(let ((entry (car (lsp-server-status))))
                  (and (equal? (hash-ref entry 'name) "rust-analyzer")
                       (equal? (hash-ref entry 'languages) '("rust"))
-                      (equal? (hash-ref entry 'root) "{}")
+                      (equal? (hash-ref entry 'root) {:?})
                       (equal? (hash-ref entry 'state) 'running)
                       (equal? (hash-ref entry 'pending) 0)))"#,
-            rig.root.display()
+            rig.root
         ),
     );
     assert!(
