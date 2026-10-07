@@ -9,9 +9,9 @@ use steel::rvals::SteelVal;
 use crate::host::{PositionParams, RangeParams, RangesParams};
 use crate::json::steel_to_json_with;
 use crate::types::{
-    Effect, FeatureFilter, ListEntry, ListLayer, LspFeature, LspFeatureSet, LspServerTarget,
-    PaneHandle, Params, PendingLspNotify, PendingLspRequest, PendingLspServerOp, RequestMode,
-    RequestParams, RouteSpec, ServerName,
+    CapabilityQuery, Effect, FeatureFilter, ListEntry, ListLayer, LspFeature, LspFeatureSet,
+    LspServerTarget, PaneHandle, Params, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
+    RequestMode, RequestParams, RouteSpec, ServerName, WhenUnavailable,
 };
 use crate::{PendingLspServerReg, SteelCtx};
 
@@ -278,6 +278,12 @@ fn feature_arg(val: SteelVal, ctx_name: &str) -> Result<Option<LspFeature>, Stee
         .transpose()
 }
 
+/// A feature symbol that must be given.
+pub(super) fn required_feature_arg(val: SteelVal, ctx_name: &str) -> Result<LspFeature, SteelErr> {
+    feature_arg(val, ctx_name)?
+        .ok_or_else(|| generic_err(format!("{ctx_name}: expected a feature symbol")))
+}
+
 /// The routing keywords every request and notification shares. `to` is
 /// `#f` for `lsp-request-all!`, which takes no `#:to`.
 fn route_arg(feature: SteelVal, to: SteelVal, verb: &str) -> Result<RouteSpec, SteelErr> {
@@ -345,6 +351,7 @@ fn queue_request(
     mode: RequestMode,
     route: RouteSpec,
     callback: SteelVal,
+    unavailable: SteelVal,
     allow_stale: SteelVal,
     supersede: SteelVal,
     require_focus: SteelVal,
@@ -354,6 +361,11 @@ fn queue_request(
     let method = string_arg(method, &format!("{verb} method"))?;
     reject_feature_on_standard_method(ctx, &route, &method, verb)?;
     let callback = callable_arg(callback, &format!("{verb} callback"))?;
+    let ctx_name = format!("{verb} #:unavailable");
+    let when_unavailable = optional_symbol_arg(unavailable, &ctx_name)?
+        .map(|name| symbol_enum_arg(&name, &ctx_name, &WhenUnavailable::NAMED))
+        .transpose()?
+        .unwrap_or_default();
     let allow_stale = bool_arg(allow_stale, &format!("{verb} #:allow-stale"))?;
     let supersede = optional_string_arg(supersede, &format!("{verb} #:supersede"))?;
     let require_focus = bool_arg(require_focus, &format!("{verb} #:require-focus"))?
@@ -372,6 +384,7 @@ fn queue_request(
         params,
         mode,
         route,
+        when_unavailable,
         callback,
         allow_stale,
         supersede,
@@ -381,12 +394,14 @@ fn queue_request(
     Ok(SteelVal::Void)
 }
 
-/// `(%lsp-request! pane method params callback feature to
+/// `(%lsp-request! pane method params callback feature to unavailable
 /// allow-stale supersede require-focus tracked)`, behind the `lsp-request!`
 /// wrapper (BOOTSTRAP), which supplies the keyword defaults. Queues one
 /// request, sent after this eval to the first server attached to `pane`'s
 /// buffer that `method`, `#:feature` and `#:to` admit and that is running
-/// then. `callback` receives `(err result)`.
+/// then. `callback` receives `(err result)`. `#:unavailable 'empty` answers
+/// a request no server can take with void and no error, instead of an
+/// `'unavailable` error.
 ///
 /// `#:require-focus` fires the callback only if `pane` is still focused when
 /// the response arrives: for cursor-anchored UI (hover, signature help, code
@@ -408,6 +423,7 @@ pub(crate) fn lsp_request(
     callback: SteelVal,
     feature: SteelVal,
     to: SteelVal,
+    unavailable: SteelVal,
     allow_stale: SteelVal,
     supersede: SteelVal,
     require_focus: SteelVal,
@@ -423,6 +439,7 @@ pub(crate) fn lsp_request(
         RequestMode::Single,
         route,
         callback,
+        unavailable,
         allow_stale,
         supersede,
         require_focus,
@@ -430,14 +447,15 @@ pub(crate) fn lsp_request(
     )
 }
 
-/// `(%lsp-request-all! pane method params callback feature
+/// `(%lsp-request-all! pane method params callback feature unavailable
 /// allow-stale supersede require-focus tracked)`, behind the
 /// `lsp-request-all!` wrapper. Sends to every server `method` and
 /// `#:feature` admit and calls `callback` once with `(err results)`:
 /// one `(hash 'server s 'err e 'result r)` per server, in attachment order.
 /// `params` is a hash every server receives, or a list of
 /// `(server . params)` pairs giving each named server its own; `method` and
-/// `#:feature` still admit or reject each of them.
+/// `#:feature` still admit or reject each of them. `#:unavailable 'empty`
+/// calls back with `'()` and no error when no server can take it.
 // Same rationale as `lsp_request`'s `#[allow]`.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lsp_request_all(
@@ -447,6 +465,7 @@ pub(crate) fn lsp_request_all(
     params: SteelVal,
     callback: SteelVal,
     feature: SteelVal,
+    unavailable: SteelVal,
     allow_stale: SteelVal,
     supersede: SteelVal,
     require_focus: SteelVal,
@@ -477,6 +496,7 @@ pub(crate) fn lsp_request_all(
         RequestMode::All,
         route,
         callback,
+        unavailable,
         allow_stale,
         supersede,
         require_focus,
@@ -601,15 +621,19 @@ pub(crate) fn lsp_capability(
     let server = server_arg(&server, "lsp-capability")?;
     let feature = feature_arg(feature, "lsp-capability #:feature")?;
     let method = optional_string_arg(method, "lsp-capability #:method")?;
-    if feature.is_some() == method.is_some() {
-        return Err(generic_err(
-            "lsp-capability: give exactly one of #:feature and #:method".to_string(),
-        ));
-    }
+    let query = match (feature, method.as_deref()) {
+        (Some(feature), None) => CapabilityQuery::Feature(feature),
+        (None, Some(method)) => CapabilityQuery::Method(method),
+        _ => {
+            return Err(generic_err(
+                "lsp-capability: give exactly one of #:feature and #:method".to_string(),
+            ));
+        }
+    };
     Ok(ctx
         .host
         .lsp()
-        .and_then(|lsp| lsp.lsp_capability(server.id, feature, method.as_deref()))
+        .and_then(|lsp| lsp.lsp_capability(server.id, query))
         .map_or(SteelVal::BoolV(false), |v| {
             crate::json::to_steel_handle(v, crate::json::WireOrigin::Local)
         }))

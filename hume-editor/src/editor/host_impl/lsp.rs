@@ -7,7 +7,7 @@ use hume_lsp::backend::ServerId;
 use hume_scripting::host::{
     HostToken, LocationDisplay, LspHost, PositionParams, RangeParams, RangesParams,
 };
-use hume_scripting::{LspFeature, PaneHandle, ServerRef};
+use hume_scripting::{CapabilityQuery, LspFeature, PaneHandle, ServerRef};
 
 use crate::editor::lsp::{introspect, params};
 
@@ -19,10 +19,9 @@ impl<'a> LspHost for EditorHostImpl<'a> {
     fn lsp_capability(
         &self,
         server: ServerId,
-        feature: Option<LspFeature>,
-        method: Option<&str>,
+        query: CapabilityQuery<'_>,
     ) -> Option<std::sync::Arc<serde_json::Value>> {
-        introspect::capability(&self.state.lsp, server, feature, method)
+        introspect::capability(&self.state.lsp, server, query)
     }
 
     fn lsp_method_feature(&self, method: &str) -> Option<LspFeature> {

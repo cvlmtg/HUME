@@ -41,14 +41,14 @@
 (define lsp/sighelp-request
   (debounce 150
     (lambda (pane)
-      (when (and (pane-live? pane)
-                 (not (null? (lsp-servers pane #:feature 'signature-help))))
+      (when (pane-live? pane)
         (lsp-request! pane "textDocument/signatureHelp" (lsp-position-params pane)
           (lambda (err res)
             (cond
               (err (lsp/report-error! "signature help" err) (lsp/close-sighelp!))
               ((void? res) (lsp/close-sighelp!))
               (else (lsp/show-sighelp pane res))))
+          #:unavailable 'empty
           #:require-focus #t)))))
 
 (lsp/setup-trigger-chars! 'signature-help "lsp-sighelp" (list ")")

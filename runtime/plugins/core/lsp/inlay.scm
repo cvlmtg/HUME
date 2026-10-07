@@ -37,19 +37,18 @@
     (lambda (pane)
       (let ((range (viewport-range pane)))
         (when (get-option "lsp.inlay-hints")
-          (if (null? (lsp-servers pane #:feature 'inlay-hints))
-              (set-inlay-hints! "lsp-inlay-hints" pane '())
-              (let ((params (lsp/inlay-hint-params pane (hash-ref range 'start) (hash-ref range 'end))))
-                (when params
-                  (lsp-request-all! pane "textDocument/inlayHint" params
-                    (lambda (err results)
-                      (when err (lsp/report-error! "inlay hints" err))
-                      (lsp/report-answer-errors! "inlay hints" results)
-                      (unless (or err (lsp/every-slot-failed? results))
-                        (set-inlay-hints! "lsp-inlay-hints" pane
-                          (filter (lambda (e) e)
-                                  (map (lambda (h) (lsp/hint->store-entry pane h))
-                                       (apply append (map json-list (lsp/answers results)))))))))))))))
+          (let ((params (lsp/inlay-hint-params pane (hash-ref range 'start) (hash-ref range 'end))))
+            (when params
+              (lsp-request-all! pane "textDocument/inlayHint" params
+                (lambda (err results)
+                  (when err (lsp/report-error! "inlay hints" err))
+                  (lsp/report-answer-errors! "inlay hints" results)
+                  (unless (or err (lsp/every-slot-failed? results))
+                    (set-inlay-hints! "lsp-inlay-hints" pane
+                      (filter (lambda (e) e)
+                              (map (lambda (h) (lsp/hint->store-entry pane h))
+                                   (apply append (map json-list (lsp/answers results))))))))
+                #:unavailable 'empty))))))
     #:key (lambda (p . _) (buffer-key p))))
 
 ;;; `pane` need not itself be live — see docs/decorations.md's "Inlay hints".

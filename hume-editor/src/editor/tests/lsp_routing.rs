@@ -282,6 +282,70 @@ fn request_unsupported_by_every_server_names_them() {
 }
 
 #[test]
+fn request_unavailable_empty_answers_void_without_an_error() {
+    let tmp = safe_tempdir();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", serde_json::json!({})),
+            initialize("utf-16", serde_json::json!({})),
+            |_| {},
+        ),
+    );
+
+    rig.probe(&format!(
+        r#"(lsp-request! pane "textDocument/hover" (lsp-position-params pane) {LOG_ONE} #:unavailable 'empty)"#
+    ));
+
+    assert_eq!(rig.warnings(), vec!["ok:null".to_string()]);
+}
+
+#[test]
+fn request_all_unavailable_empty_answers_an_empty_list_without_an_error() {
+    let tmp = safe_tempdir();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", serde_json::json!({})),
+            initialize("utf-16", serde_json::json!({})),
+            |_| {},
+        ),
+    );
+
+    rig.probe(&format!(
+        r#"(lsp-request-all! pane "textDocument/hover" (lsp-position-params pane) {LOG_ALL} #:unavailable 'empty)"#
+    ));
+
+    assert_eq!(rig.warnings(), vec![String::new()]);
+}
+
+#[test]
+fn resolve_to_a_server_without_a_resolve_provider_is_unsupported() {
+    let tmp = safe_tempdir();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize(
+                "utf-16",
+                serde_json::json!({ "codeActionProvider": { "resolveProvider": true } }),
+            ),
+            initialize("utf-16", serde_json::json!({ "codeActionProvider": true })),
+            |_| {},
+        ),
+    );
+
+    rig.probe(&format!(
+        r#"(lsp-request! pane "codeAction/resolve" (hash "title" "t") {LOG_ONE}
+             #:to (cadr (lsp-servers pane)))"#
+    ));
+
+    assert_eq!(
+        rig.warnings(),
+        vec!["err:code-action is not supported by ra-lint".to_string()]
+    );
+}
+
+#[test]
 fn request_with_to_names_the_server() {
     let tmp = safe_tempdir();
     let mut rig = two_servers(

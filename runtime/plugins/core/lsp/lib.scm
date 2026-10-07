@@ -34,13 +34,12 @@
 (define (lsp/setup-trigger-chars! feature source-name extra-chars on-trigger)
   (define (set-chars! pane server chars)
     (if on-trigger
-        (set-attachment-hook-triggers! source-name pane server chars)
-        (set-attachment-completion-triggers! source-name pane server chars)))
+        (set-attachment-hook-triggers! source-name pane server feature chars)
+        (set-attachment-completion-triggers! source-name pane server feature chars)))
   (register-hook! 'on-lsp-attach
     (lambda (pane server)
-      (when (member server (lsp-servers pane #:feature feature))
-        (let ((tc (lsp/cap-field (lsp-capability server #:feature feature) "triggerCharacters" #f)))
-          (set-chars! pane server (append extra-chars (if tc (json-list tc) (list))))))))
+      (let ((tc (lsp/cap-field (lsp-capability server #:feature feature) "triggerCharacters" #f)))
+        (set-chars! pane server (append extra-chars (if tc (json-list tc) (list)))))))
   (when on-trigger
     (register-hook! 'on-trigger-char
       (lambda (pane ch source)

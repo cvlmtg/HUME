@@ -423,7 +423,7 @@ fn set_attachment_hook_triggers_fires_for_that_buffer_only() {
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
              (when (equal? (get-buffer-option pane "language") "rust")
-               (set-attachment-hook-triggers! "test" pane server '(".")))))
+               (set-attachment-hook-triggers! "test" pane server 'diagnostics '(".")))))
            (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warn source)))"#,
         answering_initialize(),
     );
@@ -464,7 +464,7 @@ fn attachment_triggers_are_per_buffer_not_per_instance() {
     let lib_bid = rig.ed.focused_buffer_id();
     assert_ne!(lib_bid, rig.bid);
 
-    rig.probe(r#"(set-attachment-hook-triggers! "test" pane (car (lsp-servers pane)) '("."))"#);
+    rig.probe(r#"(set-attachment-hook-triggers! "test" pane (car (lsp-servers pane)) 'diagnostics '("."))"#);
 
     let tables = |ed: &Editor, bid| {
         ed.state
@@ -477,13 +477,36 @@ fn attachment_triggers_are_per_buffer_not_per_instance() {
     assert_eq!(tables(&rig.ed, rig.bid), 0);
 }
 
+/// A set for a feature the server does not advertise is refused when it
+/// applies, so a plugin need not check before registering.
+#[test]
+fn attachment_triggers_for_an_unadvertised_feature_set_nothing() {
+    let tmp = safe_tempdir();
+    let mut rig = starting_rig(&tmp, "", answering_initialize());
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+
+    rig.probe(
+        r#"(set-attachment-hook-triggers! "test" pane (car (lsp-servers pane)) 'hover '("."))"#,
+    );
+
+    let triggers = rig
+        .ed
+        .state
+        .buffer_positions
+        .lsp
+        .triggers(rig.bid, hume_scripting::TriggerKind::Hook)
+        .count();
+    assert_eq!(triggers, 0);
+}
+
 #[test]
 fn attachment_triggers_vanish_when_the_server_stops() {
     let tmp = safe_tempdir();
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
-             (set-attachment-hook-triggers! "test" pane server '("."))))
+             (set-attachment-hook-triggers! "test" pane server 'diagnostics '("."))))
            (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warn source)))"#,
         answering_initialize(),
     );
@@ -517,7 +540,7 @@ fn a_filter_change_clears_the_attachments_triggers_and_refires_attach() {
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
              (log! 'warn "attach")
              (when (member server (lsp-servers pane #:feature 'hover))
-               (set-attachment-hook-triggers! "test" pane server '(".")))))"#,
+               (set-attachment-hook-triggers! "test" pane server 'diagnostics '(".")))))"#,
         backend,
     );
     rig.ed.drain_lsp();
@@ -553,7 +576,7 @@ fn reload_clears_attachment_triggers() {
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
-             (set-attachment-hook-triggers! "test" pane server '("."))))"#,
+             (set-attachment-hook-triggers! "test" pane server 'diagnostics '("."))))"#,
         answering_initialize(),
     );
     rig.ed.drain_lsp();

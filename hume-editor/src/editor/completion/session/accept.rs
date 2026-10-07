@@ -12,7 +12,7 @@ use super::super::item::CompletionItem;
 use super::buffer::{BufferSession, BufferSpan};
 use super::contains_cursor;
 use crate::editor::event::EditorEvent;
-use crate::editor::lsp::{RustResponder, edits, introspect, wire_range_to_chars};
+use crate::editor::lsp::{RustResponder, edits, wire_range_to_chars};
 use crate::editor::{EditorState, Severity};
 use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors};
 
@@ -462,9 +462,6 @@ impl BufferSession {
         let hume_scripting::json::WireOrigin::Server { id: server_id, .. } = raw.origin() else {
             return;
         };
-        if !introspect::completion_resolve_provider(&state.lsp, server_id) {
-            return;
-        }
 
         let respond: RustResponder = Box::new(move |state, view, result| match result {
             Ok(resolved) => {

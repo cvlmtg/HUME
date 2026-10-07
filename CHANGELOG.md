@@ -31,7 +31,8 @@
 - `lsp-capabilities` takes a server, not a pane.
 - `:lsp-stop` is lasting: a stopped server stays stopped until `:lsp-restart`, `:reload-config` or registering its name again.
 - A request callback's `err` is a hash with `'kind` and `'message`.
-- `set-attachment-hook-triggers!` and `set-attachment-completion-triggers!` set trigger characters for one buffer's attachment to one server.
+- `set-attachment-hook-triggers!` and `set-attachment-completion-triggers!` set trigger characters for one buffer's attachment to one server, for one feature. Nothing is set unless the language's server list lets that server handle the feature and the server supports it.
+- `lsp-request!` and `lsp-request-all!` take `#:unavailable 'empty`, which answers a request no server can take with an empty result instead of an error.
 - `completion-emit!` takes a list of entries. Pass an `lsp-request!` answer as `(list res)`.
 - `diagnostics-for-buffer` entries carry `'server`, and `lsp-locations->display-parts` rows carry `'location`.
 - `lsp-position-params` and its siblings give each server position values in its own column units, not line and character numbers.

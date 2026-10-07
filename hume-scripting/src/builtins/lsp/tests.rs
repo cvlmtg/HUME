@@ -1,7 +1,7 @@
 use super::*;
 use crate::json::JsonHandle;
 use crate::test_support::{SteelCtxTestHarness, default_bid, default_pane, default_pane_with_pane};
-use crate::types::{RequestMode, RequestParams, RouteSpec};
+use crate::types::{RequestMode, RequestParams, RouteSpec, WhenUnavailable};
 use hume_rope::position_encoding::PositionEncoding;
 use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;
@@ -644,6 +644,7 @@ struct RequestArgs {
     params: SteelVal,
     feature: SteelVal,
     to: SteelVal,
+    unavailable: SteelVal,
     supersede: SteelVal,
     require_focus: SteelVal,
     tracked: SteelVal,
@@ -656,6 +657,7 @@ impl Default for RequestArgs {
             params: hashmap(vec![]),
             feature: SteelVal::BoolV(false),
             to: SteelVal::BoolV(false),
+            unavailable: SteelVal::SymbolV("error".into()),
             supersede: SteelVal::BoolV(false),
             require_focus: SteelVal::BoolV(false),
             tracked: SteelVal::BoolV(false),
@@ -672,6 +674,7 @@ fn request(ctx: &mut SteelCtx, args: RequestArgs) -> SteelResult {
         SteelVal::FuncV(noop_proc),
         args.feature,
         args.to,
+        args.unavailable,
         SteelVal::BoolV(false),
         args.supersede,
         args.require_focus,
@@ -687,6 +690,7 @@ fn request_all(ctx: &mut SteelCtx, params: SteelVal) -> SteelResult {
         params,
         SteelVal::FuncV(noop_proc),
         SteelVal::BoolV(false),
+        SteelVal::SymbolV("error".into()),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
@@ -792,6 +796,39 @@ fn lsp_request_decodes_feature_method_and_to() {
             }),
         }
     );
+}
+
+#[test]
+fn lsp_request_decodes_unavailable() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    request(
+        &mut ctx,
+        RequestArgs {
+            unavailable: SteelVal::SymbolV("empty".into()),
+            ..RequestArgs::default()
+        },
+    )
+    .expect("a well-formed request queues");
+    request(&mut ctx, RequestArgs::default()).expect("a well-formed request queues");
+    let requests = lsp_requests(&ctx);
+    assert_eq!(requests[0].when_unavailable, WhenUnavailable::Empty);
+    assert_eq!(requests[1].when_unavailable, WhenUnavailable::Error);
+}
+
+#[test]
+fn lsp_request_rejects_an_unknown_unavailable() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = request(
+        &mut ctx,
+        RequestArgs {
+            unavailable: SteelVal::SymbolV("quiet".into()),
+            ..RequestArgs::default()
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("quiet"), "{err}");
 }
 
 #[test]

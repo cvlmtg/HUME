@@ -9,10 +9,10 @@
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::client::parse_wire_diagnostics;
-use hume_scripting::LspFeature;
+use hume_scripting::{CapabilityQuery, LspFeature};
 
 use super::bridge::RustResponder;
-use super::features::{advertises, provider};
+use super::introspect::provider_of;
 use crate::editor::event::EditorEvent;
 use crate::editor::{EditorState, Severity};
 
@@ -25,15 +25,8 @@ impl EditorState {
     fn lsp_pull_candidate(&self, bid: BufferId, sid: ServerId) -> bool {
         let docs = &self.buffer_positions.lsp;
         docs.admits(bid, sid, LspFeature::Diagnostics)
-            && docs.admits(bid, sid, LspFeature::PullDiagnostics)
             && !self.lsp.instances.has_pushed_diagnostics(sid)
-            && self.lsp.instances.is_running(sid)
-            && self
-                .lsp
-                .instances
-                .get(sid)
-                .and_then(|instance| instance.client.capabilities_json())
-                .is_some_and(|caps| advertises(LspFeature::PullDiagnostics, &caps))
+            && self.lsp_handles(bid, sid, LspFeature::PullDiagnostics)
     }
 
     /// Whether any server attached to `bid` is a pull candidate.
@@ -85,14 +78,13 @@ impl EditorState {
             return;
         };
         let mut params = serde_json::json!({ "textDocument": { "uri": opened.uri } });
-        let identifier = self
-            .lsp
-            .instances
-            .get(sid)
-            .and_then(|instance| instance.client.capabilities_json())
-            .and_then(|caps| provider(caps, Some(LspFeature::PullDiagnostics), None))
-            .and_then(|options| options.get("identifier"))
-            .cloned();
+        let identifier = provider_of(
+            &self.lsp,
+            sid,
+            CapabilityQuery::Feature(LspFeature::PullDiagnostics),
+        )
+        .and_then(|options| options.get("identifier"))
+        .cloned();
         if let Some(identifier) = identifier {
             params["identifier"] = identifier;
         }

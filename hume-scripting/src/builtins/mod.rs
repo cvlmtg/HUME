@@ -383,8 +383,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "lsp-restart!" lsp::lsp_restart(target: args::LspTargetArg);
         cmd "lsp-show-status!" lsp::lsp_show_status(pane: args::LivePane);
         // Generic LSP bridge: any protocol method reachable from Steel.
-        cmd "%lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, to: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
-        cmd "%lsp-request-all!" lsp::lsp_request_all(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
+        cmd "%lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, to: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
+        cmd "%lsp-request-all!" lsp::lsp_request_all(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
         cmd "%lsp-notify!" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal, feature: SteelVal, to: SteelVal);
         config "register-lsp-notification-hook!" lsp::register_lsp_notification_hook(methods: SteelVal, proc: SteelVal);
         // Introspection
@@ -411,7 +411,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "buffer-live?" buffers::buffer_live(pane: args::ArgPane);
         cmd "pane-live?" buffers::pane_live(pane: args::ArgPane);
         open "set-hook-triggers!" completion::set_hook_triggers(source: SteelVal, language: SteelVal, chars: SteelVal);
-        open "set-attachment-hook-triggers!" completion::set_attachment_hook_triggers(source: SteelVal, pane: args::LivePane, server: SteelVal, chars: SteelVal);
+        open "set-attachment-hook-triggers!" completion::set_attachment_hook_triggers(source: SteelVal, pane: args::LivePane, server: SteelVal, feature: SteelVal, chars: SteelVal);
 
         // Decoration stores + diagnostics pull.
         cmd "set-inlay-hints!" decorations::set_inlay_hints(source: SteelVal, pane: args::LivePane, hints: SteelVal);
@@ -446,7 +446,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "completion-accept!" completion::completion_accept(idx: SteelVal);
         cmd "completion-dismiss!" completion::completion_dismiss();
         open "set-completion-triggers!" completion::set_completion_triggers(source: SteelVal, language: SteelVal, chars: SteelVal);
-        open "set-attachment-completion-triggers!" completion::set_attachment_completion_triggers(source: SteelVal, pane: args::LivePane, server: SteelVal, chars: SteelVal);
+        open "set-attachment-completion-triggers!" completion::set_attachment_completion_triggers(source: SteelVal, pane: args::LivePane, server: SteelVal, feature: SteelVal, chars: SteelVal);
 
         // Cursor-anchored popup widget.
         cmd "%show-popup!" ui::show_popup(pane: args::LivePane, text: SteelVal, anchor: SteelVal, kind: SteelVal, lang: SteelVal);

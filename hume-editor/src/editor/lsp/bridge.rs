@@ -19,7 +19,7 @@ use hume_rope::position_encoding::{PositionEncoding, char_range_to_wire_range, c
 use hume_scripting::json::{WireOrigin, steel_to_json_with, to_steel_handle};
 use hume_scripting::{
     DocPos, DocRange, Params, PendingLspNotify, PendingLspRequest, RequestMode, RequestParams,
-    RouteSpec, ServerRef, symbol_hash,
+    RouteSpec, ServerRef, WhenUnavailable, symbol_hash,
 };
 use steel::rvals::SteelVal;
 
@@ -460,18 +460,30 @@ impl EditorState {
         }
     }
 
-    /// Calls `req`'s callback with an `'unavailable` error saying `reason`
-    /// and no result: a request that reached no server still calls back
-    /// once.
+    /// Calls `req`'s callback for a request that reached no server: with an
+    /// `'unavailable` error saying `reason` and no result, or with no error
+    /// and an empty answer when it asked for `#:unavailable 'empty`.
     fn fail_request(&mut self, req: &PendingLspRequest, reason: String) {
-        let empty = match req.mode {
-            RequestMode::Single => SteelVal::BoolV(false),
-            RequestMode::All => SteelVal::ListV(Vec::<SteelVal>::new().into()),
+        let args = match (req.when_unavailable, req.mode) {
+            (WhenUnavailable::Error, RequestMode::Single) => {
+                vec![
+                    SlotError::Unavailable(reason).into_steel(),
+                    SteelVal::BoolV(false),
+                ]
+            }
+            (WhenUnavailable::Error, RequestMode::All) => vec![
+                SlotError::Unavailable(reason).into_steel(),
+                SteelVal::ListV(Vec::<SteelVal>::new().into()),
+            ],
+            (WhenUnavailable::Empty, RequestMode::Single) => {
+                vec![SteelVal::BoolV(false), SteelVal::Void]
+            }
+            (WhenUnavailable::Empty, RequestMode::All) => vec![
+                SteelVal::BoolV(false),
+                SteelVal::ListV(Vec::<SteelVal>::new().into()),
+            ],
         };
-        self.queue_steel_call(
-            req.callback.clone(),
-            vec![SlotError::Unavailable(reason).into_steel(), empty],
-        );
+        self.queue_steel_call(req.callback.clone(), args);
     }
 
     /// Hands `server`'s answer to `request` to the delivery waiting for it,

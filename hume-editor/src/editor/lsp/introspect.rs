@@ -13,23 +13,21 @@ use super::diagnostics::DiagSeverity;
 use super::features::provider;
 use crate::editor::Editor;
 use crate::editor::EditorState;
-use hume_scripting::{ListEntry, LspFeature, ServerName};
-
-/// Whether `server` advertises `completionProvider.resolveProvider`, the
-/// gate `BufferSession::accept`'s resolve round trip reads.
-pub(in crate::editor) fn completion_resolve_provider(lsp: &LspState, server: ServerId) -> bool {
-    lsp.instances
-        .get(server)
-        .and_then(|i| i.client.capabilities_json())
-        .and_then(|caps| provider(caps, Some(LspFeature::Completion), None))
-        .and_then(|cp| cp.get("resolveProvider"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-}
+use hume_scripting::{CapabilityQuery, ListEntry, LspFeature, ServerName};
 
 /// The feature a standard request `method` belongs to.
 pub(in crate::editor) fn method_feature(method: &str) -> Option<LspFeature> {
     super::features::requirement(method).map(|r| r.feature)
+}
+
+/// What `server` advertises for `query`, borrowed from its capabilities.
+pub(in crate::editor) fn provider_of<'a>(
+    lsp: &'a LspState,
+    server: ServerId,
+    query: CapabilityQuery<'_>,
+) -> Option<&'a serde_json::Value> {
+    let caps = lsp.instances.get(server)?.client.capabilities_json()?;
+    provider(caps, query)
 }
 
 /// What `(lsp-capability …)` hands to Steel: `server`'s capability for
@@ -38,11 +36,9 @@ pub(in crate::editor) fn method_feature(method: &str) -> Option<LspFeature> {
 pub(in crate::editor) fn capability(
     lsp: &LspState,
     server: ServerId,
-    feature: Option<LspFeature>,
-    method: Option<&str>,
+    query: CapabilityQuery<'_>,
 ) -> Option<std::sync::Arc<serde_json::Value>> {
-    let caps = lsp.instances.get(server)?.client.capabilities_json()?;
-    provider(caps, feature, method).map(|value| std::sync::Arc::new(value.clone()))
+    provider_of(lsp, server, query).map(|value| std::sync::Arc::new(value.clone()))
 }
 
 /// `server`'s raw wire capabilities. See `LspClient::capabilities_json`'s

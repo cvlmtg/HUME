@@ -30,8 +30,8 @@ impl EditorState {
     /// that triple's previous set. A `Completion` set must name a
     /// registered `Buffer` source: a plugin's own typo or stale rename, not
     /// something to ignore the way a `Hook` set has to (a hook's listener
-    /// need not be a completion source). An attachment scope for a buffer
-    /// not attached to the server sets nothing.
+    /// need not be a completion source). An attachment scope sets nothing
+    /// unless the server handles its feature for the buffer.
     pub(in crate::editor) fn set_triggers(
         &mut self,
         kind: TriggerKind,
@@ -48,10 +48,17 @@ impl EditorState {
                 (kind, source, language),
                 chars,
             ),
-            TriggerScope::Attachment { buffer, server } => self
-                .buffer_positions
-                .lsp
-                .set_triggers(buffer, server, kind, source, chars),
+            TriggerScope::Attachment {
+                buffer,
+                server,
+                feature,
+            } => {
+                if self.lsp_handles(buffer, server, feature) {
+                    self.buffer_positions
+                        .lsp
+                        .set_triggers(buffer, server, kind, source, chars);
+                }
+            }
         }
         Ok(())
     }

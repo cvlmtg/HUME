@@ -3,11 +3,12 @@
 //! feature filters and each server's capabilities.
 
 use hume_engine::pipeline::BufferId;
+use hume_lsp::backend::ServerId;
 use hume_lsp::client::ServerState;
 use hume_rope::position_encoding::PositionEncoding;
 use hume_scripting::{LspFeature, RouteSpec, ServerName, ServerRef};
 
-use super::features::{advertises, has_capability, requirement};
+use super::features::{advertises, capability_at, requirement};
 use crate::editor::EditorState;
 
 /// One server a request is routed to, with what serializing for it needs.
@@ -149,7 +150,7 @@ pub(in crate::editor) fn route(
             .map(|caps| caps.as_ref())
             .unwrap_or(&serde_json::Value::Null);
         let supported = feature.is_none_or(|f| advertises(f, capabilities))
-            && capability.is_none_or(|key| has_capability(capabilities, key));
+            && capability.is_none_or(|path| capability_at(capabilities, path).is_some());
         if !supported {
             unsupported.push(instance.name.clone());
             continue;
@@ -174,12 +175,33 @@ pub(in crate::editor) fn route(
         Err(Unavailable::Unsupported {
             what: match (feature, capability) {
                 (Some(feature), _) => feature.name().to_string(),
-                (None, Some(key)) => key.to_string(),
+                (None, Some(path)) => path.join("."),
                 (None, None) => "this request".to_string(),
             },
             servers: unsupported,
         })
     } else {
         Err(Unavailable::NoServer)
+    }
+}
+
+impl EditorState {
+    /// Whether `sid` is attached to `bid`, running, its list entry admits
+    /// `feature` and it advertises it: the condition under which [`route`]
+    /// would send a `feature` request to it.
+    pub(in crate::editor) fn lsp_handles(
+        &self,
+        bid: BufferId,
+        sid: ServerId,
+        feature: LspFeature,
+    ) -> bool {
+        self.buffer_positions.lsp.admits(bid, sid, feature)
+            && self.lsp.instances.is_running(sid)
+            && self
+                .lsp
+                .instances
+                .get(sid)
+                .and_then(|instance| instance.client.capabilities_json())
+                .is_some_and(|caps| advertises(feature, caps))
     }
 }

@@ -74,19 +74,21 @@
 
 (define (lsp-request! pane method params callback #:feature [feature #f]
                                                    #:to [to #f]
+                                                   #:unavailable [unavailable 'error]
                                                    #:allow-stale [allow-stale #f]
                                                    #:supersede [supersede #f]
                                                    #:require-focus [require-focus #f]
                                                    #:tracked [tracked #f])
-  (%lsp-request! pane method params callback feature to
+  (%lsp-request! pane method params callback feature to unavailable
                  allow-stale supersede require-focus tracked))
 
 (define (lsp-request-all! pane method params callback #:feature [feature #f]
+                                                       #:unavailable [unavailable 'error]
                                                        #:allow-stale [allow-stale #f]
                                                        #:supersede [supersede #f]
                                                        #:require-focus [require-focus #f]
                                                        #:tracked [tracked #f])
-  (%lsp-request-all! pane method params callback feature
+  (%lsp-request-all! pane method params callback feature unavailable
                      allow-stale supersede require-focus tracked))
 
 (define (lsp-notify! pane method params #:feature [feature #f] #:to [to #f])

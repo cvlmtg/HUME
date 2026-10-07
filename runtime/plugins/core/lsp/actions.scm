@@ -14,9 +14,6 @@
 (define (lsp/action-title action)
   (json-ref action "title"))
 
-(define (lsp/action-resolve-provider? server)
-  (lsp/cap-flag? (lsp-capability server #:feature 'code-action) "resolveProvider"))
-
 ;; `server` produced the action: its resolve and command go back to it.
 (define (lsp/exec-command pane server cmd-obj)
   (lsp-request! pane "workspace/executeCommand"
@@ -33,10 +30,12 @@
       ((or edit command)
        (when edit (apply-workspace-edit! pane edit #:expect-generation gen))
        (when command (lsp/exec-command pane server (if (string? command) action command))))
-      ((and (not resolved?) (lsp/action-resolve-provider? server))
+      ((not resolved?)
        (lsp-request! pane "codeAction/resolve" action
          (lambda (err resolved)
            (cond
+             ((and err (equal? (hash-ref err 'kind) 'unavailable))
+              (log! 'info "Code action has no edit or command"))
              (err (lsp/report-error! "code action" err))
              ((void? resolved) (log! 'info "Code action has no edit or command"))
              (else (lsp/run-action pane server resolved gen #:resolved? #t))))

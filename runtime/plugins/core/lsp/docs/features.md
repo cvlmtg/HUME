@@ -87,7 +87,7 @@ truthy `"disabled"` field are dropped from the menu.
 
 Running a chosen action applies its `edit`, then runs its `command`. An action with
 neither is resolved once through `codeAction/resolve` when the server advertises
-`resolveProvider`, and logs "Code action has no edit or command" if the resolved action is
+`resolveProvider` (the editor sends no resolve request to a server that does not), and logs "Code action has no edit or command" if the resolved action is
 still empty. The resolve step runs at most once, so a server that keeps returning an empty
 action cannot loop. A bare legacy `Command` (a string `command` and no `edit`) is passed to
 `workspace/executeCommand` as the whole action object. The edit is applied with

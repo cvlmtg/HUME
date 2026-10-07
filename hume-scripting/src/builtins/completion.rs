@@ -15,6 +15,7 @@ use super::args::{
     symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
+use super::lsp::required_feature_arg;
 
 /// Decodes `#:match` (`'fuzzy`/`'string`/`'delegated`). A `String` source
 /// is case-sensitive by default; no Steel caller needs case-insensitive
@@ -70,33 +71,38 @@ pub(crate) fn set_hook_triggers(
     queue_triggers(ctx, name, TriggerKind::Hook, source, scope, chars)
 }
 
-/// `(set-attachment-hook-triggers! source pane server chars)`: the same
-/// table for the one attachment of `pane`'s buffer to `server`. Callable
+/// `(set-attachment-hook-triggers! source pane server feature chars)`: the
+/// same table for the one attachment of `pane`'s buffer to `server`, for
+/// `feature`. Callable
 /// from any context, including command bodies and hook handlers: signature
 /// help sets its trigger characters from inside an `on-lsp-attach` handler,
 /// which runs as plain command context (no `EvalMode` gate applies here,
-/// unlike `register-hook!`). A buffer that is not attached to `server`
-/// when this applies gets nothing.
+/// unlike `register-hook!`). Nothing is set when this applies unless the
+/// buffer is attached to `server`, the attachment's list entry admits
+/// `feature` and `server` advertises it.
 pub(crate) fn set_attachment_hook_triggers(
     ctx: &mut SteelCtx,
     source: SteelVal,
     pane: PaneHandle,
     server: SteelVal,
+    feature: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
     let name = "set-attachment-hook-triggers!";
-    let scope = attachment_scope(pane, server, &format!("{name} server"))?;
+    let scope = attachment_scope(pane, server, feature, name)?;
     queue_triggers(ctx, name, TriggerKind::Hook, source, scope, chars)
 }
 
 fn attachment_scope(
     pane: PaneHandle,
     server: SteelVal,
-    ctx_name: &str,
+    feature: SteelVal,
+    name: &str,
 ) -> Result<TriggerScope, SteelErr> {
     Ok(TriggerScope::Attachment {
         buffer: pane.buffer(),
-        server: server_arg(&server, ctx_name)?.id,
+        server: server_arg(&server, &format!("{name} server"))?.id,
+        feature: required_feature_arg(feature, &format!("{name} feature"))?,
     })
 }
 
@@ -258,18 +264,19 @@ pub(crate) fn set_completion_triggers(
     queue_triggers(ctx, name, TriggerKind::Completion, source, scope, chars)
 }
 
-/// `(set-attachment-completion-triggers! source pane server chars)`: the
-/// same for the one attachment of `pane`'s buffer to `server`, as
+/// `(set-attachment-completion-triggers! source pane server feature chars)`:
+/// the same for the one attachment of `pane`'s buffer to `server`, as
 /// `set-attachment-hook-triggers!` is to `set-hook-triggers!`.
 pub(crate) fn set_attachment_completion_triggers(
     ctx: &mut SteelCtx,
     source: SteelVal,
     pane: PaneHandle,
     server: SteelVal,
+    feature: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
     let name = "set-attachment-completion-triggers!";
-    let scope = attachment_scope(pane, server, &format!("{name} server"))?;
+    let scope = attachment_scope(pane, server, feature, name)?;
     queue_triggers(ctx, name, TriggerKind::Completion, source, scope, chars)
 }
 

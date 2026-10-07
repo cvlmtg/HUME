@@ -9,7 +9,7 @@ use hume_lsp::backend::ServerId;
 
 use super::token::HostToken;
 use crate::builtins::ids::{DocPos, DocRange, ServerRef};
-use crate::types::{LspFeature, PaneHandle};
+use crate::types::{CapabilityQuery, LspFeature, PaneHandle};
 
 /// A position request's params before encoding: the document URI and a
 /// position each server receives in its own encoding.
@@ -43,14 +43,12 @@ pub trait LspHost {
 
     /// What `server` advertises for `feature`, or for the one capability
     /// `method` needs: the provider's wire value (`true` or an options
-    /// object). `None` when it advertises none, `method` belongs to no
-    /// feature, or `server` is not running. Exactly one of `feature` and
-    /// `method` is `Some`.
+    /// object). `None` when it advertises none, the method belongs to no
+    /// feature, or `server` is not running.
     fn lsp_capability(
         &self,
         server: ServerId,
-        feature: Option<LspFeature>,
-        method: Option<&str>,
+        query: CapabilityQuery<'_>,
     ) -> Option<Arc<serde_json::Value>>;
 
     /// The feature a standard request `method` belongs to (`textDocument/hover`

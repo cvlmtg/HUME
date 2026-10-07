@@ -55,11 +55,11 @@ pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
-    Effect, EvalError, FeatureFilter, GrammarReg, ListEntry, ListLayer, LspFeature, LspFeatureSet,
-    LspServerStatusEntry, LspServerTarget, PaneHandle, Params, PendingLanguageReg,
-    PendingLspNotify, PendingLspRequest, PendingLspServerOp, PendingLspServerReg, RequestMode,
-    RequestParams, RouteSpec, ServerName, SteelCmdDef, SteelCmdResult, SteelTypedCmdDef,
-    TriggerKind, TriggerScope, VirtualLineSpec,
+    CapabilityQuery, Effect, EvalError, FeatureFilter, GrammarReg, ListEntry, ListLayer,
+    LspFeature, LspFeatureSet, LspServerStatusEntry, LspServerTarget, PaneHandle, Params,
+    PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
+    PendingLspServerReg, RequestMode, RequestParams, RouteSpec, ServerName, SteelCmdDef,
+    SteelCmdResult, SteelTypedCmdDef, TriggerKind, TriggerScope, VirtualLineSpec, WhenUnavailable,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than

@@ -251,6 +251,14 @@ lsp_features! {
     CallHierarchy => "call-hierarchy",
 }
 
+/// What `(lsp-capability …)` asks a server for: the capability of a feature,
+/// or the one a request method needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CapabilityQuery<'a> {
+    Feature(LspFeature),
+    Method(&'a str),
+}
+
 /// A set of [`LspFeature`]s, one bit per variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LspFeatureSet(u32);
@@ -398,14 +406,17 @@ pub enum TriggerKind {
 }
 
 /// Where a trigger-char set applies: the buffers of a language, or one
-/// buffer's attachment to one server, whose entries go when that buffer
-/// detaches from the server.
+/// buffer's attachment to one server for one feature, whose entries go when
+/// that buffer detaches from the server. An attachment set applies only
+/// while the attachment's list entry admits `feature` and the server
+/// advertises it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TriggerScope {
     Language(String),
     Attachment {
         buffer: hume_engine::pipeline::BufferId,
         server: hume_lsp::backend::ServerId,
+        feature: LspFeature,
     },
 }
 
@@ -461,6 +472,24 @@ impl RequestMode {
     }
 }
 
+/// What a request's callback receives when no server can take it:
+/// `Error` an `'unavailable` error saying why, `Empty` the answer of a
+/// server with nothing to give (void, or `'()` for `lsp-request-all!`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WhenUnavailable {
+    #[default]
+    Error,
+    Empty,
+}
+
+impl WhenUnavailable {
+    /// `(spelling, value)` pairs for decoding `#:unavailable`.
+    pub const NAMED: [(&'static str, WhenUnavailable); 2] = [
+        ("error", WhenUnavailable::Error),
+        ("empty", WhenUnavailable::Empty),
+    ];
+}
+
 /// An `lsp-request!`/`lsp-request-all!` call queued during an eval and sent
 /// by the editor when the eval's effects apply. `bid` names the buffer the
 /// request is about, never live focus, so a follow-up request from a
@@ -473,6 +502,7 @@ pub struct PendingLspRequest {
     pub params: RequestParams,
     pub mode: RequestMode,
     pub route: RouteSpec,
+    pub when_unavailable: WhenUnavailable,
     pub callback: SteelVal,
     pub allow_stale: bool,
     /// `#:supersede`: a new request under the same key cancels the

@@ -1,13 +1,22 @@
 //! The capability each routable [`LspFeature`] needs a server to advertise.
 
-use hume_scripting::LspFeature;
+use hume_scripting::{CapabilityQuery, LspFeature};
 
-/// Whether `capabilities` (a server's wire `ServerCapabilities`) carries
-/// `key` with a value that is neither `false` nor `null`.
-pub(in crate::editor) fn has_capability(capabilities: &serde_json::Value, key: &str) -> bool {
-    capabilities
-        .get(key)
-        .is_some_and(|v| !matches!(v, serde_json::Value::Bool(false) | serde_json::Value::Null))
+/// The value at `path` in `capabilities` (a server's wire
+/// `ServerCapabilities`), or `None` when a step is missing or the value is
+/// `false` or `null`.
+pub(in crate::editor) fn capability_at<'a>(
+    capabilities: &'a serde_json::Value,
+    path: &[&str],
+) -> Option<&'a serde_json::Value> {
+    let value = path
+        .iter()
+        .try_fold(capabilities, |value, key| value.get(key))?;
+    (!matches!(
+        value,
+        serde_json::Value::Bool(false) | serde_json::Value::Null
+    ))
+    .then_some(value)
 }
 
 const FORMATTING: &str = "documentFormattingProvider";
@@ -16,9 +25,10 @@ const RANGE_FORMATTING: &str = "documentRangeFormattingProvider";
 /// What a standard request method needs of a server beyond its feature.
 pub(in crate::editor) struct Requirement {
     pub(in crate::editor) feature: LspFeature,
-    /// The one capability key the method needs, where its feature spans
-    /// methods that need different ones.
-    pub(in crate::editor) capability: Option<&'static str>,
+    /// The one capability the method needs, as a path into the server's
+    /// capabilities, where its feature spans methods that need different
+    /// ones.
+    pub(in crate::editor) capability: Option<&'static [&'static str]>,
 }
 
 /// The feature `method` belongs to, or `None` for a method not tied to one
@@ -26,9 +36,9 @@ pub(in crate::editor) struct Requirement {
 /// `workspace/executeCommand`).
 pub(in crate::editor) fn requirement(method: &str) -> Option<Requirement> {
     let (feature, capability) = match method {
-        "textDocument/formatting" => (LspFeature::Format, Some(FORMATTING)),
+        "textDocument/formatting" => (LspFeature::Format, Some(&[FORMATTING][..])),
         "textDocument/rangeFormatting" | "textDocument/rangesFormatting" => {
-            (LspFeature::Format, Some(RANGE_FORMATTING))
+            (LspFeature::Format, Some(&[RANGE_FORMATTING][..]))
         }
         "textDocument/declaration" => (LspFeature::GotoDeclaration, None),
         "textDocument/definition" => (LspFeature::GotoDefinition, None),
@@ -39,7 +49,15 @@ pub(in crate::editor) fn requirement(method: &str) -> Option<Requirement> {
         "textDocument/hover" => (LspFeature::Hover, None),
         "textDocument/documentHighlight" => (LspFeature::DocumentHighlight, None),
         "textDocument/completion" => (LspFeature::Completion, None),
+        "completionItem/resolve" => (
+            LspFeature::Completion,
+            Some(&["completionProvider", "resolveProvider"][..]),
+        ),
         "textDocument/codeAction" => (LspFeature::CodeAction, None),
+        "codeAction/resolve" => (
+            LspFeature::CodeAction,
+            Some(&["codeActionProvider", "resolveProvider"][..]),
+        ),
         "textDocument/documentLink" => (LspFeature::DocumentLinks, None),
         "textDocument/documentSymbol" => (LspFeature::DocumentSymbols, None),
         "workspace/symbol" => (LspFeature::WorkspaceSymbols, None),
@@ -88,30 +106,36 @@ fn capability_keys(feature: LspFeature) -> &'static [&'static str] {
 /// `feature`.
 pub(in crate::editor) fn advertises(feature: LspFeature, capabilities: &serde_json::Value) -> bool {
     let keys = capability_keys(feature);
-    keys.is_empty() || keys.iter().any(|key| has_capability(capabilities, key))
+    keys.is_empty()
+        || keys
+            .iter()
+            .any(|key| capability_at(capabilities, &[key]).is_some())
 }
 
-/// The value `capabilities` advertises for `feature`, or for the one
-/// capability `method` needs: the first of the feature's keys that is
-/// neither `false` nor `null`. `None` when the server advertises none, or
-/// when `method` belongs to no feature. Exactly one of `feature` and
-/// `method` is given.
+/// What `capabilities` advertises for `query`: for a feature, the value of
+/// the first of its keys that is neither `false` nor `null`; for a method,
+/// the one capability it needs, or its feature's when it needs none in
+/// particular. `None` when the server advertises none, or the method
+/// belongs to no feature.
 pub(in crate::editor) fn provider<'a>(
     capabilities: &'a serde_json::Value,
-    feature: Option<LspFeature>,
-    method: Option<&str>,
+    query: CapabilityQuery<'_>,
 ) -> Option<&'a serde_json::Value> {
-    let keys: Vec<&str> = match (feature, method) {
-        (Some(feature), None) => capability_keys(feature).to_vec(),
-        (None, Some(method)) => requirement(method).map_or_else(Vec::new, |r| match r.capability {
-            Some(key) => vec![key],
-            None => capability_keys(r.feature).to_vec(),
-        }),
-        _ => Vec::new(),
+    let by_feature = |feature| {
+        capability_keys(feature)
+            .iter()
+            .find_map(|key| capability_at(capabilities, &[key]))
     };
-    keys.into_iter()
-        .find(|key| has_capability(capabilities, key))
-        .and_then(|key| capabilities.get(key))
+    match query {
+        CapabilityQuery::Feature(feature) => by_feature(feature),
+        CapabilityQuery::Method(method) => {
+            let required = requirement(method)?;
+            match required.capability {
+                Some(path) => capability_at(capabilities, path),
+                None => by_feature(required.feature),
+            }
+        }
+    }
 }
 
 #[cfg(test)]

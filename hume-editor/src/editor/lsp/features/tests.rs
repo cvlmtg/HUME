@@ -56,16 +56,57 @@ fn formatting_methods_name_their_own_capability() {
     let range = requirement("textDocument/rangeFormatting").unwrap();
     let ranges = requirement("textDocument/rangesFormatting").unwrap();
     assert_eq!(whole.feature, LspFeature::Format);
-    assert_eq!(whole.capability, Some("documentFormattingProvider"));
-    assert_eq!(range.capability, Some("documentRangeFormattingProvider"));
+    assert_eq!(whole.capability, Some(&["documentFormattingProvider"][..]));
+    assert_eq!(
+        range.capability,
+        Some(&["documentRangeFormattingProvider"][..])
+    );
     assert_eq!(ranges.capability, range.capability);
+}
+
+#[test]
+fn resolve_methods_need_their_features_resolve_provider() {
+    let completion = requirement("completionItem/resolve").unwrap();
+    let action = requirement("codeAction/resolve").unwrap();
+    assert_eq!(completion.feature, LspFeature::Completion);
+    assert_eq!(
+        completion.capability,
+        Some(&["completionProvider", "resolveProvider"][..])
+    );
+    assert_eq!(action.feature, LspFeature::CodeAction);
+    assert_eq!(
+        action.capability,
+        Some(&["codeActionProvider", "resolveProvider"][..])
+    );
+}
+
+#[test]
+fn capability_at_follows_a_path_and_rejects_false_and_null() {
+    let caps = json!({
+        "a": { "b": true, "c": false, "d": null, "e": {} },
+        "f": false,
+    });
+    assert_eq!(capability_at(&caps, &["a", "b"]), Some(&json!(true)));
+    assert_eq!(capability_at(&caps, &["a", "e"]), Some(&json!({})));
+    assert_eq!(capability_at(&caps, &["a", "c"]), None);
+    assert_eq!(capability_at(&caps, &["a", "d"]), None);
+    assert_eq!(capability_at(&caps, &["a", "missing"]), None);
+    assert_eq!(capability_at(&caps, &["f", "b"]), None);
+}
+
+#[test]
+fn provider_of_a_resolve_method_is_the_nested_flag() {
+    let with = json!({ "completionProvider": { "resolveProvider": true } });
+    let without = json!({ "completionProvider": { "triggerCharacters": ["."] } });
+    let query = CapabilityQuery::Method("completionItem/resolve");
+    assert_eq!(provider(&with, query), Some(&json!(true)));
+    assert_eq!(provider(&without, query), None);
 }
 
 #[test]
 fn custom_and_follow_up_methods_have_no_requirement() {
     assert!(requirement("custom/ping").is_none());
     assert!(requirement("workspace/executeCommand").is_none());
-    assert!(requirement("codeAction/resolve").is_none());
 }
 
 #[test]
@@ -75,7 +116,7 @@ fn a_formatting_method_needs_a_key_its_feature_advertises_by() {
         "textDocument/rangeFormatting",
         "textDocument/rangesFormatting",
     ] {
-        let needed = requirement(method).unwrap().capability.unwrap();
+        let needed = requirement(method).unwrap().capability.unwrap()[0];
         assert!(
             capability_keys(LspFeature::Format).contains(&needed),
             "{method} needs {needed}, which Format does not advertise by"

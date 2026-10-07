@@ -48,8 +48,8 @@ lsp-request! ──▶ transform response ──▶ UI builtin (show-popup!/show
   advertise it. `#:feature` names the feature of a method the editor does not know. When none qualifies, the
   callback's `err` says why ("hover is not supported by rust-analyzer", "… still
   starting"). A request triggered without the user asking (completion, signature help,
-  inlay hints) first checks `(lsp-servers pane #:feature …)` and stays silent when it is
-  empty. A follow-up that must reach the server an earlier answer came from (code-action
+  inlay hints) passes `#:unavailable 'empty` and gets an empty answer, not an error, when
+  no server qualifies. A follow-up that must reach the server an earlier answer came from (code-action
   resolve and execute, range formatting) picks that server with `lsp-servers` and sends
   `#:to` it.
   A command the user asked for reports an empty answer through `lsp/with-servers`, which
@@ -64,10 +64,11 @@ lsp-request! ──▶ transform response ──▶ UI builtin (show-popup!/show
 ## Shared helpers (`lib.scm`)
 
 - **Trigger characters.** `lsp/setup-trigger-chars!` registers an `on-lsp-attach` handler
-  for a feature. When a server whose list entry admits the feature attaches, it reads the
+  for a feature. For every server that attaches it reads the
   `triggerCharacters` that server advertises for the feature's capability, adds the
   feature's own extra characters, and registers the set for that buffer's attachment to
-  the server, so it goes when the buffer detaches, or when a list change fires
+  the server; the editor ignores the set when the server's list entry excludes the
+  feature or the server does not advertise it. The set goes when the buffer detaches, or when a list change fires
   `on-lsp-attach` again. A feature with a handler (signature
   help) registers through `set-attachment-hook-triggers!` and also gets an `on-trigger-char`
   dispatcher that filters on its source name. A feature without one (completion)

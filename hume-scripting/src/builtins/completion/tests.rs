@@ -215,6 +215,7 @@ fn set_attachment_completion_triggers_queues_an_attachment_scope() {
         SteelVal::StringV("src".into()),
         pane,
         server.into_steel_val(),
+        SteelVal::SymbolV("completion".into()),
         SteelVal::ListV(vec![SteelVal::StringV(".".into())].into()),
     )
     .expect("valid call");
@@ -228,6 +229,7 @@ fn set_attachment_completion_triggers_queues_an_attachment_scope() {
         &crate::types::TriggerScope::Attachment {
             buffer: pane.buffer(),
             server: hume_lsp::backend::ServerId(4),
+            feature: crate::LspFeature::Completion,
         }
     );
 }
@@ -255,10 +257,31 @@ fn an_attachment_server_that_is_not_a_server_raises() {
         SteelVal::StringV("src".into()),
         crate::test_support::default_pane(),
         SteelVal::StringV("rust".into()),
+        SteelVal::SymbolV("completion".into()),
         SteelVal::ListV(vec![SteelVal::StringV(".".into())].into()),
     )
     .unwrap_err();
     assert!(err.to_string().contains("expected a server value"), "{err}");
+}
+
+#[test]
+fn an_attachment_feature_that_is_not_a_feature_raises() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let server = crate::ServerRef {
+        id: hume_lsp::backend::ServerId(4),
+        name: crate::ServerName::parse("ra-lint").unwrap(),
+    };
+    let err = set_attachment_hook_triggers(
+        &mut ctx,
+        SteelVal::StringV("src".into()),
+        crate::test_support::default_pane(),
+        server.into_steel_val(),
+        SteelVal::SymbolV("nonsense".into()),
+        SteelVal::ListV(vec![SteelVal::StringV(".".into())].into()),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("nonsense"), "{err}");
 }
 
 // ── completion-emit! ──────────────────────────────────────────────────────
