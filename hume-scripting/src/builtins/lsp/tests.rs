@@ -926,6 +926,31 @@ fn lsp_request_all_rejects_a_pair_without_a_server() {
 }
 
 #[test]
+fn lsp_request_all_rejects_an_empty_pair_list() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = request_all(&mut ctx, SteelVal::ListV(Vec::<SteelVal>::new().into())).unwrap_err();
+    assert!(err.to_string().contains("empty"), "{err}");
+    assert!(lsp_requests(&ctx).is_empty());
+}
+
+#[test]
+fn lsp_request_all_rejects_a_server_listed_twice() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let pairs = SteelVal::ListV(
+        vec![
+            crate::builtins::args::cons_pair(server(1, "ty"), hashmap(vec![])).unwrap(),
+            crate::builtins::args::cons_pair(server(1, "ty"), hashmap(vec![])).unwrap(),
+        ]
+        .into(),
+    );
+    let err = request_all(&mut ctx, pairs).unwrap_err();
+    assert!(err.to_string().contains("listed twice"), "{err}");
+    assert!(lsp_requests(&ctx).is_empty());
+}
+
+#[test]
 fn position_params_hash_carries_a_doc_pos() {
     let pos = crate::DocPos {
         buffer: default_bid(),

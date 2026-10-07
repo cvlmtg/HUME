@@ -461,18 +461,28 @@ pub(crate) fn lsp_request_all(
     const CTX: &str = "lsp-request-all! params";
     let route = route_arg(feature, SteelVal::BoolV(false), RequestMode::All.verb())?;
     let params = match params {
-        SteelVal::ListV(items) => RequestParams::PerServer(
-            items
-                .into_iter()
-                .map(|item| {
-                    let (server, params) = pair_fields(item, CTX, "(server . params)")?;
-                    let server = server_arg(&server, CTX).map_err(|_| {
-                        generic_err(format!("{CTX}: each entry must be (server . params)"))
-                    })?;
-                    Ok((server, checked_params(params, CTX)?))
-                })
-                .collect::<Result<_, SteelErr>>()?,
-        ),
+        SteelVal::ListV(items) => {
+            let mut pairs: Vec<(crate::ServerRef, Params)> = Vec::new();
+            for item in items {
+                let (server, params) = pair_fields(item, CTX, "(server . params)")?;
+                let server = server_arg(&server, CTX).map_err(|_| {
+                    generic_err(format!("{CTX}: each entry must be (server . params)"))
+                })?;
+                if pairs.iter().any(|(listed, _)| listed.id == server.id) {
+                    return Err(generic_err(format!(
+                        "{CTX}: '{}' is listed twice",
+                        server.name
+                    )));
+                }
+                pairs.push((server, checked_params(params, CTX)?));
+            }
+            if pairs.is_empty() {
+                return Err(generic_err(format!(
+                    "{CTX}: the (server . params) list is empty"
+                )));
+            }
+            RequestParams::PerServer(pairs)
+        }
         other => RequestParams::Shared(checked_params(other, CTX)?),
     };
     queue_request(

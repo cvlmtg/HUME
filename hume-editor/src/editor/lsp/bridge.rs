@@ -377,27 +377,41 @@ impl EditorState {
                     .map(|(r, json)| Member::new(r, json, verb))
                     .collect())
             }
-            RequestParams::PerServer(pairs) => Ok(pairs
-                .iter()
-                .map(|(server, params)| {
-                    let spec = RouteSpec {
-                        to: Some(server.clone()),
-                        ..req.route.clone()
-                    };
-                    match route(self, req.bid, method, &spec) {
-                        Ok(mut routed) => {
-                            let r = routed.remove(0);
-                            let json = self
-                                .serialize_for(req.bid, params, std::slice::from_ref(&r))
-                                .remove(0);
-                            Member::new(r, json, verb)
+            RequestParams::PerServer(pairs) => {
+                let members: Vec<Member> = pairs
+                    .iter()
+                    .map(|(server, params)| {
+                        let spec = RouteSpec {
+                            to: Some(server.clone()),
+                            ..req.route.clone()
+                        };
+                        match route(self, req.bid, method, &spec) {
+                            Ok(mut routed) => {
+                                let r = routed.remove(0);
+                                let json = self
+                                    .serialize_for(req.bid, params, std::slice::from_ref(&r))
+                                    .remove(0);
+                                Member::new(r, json, verb)
+                            }
+                            Err(u) => Member::Failed(
+                                server.clone(),
+                                SlotError::Unavailable(u.to_string()),
+                            ),
                         }
-                        Err(u) => {
-                            Member::Failed(server.clone(), SlotError::Unavailable(u.to_string()))
-                        }
-                    }
-                })
-                .collect()),
+                    })
+                    .collect();
+                let reasons: Option<Vec<&str>> = members
+                    .iter()
+                    .map(|member| match member {
+                        Member::Failed(_, SlotError::Unavailable(reason)) => Some(reason.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                match reasons {
+                    Some(reasons) => Err(reasons.join("; ")),
+                    None => Ok(members),
+                }
+            }
         }
     }
 

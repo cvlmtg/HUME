@@ -996,6 +996,44 @@ fn per_server_member_not_attached_is_unavailable() {
     assert_eq!(rig.warnings(), vec![r#"("ok" "unavailable")"#.to_string()]);
 }
 
+/// `ra-lint` stopped, then one `lsp-request-all!` naming only it.
+fn request_all_to_a_stopped_server(unavailable: &str) -> Vec<String> {
+    let tmp = safe_tempdir();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", serde_json::json!({})),
+            initialize("utf-16", serde_json::json!({})),
+            |_| {},
+        ),
+    );
+    rig.eval("(define *lint* #f)");
+    rig.probe("(set! *lint* (cadr (lsp-servers pane)))");
+    rig.stop("ra-lint");
+
+    rig.probe(&format!(
+        r#"(lsp-request-all! pane "custom/ping" (list (cons *lint* (hash))) {LOG_ALL}
+             #:unavailable '{unavailable})"#
+    ));
+    rig.warnings()
+}
+
+#[test]
+fn per_server_request_to_only_unavailable_servers_errors() {
+    assert_eq!(
+        request_all_to_a_stopped_server("error"),
+        vec!["err:ra-lint is not attached to this buffer".to_string()]
+    );
+}
+
+#[test]
+fn per_server_request_to_only_unavailable_servers_answers_empty_when_asked() {
+    assert_eq!(
+        request_all_to_a_stopped_server("empty"),
+        vec![String::new()]
+    );
+}
+
 #[test]
 fn per_server_request_keeps_its_feature_filter() {
     let tmp = safe_tempdir();
