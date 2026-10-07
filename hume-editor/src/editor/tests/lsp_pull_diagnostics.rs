@@ -58,7 +58,7 @@ fn stored_messages(rig: &LspRig) -> Vec<String> {
 
 #[test]
 fn server_that_never_pushed_is_pulled_on_attach() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.respond_to(PULL, full_report("r1", &["from pull"]));
@@ -81,7 +81,7 @@ fn type_insert(ed: &mut Editor, text: &str) {
 
 #[test]
 fn an_edit_pulls_again_with_the_previous_result_id() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.respond_to(PULL, full_report("r1", &["first"]));
@@ -107,7 +107,7 @@ fn an_edit_pulls_again_with_the_previous_result_id() {
 
 #[test]
 fn a_save_pulls_without_waiting_for_the_edit_debounce() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.respond_to(PULL, full_report("r1", &["first"]));
@@ -127,7 +127,7 @@ fn a_save_pulls_without_waiting_for_the_edit_debounce() {
 
 #[test]
 fn a_refresh_request_is_answered_and_pulls_again() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.respond_to(PULL, full_report("r1", &["first"]));
@@ -186,7 +186,7 @@ fn attached_to(tmp: &tempfile::TempDir, init: &str, capabilities: serde_json::Va
 
 #[test]
 fn a_server_without_a_diagnostic_provider_is_not_pulled() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = attached_to(
         &tmp,
         super::lsp_rig::RUST_ANALYZER,
@@ -198,7 +198,7 @@ fn a_server_without_a_diagnostic_provider_is_not_pulled() {
 
 #[test]
 fn excluding_pull_diagnostics_sends_no_pull() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = attached_to(&tmp, &excluding("pull-diagnostics"), pull_capabilities());
 
     assert!(rig.requests_to(rig.sid("rust-analyzer"), PULL).is_empty());
@@ -206,7 +206,7 @@ fn excluding_pull_diagnostics_sends_no_pull() {
 
 #[test]
 fn excluding_diagnostics_sends_no_pull() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = attached_to(&tmp, &excluding("diagnostics"), pull_capabilities());
 
     assert!(rig.requests_to(rig.sid("rust-analyzer"), PULL).is_empty());
@@ -215,7 +215,7 @@ fn excluding_diagnostics_sends_no_pull() {
 
 #[test]
 fn restoring_a_pull_only_servers_diagnostics_pulls_again() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = attached_to(&tmp, &excluding("diagnostics"), pull_capabilities());
     let sid = rig.sid("rust-analyzer");
 
@@ -228,7 +228,7 @@ fn restoring_a_pull_only_servers_diagnostics_pulls_again() {
 
 #[test]
 fn a_pull_after_a_filter_change_carries_no_previous_result_id() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.respond_to(PULL, full_report("r1", &["first"]));
@@ -251,7 +251,7 @@ fn a_pull_after_a_filter_change_carries_no_previous_result_id() {
 
 #[test]
 fn a_save_right_after_typing_pulls_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.respond_to(PULL, full_report("r1", &["first"]));
@@ -271,7 +271,7 @@ fn a_save_right_after_typing_pulls_once() {
 
 #[test]
 fn a_save_with_no_edit_since_the_last_pull_pulls_again() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.respond_to(PULL, full_report("r1", &["first"]));
@@ -289,7 +289,7 @@ fn a_save_with_no_edit_since_the_last_pull_pulls_again() {
 
 #[test]
 fn a_buffer_whose_servers_all_pushed_arms_no_pull_timer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = attached_to(&tmp, super::lsp_rig::RUST_ANALYZER, pull_capabilities());
     let sid = rig.sid("rust-analyzer");
     rig.publish(sid, serde_json::json!([wire_diagnostic("pushed")]));
@@ -303,7 +303,7 @@ fn a_buffer_whose_servers_all_pushed_arms_no_pull_timer() {
 
 #[test]
 fn a_server_that_pushed_is_not_pulled_again() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = attached_to(&tmp, super::lsp_rig::RUST_ANALYZER, pull_capabilities());
     let sid = rig.sid("rust-analyzer");
     rig.publish(sid, serde_json::json!([wire_diagnostic("pushed")]));
@@ -318,7 +318,7 @@ fn a_server_that_pushed_is_not_pulled_again() {
 
 #[test]
 fn a_pull_answer_that_lands_after_a_push_is_dropped() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.respond_to(PULL, full_report("r1", &["first"]));
@@ -344,7 +344,7 @@ fn a_pull_answer_that_lands_after_a_push_is_dropped() {
 
 #[test]
 fn an_unchanged_report_keeps_what_is_stored_and_moves_the_result_id() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.respond_to(PULL, full_report("r1", &["first"]));
@@ -373,7 +373,7 @@ fn an_unchanged_report_keeps_what_is_stored_and_moves_the_result_id() {
 
 #[test]
 fn a_reload_from_disk_pulls_without_the_previous_result_id() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.respond_to(PULL, full_report("r1", &["first"]));
@@ -406,7 +406,7 @@ fn a_reload_from_disk_pulls_without_the_previous_result_id() {
 
 #[test]
 fn a_config_reload_pulls_again_from_a_server_it_keeps() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.respond_to(PULL, full_report("r1", &["first"]));
@@ -439,7 +439,7 @@ fn a_config_reload_pulls_again_from_a_server_it_keeps() {
 
 #[test]
 fn a_failed_pull_is_asked_again_for_the_same_text() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", pull_capabilities());
     backend.fail_with(PULL, -32802, "server cancelled");

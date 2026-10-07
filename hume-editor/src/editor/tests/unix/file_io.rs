@@ -4,7 +4,7 @@ use pretty_assertions::assert_eq;
 
 #[test]
 fn edit_existing_buffer_switches_without_reread() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("existing.txt");
     std::fs::write(&path, "original\n").unwrap();
     let canonical = std::fs::canonicalize(&path).unwrap();
@@ -43,7 +43,7 @@ fn edit_existing_buffer_switches_without_reread() {
 /// before any real focus change.
 #[test]
 fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_enter() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("deleted.txt");
     std::fs::write(&path, "content\n").unwrap();
     let canonical = std::fs::canonicalize(&path).unwrap();
@@ -92,7 +92,7 @@ fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_ent
 
 #[test]
 fn edit_deleted_file_with_no_buffer_reopens_as_new_file() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("never_opened.txt");
     // Path never existed: no buffer open for it.
     let mut ed = editor_from("-[h]>ello\n");
@@ -152,7 +152,7 @@ fn edit_missing_file_shows_raw_typed_display_path() {
 
 #[test]
 fn edit_missing_file_then_write_creates_it() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("created.txt");
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -186,7 +186,7 @@ fn edit_missing_file_then_write_creates_it() {
 /// `reload_from_path` would otherwise raise.
 #[test]
 fn edit_no_arg_on_new_file_buffer_is_noop() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("untouched.txt");
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -212,7 +212,7 @@ fn edit_no_arg_on_new_file_buffer_is_noop() {
 /// nothing on disk to discard *to*).
 #[test]
 fn edit_force_no_arg_on_dirty_new_file_buffer_is_noop() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("dirty_new.txt");
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -240,7 +240,7 @@ fn edit_force_no_arg_on_dirty_new_file_buffer_is_noop() {
 
 #[test]
 fn edit_missing_file_twice_dedupes() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("dedup.txt");
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -259,7 +259,7 @@ fn edit_missing_file_twice_dedupes() {
 
 #[test]
 fn write_missing_parent_dir_errors_and_leaves_buffer_pending() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("no-such-subdir").join("file.txt");
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -287,7 +287,7 @@ fn write_missing_parent_dir_errors_and_leaves_buffer_pending() {
 /// exists to prevent on the existing-file path.
 #[test]
 fn write_new_file_buffer_refuses_when_file_appeared_externally() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("appeared.txt");
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -327,7 +327,7 @@ fn write_new_file_buffer_refuses_when_file_appeared_externally() {
 /// file. Otherwise `find_by_path` dedup breaks the moment the file exists.
 #[test]
 fn write_new_file_buffer_rekeys_path_to_resolved_target() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("rekeyed.txt");
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -419,7 +419,7 @@ fn edit_relative_path_matches_existing_buffer() {
 /// chars) + "line two\n" (9) + "line three\n" (11), so line starts are char
 /// 0, 9, 18.
 fn three_line_file() -> (tempfile::NamedTempFile, std::path::PathBuf) {
-    let f = safe_named_tempfile();
+    let f = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
     let canonical = std::fs::canonicalize(f.path()).unwrap();
     (f, canonical)
@@ -441,16 +441,11 @@ fn edit_position_suffix_on_an_unopened_file_places_the_cursor() {
 #[test]
 fn edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor() {
     let (_f1, canonical1) = three_line_file();
-    let f2 = safe_named_tempfile();
+    let f2 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f2.path(), "other\n").unwrap();
     let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
 
-    let mut ed = Editor::open(
-        Some(canonical1.clone()),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(canonical1.clone()));
     ed.execute_typed("e", Some(canonical2.to_str().unwrap()))
         .unwrap();
     assert_eq!(
@@ -471,12 +466,7 @@ fn edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor
 fn edit_position_suffix_on_the_focused_buffer_records_a_jump_entry() {
     let (_f, canonical) = three_line_file();
 
-    let mut ed = Editor::open(
-        Some(canonical.clone()),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(canonical.clone()));
     let before = ed.current_view().primary().head().offset();
 
     let arg = format!("{}:3", canonical.display());
@@ -498,16 +488,11 @@ fn edit_position_suffix_on_the_focused_buffer_records_a_jump_entry() {
 #[test]
 fn edit_position_suffix_on_another_file_ctrl_o_returns_in_one_step() {
     let (_f1, canonical1) = three_line_file();
-    let f2 = safe_named_tempfile();
+    let f2 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f2.path(), "b one\nb two\nb three\n").unwrap();
     let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
 
-    let mut ed = Editor::open(
-        Some(canonical1.clone()),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(canonical1.clone()));
     ed.execute_typed("goto", Some("2")).unwrap();
     let before = ed.current_view().primary().head().offset();
 
@@ -534,7 +519,7 @@ fn edit_position_suffix_on_another_file_ctrl_o_returns_in_one_step() {
 
 #[test]
 fn edit_a_disk_file_literally_named_with_a_colon_number_opens_without_splitting() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("weird:2");
     std::fs::write(&path, "line one\nline two\nline three\n").unwrap();
 
@@ -555,7 +540,7 @@ fn edit_a_disk_file_literally_named_with_a_colon_number_opens_without_splitting(
 
 #[test]
 fn edit_an_open_buffer_literally_named_with_a_colon_number_switches_without_splitting() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("notes:12"); // never written to disk
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -580,7 +565,7 @@ fn edit_an_open_buffer_literally_named_with_a_colon_number_switches_without_spli
 
 #[test]
 fn edit_position_suffix_line_zero_errors() {
-    let f = safe_named_tempfile();
+    let f = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f.path()).unwrap();
     let arg = format!("{}:0", canonical.display());
@@ -650,7 +635,7 @@ fn edit_position_suffix_column_past_line_end_clamps() {
 /// fallback) and `:e`'s dedup must still find it, not treat it as unopened.
 #[test]
 fn buffer_by_path_finds_lexically_keyed_buffer_after_parent_dir_appears() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let sub = dir.path().join("sub");
     let path = sub.join("f.txt"); // `sub` does not exist yet
 
@@ -682,20 +667,15 @@ fn buffer_by_path_finds_lexically_keyed_buffer_after_parent_dir_appears() {
 
 #[test]
 fn open_extra_file_opens_the_path() {
-    let f1 = safe_named_tempfile();
-    let f2 = safe_named_tempfile();
+    let f1 = tempfile::NamedTempFile::new().unwrap();
+    let f2 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f1.path(), "file one\n").unwrap();
     std::fs::write(f2.path(), "file two\n").unwrap();
 
     let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
     let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
 
-    let mut ed = Editor::open(
-        Some(canonical1.clone()),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(canonical1.clone()));
     let first_id = ed.focused_buffer_id();
 
     ed.open_extra_file(&canonical2);
@@ -727,12 +707,7 @@ fn apply_startup_positions_places_focused_cursor() {
     // Column 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two".
     let (_f, canonical) = three_line_file();
 
-    let mut ed = Editor::open(
-        Some(canonical),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(canonical));
     let bid = ed.focused_buffer_id();
 
     ed.sync_viewport_dims(80, 24);
@@ -755,7 +730,7 @@ fn apply_startup_positions_places_focused_cursor() {
 /// viewport is required to prove the viewport actually moved.
 #[test]
 fn apply_startup_positions_centers_the_focused_buffers_viewport() {
-    let f = safe_named_tempfile();
+    let f = tempfile::NamedTempFile::new().unwrap();
     // 200 short lines: well past a 24-row terminal, and each far under 80
     // columns so nothing soft-wraps regardless of the buffer's wrap-mode
     // default, keeping the buffer-line-to-display-line mapping 1:1.
@@ -763,12 +738,7 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
     std::fs::write(f.path(), &content).unwrap();
     let canonical = std::fs::canonicalize(f.path()).unwrap();
 
-    let mut ed = Editor::open(
-        Some(canonical),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(canonical));
     let bid = ed.focused_buffer_id();
 
     ed.sync_viewport_dims(80, 24); // 24 rows -> 23 usable after the statusline
@@ -795,8 +765,8 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
 
 #[test]
 fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() {
-    let f1 = safe_named_tempfile();
-    let f2 = safe_named_tempfile();
+    let f1 = tempfile::NamedTempFile::new().unwrap();
+    let f2 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f1.path(), "hello\n").unwrap();
     // "alpha\n" (6 chars) then "beta\n" (5 chars): line 2 (0-based) starts
     // at char 11; column 2 (grapheme index 1) lands one grapheme in.
@@ -804,12 +774,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
     let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
     let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
 
-    let mut ed = Editor::open(
-        Some(canonical1),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(canonical1));
     let focused_bid = ed.focused_buffer_id();
     let extra_bid = ed.open_extra_file(&canonical2).unwrap();
 
@@ -850,7 +815,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
 
 #[test]
 fn apply_startup_positions_clamps_a_line_past_the_end() {
-    let f = safe_named_tempfile();
+    let f = tempfile::NamedTempFile::new().unwrap();
     // "line one\n" and "line two\n" are 9 chars each, so the last content
     // line ("last line") starts at char 18, hand counted, distinct from
     // both 0 and any line-999-sized offset, so a wrong clamp (or none)
@@ -858,12 +823,7 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
     std::fs::write(f.path(), "line one\nline two\nlast line\n").unwrap();
     let canonical = std::fs::canonicalize(f.path()).unwrap();
 
-    let mut ed = Editor::open(
-        Some(canonical),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(canonical));
     let bid = ed.focused_buffer_id();
 
     ed.sync_viewport_dims(80, 24);
@@ -889,15 +849,10 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
 /// exiting on ENOENT.
 #[test]
 fn startup_with_missing_first_file_opens_new_file_buffer() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("startup_new.txt");
 
-    let ed = Editor::open(
-        Some(path.clone()),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let ed = open_headless(Some(path.clone()));
 
     assert_eq!(ed.state.buffers.len(), 1);
     assert!(ed.doc().is_new_file());
@@ -910,16 +865,11 @@ fn startup_with_missing_first_file_opens_new_file_buffer() {
 
 #[test]
 fn open_extra_file_deduplicates() {
-    let f1 = safe_named_tempfile();
+    let f1 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
 
-    let mut ed = Editor::open(
-        Some(canonical.clone()),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(canonical.clone()));
     // Open the same path twice: must still result in exactly one buffer.
     ed.open_extra_file(&canonical);
     ed.open_extra_file(&canonical);
@@ -958,7 +908,7 @@ fn wa_saves_all_dirty_buffers() {
 /// lacking a `file_meta` baseline.
 #[test]
 fn wa_saves_new_file_buffers() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let new_path = dir.path().join("wa_new.txt");
 
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1096,12 +1046,7 @@ fn wa_preserves_focus_on_single_buffer() {
 /// it via `?`, and bid2 stays unsaved.
 #[test]
 fn wa_skips_read_only_dirty_buffer() {
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(None);
     // bid1: writable dirty buffer backed by a file.
     let (tmp1_path, bid1) = open_file_buffer(&mut ed, "one\n");
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid1);
@@ -1140,17 +1085,12 @@ fn wa_skips_read_only_dirty_buffer() {
 
 #[test]
 fn open_extra_file_nonexistent_opens_new_file_buffer() {
-    let f1 = safe_named_tempfile();
+    let f1 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
 
-    let mut ed = Editor::open(
-        Some(canonical.clone()),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
-    let dir = safe_tempdir();
+    let mut ed = open_headless(Some(canonical.clone()));
+    let dir = tempfile::tempdir().unwrap();
     let nonexistent = dir.path().join("hume_test_nonexistent_xyz_404.txt");
     let canonical_dir = std::fs::canonicalize(dir.path()).unwrap();
 
@@ -1194,7 +1134,7 @@ fn open_extra_file_nonexistent_opens_new_file_buffer() {
 /// both would render identically for such input.
 #[test]
 fn open_extra_file_new_file_shows_untransformed_display_path() {
-    let f1 = safe_named_tempfile();
+    let f1 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
@@ -1203,12 +1143,7 @@ fn open_extra_file_new_file_shows_untransformed_display_path() {
     // can miss on a platform/CI layout where $HOME is itself a symlink.
     let canonical_home = std::fs::canonicalize(&home).unwrap();
 
-    let mut ed = Editor::open(
-        Some(canonical),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(canonical));
     // Bypass shell tilde expansion by constructing the PathBuf directly:
     // exercises callers (e.g. Steel scripting) that may pass a literal `~`.
     let tilde_path = std::path::PathBuf::from("~/hume-test-no-such-file-xyz.txt");
@@ -1243,17 +1178,12 @@ fn open_extra_file_new_file_shows_untransformed_display_path() {
 /// warns.
 #[test]
 fn open_extra_file_warns_with_untransformed_path() {
-    let f1 = safe_named_tempfile();
+    let f1 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
 
-    let mut ed = Editor::open(
-        Some(canonical),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(canonical));
     let tilde_path = std::path::PathBuf::from("~");
 
     ed.open_extra_file(&tilde_path);
@@ -1317,10 +1247,10 @@ fn write_follows_symlink() {
     use std::os::unix::fs::symlink;
 
     // Create the real file and a symlink pointing to it.
-    let real = safe_named_tempfile();
+    let real = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(real.path(), "hello\n").unwrap();
 
-    let link_dir = safe_tempdir();
+    let link_dir = tempfile::tempdir().unwrap();
     let link_path = link_dir.path().join("link.txt");
     symlink(real.path(), &link_path).unwrap();
 
@@ -1365,7 +1295,7 @@ fn write_follows_symlink() {
 /// file. Verifies the plain-write path of the new return value.
 #[test]
 fn write_file_atomic_returns_false_on_plain_write() {
-    let tmp = safe_named_tempfile();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp.path(), "initial\n").unwrap();
     let mut meta = hume_platform::io::read_file_meta(tmp.path()).unwrap();
 

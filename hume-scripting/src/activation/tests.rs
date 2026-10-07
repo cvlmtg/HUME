@@ -964,8 +964,10 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     let mut editor_host = LazyStubHost::default();
 
     let result = host.eval_source(r#"(load-plugin! "user/selfdecl")"#, &mut editor_host);

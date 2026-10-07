@@ -12,7 +12,7 @@ fn call(ed: &mut Editor, name: &str) {
 
 #[test]
 fn cancel_async_on_an_unknown_id_is_a_silent_no_op() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,

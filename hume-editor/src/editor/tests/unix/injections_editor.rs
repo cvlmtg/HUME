@@ -11,7 +11,7 @@ use super::*;
 fn plum_plugin_loads_with_real_grammar_catalog() {
     let _path = path_reader();
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -37,7 +37,7 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
 fn plum_list_runs_with_no_errors_against_empty_data_dir() {
     let _path = path_reader();
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -69,7 +69,7 @@ fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
 
     // `load_plum` makes `<data_tmp>/hume/` the editor's data dir, so the
     // plugin walk plum/`plugins-dir` reads is `<data_tmp>/hume/plugins/`.
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let plugins_dir = data_tmp.path().join("hume").join("plugins");
     std::fs::create_dir_all(&plugins_dir).unwrap();
     std::fs::write(plugins_dir.join(".DS_Store"), "").unwrap();
@@ -115,7 +115,7 @@ fn git_ok(dir: &std::path::Path, args: &[&str]) {
 fn plum_update_runs_real_git_pull_against_local_origin() {
     let _path = path_reader();
 
-    let origin_tmp = safe_tempdir();
+    let origin_tmp = tempfile::tempdir().unwrap();
     let origin_dir = origin_tmp.path();
     git_ok(origin_dir, &["init", "-q"]);
     git_ok(origin_dir, &["config", "user.email", "test@example.com"]);
@@ -124,7 +124,7 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
     git_ok(origin_dir, &["add", "plugin.scm"]);
     git_ok(origin_dir, &["commit", "-q", "-m", "v1"]);
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let clone_dir = data_tmp.path().join("hume/plugins/testuser/testrepo");
     std::fs::create_dir_all(clone_dir.parent().unwrap()).unwrap();
     git_ok(
@@ -179,7 +179,7 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
 fn plum_cleanup_removes_orphan_plugin_directory() {
     let _path = path_reader();
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let orphan_dir = data_tmp.path().join("hume/plugins/testuser/orphanrepo");
     std::fs::create_dir_all(&orphan_dir).unwrap();
     std::fs::write(orphan_dir.join("plugin.scm"), "; orphan\n").unwrap();
@@ -216,7 +216,7 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
 fn plum_install_grammar_no_arg_no_language_warns() {
     let _path = path_reader();
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -241,7 +241,7 @@ fn plum_install_grammar_unreadable_query_fails_cleanly() {
     use std::os::unix::fs::PermissionsExt;
 
     let _lock = lock();
-    let shims = safe_tempdir();
+    let shims = tempfile::tempdir().unwrap();
     for (tool, body) in [
         (
             "git",
@@ -261,15 +261,11 @@ fn plum_install_grammar_unreadable_query_fails_cleanly() {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
     {
-        let _path = EnvVarGuard::set(
-            &_lock,
-            "PATH",
-            format!("{}:/usr/bin:/bin", shims.path().display()),
-        );
+        let _path = _lock.set_var("PATH", format!("{}:/usr/bin:/bin", shims.path().display()));
         type_cmd(&mut ed, ":plum-install-grammar rust");
     }
 
@@ -306,7 +302,7 @@ fn plum_install_grammar_unreadable_query_fails_cleanly() {
 fn plum_install_grammar_unknown_name_warns() {
     let _path = path_reader();
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -331,7 +327,7 @@ fn plum_install_grammar_unknown_name_warns() {
 fn plum_install_grammar_arg_overrides_buffer_language() {
     let _path = path_reader();
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -367,7 +363,7 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
 fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
     let _path = path_reader();
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -399,7 +395,7 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
 fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
     let _path = path_reader();
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
@@ -437,7 +433,7 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
     let _path = path_reader();
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     // `load_plum` makes `<data_tmp>/hume` the editor's data dir.
     let data_dir = data_tmp.path().join("hume");
     // Seed a stale, non-empty source dir exactly like a prior clone-succeeded/
@@ -488,7 +484,7 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 fn plum_install_grammar_resolves_helix_inherits_chain() {
     let _path = path_reader();
 
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let data_dir = data_tmp.path().join("hume");
 
     let buf = crate::editor::buffer::Buffer::at_start(hume_editing::text::BufferText::from(

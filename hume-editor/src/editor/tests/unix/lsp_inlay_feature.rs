@@ -177,7 +177,7 @@ fn inlay_hint_response(entries: &[(u32, u32, serde_json::Value)]) -> serde_json:
 
 #[test]
 fn viewport_change_triggers_one_debounced_request() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
@@ -199,7 +199,7 @@ fn viewport_change_triggers_one_debounced_request() {
 /// `range.end.line` below would be 2.
 #[test]
 fn inlay_hint_request_range_matches_the_viewport() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
@@ -221,7 +221,7 @@ fn inlay_hint_request_range_matches_the_viewport() {
 
 #[test]
 fn setting_off_sends_no_request() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
@@ -235,7 +235,7 @@ fn setting_off_sends_no_request() {
 
 #[test]
 fn hints_land_in_the_store_at_the_correct_char_offset() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "let x = 1;\n": wire {line:0, character:4} is 'x' (char offset 4,
     // ASCII text, UTF-16 code units == char offsets).
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
@@ -269,7 +269,7 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
 /// through `:set global`, not a direct field write, so the real event fires.
 #[test]
 fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/inlayHint",
@@ -319,7 +319,7 @@ fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
 /// re-requests them here. No `fire_viewport_change` for the same reason.
 #[test]
 fn setting_on_via_a_non_true_spelling_still_requests_hints() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         // Three responses queued: the seeding "true" phase below sends two
         // requests (the direct fire `fire_viewport_change` queues, plus the
@@ -409,7 +409,7 @@ fn setting_on_via_a_non_true_spelling_still_requests_hints() {
 
 #[test]
 fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/inlayHint",
@@ -442,7 +442,7 @@ fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
 
 #[test]
 fn diagnostics_changed_also_refreshes_hints() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
@@ -483,7 +483,7 @@ fn diagnostics_changed_also_refreshes_hints() {
 
 #[test]
 fn hidden_buffer_skips_diagnostics_triggered_refresh() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
@@ -530,7 +530,7 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
 
 #[test]
 fn an_empty_response_clears_previously_stored_hints() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/inlayHint",
@@ -576,7 +576,7 @@ fn an_empty_response_clears_previously_stored_hints() {
 /// left to ask, the refresh the detach triggers empties the store.
 #[test]
 fn stopping_the_only_server_clears_its_hints() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/inlayHint",
@@ -613,7 +613,7 @@ fn stopping_the_only_server_clears_its_hints() {
 /// A buffer no pane shows still loses its hints when its server stops.
 #[test]
 fn stopping_the_server_clears_the_hints_of_a_hidden_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/inlayHint",
@@ -656,7 +656,7 @@ fn stopping_the_server_clears_the_hints_of_a_hidden_buffer() {
 /// the error, where an empty answer clears them.
 #[test]
 fn a_failed_response_keeps_the_stored_hints_and_reports_the_error() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/inlayHint",
@@ -693,7 +693,7 @@ fn a_failed_response_keeps_the_stored_hints_and_reports_the_error() {
 /// per buffer, so both must refresh.
 #[test]
 fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let TwoServers {
         mut ed,
         _guard,
@@ -745,7 +745,7 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
 /// against buffer B's own server, never the focused buffer's.
 #[test]
 fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let TwoServers {
         mut ed,
         _guard,
@@ -785,7 +785,7 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
 /// diagnostics republish.
 #[test]
 fn undo_also_refreshes_hints() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));

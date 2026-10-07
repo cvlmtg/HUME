@@ -18,7 +18,7 @@
 //! a shared `git()` helper (`unix/mod.rs`) that does the unqualified
 //! `Command::new("git")` itself, two hops from the test, with no
 //! `Command::new` text anywhere in the test's own body. Symmetrically, those
-//! same tests call `setup()`, which claims `Global::Env` via
+//! same tests call `setup()`, which takes a shared `PathReader` via
 //! `RealRuntimeDirs::new()` and returns the guard for the caller to bind and
 //! hold, again with no `RealRuntimeDirs`/`TEST_GLOBALS` text in the test
 //! body itself. A scan that only recognized literal `Command::new`/claim text
@@ -65,7 +65,7 @@
 //!
 //! **Opt-out**: `// test-global-safe: <reason>` on the violation line (or the
 //! line above, so `cargo fmt` doesn't hoist a trailing comment past it),
-//! same convention and marker as `test_globals.rs`'s two lints.
+//! same convention and marker as `scan_lines`'s other callers.
 
 use arch_lints::{Violation, editor_test_tree_paths, strip_line_comment, workspace_root};
 
@@ -76,10 +76,10 @@ use arch_lints::{Violation, editor_test_tree_paths, strip_line_comment, workspac
 /// checked independently.
 const AUTO_CLAIM_MARKERS: &[&str] = &[
     "TEST_GLOBALS.claim(Global::Env)",
+    "claim_env()",
     "path_reader()",
     "RealRuntimeDirs::new(",
     "RuntimeDirs::new(",
-    "TutorGuard::new(",
     "ReloadFixture::new(",
     "StagedGrammarFixture::new(",
 ];
@@ -374,7 +374,7 @@ fn claiming_helper_names(helper_fns: &[(String, String)]) -> Vec<String> {
 }
 
 /// Final pass: scan every `#[test] fn` body (via brace-depth entry/exit, the
-/// same technique [`super::scan_forbidden`] uses for a `mod tests { … }`
+/// same technique [`arch_lints::scan_lines`] uses for a `mod tests { … }`
 /// block) for a call to any name in `spawning_helpers`, or a direct
 /// `Command::new`, appearing before an [`AUTO_CLAIM_MARKERS`] entry or a call
 /// to any name in `claiming_helpers`, in the same body.

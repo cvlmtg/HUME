@@ -255,12 +255,7 @@ fn split_different_buffer_keeps_empty_jump_list() {
 fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     let (path, _tmp_path) = temp_file("other file\n");
 
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(None);
     let pid_a = ed.state.focus.id();
 
     // Distinguishing content + an active search on buffer A.

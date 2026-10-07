@@ -88,7 +88,7 @@ fn p6_close_last_buffer_becomes_scratch() {
 #[test]
 fn p6_bid_captured_before_last_buffer_close_reads_dead_afterward() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("only\n")));
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // `bid` is the typed command's own injected leading param, the only
     // buffer, so it's the one `close-buffer!` below closes. Reusing that
     // same captured Scheme value afterward is exactly "a bid captured
@@ -499,7 +499,7 @@ fn buffer_live_reflects_open_and_closed_state() {
     // branch.
     ed.open_buffer(Buffer::at_start(BufferText::from("b\n")));
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     run(
         &mut ed,
         tmp.path(),

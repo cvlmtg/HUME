@@ -75,7 +75,7 @@ fn apply_wire_text_edits(ed: &mut Editor, tmp: &std::path::Path, expect_gen_clau
 
 #[test]
 fn apply_text_edits_single_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -89,7 +89,7 @@ fn apply_text_edits_single_edit() {
 /// leaves the buffer's structural `\n` in place.
 #[test]
 fn apply_text_edits_whole_document_replace_keeps_the_final_newline() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>bc\ndef\n",
@@ -102,7 +102,7 @@ fn apply_text_edits_whole_document_replace_keeps_the_final_newline() {
 /// Deleting only the final newline leaves the text as it was.
 #[test]
 fn apply_text_edits_deleting_the_final_newline_keeps_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>bc\ndef\n",
@@ -116,7 +116,7 @@ fn apply_text_edits_deleting_the_final_newline_keeps_it() {
 /// own, ended by the structural `\n`.
 #[test]
 fn apply_text_edits_insert_after_the_final_newline_ends_with_one() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>bc\ndef\n",
@@ -131,7 +131,7 @@ fn apply_text_edits_insert_after_the_final_newline_ends_with_one() {
 /// normalize it the same way every other text-insertion path does.
 #[test]
 fn apply_text_edits_normalizes_crlf_in_new_text() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -149,7 +149,7 @@ fn apply_text_edits_normalizes_crlf_in_new_text() {
 /// wrong character instead of failing loudly.
 #[test]
 fn apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>ébcdef\n",
@@ -161,7 +161,7 @@ fn apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units() {
 
 #[test]
 fn apply_text_edits_multiple_edits_same_line_apply_descending() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // Two edits on the same line, given out of order: must not corrupt
     // each other's offsets (the classic ascending-with-fixups bug).
     let mut ed = text_edits_editor(
@@ -183,7 +183,7 @@ fn apply_text_edits_multiple_edits_same_line_apply_descending() {
 /// flipped it via the reverse, applying them backwards.
 #[test]
 fn apply_text_edits_same_position_inserts_apply_in_array_order() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -202,7 +202,7 @@ fn apply_text_edits_same_position_inserts_apply_in_array_order() {
 
 #[test]
 fn apply_text_edits_adjacent_not_overlapping_accepted() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -217,7 +217,7 @@ fn apply_text_edits_adjacent_not_overlapping_accepted() {
 
 #[test]
 fn apply_text_edits_overlapping_rejected() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -236,7 +236,7 @@ fn apply_text_edits_overlapping_rejected() {
 
 #[test]
 fn apply_text_edits_reversed_range_rejected() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -252,7 +252,7 @@ fn apply_text_edits_reversed_range_rejected() {
 
 #[test]
 fn apply_text_edits_is_one_undo_step() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -274,7 +274,7 @@ fn apply_text_edits_is_one_undo_step() {
 
 #[test]
 fn apply_text_edits_version_mismatch_rejected() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = text_edits_editor(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -307,7 +307,7 @@ fn apply_text_edits_version_mismatch_rejected() {
 /// encoding guessed for it could be silently wrong.
 #[test]
 fn apply_text_edits_rejects_a_hand_built_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = utf8_rig(tmp.path(), "-[a]>bcdef\n", |_| {}).ed;
     run(
         &mut ed,
@@ -358,7 +358,7 @@ fn apply_wire_workspace_edit(ed: &mut Editor, tmp: &std::path::Path) {
 
 #[test]
 fn apply_workspace_edit_changes_shape() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("a.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -387,7 +387,7 @@ fn apply_workspace_edit_changes_shape() {
 
 #[test]
 fn apply_workspace_edit_document_changes_shape() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("a.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -414,7 +414,7 @@ fn apply_workspace_edit_document_changes_shape() {
 /// is `c`.
 #[test]
 fn apply_workspace_edit_into_unopened_file_uses_the_responses_encoding() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("new.txt");
     std::fs::write(&file, "aébcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -443,7 +443,7 @@ fn apply_workspace_edit_into_unopened_file_uses_the_responses_encoding() {
 
 #[test]
 fn apply_workspace_edit_mixed_open_and_unopened_files() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let opened_path = tmp.path().join("opened.txt");
     let unopened_path = tmp.path().join("unopened.txt");
     std::fs::write(&opened_path, "hello\n").unwrap();
@@ -495,7 +495,7 @@ fn apply_workspace_edit_mixed_open_and_unopened_files() {
 /// tolerates `NotFound`) still triggers this abort.
 #[test]
 fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let ok_path = tmp.path().join("ok.txt");
     std::fs::write(&ok_path, "abcdef\n").unwrap();
     let ok_canonical = std::fs::canonicalize(&ok_path).unwrap();
@@ -548,7 +548,7 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
     use hume_scripting::PaneHandle;
     use hume_scripting::host::EditHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let ok_path = tmp.path().join("ok.txt");
     std::fs::write(&ok_path, "abcdef\n").unwrap();
     let ok_canonical = std::fs::canonicalize(&ok_path).unwrap();
@@ -634,7 +634,7 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
 /// panic in `commit_changeset`'s `cs.apply(&text).expect(...)`.
 #[test]
 fn apply_workspace_edit_duplicate_entry_for_the_same_file_is_rejected_not_a_panic() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("a.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -669,7 +669,7 @@ fn apply_workspace_edit_duplicate_entry_for_the_same_file_is_rejected_not_a_pani
 
 #[test]
 fn goto_location_same_buffer_char_indexed_shape() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
     run(
@@ -693,7 +693,7 @@ fn goto_location_same_buffer_char_indexed_shape() {
 /// must not truncate forward jump-list history.
 #[test]
 fn goto_location_noop_does_not_clobber_forward_history() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -731,7 +731,7 @@ fn goto_location_noop_does_not_clobber_forward_history() {
 
 #[test]
 fn goto_location_other_open_buffer_by_path_string() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("other.txt");
     std::fs::write(&file, "xyz\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -760,7 +760,7 @@ fn goto_location_other_open_buffer_by_path_string() {
 
 #[test]
 fn goto_location_unopened_path_opens_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("fresh.txt");
     std::fs::write(&file, "hello\n").unwrap();
 
@@ -781,7 +781,7 @@ fn goto_location_unopened_path_opens_it() {
 
 #[test]
 fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -829,7 +829,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
         .unwrap();
     ed.view.panes[pid].viewport.height = 10;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     run(
         &mut ed,
         tmp.path(),
@@ -861,7 +861,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
 /// (see `goto_missing_path_opens_new_file_buffer` below).
 #[test]
 fn goto_location_directory_target_errors_with_no_jump_entry() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let dir_target = steel_path(tmp.path());
     run(
@@ -887,7 +887,7 @@ fn goto_location_directory_target_errors_with_no_jump_entry() {
 /// "aébcdef", byte offset 3 is `b`, UTF-16 code-unit offset 3 is `c`.
 #[test]
 fn goto_location_wire_shape_decodes_with_the_responses_encoding() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("target.txt");
     std::fs::write(&file, "aébcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -934,7 +934,7 @@ fn goto_location_wire_shape_decodes_with_the_responses_encoding() {
 /// `Buffer::from_file_or_new` chokepoint.
 #[test]
 fn goto_missing_path_opens_new_file_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let target = tmp.path().join("not-yet-created.txt");
     let target_str = steel_path(&target);
@@ -972,7 +972,7 @@ fn goto_missing_path_opens_new_file_buffer() {
 /// offset 3 is `c` (`é` is one code unit).
 #[test]
 fn server_initiated_apply_edit_into_unopened_file_uses_the_requesting_servers_encoding() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("new.txt");
     std::fs::write(&file, "aébcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -1008,7 +1008,7 @@ fn server_initiated_apply_edit_into_unopened_file_uses_the_requesting_servers_en
 
 #[test]
 fn server_initiated_apply_edit_actually_applies_and_answers_true() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("srv.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -1050,7 +1050,7 @@ fn server_initiated_apply_edit_actually_applies_and_answers_true() {
 /// `apply_edit_request_response`, the opened buffer's `language` stays `None`.
 #[test]
 fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("new.rs");
     std::fs::write(&file, "fn helper() {}\n").unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
@@ -1087,7 +1087,7 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
 
 #[test]
 fn server_initiated_apply_edit_answers_false_with_a_reason_on_bad_uri() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = utf8_rig(tmp.path(), "-[x]>\n", |_| {});
     let sid = rig.sid("rust-analyzer");
     let mut ed = rig.ed;

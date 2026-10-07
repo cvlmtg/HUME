@@ -8,7 +8,7 @@ use hume_scripting::ScriptingHost;
 
 #[test]
 fn prompt_confirm_calls_callback_with_typed_text() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     run(
         &mut ed,
@@ -31,7 +31,7 @@ fn prompt_confirm_calls_callback_with_typed_text() {
 
 #[test]
 fn prompt_esc_calls_callback_with_false_exactly_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     run(
         &mut ed,
@@ -51,7 +51,7 @@ fn prompt_esc_calls_callback_with_false_exactly_once() {
 
 #[test]
 fn prompt_prefill_is_visible_and_editable() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     run(
         &mut ed,
@@ -79,7 +79,7 @@ fn prompt_prefill_is_visible_and_editable() {
 
 #[test]
 fn second_prompt_while_one_is_open_errors() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     run(
         &mut ed,
@@ -157,7 +157,7 @@ fn close_drawer_leaves_a_buried_prompt_open_and_unfired() {
 /// (topmost of any depth) would still find the buried prompt.
 #[test]
 fn minibuf_does_not_resolve_a_prompt_buried_under_a_picker() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     run(
         &mut ed,
@@ -186,7 +186,7 @@ fn minibuf_does_not_resolve_a_prompt_buried_under_a_picker() {
 
 #[test]
 fn prompt_mode_round_trips_and_fires_on_mode_change() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdefghij\n");
     run(
         &mut ed,
@@ -227,7 +227,7 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
 /// dangling underneath a `Prompt` layer with no way back to it.
 #[test]
 fn prompt_from_insert_ends_the_insert_session_cleanly() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -270,7 +270,7 @@ fn prompt_from_insert_ends_the_insert_session_cleanly() {
 /// stale behind once `Prompt` takes over.
 #[test]
 fn prompt_from_search_restores_pre_search_selection_and_clears_the_pattern() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello world\n");
     run(
         &mut ed,
@@ -321,7 +321,7 @@ fn prompt_from_search_restores_pre_search_selection_and_clears_the_pattern() {
 /// never run.
 #[test]
 fn exit_insert_outside_insert_does_not_cancel_an_unrelated_prompt() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     run(
         &mut ed,
@@ -353,7 +353,7 @@ fn exit_insert_outside_insert_does_not_cancel_an_unrelated_prompt() {
 
 #[test]
 fn symbol_under_cursor_on_a_word_char_returns_the_whole_word() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("foo -[b]>ar baz\n");
     assert_eq!(
         log_probe(&mut ed, tmp.path(), "(symbol-under-cursor bid)"),
@@ -363,7 +363,7 @@ fn symbol_under_cursor_on_a_word_char_returns_the_whole_word() {
 
 #[test]
 fn symbol_under_cursor_on_a_word_ending_in_a_combining_mark_returns_the_whole_word() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("foo caf-[e\u{0301}]> baz\n");
     assert_eq!(
         log_probe(&mut ed, tmp.path(), "(symbol-under-cursor bid)"),
@@ -373,7 +373,7 @@ fn symbol_under_cursor_on_a_word_ending_in_a_combining_mark_returns_the_whole_wo
 
 #[test]
 fn symbol_under_cursor_on_whitespace_returns_empty() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("foo-[ ]>bar\n");
     assert_eq!(
         log_probe(
@@ -387,7 +387,7 @@ fn symbol_under_cursor_on_whitespace_returns_empty() {
 
 #[test]
 fn symbol_under_cursor_on_punctuation_returns_empty() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("foo-[.]>bar\n");
     assert_eq!(
         log_probe(
@@ -401,7 +401,7 @@ fn symbol_under_cursor_on_punctuation_returns_empty() {
 
 #[test]
 fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("foo -[b]>ar baz\n");
 
     // Open a second buffer in a second pane, then focus that pane. `bid`
@@ -439,7 +439,7 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
 /// own return shape) raises.
 #[test]
 fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("foo -[b]>ar baz\n");
 
     // Redirect the sole pane to a different buffer. `bid`'s PaneBufferState

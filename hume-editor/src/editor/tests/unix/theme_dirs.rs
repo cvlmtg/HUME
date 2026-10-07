@@ -12,14 +12,15 @@ struct ThemeDirsFixture {
 
 impl ThemeDirsFixture {
     fn new() -> Self {
-        let config_tmp = safe_tempdir();
-        let data_tmp = safe_tempdir();
-        let runtime_tmp = safe_tempdir();
+        let config_tmp = tempfile::tempdir().unwrap();
+        let data_tmp = tempfile::tempdir().unwrap();
+        let runtime_tmp = tempfile::tempdir().unwrap();
         Self {
             dirs: hume_platform::dirs::Dirs {
                 config: Some(config_tmp.path().join("hume")),
                 data: Some(data_tmp.path().join("hume")),
                 runtime: Some(runtime_tmp.path().to_path_buf()),
+                tmp: None,
             },
             _tmps: (config_tmp, data_tmp, runtime_tmp),
         }

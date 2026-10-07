@@ -106,7 +106,7 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
 
 #[test]
 fn completion_merges_two_servers_items() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(
         tmp.path(),
         FOO,
@@ -134,7 +134,7 @@ fn completion_merges_two_servers_items() {
 
 #[test]
 fn completion_incomplete_if_any() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(
         tmp.path(),
         FOO,
@@ -172,7 +172,7 @@ fn completion_incomplete_if_any() {
 
 #[test]
 fn except_features_completion_excludes_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(
         tmp.path(),
         FOO,
@@ -195,7 +195,7 @@ fn except_features_completion_excludes_server() {
 
 #[test]
 fn trigger_chars_union_per_server_and_die_with_the_instance() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let trigger =
         |c: &str| serde_json::json!({ "completionProvider": { "triggerCharacters": [c] } });
     let (mut rig, _guard) = two_servers(tmp.path(), FOO, trigger("."), trigger(":"), "", |b| {
@@ -236,7 +236,7 @@ fn trigger_chars_union_per_server_and_die_with_the_instance() {
 
 #[test]
 fn format_picks_first_with_range_provider() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(
         tmp.path(),
         "line1\nline2\n",
@@ -261,7 +261,7 @@ fn format_picks_first_with_range_provider() {
 
 #[test]
 fn format_uses_the_first_whole_document_formatter_for_a_partial_selection() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(
         tmp.path(),
         "line1\nline2\n",
@@ -287,7 +287,7 @@ fn action(title: &str) -> serde_json::Value {
 #[test]
 fn code_actions_menu_merges_with_suffix_only_when_multi() {
     let caps = || serde_json::json!({ "codeActionProvider": true });
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(tmp.path(), FOO, caps(), caps(), "", |b| {
         b.respond_to_server(
             RA,
@@ -320,7 +320,7 @@ fn code_actions_menu_merges_with_suffix_only_when_multi() {
 #[test]
 fn code_action_context_only_own_diagnostics() {
     let caps = || serde_json::json!({ "codeActionProvider": true });
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(tmp.path(), FOO, caps(), caps(), "", |b| {
         b.respond_to("textDocument/codeAction", serde_json::json!([]));
     });
@@ -352,7 +352,7 @@ fn code_action_context_only_own_diagnostics() {
 #[test]
 fn execute_command_goes_to_producing_server() {
     let caps = || serde_json::json!({ "codeActionProvider": true, "executeCommandProvider": {"commands": []} });
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(tmp.path(), FOO, caps(), caps(), "", |b| {
         b.respond_to_server(
             RA,
@@ -379,7 +379,7 @@ fn execute_command_goes_to_producing_server() {
 #[test]
 fn goto_two_servers_same_location_jumps() {
     let caps = || serde_json::json!({ "definitionProvider": true });
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut rig, _guard) = two_servers(
         tmp.path(),
@@ -411,7 +411,7 @@ fn goto_two_servers_same_location_jumps() {
 #[test]
 fn references_merge_dedupe_drawer() {
     let caps = || serde_json::json!({ "referencesProvider": true });
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut rig, _guard) = two_servers(
         tmp.path(),
@@ -441,7 +441,7 @@ fn references_merge_dedupe_drawer() {
 #[test]
 fn locations_refresh_regroups_servers() {
     let caps = || serde_json::json!({ "referencesProvider": true });
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut rig, _guard) = two_servers(
         tmp.path(),
@@ -538,7 +538,7 @@ fn hint_texts(ed: &Editor) -> Vec<String> {
 #[test]
 fn inlay_merged_from_two_servers() {
     let caps = || serde_json::json!({ "inlayHintProvider": true });
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(tmp.path(), "let x = 1;\n", caps(), caps(), "", |b| {
         b.respond_to_server(RA, "textDocument/inlayHint", hints(&[(0, 5, ": i32")]));
         b.respond_to_server(LINT, "textDocument/inlayHint", hints(&[(0, 9, " // lint")]));
@@ -553,7 +553,7 @@ fn inlay_merged_from_two_servers() {
 #[test]
 fn inlay_one_server_failing_still_shows_the_others_hints() {
     let caps = || serde_json::json!({ "inlayHintProvider": true });
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(tmp.path(), "let x = 1;\n", caps(), caps(), "", |b| {
         b.respond_to_server(RA, "textDocument/inlayHint", hints(&[(0, 5, ": i32")]));
         b.fail_with_server(LINT, "textDocument/inlayHint", -32603, "lint failed");
@@ -568,7 +568,7 @@ fn inlay_one_server_failing_still_shows_the_others_hints() {
 #[test]
 fn inlay_detach_one_keeps_other_hints() {
     let caps = || serde_json::json!({ "inlayHintProvider": true });
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(tmp.path(), "let x = 1;\n", caps(), caps(), "", |b| {
         b.respond_to_server(RA, "textDocument/inlayHint", hints(&[(0, 5, ": i32")]));
         b.respond_to_server(LINT, "textDocument/inlayHint", hints(&[(0, 9, " // lint")]));
@@ -588,7 +588,7 @@ fn inlay_detach_one_keeps_other_hints() {
 
 #[test]
 fn diagnostics_detach_one_keeps_other_decorations() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(
         tmp.path(),
         "a\nb\n",
@@ -624,7 +624,7 @@ fn diagnostics_detach_one_keeps_other_decorations() {
 
 #[test]
 fn diagnostics_drawer_rows_name_the_diagnostics_source_else_the_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(
         tmp.path(),
         "a\nb\n",
@@ -663,7 +663,7 @@ fn diagnostics_drawer_rows_name_the_diagnostics_source_else_the_server() {
 /// the drawer lists both, each row naming its server.
 #[test]
 fn diagnostics_drawer_lists_a_pushing_and_a_pull_only_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let wire = |line: u32, message: &str| {
         serde_json::json!({
             "range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": 1}},
@@ -706,7 +706,7 @@ fn diagnostics_drawer_lists_a_pushing_and_a_pull_only_server() {
 /// a failure: it is reported at Info, never at Error.
 #[test]
 fn unsupported_feature_reports_at_info() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _guard) = two_servers(
         tmp.path(),
         FOO,

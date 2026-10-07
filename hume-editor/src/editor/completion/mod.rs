@@ -166,7 +166,7 @@ mod testing {
     {
         let reg = CommandRegistry::with_defaults();
         let store = BufferStore::new();
-        let dir = crate::editor::tests::safe_tempdir();
+        let dir = tempfile::tempdir().unwrap();
         (reg, store, dir)
     }
 

@@ -8,7 +8,7 @@ use hume_scripting::ScriptingHost;
 
 #[test]
 fn pushed_text_renders_for_the_focused_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -26,7 +26,7 @@ fn pushed_text_renders_for_the_focused_buffer() {
 
 #[test]
 fn pushed_text_is_not_shown_once_a_different_buffer_is_focused() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
     let other = tmp.path().join("other.txt");
     std::fs::write(&other, "x\n").unwrap();
@@ -53,7 +53,7 @@ fn pushed_text_is_not_shown_once_a_different_buffer_is_focused() {
 
 #[test]
 fn closing_the_buffer_clears_its_pushed_text() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
     let scratch = tmp.path().join("scratch.txt");
     std::fs::write(&scratch, "x\n").unwrap();
@@ -83,7 +83,7 @@ fn closing_the_buffer_clears_its_pushed_text() {
 
 #[test]
 fn empty_text_clears_a_previously_pushed_value() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -110,7 +110,7 @@ fn empty_text_clears_a_previously_pushed_value() {
 
 #[test]
 fn set_statusline_text_on_a_stale_bid_raises_unknown_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
     let scratch = tmp.path().join("scratch.txt");
     std::fs::write(&scratch, "x\n").unwrap();
@@ -146,7 +146,7 @@ fn set_statusline_text_on_a_stale_bid_raises_unknown_buffer() {
 /// `StatusElement::custom`'s doc.
 #[test]
 fn set_statusline_text_on_an_unplaceable_name_raises_an_error() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(

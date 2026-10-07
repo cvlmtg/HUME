@@ -18,7 +18,7 @@ fn call(ed: &mut Editor, name: &str) {
 fn happy_path_delivers_stdout_stderr_and_exit_code() {
     // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _path = path_reader();
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -40,7 +40,7 @@ fn happy_path_delivers_stdout_stderr_and_exit_code() {
 #[test]
 fn cwd_keyword_sets_the_child_working_directory() {
     let _path = path_reader();
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -63,7 +63,7 @@ fn cwd_keyword_sets_the_child_working_directory() {
 fn nonzero_exit_and_stderr_reach_the_callback() {
     // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _path = path_reader();
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -84,7 +84,7 @@ fn nonzero_exit_and_stderr_reach_the_callback() {
 
 #[test]
 fn missing_binary_fires_the_callback_with_code_negative_one() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -107,7 +107,7 @@ fn missing_binary_fires_the_callback_with_code_negative_one() {
 
 #[test]
 fn empty_cmd_fires_the_callback_instead_of_raising() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -133,7 +133,7 @@ fn empty_cmd_fires_the_callback_instead_of_raising() {
 
 #[test]
 fn spawn_failure_wakes_the_event_loop() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     let woken = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&woken);
@@ -164,7 +164,7 @@ fn spawn_failure_wakes_the_event_loop() {
 fn cancel_async_prevents_the_callback_and_kills_the_child() {
     // Spawns "sleep" and "kill" by unqualified name; see `Global::Env`'s doc.
     let _path = path_reader();
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,

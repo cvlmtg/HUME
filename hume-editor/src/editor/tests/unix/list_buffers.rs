@@ -68,7 +68,7 @@ fn ls_cursor_on_current_line() {
 /// test fails: `doc().path()` will be `Some(...)` instead of `None`.
 #[test]
 fn view_buffer_save_as_stays_synthetic() {
-    let tmp = safe_named_tempfile();
+    let tmp = tempfile::NamedTempFile::new().unwrap();
     let out_path = tmp.path().to_path_buf();
 
     let mut ed = editor_from("-[h]>ello\n");

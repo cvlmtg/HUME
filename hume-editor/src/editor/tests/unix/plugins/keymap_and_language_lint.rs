@@ -96,7 +96,7 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let tp_dir = dir.path().join("plugins").join("user").join("tp");
     let dep_dir = dir.path().join("plugins").join("user").join("dep");
     std::fs::create_dir_all(&tp_dir).unwrap();
@@ -117,8 +117,10 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     let init_path = dir.path().join("init.scm");
     {
         let mut ih = init_host!(ed);

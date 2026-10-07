@@ -76,7 +76,7 @@ fn signature_help_response(
 /// routing failure and log an Error on every matching keystroke.
 #[test]
 fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup(tmp.path(), |_backend, _sid| {});
     position_after_foo(&mut ed);
 
@@ -99,7 +99,7 @@ fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
 
 #[test]
 fn trigger_char_after_debounce_shows_signature_with_marked_param() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -120,7 +120,7 @@ fn trigger_char_after_debounce_shows_signature_with_marked_param() {
 
 #[test]
 fn comma_advances_the_marked_parameter() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -146,7 +146,7 @@ fn comma_advances_the_marked_parameter() {
 
 #[test]
 fn close_paren_closes_the_popup_without_a_request() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -183,7 +183,7 @@ fn close_paren_closes_the_popup_without_a_request() {
 
 #[test]
 fn esc_ending_insert_closes_the_sticky_popup() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -207,7 +207,7 @@ fn esc_ending_insert_closes_the_sticky_popup() {
 
 #[test]
 fn rapid_trigger_chars_coalesce_to_one_request() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -245,7 +245,7 @@ fn rapid_trigger_chars_coalesce_to_one_request() {
 
 #[test]
 fn null_response_closes_the_popup() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -272,7 +272,7 @@ fn null_response_closes_the_popup() {
 
 #[test]
 fn offset_form_parameter_label_marks_the_correct_slice() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -304,7 +304,7 @@ fn offset_form_parameter_label_marks_the_correct_slice() {
 
 #[test]
 fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -336,7 +336,7 @@ fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
 
 #[test]
 fn offset_form_label_is_read_in_the_negotiated_encoding_not_always_utf16() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup_trigger_char_feature(
         tmp.path(),
         FOO,
@@ -390,7 +390,7 @@ fn offset_form_label_is_read_in_the_negotiated_encoding_not_always_utf16() {
 /// `#:require-focus` to its `lsp-request!`.
 #[test]
 fn stale_response_after_a_pane_switch_shows_no_popup() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",

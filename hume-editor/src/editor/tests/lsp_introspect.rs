@@ -63,7 +63,7 @@ fn run_tagged_probe(ed: &mut Editor, tmp: &std::path::Path, assertion: &str) -> 
 
 #[test]
 fn lsp_capabilities_reads_raw_wire_caps_after_handshake() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -91,7 +91,7 @@ fn lsp_capabilities_reads_raw_wire_caps_after_handshake() {
 /// carrying the raw value through.
 #[test]
 fn lsp_capabilities_surfaces_a_field_lsp_types_does_not_model() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -115,7 +115,7 @@ fn lsp_capabilities_surfaces_a_field_lsp_types_does_not_model() {
 
 #[test]
 fn lsp_capabilities_is_false_before_running() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // No `initialize` answer is scripted, so the server stays Starting.
     let (backend, _, _) = RecordingLspBackend::new();
     let mut rig = LspRig::open(tmp.path(), RigSpec::rust("-[a]>bcdef\n"), backend);
@@ -134,7 +134,7 @@ fn lsp_capabilities_is_false_before_running() {
 
 #[test]
 fn lsp_server_status_lists_the_running_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -163,7 +163,7 @@ fn lsp_server_status_lists_the_running_server() {
 
 #[test]
 fn lsp_servers_names_the_attached_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -177,7 +177,7 @@ fn lsp_servers_names_the_attached_server() {
 
 #[test]
 fn lsp_server_registered_reflects_registration() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -201,7 +201,7 @@ fn lsp_server_registered_reflects_registration() {
 
 #[test]
 fn lsp_server_registered_is_false_when_unregistered() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
 
     let fired = run_probe(
@@ -218,7 +218,7 @@ fn lsp_server_registered_is_false_when_unregistered() {
 
 #[test]
 fn buffer_generation_changes_after_an_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -254,7 +254,7 @@ fn buffer_generation_changes_after_an_edit() {
 
 #[test]
 fn lsp_position_params_uses_the_negotiated_utf16_encoding_for_multibyte_chars() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // Buffer: "🎉" (char 0, one grapheme, 2 UTF-16 code units) then cursor on 'x' (char 1).
     let mut rig = LspRig::rust(
         tmp.path(),
@@ -273,7 +273,7 @@ fn lsp_position_params_uses_the_negotiated_utf16_encoding_for_multibyte_chars() 
 
 #[test]
 fn lsp_position_params_uses_the_negotiated_utf8_encoding_for_multibyte_chars() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "🎉-[x]>rest\n",
@@ -290,7 +290,7 @@ fn lsp_position_params_uses_the_negotiated_utf8_encoding_for_multibyte_chars() {
 
 #[test]
 fn lsp_primary_range_params_reflects_the_primary_selection() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // Selection covers "bcd" (chars 1..=3, inclusive head at 3): half-open
     // wire range must be [1, 4).
     let mut rig = LspRig::rust(
@@ -318,7 +318,7 @@ fn lsp_primary_range_params_reflects_the_primary_selection() {
 /// the case where two selections don't touch.
 #[test]
 fn lsp_linewise_ranges_params_coalesces_touching_selections() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "line1\nline2\nline3\n": selection 1 covers line0 whole (0..=5),
     // selection 2 covers line1 whole (6..=11); they touch, so the hull is
     // one range [0, 12).
@@ -347,7 +347,7 @@ fn lsp_linewise_ranges_params_coalesces_touching_selections() {
 /// consequence).
 #[test]
 fn lsp_linewise_ranges_params_splits_on_a_gap() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "line1\nline2\nline3\n": selection 1 covers line0 (0..=5), selection 2
     // covers line2 (12..=17); line1 sits untouched between them.
     let mut rig = LspRig::rust(
@@ -376,7 +376,7 @@ fn lsp_linewise_ranges_params_splits_on_a_gap() {
 /// neighbors together.
 #[test]
 fn lsp_linewise_ranges_params_does_not_bridge_across_a_collapsed_blank_line_selection() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "line1\n\nline3\n": selection 1 covers line0 whole (0..=5), selection
     // 2 is a collapsed cursor on the empty line1 (char 6, touching both
     // neighbors), selection 3 covers line2 whole (7..=12).
@@ -405,7 +405,7 @@ fn lsp_linewise_ranges_params_does_not_bridge_across_a_collapsed_blank_line_sele
 /// selection is a genuine, unambiguous partial-line one).
 #[test]
 fn lsp_linewise_ranges_params_is_empty_for_a_lone_collapsed_blank_line_selection() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "a\n\nb\n": collapsed cursor on the empty line1 (char 2).
     let mut rig = LspRig::rust(
         tmp.path(),
@@ -433,7 +433,7 @@ fn lsp_linewise_ranges_params_is_empty_for_a_lone_collapsed_blank_line_selection
 /// own, narrower contract.
 #[test]
 fn lsp_linewise_ranges_params_skips_non_linewise_selections() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "line1\nline2\n": selection 1 covers line0 whole (0..=5, linewise),
     // selection 2 covers just "lin" on line1 (6..=8, not linewise).
     let mut rig = LspRig::rust(
@@ -458,7 +458,7 @@ fn lsp_linewise_ranges_params_skips_non_linewise_selections() {
 /// `ranges` is simply empty, distinct from the no-server/no-path `#f`.
 #[test]
 fn lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "a<[bcd]-ef\n",
@@ -486,7 +486,7 @@ fn lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise() {
 /// selection's inclusive `head` sits on the cluster's first char.
 #[test]
 fn lsp_primary_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "caf" + é (U+0065 U+0301, two chars) + "\n". Grapheme boundaries:
     // 0,1,2,3,5,6; é occupies chars 3..5. Selection anchor=0, head=3
     // (inclusive) covers "caf" plus é's first char only.
@@ -508,7 +508,7 @@ fn lsp_primary_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
 
 #[test]
 fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     // Captures the hook's own `(first . end)` payload so the assertion
@@ -553,7 +553,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
 /// report an `'end` one higher than this asserts.
 #[test]
 fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let fired = run_probe(
@@ -597,7 +597,7 @@ fn viewport_range_end_is_one_past_the_last_visible_row() {
 /// own return shape) raises.
 #[test]
 fn viewport_range_raises_for_a_paneless_buffer_handle() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
 
     // `open_extra_file` opens a second buffer into the buffer list without
@@ -652,7 +652,7 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
 /// `editor::tests::tab::resizing_while_a_tab_is_hidden_still_resyncs_its_viewport`).
 #[test]
 fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("hidden.rs");
     std::fs::write(&path, "fn hidden() {}\n").unwrap();
 
@@ -688,7 +688,7 @@ fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
 /// guard, must resolve a background-tab pane too.
 #[test]
 fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("hidden.rs");
     std::fs::write(&path, "fn hidden() {}\n").unwrap();
 
@@ -733,7 +733,7 @@ fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
 /// server and still has a seeded (now stale) pane state.
 #[test]
 fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -784,7 +784,7 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
 /// does not resolve on its own (see the sibling `_raises_` test above).
 #[test]
 fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -833,7 +833,7 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
 /// restriction applies to `viewport-range`, the one caller that needs it.
 #[test]
 fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -871,7 +871,7 @@ fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
 
 #[test]
 fn lsp_position_params_is_false_for_an_unattached_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     // No server attached at all.
     let host = ScriptingHost::new(&Dirs::none());
@@ -886,7 +886,7 @@ fn lsp_position_params_is_false_for_an_unattached_buffer() {
 
 #[test]
 fn lsp_position_to_offset_uses_the_responses_tagged_utf16_encoding() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "🎉" is 1 char, 2 UTF-16 code units: wire character 2 (the emoji's
     // full UTF-16 width) must land on char index 1, the char right after it.
     let mut rig = rig_with_echo(
@@ -909,7 +909,7 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf16_encoding() {
 
 #[test]
 fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "🎉" is 4 UTF-8 bytes: wire character 4 must land on char index 1.
     let mut rig = rig_with_echo(
         tmp.path(),
@@ -937,7 +937,7 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
 /// decode against the running UTF-16 server.
 #[test]
 fn lsp_position_to_offset_untagged_handle_errors() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -971,7 +971,7 @@ fn lsp_position_to_offset_untagged_handle_errors() {
 /// own detach-after-send shape.
 #[test]
 fn lsp_position_to_offset_decodes_via_the_tag_even_after_the_server_detaches() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_with_echo(
         tmp.path(),
         "-[x]>🎉rest\n",
@@ -1012,7 +1012,7 @@ fn lsp_position_to_offset_decodes_via_the_tag_even_after_the_server_detaches() {
 
 #[test]
 fn lsp_position_to_offset_is_false_when_it_would_land_on_the_trailing_phantom_line() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "-[x]>abc\n" is "xabc\n": one content line; a wire `line` past it
     // clamps (inside `wire_to_char`) onto the buffer's trailing phantom line
     // rather than erroring, since servers send past-end positions routinely. Every
@@ -1040,7 +1040,7 @@ fn lsp_position_to_offset_is_false_when_it_would_land_on_the_trailing_phantom_li
 
 #[test]
 fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "🎉" occupies char 0 (2 UTF-16 code units); 'b' is char 1, wire
     // character 2. A wire range [0, 2) must convert to char offsets (0 . 1),
     // covering just the emoji, half-open.
@@ -1075,7 +1075,7 @@ fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
     // refuses: a past-end wire `line` for `end` is not an error here.
     // "-[x]>abc\n" is "xabc\n" (the marked 'x' is real buffer content), 5
     // chars.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_with_echo(
         tmp.path(),
         "-[x]>abc\n",
@@ -1101,7 +1101,7 @@ fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
 /// `lsp_position_to_offset_untagged_handle_errors`.
 #[test]
 fn lsp_range_to_offsets_untagged_handle_errors() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -1151,7 +1151,7 @@ fn lsp_locations_display_parts_untagged_handle_errors() {
 /// the file is not open, so a script never matches URIs to buffers itself.
 #[test]
 fn lsp_locations_display_parts_name_the_open_buffer_of_each_row() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = std::fs::canonicalize(tmp.path())
         .unwrap()
         .join("src/main.rs");
@@ -1196,7 +1196,7 @@ fn echo_location(line: u64, character: u64) -> serde_json::Value {
 /// path, line and column collapse into the first.
 #[test]
 fn display_parts_dedupes_identical_rows_keeping_the_first() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_with_echo(
         tmp.path(),
         "-[a]>bc\n",
@@ -1222,7 +1222,7 @@ fn display_parts_dedupes_identical_rows_keeping_the_first() {
 /// the row it shows rather than indexing a list the dedupe reshaped.
 #[test]
 fn display_parts_rows_carry_their_location() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_with_echo(
         tmp.path(),
         "-[a]>bc\n",
@@ -1287,7 +1287,7 @@ fn reported_line(rig: &LspRig) -> serde_json::Value {
 /// it, wherever the cursor is.
 #[test]
 fn tracked_position_params_follow_lines_inserted_above() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = tracked_rig(tmp.path());
     type_cmd(&mut rig.ed, ":report");
     assert_eq!(reported_line(&rig), 1, "setup: line 1");
@@ -1303,7 +1303,7 @@ fn tracked_position_params_follow_lines_inserted_above() {
 
 #[test]
 fn a_released_position_answers_false() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = tracked_rig(tmp.path());
     type_cmd(&mut rig.ed, ":disarm");
 
@@ -1313,7 +1313,7 @@ fn a_released_position_answers_false() {
 
 #[test]
 fn a_false_token_answers_false_and_never_raises() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bc\n",
@@ -1330,7 +1330,7 @@ fn a_false_token_answers_false_and_never_raises() {
 
 #[test]
 fn lsp_capability_reads_the_provider_of_a_feature_or_a_method() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdef\n",
@@ -1361,7 +1361,7 @@ fn lsp_capability_reads_the_provider_of_a_feature_or_a_method() {
 
 #[test]
 fn lsp_capability_needs_exactly_one_of_feature_and_method() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdef\n",

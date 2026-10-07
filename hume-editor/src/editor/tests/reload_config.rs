@@ -36,7 +36,7 @@ use hume_lsp::test_util::RecordingLspBackend;
 /// expectation for 'Q', which has no default binding at all.
 #[test]
 fn reset_reverts_bind_key_to_default() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -72,7 +72,7 @@ fn reset_reverts_bind_key_to_default() {
 /// must also revert. The default trie is rebuilt wholesale, not patched.
 #[test]
 fn reset_reverts_unbind_key_to_default() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -108,7 +108,7 @@ fn reset_reverts_unbind_key_to_default() {
 /// wholesale-rebuild reset must undo it too.
 #[test]
 fn reset_reverts_bind_wait_char_to_default() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
 
     // Sanity: 'g' 'W' is not a WaitChar node in the compiled-in default;
@@ -155,7 +155,7 @@ fn reset_reverts_bind_wait_char_to_default() {
 /// stop there.
 #[test]
 fn reset_reinstalls_kitty_defaults_after_a_config_override() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     ed.set_kitty_support(true);
 
@@ -195,7 +195,7 @@ fn reset_reinstalls_kitty_defaults_after_a_config_override() {
 /// to `EditorSettings::default()`, not the previous session's value.
 #[test]
 fn reset_reverts_set_option_to_compiled_in_default() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -245,7 +245,7 @@ fn reset_reverts_runtime_set_command_too() {
 /// global-setting reset path as `scroll-margin`, just a richer value.
 #[test]
 fn reset_reverts_statusline_config_to_default() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -317,7 +317,7 @@ fn reset_reverts_theme_to_compiled_in_default() {
 /// global" for every open buffer.
 #[test]
 fn reset_clears_buffer_overrides() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -382,7 +382,7 @@ fn reset_clears_stale_buffer_language_ids() {
 /// untouched until resync; see `LspState::reset_config`'s doc).
 #[test]
 fn reset_clears_lsp_server_configs() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(&mut ed, &mut host, RUST_ANALYZER, tmp.path());
@@ -409,7 +409,7 @@ fn reset_clears_lsp_server_configs() {
 /// that set them may not even be loaded by the new config.
 #[test]
 fn reset_clears_plugin_decorations() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -453,7 +453,7 @@ fn reset_clears_plugin_decorations() {
 /// after a reset: its `SteelVal` thunk is rooted in the outgoing one.
 #[test]
 fn reset_cancels_pending_steel_timers() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -533,7 +533,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
 /// be misread as an ordinary `:` command on the very next Enter.
 #[test]
 fn reset_tears_down_an_open_prompt_session_completely() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -595,7 +595,7 @@ fn reset_tears_down_an_open_prompt_session_completely() {
 /// `typed_reload_config`'s caller does) and confirming its hook never fires.
 #[test]
 fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -689,7 +689,7 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
 /// builtin-conflict check.
 #[test]
 fn reset_clears_dynamic_commands() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -743,7 +743,7 @@ fn running_rig(tmp: &Path, marked: &str) -> LspRig {
 /// LSP wire traffic: the server was never detached.
 #[test]
 fn resync_refires_lsp_attach_for_a_running_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = running_rig(tmp.path(), "-[a]>b\n");
     let sid = rig.sid("rust-analyzer");
     let mut ed = rig.ed;
@@ -781,7 +781,7 @@ fn resync_refires_lsp_attach_for_a_running_server() {
 /// announced once: the filter change and the resync replay are one attach.
 #[test]
 fn reload_that_changes_a_kept_filter_fires_lsp_attach_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = running_rig(tmp.path(), "-[a]>bcd\n");
     let bid = rig.bid;
     let mut ed = rig.ed;
@@ -815,7 +815,7 @@ fn reload_that_changes_a_kept_filter_fires_lsp_attach_once() {
 /// cleared registry never detaches the buffer in between.
 #[test]
 fn reload_keeps_an_instance_the_new_config_still_plans() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = running_rig(tmp.path(), "-[a]>b\n");
     let sid = rig.sid("rust-analyzer");
     let bid = rig.bid;
@@ -876,7 +876,7 @@ fn reload_keeps_an_instance_the_new_config_still_plans() {
 /// the buffer from it (with `didClose`) and stops the instance.
 #[test]
 fn reload_detaches_and_stops_an_instance_the_new_config_drops() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = running_rig(tmp.path(), "-[a]>b\n");
     let sid = rig.sid("rust-analyzer");
     let bid = rig.bid;
@@ -916,7 +916,7 @@ fn reload_detaches_and_stops_an_instance_the_new_config_drops() {
 /// hooks, leaving the backend's response untouched.
 #[test]
 fn resync_does_not_refire_attach_for_a_starting_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
     let mut ed = LspRig::open(tmp.path(), RigSpec::rust("-[a]>b\n"), backend).ed;
@@ -944,11 +944,11 @@ fn resync_does_not_refire_attach_for_a_starting_server() {
 /// back, since buffers aren't reopened.
 #[test]
 fn resync_refires_buffer_open_for_every_open_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let first_bid = ed.focused_buffer_id();
 
-    let file_tmp = safe_tempdir();
+    let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("second.txt");
     std::fs::write(&file, "hi\n").unwrap();
     let (second_bid, is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
@@ -1013,7 +1013,7 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
 /// distinction this test needs.
 #[test]
 fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let old_bid = ed.focused_buffer_id();
 
@@ -1031,7 +1031,7 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
     );
     ed.scripting = Some(host);
 
-    let file_tmp = safe_tempdir();
+    let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("new.txt");
     std::fs::write(&file, "hi\n").unwrap();
     let (new_bid, is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
@@ -1079,7 +1079,7 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
 /// after a reload while the underlying diagnostics data is still there.
 #[test]
 fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = running_rig(tmp.path(), "-[a]>a\nbb\n");
     let sid = rig.sid("rust-analyzer");
     let bid = rig.bid;
@@ -1146,7 +1146,7 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
 /// would silently skip exactly this buffer.
 #[test]
 fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = running_rig(tmp.path(), "-[a]>a\nbb\n");
     let sid = rig.sid("rust-analyzer");
     let bid = rig.bid;
@@ -1225,11 +1225,11 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
 /// across panes, not `pane_visible_range`'s own math.
 #[test]
 fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let first_bid = ed.focused_buffer_id();
 
-    let file_tmp = safe_tempdir();
+    let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("second.txt");
     std::fs::write(&file, "hi\n").unwrap();
     let (second_bid, is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
@@ -1284,11 +1284,11 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
 /// already covers whatever it needs.
 #[test]
 fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the_snapshot() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let first_bid = ed.focused_buffer_id();
 
-    let file_tmp = safe_tempdir();
+    let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("second.txt");
     std::fs::write(&file, "hi\n").unwrap();
     let (second_bid, _) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
@@ -1356,7 +1356,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
 /// actually re-fired, not just that some other diff coincidentally matched.
 #[test]
 fn resync_refires_buffer_enter_for_the_focused_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
     ed.settle();
     let bid = ed.focused_buffer_id();

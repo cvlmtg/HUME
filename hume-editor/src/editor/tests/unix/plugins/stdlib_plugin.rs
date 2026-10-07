@@ -12,7 +12,7 @@ fn setup_stdlib_editor() -> (Editor, ScriptingHost, RuntimeDirs, tempfile::TempD
     let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
 
-    let init_dir = safe_tempdir();
+    let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(load-plugin! "core:stdlib")"#).unwrap();
 
@@ -272,7 +272,7 @@ fn core_stdlib_config_commands() {
 fn core_stdlib_list_subdirs_filters_stray_files() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
-    let scan_dir = safe_tempdir();
+    let scan_dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(scan_dir.path().join("beta")).unwrap();
     std::fs::create_dir_all(scan_dir.path().join("alpha")).unwrap();
     std::fs::write(scan_dir.path().join("stray.txt"), "not a dir").unwrap();
@@ -308,7 +308,7 @@ fn core_stdlib_list_subdirs_filters_stray_files() {
 fn core_stdlib_write_file_truncates_existing_content() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
-    let scan_dir = safe_tempdir();
+    let scan_dir = tempfile::tempdir().unwrap();
     let target = scan_dir.path().join("target.txt");
     let path = steel_path(&target);
 

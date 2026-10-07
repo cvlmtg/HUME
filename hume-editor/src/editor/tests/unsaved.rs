@@ -6,7 +6,7 @@ use crate::statusline::{StatusElement, render_element};
 use hume_scripting::host::BufferHost;
 
 fn file_editor() -> (tempfile::TempDir, Editor) {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let ed = editor_with_path("hello\n", &dir.path().join("foo.txt"));
     (dir, ed)
 }
@@ -54,7 +54,7 @@ fn undoing_a_committed_session_back_to_the_save_point_is_clean() {
 
 #[test]
 fn another_buffers_session_does_not_count() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let (first, second) = (dir.path().join("a.txt"), dir.path().join("b.txt"));
     std::fs::write(&first, "a\n").unwrap();
     std::fs::write(&second, "b\n").unwrap();

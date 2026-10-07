@@ -12,7 +12,7 @@ use hume_scripting::ScriptingHost;
 
 #[test]
 fn ctrl_space_invokes_a_registered_source_and_shows_its_answer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_source(
         &mut ed,
@@ -32,7 +32,7 @@ fn ctrl_space_invokes_a_registered_source_and_shows_its_answer() {
 /// (`'word` hands over the identifier run before the cursor).
 #[test]
 fn a_word_source_is_handed_the_word_before_the_cursor_as_its_prefix() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("ki-[x]>\n");
     insert_with_script(
         &mut ed,
@@ -52,7 +52,7 @@ fn a_word_source_is_handed_the_word_before_the_cursor_as_its_prefix() {
 /// prefixes off the same text.
 #[test]
 fn each_source_is_handed_a_prefix_read_with_its_own_token_chars() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("foo-ki-[x]>\n");
     insert_with_script(
         &mut ed,
@@ -85,7 +85,7 @@ fn each_source_is_handed_a_prefix_read_with_its_own_token_chars() {
 /// it, so the menu stays open and narrows to the dashed candidate.
 #[test]
 fn typing_a_token_char_keeps_the_menu_open_and_narrows_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     insert_with_script(
         &mut ed,
@@ -104,7 +104,7 @@ fn typing_a_token_char_keeps_the_menu_open_and_narrows_it() {
 
 #[test]
 fn ctrl_space_outside_insert_mode_only_reports() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -132,7 +132,7 @@ fn ctrl_space_with_no_buffer_source_registered_reports() {
 /// every candidate does not survive until some later keystroke narrows it.
 #[test]
 fn a_word_token_seeds_the_filter_from_the_word_before_the_cursor() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("ki-[x]>\n");
     insert_with_source(
         &mut ed,
@@ -150,7 +150,7 @@ fn a_word_token_seeds_the_filter_from_the_word_before_the_cursor() {
 
 #[test]
 fn an_empty_answer_closes_the_session_and_reports_no_completions() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_source(&mut ed, tmp.path(), "(list)");
     assert!(ed.state.input.buffer_completion().is_none());
@@ -162,7 +162,7 @@ fn an_empty_answer_closes_the_session_and_reports_no_completions() {
 /// show.
 #[test]
 fn the_session_is_open_but_empty_until_the_source_answers() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -190,7 +190,7 @@ fn the_session_is_open_but_empty_until_the_source_answers() {
 /// merged into the newer call's slot.
 #[test]
 fn an_answer_to_a_superseded_invocation_is_dropped() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -219,7 +219,7 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
 /// actually re-ranks the list may do that.
 #[test]
 fn a_dropped_stale_answer_does_not_reset_the_selection() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -269,7 +269,7 @@ fn a_dropped_stale_answer_does_not_reset_the_selection() {
 /// produce.
 #[test]
 fn a_landing_answer_resets_the_selection_to_row_zero() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -312,7 +312,7 @@ fn a_landing_answer_resets_the_selection_to_row_zero() {
 /// first: a source may stream.
 #[test]
 fn a_repeated_answer_for_a_live_invocation_replaces_the_first() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -332,7 +332,7 @@ fn a_repeated_answer_for_a_live_invocation_replaces_the_first() {
 
 #[test]
 fn an_answer_after_the_session_closed_is_dropped() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -360,7 +360,7 @@ fn an_answer_after_the_session_closed_is_dropped() {
 /// to it still survives.
 #[test]
 fn a_malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_source(
         &mut ed,
@@ -380,7 +380,7 @@ fn a_malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
 
 #[test]
 fn an_all_malformed_answer_behaves_like_an_empty_one() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_source(
         &mut ed,
@@ -410,7 +410,7 @@ fn counting_source(incomplete: &str) -> String {
 /// subscribe to.
 #[test]
 fn an_incomplete_source_is_reinvoked_on_each_keystroke() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(&mut ed, tmp.path(), &counting_source("#t"));
     ed.feed_key(key('f'));
@@ -424,7 +424,7 @@ fn an_incomplete_source_is_reinvoked_on_each_keystroke() {
 /// A complete answer is final: typing re-ranks locally, never re-asks.
 #[test]
 fn a_complete_source_is_not_reinvoked_on_typing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(&mut ed, tmp.path(), &counting_source("#f"));
     ed.feed_key(key('f'));
@@ -447,7 +447,7 @@ fn a_complete_source_is_not_reinvoked_on_typing() {
 /// still-`inflight` slot, never a `shown` one.
 #[test]
 fn a_raising_source_is_not_retried_on_every_keystroke() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -520,7 +520,7 @@ fn calls_after_typing(ed: &mut Editor) -> String {
 /// reinvoked on the next keystroke.
 #[test]
 fn a_bare_array_part_honors_incomplete() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -538,7 +538,7 @@ fn a_bare_array_part_honors_incomplete() {
 /// with no `#:incomplete` of its own.
 #[test]
 fn a_completion_list_part_is_incomplete_when_its_own_flag_is_set() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -556,7 +556,7 @@ fn a_completion_list_part_is_incomplete_when_its_own_flag_is_set() {
 /// complete: the answer is incomplete if anything says so.
 #[test]
 fn an_explicit_incomplete_applies_over_a_complete_list() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -573,7 +573,7 @@ fn an_explicit_incomplete_applies_over_a_complete_list() {
 /// response's items join the others.
 #[test]
 fn completion_emit_decodes_a_mixed_items_list() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -597,7 +597,7 @@ fn completion_emit_decodes_a_mixed_items_list() {
 /// completing nothing.
 #[test]
 fn a_part_that_is_neither_an_item_nor_a_response_raises() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -620,7 +620,7 @@ fn a_part_that_is_neither_an_item_nor_a_response_raises() {
 /// re-invocation's own answer lands, so the menu never blinks empty.
 #[test]
 fn a_reinvoked_source_keeps_its_rows_until_the_new_answer_lands() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -648,7 +648,7 @@ fn a_reinvoked_source_keeps_its_rows_until_the_new_answer_lands() {
 /// superseded by a fresh call against the document after it.
 #[test]
 fn a_pending_source_is_reinvoked_after_an_edit_and_its_old_call_goes_stale() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -688,7 +688,7 @@ fn two_sources(a: &str, b: &str) -> String {
 /// regardless of arrival order or sortText.
 #[test]
 fn two_sources_rank_together_by_score() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("rn-[ ]>\n");
     insert_with_script(
         &mut ed,
@@ -706,7 +706,7 @@ fn two_sources_rank_together_by_score() {
 /// last.
 #[test]
 fn priority_breaks_a_score_tie_before_sort_text() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -721,7 +721,7 @@ fn priority_breaks_a_score_tie_before_sort_text() {
 
 #[test]
 fn top_carries_the_contributing_source_name() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -744,7 +744,7 @@ fn top_carries_the_contributing_source_name() {
 /// leaves the session with nothing.
 #[test]
 fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // A space, not a word char, right before the cursor, so both sources'
     // `'word` token starts empty, so neither has a filter yet.
     let mut ed = editor_from("-[ ]>bcdef\n");
@@ -808,7 +808,7 @@ fn a_trigger_char_nobody_registered_for_does_nothing() {
 /// handler's "a bound command dismisses the session" rule from eating it.
 #[test]
 fn ctrl_space_with_the_menu_up_reinvokes_and_keeps_the_session() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(&mut ed, tmp.path(), &counting_source("#f"));
     ed.feed_key(key_tab());
@@ -823,7 +823,7 @@ fn ctrl_space_with_the_menu_up_reinvokes_and_keeps_the_session() {
 
 #[test]
 fn re_registering_a_name_replaces_the_source() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
@@ -844,7 +844,7 @@ fn re_registering_a_name_replaces_the_source() {
 /// the other, and `:e`'s own path completion is unaffected.
 #[test]
 fn the_same_name_in_both_namespaces_is_two_independent_sources() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
@@ -884,7 +884,7 @@ fn the_same_name_in_both_namespaces_is_two_independent_sources() {
 /// `Effect` is dropped with everything else the failed eval queued.
 #[test]
 fn a_registration_in_a_failed_init_is_never_applied() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let init_path = tmp.path().join("init.scm");
     std::fs::write(
@@ -915,7 +915,7 @@ fn a_registration_in_a_failed_init_is_never_applied() {
 
 #[test]
 fn reload_config_forgets_a_steel_source() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -954,7 +954,7 @@ fn reload_config_forgets_a_steel_source() {
 /// a `Minibuf` session, never a `Buffer` one, opens for `:e <Tab>`.
 #[test]
 fn minibuffer_tab_completion_opens_a_minibuf_session() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("hello.rs"), "").unwrap();
     std::fs::write(tmp.path().join("world.rs"), "").unwrap();
     let mut ed = editor_from("-[x]>\n");
@@ -970,12 +970,7 @@ fn minibuffer_tab_completion_opens_a_minibuf_session() {
 
 #[test]
 fn a_buffer_switch_dismisses_the_session_at_settle() {
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(None);
     ed.feed_key(key('i'));
     type_chars(&mut ed, "hello");
     open_completion_session(&mut ed, &["candidate"]);
@@ -996,8 +991,8 @@ fn a_buffer_switch_dismisses_the_session_at_settle() {
 /// the same argument completion a built-in declares.
 #[test]
 fn a_steel_typed_command_can_declare_a_native_completer() {
-    let tmp = safe_tempdir();
-    let dir = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
@@ -1018,7 +1013,7 @@ fn a_steel_typed_command_can_declare_a_native_completer() {
 /// `:` completion path with no native code involved.
 #[test]
 fn a_steel_minibuf_source_completes_a_typed_commands_argument() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
@@ -1048,7 +1043,7 @@ fn a_steel_minibuf_source_completes_a_typed_commands_argument() {
 /// wrong-target session.
 #[test]
 fn a_buffer_source_named_as_a_completer_is_ignored_with_a_trace() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,

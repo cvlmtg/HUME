@@ -228,7 +228,7 @@ fn enter_after_a_prefix_only_tab_runs_the_typed_line() {
 
 #[test]
 fn a_fuzzy_prefix_shorter_than_the_typed_text_is_not_applied() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
@@ -249,7 +249,7 @@ fn a_fuzzy_prefix_shorter_than_the_typed_text_is_not_applied() {
 
 #[test]
 fn the_common_prefix_never_splits_a_grapheme_cluster() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
@@ -269,7 +269,7 @@ fn the_common_prefix_never_splits_a_grapheme_cluster() {
 
 #[test]
 fn a_later_answer_drops_the_pick_and_proposes_the_common_prefix() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
@@ -321,7 +321,7 @@ fn a_mid_token_tab_with_several_candidates_leaves_the_line_alone() {
 
 #[test]
 fn tab_mid_token_replaces_the_whole_path_not_just_up_to_the_cursor() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -368,7 +368,7 @@ fn tab_mid_set_key_does_not_swallow_the_equals_value() {
 
 #[test]
 fn tab_on_edit_arg_completes_path() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     command_line(&mut ed, &format!("e {}/hel", dir.path().display()));
@@ -382,7 +382,7 @@ fn tab_on_edit_arg_completes_path() {
 
 #[test]
 fn tab_on_write_arg_completes_path() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("out.txt"), b"").unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     command_line(&mut ed, &format!("w {}/out", dir.path().display()));
@@ -395,7 +395,7 @@ fn tab_on_write_arg_completes_path() {
 
 #[test]
 fn tab_on_cd_arg_completes_dirs_only() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join("mysubdir")).unwrap();
     std::fs::write(dir.path().join("myfile.txt"), b"").unwrap();
     let mut ed = editor_from("-[h]>ello\n");
@@ -413,7 +413,7 @@ fn tab_on_cd_arg_completes_dirs_only() {
 
 #[test]
 fn enter_on_directory_candidate_restarts_completion_inside_it() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join("alpha")).unwrap();
     std::fs::create_dir(dir.path().join("beta")).unwrap();
     std::fs::write(dir.path().join("alpha/one.txt"), b"").unwrap();
@@ -453,7 +453,7 @@ fn enter_on_directory_candidate_restarts_completion_inside_it() {
 /// inside_it`'s own multi-candidate directory hits the same shape.
 #[test]
 fn enter_on_a_non_path_candidate_ending_in_slash_does_not_restart_completion() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = first_candidate_editor("-[h]>ello\n");
     run(
         &mut ed,
@@ -499,7 +499,7 @@ fn enter_on_a_non_path_candidate_ending_in_slash_does_not_restart_completion() {
 /// (what a first-space split would wrongly hand over).
 #[test]
 fn a_minibuf_source_gets_only_the_argument_the_cursor_is_in() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
@@ -524,7 +524,7 @@ fn a_minibuf_source_gets_only_the_argument_the_cursor_is_in() {
 
 #[test]
 fn tab_on_buffer_arg_completes_buffer_names() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path_a = dir.path().join("alpha-notes.rs");
     let path_b = dir.path().join("alpha-utils.rs");
     std::fs::write(&path_a, "a\n").unwrap();
@@ -557,7 +557,7 @@ fn tab_on_buffer_arg_completes_buffer_names() {
 /// the name at `b`, matching what Enter would actually run.
 #[test]
 fn tab_mid_alias_with_no_space_completes_the_declared_arg_not_the_command_name() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("1-notes.rs");
     std::fs::write(&path, "a\n").unwrap();
 
@@ -607,7 +607,7 @@ fn tab_on_set_g_silently_completes_global() {
 /// callback firing at the wrong moment) must get an `Err`, not a panic.
 #[test]
 fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = first_candidate_editor("-[h]>ello\n");
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
@@ -647,7 +647,7 @@ fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
 /// that will ever answer.
 #[test]
 fn a_raising_minibuf_source_does_not_leave_the_popup_stuck_pending() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
@@ -685,7 +685,7 @@ fn a_raising_minibuf_source_does_not_leave_the_popup_stuck_pending() {
 /// selection index the new, shorter list no longer has.
 #[test]
 fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = first_candidate_editor("-[h]>ello\n");
     run(
         &mut ed,

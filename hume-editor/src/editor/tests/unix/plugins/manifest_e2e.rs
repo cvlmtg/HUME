@@ -365,8 +365,8 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
     use crate::editor::Severity;
 
     let _path = path_reader();
-    let config_tmp = safe_tempdir();
-    let data_tmp = safe_tempdir();
+    let config_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
     let runtime_dir = repo_runtime_dir();
 
     let broken_plugin_dir = data_tmp
@@ -397,6 +397,7 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_dir),
+        tmp: None,
     };
     ed.init_scripting(&mut Default::default());
 

@@ -17,7 +17,7 @@ use hume_scripting::ScriptingHost;
 /// `read-register` also reads from.
 #[test]
 fn write_register_stores_text_for_a_named_register() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     eval_with_real_host(
@@ -33,7 +33,7 @@ fn write_register_stores_text_for_a_named_register() {
 /// Multiple entries (one per selection) round-trip in order.
 #[test]
 fn write_register_multi_value_preserves_order() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     eval_with_real_host(
@@ -51,7 +51,7 @@ fn write_register_multi_value_preserves_order() {
 /// real `RegisterSet`, not a private shadow copy.
 #[test]
 fn read_register_returns_text_written_from_rust() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
     ed.state.registers.write_text('3', vec!["hi".to_string()]);
 
@@ -77,7 +77,7 @@ fn read_register_returns_text_written_from_rust() {
 /// bare paste's smart-paste routing.
 #[test]
 fn write_register_k_pushes_ring_and_stamps_paste() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     eval_with_real_host(
@@ -98,7 +98,7 @@ fn write_register_k_pushes_ring_and_stamps_paste() {
 /// write above.
 #[test]
 fn read_register_k_reads_ring_head() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     let fired = run_probe(
@@ -114,7 +114,7 @@ fn read_register_k_reads_ring_head() {
 /// The black hole discards writes and reads as empty, matching `"bd`/`"bp`.
 #[test]
 fn write_register_b_discards() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     eval_with_real_host(
@@ -132,7 +132,7 @@ fn write_register_b_discards() {
 
 #[test]
 fn read_register_b_returns_false() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     let fired = run_probe(
@@ -147,7 +147,7 @@ fn read_register_b_returns_false() {
 /// An unwritten register reads as `#f`, same as the black hole.
 #[test]
 fn read_register_unwritten_returns_false() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     let fired = run_probe(
@@ -164,7 +164,7 @@ fn read_register_unwritten_returns_false() {
 /// `registers.rs`'s (the builtins module) doc comment for the *why*.
 #[test]
 fn read_register_holding_a_macro_returns_false() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
     ed.state.registers.write_macro('3', Vec::new());
 
@@ -185,7 +185,7 @@ fn read_register_holding_a_macro_returns_false() {
 /// a unit test.
 #[test]
 fn clipboard_register_round_trips_through_the_mock_clipboard() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
     ed.state.clipboard = crate::editor::clipboard::SystemClipboard::new_mock();
 
@@ -209,7 +209,7 @@ fn clipboard_register_round_trips_through_the_mock_clipboard() {
 /// evaluation" and fail the `.expect("eval_init")` inside it.
 #[test]
 fn callable_directly_from_init_scm() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     eval_with_real_host(

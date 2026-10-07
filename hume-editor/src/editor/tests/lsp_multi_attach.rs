@@ -92,7 +92,7 @@ fn diagnostic(line: u32, severity: i64) -> serde_json::Value {
 
 #[test]
 fn two_servers_both_receive_did_open_change_save_close() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp, "-[f]>n main() {}\n");
     let (ra, lint) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"));
     assert_eq!(rig.attached(), vec![ra, lint]);
@@ -115,7 +115,7 @@ fn two_servers_both_receive_did_open_change_save_close() {
 /// each one's own replay must reproduce the buffer.
 #[test]
 fn flush_uses_each_servers_encoding_and_sync_kind() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let marked = format!("{ASTRAL}-[{CJK}]>{COMBINING}\n");
     let mut rig = LspRig::drained(
         tmp.path(),
@@ -159,7 +159,7 @@ fn flush_uses_each_servers_encoding_and_sync_kind() {
 
 #[test]
 fn second_server_attach_after_unflushed_edit_does_not_replay_old_changes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let caps = || initialize_result(INCREMENTAL, "utf-8");
     let mut rig = LspRig::drained(
         tmp.path(),
@@ -189,7 +189,7 @@ fn second_server_attach_after_unflushed_edit_does_not_replay_old_changes() {
 
 #[test]
 fn stop_one_server_keeps_other_attached_and_pending_queue() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp, "-[f]>n main() {}\n");
     let ra = rig.sid("rust-analyzer");
     type_insert(&mut rig.ed, "x");
@@ -208,7 +208,7 @@ fn stop_one_server_keeps_other_attached_and_pending_queue() {
 
 #[test]
 fn last_detach_clears_pending() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     for _ in 0..2 {
         backend.respond_to("initialize", initialize_result(INCREMENTAL, "utf-8"));
@@ -236,7 +236,7 @@ fn last_detach_clears_pending() {
 
 #[test]
 fn diagnostics_merge_from_two_servers_counts() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp, "-[a]>\nb\n");
     let (ra, lint) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"));
 
@@ -251,7 +251,7 @@ fn diagnostics_merge_from_two_servers_counts() {
 
 #[test]
 fn diagnostics_entries_carry_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp, "-[a]>\nb\n");
     let (ra, lint) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"));
     rig.publish(ra, serde_json::json!([diagnostic(0, 1)]));
@@ -270,7 +270,7 @@ fn diagnostics_entries_carry_server() {
 
 #[test]
 fn except_diagnostics_filter_drops_publish() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp, "-[a]>\nb\n");
     rig.eval(
         r#"(set-language-servers! "rust"
@@ -286,7 +286,7 @@ fn except_diagnostics_filter_drops_publish() {
 
 #[test]
 fn detach_removes_only_that_servers_diagnostics() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp, "-[a]>\nb\n");
     let (ra, lint) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"));
     rig.publish(ra, serde_json::json!([diagnostic(0, 1)]));
@@ -299,7 +299,7 @@ fn detach_removes_only_that_servers_diagnostics() {
 
 #[test]
 fn set_language_servers_reconcile_detaches_with_did_close() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp, "-[f]>n main() {}\n");
     let (ra, lint) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"));
 
@@ -318,7 +318,7 @@ fn set_language_servers_reconcile_detaches_with_did_close() {
 
 #[test]
 fn reorder_reconcile_reorders_attachments() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp, "-[f]>n main() {}\n");
     let (ra, lint) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"));
 
@@ -333,7 +333,7 @@ fn reorder_reconcile_reorders_attachments() {
 
 #[test]
 fn changing_a_listed_servers_filter_keeps_the_instance_and_updates_the_filter() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp, "-[a]>\nb\n");
     let lint = rig.sid("ra-lint");
     rig.publish(lint, serde_json::json!([diagnostic(0, 1)]));
@@ -361,7 +361,7 @@ fn changing_a_listed_servers_filter_keeps_the_instance_and_updates_the_filter() 
 
 #[test]
 fn activity_aggregates_starting_first() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to_server(
         ServerId(0),
@@ -382,7 +382,7 @@ fn activity_aggregates_starting_first() {
 
 #[test]
 fn status_lists_names_per_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = two_servers(&tmp, "-[f]>n main() {}\n");
 
     let text = rig.ed.lsp_status_text();
@@ -396,7 +396,7 @@ fn status_lists_names_per_buffer() {
 
 #[test]
 fn attach_hook_fires_once_per_buffer_and_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let caps = || initialize_result(INCREMENTAL, "utf-8");
     let init = format!(
         r#"{TWO_RUST_SERVERS}

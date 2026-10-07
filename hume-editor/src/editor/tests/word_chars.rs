@@ -90,7 +90,7 @@ fn star_with_no_word_chars_is_unchanged() {
 
 #[test]
 fn symbol_under_cursor_returns_whole_hyphenated_word() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("foo-b-[a]>r baz\n");
     ed.state.settings.word_chars = "-".into();
     run(

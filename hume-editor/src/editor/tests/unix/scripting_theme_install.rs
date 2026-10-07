@@ -109,8 +109,8 @@ fn fabricate_installed_theme_repo(data_dir_root: &Path, slug: &str, origin: &Pat
 /// from. Both tempdirs must outlive the test (the clone in `data_tmp` points
 /// back at `origin_tmp` for `git pull`).
 fn installed_fixture(files: &[(&str, &str)]) -> (tempfile::TempDir, tempfile::TempDir, PathBuf) {
-    let data_tmp = safe_tempdir();
-    let origin_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let origin_tmp = tempfile::tempdir().unwrap();
     let origin = origin_tmp.path().join("acme-theme.hume");
     init_theme_origin(&origin, files);
     fabricate_installed_theme_repo(data_tmp.path(), "acme/theme.hume", &origin);
@@ -127,7 +127,7 @@ fn installed_fixture(files: &[(&str, &str)]) -> (tempfile::TempDir, tempfile::Te
 #[test]
 fn install_theme_rejects_unsafe_slugs() {
     let _path = path_reader();
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = plum_editor(data_tmp.path());
 
     let cases = [
@@ -250,14 +250,14 @@ fn sync_errors_when_repo_has_no_themes_dir() {
 #[test]
 fn update_themes_warns_on_shadowed_theme_name() {
     let _path = path_reader();
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
 
-    let origin_a_tmp = safe_tempdir();
+    let origin_a_tmp = tempfile::tempdir().unwrap();
     let origin_a = origin_a_tmp.path().join("acme-dark.hume");
     init_theme_origin(&origin_a, &[("themes/dark.toml", THEME_TOML)]);
     fabricate_installed_theme_repo(data_tmp.path(), "acme/dark.hume", &origin_a);
 
-    let origin_b_tmp = safe_tempdir();
+    let origin_b_tmp = tempfile::tempdir().unwrap();
     let origin_b = origin_b_tmp.path().join("zed-dark.hume");
     init_theme_origin(&origin_b, &[("themes/dark.toml", THEME_TOML)]);
     fabricate_installed_theme_repo(data_tmp.path(), "zed/dark.hume", &origin_b);
@@ -305,7 +305,7 @@ fn list_themes_reports_installed_repo() {
 #[test]
 fn list_themes_reports_unmanaged_file() {
     let _path = path_reader();
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let themes_dir = canonical_data_dir(data_tmp.path()).join("themes");
     std::fs::create_dir_all(&themes_dir).unwrap();
     std::fs::write(themes_dir.join("hand_dropped.toml"), THEME_TOML).unwrap();
@@ -409,7 +409,7 @@ fn remove_theme_survives_a_failed_sync() {
 #[test]
 fn plum_requires_core_stdlib() {
     let _path = path_reader();
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_with_init(
         &mut ed,
@@ -428,7 +428,7 @@ fn plum_requires_core_stdlib() {
 #[test]
 fn remove_theme_not_installed_is_a_noop() {
     let _path = path_reader();
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-remove-theme acme/theme.hume");
 
@@ -455,7 +455,7 @@ fn plum_entries_load_on_their_own_commands() {
     use hume_scripting::attribution::{EntryFile, EntryId, PluginId};
 
     let _path = path_reader();
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_with_init(
         &mut ed,

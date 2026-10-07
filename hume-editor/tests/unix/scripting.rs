@@ -2,8 +2,11 @@ use hume::testing::MockHost;
 use hume_platform::dirs::Dirs;
 use hume_scripting::*;
 
-fn host() -> ScriptingHost {
-    ScriptingHost::new(&Dirs::none())
+fn host_with_data_dir(data: std::path::PathBuf) -> ScriptingHost {
+    ScriptingHost::new(&Dirs {
+        data: Some(data),
+        ..Dirs::none()
+    })
 }
 
 // ── Steel file-module isolation + prelude macro visibility ────────────────
@@ -183,8 +186,7 @@ fn eager_load_no_keywords_reaches_loaded_state() {
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -218,8 +220,7 @@ fn lazy_load_stays_declared_body_not_evaluated() {
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -251,8 +252,7 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -288,8 +288,7 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -335,8 +334,7 @@ fn eager_plugin_body_error_is_contained() {
         r#"(error "intentional plugin failure")"#,
     );
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -380,8 +378,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
         r#"(declare-plugin! "user/tp" #:commands '("move-right" "my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     let builtin_names: rustc_hash::FxHashSet<String> =
@@ -424,8 +421,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
         r#"(declare-plugin! "user/tp" #:commands '("not-a-builtin"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
-    let mut h2 = host();
-    h2.set_data_dir(dir2.path().to_path_buf());
+    let mut h2 = host_with_data_dir(dir2.path().to_path_buf());
     let mut mock2 = MockHost::new();
 
     let builtin_names2: rustc_hash::FxHashSet<String> =
@@ -458,8 +454,7 @@ fn cmd_owners_pre_seeded_before_activation() {
         r#"(declare-plugin! "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -490,8 +485,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
         r#"(declare-plugin! "user/tp" #:commands '("my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -529,8 +523,7 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -565,8 +558,7 @@ fn activate_plugin_drops_language_activation_on_loaded() {
         r#"(declare-plugin! "user/tp" #:languages '("rust"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -604,8 +596,7 @@ fn declare_then_load_keeps_the_plugin_lazy() {
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -651,8 +642,7 @@ fn load_then_declare_ignored_with_soft_error() {
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -705,8 +695,7 @@ fn load_then_declare_on_lazy_plugin_is_reported() {
     )
     .unwrap();
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -739,8 +728,7 @@ fn declare_then_load_of_an_absent_plugin_reports_it_once() {
     )
     .unwrap();
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -776,8 +764,7 @@ fn load_plugin_in_plugin_body_rejected() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(load-plugin! "user/pb")"#).unwrap();
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -822,8 +809,7 @@ fn declare_plugin_in_plugin_body_rejected() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(load-plugin! "user/pb")"#).unwrap();
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -862,8 +848,7 @@ fn declare_plugin_without_triggers_hard_error_scripting_level() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(declare-plugin! "user/tp")"#).unwrap();
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
@@ -895,8 +880,7 @@ fn declare_plugin_bang_no_triggers_hard_error_scripting_level() {
     )
     .unwrap();
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
@@ -930,8 +914,7 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
     )
     .unwrap();
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     let builtin_names: rustc_hash::FxHashSet<String> =
@@ -954,8 +937,7 @@ fn duplicate_declare_remains_silent_noop() {
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
@@ -981,8 +963,7 @@ fn duplicate_load_remains_silent_noop() {
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
-    let mut h = host();
-    h.set_data_dir(dir.path().to_path_buf());
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())

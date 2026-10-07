@@ -171,7 +171,7 @@ fn steel_server_plugin_registers_its_server_with_generated_globals_env() {
     };
     ed.apply_script_effects(effects);
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
 
     eval_with_real_host(
         &mut ed,
@@ -247,7 +247,7 @@ fn steel_server_plugin_gives_scheme_its_root_and_server_list() {
             .unwrap_or_else(|e| panic!("evaluating plugin.scm: {}", e.message))
     };
     ed.apply_script_effects(effects);
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     eval_with_real_host(
         &mut ed,
         &mut host,

@@ -96,7 +96,7 @@ fn drawer_is_open(ed: &Editor) -> bool {
 
 #[test]
 fn inserting_a_line_above_the_symbol_asks_the_server_again_at_its_new_line() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup(
         tmp.path(),
@@ -125,7 +125,7 @@ fn inserting_a_line_above_the_symbol_asks_the_server_again_at_its_new_line() {
 
 #[test]
 fn a_closed_drawer_is_not_refreshed_and_releases_the_position() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup(
         tmp.path(),
@@ -146,7 +146,7 @@ fn a_closed_drawer_is_not_refreshed_and_releases_the_position() {
 
 #[test]
 fn several_inserts_within_the_debounce_ask_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup(
         tmp.path(),
@@ -170,7 +170,7 @@ fn several_inserts_within_the_debounce_ask_once() {
 
 #[test]
 fn an_edit_that_keeps_the_line_count_asks_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup(
         tmp.path(),
@@ -189,7 +189,7 @@ fn an_edit_that_keeps_the_line_count_asks_nothing() {
 
 #[test]
 fn a_refresh_that_finds_nothing_closes_the_drawer_with_a_message() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup(
         tmp.path(),
@@ -212,7 +212,7 @@ fn a_refresh_that_finds_nothing_closes_the_drawer_with_a_message() {
 
 #[test]
 fn a_drawer_replaced_by_another_list_is_not_refreshed() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, sid, requests) = setup(
         tmp.path(),
@@ -253,7 +253,7 @@ fn selected_row(ed: &Editor) -> usize {
 /// session keeps its position for the next refresh.
 #[test]
 fn a_refresh_answered_with_an_error_keeps_the_rows() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup_with(tmp.path(), |backend| {
         backend.respond_to(
@@ -277,7 +277,7 @@ fn a_refresh_answered_with_an_error_keeps_the_rows() {
 /// The selected row stays selected across a refresh.
 #[test]
 fn a_refresh_keeps_the_selected_row() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, _requests) = setup(
         tmp.path(),
@@ -305,7 +305,7 @@ fn a_refresh_keeps_the_selected_row() {
 /// last row.
 #[test]
 fn a_refresh_with_fewer_rows_clamps_the_selected_row() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, _requests) = setup(
         tmp.path(),
@@ -331,7 +331,7 @@ fn a_refresh_with_fewer_rows_clamps_the_selected_row() {
 /// list was asked from, refreshes it too.
 #[test]
 fn a_line_count_change_in_another_listed_buffer_refreshes_the_list() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let file = rig_root(tmp.path()).join("src/main.rs");
     let uri = rust_rig_uri(tmp.path());
     let other = rig_root(tmp.path()).join("other.rs");

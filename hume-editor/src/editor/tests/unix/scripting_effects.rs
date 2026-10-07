@@ -38,7 +38,7 @@ fn write_efx_plugin(
 /// catch that.
 #[test]
 fn effect_log_preserves_emission_order_across_kinds() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let init_path = write_efx_plugin(
         dir.path(),
         // `%define-language!` (the raw builtin), not the `define-language!`
@@ -53,8 +53,10 @@ fn effect_log_preserves_emission_order_across_kinds() {
 
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     // declare-plugin! queues no effects: nothing to apply from this eval.
     {
         let mut ih = init_host!(ed);
@@ -139,7 +141,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
 /// return `None` even though the plugin is `Loaded`.
 #[test]
 fn failed_command_delivers_committed_activation_effects() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let init_path = write_efx_plugin(
         dir.path(),
         r#"(register-lsp-server! "widget" #:command "widget-lsp")
@@ -154,8 +156,10 @@ fn failed_command_delivers_committed_activation_effects() {
     );
 
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -210,7 +214,7 @@ fn failed_command_delivers_committed_activation_effects() {
 /// `EvalError::effects` before reporting.
 #[test]
 fn failed_init_eval_salvages_eager_plugin_effects() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let init_path = write_efx_plugin(
         dir.path(),
         r#"(register-lsp-server! "widget" #:command "widget-lsp")"#,
@@ -219,8 +223,10 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
     );
 
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     let err = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -277,7 +283,7 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
 /// needed. Without either, the opened buffer's `language` stays `None`.
 #[test]
 fn steel_open_buffer_detects_language() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let target = dir.path().join("target.rs");
     std::fs::write(&target, "fn main() {}\n").unwrap();
     let init_path = dir.path().join("init.scm");
@@ -331,7 +337,7 @@ fn steel_open_buffer_detects_language() {
 /// `std::fs::canonicalize` would.
 #[test]
 fn steel_open_buffer_missing_path_opens_new_file() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let target = dir.path().join("not-yet-created.txt");
     let init_path = dir.path().join("init.scm");
     std::fs::write(
@@ -388,7 +394,7 @@ fn steel_open_buffer_missing_path_opens_new_file() {
 fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
     use crate::editor::event::EditorEvent;
 
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let target = dir.path().join("target.txt");
     std::fs::write(&target, "hello\n").unwrap();
     let init_path = dir.path().join("init.scm");

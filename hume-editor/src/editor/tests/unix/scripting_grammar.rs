@@ -79,7 +79,7 @@ fn curl_fetch_for_test(
 fn register_grammar_command_mode_attaches_and_sweeps() {
     require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let init_path = tmp.path().join("init.scm");
     // `register-grammar!` is defined in prelude.scm: prepend the real prelude
     // source so it's in scope, since this test evals `init_path` directly
@@ -131,7 +131,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
 /// only queues an `Effect::LanguageReg`; this is what `init_scripting`
 /// would do next), and return the resulting `json` grammar bundle.
 fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let init_path = tmp.path().join("init.scm");
     let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
     std::fs::write(&init_path, prelude_src + "\n" + register_grammar_call).unwrap();
@@ -172,7 +172,7 @@ fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
 fn register_grammar_textobjects_only_populates_textobjects_not_injections() {
     require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let to_path = tmp.path().join("textobjects.scm");
     std::fs::write(&to_path, "(pair) @entry.inside\n").unwrap();
     let body = format!(
@@ -200,7 +200,7 @@ fn register_grammar_textobjects_only_populates_textobjects_not_injections() {
 fn register_grammar_injections_only_populates_injections() {
     require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let inj_path = tmp.path().join("injections.scm");
     std::fs::write(
         &inj_path,
@@ -240,7 +240,7 @@ fn register_grammar_injections_only_populates_injections() {
 fn register_grammar_two_differently_shaped_keyword_calls_in_one_file_compiles() {
     require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let inj_path = tmp.path().join("injections.scm");
     std::fs::write(
         &inj_path,
@@ -282,7 +282,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     let (parser, hl) = grammar_fixture("json");
     let ext = test_fixtures::grammar_platform_ext();
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().join("hume");
     std::fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
     std::fs::create_dir_all(data_dir.join("plugins")).unwrap();
@@ -319,8 +319,10 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     );
     std::fs::write(&init_path, prelude_src + &body).unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(data_dir.clone());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(data_dir.clone()),
+        ..Dirs::none()
+    });
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(
         hume_editing::text::BufferText::empty(),
     ));
@@ -359,7 +361,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 #[test]
 fn plum_install_grammar_tab_completes_a_declared_name() {
     let _path = path_reader();
-    let data_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
@@ -390,7 +392,7 @@ fn install_real_json_grammar_e2e() {
     let (url, rev) = grammar_source("json");
     let (url, rev) = (url.as_str(), rev.as_str());
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().join("hume");
     std::fs::create_dir_all(data_dir.join("grammars/sources")).unwrap();
     std::fs::create_dir_all(data_dir.join("plugins")).unwrap();
@@ -441,8 +443,10 @@ fn install_real_json_grammar_e2e() {
     );
     std::fs::write(&init_path, prelude_src + &body).unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(data_dir);
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(data_dir),
+        ..Dirs::none()
+    });
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -500,9 +504,9 @@ fn setup_editor_with_languages_scm(
 ) -> (Editor, Vec<tempfile::TempDir>) {
     let _path = path_reader();
 
-    let config_tmp = safe_tempdir();
-    let runtime_tmp = safe_tempdir();
-    let data_tmp = safe_tempdir();
+    let config_tmp = tempfile::tempdir().unwrap();
+    let runtime_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
 
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
@@ -525,6 +529,7 @@ fn setup_editor_with_languages_scm(
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_tmp.path().to_path_buf()),
+        tmp: None,
     };
     ed.init_scripting(&mut Default::default());
 
@@ -619,8 +624,8 @@ fn define_language_roots_keyword_round_trips_through_real_prelude() {
 #[test]
 fn tsx_bundled_language_id_is_typescriptreact() {
     let _path = path_reader();
-    let config_tmp = safe_tempdir();
-    let data_tmp = safe_tempdir();
+    let config_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), "").unwrap();
@@ -630,6 +635,7 @@ fn tsx_bundled_language_id_is_typescriptreact() {
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(repo_runtime_dir()),
+        tmp: None,
     };
     ed.init_scripting(&mut Default::default());
 
@@ -871,9 +877,9 @@ fn init_errors_with_catalog(
 ) -> (Vec<String>, Editor, Vec<tempfile::TempDir>) {
     let _path = path_reader();
 
-    let config_tmp = safe_tempdir();
-    let runtime_tmp = safe_tempdir();
-    let data_tmp = safe_tempdir();
+    let config_tmp = tempfile::tempdir().unwrap();
+    let runtime_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
 
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
@@ -899,6 +905,7 @@ fn init_errors_with_catalog(
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_tmp.path().to_path_buf()),
+        tmp: None,
     };
     ed.init_scripting(&mut Default::default());
 
@@ -1129,8 +1136,8 @@ fn installed_grammars_sorts_by_stem_not_filename() {
 #[test]
 fn bundled_languages_carry_helix_roots() {
     let _path = path_reader();
-    let config_tmp = safe_tempdir();
-    let data_tmp = safe_tempdir();
+    let config_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), "").unwrap();
@@ -1140,6 +1147,7 @@ fn bundled_languages_carry_helix_roots() {
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(repo_runtime_dir()),
+        tmp: None,
     };
     ed.init_scripting(&mut Default::default());
 

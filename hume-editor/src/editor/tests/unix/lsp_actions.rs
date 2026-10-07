@@ -118,7 +118,7 @@ fn diagnostic_params(uri: &str) -> serde_json::Value {
 
 #[test]
 fn titles_are_listed_in_the_menu() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
@@ -140,7 +140,7 @@ fn titles_are_listed_in_the_menu() {
 
 #[test]
 fn selecting_an_edit_action_applies_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
@@ -161,7 +161,7 @@ fn selecting_an_edit_action_applies_it() {
 
 #[test]
 fn selecting_a_command_action_runs_the_full_server_loop() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, sid, _requests) = setup(tmp.path(), |backend, sid| {
         backend.respond_to(
@@ -210,7 +210,7 @@ fn selecting_a_command_action_runs_the_full_server_loop() {
 /// would drop this response and the error would never reach the log.
 #[test]
 fn a_command_execution_error_is_still_reported_after_an_intervening_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/codeAction",
@@ -246,7 +246,7 @@ fn a_command_execution_error_is_still_reported_after_an_intervening_edit() {
 
 #[test]
 fn disabled_actions_are_filtered_out() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
@@ -269,7 +269,7 @@ fn disabled_actions_are_filtered_out() {
 
 #[test]
 fn empty_response_reports_no_code_actions_and_opens_no_menu() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/codeAction", serde_json::Value::Null);
     });
@@ -286,7 +286,7 @@ fn empty_response_reports_no_code_actions_and_opens_no_menu() {
 
 #[test]
 fn context_diagnostics_echoes_the_raw_diagnostic_overlapping_the_cursor() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, sid, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/codeAction", serde_json::Value::Null);
@@ -325,7 +325,7 @@ fn context_diagnostics_echoes_the_raw_diagnostic_overlapping_the_cursor() {
 fn context_diagnostics_covers_a_selection_over_a_multi_char_cluster() {
     // The cursor sits on "e" + U+0301, one cluster of two chars. A diagnostic
     // on the combining mark alone overlaps what the cursor covers.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, sid, requests) = setup_over(
         tmp.path(),
@@ -356,7 +356,7 @@ fn context_diagnostics_covers_a_selection_over_a_multi_char_cluster() {
 
 #[test]
 fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
         tmp.path(),
@@ -391,7 +391,7 @@ fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
 /// drop) or applying against text that has since moved.
 #[test]
 fn selecting_an_unresolved_action_reports_a_stale_buffer_after_an_intervening_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
         tmp.path(),
@@ -439,7 +439,7 @@ fn selecting_an_unresolved_action_reports_a_stale_buffer_after_an_intervening_ed
 
 #[test]
 fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
         tmp.path(),
         serde_json::json!({"codeActionProvider": true}),
@@ -477,7 +477,7 @@ fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
 /// produces a resolvable shape. `#:resolved?` bounds this to one attempt.
 #[test]
 fn selecting_an_unresolved_action_whose_resolve_is_still_bare_reports_it_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
         tmp.path(),
         serde_json::json!({"codeActionProvider": {"resolveProvider": true}}),
@@ -516,7 +516,7 @@ fn selecting_an_unresolved_action_whose_resolve_is_still_bare_reports_it_once() 
 
 #[test]
 fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid, _requests) = setup_with_capabilities(
         tmp.path(),
         serde_json::json!({"codeActionProvider": {"resolveProvider": true}}),
@@ -556,7 +556,7 @@ fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
 /// longer focused must not open a menu over whatever the user switched to.
 #[test]
 fn stale_response_after_a_buffer_switch_opens_no_menu() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(

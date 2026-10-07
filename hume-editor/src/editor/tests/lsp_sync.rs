@@ -109,7 +109,7 @@ fn assert_mirror_matches(
 
 #[test]
 fn did_open_carries_full_text_and_language_id() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (_ed, _bid, log) = attached_editor(&tmp);
 
     let log = log.borrow();
@@ -134,7 +134,7 @@ fn did_open_carries_full_text_and_language_id() {
 /// `lsp_language_id_of`.
 #[test]
 fn did_open_carries_the_lsp_language_id_override_not_the_hume_name() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
     let spec = RigSpec {
         language: "tsx",
@@ -166,7 +166,7 @@ fn did_open_carries_the_lsp_language_id_override_not_the_hume_name() {
 /// `initialized` then `didOpen`, in that order.
 #[test]
 fn did_open_is_queued_until_the_handshake_completes_then_flushes_in_order() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
     let mut rig = LspRig::open(tmp.path(), RigSpec::rust(SEED), backend);
     assert!(
@@ -190,7 +190,7 @@ fn did_open_is_queued_until_the_handshake_completes_then_flushes_in_order() {
 /// `didChange`s; the handshake flushes the latest one, not one per edit.
 #[test]
 fn edits_before_the_handshake_flush_one_didchange() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
     let mut rig = LspRig::open(tmp.path(), RigSpec::rust(SEED), backend);
 
@@ -228,7 +228,7 @@ fn no_notifications_for_a_buffer_without_a_server() {
 
 #[test]
 fn version_sync_invariant_across_insert_delete_paste_undo_redo() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, bid, log) = attached_editor(&tmp);
 
     // Re-select something to yank/delete/paste against, then run a session
@@ -253,7 +253,7 @@ fn version_sync_invariant_across_insert_delete_paste_undo_redo() {
 /// one change per revision would make this count 3.
 #[test]
 fn counted_undo_on_an_incremental_server_sends_one_didchange_for_the_whole_walk() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, bid, log) = attached_editor(&tmp);
 
     ed.feed_key(key('i'));
@@ -284,7 +284,7 @@ fn counted_undo_on_an_incremental_server_sends_one_didchange_for_the_whole_walk(
 
 #[test]
 fn did_save_and_did_close_each_fire_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, bid, log) = attached_editor(&tmp);
 
     ed.execute_typed("w", None).unwrap();
@@ -315,7 +315,7 @@ fn did_save_and_did_close_each_fire_once() {
 /// buffer.
 #[test]
 fn reload_sends_one_incremental_didchange_through_the_ordinary_record_path() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, bid, log) = attached_editor(&tmp);
 
     // Queue an incremental change without draining.
@@ -366,7 +366,7 @@ fn reload_sends_one_incremental_didchange_through_the_ordinary_record_path() {
 /// already has).
 #[test]
 fn identical_reload_sends_no_didchange() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, bid, log) = attached_editor(&tmp);
 
     let path = ed.state.buffers.get(bid).path().unwrap().to_path_buf();
@@ -389,7 +389,7 @@ fn identical_reload_sends_no_didchange() {
 /// state one edit behind what's actually on disk.
 #[test]
 fn save_flushes_pending_change_before_did_save() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _bid, log) = attached_editor(&tmp);
 
     ed.feed_key(key('d'));
@@ -418,7 +418,7 @@ fn save_flushes_pending_change_before_did_save() {
 /// entry (which would each carry the *final* text under a *stale* version).
 #[test]
 fn full_sync_server_gets_one_whole_document_didchange_per_flush() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, bid, log) = attached_editor_with_handshake(
         &tmp,
         serde_json::json!({"capabilities": {"textDocumentSync": 1}}),
@@ -460,7 +460,7 @@ fn full_sync_server_gets_one_whole_document_didchange_per_flush() {
 /// buffer exactly, checked against the independent string mirror.
 #[test]
 fn insert_session_sends_one_didchange_per_keystroke() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, bid, log) = attached_editor(&tmp);
 
     ed.feed_key(key('i'));
@@ -494,7 +494,7 @@ fn insert_session_sends_one_didchange_per_keystroke() {
 /// there was nowhere to announce the edit.
 #[test]
 fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, log, _requests) = RecordingLspBackend::new();
     backend.respond_to(
         "initialize",
@@ -575,7 +575,7 @@ fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
 /// end-to-end proof that `LspServerConfig.init_options` isn't dead weight.
 #[test]
 fn register_lsp_server_init_options_reach_the_initialize_request() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (backend, _notifications, requests) = RecordingLspBackend::with_default_handshake();
     let spec = RigSpec::rust(SEED).with_init(
         r#"(register-lsp-server! "rust-analyzer" #:command "rust-analyzer"

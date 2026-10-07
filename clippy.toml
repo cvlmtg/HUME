@@ -1,9 +1,8 @@
 # Workspace-wide `clippy::disallowed_methods` entries, three groups: a
 # constant reachable from most crates (`unicode-width`'s methods — CLAUDE.md's
 # "Display columns" section), a set with essentially zero legitimate
-# exceptions workspace-wide (`std::env::set_var`/`remove_var` —
-# `arch-lints/tests/test_globals.rs`'s "Test-suite process-global
-# hygiene" module doc), and a crate's own escape hatch around its own domain
+# exceptions workspace-wide (`std::env::set_var`/`remove_var`), and a crate's
+# own escape hatch around its own domain
 # types (raw `ropey` line-index methods — CLAUDE.md's "Line counts and
 # ranges" section). All three are a better fit for a compiler-checked ban
 # than a hand-rolled scanner. A file with a real exception carries its own
@@ -20,12 +19,10 @@ disallowed-methods = [
     "unicode_width::UnicodeWidthStr::width_cjk",
     "unicode_width::UnicodeWidthChar::width",
     "unicode_width::UnicodeWidthChar::width_cjk",
-    # HUME_RUNTIME/TMPDIR/XDG_*/HOME/PATH are process-global env vars a
-    # parallel test run shares — mutating one outside a `TEST_GLOBALS`-holding
-    # guard races every other test reading or writing the same var
-    # concurrently. The ten files under `hume-editor/src/editor/tests/` that
-    # own a guard struct (or a loader helper documented to require a
-    # caller-held `TEST_GLOBALS` claim) are the sanctioned exception.
+    # `PATH` is a process-global env var a parallel test run shares —
+    # mutating it outside a `TEST_GLOBALS`-holding guard races every test that
+    # spawns a program by name. `EnvClaim::set_var` and `EnvVarGuard`'s drop in
+    # `hume-editor/src/editor/tests/mod.rs` are the sanctioned callers.
     "std::env::set_var",
     "std::env::remove_var",
     # Line counts and ranges go through `hume-rope`'s domain-typed

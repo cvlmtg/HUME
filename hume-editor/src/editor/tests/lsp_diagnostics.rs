@@ -87,7 +87,7 @@ fn plain_rig(tmp: &tempfile::TempDir, text: &str) -> (LspRig, ServerId, BufferId
 
 #[test]
 fn ingest_converts_utf16_positions_across_an_emoji() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = uri_under(&tmp, "src/main.rs");
     // "😀 error here\n": the emoji is 1 Rust char but 2 UTF-16 code units,
     // so a naive char-count read of the wire position would land one
@@ -124,7 +124,7 @@ fn ingest_converts_utf16_positions_across_an_emoji() {
 
 #[test]
 fn two_publishes_in_one_drain_batch_coalesce_to_the_last() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = uri_under(&tmp, "src/main.rs");
     // First publish: two errors. Second (same uri, same batch): one warning.
     // Only the second must survive: servers burst-publish and only the
@@ -149,7 +149,7 @@ fn two_publishes_in_one_drain_batch_coalesce_to_the_last() {
 
 #[test]
 fn publish_for_an_unopened_file_is_dropped_without_spam() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // Never written to disk / never opened: no buffer will ever match it.
     let uri = uri_under(&tmp, "never_opened.rs");
     let rig = rig_with(&tmp, "x\n", |b| {
@@ -175,7 +175,7 @@ fn publish_for_an_unopened_file_is_dropped_without_spam() {
 
 #[test]
 fn malformed_publish_diagnostics_reaches_the_unhandled_notification_path() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // `uri` and `diagnostics` both wrong-shaped, so it fails to parse as
     // `PublishDiagnosticsParams`, so `hume-lsp` classifies it as a
     // `ServerNotification` fallthrough instead of `Diagnostics`.
@@ -199,7 +199,7 @@ fn malformed_publish_diagnostics_reaches_the_unhandled_notification_path() {
 
 #[test]
 fn a_stored_diagnostic_keeps_the_wire_value_a_server_sent() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = uri_under(&tmp, "src/main.rs");
     let rig = rig_with(&tmp, "one two three\n", |b| {
         b.push_from_server(
@@ -246,7 +246,7 @@ fn skipped_warnings(ed: &Editor) -> usize {
 
 #[test]
 fn a_diagnostic_that_does_not_parse_does_not_hide_the_rest() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = uri_under(&tmp, "src/main.rs");
     let diagnostic = |severity: serde_json::Value| {
         serde_json::json!({
@@ -286,7 +286,7 @@ fn a_diagnostic_that_does_not_parse_does_not_hide_the_rest() {
 
 #[test]
 fn skipped_diagnostics_are_warned_about_once_per_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, sid, _bid, uri) = plain_rig(&tmp, "one two three\n");
     let publish = || hume_lsp::client::PublishedDiagnostics {
         uri: uri.parse().unwrap(),
@@ -329,7 +329,7 @@ fn publishes_for_unknown_files_resolve_in_bounded_chunks() {
     use crate::editor::async_source::AsyncSource;
     use crate::editor::lsp::diagnostics::CANONICALIZE_PER_DRAIN;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_with_unknown_file_publishes(&tmp, CANONICALIZE_PER_DRAIN + 6);
 
     assert_eq!(
@@ -363,7 +363,7 @@ fn publishes_for_unknown_files_resolve_in_bounded_chunks() {
 fn stopping_a_server_drops_its_deferred_publishes() {
     use crate::editor::lsp::diagnostics::CANONICALIZE_PER_DRAIN;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_with_unknown_file_publishes(&tmp, CANONICALIZE_PER_DRAIN + 6);
     assert_eq!(rig.ed.state.lsp.deferred_publishes_for_test(), 6);
 
@@ -374,7 +374,7 @@ fn stopping_a_server_drops_its_deferred_publishes() {
 
 #[test]
 fn a_publish_for_a_buffer_whose_file_is_not_on_disk_is_ingested() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three\n");
     std::fs::remove_file(rig.root.join("src/main.rs")).unwrap();
 
@@ -395,7 +395,7 @@ fn a_publish_for_a_buffer_whose_file_is_not_on_disk_is_ingested() {
 
 #[test]
 fn publish_with_matching_version_is_ingested() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three four\n");
     let ed = &mut rig.ed;
     let current_gen = ed.state.buffers.get(bid).text().generation() as i32;
@@ -416,7 +416,7 @@ fn publish_with_matching_version_is_ingested() {
 
 #[test]
 fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnostics() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three four\n");
     let ed = &mut rig.ed;
     let current_gen = ed.state.buffers.get(bid).text().generation() as i32;
@@ -500,7 +500,7 @@ fn seed_diagnostic_and_hint(ed: &mut Editor, sid: ServerId, bid: BufferId, uri: 
 /// fix, not a correctness one, but nothing else ever freed these.
 #[test]
 fn close_buffer_prunes_stored_diagnostics_and_decorations() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three\n");
     let ed = &mut rig.ed;
     seed_diagnostic_and_hint(ed, sid, bid, &uri);
@@ -533,7 +533,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
 /// assertions below and the hook's log line would all fail.
 #[test]
 fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three\n");
     seed_diagnostic_and_hint(&mut rig.ed, sid, bid, &uri);
     rig.eval(
@@ -579,7 +579,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
 /// signs keep showing) for a buffer no server reports on any more.
 #[test]
 fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three four\n");
     let ed = &mut rig.ed;
     let current_gen = ed.state.buffers.get(bid).text().generation() as i32;
@@ -604,7 +604,7 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
 /// drops it nor freezes it at its pre-edit position.
 #[test]
 fn lsp_stop_keeps_a_sign_where_a_preceding_edit_moved_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, _sid, bid, _uri) = plain_rig(&tmp, "aa\nbb\ncc\n");
     let ed = &mut rig.ed;
 
@@ -652,7 +652,7 @@ fn lsp_stop_keeps_a_sign_where_a_preceding_edit_moved_it() {
 /// counted, not dropped from `:lsp-status`.
 #[test]
 fn zero_width_diagnostic_on_minimal_buffer_is_widened_onto_the_newline() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut rig, sid, bid, uri) = plain_rig(&tmp, "\n");
     let ed = &mut rig.ed;
 

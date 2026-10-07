@@ -132,7 +132,7 @@ fn event_trigger_idempotent_on_second_fire() {
 fn event_trigger_one_to_many_activates_all() {
     use hume_scripting::attribution::PluginId;
 
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let dir_a = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_a).unwrap();
     std::fs::write(
@@ -156,8 +156,10 @@ fn event_trigger_one_to_many_activates_all() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -284,7 +286,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
 /// could never activate at runtime.
 #[test]
 fn declare_plugin_no_triggers_is_hard_error() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(
@@ -295,8 +297,10 @@ fn declare_plugin_no_triggers_is_hard_error() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, "(declare-plugin! \"user/tp\")").unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     let mut ed = editor_from("-[a]>b\n");
     let result = {
         let mut ih = init_host!(ed);
@@ -316,13 +320,15 @@ fn declare_plugin_no_triggers_is_hard_error() {
 /// running `:plum-install-plugins` on a fresh setup.
 #[test]
 fn load_plugin_absent_top_level_silently_skips() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     // No plugin directory created: plugin is absent on disk.
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(load-plugin! "user/tp")"#).unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     let mut ed = editor_from("-[a]>b\n");
     {
         let mut ih = init_host!(ed);
@@ -348,7 +354,7 @@ fn load_plugin_absent_top_level_silently_skips() {
 fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     use hume_scripting::attribution::PluginId;
 
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     // Plugin A: defines "a-cmd" (move-right wrapper).
     let dir_a = dir.path().join("plugins").join("user").join("tpa");
     std::fs::create_dir_all(&dir_a).unwrap();
@@ -375,8 +381,10 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -465,7 +473,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
 fn nested_activation_multi_file_via_real_editor_host() {
     use hume_scripting::attribution::PluginId;
 
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
 
     // Each plugin's top-level body checks its own helper.scm binding twice
     // (once right after `require`, once after the nested call!), so a stack
@@ -516,8 +524,10 @@ fn nested_activation_multi_file_via_real_editor_host() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -566,7 +576,7 @@ fn nested_activation_multi_file_via_real_editor_host() {
 /// `hash-ref`/`equal?` check inside B's body would raise.
 #[test]
 fn plugin_config_scoped_correctly_after_nested_activation() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
 
     let dir_a = dir.path().join("plugins").join("user").join("tpa");
     std::fs::create_dir_all(&dir_a).unwrap();
@@ -598,8 +608,10 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -814,7 +826,7 @@ fn on_lsp_notification_event_trigger_activates_on_first_fire() {
         repo: "tp".to_string(),
     };
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = crate::editor::tests::lsp_bridge::setup_with(tmp.path(), "-[a]>b\n", |_, _| {});
     rig.ed.scripting = lazy.scripting.take();
     let sid = rig.sid("rust-analyzer");
@@ -864,7 +876,7 @@ fn lazy_plugin_activated_by_unlisted_method_traces_unhandled() {
         repo: "tp".to_string(),
     };
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = crate::editor::tests::lsp_bridge::setup_with(tmp.path(), "-[a]>b\n", |_, _| {});
     rig.ed.scripting = lazy.scripting.take();
     let sid = rig.sid("rust-analyzer");

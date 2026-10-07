@@ -38,7 +38,7 @@ struct DiagCtx {
 /// each of `publishes` in order: a later publish replaces an earlier one,
 /// the "server republishes with the error fixed" scenario.
 fn setup(content: &str, publishes: &[&[DiagFixture]]) -> DiagCtx {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let marked = format!("-[{}]>{}", &content[..1], &content[1..]);
     let mut rig = LspRig::rust(
         tmp.path(),
@@ -123,12 +123,7 @@ fn severity_mapping_produces_error_only_and_warning_only_counts() {
 
 #[test]
 fn configure_statusline_round_trips_diagnostics_element_name() {
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(None);
     let fp = FocusedPane::current(&ed.state);
     crate::editor::commands::typed_set(&mut ed, fp, Some("global statusline=Diagnostics||"), false)
         .unwrap();
@@ -165,7 +160,7 @@ fn progress_action(token: &str, value: serde_json::Value) -> ClientAction {
 
 #[test]
 fn starting_server_displays_a_loading_indicator() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // No scripted `initialize` response: the server stays `Starting`, so
     // the spinner frame stays at its initial 0.
     let rig = LspRig::open(
@@ -255,7 +250,7 @@ fn progress_begin_report_end_tracks_the_active_task() {
 /// lenient recovery is what's under test, not a hand-built action.
 #[test]
 fn progress_begin_missing_title_still_animates_the_spinner() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdefgh\n",

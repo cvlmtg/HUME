@@ -43,7 +43,7 @@ fn setup_vim_keybind_editor_with_config(
         None => "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:vim-keybind\")".to_string(),
     };
 
-    let init_dir = safe_tempdir();
+    let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
     std::fs::write(&init_path, &init_source).unwrap();
 
@@ -83,9 +83,9 @@ fn plugin_rebinds_line_and_alternate_motions() {
     ed.handle_key(key('0')); // start of line
     assert_eq!(state(&ed), "-[ ]> hello world\nfoo\nbar\n");
 
-    let f1 = safe_named_tempfile();
+    let f1 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f1.path(), "file1\n").unwrap();
-    let f2 = safe_named_tempfile();
+    let f2 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f2.path(), "file2\n").unwrap();
     ed.execute_typed("e", Some(f1.path().to_str().unwrap()))
         .unwrap();
@@ -435,7 +435,7 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
     // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
 
-    let init_dir = safe_tempdir();
+    let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(load-plugin! "core:vim-keybind")"#).unwrap();
 
@@ -467,7 +467,7 @@ fn change_to_eol_off_also_requires_stdlib() {
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
     // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
 
-    let init_dir = safe_tempdir();
+    let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
     std::fs::write(
         &init_path,
@@ -502,7 +502,7 @@ fn change_to_eol_bogus_value_fails_load_with_enum_message() {
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
 
-    let init_dir = safe_tempdir();
+    let init_dir = tempfile::tempdir().unwrap();
     let init_path = init_dir.path().join("init.scm");
     std::fs::write(
         &init_path,

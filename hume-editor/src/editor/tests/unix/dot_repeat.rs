@@ -17,7 +17,7 @@ use hume_platform::dirs::Dirs;
 fn lazy_repeatable_round_trip() {
     use hume_scripting::ScriptingHost;
 
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(
@@ -33,8 +33,10 @@ fn lazy_repeatable_round_trip() {
     .unwrap();
 
     let mut ed = editor_from("-[foo]> bar\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())

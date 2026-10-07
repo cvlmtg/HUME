@@ -34,7 +34,7 @@ struct DiagCtx {
 /// it, and runs one `prepare_frame` so `update_highlight_providers` has
 /// populated the pane's Arcs.
 fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let marked = format!("-[{}]>{}", &content[..1], &content[1..]);
     let mut rig = LspRig::rust(tmp.path(), &marked, serde_json::json!({"capabilities": {}}));
     let bare = rig.ed.state.focus.id();
@@ -248,13 +248,8 @@ fn multi_line_diagnostic_hides_only_the_cursor_line_segment() {
 
 #[test]
 fn extra_highlight_gets_its_runtime_interned_scope() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -288,13 +283,8 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
 
 #[test]
 fn extra_highlight_scope_is_cached_not_reinterned() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -332,13 +322,8 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
 /// must still lose the overlap to "aaa".
 #[test]
 fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -386,13 +371,8 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
 /// while still resolving to a real, non-default style via fallback.
 #[test]
 fn extra_highlight_style_resolves_correctly_on_the_frame_it_is_first_interned() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -440,13 +420,8 @@ fn extra_highlight_style_resolves_correctly_on_the_frame_it_is_first_interned() 
 /// in `build_pane` actually feed it, not just that the Arcs are populated.
 #[test]
 fn search_match_beats_extra_highlight_in_overlapping_region() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new(&Dirs::none());

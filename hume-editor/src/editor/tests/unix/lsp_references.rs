@@ -46,7 +46,7 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
 
 #[test]
 fn three_locations_list_three_rows() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
@@ -62,7 +62,7 @@ fn three_locations_list_three_rows() {
 
 #[test]
 fn enter_jumps_and_drawer_stays_open() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
@@ -92,7 +92,7 @@ fn enter_jumps_and_drawer_stays_open() {
 
 #[test]
 fn single_result_still_opens_the_drawer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
@@ -111,7 +111,7 @@ fn single_result_still_opens_the_drawer() {
 
 #[test]
 fn null_result_reports_no_references() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/references", serde_json::Value::Null);
     });
@@ -133,7 +133,7 @@ fn null_result_reports_no_references() {
 /// appear over whatever the user switched to.
 #[test]
 fn stale_response_after_a_buffer_switch_opens_no_drawer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
@@ -163,7 +163,7 @@ fn stale_response_after_a_buffer_switch_opens_no_drawer() {
 
 #[test]
 fn buffer_with_no_path_reports_and_tracks_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(

@@ -70,7 +70,7 @@ fn a_lazily_activated_typed_commands_declared_completer_works_on_first_use() {
         r#"(declare-plugin! "user/tp" #:typed-commands '("myfetch"))"#,
         r#"(define-typed-command! "myfetch" "doc" (lambda (bid arg) (log! 'info arg)) #:complete "path")"#,
     );
-    let files_dir = safe_tempdir();
+    let files_dir = tempfile::tempdir().unwrap();
     std::fs::write(files_dir.path().join("hello.txt"), b"").unwrap();
 
     ed.handle_key(key(':'));
@@ -403,7 +403,7 @@ fn key_press_activates_lazy_plugin_via_keymap() {
 /// eager command.
 #[test]
 fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     // Eager plugin: loaded inline (no activation entries), defines "foo".
     let eager_dir = dir.path().join("plugins").join("user").join("eager");
     std::fs::create_dir_all(&eager_dir).unwrap();
@@ -426,8 +426,10 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     // Mirror real init_scripting order: eager command is in command_table
     // before declare-plugin! runs, so the filter loop rejects "foo".
     let init_err = {
@@ -476,7 +478,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 /// error logged.
 #[test]
 fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let pa_dir = dir.path().join("plugins").join("user").join("pa");
     let pb_dir = dir.path().join("plugins").join("user").join("pb");
     std::fs::create_dir_all(&pa_dir).unwrap();
@@ -500,8 +502,10 @@ fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())

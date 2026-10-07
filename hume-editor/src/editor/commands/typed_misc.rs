@@ -460,7 +460,10 @@ pub(in crate::editor) fn typed_tutor(
     // Compute a per-process tmp path so `:w` never touches the install source.
     // Canonicalize the parent dir (which we create) so the path matches what
     // BufferStore stores on macOS (/private/var/... vs /var/...).
-    let tmp_dir = std::env::temp_dir().join(format!("hume-{}", std::process::id()));
+    let Some(tmp_base) = ed.state.dirs.tmp.as_deref() else {
+        return Err(CommandError::new("temp directory not available"));
+    };
+    let tmp_dir = tmp_base.join(format!("hume-{}", std::process::id()));
     std::fs::create_dir_all(&tmp_dir)
         .map_err(|e| CommandError::new(format!("could not create tutor tmp dir: {e}")))?;
     let canonical_tmp = std::fs::canonicalize(&tmp_dir)

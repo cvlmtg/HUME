@@ -39,7 +39,7 @@ fn logged(ed: &Editor, needle: &str) -> bool {
 /// whether the dispatch runs with a live TUI, and what each asserts
 /// afterward.
 fn dispatch_backslash(source: &str, cmd: &str, with_live_tui: bool) -> Editor {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.tui = if with_live_tui {
         Tui::OnHeadless
@@ -243,7 +243,7 @@ fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
 /// right after the batch that armed it.
 #[test]
 fn timer_call_bang_to_inline_output_command_opens_the_gate() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -350,7 +350,7 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
     // (see `hook_call_bang_…`'s identical drain).
     ed.settle();
     assert!(ed.state.input.confirm().is_none());
-    let scm_dir = safe_tempdir();
+    let scm_dir = tempfile::tempdir().unwrap();
 
     run(
         &mut ed,
@@ -413,7 +413,7 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
         "sanity: nothing has changed on disk yet"
     );
 
-    let scm_dir = safe_tempdir();
+    let scm_dir = tempfile::tempdir().unwrap();
     run(
         &mut ed,
         scm_dir.path(),
@@ -458,7 +458,7 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
 fn editor_host_impl_init_threads_live_tui_into_arm() {
     use hume_scripting::host::EditorHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -537,7 +537,7 @@ fn editor_host_impl_init_threads_live_tui_into_arm() {
 fn new_host_has_no_inline_output_authority() {
     use hume_scripting::host::EditorHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -582,7 +582,7 @@ fn new_host_has_no_inline_output_authority() {
 fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_one() {
     use hume_scripting::host::EditorHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
@@ -653,7 +653,7 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
 /// guard in `call_steel_command_body` must run before any frame is pushed.
 #[test]
 fn no_scripting_host_does_not_leak_a_pushed_frame() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,

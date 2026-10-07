@@ -1019,7 +1019,7 @@ fn picker_above_a_retired_confirm_survives_untouched() {
 /// an invisible minibuffer.
 #[test]
 fn statusline_seam_hides_a_confirm_buried_under_a_prompt() {
-    let script_tmp = safe_tempdir();
+    let script_tmp = tempfile::tempdir().unwrap();
     let (mut ed, file_path) = editor_with_file("-[h]>ello\n", "hello\n");
     run(
         &mut ed,
@@ -1937,7 +1937,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
 /// inside the drain, so nothing at the end of `handle_input` sees it either.
 #[test]
 fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
 
     let target = tmp.path().join("target.md");

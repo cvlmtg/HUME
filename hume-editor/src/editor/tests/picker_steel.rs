@@ -29,7 +29,7 @@ fn call(ed: &mut Editor, name: &str) {
 }
 
 fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(&mut ed, tmp.path(), source);
     (ed, tmp)
@@ -492,7 +492,7 @@ fn picker_bang_rejects_hash_f_payload() {
 
 #[test]
 fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // Buffer A: cursor (head) at char 499, far beyond buffer B's length.
     let mut ed = editor_from(&format!("{}-[x]>\n", "a".repeat(499)));
 
@@ -548,7 +548,7 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
 
 #[test]
 fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
 
     // A buffer tall enough that "go to last line" lands well below a 12-row pane.
@@ -1159,7 +1159,7 @@ fn picker_on_select_entering_insert_fires_on_mode_change_within_the_same_settle(
 /// it the same way, not raise.
 #[test]
 fn widget_token_builtins_treat_a_false_token_as_stale_not_an_error() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdefghijklmnop\n");
     run(
         &mut ed,

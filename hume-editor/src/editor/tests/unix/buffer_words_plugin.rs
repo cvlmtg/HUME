@@ -157,10 +157,10 @@ fn wait_for_word_gone(ed: &mut Editor, target: &str) {
 
 #[test]
 fn ctrl_space_offers_identifiers_from_the_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "alpha beta\n").unwrap();
     open(&mut ed, &path);
@@ -180,10 +180,10 @@ fn ctrl_space_offers_identifiers_from_the_buffer() {
 /// already-covered line.
 #[test]
 fn a_word_many_lines_past_the_cursor_is_offered() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 20)"#));
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let mut content = "filler\n".repeat(300);
     content.push_str("target_word\n");
@@ -195,10 +195,10 @@ fn a_word_many_lines_past_the_cursor_is_offered() {
 
 #[test]
 fn the_partially_typed_token_is_not_offered_back() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "hello helloworld\n\n").unwrap();
     open(&mut ed, &path);
@@ -224,10 +224,10 @@ fn the_partially_typed_token_is_not_offered_back() {
 /// `rank`) is what narrows/widens it per keystroke.
 #[test]
 fn backspace_widens_the_candidate_list_again() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "cat catalog\n\n").unwrap();
     open(&mut ed, &path);
@@ -256,10 +256,10 @@ fn backspace_widens_the_candidate_list_again() {
 
 #[test]
 fn an_edit_refreshes_the_index() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "\n").unwrap();
     open(&mut ed, &path);
@@ -288,10 +288,10 @@ fn an_edit_refreshes_the_index() {
 /// under test here is `bw/push-finished-answer!` itself.
 #[test]
 fn a_second_background_finish_does_not_reset_the_menu_selection() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "alpha beta gamma\n").unwrap();
     open(&mut ed, &path);
@@ -366,14 +366,14 @@ fn reindex_via_option_change(ed: &mut Editor) {
 /// folded it into.
 #[test]
 fn a_reindex_that_interrupts_a_running_walk_does_not_resurrect_a_removed_word() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     // A small per-tick budget over many lines: the first tick (anchored at
     // line 0, where "targetword" lives) picks the word up almost
     // immediately, while the walk as a whole takes many further ticks,
     // wide enough a window to land the edit below before it finishes.
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let mut content = "targetword\n".to_string();
     content.push_str(&"filler\n".repeat(400));
@@ -399,8 +399,8 @@ fn a_reindex_that_interrupts_a_running_walk_does_not_resurrect_a_removed_word() 
 
 #[test]
 fn fuzzy_match_is_opt_in() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "roundtrip\n\n").unwrap();
 
@@ -418,7 +418,7 @@ fn fuzzy_match_is_opt_in() {
     drop(ed);
     drop(guard);
 
-    let tmp2 = safe_tempdir();
+    let tmp2 = tempfile::tempdir().unwrap();
     let guard2 = RuntimeDirs::new();
     let mut ed2 = setup(&guard2, tmp2.path(), Some(r#"(hash "match" 'fuzzy)"#));
     open(&mut ed2, &path);
@@ -434,7 +434,7 @@ fn fuzzy_match_is_opt_in() {
 
 #[test]
 fn word_chars_extends_what_counts_as_a_word() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     // Set the *global* default before opening the fixture, rather than a
@@ -443,7 +443,7 @@ fn word_chars_extends_what_counts_as_a_word() {
     // (built synchronously by `on-buffer-open`) already sees it, with no
     // need to force a second reindex.
     type_cmd(&mut ed, ":set global word-chars=-");
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "foo-bar\n").unwrap();
     open(&mut ed, &path);
@@ -467,10 +467,10 @@ fn word_chars_extends_what_counts_as_a_word() {
 /// classifies exactly, so both halves are offered separately.
 #[test]
 fn non_ascii_punctuation_does_not_merge_the_words_around_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "foo\u{2014}bar\n").unwrap(); // em dash
     open(&mut ed, &path);
@@ -486,10 +486,10 @@ fn non_ascii_punctuation_does_not_merge_the_words_around_it() {
 /// word around it rather than being absorbed into it.
 #[test]
 fn a_curly_apostrophe_splits_the_word_around_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "l\u{2019}\u{e9}l\u{e9}ment\n").unwrap(); // l'élément
     open(&mut ed, &path);
@@ -506,10 +506,10 @@ fn a_curly_apostrophe_splits_the_word_around_it() {
 /// classification.
 #[test]
 fn a_combining_mark_stays_attached_to_its_word() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "cafe\u{0301} latte\n").unwrap();
     open(&mut ed, &path);
@@ -525,7 +525,7 @@ fn an_invalid_match_config_fails_the_load() {
     use hume_scripting::PluginStatus;
     use hume_scripting::attribution::PluginId;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "buffer-words", BUFFER_WORDS_PLUGIN);
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
@@ -585,10 +585,10 @@ fn an_invalid_match_config_fails_the_load() {
 /// no panic, is the achievable proxy for "no leak."
 #[test]
 fn closing_a_buffer_drops_its_index() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 1)"#));
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let content = "filler\n".repeat(20);
     std::fs::write(&path, &content).unwrap();
@@ -611,10 +611,10 @@ fn closing_a_buffer_drops_its_index() {
 /// ticks' own windows (`"lines" 10`), at a fixed, predictable offset.
 #[test]
 fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 10)"#));
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     // 60 lines, 1-based. Line 57 sits inside the backward window
     // (47..57) a tick fetches once the walk has stepped back to anchor 59:
@@ -644,10 +644,10 @@ fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
 /// indexing").
 #[test]
 fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "alpha\n").unwrap();
     let bid = open(&mut ed, &path);
@@ -693,10 +693,10 @@ fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() 
 /// far sooner (16ms) than a fresh debounce (150ms), so it always drains first.
 #[test]
 fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let mut lines: Vec<String> = (1..=160)
         .map(|n| match n {
@@ -736,10 +736,10 @@ fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
 /// out-of-bounds range rather than clamping it.
 #[test]
 fn the_index_recovers_when_the_buffer_shrinks_mid_walk() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let big_content = "filler\n".repeat(500);
     std::fs::write(&path, &big_content).unwrap();
@@ -776,10 +776,10 @@ fn the_index_recovers_when_the_buffer_shrinks_mid_walk() {
 /// is_noop_for` is what that re-rank consults.
 #[test]
 fn the_exact_token_exclusion_tracks_further_typing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "cat catalog\n\n").unwrap();
     open(&mut ed, &path);
@@ -807,10 +807,10 @@ fn the_exact_token_exclusion_tracks_further_typing() {
 /// an open menu"), with no further keystroke and no fresh `Ctrl-Space` required.
 #[test]
 fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 20)"#));
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let mut content = "filler\n".repeat(300);
     content.push_str("late_word\n");
@@ -847,10 +847,10 @@ fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
 /// edit, which only the new hook can catch.
 #[test]
 fn a_global_word_chars_change_reindexes_an_already_open_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "foo-bar\n").unwrap();
     open(&mut ed, &path);
@@ -886,7 +886,7 @@ fn a_global_word_chars_change_reindexes_an_already_open_buffer() {
 fn buffer_words_and_lsp_rank_together_lsp_first() {
     use hume_lsp::test_util::RecordingLspBackend;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RealRuntimeDirs::new();
 
     let (mut backend, _notifications, requests) = RecordingLspBackend::new();
@@ -934,7 +934,7 @@ fn buffer_words_and_lsp_rank_together_lsp_first() {
 fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
     use hume_lsp::test_util::RecordingLspBackend;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RealRuntimeDirs::new();
 
     let (mut backend, _notifications, requests) = RecordingLspBackend::new();
@@ -982,7 +982,7 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
 fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_priority_ones() {
     use hume_lsp::test_util::RecordingLspBackend;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RealRuntimeDirs::new();
 
     let (mut backend, _notifications, _requests) = RecordingLspBackend::new();
@@ -1040,7 +1040,7 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
 fn once_something_is_typed_lsp_always_outranks_buffer_words() {
     use hume_lsp::test_util::RecordingLspBackend;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RealRuntimeDirs::new();
 
     let (mut backend, _notifications, _requests) = RecordingLspBackend::new();
@@ -1089,10 +1089,10 @@ fn once_something_is_typed_lsp_always_outranks_buffer_words() {
 /// ASCII `apply`.
 #[test]
 fn a_capitalized_word_is_offered_lowercase_after_a_lowercase_prefix() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "Apply the patch. Élan vital.\n\n").unwrap();
     open(&mut ed, &path);
@@ -1118,10 +1118,10 @@ fn a_capitalized_word_is_offered_lowercase_after_a_lowercase_prefix() {
 /// prefix gate at all.
 #[test]
 fn a_lowercase_word_is_offered_capitalized_after_an_uppercase_prefix() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "we apply it\n\n").unwrap();
     open(&mut ed, &path);
@@ -1139,10 +1139,10 @@ fn a_lowercase_word_is_offered_capitalized_after_an_uppercase_prefix() {
 /// information that flipping the head would destroy.
 #[test]
 fn mixed_case_and_all_caps_words_get_no_twin() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
-    let file_dir = safe_tempdir();
+    let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "HashMap MAX_LEN iPhone\n\n").unwrap();
     open(&mut ed, &path);

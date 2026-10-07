@@ -258,7 +258,7 @@ fn d5_insert_session_is_pane_buffer_scoped() {
 /// cursor wherever live-search's last preview left it.
 #[test]
 fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let path_b = tmp.path().join("b.txt");
     std::fs::write(&path_b, "xyz\n").unwrap();
 
@@ -1210,12 +1210,7 @@ fn insert_mode_hides_cursor_only_in_focused_pane() {
 /// empty.
 #[test]
 fn split_pane_gets_gutter_column() {
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(None);
     let pid_a = ed.state.focus.id();
     let initial_gutter_column_count = ed.view.panes[pid_a].providers.gutter_columns().count();
     assert!(
@@ -1942,12 +1937,7 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
 /// content ("abc\ndef\n"), not derived by calling the code under test.
 #[test]
 fn multiline_search_match_splits_into_per_line_highlight_spans() {
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(None);
     let pid = ed.state.focus.id();
 
     ed.feed_key(key('i'));

@@ -673,12 +673,7 @@ fn shrinking_terminal_self_heals_scroll() {
 // the panel actually paints.
 
 fn open_real_editor() -> Editor {
-    Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap()
+    open_headless(None)
 }
 
 #[test]

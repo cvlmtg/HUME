@@ -153,7 +153,7 @@ mod next_wake_covers_client_state {
         // the statusline spinner must keep animating while it waits. The
         // in-flight `initialize` request carries a 30s deadline, far longer
         // than the spinner cadence, and the spinner arm must still win.
-        let tmp = safe_tempdir();
+        let tmp = tempfile::tempdir().unwrap();
         let (backend, _, _) = RecordingLspBackend::new();
         let rig = LspRig::open(tmp.path(), RigSpec::rust("-[w]>ord\n"), backend);
 
@@ -171,7 +171,7 @@ mod next_wake_covers_client_state {
     fn running_request_deadline_bounds_wake() {
         // A Running client with an ordinary request in flight: `next_wake`
         // must report that request's own deadline, not a poll cadence.
-        let tmp = safe_tempdir();
+        let tmp = tempfile::tempdir().unwrap();
         let mut rig = running_rig(tmp.path());
         let sid = rig.sid("rust-analyzer");
 
@@ -200,7 +200,7 @@ mod next_wake_covers_client_state {
         // `next_wake` aggregates `earliest_deadline()` across every server
         // with `.min()`: a far deadline on one server must never hide a
         // near one on another.
-        let tmp = safe_tempdir();
+        let tmp = tempfile::tempdir().unwrap();
         let (mut backend, _, _) = RecordingLspBackend::new();
         backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
         backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
@@ -249,7 +249,7 @@ mod next_wake_covers_client_state {
         // A Running client with nothing pending and no progress must not
         // force any wake at all: arrival is wake-driven, so an idle
         // Running client has nothing to wake for.
-        let tmp = safe_tempdir();
+        let tmp = tempfile::tempdir().unwrap();
         let rig = running_rig(tmp.path());
 
         assert_eq!(rig.ed.wake_timeout(), None);
@@ -257,7 +257,7 @@ mod next_wake_covers_client_state {
 
     #[test]
     fn progress_task_wakes_at_spinner_cadence() {
-        let tmp = safe_tempdir();
+        let tmp = tempfile::tempdir().unwrap();
         let mut rig = running_rig(tmp.path());
         let sid = rig.sid("rust-analyzer");
 

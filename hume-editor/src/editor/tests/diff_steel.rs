@@ -13,7 +13,7 @@ use hume_scripting::ScriptingHost;
 /// stops the probe from firing.
 #[test]
 fn diff_lines_returns_zero_based_hunk_hashes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     let fired = run_probe(
@@ -38,7 +38,7 @@ fn diff_lines_returns_zero_based_hunk_hashes() {
 /// `diff-buffer-lines` ≡ `diff-lines` matrix.
 #[test]
 fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let fired = run_probe(
@@ -71,7 +71,7 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
 /// this file passes a stale bid.
 #[test]
 fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     let scratch = tmp.path().join("scratch.txt");
@@ -110,7 +110,7 @@ fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
 /// the old line is "abc" and its inserted column range is 0..1.
 #[test]
 fn buffer_revision_diff_returns_hunks_with_word_spans() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     ed.feed_key(key('d'));
     assert_eq!(ed.doc().text().to_string(), "bc\n");
@@ -135,7 +135,7 @@ fn buffer_revision_diff_returns_hunks_with_word_spans() {
 /// its span lists empty, so a renderer never word-diffs a changeset's hunk.
 #[test]
 fn buffer_revision_diff_keeps_words_when_a_span_covers_its_line() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
     ed.feed_key(key('d'));
     assert_eq!(ed.doc().text().to_string(), "\n");
@@ -159,7 +159,7 @@ fn buffer_revision_diff_keeps_words_when_a_span_covers_its_line() {
 /// An id the buffer's history never recorded raises, never an empty diff.
 #[test]
 fn buffer_revision_diff_on_an_unknown_revision_raises() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     install_source(
         &mut ed,
@@ -188,7 +188,7 @@ fn buffer_revision_diff_on_an_unknown_revision_raises() {
 /// (`"foo"`, `" "`, `"bar"`/`"baz"`: offsets `0,3,4,7`).
 #[test]
 fn diff_words_returns_a_hunks_and_deadline_hit_hash() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     let fired = run_probe(
@@ -207,7 +207,7 @@ fn diff_words_returns_a_hunks_and_deadline_hit_hash() {
 /// on the line that holds them, not on the old line sharing the new line's index.
 #[test]
 fn diff_lines_words_follow_the_edit_across_uneven_sides() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     let fired = run_probe(

@@ -29,7 +29,7 @@ fn name(s: &str) -> ServerName {
 
 #[test]
 fn status_text_lists_a_running_server_with_root_and_pending_count() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = rust_rig(&tmp);
 
     let text = rig.ed.lsp_status_text();
@@ -63,7 +63,7 @@ fn status_text_reports_no_servers_when_none_are_running() {
 
 #[test]
 fn status_text_lists_a_stopped_server_until_it_is_restarted() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     assert!(
         !rig.ed.lsp_status_text().contains("Stopped"),
@@ -88,7 +88,7 @@ fn status_text_lists_a_stopped_server_until_it_is_restarted() {
 
 #[test]
 fn lsp_stop_by_name_detaches_the_buffer_and_stops_the_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     let sid = rig.sid("rust-analyzer");
 
@@ -107,7 +107,7 @@ fn lsp_stop_by_name_detaches_the_buffer_and_stops_the_server() {
 /// buffer is focused: `LspServerTarget` names the buffer explicitly.
 #[test]
 fn lsp_stop_targets_the_named_buffer_regardless_of_focus() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     let other = rig
         .ed
@@ -124,7 +124,7 @@ fn lsp_stop_targets_the_named_buffer_regardless_of_focus() {
 
 #[test]
 fn lsp_stop_with_no_matching_server_stops_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     let scratch = rig
         .ed
@@ -141,7 +141,7 @@ fn lsp_stop_with_no_matching_server_stops_nothing() {
 
 #[test]
 fn stopping_an_unknown_name_reports_an_error() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
 
     stop(&mut rig.ed, LspServerTarget::Name(name("no-such-server")));
@@ -159,7 +159,7 @@ fn stopping_an_unknown_name_reports_an_error() {
 /// starts from `didOpen`'s text alone.
 #[test]
 fn lsp_stop_leaves_no_queued_change_for_a_later_attach() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::with_default_handshake();
     backend.respond_to(
         "initialize",
@@ -186,7 +186,7 @@ fn lsp_stop_leaves_no_queued_change_for_a_later_attach() {
 
 #[test]
 fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     let old_sid = rig.sid("rust-analyzer");
 
@@ -209,7 +209,7 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
 /// server's diagnostics for the same buffer: the detach dropped them.
 #[test]
 fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
     backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
@@ -238,7 +238,7 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
 
 #[test]
 fn stderr_action_is_logged_at_trace_with_the_server_name_prefix() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = rust_rig(&tmp);
     let sid = rig.sid("rust-analyzer");
     let mut ed = rig.ed;
@@ -254,7 +254,7 @@ fn stderr_action_is_logged_at_trace_with_the_server_name_prefix() {
 
 #[test]
 fn log_message_error_type_is_reported_at_error_severity() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = rust_rig(&tmp);
     let sid = rig.sid("rust-analyzer");
     let mut ed = rig.ed;
@@ -276,7 +276,7 @@ fn log_message_error_type_is_reported_at_error_severity() {
 
 #[test]
 fn log_message_info_type_is_reported_at_trace_not_shown_as_status() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = rust_rig(&tmp);
     let sid = rig.sid("rust-analyzer");
     let mut ed = rig.ed;
@@ -297,7 +297,7 @@ fn log_message_info_type_is_reported_at_trace_not_shown_as_status() {
 
 #[test]
 fn show_message_is_reported_at_info_severity() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = rust_rig(&tmp);
     let sid = rig.sid("rust-analyzer");
     let mut ed = rig.ed;
@@ -316,7 +316,7 @@ fn show_message_is_reported_at_info_severity() {
 
 #[test]
 fn progress_report_events_are_dropped_without_any_log_line() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = rust_rig(&tmp);
     let sid = rig.sid("rust-analyzer");
     let mut ed = rig.ed;
@@ -360,7 +360,7 @@ fn progress_report_events_are_dropped_without_any_log_line() {
 
 #[test]
 fn lsp_shutdown_all_transitions_every_running_client_to_dead() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = rust_rig(&tmp);
     let sid = rig.sid("rust-analyzer");
     let mut ed = rig.ed;
@@ -382,7 +382,7 @@ fn lsp_shutdown_all_on_a_starting_client_skips_the_protocol_but_still_tears_down
     // shutdown/exit (nothing but `initialize` is legal before `initialized`),
     // but it must still not be left dangling forever; the transport-level
     // `backend.shutdown` call covers it regardless of protocol state.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = LspRig::open(
         tmp.path(),
         RigSpec::rust("-[f]>n main() {}\n"),

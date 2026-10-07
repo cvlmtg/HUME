@@ -23,7 +23,7 @@ fn bind_insert_key(ed: &mut Editor, tmp: &std::path::Path, key: &str, body: &str
 /// inserts a literal `\t`.
 #[test]
 fn insert_key_tab_hard_default() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     bind_insert_key(&mut ed, tmp.path(), "tab", r#"(insert-key! pane "tab")"#);
     ed.feed_key(key('i'));
@@ -35,7 +35,7 @@ fn insert_key_tab_hard_default() {
 /// proving `insert-key!` reads the live setting rather than hardcoding Hard.
 #[test]
 fn insert_key_tab_soft_setting() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.settings.tab_style = TabStyle::Soft;
     bind_insert_key(&mut ed, tmp.path(), "tab", r#"(insert-key! pane "tab")"#);
@@ -49,7 +49,7 @@ fn insert_key_tab_soft_setting() {
 /// `auto_pairs_auto_close`): inserts `()`, cursor between them.
 #[test]
 fn insert_key_runs_auto_pairs() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("hello-[\n]>");
     bind_insert_key(&mut ed, tmp.path(), "(", r#"(insert-key! pane "(")"#);
     ed.feed_key(key('i'));
@@ -62,7 +62,7 @@ fn insert_key_runs_auto_pairs() {
 /// behaviour to fall back to when no Insert dispatch is in flight.
 #[test]
 fn insert_key_errors_outside_insert_mode() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
@@ -81,7 +81,7 @@ fn insert_key_errors_outside_insert_mode() {
 /// Backspace/Delete/a plain char.
 #[test]
 fn insert_key_errors_on_key_with_no_default_behaviour() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     bind_insert_key(
         &mut ed,
@@ -107,7 +107,7 @@ fn insert_key_errors_on_key_with_no_default_behaviour() {
 /// refuses instead of editing the buffer untracked for `.`.
 #[test]
 fn insert_key_errors_when_not_dispatched_from_a_bound_key() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,

@@ -27,7 +27,7 @@ fn poll_until(
     mut step: impl FnMut(&mut Editor),
     mut until: impl FnMut(&Editor) -> bool,
 ) {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         step(ed);
         if until(ed) {
@@ -105,7 +105,7 @@ struct RuntimeDirs {
 impl RuntimeDirs {
     fn new() -> Self {
         Self {
-            runtime: safe_tempdir(),
+            runtime: tempfile::tempdir().unwrap(),
             _path: path_reader(),
         }
     }
@@ -147,7 +147,7 @@ struct RealRuntimeDirs {
 
 impl RealRuntimeDirs {
     fn new() -> Self {
-        let data_tmp = safe_tempdir();
+        let data_tmp = tempfile::tempdir().unwrap();
         let dirs = Dirs {
             data: Some(data_tmp.path().join("hume")),
             runtime: Some(repo_runtime_dir()),
@@ -304,7 +304,7 @@ struct DiagSetup {
 /// publishes `diags` for the file once it is `Running`, settled so the
 /// queued `on-diagnostics-changed` hook has drawn its decorations.
 fn setup_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagSetup {
-    let root = safe_tempdir();
+    let root = tempfile::tempdir().unwrap();
     let (mut rig, guard) = core_lsp_rig(
         root.path(),
         &marked_at_start(content),
@@ -358,12 +358,12 @@ impl StagedGrammarFixture {
     /// `init.scm`. Caller supplies `grammar_name`'s own fixture files;
     /// callers call `require_grammars` first.
     fn new(grammar_name: &str, parser: &Path, highlights: &Path, init_scm: &str) -> Self {
-        let config_tmp = safe_tempdir();
+        let config_tmp = tempfile::tempdir().unwrap();
         let config_dir = config_tmp.path().join("hume");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("init.scm"), init_scm).unwrap();
 
-        let data_tmp = safe_tempdir();
+        let data_tmp = tempfile::tempdir().unwrap();
         let data_dir = data_tmp.path().join("hume");
         let grammars_dir = data_dir.join("grammars");
         let hl_dir = grammars_dir.join("sources").join(grammar_name);
@@ -392,6 +392,7 @@ impl StagedGrammarFixture {
             config: Some(self.config_dir.clone()),
             data: Some(self.data_dir.clone()),
             runtime: Some(repo_runtime_dir()),
+            tmp: None,
         }
     }
 
@@ -433,8 +434,8 @@ fn canonical_data_dir(root: &Path) -> PathBuf {
     root.canonicalize().unwrap().join("hume")
 }
 
-fn lock() -> ClaimGuard {
-    TEST_GLOBALS.claim(Global::Env)
+fn lock() -> EnvClaim {
+    claim_env()
 }
 
 /// Load `init_src` into `ed`, pointing its runtime directory at the repo's
@@ -447,7 +448,7 @@ fn load_with_init(ed: &mut Editor, data_dir: &Path, init_src: &str) {
 /// [`load_with_init`] against an explicit runtime directory, for a test
 /// that fabricates part of the runtime (e.g. the `core:lsp-install` source catalog).
 fn load_with_init_in_runtime(ed: &mut Editor, runtime_dir: &Path, data_dir: &Path, init_src: &str) {
-    let config_tmp = safe_tempdir();
+    let config_tmp = tempfile::tempdir().unwrap();
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), init_src).unwrap();
@@ -459,6 +460,7 @@ fn load_with_init_in_runtime(ed: &mut Editor, runtime_dir: &Path, data_dir: &Pat
         config: Some(hume_config),
         data: Some(data_dir.join("hume")),
         runtime: Some(runtime_dir.to_path_buf()),
+        tmp: None,
     };
     ed.init_scripting(&mut Default::default());
     // `config_tmp` is deleted on return, so a later `:reload-config` has to
@@ -549,7 +551,7 @@ impl CwdSandbox {
     fn new() -> Self {
         let _lock = TEST_GLOBALS.claim(Global::Cwd);
         let saved = std::env::current_dir().expect("current_dir");
-        let dir = safe_tempdir();
+        let dir = tempfile::tempdir().unwrap();
         Self { dir, saved, _lock }
     }
 

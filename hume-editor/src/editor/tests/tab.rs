@@ -423,7 +423,7 @@ fn ctrl_p_t_and_shift_t_cycle_tabs() {
 fn goto_next_tab_via_call_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
     use hume_scripting::host::CommandHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("other.txt");
     std::fs::write(&path, "zz\n").unwrap();
 
@@ -583,7 +583,7 @@ fn tabclose_down_to_a_fitting_count_resets_the_scroll_window() {
 fn two_tabs_render_with_the_active_one_styled_distinctly() {
     use super::render_snapshot::render_to_styled_string;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("lib.rs");
     std::fs::write(&path, "fn lib() {}\n").unwrap();
 
@@ -621,7 +621,7 @@ fn tabline_always_shows_even_with_one_tab() {
 /// that *does* resolve through the layout during teardown stays correct too.
 #[test]
 fn tabclose_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("other.txt");
     std::fs::write(&path, "zz\n").unwrap();
 
@@ -679,7 +679,7 @@ fn tabclose_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
 /// before the tab went to the background.
 #[test]
 fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_change() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     let tab_a = ed.state.tabs.current();
 
@@ -725,11 +725,11 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
 /// the pane-dropped-from-the-active-set cause instead.
 #[test]
 fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     seed_frame(&mut ed, 40, 10); // seeds last_visible_range[pid] keyed on A's buffer
 
-    let file_tmp = safe_tempdir();
+    let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("second.txt");
     std::fs::write(&file, "hi\n").unwrap();
 
@@ -770,7 +770,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
 /// every fire (this debounce timer, a config reload's resync) goes through.
 #[test]
 fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_background_first() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // A second, distinct file for the new tab: `tabnew` with no argument
     // would instead duplicate A's own pane onto its same buffer, which
     // would still legitimately re-arm and fire for bid_a from the new

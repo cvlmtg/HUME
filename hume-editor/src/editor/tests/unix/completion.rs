@@ -13,7 +13,7 @@ struct TwoThemesRuntime {
 
 impl TwoThemesRuntime {
     fn new() -> Self {
-        let dir = safe_tempdir();
+        let dir = tempfile::tempdir().unwrap();
         let themes_dir = dir.path().join("themes");
         std::fs::create_dir_all(&themes_dir).unwrap();
         std::fs::write(themes_dir.join("zorro.toml"), b"").unwrap();

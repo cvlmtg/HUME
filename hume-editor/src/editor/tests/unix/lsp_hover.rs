@@ -67,7 +67,7 @@ fn run_hover(ed: &mut Editor) {
 
 #[test]
 fn popup_shows_the_fixture_content() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
@@ -102,7 +102,7 @@ fn popup_shows_the_fixture_content() {
 /// reaches.
 #[test]
 fn popup_joins_a_marked_string_array_with_language_fences() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
@@ -141,7 +141,7 @@ fn popup_joins_a_marked_string_array_with_language_fences() {
 
 #[test]
 fn null_result_logs_and_shows_no_popup() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
@@ -169,7 +169,7 @@ fn null_result_logs_and_shows_no_popup() {
 
 #[test]
 fn error_reports_via_the_message_log() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
@@ -197,7 +197,7 @@ fn error_reports_via_the_message_log() {
 
 #[test]
 fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // 50 lines: comfortably taller than any popup's visible window (cursor
     // cap ~⅓ pane, docked cap ~½ terminal), so Ctrl-d/Ctrl-u below exercise a
     // real scroll, not a short popup with nothing to page through.
@@ -268,7 +268,7 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     // Ctrl-d/Ctrl-u must not become a silent no-op that also blocks the
     // buffer's own half-page scroll. `scroll_popup` must not consume the key
     // when `max_scroll == 0`.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
@@ -312,7 +312,7 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
 /// the threshold to 8, so 8 content lines would float instead of dock.
 #[test]
 fn visible_lines_threshold_has_no_off_by_one_from_the_old_inclusive_range() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let eight_lines = (0..8)
         .map(|i| format!("line{i}"))
         .collect::<Vec<_>>()
@@ -350,7 +350,7 @@ fn visible_lines_threshold_has_no_off_by_one_from_the_old_inclusive_range() {
 
 #[test]
 fn tall_content_docks_instead_of_using_the_drawer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // The fixture file is ~30 lines against the default 24-row pane height,
     // so the popup threshold (⅓ of visible lines) lands around 8, and 20 lines
     // must overflow to the docked layout regardless of the exact figure.
@@ -405,7 +405,7 @@ fn capability_gate_skips_the_request_when_hover_unsupported() {
     // would go unanswered and `status_msg` would stay unset, not mention
     // "not supported". That is enough to tell, without inspecting the
     // (trait-erased, post-boxing unreachable) sent log.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // No hoverProvider in the advertised capabilities.
     let (mut ed, _guard, _sid) = setup(
         tmp.path(),
@@ -427,7 +427,7 @@ fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
     // A `null` capability field is not the same as advertising support:
     // same check as the missing-key case above, just via an explicit
     // `null` rather than an absent key.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": null}}),
@@ -456,7 +456,7 @@ fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
 /// `(focused-pane)` is live focus at drain time.
 #[test]
 fn stale_response_after_a_buffer_switch_shows_no_popup() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
@@ -495,7 +495,7 @@ fn stale_response_after_a_buffer_switch_shows_no_popup() {
 
 #[test]
 fn allow_stale_is_honored_despite_an_intervening_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
@@ -537,7 +537,7 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
 
 #[test]
 fn buffer_with_no_path_reports_and_sends_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(
         tmp.path(),
         serde_json::json!({"capabilities": {"hoverProvider": true}}),

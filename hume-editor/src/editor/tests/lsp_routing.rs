@@ -76,7 +76,7 @@ const LOG_ALL: &str = r#"(lambda (err results)
 
 #[test]
 fn lsp_servers_filters_by_capability_and_filter() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::drained(
         tmp.path(),
         spec("-[f]>n main() {}\n").with_init(concat!(
@@ -111,7 +111,7 @@ fn lsp_servers_filters_by_capability_and_filter() {
 
 #[test]
 fn lsp_handles_agrees_with_route_for_every_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::drained(
         tmp.path(),
         spec("-[f]>n main() {}\n").with_init(concat!(
@@ -152,7 +152,7 @@ fn lsp_handles_agrees_with_route_for_every_server() {
 
 #[test]
 fn ranges_formatting_needs_ranges_support() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let range_formatting = serde_json::json!({"documentRangeFormattingProvider": true});
     let mut rig = two_servers(
         &tmp,
@@ -175,7 +175,7 @@ fn ranges_formatting_needs_ranges_support() {
 
 #[test]
 fn lsp_servers_narrows_a_feature_by_method() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -204,7 +204,7 @@ fn lsp_servers_narrows_a_feature_by_method() {
 
 #[test]
 fn lsp_servers_accepts_a_method_alone() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -223,7 +223,7 @@ fn lsp_servers_accepts_a_method_alone() {
 
 #[test]
 fn lsp_servers_excludes_starting_when_feature_given() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (backend, _, _) = RecordingLspBackend::new();
     let mut rig = LspRig::open(tmp.path(), spec("-[f]>n main() {}\n"), backend);
 
@@ -243,7 +243,7 @@ fn lsp_servers_excludes_starting_when_feature_given() {
 
 #[test]
 fn lsp_servers_rejects_an_unknown_feature() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -262,7 +262,7 @@ fn lsp_servers_rejects_an_unknown_feature() {
 
 #[test]
 fn request_picks_the_first_admitting_running_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -283,7 +283,7 @@ fn request_picks_the_first_admitting_running_server() {
 
 #[test]
 fn request_without_a_route_goes_to_the_first_running_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -304,7 +304,7 @@ fn request_without_a_route_goes_to_the_first_running_server() {
 
 #[test]
 fn request_to_a_starting_only_buffer_fails_with_starting() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (backend, _, _) = RecordingLspBackend::new();
     let mut rig = LspRig::open(tmp.path(), spec("-[f]>n main() {}\n"), backend);
 
@@ -326,7 +326,7 @@ fn request_to_a_starting_only_buffer_fails_with_starting() {
 
 #[test]
 fn request_unsupported_by_every_server_names_them() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -348,7 +348,7 @@ fn request_unsupported_by_every_server_names_them() {
 
 #[test]
 fn request_unavailable_empty_answers_void_without_an_error() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -367,7 +367,7 @@ fn request_unavailable_empty_answers_void_without_an_error() {
 
 #[test]
 fn request_all_unavailable_empty_answers_an_empty_list_without_an_error() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -386,7 +386,7 @@ fn request_all_unavailable_empty_answers_an_empty_list_without_an_error() {
 
 #[test]
 fn resolve_to_a_server_without_a_resolve_provider_is_unsupported() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -412,7 +412,7 @@ fn resolve_to_a_server_without_a_resolve_provider_is_unsupported() {
 
 #[test]
 fn request_with_to_names_the_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -433,7 +433,7 @@ fn request_with_to_names_the_server() {
 
 #[test]
 fn request_with_to_an_unattached_server_errors() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -458,7 +458,7 @@ fn request_with_to_an_unattached_server_errors() {
 
 #[test]
 fn all_delivers_once_in_input_order() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -484,7 +484,7 @@ fn all_delivers_once_in_input_order() {
 
 #[test]
 fn all_member_timeout_fills_slot() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -508,7 +508,7 @@ fn all_member_timeout_fills_slot() {
 
 #[test]
 fn request_to_a_stopped_server_fills_its_slot_and_the_rest_still_answer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -533,7 +533,7 @@ fn request_to_a_stopped_server_fills_its_slot_and_the_rest_still_answer() {
 
 #[test]
 fn all_stale_anchor_drops_whole_delivery_and_releases_tracked() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -567,7 +567,7 @@ fn all_stale_anchor_drops_whole_delivery_and_releases_tracked() {
 
 #[test]
 fn all_supersede_cancels_all_members() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -599,7 +599,7 @@ fn all_supersede_cancels_all_members() {
 
 #[test]
 fn delivery_count_leak_check_after_stop() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -632,7 +632,7 @@ fn delivery_count_leak_check_after_stop() {
 
 #[test]
 fn explicit_members_send_each_server_its_own_params() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -662,7 +662,7 @@ fn explicit_members_send_each_server_its_own_params() {
 
 #[test]
 fn notify_defaults_to_every_running_attached_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -688,7 +688,7 @@ fn notify_defaults_to_every_running_attached_server() {
 
 #[test]
 fn doc_pos_params_serialize_in_each_servers_encoding() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let marked = format!("a{ASTRAL}-[b]>c\n");
     let mut rig = LspRig::drained(
         tmp.path(),
@@ -718,7 +718,7 @@ fn doc_pos_params_serialize_in_each_servers_encoding() {
 
 #[test]
 fn doc_pos_for_another_buffer_fills_the_slot_with_an_error() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -749,7 +749,7 @@ fn doc_pos_for_another_buffer_fills_the_slot_with_an_error() {
 
 #[test]
 fn doc_pos_from_before_a_same_eval_edit_errors() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::drained(
         tmp.path(),
         spec("fn ma-[i]>n() {}\n"),
@@ -778,7 +778,7 @@ fn doc_pos_from_before_a_same_eval_edit_errors() {
 
 #[test]
 fn doc_pos_past_end_after_a_same_eval_delete_errors() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::drained(
         tmp.path(),
         spec("fn ma-[i]>n() {}\n"),
@@ -807,7 +807,7 @@ fn doc_pos_past_end_after_a_same_eval_delete_errors() {
 
 #[test]
 fn tracked_position_params_needs_no_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (backend, _, _) = RecordingLspBackend::new();
     let mut rig = LspRig::open(
         tmp.path(),
@@ -825,7 +825,7 @@ fn tracked_position_params_needs_no_server() {
 
 #[test]
 fn notification_hook_receives_server_handle() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -863,7 +863,7 @@ const LOG_KIND: &str = r#"(lambda (err res)
 
 #[test]
 fn routing_failure_err_is_unavailable() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -882,7 +882,7 @@ fn routing_failure_err_is_unavailable() {
 
 #[test]
 fn server_error_err_carries_kind_and_code() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -901,7 +901,7 @@ fn server_error_err_carries_kind_and_code() {
 
 #[test]
 fn stopped_err_is_tagged() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -922,7 +922,7 @@ fn stopped_err_is_tagged() {
 
 #[test]
 fn timeout_err_is_tagged() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -943,7 +943,7 @@ fn timeout_err_is_tagged() {
 
 #[test]
 fn unsent_err_is_tagged() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -970,7 +970,7 @@ fn unsent_err_is_tagged() {
 
 #[test]
 fn per_server_member_not_attached_is_unavailable() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -998,7 +998,7 @@ fn per_server_member_not_attached_is_unavailable() {
 
 /// `ra-lint` stopped, then one `lsp-request-all!` naming only it.
 fn request_all_to_a_stopped_server(unavailable: &str) -> Vec<String> {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -1036,7 +1036,7 @@ fn per_server_request_to_only_unavailable_servers_answers_empty_when_asked() {
 
 #[test]
 fn per_server_request_keeps_its_feature_filter() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -1063,7 +1063,7 @@ fn per_server_request_keeps_its_feature_filter() {
 
 #[test]
 fn a_standard_method_is_routed_by_its_own_feature() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -1088,7 +1088,7 @@ fn a_standard_method_is_routed_by_its_own_feature() {
 
 #[test]
 fn a_superseding_request_that_reaches_no_server_still_cancels_the_one_in_flight() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -1113,7 +1113,7 @@ fn a_superseding_request_that_reaches_no_server_still_cancels_the_one_in_flight(
 
 #[test]
 fn request_with_to_a_server_its_list_entry_excludes_names_the_exclusion() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::drained(
         tmp.path(),
         spec("-[f]>n main() {}\n").with_init(concat!(
@@ -1142,7 +1142,7 @@ fn request_with_to_a_server_its_list_entry_excludes_names_the_exclusion() {
 
 #[test]
 fn request_with_to_a_server_value_from_before_a_restart_says_it_is_stale() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -1179,7 +1179,7 @@ fn request_with_to_a_server_value_from_before_a_restart_says_it_is_stale() {
 
 #[test]
 fn a_feature_on_a_standard_method_is_rejected_at_the_call() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -1215,7 +1215,7 @@ fn a_feature_on_a_standard_method_is_rejected_at_the_call() {
 
 #[test]
 fn a_feature_on_a_custom_method_still_routes_by_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -1233,7 +1233,7 @@ fn a_feature_on_a_custom_method_still_routes_by_it() {
 
 #[test]
 fn a_notification_of_a_standard_method_is_routed_by_its_feature() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -1251,7 +1251,7 @@ fn a_notification_of_a_standard_method_is_routed_by_its_feature() {
 
 #[test]
 fn a_crashed_server_is_skipped_for_the_next_one() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
         &tmp,
         backend(
@@ -1274,7 +1274,7 @@ fn a_crashed_server_is_skipped_for_the_next_one() {
 /// back once, with each slot's own outcome in attachment order.
 #[test]
 fn one_delivery_can_mix_an_answer_a_timeout_and_a_stop() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let init = format!(
         "{TWO_RUST_SERVERS}\n{}",
         r#"(register-lsp-server! "ra-extra" #:command "ra-extra")

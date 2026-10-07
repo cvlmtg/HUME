@@ -27,7 +27,7 @@ fn colon_enters_command_mode() {
 /// it back to Normal.
 #[test]
 fn typed_command_body_entering_insert_stays_in_insert() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(
         &mut ed,
@@ -767,7 +767,7 @@ fn colon_qa_walk_through_dirty_buffers() {
 
 #[test]
 fn colon_w_path_creates_new_file() {
-    let tmp_dir = safe_tempdir();
+    let tmp_dir = tempfile::tempdir().unwrap();
     let new_path = tmp_dir.path().join("new_file.txt");
     assert!(!new_path.exists());
 
@@ -795,7 +795,7 @@ fn colon_w_path_creates_new_file() {
 
 #[test]
 fn colon_w_path_updates_file_path_for_subsequent_writes() {
-    let tmp_dir = safe_tempdir();
+    let tmp_dir = tempfile::tempdir().unwrap();
     let new_path = tmp_dir.path().join("subsequent.txt");
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -841,7 +841,7 @@ fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
     assert!(focused_unsaved(&ed), "pre-condition: buffer must be dirty");
     ed.doc_mut().read_only = true;
 
-    let tmp_dir = safe_tempdir();
+    let tmp_dir = tempfile::tempdir().unwrap();
     let new_path = tmp_dir.path().join("exported.txt");
     let cmd = format!(":w {}", new_path.display());
     for ch in cmd.chars() {
@@ -864,7 +864,7 @@ fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
 
 #[test]
 fn colon_wq_path_saves_to_new_file_and_quits() {
-    let tmp_dir = safe_tempdir();
+    let tmp_dir = tempfile::tempdir().unwrap();
     let new_path = tmp_dir.path().join("wq_test.txt");
     assert!(!new_path.exists());
 

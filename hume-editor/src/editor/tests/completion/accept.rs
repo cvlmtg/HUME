@@ -22,7 +22,7 @@ fn accept_via_steel(ed: &mut Editor) {
 
 #[test]
 fn accept_with_no_text_edit_replaces_the_token_with_insert_text() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("fo-[ ]>cdef\n");
     raw_insert_with_source(
         &mut ed,
@@ -39,7 +39,7 @@ fn accept_with_no_text_edit_replaces_the_token_with_insert_text() {
 /// converge on the same changeset-building chokepoint.
 #[test]
 fn accept_normalizes_crlf_in_insert_text() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("fo-[ ]>cdef\n");
     raw_insert_with_source(
         &mut ed,
@@ -55,7 +55,7 @@ fn accept_normalizes_crlf_in_insert_text() {
 /// replaces it whole, the same way every other word operation would.
 #[test]
 fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("foo-ba-[ ]>bar\n");
     ed.state.settings.word_chars = "-".into();
     raw_insert_with_source(
@@ -72,7 +72,7 @@ fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
 /// extends the run the same way the buffer's `word-chars` would.
 #[test]
 fn accept_with_no_text_edit_replaces_the_run_of_the_sources_token_chars() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("foo-ba-[ ]>bar\n");
     run(
         &mut ed,
@@ -101,7 +101,7 @@ fn accept_with_no_text_edit_replaces_the_run_of_the_sources_token_chars() {
 /// follows it: `Assoc::After` on the end, mapped through the observed edit.
 #[test]
 fn accept_with_a_text_edit_extends_the_range_over_chars_typed_since() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("fo-[ ]>\n");
     insert_with_script(
         &mut ed,
@@ -125,7 +125,7 @@ fn accept_with_a_text_edit_extends_the_range_over_chars_typed_since() {
 /// it covers ".fo", wider than the word before the cursor.
 #[test]
 fn accept_over_a_list_default_edit_range() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("x.fo-[ ]>\n");
     insert_with_script(
         &mut ed,
@@ -150,7 +150,7 @@ fn accept_over_a_list_default_edit_range() {
 /// range ends before the cursor; one that starts after it is never shown.
 #[test]
 fn accept_with_an_off_spec_text_edit_range_errors_and_leaves_the_buffer_untouched() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc-[d]>ef\n");
     raw_insert_with_source(
         &mut ed,
@@ -174,7 +174,7 @@ fn accept_with_an_off_spec_text_edit_range_errors_and_leaves_the_buffer_untouche
 /// range, not the wider `replace` range.
 #[test]
 fn insert_replace_text_edit_applies_the_narrower_insert_range() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("a-[b]>cdef\n");
     raw_insert_with_source(
         &mut ed,
@@ -195,7 +195,7 @@ fn insert_replace_text_edit_applies_the_narrower_insert_range() {
 
 #[test]
 fn accept_is_one_undo_step() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("fo-[ ]>cdef\n");
     insert_with_script(
         &mut ed,
@@ -218,7 +218,7 @@ fn accept_is_one_undo_step() {
 
 #[test]
 fn dismiss_clears_the_session_so_a_later_accept_errors() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     raw_insert_with_source(
         &mut ed,
@@ -239,7 +239,7 @@ fn dismiss_clears_the_session_so_a_later_accept_errors() {
 /// end of the line) is carried into the session, so accept still lands.
 #[test]
 fn a_buffer_edit_outside_the_token_does_not_invalidate_the_session() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = super::super::lsp_bridge::setup_with(tmp.path(), "-[a]>bcdef\n", |backend, _sid| {
         // `apply-text-edits!` now only accepts a server-tagged wire edit
         // (via a real response). This canned response is what the
@@ -278,7 +278,7 @@ fn a_buffer_edit_outside_the_token_does_not_invalidate_the_session() {
 fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_zero() {
     use crate::editor::commands::open_pane_in_layout;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid_a = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
@@ -324,7 +324,7 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
 /// check below it.
 #[test]
 fn accept_after_the_pane_switched_buffers_errors() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let original = ed.focused_buffer_id();
     insert_with_script(
@@ -378,7 +378,7 @@ fn accept_after_the_pane_switched_buffers_errors() {
 fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
     use hume_scripting::host::CompletionHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     raw_insert_with_source(
         &mut ed,
@@ -428,7 +428,7 @@ fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
 /// it, so accept refuses instead of silently discarding the selection.
 #[test]
 fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("a-[bc]>def\n");
     raw_insert_with_source(
         &mut ed,
@@ -449,7 +449,7 @@ fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it()
 
 #[test]
 fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     raw_insert_with_source(
         &mut ed,
@@ -479,7 +479,7 @@ fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
 /// of the server's own range.
 #[test]
 fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_text_edit_end() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("ab-[c]>def\n");
     raw_insert_with_source(
         &mut ed,
@@ -509,7 +509,7 @@ fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_te
 /// import moved it to.
 #[test]
 fn accept_with_no_text_edit_lands_correctly_past_an_additional_text_edit_shift() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc-[ ]>def\n");
     raw_insert_with_source(
         &mut ed,
@@ -530,7 +530,7 @@ fn accept_with_no_text_edit_lands_correctly_past_an_additional_text_edit_shift()
 /// would.
 #[test]
 fn accept_with_no_text_edit_never_eats_into_word_chars_an_additional_edit_inserted() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc-[ ]>def\n");
     raw_insert_with_source(
         &mut ed,
@@ -552,7 +552,7 @@ fn accept_with_no_text_edit_never_eats_into_word_chars_an_additional_edit_insert
 /// "extra" exactly.
 #[test]
 fn additional_text_edits_track_a_real_edit_observed_since_the_invocation() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("fo-[,]> extra\n");
     insert_with_script(
         &mut ed,
@@ -578,7 +578,7 @@ fn additional_text_edits_track_a_real_edit_observed_since_the_invocation() {
 
 #[test]
 fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("fo-[ ]>cdef\n");
     raw_insert_with_source(
         &mut ed,
@@ -605,7 +605,7 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
 /// rather than `null`.
 #[test]
 fn accept_fires_on_completion_accept_with_a_synthesized_label_for_a_plain_item() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[ ]>cdef\n");
     raw_insert_with_source(
         &mut ed,
@@ -650,7 +650,7 @@ fn accepting_lands_at_every_cursor_not_just_the_primary() {
 /// precedes each other cursor.
 #[test]
 fn accepting_consumes_each_cursors_own_word_run_not_a_uniform_count() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-{foo}> abc-[bar]>\n");
     ed.state.settings.word_chars = "-".into();
     ed.feed_key(key('c'));
@@ -681,7 +681,7 @@ fn accepting_consumes_each_cursors_own_word_run_not_a_uniform_count() {
 
 #[test]
 fn accepting_a_server_text_edit_also_lands_at_every_cursor() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-{foo}> -[bar]>\n");
     ed.feed_key(key('c'));
     type_chars(&mut ed, "st");
@@ -719,7 +719,7 @@ fn accepting_a_server_text_edit_also_lands_at_every_cursor() {
 /// no wire encoding to honor, actually meant.
 #[test]
 fn a_non_resolve_sources_text_edit_decodes_character_as_a_char_count() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[😀foo]>\n");
     ed.feed_key(key('c'));
     // Cursor now sits right after "😀foo" was deleted, at char 0. Retype
@@ -750,7 +750,7 @@ fn a_non_resolve_sources_text_edit_decodes_character_as_a_char_count() {
 
 #[test]
 fn additional_text_edits_land_once_not_once_per_cursor() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-{foo}> -[bar]>\n");
     ed.feed_key(key('c'));
     type_chars(&mut ed, "st");
@@ -793,7 +793,7 @@ fn multi_cursor_accept_is_one_undo_step_in_insert_mode() {
 /// still reverts both cursors' edits and the additional edit together.
 #[test]
 fn multi_cursor_accept_is_one_undo_step_from_steel_outside_insert_mode() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-{a}>bcdef gh-[i]>jkl\n");
     raw_insert_with_source(
         &mut ed,
@@ -822,7 +822,7 @@ fn multi_cursor_accept_is_one_undo_step_from_steel_outside_insert_mode() {
 /// on its own (shifted) content, not on text the header pushed its way.
 #[test]
 fn accepting_with_additional_text_edits_between_cursors_lands_correctly_at_both() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-{foo}> abc-[bar]>\n");
     ed.feed_key(key('c'));
     type_chars(&mut ed, "xy");
@@ -860,7 +860,7 @@ fn accepting_with_additional_text_edits_between_cursors_lands_correctly_at_both(
 /// cursor's own line start.
 #[test]
 fn accepting_never_retreats_a_shorter_cursor_across_a_line_boundary() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // Primary's own word "ab" (2 chars) is longer than the second cursor's
     // own word "x" (1 char, on the line below): a uniform 2-char retreat
     // from the second cursor's head would cross its line's own start and

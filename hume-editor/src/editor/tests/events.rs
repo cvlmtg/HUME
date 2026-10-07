@@ -357,16 +357,11 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
-    let mut ed = Editor::open(
-        Some(file),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(file));
     let bid = ed.focused_buffer_id();
 
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -421,16 +416,11 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
 /// fire an unpaired `on-buffer-close` though `on-buffer-open` never fired.
 #[test]
 fn startup_buffer_close_before_any_drain_fires_no_on_buffer_close() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
-    let mut ed = Editor::open(
-        Some(file),
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(Some(file));
     let bid = ed.focused_buffer_id();
     assert!(
         ed.state.buffers.get(bid).open_hook_pending,
@@ -586,7 +576,7 @@ fn event_raised_from_async_work_fires_on_settle_with_no_input() {
 /// guarantee: one FIFO queue, drained front-to-back.
 #[test]
 fn fifo_order_preserved_across_call_and_event_items() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -759,7 +749,7 @@ fn on_buffer_save_native_call_on_a_paneless_bid_errors() {
     // A stays focused, B is paneless.
     assert_eq!(ed.focused_buffer_id(), bid_a, "setup: A stays focused");
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     run(
         &mut ed,
         tmp.path(),
@@ -824,7 +814,7 @@ fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
     ed.state.focus.set_for_test(pid_a);
     assert_eq!(ed.focused_buffer_id(), bid_a, "setup: A stays focused");
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     run(
         &mut ed,
         tmp.path(),
@@ -1163,7 +1153,7 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
 /// pick up the handler's own switch a `settle()` later.
 #[test]
 fn handler_driven_switch_produces_a_second_on_buffer_enter_in_the_same_settle_call() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let other = tmp.path().join("other.txt");
     std::fs::write(&other, "b\n").unwrap();
     let other_path = steel_path(&other);
@@ -1521,7 +1511,7 @@ fn undo_history_hook_fires_once_per_edit_undo_and_redo() {
 /// already saved moves nothing.
 #[test]
 fn undo_history_hook_fires_when_a_write_moves_the_saved_revision() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("saved.txt");
     std::fs::write(&path, "ab\n").unwrap();
     let mut ed = editor_with_history_hooks("-[a]>b\n");
@@ -1696,7 +1686,7 @@ fn opening_a_buffer_fires_on_buffer_open_not_on_text_changed() {
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
@@ -1748,7 +1738,7 @@ fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
     // `eval_source`+`MockHost`: the latter never calls
     // `apply_script_effects`, so a defined command would never actually
     // reach `ed.state.config.commands`.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -2170,7 +2160,7 @@ fn identity_reload_fires_no_on_text_changed() {
 /// `Severity::Error`.
 #[test]
 fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("hello\n")));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_b);
@@ -2242,7 +2232,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
 fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
     use hume_scripting::ScriptingHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     type_cmd(&mut ed, ":vsplit");
     let path_b = tmp.path().join("b.txt");

@@ -1,31 +1,20 @@
 use super::*;
 
-// `:tutor` copies the lesson into `std::env::temp_dir()`, so every test
-// points `TMPDIR` at its own tempdir under a `Global::Env` claim. They are
-// unix-only because `TMPDIR` is not honoured on Windows.
+// `:tutor` copies the lesson into `Dirs::tmp`, so every test gives its editor
+// a tempdir of its own there.
 
-/// An isolated runtime directory holding the tutor source, plus a `TMPDIR`
-/// of its own for the copy `:tutor` writes.
+/// An isolated runtime directory holding the tutor source, plus a `tmp`
+/// directory of its own for the copy `:tutor` writes.
 struct TutorGuard {
-    // Declaration order is drop order: `TMPDIR` is restored before the
-    // tempdirs are deleted, and the claim is released last.
-    _tmpdir: EnvVarGuard,
     runtime: tempfile::TempDir,
     tmp: tempfile::TempDir,
-    _lock: ClaimGuard,
 }
 
 impl TutorGuard {
     fn new() -> Self {
-        let lock = TEST_GLOBALS.claim(Global::Env);
-        let runtime = safe_tempdir();
-        let tmp = safe_tempdir();
-        let tmpdir = EnvVarGuard::set(&lock, "TMPDIR", tmp.path());
         Self {
-            _tmpdir: tmpdir,
-            runtime,
-            tmp,
-            _lock: lock,
+            runtime: tempfile::tempdir().unwrap(),
+            tmp: tempfile::tempdir().unwrap(),
         }
     }
 
@@ -38,6 +27,7 @@ impl TutorGuard {
         let mut ed = editor_from(marked);
         ed.state.dirs = Dirs {
             runtime: Some(self.runtime.path().to_path_buf()),
+            tmp: Some(self.tmp.path().to_path_buf()),
             ..Dirs::none()
         };
         ed
@@ -70,11 +60,11 @@ fn tutor_opens_buffer_with_lesson_content() {
         "tutor buffer must contain the lesson marker, got: {text:?}"
     );
 
-    // Buffer path must be inside the test TMPDIR, not the runtime source dir.
+    // Buffer path must be inside the injected tmp dir, not the runtime source dir.
     let buf_path = ed.doc().path().expect("tutor buffer must have a path set");
     assert!(
         buf_path.starts_with(std::fs::canonicalize(guard.tmp.path()).unwrap()),
-        "tutor buffer path must be inside TMPDIR, got: {buf_path:?}"
+        "tutor buffer path must be inside the injected tmp dir, got: {buf_path:?}"
     );
 }
 

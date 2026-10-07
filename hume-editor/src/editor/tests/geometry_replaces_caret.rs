@@ -90,12 +90,7 @@ fn a_wrap_mode_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
 /// and answer `None`.
 #[test]
 fn a_virtual_line_block_above_the_cursor_replaces_the_caret_even_when_the_cursor_has_not_moved() {
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(None);
     pin_no_wrap(&mut ed);
     type_text(&mut ed, &numbered_lines(40));
     seek_to_line(&mut ed, 20);
@@ -194,12 +189,7 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
 /// settled top and the cursor, so the extra row actually falls in the span
 /// `content_pos`'s `top`-to-`cursor` walk crosses.
 fn wrap_earlier_line_fixture() -> (Editor, BufferId, hume_rope::offset::CharOffset) {
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(None);
     ed.state.settings.scroll_margin = 0;
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 10 }),
@@ -353,12 +343,7 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     // with no gutter columns at all). This test is specifically about the
     // line-number gutter, so it needs the real pane-construction path that
     // registers one (`pane_state.rs`'s `new_pane`).
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(None);
     ed.state.settings.scroll_margin = 0;
     let pid_a = ed.state.focus.id();
     ed.view.panes[pid_a].set_wrap(hume_engine::pane::WrapOverride {

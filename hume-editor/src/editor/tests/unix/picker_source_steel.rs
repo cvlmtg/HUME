@@ -14,7 +14,7 @@ fn call(ed: &mut Editor, name: &str) {
 }
 
 fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(&mut ed, tmp.path(), source);
     (ed, tmp)

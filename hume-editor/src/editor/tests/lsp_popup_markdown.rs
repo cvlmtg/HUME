@@ -47,7 +47,7 @@ fn band_styled_rows(ed: &Editor) -> Option<Vec<hume_ui::popup::StyledRow>> {
 #[test]
 fn markdown_popup_highlights_when_the_grammar_is_registered() {
     require_grammars(&["markdown"]);
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     register_markdown(&mut ed);
     run(
@@ -102,13 +102,8 @@ fn markdown_popup_paints_per_run_styles() {
     // data-level test above only checks `PopupState.styled_rows`, not that
     // painting actually applies per-run styles to the terminal buffer).
     require_grammars(&["markdown"]);
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
     register_markdown(&mut ed);
     run(
@@ -129,7 +124,7 @@ fn docked_popup_highlights_when_the_grammar_is_registered() {
     // `views.popup()`, the docked layout hover overflow actually uses
     // (`#:anchor 'bottom`).
     require_grammars(&["markdown"]);
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     register_markdown(&mut ed);
     run(
@@ -175,13 +170,8 @@ fn docked_popup_survives_a_multiline_capture_node() {
     // every caller (cursor popup, docked popup), exercised here through
     // the docked layout, hover's actual long-content path.
     require_grammars(&["markdown"]);
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
     register_markdown(&mut ed);
     run(
@@ -204,7 +194,7 @@ fn docked_popup_survives_a_multiline_capture_node() {
 #[test]
 fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
     require_grammars(&["markdown"]);
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     register_markdown(&mut ed);
     run(
@@ -233,7 +223,7 @@ fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
 #[test]
 fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
     // No grammar registered at all; this test needs no fixture.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,

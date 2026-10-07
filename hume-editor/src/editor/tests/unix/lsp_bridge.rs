@@ -10,7 +10,7 @@ use super::super::lsp_bridge::{OrderedLogBackend, bridge_initialize_result};
 /// callback nor its delivery leaks.
 #[test]
 fn supersede_cancels_the_prior_request_under_the_same_key() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut b, _, _) = RecordingLspBackend::new();
     b.respond_to("initialize", bridge_initialize_result());
     b.respond_to(
@@ -88,7 +88,7 @@ fn setup_with_real_file(tmp: &std::path::Path, source: impl FnOnce(&str) -> Stri
 /// suppresses it there.
 #[test]
 fn callback_fires_normally_without_an_intervening_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with_real_file(tmp.path(), |uri| {
         format!(
             r#"(define-typed-command! "test-cmd" "" (lambda (bid)
@@ -111,7 +111,7 @@ fn callback_fires_normally_without_an_intervening_edit() {
 
 #[test]
 fn stale_response_is_dropped_without_allow_stale() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with_real_file(tmp.path(), |uri| {
         format!(
             r#"(define-typed-command! "test-cmd" "" (lambda (bid)
@@ -140,7 +140,7 @@ fn stale_response_is_dropped_without_allow_stale() {
 
 #[test]
 fn allow_stale_delivers_despite_buffer_moving_on() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with_real_file(tmp.path(), |uri| {
         format!(
             r#"(define-typed-command! "test-cmd" "" (lambda (bid)
@@ -171,7 +171,7 @@ fn allow_stale_delivers_despite_buffer_moving_on() {
 /// not off sniffing `params.textDocument.uri`.
 #[test]
 fn stale_response_without_text_document_is_dropped() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with_real_file(tmp.path(), |_uri| {
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
              (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
@@ -200,7 +200,7 @@ fn stale_response_without_text_document_is_dropped() {
 /// the counterpart of `stale_response_without_text_document_is_dropped`.
 #[test]
 fn allow_stale_without_text_document_delivers() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with_real_file(tmp.path(), |_uri| {
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
              (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
@@ -235,7 +235,7 @@ fn allow_stale_without_text_document_delivers() {
 /// ordering question.
 #[test]
 fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     std::fs::write(root.join("Cargo.toml"), b"").unwrap();
     let file = root.join("main.rs");

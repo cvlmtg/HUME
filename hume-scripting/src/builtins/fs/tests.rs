@@ -128,8 +128,10 @@ fn path_separator_resolves_inside_loaded_plugin() {
     )
     .unwrap();
 
-    let mut host = crate::ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = crate::ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     let mut null_host = crate::null_host::NullHost;
     host.eval_source(r#"(load-plugin! "user/probe")"#, &mut null_host)
         .expect("(path-separator) must be callable from inside a loaded plugin");
@@ -178,8 +180,10 @@ fn data_dir_resolves_through_real_registration() {
     let data_dir = tmp.path().join("hume");
     std::fs::create_dir_all(&data_dir).unwrap();
 
-    let mut host = crate::ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(data_dir.clone());
+    let mut host = crate::ScriptingHost::new(&Dirs {
+        data: Some(data_dir.clone()),
+        ..Dirs::none()
+    });
     let mut null_host = crate::null_host::NullHost;
     host.eval_source(r#"(log! 'info (data-dir))"#, &mut null_host)
         .expect("(data-dir) must evaluate through the real registration table");

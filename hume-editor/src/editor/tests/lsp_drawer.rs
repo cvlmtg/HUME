@@ -24,7 +24,7 @@ fn arm_three_items(ed: &mut Editor, tmp: &Path) {
 
 #[test]
 fn show_drawer_list_populates_model_and_view() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -48,7 +48,7 @@ fn open_with_selected(ed: &mut Editor, tmp: &Path, rows: usize, selected: usize)
 
 #[test]
 fn show_drawer_list_opens_on_the_selected_row() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     open_with_selected(&mut ed, tmp.path(), 3, 2);
 
@@ -57,7 +57,7 @@ fn show_drawer_list_opens_on_the_selected_row() {
 
 #[test]
 fn show_drawer_list_clamps_selected_past_the_end() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     open_with_selected(&mut ed, tmp.path(), 3, 9);
 
@@ -66,7 +66,7 @@ fn show_drawer_list_clamps_selected_past_the_end() {
 
 #[test]
 fn drawer_scrolls_a_far_selected_row_into_view() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     ed.sync_viewport_dims(40, 12);
     open_with_selected(&mut ed, tmp.path(), 30, 29);
@@ -184,7 +184,7 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
 /// Ctrl-u and the rest of its own keys.
 #[test]
 fn insert_above_an_open_drawer_then_esc_leaves_the_drawer_fully_functional() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
     render(&mut ed); // establishes real geometry so Ctrl-d below isn't a pre-frame no-op
@@ -289,7 +289,7 @@ fn show_drawer_list_from_insert_warns_instead_of_opening() {
 /// refresh).
 #[test]
 fn clamp_drawer_scroll_to_terminal_caps_scroll_when_the_list_shrinks() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
     ed.sync_viewport_dims(40, 12);
@@ -327,7 +327,7 @@ fn clamp_drawer_scroll_to_terminal_caps_scroll_when_the_list_shrinks() {
 /// `Arc::ptr_eq` to compare, and it would not compile.
 #[test]
 fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -486,7 +486,7 @@ fn close_drawer_closes_a_drawer_buried_under_insert_leaving_insert_intact() {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
     ed.feed_key(key('i'));
@@ -532,7 +532,7 @@ fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -580,7 +580,7 @@ fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
 /// dead drawer over someone else's list.
 #[test]
 fn replace_fires_false_to_the_outgoing_callback() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -625,7 +625,7 @@ const TOKEN_PROBE: &str = r#"(define *tok* #f)
 
 #[test]
 fn enter_passes_the_drawers_token() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(&mut ed, tmp.path(), TOKEN_PROBE);
     type_cmd(&mut ed, ":go");
@@ -638,7 +638,7 @@ fn enter_passes_the_drawers_token() {
 
 #[test]
 fn esc_passes_the_drawers_token() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(&mut ed, tmp.path(), TOKEN_PROBE);
     type_cmd(&mut ed, ":go");
@@ -651,7 +651,7 @@ fn esc_passes_the_drawers_token() {
 
 #[test]
 fn replace_passes_the_outgoing_drawers_token() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(&mut ed, tmp.path(), TOKEN_PROBE);
     type_cmd(&mut ed, ":go");
@@ -668,7 +668,7 @@ fn replace_passes_the_outgoing_drawers_token() {
 /// clamps an out-of-range selection, and reports whether it applied.
 #[test]
 fn update_replaces_rows_callback_and_selection_in_place() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -737,7 +737,7 @@ fn update_replaces_rows_callback_and_selection_in_place() {
 /// error: a closed-or-replaced drawer is an expected-normal race.
 #[test]
 fn update_and_selected_index_with_none_open_report_false() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -798,7 +798,7 @@ fn show_with_empty_items_errors_and_opens_nothing() {
 /// `Enter` fires `0`.
 #[test]
 fn update_with_empty_items_is_a_noop_false() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -830,7 +830,7 @@ fn update_with_empty_items_is_a_noop_false() {
 
 #[test]
 fn esc_calls_back_with_false_and_closes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -846,7 +846,7 @@ fn esc_calls_back_with_false_and_closes() {
 
 #[test]
 fn enter_calls_back_and_the_drawer_stays_open() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
     render(&mut ed); // establishes real geometry so Ctrl-d below isn't a pre-frame no-op
@@ -872,7 +872,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
 
 #[test]
 fn selection_clamps_at_the_top() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -885,7 +885,7 @@ fn selection_clamps_at_the_top() {
 
 #[test]
 fn selection_clamps_at_the_bottom() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
     render(&mut ed); // establishes real geometry so Ctrl-d below isn't a pre-frame no-op
@@ -906,7 +906,7 @@ fn selection_clamps_at_the_bottom() {
 
 #[test]
 fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -934,7 +934,7 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
 /// leaving the drawer open with its selection untouched.
 #[test]
 fn vertical_motion_keys_fall_through_leaving_the_drawer_selection_untouched() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\ndef\nghi\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -993,7 +993,7 @@ fn vertical_motion_keys_fall_through_leaving_the_drawer_selection_untouched() {
 
 #[test]
 fn long_list_auto_scrolls_to_keep_selection_visible() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let items_scm: String = (0..20)
         .map(|i| format!("\"item {i}\""))
@@ -1070,7 +1070,7 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
 
 #[test]
 fn ctrl_d_steps_down_half_a_page() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -1095,7 +1095,7 @@ fn ctrl_d_steps_down_half_a_page() {
 
 #[test]
 fn ctrl_d_clamps_at_the_last_item() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -1111,7 +1111,7 @@ fn ctrl_d_clamps_at_the_last_item() {
 
 #[test]
 fn ctrl_u_steps_up_half_a_page() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -1127,7 +1127,7 @@ fn ctrl_u_steps_up_half_a_page() {
 
 #[test]
 fn ctrl_u_clamps_at_the_first_item() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -1143,7 +1143,7 @@ fn key_shift_up() -> KeyEvent {
 
 #[test]
 fn shift_down_steps_down_one_row() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -1163,7 +1163,7 @@ fn shift_down_steps_down_one_row() {
 
 #[test]
 fn shift_down_clamps_at_the_last_item() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -1179,7 +1179,7 @@ fn shift_down_clamps_at_the_last_item() {
 
 #[test]
 fn shift_up_steps_up_one_row() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -1195,7 +1195,7 @@ fn shift_up_steps_up_one_row() {
 
 #[test]
 fn shift_up_clamps_at_the_first_item() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
@@ -1209,7 +1209,7 @@ fn shift_up_clamps_at_the_first_item() {
 
 #[test]
 fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\ndef\nghi\n");
     run(
         &mut ed,
@@ -1243,13 +1243,8 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
 
 #[test]
 fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
     ed.feed_key(key('i'));
     for ch in "hello".chars() {

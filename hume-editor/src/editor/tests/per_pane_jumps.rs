@@ -41,7 +41,7 @@ fn p7_pane_jumps_ctrl_i_forward() {
 /// Ctrl-o across buffers: `:e file2`, large motion in file2, Ctrl-o lands back in file1.
 #[test]
 fn p7_cross_buffer_ctrl_o() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let file1 = dir.path().join("file1.txt");
     let file2 = dir.path().join("file2.txt");
     // 20 lines in each file so large motions are valid.
@@ -106,7 +106,7 @@ fn p7_switch_to_buffer_with_jump_same_buffer_is_noop() {
 /// Closing a buffer prunes its entries from pane_jumps.
 #[test]
 fn p7_close_buffer_prunes_pane_jumps() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let file1 = dir.path().join("prune1.txt");
     let file2 = dir.path().join("prune2.txt");
     let content: String = (0..20).map(|i| format!("row {i}\n")).collect();

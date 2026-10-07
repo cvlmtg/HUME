@@ -39,7 +39,7 @@ fn answering_initialize() -> RecordingLspBackend {
 
 #[test]
 fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server) (call! "move-right" (focused-pane))))"#,
@@ -62,7 +62,7 @@ fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
 /// detached.
 #[test]
 fn on_lsp_detach_fires_when_a_server_is_stopped() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-detach (lambda (pane server) (call! "move-right" (focused-pane))))"#,
@@ -93,7 +93,7 @@ fn set_hook_triggers_from_inside_a_hook_handler_takes_effect() {
     // plain command context. Compare against a parallel plain editor so the
     // assertion isolates "did the extra move-right additionally fire" from
     // "was '.' inserted".
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
@@ -127,7 +127,7 @@ fn set_hook_triggers_from_inside_a_hook_handler_takes_effect() {
 /// buffer must not fire at all.
 #[test]
 fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each_other() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
     backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
@@ -210,7 +210,7 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
 
 #[test]
 fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&root.join("src/main.rs")).unwrap();
     let mut backend = answering_initialize();
@@ -252,7 +252,7 @@ fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
 
 #[test]
 fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.state.settings.lsp_viewport_debounce_ms = 0;
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -297,7 +297,7 @@ fn count_viewport_fires(ed: &mut Editor, dir: &Path) {
 
 #[test]
 fn on_viewport_change_fires_when_an_edit_moves_the_clamped_end() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\n");
     seed_frame(&mut ed, 40, 10);
     count_viewport_fires(&mut ed, tmp.path());
@@ -317,7 +317,7 @@ fn on_viewport_change_fires_when_an_edit_moves_the_clamped_end() {
 
 #[test]
 fn on_viewport_change_does_not_fire_when_a_resize_leaves_the_range_unchanged() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\n");
     seed_frame(&mut ed, 40, 10);
     count_viewport_fires(&mut ed, tmp.path());
@@ -336,7 +336,7 @@ fn on_viewport_change_does_not_fire_when_a_resize_leaves_the_range_unchanged() {
 
 #[test]
 fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertion() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
@@ -391,7 +391,7 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
 
 #[test]
 fn on_trigger_char_does_not_fire_in_normal_mode() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[.]>bcdef\n");
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
@@ -429,7 +429,7 @@ fn on_trigger_char_does_not_fire_in_normal_mode() {
 /// else, though another buffer is attached to the same server.
 #[test]
 fn set_attachment_hook_triggers_fires_for_that_buffer_only() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
@@ -463,7 +463,7 @@ fn set_attachment_hook_triggers_fires_for_that_buffer_only() {
 /// one leaves the other with none.
 #[test]
 fn attachment_triggers_are_per_buffer_not_per_instance() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = starting_rig(&tmp, "", answering_initialize());
     rig.ed.drain_lsp();
     rig.ed.settle();
@@ -485,7 +485,7 @@ fn attachment_triggers_are_per_buffer_not_per_instance() {
 /// applies, so a plugin need not check before registering.
 #[test]
 fn attachment_triggers_for_an_unadvertised_feature_set_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = starting_rig(&tmp, "", answering_initialize());
     rig.ed.drain_lsp();
     rig.ed.settle();
@@ -501,7 +501,7 @@ fn attachment_triggers_for_an_unadvertised_feature_set_nothing() {
 /// fires once.
 #[test]
 fn a_listener_set_in_both_scopes_fires_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = starting_rig(&tmp, "", answering_initialize());
     rig.ed.drain_lsp();
     rig.ed.settle();
@@ -520,7 +520,7 @@ fn a_listener_set_in_both_scopes_fires_once() {
 /// buffer it was set on, and not for another buffer on the same server.
 #[test]
 fn set_attachment_completion_triggers_fires_the_source_for_that_buffer_only() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to(
         "initialize",
@@ -567,7 +567,7 @@ fn set_attachment_completion_triggers_fires_the_source_for_that_buffer_only() {
 /// A completion listener whose source is not registered fires nothing.
 #[test]
 fn an_attachment_completion_listener_naming_no_source_fires_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = starting_rig(&tmp, "", answering_initialize());
     rig.ed.drain_lsp();
     rig.ed.settle();
@@ -591,7 +591,7 @@ fn an_attachment_completion_listener_naming_no_source_fires_nothing() {
 
 #[test]
 fn attachment_triggers_vanish_when_the_server_stops() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
@@ -618,7 +618,7 @@ fn attachment_triggers_vanish_when_the_server_stops() {
 /// only for admitted features installs none.
 #[test]
 fn a_filter_change_clears_the_attachments_triggers_and_refires_attach() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to(
         "initialize",
@@ -654,7 +654,7 @@ fn a_filter_change_clears_the_attachments_triggers_and_refires_attach() {
 /// engine's `on-lsp-attach` handlers install their own on resync.
 #[test]
 fn reload_clears_attachment_triggers() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)

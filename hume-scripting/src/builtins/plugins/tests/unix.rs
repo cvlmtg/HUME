@@ -27,8 +27,10 @@ pub(super) fn host_with_plugin(repo: &str, files: &[(&str, &str)]) -> (TempDir, 
     for (name, src) in files {
         std::fs::write(plugin_dir.join(name), src).unwrap();
     }
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     (dir, host)
 }
 
@@ -68,8 +70,10 @@ fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     // Mark "insert-mode" as a built-in so collision filtering drops it.
     let mut builtin_names = FxHashSet::default();
     builtin_names.insert("insert-mode".to_string());
@@ -137,8 +141,10 @@ fn declare_plugin_drops_sole_command_conflicting_with_eager() {
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     // Simulate an eager command already occupying the name in the editor's registry.
     let mut editor_host = LazyStubHost::default();
     editor_host
@@ -193,8 +199,10 @@ fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     let mut editor_host = LazyStubHost::default();
 
     host.eval_source(
@@ -253,8 +261,10 @@ fn plugin_config_survives_lazy_declare_to_activation() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
 
     host.eval_source(
         r#"(declare-plugin! "user/cfgtest" #:commands '("probe"))
@@ -390,8 +400,10 @@ fn load_plugin_dir_with_neither_manifest_nor_plugin_scm_errors() {
     let dir = TempDir::new().unwrap();
     std::fs::create_dir_all(dir.path().join("plugins").join("user").join("empty")).unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
 
     let err = host
         .eval_source(r#"(load-plugin! "user/empty")"#, &mut NullHost)
@@ -422,8 +434,10 @@ fn manifest_declaring_different_plugin_name_errors() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
 
     let result = host.eval_source(r#"(load-plugin! "user/wrongname")"#, &mut NullHost);
     assert!(
@@ -466,8 +480,10 @@ fn manifest_bad_events_names_manifest_scm_and_plugin() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
 
     let result = host.eval_source(r#"(load-plugin! "user/badevt")"#, &mut NullHost);
     assert!(
@@ -503,8 +519,10 @@ fn manifest_whose_declare_has_no_triggers_errors_and_is_contained() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
 
     let result = host.eval_source(r#"(load-plugin! "user/selfmf")"#, &mut NullHost);
     assert!(
@@ -538,8 +556,10 @@ fn manifest_that_never_declares_errors() {
     std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
     std::fs::write(plugin_dir.join("manifest.scm"), b"(define x 1)").unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
 
     let result = host.eval_source(r#"(load-plugin! "user/nodeclare")"#, &mut NullHost);
     assert!(
@@ -577,8 +597,10 @@ fn load_plugin_second_call_is_silent_noop() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
 
     host.eval_source(r#"(load-plugin! "user/twicemf")"#, &mut NullHost)
         .expect("first load-plugin! must succeed");

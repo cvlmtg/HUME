@@ -120,7 +120,7 @@ fn detect_and_set_language_no_match_leaves_none() {
 /// "notes"; the explicit call must win.
 #[test]
 fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     register_rust(&mut ed, "rust", &["rs"]);
     ed.state
@@ -133,7 +133,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
         .rebuild_glob_set()
         .expect("rebuild ok");
 
-    let file_tmp = safe_tempdir();
+    let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
     let file_str = steel_path(&file);
@@ -179,7 +179,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
 /// change queued earlier in the same eval.
 #[test]
 fn language_option_parses_like_set_and_reads_back_a_queued_change() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     register_rust(&mut ed, "rust", &["rs"]);
     run(
@@ -331,7 +331,7 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
 fn set_buffer_language_then_close_in_one_eval_does_not_panic() {
     use hume_editing::text::BufferText;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     // A second buffer so closing `bid` frees its slot outright rather than
     // hitting the unrelated last-buffer scratch-replacement branch.

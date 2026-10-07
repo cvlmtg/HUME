@@ -139,7 +139,7 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
 /// row 0.
 #[test]
 fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_targets() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let dir = rig_root(tmp.path());
     let file = dir.join("src/main.rs");
     let uri = rust_rig_uri(tmp.path());
@@ -263,7 +263,7 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
 /// its `\n`.
 #[test]
 fn a_column_past_the_line_end_shows_where_goto_lands() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard) = setup_refs(tmp.path(), |backend, _sid| {
         backend.respond_to(
@@ -288,7 +288,7 @@ fn a_column_past_the_line_end_shows_where_goto_lands() {
 /// line 0), the drawer would open with four rows instead of erroring.
 #[test]
 fn a_malformed_location_aborts_the_batch_instead_of_a_degraded_row() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
 
     let (mut ed, _guard) = setup_refs(tmp.path(), |backend, _sid| {

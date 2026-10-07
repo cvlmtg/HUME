@@ -54,7 +54,7 @@ pub(super) fn setup_with(
 /// other: both are independent, both fire.
 #[test]
 fn requests_without_a_supersede_key_do_not_cancel_each_other() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to(
             "textDocument/completion",
@@ -107,7 +107,7 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
 /// delivery lingers for the stopped server.
 #[test]
 fn lsp_stop_completes_a_superseding_delivery() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {
         // No canned response: the request stays pending until :lsp-stop.
     })
@@ -146,7 +146,7 @@ fn lsp_stop_completes_a_superseding_delivery() {
 
 #[test]
 fn response_delivers_a_handle_to_callback() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     })
@@ -179,7 +179,7 @@ fn response_delivers_a_handle_to_callback() {
 /// hashmap, for a real (non-null) response.
 #[test]
 fn request_delivers_an_opaque_handle_not_a_hashmap() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to(
             "textDocument/completion",
@@ -216,7 +216,7 @@ fn request_delivers_an_opaque_handle_not_a_hashmap() {
 /// data stays meaningful.
 #[test]
 fn request_with_a_null_response_still_gives_void() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/completion", serde_json::Value::Null);
     })
@@ -247,7 +247,7 @@ fn request_with_a_null_response_still_gives_void() {
 
 #[test]
 fn protocol_error_delivers_err_hashmap_to_callback() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.fail_with("textDocument/hover", -32601, "nope");
     })
@@ -278,7 +278,7 @@ fn protocol_error_delivers_err_hashmap_to_callback() {
 
 #[test]
 fn timeout_delivers_a_timeout_err_to_callback() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // No canned response for textDocument/hover, so it sits pending forever
     // until the (zeroed) deadline scan in `take_completed` claims it.
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {}).ed;
@@ -309,7 +309,7 @@ fn timeout_delivers_a_timeout_err_to_callback() {
 
 #[test]
 fn on_lsp_notification_fires_the_registered_handler() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {});
     let sid = rig.sid("rust-analyzer");
 
@@ -339,7 +339,7 @@ fn on_lsp_notification_fires_the_registered_handler() {
 
 #[test]
 fn unhandled_notification_without_a_registered_handler_only_logs_trace() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {});
     let sid = rig.sid("rust-analyzer");
 
@@ -362,7 +362,7 @@ fn unhandled_notification_without_a_registered_handler_only_logs_trace() {
 /// Evaluates `source` against the rig's host, then delivers one server
 /// notification per entry of `methods`, in order; the caller settles.
 fn editor_with_notifications(methods: &[&str], source: &str) -> (Editor, tempfile::TempDir) {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = setup_with(tmp.path(), "-[a]>bcdefgh\n", |_b, _sid| {});
     let sid = rig.sid("rust-analyzer");
     rig.eval(source);
@@ -443,7 +443,7 @@ fn catch_all_lsp_notification_hook_sees_every_method_untraced() {
 /// resolves on a later drain cycle, one cursor move per completed cycle.
 #[test]
 fn callback_calling_lsp_request_does_not_reenter_synchronously() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdefgh\n", |b, _sid| {
         b.respond_to(
             "textDocument/hover",
@@ -489,7 +489,7 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
 
 #[test]
 fn callback_error_lands_in_message_log_not_a_crash() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     })
@@ -583,7 +583,7 @@ fn lsp_request_with_no_attached_server_fires_callback_with_err() {
     // callback: the documented `(err result)` contract (exactly one
     // non-`#f`) must hold even when no request/response pair could ever
     // exist.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {});
     // Clearing the buffer's language detaches its server, so `bid` resolves
     // to no server: the resolution-failure path this test targets.
@@ -615,7 +615,7 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
     // resolve_server failure mode: a server that resolved fine at
     // registration time but has since crashed. A plugin relying on the err
     // branch (e.g. sighelp's popup-close-on-error) must still see it.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {});
     let sid = rig.sid("rust-analyzer");
     rig.crash(sid);
@@ -647,7 +647,7 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
 
 #[test]
 fn lsp_request_against_a_crashed_server_names_it_and_the_restart_command() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {});
     let sid = rig.sid("rust-analyzer");
     rig.crash(sid);
@@ -670,7 +670,7 @@ fn lsp_request_against_a_crashed_server_names_it_and_the_restart_command() {
 /// erroring at the boundary.
 #[test]
 fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {}).ed;
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -700,8 +700,8 @@ fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
 /// `(equal? bid (focused-pane))` guard.
 #[test]
 fn require_focus_drops_the_callback_after_a_buffer_switch() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
+    let file_dir = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     })
@@ -749,7 +749,7 @@ fn require_focus_drops_the_callback_after_a_buffer_switch() {
 fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
     use hume_scripting::host::CommandHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     })
@@ -800,8 +800,8 @@ fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
 /// at all" from "which buffer can a native command act on".
 #[test]
 fn no_require_focus_still_delivers_after_a_buffer_switch() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
+    let file_dir = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     })
@@ -845,8 +845,8 @@ fn no_require_focus_still_delivers_after_a_buffer_switch() {
 /// despite the switch.
 #[test]
 fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
+    let file_dir = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "one"}));
         b.respond_to(
@@ -898,7 +898,7 @@ fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
 /// after callback 1's edit has actually landed, catches the staleness.
 #[test]
 fn queued_callback_restales_against_an_earlier_siblings_edit_in_the_same_batch() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |b, _sid| {
         b.respond_to(
             "test/edit",

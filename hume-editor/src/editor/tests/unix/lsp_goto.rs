@@ -69,7 +69,7 @@ fn location_link(uri: &str, line: u64, character: u64) -> serde_json::Value {
 
 #[test]
 fn null_result_reports_no_definition_found() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to("textDocument/definition", serde_json::Value::Null);
     });
@@ -85,7 +85,7 @@ fn null_result_reports_no_definition_found() {
 
 #[test]
 fn single_location_hashmap_jumps_directly() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&uri, 1, 4));
@@ -110,7 +110,7 @@ fn wire_target_inside_a_combining_sequence_snaps_to_the_clusters_start() {
     // *inside* the cluster: between its base character and its combining
     // mark. The day-one grapheme invariant says a cursor may never sit
     // there.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), "e\u{0301}\n", |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&uri, 0, 1));
@@ -127,7 +127,7 @@ fn wire_target_inside_a_combining_sequence_snaps_to_the_clusters_start() {
 
 #[test]
 fn single_element_array_jumps_directly() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
@@ -150,7 +150,7 @@ fn single_element_array_jumps_directly() {
 
 #[test]
 fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
@@ -190,7 +190,7 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
 /// would).
 #[test]
 fn windows_drive_letter_uri_displays_without_leading_slash() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let win_uri = "file:///C:/Users/x/main.rs";
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
@@ -219,7 +219,7 @@ fn windows_drive_letter_uri_displays_without_leading_slash() {
 /// instead.
 #[test]
 fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
@@ -259,7 +259,7 @@ fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
 
 #[test]
 fn location_link_array_prefers_target_selection_range() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
@@ -281,7 +281,7 @@ fn location_link_array_prefers_target_selection_range() {
 
 #[test]
 fn jump_back_returns_to_the_origin_after_a_jump() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&uri, 1, 4));
@@ -315,7 +315,7 @@ fn jump_back_returns_to_the_origin_after_a_jump() {
 /// newly-opened buffer would never get a `language`.
 #[test]
 fn goto_to_an_unopened_file_detects_its_language() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let other_file = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other_file, "fn other() {}\n").unwrap();
     let other_canonical = std::fs::canonicalize(&other_file).unwrap();
@@ -358,7 +358,7 @@ fn goto_to_an_unopened_file_detects_its_language() {
 /// instead of 6.
 #[test]
 fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (rig, guard) = core_lsp_rig(
         tmp.path(),
@@ -422,7 +422,7 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
 /// still open the drawer.
 #[test]
 fn multi_element_response_after_a_buffer_switch_opens_the_drawer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
@@ -447,7 +447,7 @@ fn multi_element_response_after_a_buffer_switch_opens_the_drawer() {
 /// still error and leave the cursor untouched.
 #[test]
 fn goto_target_is_directory_errors_without_moving_the_cursor() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let dir_uri = hume_lsp::uri::path_to_uri(&std::fs::canonicalize(tmp.path()).unwrap())
         .unwrap()
         .as_str()
@@ -474,7 +474,7 @@ fn goto_target_is_directory_errors_without_moving_the_cursor() {
 /// definition/rename that points at a file it expects the client to create.
 #[test]
 fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let missing = rig_root(tmp.path()).join("not_yet_created.rs");
     let missing_uri = format!("file://{}", missing.display());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
@@ -506,7 +506,7 @@ fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
 /// the error comes from that decode.
 #[test]
 fn location_missing_range_errors_instead_of_jumping() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to("textDocument/definition", serde_json::json!({"uri": uri}));
@@ -538,7 +538,7 @@ fn each_command_sends_its_own_method() {
         ("lsp-goto-type-definition", "textDocument/typeDefinition"),
         ("lsp-goto-implementation", "textDocument/implementation"),
     ] {
-        let tmp = safe_tempdir();
+        let tmp = tempfile::tempdir().unwrap();
         let uri = rust_rig_uri(tmp.path());
         let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
             backend.respond_to(method, loc(&uri, 1, 4));
@@ -568,7 +568,7 @@ fn each_command_sends_its_own_method() {
 /// second entry.
 #[test]
 fn goto_into_another_file_raises_exactly_one_on_buffer_enter() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let other_file = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other_file, "fn other() {}\n").unwrap();
     let other_canonical = std::fs::canonicalize(&other_file).unwrap();
@@ -623,7 +623,7 @@ fn goto_into_another_file_raises_exactly_one_on_buffer_enter() {
 /// position the request tracked is released anyway.
 #[test]
 fn a_malformed_multi_location_reply_releases_the_tracked_position() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
@@ -641,7 +641,7 @@ fn a_malformed_multi_location_reply_releases_the_tracked_position() {
 /// the callback, and the position the request tracked is released.
 #[test]
 fn a_reply_dropped_as_stale_releases_the_tracked_position() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
@@ -663,7 +663,7 @@ fn a_reply_dropped_as_stale_releases_the_tracked_position() {
 /// The drawer keeps the position for its refresh.
 #[test]
 fn an_opened_drawer_keeps_the_tracked_position() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(
@@ -682,7 +682,7 @@ fn an_opened_drawer_keeps_the_tracked_position() {
 /// the new session is stored: the new session keeps its tracked position.
 #[test]
 fn a_second_list_keeps_its_session_when_the_replaced_drawer_closes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         for _ in 0..2 {
@@ -704,7 +704,7 @@ fn a_second_list_keeps_its_session_when_the_replaced_drawer_closes() {
 /// it, sends nothing and tracks no position.
 #[test]
 fn buffer_with_no_path_reports_and_tracks_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
         backend.respond_to(

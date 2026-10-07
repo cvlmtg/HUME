@@ -145,7 +145,7 @@ fn language_trigger_idempotent_on_round_trip() {
 fn language_trigger_one_to_many_activates_all() {
     use hume_scripting::attribution::PluginId;
 
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let dir_a = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_a).unwrap();
     std::fs::write(
@@ -169,8 +169,10 @@ fn language_trigger_one_to_many_activates_all() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -319,7 +321,7 @@ fn language_wildcard_trigger_activates_on_any_language() {
 fn language_wildcard_and_specific_entry_coexist() {
     use hume_scripting::attribution::PluginId;
 
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let dir_rust = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_rust).unwrap();
     std::fs::write(dir_rust.join("plugin.scm"), "(+ 1 0)").unwrap();
@@ -335,8 +337,10 @@ fn language_wildcard_and_specific_entry_coexist() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())

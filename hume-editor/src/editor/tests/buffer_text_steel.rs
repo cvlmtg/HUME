@@ -11,7 +11,7 @@ use hume_scripting::ScriptingHost;
 /// on-open snapshot.
 #[test]
 fn buffer_text_returns_live_dirty_content() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
@@ -34,7 +34,7 @@ fn buffer_text_returns_live_dirty_content() {
 /// `:w` never count either.
 #[test]
 fn buffer_lines_excludes_the_phantom_trailing_line() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let fired = run_probe(
@@ -56,7 +56,7 @@ fn buffer_lines_excludes_the_phantom_trailing_line() {
 /// rather than derived from `buffer-lines`.
 #[test]
 fn buffer_line_count_excludes_the_phantom_trailing_line() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let fired = run_probe(
@@ -76,7 +76,7 @@ fn buffer_line_count_excludes_the_phantom_trailing_line() {
 /// check against `diff-lines`).
 #[test]
 fn buffer_line_count_agrees_with_buffer_lines_length() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\nd\n");
 
     let fired = run_probe(
@@ -95,7 +95,7 @@ fn buffer_line_count_agrees_with_buffer_lines_length() {
 /// `buffer-lines`' `#:start`/`#:end` range is 0-based and end-exclusive.
 #[test]
 fn buffer_lines_supports_a_start_end_range() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let fired = run_probe(
@@ -114,7 +114,7 @@ fn buffer_lines_supports_a_start_end_range() {
 /// not just to whatever `#:end` happened to be passed alongside it above.
 #[test]
 fn buffer_lines_start_only_defaults_end_to_the_line_count() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let fired = run_probe(
@@ -134,7 +134,7 @@ fn buffer_lines_start_only_defaults_end_to_the_line_count() {
 /// strip pass in the builtin itself.
 #[test]
 fn buffer_text_normalizes_crlf_to_lf() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(BufferText::from(
         "a\r\nb\r\n",
     )));
@@ -155,7 +155,7 @@ fn buffer_text_normalizes_crlf_to_lf() {
 /// clamping: fail-fast, matching the project's error-handling convention.
 #[test]
 fn buffer_lines_out_of_range_end_raises() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -182,7 +182,7 @@ fn buffer_lines_out_of_range_end_raises() {
 /// || end > line_count` guard.
 #[test]
 fn buffer_lines_start_past_end_raises() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -216,7 +216,7 @@ fn buffer_lines_start_past_end_raises() {
 /// check and raise.
 #[test]
 fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let fired = run_probe(
@@ -237,7 +237,7 @@ fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
 /// A stale bid raises "invalid buffer id" for both `buffer-text` and
 /// `buffer-lines`, not an empty string/list.
 fn assert_stale_bid_raises(builtin_call: &str, builtin_name: &str) {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     let scratch = tmp.path().join("scratch.txt");
@@ -293,7 +293,7 @@ fn buffer_line_count_on_a_stale_bid_raises_invalid_buffer_id() {
 /// instead of 2.
 #[test]
 fn line_to_offset_returns_each_lines_start_char_offset() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nbb\nccc\n");
 
     let fired = run_probe(
@@ -317,7 +317,7 @@ fn line_to_offset_returns_each_lines_start_char_offset() {
 /// adds one more. Counting bytes would give 3.
 #[test]
 fn line_to_offset_counts_chars_not_bytes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[é]>\nb\n");
 
     let fired = run_probe(
@@ -337,7 +337,7 @@ fn line_to_offset_counts_chars_not_bytes() {
 /// `buffer-lines`' `#:end`.
 #[test]
 fn line_to_offset_out_of_range_line_raises() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\n");
 
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -367,7 +367,7 @@ fn line_to_offset_out_of_range_line_raises() {
 /// `b`, not before it.
 #[test]
 fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
     let scratch = tmp.path().join("scratch.txt");
@@ -406,7 +406,7 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
 /// since together they classify the same three-way verdict (all/none/mixed)
 /// `:lsp-fmt`'s range-format gate needs.
 fn assert_selections_predicate(builtin: &str, initial: &str, expected: bool, why: &str) {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from(initial);
     let probe = if expected {
         format!("({builtin} bid)")
@@ -585,7 +585,7 @@ fn selections_charwise_true_for_a_lone_collapsed_selection_on_a_blank_line() {
 /// `lsp-*-params` builders share (see `shown_buffer_state`).
 #[test]
 fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[abc\n]>def\n");
 
     let extra = tmp.path().join("other.rs");
@@ -627,7 +627,7 @@ fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
 /// same input.
 #[test]
 fn diff_buffer_lines_agrees_with_diff_lines_over_buffer_text() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     let fired = run_probe(

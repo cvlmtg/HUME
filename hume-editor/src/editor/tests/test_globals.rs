@@ -1,26 +1,10 @@
 //! Regression tests for `TestGlobals`, the reentrant lock guarding the
-//! suite's process globals. It replaced two plain `std::sync::Mutex`es that
-//! self-deadlocked twice (once, and again in
-//! `bad_config_value_fails_plugin_load_with_prefixed_error`
-//! (`unix/git_diff_plugin.rs`)) with no panic and no assertion failure, just
-//! the test runner's generic "running for over 60s" notice on a process-wide
-//! lock that then starved every other concurrently-running test too.
-//!
-//! With a plain `std::sync::Mutex` in place of `TestGlobals::inner`'s
-//! `parking_lot::ReentrantMutex`, the first two tests below would hang.
-//! There is no timeout to assert against, since a hang is exactly the
-//! failure this type exists to rule out.
+//! suite's process globals. Nesting a different `Global` must neither panic
+//! nor hang; claiming the same one twice, or taking `PATH_USERS` after the
+//! mutex, must panic. A hang is the failure this type exists to rule out, so
+//! no test here asserts against a timeout.
 
 use super::*;
-
-#[test]
-fn safe_tempdir_does_not_deadlock_under_a_held_env_claim() {
-    let _claim = TEST_GLOBALS.claim(Global::Env);
-    // `safe_tempdir` under an already-held env claim: a non-reentrant lock
-    // would hang forever on this call shape.
-    let dir = safe_tempdir();
-    assert!(dir.path().is_dir());
-}
 
 #[test]
 #[should_panic(expected = "already holds a Env claim")]
@@ -36,4 +20,24 @@ fn claiming_a_different_global_while_holding_one_succeeds() {
     // inside a live `RuntimeDirs` in `unix/pickers_plugin.rs`) must
     // neither panic nor hang.
     let _cwd = TEST_GLOBALS.claim(Global::Cwd);
+}
+
+#[test]
+#[should_panic(expected = "holds a Cwd claim and claims `Global::Env`")]
+fn env_claim_inside_a_cwd_claim_panics_instead_of_risking_a_deadlock() {
+    let _cwd = TEST_GLOBALS.claim(Global::Cwd);
+    let _env = TEST_GLOBALS.claim(Global::Env);
+}
+
+#[test]
+#[should_panic(expected = "holds a Cwd claim and builds a `Dirs` fixture")]
+fn path_reader_inside_a_cwd_claim_panics_instead_of_risking_a_deadlock() {
+    let _cwd = TEST_GLOBALS.claim(Global::Cwd);
+    let _path = path_reader();
+}
+
+#[test]
+fn nested_path_readers_on_one_thread_succeed() {
+    let _outer = path_reader();
+    let _inner = path_reader();
 }

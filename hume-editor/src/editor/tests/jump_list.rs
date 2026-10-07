@@ -667,7 +667,7 @@ fn edit_remaps_jump_entries_in_every_pane_viewing_the_buffer() {
 /// triggered by buffer B's edit must skip buffer A's entries entirely.
 #[test]
 fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let file1 = dir.path().join("file1.txt");
     let file2 = dir.path().join("file2.txt");
     let content: String = (0..20).map(|i| format!("line {i}\n")).collect();
@@ -720,7 +720,7 @@ fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
 /// remapped through it, not just entries produced by in-editor edits.
 #[test]
 fn reload_remaps_jump_entries_through_line_diff() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("reload.txt");
     let content: String = (0..20).map(|i| format!("line {i}\n")).collect();
     std::fs::write(&path, &content).unwrap();

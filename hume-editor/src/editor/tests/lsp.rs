@@ -46,7 +46,7 @@ fn request(ed: &mut Editor, sid: ServerId, method: &str) -> Answers {
 
 #[test]
 fn callback_fires_with_ok_outcome_on_response() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, sid) = running(&tmp, |b| {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     });
@@ -63,7 +63,7 @@ fn callback_fires_with_ok_outcome_on_response() {
 
 #[test]
 fn callback_never_fires_for_a_request_with_no_response() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, sid) = running(&tmp, |_| {});
 
     let answers = request(&mut ed, sid, "textDocument/hover");
@@ -81,7 +81,7 @@ fn timed_out_request_dispatches_callback_with_a_timeout_error() {
     // A callback that never fires on timeout has no way to notice. The
     // Steel callbacks are `(err result)`-shaped and need this to map a
     // timeout to `err` rather than hanging silently.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, sid) = running(&tmp, |_| {});
     ed.state.settings.lsp_request_timeout_ms = 0;
 
@@ -98,7 +98,7 @@ fn timed_out_request_dispatches_callback_with_a_timeout_error() {
 
 #[test]
 fn stale_response_is_dropped_when_buffer_moved_past_its_text_version() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, sid) = running(&tmp, |b| {
         b.respond_to(
             "textDocument/hover",
@@ -124,7 +124,7 @@ fn crashed_action_is_reported_to_the_message_log() {
     // `on_event(Eof)` producing exactly one `Crashed` action (never twice)
     // is covered in hume-lsp's own client tests; this covers the editor
     // glue's side: dispatching that action actually reaches the log.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, sid) = running(&tmp, |_| {});
 
     ed.dispatch_lsp_action(
@@ -143,7 +143,7 @@ fn crashed_action_is_reported_to_the_message_log() {
 
 #[test]
 fn crash_fails_in_flight_requests_immediately_instead_of_waiting_for_their_deadline() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // No response scripted: this request would otherwise sit pending
     // until its (far-future) deadline.
     let (mut ed, sid) = running(&tmp, |_| {});
@@ -169,7 +169,7 @@ fn initialize_timeout_reports_a_crash_through_drain_lsp() {
     // `take_completed`'s sweep producing the `Crashed` action for an expired
     // `initialize` is covered in hume-lsp's own client tests; this covers
     // the editor glue's side: `drain_lsp` actually dispatches that action.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // No scripted `initialize` response: the server stays `Starting`.
     let rig = LspRig::open(
         tmp.path(),
@@ -200,7 +200,7 @@ fn initialize_timeout_reports_a_crash_through_drain_lsp() {
 
 #[test]
 fn shutdown_error_response_is_logged_at_trace() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, sid) = running(&tmp, |b| {
         b.fail_with("shutdown", -32603, "internal error");
     });
@@ -219,7 +219,7 @@ fn shutdown_error_response_is_logged_at_trace() {
 
 #[test]
 fn server_request_action_gets_exactly_one_response() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[w]>ord\n",
@@ -256,7 +256,7 @@ fn workspace_configuration_resolves_the_attached_servers_registered_settings() {
     // covered exhaustively in `hume_lsp::client::tests`; what's specific to
     // this layer is the glue: dispatch answers from the *requesting*
     // server's own settings, not some other server's, or none at all.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (backend, _, _) = RecordingLspBackend::with_default_handshake();
     let mut rig = LspRig::drained(
         tmp.path(),
@@ -284,7 +284,7 @@ fn workspace_configuration_resolves_the_attached_servers_registered_settings() {
 
 #[test]
 fn workspace_configuration_answers_null_when_requesting_server_has_no_registered_settings() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[w]>ord\n",
@@ -303,7 +303,7 @@ fn workspace_configuration_answers_null_when_requesting_server_has_no_registered
 /// own registration.
 #[test]
 fn workspace_configuration_resolves_each_servers_own_settings_for_one_language() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
     backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
@@ -337,7 +337,7 @@ fn workspace_configuration_resolves_each_servers_own_settings_for_one_language()
 fn lsp_stop_fails_in_flight_requests_as_stopped_instead_of_orphaning_them() {
     // A stopped server's pending requests complete as stopped rather than
     // leaving their callbacks registered forever.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, sid) = running(&tmp, |_| {});
 
     let answers = request(&mut ed, sid, "textDocument/hover");
@@ -362,7 +362,7 @@ fn lsp_stop_fails_in_flight_requests_as_stopped_instead_of_orphaning_them() {
 
 #[test]
 fn became_running_flushes_queued_messages_through_the_backend() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut backend, _, _) = RecordingLspBackend::with_default_handshake();
     backend.respond_to("textDocument/hover", serde_json::json!(null));
     let mut rig = LspRig::open(tmp.path(), RigSpec::rust("-[w]>ord\n"), backend);
@@ -397,7 +397,7 @@ fn second_registration_replaces_first() {
     // Last-wins per name: a second register-lsp-server! for an
     // already-registered name replaces the config rather than being
     // rejected, matching define-language!'s semantics. No error is logged.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_without_servers(&tmp);
 
     rig.eval(RUST_ANALYZER);
@@ -429,7 +429,7 @@ fn second_registration_replaces_first() {
 /// apply path.
 #[test]
 fn env_round_trips_into_lsp_server_config() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_without_servers(&tmp);
 
     rig.eval(
@@ -451,7 +451,7 @@ fn runtime_registration_attaches_already_open_buffer() {
     // A buffer opened before its language has any registered server gets
     // its language set (via detection) but stays unattached. Registering
     // the server afterward must attach it, with no separate attach step.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_without_servers(&tmp);
     assert!(
         rig.attached().is_empty(),
@@ -466,7 +466,7 @@ fn runtime_registration_attaches_already_open_buffer() {
 
 #[test]
 fn unregister_stops_running_client_and_clears_config() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[f]>n main() {}\n",
@@ -495,7 +495,7 @@ fn unregister_stops_running_client_and_clears_config() {
 
 #[test]
 fn unregister_of_never_registered_name_is_silent_success() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_without_servers(&tmp);
 
     rig.eval(r#"(unregister-lsp-server! "nonexistent-server")"#);
@@ -512,7 +512,7 @@ fn replace_while_running_leaves_old_client_untouched() {
     // Replacing an already-registered name does NOT shut down its running
     // instance; only an explicit unregister does (the reinstall path). The
     // instance keeps running on the old config until its next spawn.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[f]>n main() {}\n",
@@ -562,7 +562,7 @@ fn drift_warnings(rig: &LspRig) -> usize {
 
 #[test]
 fn a_running_server_whose_registration_changed_is_reported_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[f]>n main() {}\n",
@@ -588,7 +588,7 @@ fn a_running_server_whose_registration_changed_is_reported_once() {
 
 #[test]
 fn a_restart_applies_the_registration_and_ends_the_drift() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[f]>n main() {}\n",
@@ -614,7 +614,7 @@ fn a_restart_applies_the_registration_and_ends_the_drift() {
 
 #[test]
 fn registering_what_the_server_already_runs_with_is_not_reported() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[f]>n main() {}\n",
@@ -628,7 +628,7 @@ fn registering_what_the_server_already_runs_with_is_not_reported() {
 
 #[test]
 fn register_and_open_matching_file_spawns_exactly_one_server_and_second_buffer_attaches() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[f]>n main() {}\n",
@@ -661,7 +661,7 @@ fn register_and_open_matching_file_spawns_exactly_one_server_and_second_buffer_a
 
 #[test]
 fn opening_a_file_under_a_different_root_spawns_a_second_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[f]>n main() {}\n",
@@ -690,7 +690,7 @@ fn opening_a_file_under_a_different_root_spawns_a_second_server() {
 /// once, when it happened; the later attach reports nothing.
 #[test]
 fn attach_attempt_beside_a_crashed_server_reports_no_error() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[f]>n main() {}\n",

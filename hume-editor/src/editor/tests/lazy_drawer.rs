@@ -84,7 +84,7 @@ fn row(key: usize) -> Option<String> {
 
 #[test]
 fn only_the_visible_window_is_rendered() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(&mut ed, tmp.path(), "(range 0 30)", "render");
     frame(&mut ed, WIDTH, HEIGHT);
@@ -100,7 +100,7 @@ fn only_the_visible_window_is_rendered() {
 
 #[test]
 fn scrolling_renders_only_rows_not_rendered_before() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(&mut ed, tmp.path(), "(range 0 30)", "render");
     frame(&mut ed, WIDTH, HEIGHT);
@@ -127,7 +127,7 @@ fn scrolling_renders_only_rows_not_rendered_before() {
 
 #[test]
 fn new_keys_render_the_window_again() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(&mut ed, tmp.path(), "(range 0 30)", "render");
     frame(&mut ed, WIDTH, HEIGHT);
@@ -145,7 +145,7 @@ fn new_keys_render_the_window_again() {
 
 #[test]
 fn a_shrunk_list_shows_rendered_rows_in_the_same_frame() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(&mut ed, tmp.path(), "(range 0 30)", "render");
     frame(&mut ed, WIDTH, HEIGHT);
@@ -167,7 +167,7 @@ fn a_shrunk_list_shows_rendered_rows_in_the_same_frame() {
 
 #[test]
 fn a_taller_terminal_shows_rendered_rows_in_the_same_frame() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(&mut ed, tmp.path(), "(range 0 30)", "render");
     frame(&mut ed, WIDTH, HEIGHT);
@@ -187,7 +187,7 @@ fn a_taller_terminal_shows_rendered_rows_in_the_same_frame() {
 
 #[test]
 fn eager_string_rows_need_no_render_proc() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     run(
         &mut ed,
@@ -219,7 +219,7 @@ fn assert_render_failure_closes(ed: &mut Editor) {
 
 #[test]
 fn a_raising_render_proc_closes_the_drawer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(
         &mut ed,
@@ -235,7 +235,7 @@ fn a_raising_render_proc_closes_the_drawer() {
 
 #[test]
 fn a_render_proc_returning_too_few_rows_closes_the_drawer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(
         &mut ed,
@@ -251,7 +251,7 @@ fn a_render_proc_returning_too_few_rows_closes_the_drawer() {
 
 #[test]
 fn a_render_proc_returning_a_non_string_closes_the_drawer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(
         &mut ed,
@@ -269,7 +269,7 @@ fn a_render_proc_returning_a_non_string_closes_the_drawer() {
 /// refused even when the proc catches the error, and the drawer closes.
 #[test]
 fn a_render_proc_that_changes_the_editor_closes_the_drawer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abc\n");
     open(
         &mut ed,

@@ -36,7 +36,7 @@ fn panic_inside(ed: &mut Editor) -> bool {
 
 #[test]
 fn panic_dumps_a_dirty_file_buffer_next_to_its_file() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let mut ed = dirty_file_editor(&dir, "hello\n");
 
     assert!(panic_inside(&mut ed), "the panic must keep propagating");
@@ -45,7 +45,7 @@ fn panic_dumps_a_dirty_file_buffer_next_to_its_file() {
 
 #[test]
 fn panic_dumps_edits_of_an_open_insert_session() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("foo.txt");
     let mut ed = editor_with_path("hello\n", &path);
     ed.handle_key(key('i'));
@@ -57,7 +57,7 @@ fn panic_dumps_edits_of_an_open_insert_session() {
 
 #[test]
 fn panic_dump_keeps_crlf_line_endings() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let mut ed = dirty_file_editor(&dir, "a\r\nb\r\n");
 
     panic_inside(&mut ed);
@@ -67,7 +67,7 @@ fn panic_dump_keeps_crlf_line_endings() {
 
 #[test]
 fn the_crash_report_names_dumps_then_queued_worker_panics() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let mut ed = dirty_file_editor(&dir, "hello\n");
     let panics = hume_platform::worker_panic::WorkerPanics::default();
     ed.attach_worker_panics(panics.clone());
@@ -91,7 +91,7 @@ fn the_crash_report_names_dumps_then_queued_worker_panics() {
 
 #[test]
 fn panic_does_not_dump_a_clean_buffer() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let mut ed = editor_with_path("hello\n", &dir.path().join("foo.txt"));
 
     panic_inside(&mut ed);
@@ -101,7 +101,7 @@ fn panic_does_not_dump_a_clean_buffer() {
 
 #[test]
 fn a_run_that_returns_normally_writes_no_dump_and_passes_its_value_through() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let mut ed = dirty_file_editor(&dir, "hello\n");
 
     let value = ed.run_dumping_on_panic(None, |_| 7);
@@ -119,7 +119,7 @@ fn dump_skips_read_only_view_buffers() {
 
 #[test]
 fn dump_writes_a_dirty_scratch_buffer_into_the_scratch_dir() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let scratch_dir = dir.path().join("dumps");
     let mut ed = editor_from("-[h]>ello\n");
     dirty_focused(&mut ed);
@@ -134,7 +134,7 @@ fn dump_writes_a_dirty_scratch_buffer_into_the_scratch_dir() {
 
 #[test]
 fn dump_falls_back_to_the_scratch_dir_when_the_file_s_folder_is_unwritable() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let scratch_dir = dir.path().join("dumps");
     let path = dir.path().join("missing").join("draft.md");
     let mut ed = editor_with_path("hello\n", &path);
@@ -153,7 +153,7 @@ fn dump_falls_back_to_the_scratch_dir_when_the_file_s_folder_is_unwritable() {
 
 #[test]
 fn dump_reports_the_sibling_error_when_the_fallback_fails_too() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("missing").join("draft.md");
     let mut ed = editor_with_path("hello\n", &path);
     dirty_focused(&mut ed);
@@ -178,7 +178,7 @@ fn dump_reports_a_dirty_scratch_buffer_it_cannot_place() {
 
 #[test]
 fn one_failed_dump_does_not_skip_the_other_buffers() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let good = dir.path().join("good.txt");
     let bad = dir.path().join("missing-dir").join("bad.txt");
     let mut ed = editor_with_path("one\n", &bad);
@@ -209,7 +209,7 @@ fn signalled(code: i32) -> std::sync::Arc<std::sync::atomic::AtomicI32> {
 
 #[test]
 fn a_signal_exit_dumps_the_dirty_buffers() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let mut ed = dirty_file_editor(&dir, "hello\n");
     ed.attach_terminate_flag(signalled(143));
 
@@ -221,7 +221,7 @@ fn a_signal_exit_dumps_the_dirty_buffers() {
 
 #[test]
 fn a_terminal_hangup_error_dumps_the_dirty_buffers() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let ed = dirty_file_editor(&dir, "hello\n");
 
     ed.dump_if_abnormal_exit(&Err(io::ErrorKind::UnexpectedEof.into()), None);
@@ -231,7 +231,7 @@ fn a_terminal_hangup_error_dumps_the_dirty_buffers() {
 
 #[test]
 fn any_other_run_error_dumps_the_dirty_buffers() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let ed = dirty_file_editor(&dir, "hello\n");
 
     ed.dump_if_abnormal_exit(&Err(io::ErrorKind::PermissionDenied.into()), None);
@@ -241,7 +241,7 @@ fn any_other_run_error_dumps_the_dirty_buffers() {
 
 #[test]
 fn a_deliberate_quit_is_not_dumped_even_if_a_signal_follows() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let mut ed = dirty_file_editor(&dir, "hello\n");
     ed.attach_terminate_flag(signalled(143));
     ed.state.request_quit();
@@ -254,7 +254,7 @@ fn a_deliberate_quit_is_not_dumped_even_if_a_signal_follows() {
 
 #[test]
 fn a_normal_exit_is_not_dumped() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let ed = dirty_file_editor(&dir, "hello\n");
 
     let outcomes = ed.dump_if_abnormal_exit(&Ok(()), None);
@@ -265,7 +265,7 @@ fn a_normal_exit_is_not_dumped() {
 
 #[test]
 fn an_abnormal_exit_leaves_a_clean_buffer_alone() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let mut ed = editor_with_path("hello\n", &dir.path().join("foo.txt"));
     ed.attach_terminate_flag(signalled(143));
 

@@ -423,7 +423,7 @@ fn on_language_set_hook_configures_word_chars() {
 /// this covers the new `option_value!` arm.
 #[test]
 fn get_buffer_option_round_trips_word_chars() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     ed.state.settings.word_chars = "-".into();
     run(

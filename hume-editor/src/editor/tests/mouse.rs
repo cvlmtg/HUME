@@ -665,7 +665,7 @@ fn a_one_row_terminal_leaves_the_tabbar_no_room_and_a_click_there_does_not_switc
 /// buffer actually being left, not on the tab just switched to.
 #[test]
 fn clicking_another_tab_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("other.txt");
     std::fs::write(&path, "zz\n").unwrap();
 

@@ -40,7 +40,7 @@ fn popup_view_lines_arc(ed: &Editor) -> Option<Arc<Vec<String>>> {
 
 #[test]
 fn show_popup_populates_the_view_after_a_frame() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -60,7 +60,7 @@ fn show_popup_populates_the_view_after_a_frame() {
 
 #[test]
 fn close_popup_clears_the_view() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -88,7 +88,7 @@ fn close_popup_clears_the_view() {
 
 #[test]
 fn close_popup_with_a_replaced_popups_token_leaves_the_newer_one() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -112,7 +112,7 @@ fn close_popup_with_a_replaced_popups_token_leaves_the_newer_one() {
 
 #[test]
 fn show_popup_replaces_not_stacks() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -133,7 +133,7 @@ fn show_popup_replaces_not_stacks() {
 
 #[test]
 fn show_popup_rejects_an_unknown_anchor() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -200,7 +200,7 @@ fn popup_band_lines(ed: &Editor) -> Option<Vec<String>> {
 
 #[test]
 fn docked_popup_resolves_into_the_band_view_not_the_cursor_overlay() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -223,7 +223,7 @@ fn docked_popup_resolves_into_the_band_view_not_the_cursor_overlay() {
 
 #[test]
 fn close_popup_clears_the_band_view_too() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -251,7 +251,7 @@ fn close_popup_clears_the_band_view_too() {
 
 #[test]
 fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let tall = (0..30)
         .map(|i| format!("line{i}"))
@@ -314,7 +314,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
 
 #[test]
 fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -343,17 +343,12 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
 
 #[test]
 fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // `editor_from` (`Editor::for_testing`) never registers `bottom_bands`
     // (only `Editor::open`'s real startup path does), so a docked popup there
     // never actually shrinks `pane_area`. This test asserts on that
     // geometry, so it needs the real registration.
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(None);
     let tall = (0..30)
         .map(|i| format!("line{i}"))
         .collect::<Vec<_>>()
@@ -400,15 +395,10 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
 
 #[test]
 fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // See the sibling test above: needs `Editor::open`'s real `bottom_bands`
     // registration for the pane-shrinking geometry this test asserts on.
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let mut ed = open_headless(None);
     let tall = (0..30)
         .map(|i| format!("line{i}"))
         .collect::<Vec<_>>()
@@ -464,13 +454,8 @@ fn docked_popup_renders_as_a_band_above_the_statusline_and_shrinks_the_pane() {
     // Appearance + layout lock: the docked popup must actually reserve
     // chrome space (pane shrinks), not float over content like the cursor
     // layout.
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
     run(
         &mut ed,
@@ -487,7 +472,7 @@ fn docked_popup_renders_as_a_band_above_the_statusline_and_shrinks_the_pane() {
 
 #[test]
 fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // Cursor at column 0, row 0: plenty of room below in a 25-row terminal.
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
@@ -521,7 +506,7 @@ fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
 
 #[test]
 fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -569,7 +554,7 @@ fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
 /// the theme's only invalidation trigger.
 #[test]
 fn popup_content_is_rebuilt_after_a_theme_reload() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     ed.state.dirs = repo_runtime_dirs();
     run(
@@ -602,7 +587,7 @@ fn popup_content_is_rebuilt_after_a_theme_reload() {
 
 #[test]
 fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let tall = (0..30)
         .map(|i| format!("line{i}"))
@@ -672,7 +657,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
 /// refcount bump per frame, not a deep clone of its visible rows.
 #[test]
 fn wrap_cache_stays_shared_across_frames_even_once_the_popup_scrolls() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let tall = (0..30)
         .map(|i| format!("line{i}"))
@@ -725,7 +710,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     // hold a scroll value now far beyond the shrunk `max_scroll`. Ctrl-u must
     // clamp that stale value to the current `max_scroll` before subtracting,
     // or the first press could still land above it and look like a no-op.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let tall = (0..40)
         .map(|i| format!("line{i}"))
@@ -784,7 +769,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
 
 #[test]
 fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -820,7 +805,7 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
     // hover/sighelp today, or the diagnostic overlay before its own
     // `'transient` clear) must leave Ctrl-d/Ctrl-u to their ordinary
     // half-page-scroll binding.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
     run(
         &mut ed,
@@ -859,7 +844,7 @@ fn a_mouse_wheel_closes_a_scrollable_popup_and_still_scrolls() {
     // Buffer taller than the viewport, so the wheel tick has
     // somewhere to scroll, which distinguishes "dismissed" from "dismissed and
     // the event's own effect was swallowed along with it".
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut lines = String::from("-[x]>line0\n");
     for i in 1..40 {
         lines.push_str(&format!("line{i}\n"));
@@ -895,7 +880,7 @@ fn a_mouse_wheel_closes_a_scrollable_popup_and_still_scrolls() {
 fn a_mouse_click_closes_a_scrollable_popup() {
     // Normal-mode click: no mode change happens, so this can't pass via the
     // `on-mode-change` hook masking the missing mouse-side dismissal.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdefgh\n");
     run(
         &mut ed,
@@ -926,7 +911,7 @@ fn a_mouse_click_closes_a_scrollable_popup() {
 fn a_sticky_popup_survives_mouse_input() {
     // Signature help's default `'sticky` popup must stay untouched by mouse
     // input, same as by keys.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -961,13 +946,8 @@ fn scrollable_popup_paints_its_scrolled_window() {
     // Appearance lock: the painted rows actually shift after Ctrl-d, not
     // just the underlying `scroll` field (a regression in `draw_menu_box`'s
     // windowing wouldn't be caught by the data-only assertions above).
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
     let tall = (0..20)
         .map(|i| format!("line{i}"))
@@ -996,13 +976,8 @@ fn popup_never_paints_outside_the_pane_rect() {
     // A snapshot-level end-to-end check: render into a small terminal and
     // confirm every non-space cell the popup could have touched stays
     // within the pane rows (no bleed into the statusline row).
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
     ed.feed_key(key('i'));
     for ch in "hello".chars() {

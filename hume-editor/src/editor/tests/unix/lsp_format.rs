@@ -101,7 +101,7 @@ fn text_edit(sl: u64, sc: u64, el: u64, ec: u64, new_text: &str) -> serde_json::
 
 #[test]
 fn whole_buffer_edit_is_one_undo_step() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/formatting",
@@ -136,7 +136,7 @@ fn whole_buffer_edit_is_one_undo_step() {
 /// implementation (`lsp/format-source!`), so both must format identically.
 #[test]
 fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/formatting",
@@ -168,7 +168,7 @@ fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
 #[test]
 fn sub_line_selection_still_formats_the_whole_buffer() {
     // Default cursor: a bare collapsed selection, never spans a full line.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/formatting",
@@ -190,7 +190,7 @@ fn sub_line_selection_still_formats_the_whole_buffer() {
 
 #[test]
 fn full_line_selection_sends_range_formatting() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/rangeFormatting",
@@ -219,7 +219,7 @@ fn full_line_selection_sends_range_formatting() {
 /// `rangesSupport`), and applies both edits as a single transaction.
 #[test]
 fn disjoint_full_line_selections_send_two_range_formatting_requests() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         // FIFO per method: line 1's request gets this one first...
         backend.respond_to(
@@ -256,7 +256,7 @@ fn disjoint_full_line_selections_send_two_range_formatting_requests() {
 /// separate `rangeFormatting` round trips.
 #[test]
 fn disjoint_full_line_selections_send_one_ranges_formatting_request_when_supported() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_caps(
         tmp.path(),
         THREE_LINES,
@@ -304,7 +304,7 @@ fn disjoint_full_line_selections_send_one_ranges_formatting_request_when_support
 /// instead of a fan-out), and one range has nothing to batch with.
 #[test]
 fn single_full_line_selection_sends_range_formatting_even_when_ranges_supported() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_caps(
         tmp.path(),
         THREE_LINES,
@@ -348,7 +348,7 @@ fn single_full_line_selection_sends_range_formatting_even_when_ranges_supported(
 /// range fan-out) has nothing to bound and never fires.
 #[test]
 fn ranges_formatting_is_not_capped_by_format_max_ranges() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_caps(
         tmp.path(),
         THREE_LINES,
@@ -384,7 +384,7 @@ fn ranges_formatting_is_not_capped_by_format_max_ranges() {
 /// `lsp-linewise-ranges-params` returns `#f` for it.
 #[test]
 fn no_attached_server_reports_and_sends_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         // Decoy proving no request at all is sent.
         backend.respond_to(
@@ -414,7 +414,7 @@ fn no_attached_server_reports_and_sends_nothing() {
 /// request.
 #[test]
 fn buffer_with_no_path_reports_and_sends_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         // Decoy proving no request at all is sent.
         backend.respond_to(
@@ -444,7 +444,7 @@ fn buffer_with_no_path_reports_and_sends_nothing() {
 /// reading the user meant.
 #[test]
 fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         // Decoys proving no request at all is sent for a mixed set.
         backend.respond_to(
@@ -479,7 +479,7 @@ fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
 /// `lsp_introspect.rs`.
 #[test]
 fn stray_blank_line_cursor_does_not_trigger_the_mixed_selection_refusal() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_content(tmp.path(), "line1\n\nline3\n", |backend, _sid| {
         backend.respond_to(
             "textDocument/formatting",
@@ -510,7 +510,7 @@ fn stray_blank_line_cursor_does_not_trigger_the_mixed_selection_refusal() {
 /// unambiguously".
 #[test]
 fn fan_out_past_the_cap_warns_and_formats_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         // Decoy proving no request at all is sent past the cap.
         backend.respond_to(
@@ -540,7 +540,7 @@ fn fan_out_past_the_cap_warns_and_formats_nothing() {
 /// out normally, only `n > cap` refuses.
 #[test]
 fn fan_out_at_the_cap_formats_normally() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/rangeFormatting",
@@ -567,7 +567,7 @@ fn fan_out_at_the_cap_formats_normally() {
 /// single-range paths.
 #[test]
 fn fan_out_applies_as_one_undo_step() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/rangeFormatting",
@@ -596,7 +596,7 @@ fn fan_out_applies_as_one_undo_step() {
 /// format from the range that did succeed.
 #[test]
 fn fan_out_error_response_applies_nothing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/rangeFormatting",
@@ -618,7 +618,7 @@ fn fan_out_error_response_applies_nothing() {
 
 #[test]
 fn null_result_reports_already_formatted() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/formatting", serde_json::Value::Null);
     });
@@ -634,7 +634,7 @@ fn null_result_reports_already_formatted() {
 
 #[test]
 fn loading_the_plugin_registers_no_save_hook() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
         // If a save hook incorrectly fired :lsp-fmt, this response landing
         // would visibly rewrite the buffer.

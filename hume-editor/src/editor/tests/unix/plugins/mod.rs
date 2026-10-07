@@ -13,7 +13,7 @@ mod stdlib_plugin;
 /// `init.scm`, evaluate it, set up the lazy stubs, and wire the host into
 /// `ed`.  Caller must keep `TempDir` alive.
 fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::TempDir) {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), plugin_body).unwrap();
@@ -21,8 +21,10 @@ fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::T
     std::fs::write(&init_path, init_body).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -59,9 +61,9 @@ fn setup_editor_with_init_files(
 ) -> (Editor, Vec<tempfile::TempDir>) {
     let _path = path_reader();
 
-    let config_tmp = safe_tempdir();
-    let data_tmp = safe_tempdir();
-    let runtime_tmp = runtime_dir.is_none().then(safe_tempdir);
+    let config_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let runtime_tmp = runtime_dir.is_none().then(|| tempfile::tempdir().unwrap());
     let runtime_path = runtime_dir.unwrap_or_else(|| runtime_tmp.as_ref().unwrap().path());
 
     let hume_config = config_tmp.path().join("hume");
@@ -78,6 +80,7 @@ fn setup_editor_with_init_files(
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_path.to_path_buf()),
+        tmp: None,
     };
     ed.init_scripting(&mut Default::default());
 
@@ -94,9 +97,9 @@ fn setup_editor_with_init_files(
 fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
     let _path = path_reader();
 
-    let config_tmp = safe_tempdir();
-    let runtime_tmp = safe_tempdir();
-    let data_tmp = safe_tempdir();
+    let config_tmp = tempfile::tempdir().unwrap();
+    let runtime_tmp = tempfile::tempdir().unwrap();
+    let data_tmp = tempfile::tempdir().unwrap();
 
     // Trivial plugin body: the lint checks activation entry names, not plugin behaviour.
     let plugin_dir = data_tmp
@@ -117,6 +120,7 @@ fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_tmp.path().to_path_buf()),
+        tmp: None,
     };
     ed.init_scripting(&mut Default::default());
 

@@ -48,7 +48,7 @@ fn servers_of(rig: &LspRig, bid: BufferId) -> Vec<hume_lsp::backend::ServerId> {
 
 #[test]
 fn one_instance_serves_every_language_of_the_same_name_and_root() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let spec = RigSpec {
         language: "typescript",
         extension: "ts",
@@ -85,7 +85,7 @@ fn one_instance_serves_every_language_of_the_same_name_and_root() {
 
 #[test]
 fn two_names_for_one_language_attach_both_in_list_order() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let rig = two_servers(&tmp);
 
     assert_eq!(
@@ -99,7 +99,7 @@ fn two_names_for_one_language_attach_both_in_list_order() {
 
 #[test]
 fn unregistering_an_attached_server_leaves_the_other_attached() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp);
     let (ra, lint) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"));
 
@@ -112,7 +112,7 @@ fn unregistering_an_attached_server_leaves_the_other_attached() {
 
 #[test]
 fn stop_by_name_stops_every_root_of_that_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[f]>n main() {}\n",
@@ -145,7 +145,7 @@ fn stop_by_name_stops_every_root_of_that_server() {
 
 #[test]
 fn clearing_a_buffers_language_detaches_every_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp);
     let (ra, lint) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"));
 
@@ -160,7 +160,7 @@ fn clearing_a_buffers_language_detaches_every_server() {
 
 #[test]
 fn server_dropped_from_the_only_buffers_list_stops_at_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp);
 
     rig.eval(r#"(set-language-servers! "rust" '("rust-analyzer"))"#);
@@ -177,7 +177,7 @@ fn server_dropped_from_the_only_buffers_list_stops_at_once() {
 
 #[test]
 fn closing_the_last_buffer_of_a_server_stops_it_at_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp);
 
     rig.ed.close_buffer(rig.bid);
@@ -187,7 +187,7 @@ fn closing_the_last_buffer_of_a_server_stops_it_at_once() {
 
 #[test]
 fn a_crashed_server_without_buffers_is_stopped_by_its_last_detach() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[f]>n main() {}\n",
@@ -208,7 +208,7 @@ fn a_crashed_server_without_buffers_is_stopped_by_its_last_detach() {
 
 #[test]
 fn reset_config_clears_lists_and_registrations() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp);
     rig.eval(r#"(set-language-servers! "rust" '("ra-lint"))"#);
 
@@ -238,7 +238,7 @@ fn reset_config_clears_lists_and_registrations() {
 
 #[test]
 fn save_as_closes_the_old_uri_and_opens_the_new_one() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[f]>n main() {}\n",
@@ -277,7 +277,7 @@ fn save_as_closes_the_old_uri_and_opens_the_new_one() {
 /// get a fresh process: the instance stops and a new one serves the buffer.
 #[test]
 fn unregister_then_register_in_one_eval_spawns_a_fresh_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::drained(
         tmp.path(),
         RigSpec::rust("-[f]>n main() {}\n"),
@@ -311,7 +311,7 @@ fn unregister_then_register_in_one_eval_spawns_a_fresh_server() {
 /// server the final list leaves out is never started on the way there.
 #[test]
 fn one_evals_server_ops_reconcile_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::drained(
         tmp.path(),
         RigSpec::rust("-[f]>n main() {}\n").with_init(""),
@@ -335,7 +335,7 @@ fn one_evals_server_ops_reconcile_once() {
 /// tried it, not once per buffer of its language.
 #[test]
 fn a_server_that_fails_to_start_is_reported_once_for_all_its_buffers() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut backend = answering(0);
     backend.refuse_start("ghost");
     let mut rig = LspRig::drained(
@@ -363,7 +363,7 @@ fn a_server_that_fails_to_start_is_reported_once_for_all_its_buffers() {
 /// instance.
 #[test]
 fn a_language_change_reopens_the_document_on_the_same_instance() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let spec = RigSpec {
         language: "typescript",
         extension: "ts",
@@ -416,7 +416,7 @@ fn restart(rig: &mut LspRig, target: LspServerTarget) {
 
 #[test]
 fn a_stopped_server_does_not_start_for_a_buffer_opened_later() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     rig.stop("rust-analyzer");
 
@@ -428,7 +428,7 @@ fn a_stopped_server_does_not_start_for_a_buffer_opened_later() {
 
 #[test]
 fn a_stopped_server_does_not_start_for_a_registry_change() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     rig.stop("rust-analyzer");
 
@@ -440,7 +440,7 @@ fn a_stopped_server_does_not_start_for_a_registry_change() {
 
 #[test]
 fn restarting_a_stopped_server_by_name_starts_it_for_its_buffers() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     rig.stop("rust-analyzer");
 
@@ -456,7 +456,7 @@ fn restarting_a_stopped_server_by_name_starts_it_for_its_buffers() {
 
 #[test]
 fn restarting_a_buffers_stopped_servers_starts_them_again() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     rig.ed.apply_lsp_server_op(PendingLspServerOp::Stop {
         target: LspServerTarget::Buffer(rig.bid),
@@ -471,7 +471,7 @@ fn restarting_a_buffers_stopped_servers_starts_them_again() {
 
 #[test]
 fn registering_a_stopped_name_again_starts_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     rig.stop("rust-analyzer");
 
@@ -482,7 +482,7 @@ fn registering_a_stopped_name_again_starts_it() {
 
 #[test]
 fn unregistering_a_stopped_name_forgets_the_stop() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     rig.stop("rust-analyzer");
 
@@ -494,7 +494,7 @@ fn unregistering_a_stopped_name_forgets_the_stop() {
 
 #[test]
 fn a_config_reset_forgets_every_stop() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     rig.stop("rust-analyzer");
     assert!(rig.ed.lsp_status_text().contains("Stopped"));
@@ -510,7 +510,7 @@ fn a_config_reset_forgets_every_stop() {
 /// through a later reconcile.
 #[test]
 fn a_buffer_stop_leaves_the_same_server_running_for_another_root() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = rust_rig(&tmp);
     std::fs::create_dir_all(rig.root.join("other")).unwrap();
     std::fs::write(rig.root.join("other/Cargo.toml"), b"").unwrap();
@@ -529,7 +529,7 @@ fn a_buffer_stop_leaves_the_same_server_running_for_another_root() {
 
 #[test]
 fn a_user_list_attaches_a_registered_server_the_default_does_not_name() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let spec = RigSpec {
         language: "jsx",
         extension: "jsx",
@@ -551,7 +551,7 @@ fn a_user_list_attaches_a_registered_server_the_default_does_not_name() {
 
 #[test]
 fn a_registered_server_no_list_names_does_not_attach() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let init = format!(
         "{}\n(register-lsp-server! \"ra-lint\" #:command \"ra-lint\")",
         super::lsp_rig::RUST_ANALYZER
@@ -568,7 +568,7 @@ fn a_registered_server_no_list_names_does_not_attach() {
 
 #[test]
 fn a_servers_root_comes_from_its_languages_roots() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let spec = RigSpec {
         language: "rust",
         extension: "rs",

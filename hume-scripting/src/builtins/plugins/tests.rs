@@ -623,8 +623,10 @@ fn plugin_dir_inside_plugin_body_is_the_plugins_own_directory() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
     let mut editor_host = LazyStubHost::default();
     host.eval_source(r#"(load-plugin! "me/probe")"#, &mut editor_host)
         .expect("the probe plugin must load");
@@ -664,8 +666,10 @@ fn load_plugin_absent_dir_soft_logs_and_records_declared_plugins() {
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(dir.path().to_path_buf());
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
 
     let result = host.eval_source(
         r#"(load-plugin! "user/definitely-absent-mf")"#,

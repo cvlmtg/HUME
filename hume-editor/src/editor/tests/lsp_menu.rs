@@ -23,7 +23,7 @@ fn arm_three_items(ed: &mut Editor, tmp: &Path) {
 
 #[test]
 fn select_second_item_calls_back_with_index_1() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
     assert!(ed.state.input.menu().is_some(), "sanity: menu open");
@@ -41,7 +41,7 @@ fn select_second_item_calls_back_with_index_1() {
 
 #[test]
 fn esc_calls_back_with_false() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -55,7 +55,7 @@ fn esc_calls_back_with_false() {
 
 #[test]
 fn selection_clamps_at_the_top() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -73,7 +73,7 @@ fn selection_clamps_at_the_top() {
 
 #[test]
 fn selection_clamps_at_the_bottom() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -92,7 +92,7 @@ fn selection_clamps_at_the_bottom() {
 
 #[test]
 fn arrow_keys_also_move_the_selection() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -106,7 +106,7 @@ fn arrow_keys_also_move_the_selection() {
 
 #[test]
 fn stray_key_dismisses_the_menu_and_still_executes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
@@ -296,7 +296,7 @@ fn show_menu_opens_over_an_open_drawer() {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -369,13 +369,8 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
 
 #[test]
 fn selected_row_renders_with_the_menu_selected_scope() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
     ed.feed_key(key('i'));
     for ch in "abcdefgh".chars() {

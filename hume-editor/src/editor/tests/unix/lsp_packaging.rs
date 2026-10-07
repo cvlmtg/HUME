@@ -91,7 +91,7 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
 /// run its body yet.
 #[test]
 fn declared_but_undispatched_plugin_is_declared_not_loaded() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (ed, _guard) = setup_declared(tmp.path(), DECLARE_LSP, |backend| {
         backend.respond_to(
             "textDocument/hover",
@@ -119,7 +119,7 @@ fn declared_but_undispatched_plugin_is_declared_not_loaded() {
 /// `plugin_status` would stay `Declared`.
 #[test]
 fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_declared(tmp.path(), DECLARE_LSP, |backend| {
         backend.respond_to(
             "textDocument/hover",
@@ -171,7 +171,7 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
 /// of this test's `Loaded` result.
 #[test]
 fn attach_event_alone_activates_the_declared_plugin() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_declared(tmp.path(), DECLARE_LSP, |_backend| {});
 
     let id = PluginId::parse("core:lsp").unwrap();
@@ -203,7 +203,7 @@ fn attach_event_alone_activates_the_declared_plugin() {
 /// running the same attach sequence must leave it `Declared`.
 #[test]
 fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_declared(tmp.path(), DECLARE_LSP_WRONG_EVENT, |_backend| {});
 
     ed.settle();
@@ -241,8 +241,8 @@ fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
 fn every_default_lsp_binding_dispatches_without_error() {
     use crate::editor::keymap::BindMode;
 
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
+    let file_dir = tempfile::tempdir().unwrap();
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
@@ -318,7 +318,7 @@ fn every_default_lsp_binding_dispatches_without_error() {
 #[test]
 fn missing_stdlib_errors_at_load() {
     let guard = RealRuntimeDirs::new();
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let init_path = tmp.path().join("init.scm");
     std::fs::write(
         &init_path,

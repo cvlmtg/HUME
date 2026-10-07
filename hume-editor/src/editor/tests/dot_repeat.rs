@@ -1465,7 +1465,7 @@ fn dot_repeats_ctrl_w_inside_insert() {
 /// as in `dot_repeats_ctrl_w_inside_insert`.
 #[test]
 fn steel_insert_binding_calling_native_command_is_recorded_for_dot_repeat() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("(-[foo]>) (bar)\n");
     run(
         &mut ed,
@@ -1504,7 +1504,7 @@ fn steel_insert_binding_calling_native_command_is_recorded_for_dot_repeat() {
 /// must reproduce that exact behaviour, not a doubled or dropped tab.
 #[test]
 fn dot_repeat_replays_tab_via_insert_key_once() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
@@ -1545,7 +1545,7 @@ fn dot_repeat_replays_tab_via_insert_key_once() {
 /// binding ran, nor what was typed after it.
 #[test]
 fn insert_key_binding_reentering_insert_keeps_earlier_keys() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     run(
         &mut ed,
@@ -1595,7 +1595,7 @@ fn insert_key_binding_reentering_insert_keeps_earlier_keys() {
 /// `"hello\nworld\n"`, then moves to the start of line 2, the shared
 /// setup for the replay-failure tests below.
 fn record_insert_key_binding_then_move(body: &str) -> (Editor, tempfile::TempDir) {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     run(
         &mut ed,
@@ -1699,7 +1699,7 @@ fn unbound_insert_key_with_no_default_behaviour_is_not_recorded() {
 /// dropped rather than recorded: `.` never reopens the popup at all.
 #[test]
 fn tab_or_complete_completion_branch_leaves_no_popup_after_dot_repeat() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     let source = format!(
         "{}\n{}",
@@ -1747,7 +1747,7 @@ fn tab_or_complete_completion_branch_leaves_no_popup_after_dot_repeat() {
 /// The text a live `c he<accept>` wrote in the first
 /// pair of parens is exactly what `.` must write in the second.
 fn assert_accepted_completion_is_dot_repeated(extra_script: &str, accept: KeyEvent, then: &str) {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("(-[foo]>) (bar)\n");
     let source = format!(
         "{}\n{extra_script}",
@@ -1868,7 +1868,7 @@ fn dot_repeats_an_arrow_key_inside_insert() {
 /// that opened the session.
 #[test]
 fn native_command_bound_mid_insert_does_not_hijack_last_repeatable_action() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[foo]> bar\n");
     run(
         &mut ed,
@@ -1901,7 +1901,7 @@ fn native_command_bound_mid_insert_does_not_hijack_last_repeatable_action() {
 /// same as pressing the binding twice by hand, once per site.
 #[test]
 fn insert_key_binding_register_prefix_reruns_on_replay() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc def\n");
     run(
         &mut ed,
@@ -1940,7 +1940,7 @@ fn insert_key_binding_register_prefix_reruns_on_replay() {
 /// typed character surviving.
 #[test]
 fn insert_key_binding_exiting_insert_mid_body_stays_off_the_repeat_slot() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>yz abc\n");
     run(
         &mut ed,
@@ -1992,7 +1992,7 @@ fn insert_key_binding_exiting_insert_mid_body_stays_off_the_repeat_slot() {
 /// before "e", giving "d;ef" instead.
 #[test]
 fn insert_key_binding_motion_via_call_is_replayed_before_the_fallback() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\ndef\n");
     run(
         &mut ed,
@@ -2033,7 +2033,7 @@ fn insert_key_binding_motion_via_call_is_replayed_before_the_fallback() {
 /// during replay.
 #[test]
 fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
     run(
         &mut ed,
@@ -2091,7 +2091,7 @@ fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
 /// `apply_doc_edit_grouped`, the one funnel a real one would also use.
 #[test]
 fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
     run(
         &mut ed,
@@ -2166,7 +2166,7 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
 /// panic on the length mismatch; the pick is reported and dropped instead.
 #[test]
 fn dot_repeat_drops_a_pick_whose_capture_already_held_an_edit_when_a_foreign_edit_intervened() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
     run(
         &mut ed,
@@ -2238,7 +2238,7 @@ fn dot_repeat_drops_a_pick_whose_capture_already_held_an_edit_when_a_foreign_edi
 /// around it.
 #[test]
 fn dot_repeat_drops_a_dismissed_pickers_binding_entry() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     run(
         &mut ed,
@@ -2291,7 +2291,7 @@ fn dot_repeat_drops_a_dismissed_pickers_binding_entry() {
 /// and reaches the same fallback.
 #[test]
 fn dot_repeat_smart_accept_binding_fallback_branch() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     let source = format!(
         "{}\n{}",
@@ -2339,7 +2339,7 @@ fn dot_repeat_smart_accept_binding_fallback_branch() {
 /// literal tab).
 #[test]
 fn dot_repeat_smart_accept_binding_accept_branch() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("(-[foo]>) (bar)\n");
     let source = format!(
         "{}\n{}",
@@ -2391,7 +2391,7 @@ fn dot_repeat_smart_accept_binding_accept_branch() {
 /// still replay, matching what the live session actually did.
 #[test]
 fn dot_repeat_continues_past_a_binding_that_fails_on_replay() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     run(
         &mut ed,
@@ -2424,7 +2424,7 @@ fn dot_repeat_continues_past_a_binding_that_fails_on_replay() {
 /// against a session that was never opened this time.
 #[test]
 fn dot_repeat_binding_taking_the_interactive_branch_only_on_replay_errors_loudly() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     run(
         &mut ed,
@@ -2472,7 +2472,7 @@ fn dot_repeat_binding_taking_the_interactive_branch_only_on_replay_errors_loudly
 /// of it, not the pre-macro action.
 #[test]
 fn dot_after_macro_leaves_insert_open_repeats_the_macros_own_session() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>yz\nabc\n");
     run(
         &mut ed,
@@ -2520,7 +2520,7 @@ fn dot_after_macro_leaves_insert_open_repeats_the_macros_own_session() {
 /// request to make sense of replaying.
 #[test]
 fn dot_repeat_completion_trigger_reached_only_on_replay_errors_loudly() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     run(
         &mut ed,
@@ -2560,7 +2560,7 @@ fn dot_repeat_completion_trigger_reached_only_on_replay_errors_loudly() {
 /// session, in whatever mode is now current.
 #[test]
 fn dot_repeat_stops_when_a_binding_leaves_insert_and_then_fails_on_replay() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     run(
         &mut ed,
@@ -2601,7 +2601,7 @@ fn dot_repeat_stops_when_a_binding_leaves_insert_and_then_fails_on_replay() {
 /// error out over the extra one.
 #[test]
 fn dot_repeat_of_an_accept_with_additional_text_edits_replays_only_the_cursor_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("(-[x]>) (bar)\n");
     let source = completion_source(
         "test",
@@ -2667,7 +2667,7 @@ fn dot_repeat_of_a_multi_cursor_accept_replays_at_every_cursor() {
 /// dispatch (the window `DotCapture` is armed for) feeds its capture.
 #[test]
 fn dot_repeat_of_an_accept_after_typing_moving_and_typing_again() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("( )\n(-[ ]>)\n");
     run(
         &mut ed,
@@ -2699,7 +2699,7 @@ fn dot_repeat_of_an_accept_after_typing_moving_and_typing_again() {
 /// lose the accept.
 #[test]
 fn dot_repeat_of_a_binding_that_accepts_then_exits_insert_in_one_body() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("(-[x]>) (bar)\n");
     run(
         &mut ed,
@@ -2744,7 +2744,7 @@ fn dot_repeat_of_a_binding_that_accepts_then_exits_insert_in_one_body() {
 /// records normally instead of finalizing against stale state.
 #[test]
 fn dot_repeat_capture_is_dropped_when_a_picks_on_select_is_lost_to_the_drain_cap() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
@@ -2824,7 +2824,7 @@ fn dot_repeat_capture_is_dropped_when_a_picks_on_select_is_lost_to_the_drain_cap
 /// pending capture silently rather than panicking.
 #[test]
 fn picker_torn_down_by_a_reload_fires_on_select_and_drops_its_capture() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
     run(
         &mut ed,

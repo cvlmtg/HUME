@@ -6,7 +6,7 @@
 // (`core:lsp`'s own `set-signs!` calls) are an ordinary plugin sign source,
 // covered by `tests/unix/lsp_diagnostic_signs.rs`.
 //
-// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}), hume_platform::dirs::Dirs::none())` (not `editor_from`'s bare
+// Every test here goes through `open_headless(None)` (not `editor_from`'s bare
 // `Pane::new`): sign providers are only registered by `build_pane`, same
 // reasoning as `lsp_render.rs`.
 
@@ -20,13 +20,8 @@ use super::*;
 /// pinned. `arm_body` may reference `bid`, the buffer the "arm" command was
 /// dispatched against.
 fn plugin_sign_editor(signcolumn: Option<&str>, arm_body: &str) -> (Editor, PaneId) {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     type_text(&mut ed, "abcdefgh");
     if let Some(signcolumn) = signcolumn {
         let bid = ed.focused_buffer_id();
@@ -77,13 +72,8 @@ fn gutter_width_always_2_is_3_cells_wide() {
 
 #[test]
 fn set_signs_for_an_unregistered_source_errors_naming_the_builtin() {
-    let tmp = safe_tempdir();
-    let mut ed = Editor::open(
-        None,
-        std::sync::Arc::new(|| {}),
-        hume_platform::dirs::Dirs::none(),
-    )
-    .unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
     type_text(&mut ed, "abcdefgh");
     run(
         &mut ed,
@@ -118,7 +108,7 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
          has actually placed a sign yet"
     );
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     run(
         &mut ed,
         tmp.path(),

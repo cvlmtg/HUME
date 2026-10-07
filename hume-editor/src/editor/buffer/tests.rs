@@ -1108,7 +1108,7 @@ fn opening_a_file_without_a_dump_has_no_pending_dump() {
 
 #[test]
 fn opening_a_missing_file_with_a_dump_records_the_pending_dump() {
-    let dir = crate::editor::tests::safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("gone.txt");
     std::fs::write(dir.path().join("gone.txt.dump"), "crashed\n").unwrap();
 

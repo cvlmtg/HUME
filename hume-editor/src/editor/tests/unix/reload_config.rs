@@ -31,9 +31,9 @@ struct ReloadFixture {
 
 impl ReloadFixture {
     fn new(init_scm: &str) -> Self {
-        let config_tmp = safe_tempdir();
-        let data_tmp = safe_tempdir();
-        let runtime_tmp = safe_tempdir();
+        let config_tmp = tempfile::tempdir().unwrap();
+        let data_tmp = tempfile::tempdir().unwrap();
+        let runtime_tmp = tempfile::tempdir().unwrap();
         let config_dir = config_tmp.path().join("hume");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("init.scm"), init_scm).unwrap();
@@ -53,6 +53,7 @@ impl ReloadFixture {
             config: Some(self.config_dir.clone()),
             data: Some(self.data_dir.clone()),
             runtime: Some(self.runtime_dir.clone()),
+            tmp: None,
         }
     }
 
@@ -172,9 +173,8 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
 /// test's doc for why skipping it would prove nothing.
 #[test]
 fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
-    // Held for its `Drop` (env var cleanup) only: this test reloads the
-    // same `init.scm` unchanged, unlike every other fixture user, which
-    // rewrites it via `write_init` before reloading.
+    // This test reloads the same `init.scm` unchanged, unlike every other
+    // fixture user, which rewrites it via `write_init` before reloading.
     let fixture = ReloadFixture::new(
         r#"(register-hook! 'on-buffer-enter (lambda (bid)
              (set-statusline-text! "greeting" bid "hello")))"#,
@@ -218,7 +218,7 @@ fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
 /// `set_config_source` (the `--config` flag's editor-side setter) must make
 /// `init_scripting` evaluate the override file instead of the default
 /// `<config_dir>/init.scm`, even though a real, different `init.scm` exists
-/// on disk right where `config_dir()` would otherwise find it.
+/// on disk right where the session's config dir would otherwise find it.
 #[test]
 fn config_override_is_evaluated_instead_of_default_init_scm() {
     let fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
@@ -336,14 +336,14 @@ fn config_override_missing_at_reload_reports_error_and_does_not_report_success()
 /// treat the override as a valid config path.
 #[test]
 fn config_override_works_with_no_config_dir() {
-    let scm_tmp = safe_tempdir();
+    let scm_tmp = tempfile::tempdir().unwrap();
     let override_path = scm_tmp.path().join("override.scm");
     std::fs::write(&override_path, r#"(set-option! "scroll-margin" 42)"#).unwrap();
     // Isolate the scenario under test (no *config* dir) from data-dir and
     // runtime-dir resolution: missing ones would add warnings that are
     // indistinguishable from a real reload failure below.
-    let data_tmp = safe_tempdir();
-    let runtime_tmp = safe_tempdir();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let runtime_tmp = tempfile::tempdir().unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
     ed.state.dirs = Dirs {
@@ -457,7 +457,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
           (when (equal? lang "rust") (set-buffer-option! bid "tab-width" 7))))"#;
     let fixture = ReloadFixture::new(init_scm);
 
-    let file_tmp = safe_tempdir();
+    let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
@@ -517,7 +517,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
 /// "did it fire at all" check can't distinguish once from twice.
 #[test]
 fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
-    let file_tmp = safe_tempdir();
+    let file_tmp = tempfile::tempdir().unwrap();
     let companion = file_tmp.path().join("companion.rs");
     std::fs::write(&companion, "fn companion() {}\n").unwrap();
     let companion_str = steel_path(&companion);
@@ -625,7 +625,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
     let init_scm = r#"(%define-language! "notes" '() '() '() #f '())"#;
     let fixture = ReloadFixture::new(init_scm);
 
-    let file_tmp = safe_tempdir();
+    let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("README"); // no extension: never auto-detected
     std::fs::write(&file, "hello\n").unwrap();
 
@@ -698,7 +698,7 @@ fn reload_config_keeps_a_startup_grammar_registered() {
     let (parser, hl) = grammar_fixture("json");
     let fixture = StagedGrammarFixture::new("json", &parser, &hl, "");
 
-    let file_tmp = safe_tempdir();
+    let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("data.json");
     std::fs::write(&file, "{\"x\": 1}\n").unwrap();
 
@@ -747,7 +747,7 @@ fn reload_config_keeps_a_startup_grammar_registered() {
 // :reload-config with no resolvable config directory fails fast
 // ---------------------------------------------------------------------------
 
-/// `typed_reload_config` checks `config_dir()` *before* touching anything.
+/// `typed_reload_config` checks `config_path()` *before* touching anything.
 /// A `None` config dir found only after `reset_config_state` had wiped
 /// languages/keymap/theme/highlighting would hit `init_scripting`'s own
 /// `None`-directory early return and leave the editor permanently degraded,
@@ -871,7 +871,7 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
     let init_scm = r#"(%define-language! "notes" '() '() '() #f '())"#;
     let fixture = ReloadFixture::new(init_scm);
 
-    let file_tmp = safe_tempdir();
+    let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("README"); // no extension: never auto-detected
     std::fs::write(&file, "hello\n").unwrap();
 

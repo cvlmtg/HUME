@@ -27,7 +27,7 @@ fn settle(ed: &mut Editor) {
 
 #[test]
 fn trigger_char_fires_the_completion_request() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::json!([]));
@@ -48,7 +48,7 @@ fn trigger_char_fires_the_completion_request() {
 /// Ctrl-Space with the same empty answer does report.
 #[test]
 fn trigger_char_with_no_completions_is_silent() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::json!([]));
@@ -70,7 +70,7 @@ fn trigger_char_with_no_completions_is_silent() {
 /// empty answer to an explicit Ctrl-Space does report: the user asked.
 #[test]
 fn ctrl_space_with_no_completions_reports_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::json!([]));
@@ -86,7 +86,7 @@ fn ctrl_space_with_no_completions_reports_it() {
 
 #[test]
 fn ctrl_space_fires_completion_trigger() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::json!([]));
@@ -102,7 +102,7 @@ fn ctrl_space_fires_completion_trigger() {
 
 #[test]
 fn ctrl_space_in_a_buffer_with_no_file_sends_no_request() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::json!([]));
@@ -120,7 +120,7 @@ fn ctrl_space_in_a_buffer_with_no_file_sends_no_request() {
 
 #[test]
 fn capability_gated_no_completion_provider_sends_no_request() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
         setup_trigger_char_feature(tmp.path(), FOO, serde_json::json!({}), |_backend, _sid| {});
 
@@ -139,7 +139,7 @@ fn capability_gated_no_completion_provider_sends_no_request() {
 
 #[test]
 fn null_response_opens_no_session() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::Value::Null);
@@ -175,7 +175,7 @@ fn null_response_opens_no_session() {
 
 #[test]
 fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // Blank line 0 (the auto-import destination) + "foo" on line 1 (the
     // completion site), non-overlapping, matching the real-world shape:
     // an import lands above the cursor's line, not at the exact same spot.
@@ -229,7 +229,7 @@ fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
 
 #[test]
 fn typing_after_an_accept_with_additional_text_edits_composes_into_the_same_group() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup_trigger_char_feature(
         tmp.path(),
         "\nfoo\n",
@@ -279,7 +279,7 @@ fn typing_after_an_accept_with_additional_text_edits_composes_into_the_same_grou
 
 #[test]
 fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "foo.b XXX\n": the main edit replaces ".b" (chars 3..5) with ".bar",
     // shifting everything after it on the line by +2 UTF-16 units. The
     // additionalTextEdits entry (chars 6..9, "XXX") is on the same line,
@@ -335,7 +335,7 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
 /// astral prefix on the line, not just plain ASCII.
 #[test]
 fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "🎉foo.b XXX\n": 🎉 is char 0 (wire columns 0..2); "foo.b XXX" follows
     // at char 1 (wire column 2).
     let (mut ed, _guard, _requests) = setup_trigger_char_feature(
@@ -389,7 +389,7 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
 /// is exact, not an approximation.
 #[test]
 fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup_trigger_char_feature(
         tmp.path(),
         "foo.b XXX\n",
@@ -447,7 +447,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
 /// other `lsp-request!`).
 #[test]
 fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup_trigger_char_feature(
         tmp.path(),
         "\nfoo\n",
@@ -499,7 +499,7 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
 /// swept `Outcome::TimedOut` reaches the callback, and must not panic.
 #[test]
 fn resolve_does_not_apply_anything_after_lsp_stop() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup_trigger_char_feature(
         tmp.path(),
         "\nfoo\n",
@@ -543,7 +543,7 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
 #[test]
 fn completion_resolve_goes_to_the_items_origin_server() {
     use hume_lsp::backend::ServerId;
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let guard = RealRuntimeDirs::new();
     let (mut backend, _, requests) = RecordingLspBackend::new();
     let caps = serde_json::json!({ "capabilities": full_completion_caps() });
@@ -591,7 +591,7 @@ fn completion_resolve_goes_to_the_items_origin_server() {
 
 #[test]
 fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_present() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
@@ -632,7 +632,7 @@ fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_
 
 #[test]
 fn null_resolve_response_is_a_clean_no_op() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
@@ -663,7 +663,7 @@ fn null_resolve_response_is_a_clean_no_op() {
 
 #[test]
 fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
@@ -703,7 +703,7 @@ fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
 /// on the next keystroke, and it re-requests.
 #[test]
 fn an_incomplete_answer_is_re_requested_on_typing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) = setup_trigger_char_feature(
         tmp.path(),
         FOO,
@@ -737,7 +737,7 @@ fn an_incomplete_answer_is_re_requested_on_typing() {
 
 #[test]
 fn a_complete_answer_is_not_re_requested_on_typing() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
@@ -767,7 +767,7 @@ fn a_complete_answer_is_not_re_requested_on_typing() {
 /// `:lsp-stop` would still invoke the source on every matching keystroke.
 #[test]
 fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |_backend, _sid| {});
 
@@ -794,7 +794,7 @@ fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
 /// from a server that's no longer running for this buffer.
 #[test]
 fn detach_dismisses_an_open_completion_session_for_that_buffer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
@@ -822,7 +822,7 @@ fn detach_dismisses_an_open_completion_session_for_that_buffer() {
 
 #[test]
 fn snippet_item_lands_as_stripped_plain_text() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(

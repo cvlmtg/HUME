@@ -53,7 +53,7 @@ fn offering_a_dump_for_a_closed_buffer_does_nothing() {
 
 #[test]
 fn opening_a_file_without_a_dump_opens_no_prompt() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("foo.txt");
     std::fs::write(&path, "disk\n").unwrap();
 
@@ -114,7 +114,7 @@ fn a_save_as_does_not_redirect_the_pending_dump_to_the_new_path() {
 #[cfg(unix)]
 #[test]
 fn a_dump_that_is_a_symlink_is_ignored_with_a_warning() {
-    let dir = safe_tempdir();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("foo.txt");
     std::fs::write(&path, "disk\n").unwrap();
     let secret = dir.path().join("secret");

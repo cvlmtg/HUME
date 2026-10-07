@@ -26,9 +26,20 @@ fn env_var(key: &str) -> Option<String> {
 /// test builds a `Dirs` with explicit paths and never mutates global env.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Dirs {
+    /// `$XDG_CONFIG_HOME/hume/`, else `$HOME/.config/hume/` (Unix and macOS);
+    /// `%APPDATA%\hume\` (Windows). `None` when those variables are unset.
     pub config: Option<PathBuf>,
+    /// `$XDG_DATA_HOME/hume/`, else `$HOME/.local/share/hume/` (Unix and
+    /// macOS); `%LOCALAPPDATA%\hume\`, falling back to `%APPDATA%\hume\`
+    /// (Windows). `None` when those variables are unset, which disables
+    /// features that need on-disk storage (PLUM install, user plugins,
+    /// third-party theme installs).
     pub data: Option<PathBuf>,
+    /// Where core plugins, themes and docs live; see `runtime_dir_with` for
+    /// the search order. `None` when no candidate exists.
     pub runtime: Option<PathBuf>,
+    /// Where `:tutor` writes its editable copy of the lesson.
+    pub tmp: Option<PathBuf>,
 }
 
 impl Dirs {
@@ -39,28 +50,22 @@ impl Dirs {
             config: config_dir_with(env_var),
             data: data_dir_with(env_var),
             runtime: runtime_dir_with(env_var, env::current_exe().ok(), env::current_dir().ok()),
+            tmp: Some(env::temp_dir()),
         }
     }
 
-    /// No directory resolved: scripting runs without a runtime, data or
-    /// config directory.
+    /// No directory resolved: scripting runs without a runtime, data, config
+    /// or temp directory.
     pub const fn none() -> Self {
         Self {
             config: None,
             data: None,
             runtime: None,
+            tmp: None,
         }
     }
 }
 
-/// Returns the configuration directory for HUME, if it can be resolved.
-///
-/// - Unix / macOS: `$XDG_CONFIG_HOME/hume/` → `$HOME/.config/hume/`
-/// - Windows: `%APPDATA%\hume\`
-///
-/// Returns `None` only if both the relevant env vars are unset (`HOME` on
-/// Unix, `APPDATA` on Windows). Callers should report and skip scripting
-/// init rather than fall back to a relative path.
 #[cfg(windows)]
 fn config_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     env("APPDATA").map(|base| PathBuf::from(base).join("hume"))
@@ -75,14 +80,6 @@ fn config_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     }
 }
 
-/// Returns the data directory for HUME, if it can be resolved.
-///
-/// - Unix / macOS: `$XDG_DATA_HOME/hume/` → `$HOME/.local/share/hume/`
-/// - Windows: `%LOCALAPPDATA%\hume\` (falls back to `%APPDATA%\hume\` if `LOCALAPPDATA` is unset)
-///
-/// Returns `None` only if the relevant env vars are unset. Callers should
-/// disable features that need on-disk storage (PLUM install, user plugins,
-/// third-party theme installs).
 #[cfg(windows)]
 fn data_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     // Prefer LOCALAPPDATA (machine-local) for plugin binaries and caches;

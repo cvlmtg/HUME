@@ -38,7 +38,7 @@ fn run_rename(ed: &mut Editor) {
 
 #[test]
 fn prompt_prefill_shows_the_symbol_under_cursor() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(tmp.path(), |_backend, _sid| {});
 
     run_rename(&mut ed);
@@ -52,7 +52,7 @@ fn prompt_prefill_shows_the_symbol_under_cursor() {
 
 #[test]
 fn cancel_sends_no_rename_request() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     // Script a response that WOULD apply visibly if the request were sent
     // despite the cancel. This proves the guard, not just "nothing crashed".
@@ -89,7 +89,7 @@ fn cancel_sends_no_rename_request() {
 
 #[test]
 fn null_result_reports_nothing_to_rename() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/rename", serde_json::Value::Null);
     });
@@ -110,7 +110,7 @@ fn null_result_reports_nothing_to_rename() {
 
 #[test]
 fn multi_file_workspace_edit_applies_and_logs_the_summary() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let other_file = rig_root(tmp.path()).join("lib.rs");
     std::fs::write(&other_file, "fn helper() {}\n").unwrap();
@@ -161,7 +161,7 @@ fn multi_file_workspace_edit_applies_and_logs_the_summary() {
 /// doing nothing or applying against text that has since moved.
 #[test]
 fn rename_reports_a_stale_buffer_after_an_intervening_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), move |backend, _sid| {
         backend.respond_to(
@@ -217,7 +217,7 @@ fn rename_reports_a_stale_buffer_after_an_intervening_edit() {
 /// `lib.rs`'s buffer would never get a `language`.
 #[test]
 fn multi_file_workspace_edit_detects_language_of_the_newly_opened_file() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let other_file = rig_root(tmp.path()).join("lib.rs");
     std::fs::write(&other_file, "fn helper() {}\n").unwrap();

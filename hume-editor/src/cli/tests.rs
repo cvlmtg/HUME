@@ -1,5 +1,4 @@
 use super::*;
-use crate::editor::tests::safe_tempdir;
 use std::cell::Cell;
 
 // `tmp.path().join(name)` below is guaranteed absent from disk: `tmp` is a
@@ -22,7 +21,7 @@ fn literal_probe_is_skipped_without_a_suffix() {
 
 #[test]
 fn line_only_suffix() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:12");
     let parsed = parse_file_arg(&arg, tmp.path()).unwrap();
     assert_eq!(parsed.path, tmp.path().join("foo.rs"));
@@ -37,7 +36,7 @@ fn line_only_suffix() {
 
 #[test]
 fn line_and_column_suffix() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:12:24");
     let parsed = parse_file_arg(&arg, tmp.path()).unwrap();
     assert_eq!(parsed.path, tmp.path().join("foo.rs"));
@@ -52,7 +51,7 @@ fn line_and_column_suffix() {
 
 #[test]
 fn trailing_colon_is_tolerated() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:12:");
     let parsed = parse_file_arg(&arg, tmp.path()).unwrap();
     assert_eq!(parsed.path, tmp.path().join("foo.rs"));
@@ -67,7 +66,7 @@ fn trailing_colon_is_tolerated() {
 
 #[test]
 fn no_suffix_is_a_plain_path() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs");
     let parsed = parse_file_arg(&arg, tmp.path()).unwrap();
     assert_eq!(parsed.path, arg);
@@ -76,7 +75,7 @@ fn no_suffix_is_a_plain_path() {
 
 #[test]
 fn non_digit_suffix_is_a_literal_path() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:abc");
     let parsed = parse_file_arg(&arg, tmp.path()).unwrap();
     assert_eq!(parsed.path, arg);
@@ -85,7 +84,7 @@ fn non_digit_suffix_is_a_literal_path() {
 
 #[test]
 fn bare_colon_number_with_no_path_is_literal() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // `tmp.path().join(":12")` is `/tmp/…/:12`: rsplit_once(':') leaves a
     // remainder ending in the path separator (`/tmp/…/`), which
     // `split_trailing_number`'s `rest.ends_with(is_separator)` check rejects
@@ -112,7 +111,7 @@ fn relative_bare_colon_number_is_literal() {
 
 #[test]
 fn line_zero_is_rejected() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:0");
     let err = parse_file_arg(&arg, tmp.path()).unwrap_err();
     assert!(err.contains(LINE_NUMBERS_START_AT_1), "got: {err}");
@@ -124,7 +123,7 @@ fn line_zero_is_rejected() {
 
 #[test]
 fn column_zero_is_rejected() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:12:0");
     let err = parse_file_arg(&arg, tmp.path()).unwrap_err();
     // A valid line paired with a bad column must not blame the line: the
@@ -143,7 +142,7 @@ fn column_zero_is_rejected() {
 #[cfg(unix)]
 #[test]
 fn a_real_file_named_with_a_colon_opens_literally() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("weird:12");
     std::fs::write(&path, "hello\n").unwrap();
     let parsed = parse_file_arg(&path, tmp.path()).unwrap();
@@ -161,7 +160,7 @@ fn a_broken_symlink_named_with_a_colon_opens_literally() {
     // report this one absent) is the deliberate disambiguation probe here:
     // a dangling symlink still names a path the user chose on disk, so it
     // must win over splitting the same as a real file does.
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("weird:12");
     std::os::unix::fs::symlink(tmp.path().join("does-not-exist-target"), &path).unwrap();
     let parsed = parse_file_arg(&path, tmp.path()).unwrap();

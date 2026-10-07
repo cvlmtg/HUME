@@ -26,7 +26,7 @@ fn set_cwd_updates_editor_and_process_cwd() {
 #[test]
 fn set_cwd_rejects_non_directory() {
     let _guard = CwdGuard::new();
-    let file = safe_named_tempfile();
+    let file = tempfile::NamedTempFile::new().unwrap();
     let canonical = std::fs::canonicalize(file.path()).unwrap();
     let before = std::env::current_dir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
@@ -150,7 +150,7 @@ fn typed_cd_error_on_nonexistent() {
 #[test]
 fn typed_cd_error_on_file_path() {
     let _guard = CwdGuard::new();
-    let file = safe_named_tempfile();
+    let file = tempfile::NamedTempFile::new().unwrap();
     let canonical = std::fs::canonicalize(file.path()).unwrap();
     let before = std::env::current_dir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");

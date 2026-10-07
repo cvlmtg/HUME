@@ -20,7 +20,7 @@ fn attached_editor(tmp: &std::path::Path, marked: &str) -> Editor {
 
 #[test]
 fn set_inlay_hints_composes_with_lsp_position_to_offset() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "🎉" is 1 char, 2 UTF-16 code units, 4 UTF-8 bytes: a wire character
     // offset of 2 (the emoji's UTF-16 width) must land on char index 1, the
     // char right after it, not byte/char index 2 or 4. `set-inlay-hints!`
@@ -71,7 +71,7 @@ fn set_inlay_hints_composes_with_lsp_position_to_offset() {
 
 #[test]
 fn set_inlay_hints_replaces_wholesale_not_appends() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -110,7 +110,7 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
 /// no explanation.
 #[test]
 fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -150,7 +150,7 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
 /// the bare validation function.
 #[test]
 fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n"); // "xabcdef\n", 8 chars; offset 7 is the trailing '\n'
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -186,7 +186,7 @@ fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
 /// every kind's host-boundary conversion holds to.
 #[test]
 fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdef\n"); // 8 chars total
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -222,7 +222,7 @@ fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
 #[test]
 fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudly_on_an_out_of_range_line()
  {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdef\n"); // one real line
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -295,7 +295,7 @@ fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudl
 
 #[test]
 fn inlay_hints_remap_through_an_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -342,7 +342,7 @@ fn inlay_hints_remap_through_an_edit() {
 /// with decorations but no server drifts out of position on every edit.
 #[test]
 fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // No attached server: this buffer has no LSP
     // server and no path, nothing but the decoration itself.
     let mut ed = editor_from("-[x]>abcdef\n");
@@ -400,7 +400,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
 /// gets its edits queued for the remap chokepoint.
 #[test]
 fn sign_remaps_through_a_line_inserted_above_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "xaaaa\nbbbb\ncccc\n": the sign below sits on "bbbb\n", line 1.
     let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\n");
     let bid = ed.focused_buffer_id();
@@ -444,7 +444,7 @@ fn sign_remaps_through_a_line_inserted_above_it() {
 /// line-anchored kinds together.
 #[test]
 fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -515,7 +515,7 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
 /// the newly inserted blank line.
 #[test]
 fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "xaaaa\n" is line 0 (chars 0..6); "bbbb\n" is line 1, starting
     // exactly at char 6, and the insertion below lands exactly there.
     let mut ed = editor_from("-[x]>aaaa\nbbbb\n");
@@ -564,7 +564,7 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
 
 #[test]
 fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_source() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -648,7 +648,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
 /// its name at this point.
 #[test]
 fn every_setter_interns_its_scope_at_the_set_call_not_at_first_render() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdef\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -683,7 +683,7 @@ fn every_setter_interns_its_scope_at_the_set_call_not_at_first_render() {
 
 #[test]
 fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // `-[x]>` puts the 1-char cursor marker "x" at the very start, so line 0
     // is "xaaaa\n" (6 chars) and lines 1-3 are 5 chars each ("bbbb\n" etc.):
     // line 3 (0-indexed) is in range, its line-start char offset is
@@ -728,7 +728,7 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
 
 #[test]
 fn set_eol_text_round_trips_and_replaces_per_source() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // `-[x]>` puts the 1-char cursor marker "x" at the very start, so line 0
     // is "xabcdef\n" (8 chars) and line 1 ("ghijkl\n") starts at char 8.
     let mut ed = editor_from("-[x]>abcdef\nghijkl\n");
@@ -787,7 +787,7 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
 
 #[test]
 fn set_eol_text_hide_on_insert_line_defaults_off_and_round_trips() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -812,7 +812,7 @@ fn set_eol_text_hide_on_insert_line_defaults_off_and_round_trips() {
 
 #[test]
 fn set_line_backgrounds_round_trips_and_replaces_per_source() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // "xabcdef\n" is line 0 (8 chars); "ghijkl\n" (line 1) starts at char 8.
     let mut ed = editor_from("-[x]>abcdef\nghijkl\n");
     let bid = ed.focused_buffer_id();
@@ -867,7 +867,7 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
 /// line-anchored kind (all four implement `PointAnchored`), not just signs.
 #[test]
 fn line_background_remaps_through_a_line_inserted_above_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     // The tint below sits on "bbbb\n", line 1.
     let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\n");
     let bid = ed.focused_buffer_id();
@@ -913,7 +913,7 @@ fn line_background_remaps_through_a_line_inserted_above_it() {
 
 #[test]
 fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
         "-[a]>bcdefghij\n",
@@ -1012,7 +1012,7 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
 /// that floor".
 #[test]
 fn diagnostics_for_buffer_errors_loudly_on_an_unknown_severity_name() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(

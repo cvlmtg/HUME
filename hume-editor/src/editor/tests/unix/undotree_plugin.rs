@@ -77,7 +77,7 @@ fn rendered_rows_after(earlier: &[&[Node]], nodes: &[Node]) -> String {
     write_core_plugin(&guard, "undotree-probe", &probe);
     std::fs::write(plugin_dir.join("render.scm"), RENDER_SCM).unwrap();
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.dirs = guard.dirs();
     run(
@@ -202,7 +202,7 @@ fn next_change_secs(ages: &[u64]) -> String {
     write_core_plugin(&guard, "undotree-probe", &probe);
     std::fs::write(plugin_dir.join("render.scm"), RENDER_SCM).unwrap();
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.dirs = guard.dirs();
     run(
@@ -359,7 +359,7 @@ fn drawer_open(ed: &Editor) -> bool {
 
 #[test]
 fn undotree_opens_on_current_revision() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     two_branches(&mut ed);
 
@@ -375,7 +375,7 @@ fn undotree_opens_on_current_revision() {
 
 #[test]
 fn undotree_enter_jumps_and_rerenders_current_marker() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     two_branches(&mut ed);
     assert_eq!(ed.doc().text().to_string(), "hllo\n");
@@ -402,7 +402,7 @@ fn undotree_enter_jumps_and_rerenders_current_marker() {
 
 #[test]
 fn undotree_redo_after_enter_follows_jumped_branch() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     two_branches(&mut ed);
     toggle(&mut ed);
@@ -423,7 +423,7 @@ fn undotree_redo_after_enter_follows_jumped_branch() {
 
 #[test]
 fn undotree_refreshes_after_edit() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     two_branches(&mut ed);
     toggle(&mut ed);
@@ -441,7 +441,7 @@ fn undotree_refreshes_after_edit() {
 
 #[test]
 fn undotree_saved_marker_follows_a_write() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     let path = tmp.path().join("saved.txt");
     std::fs::write(&path, "hello\n").unwrap();
@@ -466,7 +466,7 @@ fn undotree_saved_marker_follows_a_write() {
 
 #[test]
 fn undotree_refreshes_after_net_identity_undo() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     for key_event in [key('i'), key('x'), key_esc(), key('d')] {
         ed.feed_key(key_event);
@@ -546,7 +546,7 @@ fn diff_line_bgs(ed: &Editor, bid: BufferId) -> usize {
 /// root ("hello"): the diff shows the `e` rev2 removed, on the root's line.
 #[test]
 fn undotree_draws_the_current_revisions_diff_on_open() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_git_diff(tmp.path());
     two_branches(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -562,7 +562,7 @@ fn undotree_draws_the_current_revisions_diff_on_open() {
 
 #[test]
 fn undotree_enter_redraws_the_diff_for_the_revision_jumped_to() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_git_diff(tmp.path());
     two_branches(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -581,7 +581,7 @@ fn undotree_enter_redraws_the_diff_for_the_revision_jumped_to() {
 /// the new text under the previous revision's diff.
 #[test]
 fn undotree_enter_draws_the_jumped_to_revisions_diff_in_the_same_settle() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_git_diff(tmp.path());
     two_branches(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -602,7 +602,7 @@ fn undotree_enter_draws_the_jumped_to_revisions_diff_in_the_same_settle() {
 /// row appear in the same settle as the redo.
 #[test]
 fn undotree_redo_in_buffer_redraws_diff_and_marker_in_the_same_settle() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_git_diff(tmp.path());
     two_branches(&mut ed);
     ed.feed_key(key('u'));
@@ -627,7 +627,7 @@ fn undotree_redo_in_buffer_redraws_diff_and_marker_in_the_same_settle() {
 
 #[test]
 fn undotree_root_has_no_diff() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_git_diff(tmp.path());
     two_branches(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -645,7 +645,7 @@ fn undotree_root_has_no_diff() {
 
 #[test]
 fn undotree_toggle_close_clears_the_diff() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_git_diff(tmp.path());
     two_branches(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -660,7 +660,7 @@ fn undotree_toggle_close_clears_the_diff() {
 
 #[test]
 fn undotree_esc_clears_the_diff() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_git_diff(tmp.path());
     two_branches(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -708,7 +708,7 @@ fn undotree_session_ends_when_clearing_the_diff_raises() {
     );
     std::fs::write(&plugin_scm, patched).unwrap();
 
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.dirs = guard.dirs();
     let load = format!(
@@ -735,7 +735,7 @@ fn undotree_session_ends_when_clearing_the_diff_raises() {
 /// revision.
 #[test]
 fn undotree_redraws_the_diff_only_when_the_revision_changes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let _guard = RealRuntimeDirs::new();
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.dirs = _guard.dirs();
@@ -776,7 +776,7 @@ fn undotree_redraws_the_diff_only_when_the_revision_changes() {
 /// stops showing a diff.
 #[test]
 fn undotree_buffer_switch_clears_the_diff_of_the_buffer_left() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_git_diff(tmp.path());
     two_branches(&mut ed);
     let first = ed.focused_buffer_id();
@@ -804,7 +804,7 @@ fn undotree_buffer_switch_clears_the_diff_of_the_buffer_left() {
 /// once, in the status line, how to get one.
 #[test]
 fn undotree_without_git_diff_opens_with_a_notice_and_no_diff() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     two_branches(&mut ed);
     let bid = ed.focused_buffer_id();
@@ -835,7 +835,7 @@ fn undotree_without_git_diff_opens_with_a_notice_and_no_diff() {
 
 #[test]
 fn undotree_toggle_closes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
 
     toggle(&mut ed);
@@ -848,7 +848,7 @@ fn undotree_toggle_closes() {
 
 #[test]
 fn undotree_esc_ends_session() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     toggle(&mut ed);
 
@@ -871,7 +871,7 @@ fn undotree_esc_ends_session() {
 
 #[test]
 fn undotree_follows_buffer_switch() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     two_branches(&mut ed);
     toggle(&mut ed);
@@ -886,7 +886,7 @@ fn undotree_follows_buffer_switch() {
 
 #[test]
 fn undotree_typed_command_opens_the_drawer() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
 
     type_cmd(&mut ed, ":undotree");
@@ -898,7 +898,7 @@ fn undotree_typed_command_opens_the_drawer() {
 
 #[test]
 fn undotree_typed_command_rejects_an_argument() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
 
     type_cmd(&mut ed, ":undotree foo");
@@ -936,7 +936,7 @@ fn copy_plugins_with_raising_renderer(guard: &RuntimeDirs) {
 fn undotree_session_survives_a_raising_diff_renderer() {
     let guard = RuntimeDirs::new();
     copy_plugins_with_raising_renderer(&guard);
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.dirs = guard.dirs();
     let load = format!(
@@ -967,7 +967,7 @@ fn undotree_session_survives_a_raising_diff_renderer() {
 /// selections come from the revision and the first pane's are carried along.
 #[test]
 fn undotree_enter_acts_through_the_focused_pane() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     two_branches(&mut ed);
     let first = ed.state.focus.id();
@@ -994,7 +994,7 @@ fn undotree_enter_acts_through_the_focused_pane() {
 /// the same buffer: one Enter jumps, with no retarget step first.
 #[test]
 fn undotree_enter_jumps_after_the_session_pane_closes() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     two_branches(&mut ed);
     toggle(&mut ed);
@@ -1015,7 +1015,7 @@ fn undotree_enter_jumps_after_the_session_pane_closes() {
 
 #[test]
 fn undotree_ages_refresh_while_the_drawer_is_open() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     toggle(&mut ed);
     let before = drawer_rows(&ed);
@@ -1047,7 +1047,7 @@ fn open_foreign_drawer(ed: &mut Editor) {
 /// follows must leave the foreign rows alone.
 #[test]
 fn undotree_session_ends_when_another_drawer_replaces_it() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_foreign_drawer(tmp.path());
     toggle(&mut ed);
     open_foreign_drawer(&mut ed);
@@ -1065,7 +1065,7 @@ fn undotree_session_ends_when_another_drawer_replaces_it() {
 /// tree: the new session must survive it and keep following history.
 #[test]
 fn undotree_new_session_survives_the_replaced_drawers_queued_close() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_foreign_drawer(tmp.path());
     toggle(&mut ed);
     open_foreign_drawer(&mut ed);

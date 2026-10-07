@@ -474,16 +474,6 @@ impl ScriptingHost {
         self.effects.iter().map(|e| &e.effect).collect()
     }
 
-    /// Override the data directory.  Used only in tests that need a predictable
-    /// plugin install location. Rebuilds the whole `ScriptDirs` so the
-    /// display form and install-lock root stay in sync with the override.
-    #[cfg(any(test, feature = "test-util"))]
-    pub fn set_data_dir(&mut self, dir: std::path::PathBuf) {
-        let init_dir = self.dirs.init_dir.take();
-        self.dirs = builtins::dirs::ScriptDirs::new(Some(dir), self.dirs.runtime_dir.clone());
-        self.dirs.init_dir = init_dir;
-    }
-
     #[cfg(any(test, feature = "test-util"))]
     pub fn interrupt_flag_for_test(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
         std::sync::Arc::clone(&self.interrupt_flag)

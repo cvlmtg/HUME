@@ -430,7 +430,7 @@ fn an_edit_from_a_queued_steel_call_is_carried_into_the_tree_before_the_frame() 
         original,
         "setup: an edit to undo"
     );
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     run(
         &mut ed,
         tmp.path(),

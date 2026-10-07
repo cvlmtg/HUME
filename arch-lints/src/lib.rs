@@ -206,7 +206,7 @@ pub fn strip_line_comment(line: &str) -> &str {
     line
 }
 
-/// One violation found by [`scan_lines`]/[`scan_forbidden`], or by a lint
+/// One violation found by [`scan_lines`], or by a lint
 /// that builds its own `Violation` list directly (`test_globals_spawn.rs`'s
 /// `scan`, whose `detail` is a free-form description ("spawns unqualified
 /// internally") rather than the offending line verbatim.
@@ -231,8 +231,7 @@ impl std::fmt::Display for Violation {
 /// `paths` tracking `#[cfg(test)] mod tests { … }` extent (skipped
 /// entirely) and a two-tier opt-out, then calls `find` on each surviving,
 /// comment-stripped line, pushing one `Violation` per match it reports
-/// finding. `scan_forbidden` (below) is the common case: a fixed
-/// forbidden-substring list.
+/// finding.
 ///
 /// **Opt-out**: a comment containing `marker` (e.g. `"// test-global-safe:"`)
 /// suppresses a hit on the violation line itself; on the line *above*, only
@@ -318,23 +317,6 @@ pub fn scan_lines(
     }
 
     violations
-}
-
-/// Scan `paths` for any of `forbidden` patterns in active (non-test,
-/// non-comment) code: [`scan_lines`] specialized to a fixed
-/// forbidden-substring list, the shape every lint in this module needs.
-pub fn scan_forbidden(
-    paths: &[std::path::PathBuf],
-    display_root: &std::path::Path,
-    forbidden: &[&'static str],
-    marker: &str,
-) -> Vec<Violation> {
-    scan_lines(paths, display_root, marker, |code| {
-        forbidden
-            .iter()
-            .filter(|&&pattern| code.contains(pattern))
-            .count()
-    })
 }
 
 /// Extracts every double-quoted string literal's contents from `s`,

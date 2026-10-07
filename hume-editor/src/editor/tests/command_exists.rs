@@ -15,8 +15,10 @@ fn exists(ed: &mut Editor, tmp: &std::path::Path, setup: &str, names: &[&str]) -
         r#"{setup}
            (define-typed-command! "check" "" (lambda (bid) (log! 'info (to-string (list {calls})))))"#
     );
-    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
-    host.set_data_dir(tmp.to_path_buf());
+    let host = hume_scripting::ScriptingHost::new(&Dirs {
+        data: Some(tmp.to_path_buf()),
+        ..Dirs::none()
+    });
     install_source(ed, host, &source, tmp);
     type_cmd(ed, ":check");
     let msg = ed.state.status_msg.clone().unwrap();
@@ -28,7 +30,7 @@ fn exists(ed: &mut Editor, tmp: &std::path::Path, setup: &str, names: &[&str]) -
 
 #[test]
 fn native_and_steel_commands_exist() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     let got = exists(
         &mut ed,
@@ -41,7 +43,7 @@ fn native_and_steel_commands_exist() {
 
 #[test]
 fn lazy_plugin_command_exists_without_activating_the_plugin() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     let plugin_dir = tmp.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
@@ -69,7 +71,7 @@ fn lazy_plugin_command_exists_without_activating_the_plugin() {
 
 #[test]
 fn builtin_procedures_exist() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     let got = exists(
         &mut ed,
@@ -82,7 +84,7 @@ fn builtin_procedures_exist() {
 
 #[test]
 fn macros_and_unknown_names_do_not_exist() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     let got = exists(&mut ed, tmp.path(), "", &["call!", "no-such-thing-xyz"]);
     assert_eq!(got, [false, false]);
@@ -90,7 +92,7 @@ fn macros_and_unknown_names_do_not_exist() {
 
 #[test]
 fn typed_only_command_does_not_exist() {
-    let tmp = safe_tempdir();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     let got = exists(
         &mut ed,
