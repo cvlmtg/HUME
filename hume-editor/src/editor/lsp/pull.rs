@@ -94,7 +94,7 @@ impl EditorState {
         let responder: RustResponder = Box::new(move |state, _view, answer| {
             state.lsp_apply_pull_report(bid, sid, answer);
         });
-        self.lsp_request_json(bid, sid, PULL, params, false, responder);
+        self.lsp_request_json(bid, sid, PULL, params, responder);
     }
 
     /// Stores a diagnostics report: a full one replaces what `sid` reported

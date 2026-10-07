@@ -93,7 +93,7 @@
       (cond
         (err (lsp/report-error! "locations" err))
         ;; No server answered: the rows shown are still the best known.
-        ((null? (filter (lambda (r) (not (hash-ref r 'err))) results))
+        ((lsp/none-answered? results)
          (lsp/report-answer-errors! "locations" results))
         (else
          (let ((parts (lsp-locations->display-parts (lsp/answer-locations "locations" results))))

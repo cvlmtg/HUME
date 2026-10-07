@@ -100,6 +100,7 @@ pub(in crate::editor) fn server_status(
             root: i.client.root().to_path_buf(),
             state: i.client.state().name(),
             pending: i.client.pending_count(),
+            encoding: i.client.encoding(),
         })
         .collect()
 }
@@ -511,22 +512,21 @@ impl crate::editor::Editor {
     /// stopped.
     pub(in crate::editor) fn lsp_status_text(&self) -> String {
         let lsp = &self.state.lsp;
-        let instances = sorted_instances(lsp);
+        let status = server_status(lsp);
 
         let mut lines = Vec::new();
-        if instances.is_empty() {
+        if status.is_empty() {
             lines.push("No LSP servers running.".to_string());
         }
-        for instance in instances {
-            let languages = lsp.registry.languages_of(&instance.name);
+        for entry in status {
             lines.push(format!(
                 "{} [{}] @ {}: {}, {} in flight, encoding: {:?}",
-                instance.name,
-                languages.join(", "),
-                instance.client.root().display(),
-                instance.client.state().name(),
-                instance.client.pending_count(),
-                instance.client.encoding(),
+                entry.name,
+                entry.languages.join(", "),
+                entry.root.display(),
+                entry.state,
+                entry.pending,
+                entry.encoding,
             ));
         }
 

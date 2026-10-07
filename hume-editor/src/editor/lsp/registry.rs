@@ -9,7 +9,7 @@ use hume_scripting::{FeatureFilter, ListEntry, ListLayer, ServerName};
 use rustc_hash::FxHashMap;
 
 /// The process a `register-lsp-server!` call spawns and configures.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(in crate::editor::lsp) struct LspServerConfig {
     pub(in crate::editor) command: String,
     pub(in crate::editor) args: Vec<String>,
@@ -24,26 +24,6 @@ pub(in crate::editor::lsp) struct LspServerConfig {
     /// `#:env`: applied additively to the spawned process's inherited
     /// environment (`Instances::spawn`, via `LspBackend::start`).
     pub(in crate::editor) env: Vec<(String, String)>,
-}
-
-impl LspServerConfig {
-    /// Whether a server spawned with `other` is the process this config
-    /// describes: the same command, arguments, environment and the two
-    /// blobs it is told at startup.
-    pub(in crate::editor::lsp) fn same_process(&self, other: &Self) -> bool {
-        let Self {
-            command,
-            args,
-            init_options,
-            settings,
-            env,
-        } = self;
-        *command == other.command
-            && *args == other.args
-            && *init_options == other.init_options
-            && *settings == other.settings
-            && *env == other.env
-    }
 }
 
 /// Walks up from `file`'s directory to the first ancestor containing any of

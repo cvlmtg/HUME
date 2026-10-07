@@ -23,6 +23,7 @@ use lsp_types::notification::{
 };
 
 use super::document::{OpenedAs, PendingChange};
+use super::per_encoding;
 use crate::editor::EditorState;
 
 impl EditorState {
@@ -46,6 +47,15 @@ impl EditorState {
             return;
         };
         let servers: Vec<ServerId> = self.buffer_positions.lsp.servers(bid).collect();
+        let mut full_servers = servers
+            .iter()
+            .filter(|&&sid| {
+                self.lsp
+                    .instances
+                    .get(sid)
+                    .is_some_and(|i| i.client.change_sync() == Some(TextDocumentSyncKind::FULL))
+            })
+            .count();
         let mut whole_document: Option<serde_json::Value> = None;
         let mut incremental: Vec<(PositionEncoding, Vec<serde_json::Value>)> = Vec::new();
         for sid in servers {
@@ -55,18 +65,22 @@ impl EditorState {
             match client.change_sync() {
                 None => {}
                 Some(TextDocumentSyncKind::FULL) => {
-                    let params = whole_document
-                        .get_or_insert_with(|| {
-                            let text = self.buffers.get(bid).text();
-                            serde_json::json!({
-                                "textDocument": {
-                                    "uri": uri,
-                                    "version": wire_version(text.generation()),
-                                },
-                                "contentChanges": [{ "text": text.to_string() }],
-                            })
+                    full_servers -= 1;
+                    let whole = whole_document.get_or_insert_with(|| {
+                        let text = self.buffers.get(bid).text();
+                        serde_json::json!({
+                            "textDocument": {
+                                "uri": uri,
+                                "version": wire_version(text.generation()),
+                            },
+                            "contentChanges": [{ "text": text.to_string() }],
                         })
-                        .clone();
+                    });
+                    let params = if full_servers == 0 {
+                        std::mem::take(whole)
+                    } else {
+                        whole.clone()
+                    };
                     client.send_or_queue(
                         backend,
                         notification(DidChangeTextDocument::METHOD, params),
@@ -74,15 +88,10 @@ impl EditorState {
                 }
                 Some(_) => {
                     let encoding = client.encoding();
-                    let index = match incremental.iter().position(|(e, _)| *e == encoding) {
-                        Some(index) => index,
-                        None => {
-                            incremental
-                                .push((encoding, incremental_changes(&pending, &uri, encoding)));
-                            incremental.len() - 1
-                        }
-                    };
-                    for params in &incremental[index].1 {
+                    let changes = per_encoding(&mut incremental, encoding, || {
+                        incremental_changes(&pending, &uri, encoding)
+                    });
+                    for params in changes {
                         client.send_or_queue(
                             backend,
                             notification(DidChangeTextDocument::METHOD, params.clone()),

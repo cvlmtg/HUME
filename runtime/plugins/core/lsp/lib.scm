@@ -1,7 +1,7 @@
 ;;; core:lsp/lib.scm — shared helpers used by every feature file. See
 ;;; docs/architecture.md.
 
-(provide lsp/report-error! lsp/answers lsp/report-answer-errors! lsp/with-position-params
+(provide lsp/report-error! lsp/answers lsp/none-answered? lsp/report-answer-errors! lsp/with-position-params
          lsp/visible-lines lsp/resolve-pane
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?
          lsp/with-servers)
@@ -58,6 +58,10 @@
   (map (lambda (r) (hash-ref r 'result))
        (filter (lambda (r) (not (or (hash-ref r 'err) (void? (hash-ref r 'result)))))
                results)))
+
+;; Whether no server in an `lsp-request-all!` answer gave a result, errors aside.
+(define (lsp/none-answered? results)
+  (null? (filter (lambda (r) (not (hash-ref r 'err))) results)))
 
 ;; Reports each server's error in an `lsp-request-all!` answer.
 (define (lsp/report-answer-errors! what results)

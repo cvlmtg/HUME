@@ -102,7 +102,7 @@ impl Instances {
         for instance in self.map.values_mut() {
             let drifted = registry
                 .get(&instance.name)
-                .is_some_and(|config| !config.same_process(&instance.spawned));
+                .is_some_and(|config| *config != instance.spawned);
             if drifted && !instance.drift_reported {
                 names.push(instance.name.clone());
             }

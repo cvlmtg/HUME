@@ -394,6 +394,7 @@ pub struct LspServerStatusEntry {
     /// …), the symbol Steel receives.
     pub state: &'static str,
     pub pending: usize,
+    pub encoding: hume_rope::position_encoding::PositionEncoding,
 }
 
 /// Which listeners a trigger-char set is for: `on-trigger-char` hooks named

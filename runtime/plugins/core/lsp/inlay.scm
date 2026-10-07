@@ -24,11 +24,6 @@
                "range" (hash "start" (hash "line" first "character" 0)
                               "end" (hash "line" end "character" 0))))))
 
-;; When every server failed the hints already shown stay (docs/decorations.md).
-(define (lsp/every-slot-failed? results)
-  (and (pair? results)
-       (null? (filter (lambda (r) (not (hash-ref r 'err))) results))))
-
 ;;; `pane` must already be a real, live pane — see docs/decorations.md's "Inlay hints".
 ;; Every server's hints merge into one set; a buffer left with no server
 ;; giving hints is cleared.
@@ -43,7 +38,8 @@
                 (lambda (err results)
                   (when err (lsp/report-error! "inlay hints" err))
                   (lsp/report-answer-errors! "inlay hints" results)
-                  (unless (or err (lsp/every-slot-failed? results))
+                  ;; When every server failed the hints already shown stay (docs/decorations.md).
+                  (unless (or err (and (pair? results) (lsp/none-answered? results)))
                     (set-inlay-hints! "lsp-inlay-hints" pane
                       (filter (lambda (e) e)
                               (map (lambda (h) (lsp/hint->store-entry pane h))

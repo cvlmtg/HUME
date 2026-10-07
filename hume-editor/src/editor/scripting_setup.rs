@@ -69,23 +69,17 @@ impl Editor {
         while let Some(effect) = effects.pop_front() {
             match effect {
                 Effect::LanguageReg(reg) => {
-                    let mut batch = vec![reg];
-                    while matches!(effects.front(), Some(Effect::LanguageReg(_))) {
-                        let Some(Effect::LanguageReg(next)) = effects.pop_front() else {
-                            unreachable!("front() just confirmed a LanguageReg variant")
-                        };
-                        batch.push(next);
-                    }
+                    let batch = take_run(&mut effects, reg, |effect| match effect {
+                        Effect::LanguageReg(next) => Ok(next),
+                        other => Err(Box::new(other)),
+                    });
                     self.apply_pending_language_regs(batch);
                 }
                 Effect::LspServerOp(op) => {
-                    let mut batch = vec![op];
-                    while matches!(effects.front(), Some(Effect::LspServerOp(_))) {
-                        let Some(Effect::LspServerOp(next)) = effects.pop_front() else {
-                            unreachable!("front() just confirmed an LspServerOp variant")
-                        };
-                        batch.push(next);
-                    }
+                    let batch = take_run(&mut effects, op, |effect| match effect {
+                        Effect::LspServerOp(next) => Ok(next),
+                        other => Err(Box::new(other)),
+                    });
                     self.apply_lsp_server_ops(batch);
                 }
                 Effect::SetBufferLanguage { buffer, language } => {
@@ -1007,4 +1001,24 @@ pub(super) fn theme_search_paths() -> Vec<PathBuf> {
         paths.push(rt.join("themes"));
     }
     paths
+}
+
+/// `first` and the effects right behind it that `take` unwraps, in order;
+/// the first effect `take` refuses stays at the front of `effects`.
+fn take_run<T>(
+    effects: &mut std::collections::VecDeque<Effect>,
+    first: T,
+    take: fn(Effect) -> Result<T, Box<Effect>>,
+) -> Vec<T> {
+    let mut run = vec![first];
+    while let Some(effect) = effects.pop_front() {
+        match take(effect) {
+            Ok(next) => run.push(next),
+            Err(other) => {
+                effects.push_front(*other);
+                break;
+            }
+        }
+    }
+    run
 }

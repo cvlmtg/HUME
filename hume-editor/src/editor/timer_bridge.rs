@@ -91,39 +91,52 @@ impl Editor {
     /// (every scroll step, every frame): a scroll burst must not queue
     /// hundreds of hook evals waiting for Steel to debounce them itself.
     pub(super) fn debounce_viewport_change(&mut self, pane_id: PaneId) {
-        if let Some(old_id) = self.viewport_debounce.remove(&pane_id) {
-            TimerHandle {
-                wheel: &mut self.timer_wheel,
-                payloads: &mut self.timer_payloads,
-            }
-            .cancel(old_id.0);
-        }
-        let ms = self.state.settings.lsp_viewport_debounce_ms as u64;
-        let id = self.timer_wheel.schedule(Duration::from_millis(ms));
-        self.timer_payloads
-            .insert(id, TimerPayload::ViewportDebounce(pane_id));
-        self.viewport_debounce.insert(pane_id, id);
+        let after = Duration::from_millis(self.state.settings.lsp_viewport_debounce_ms as u64);
+        reschedule(
+            &mut self.viewport_debounce,
+            &mut self.timer_wheel,
+            &mut self.timer_payloads,
+            pane_id,
+            after,
+            TimerPayload::ViewportDebounce(pane_id),
+        );
     }
 
     /// (Re)schedules `bid`'s diagnostics pull, cancelling whichever timer
     /// from a previous call is still pending, so a typing burst collapses to
     /// one pull, `lsp.diagnostics-pull-debounce-ms` after it settles.
     pub(super) fn debounce_diagnostic_pull(&mut self, bid: BufferId) {
-        self.cancel_diagnostic_pull_debounce(bid);
-        let ms = self.state.settings.lsp_diagnostics_pull_debounce_ms as u64;
-        let id = self.timer_wheel.schedule(Duration::from_millis(ms));
-        self.timer_payloads
-            .insert(id, TimerPayload::DiagnosticPullDebounce(bid));
-        self.diagnostic_pull_debounce.insert(bid, id);
+        let after =
+            Duration::from_millis(self.state.settings.lsp_diagnostics_pull_debounce_ms as u64);
+        reschedule(
+            &mut self.diagnostic_pull_debounce,
+            &mut self.timer_wheel,
+            &mut self.timer_payloads,
+            bid,
+            after,
+            TimerPayload::DiagnosticPullDebounce(bid),
+        );
     }
+}
 
-    fn cancel_diagnostic_pull_debounce(&mut self, bid: BufferId) {
-        if let Some(old_id) = self.diagnostic_pull_debounce.remove(&bid) {
-            TimerHandle {
-                wheel: &mut self.timer_wheel,
-                payloads: &mut self.timer_payloads,
-            }
-            .cancel(old_id.0);
+/// Schedules `payload` after `after` as `key`'s pending timer in `pending`,
+/// cancelling the one a previous call left there.
+fn reschedule<K: std::hash::Hash + Eq>(
+    pending: &mut rustc_hash::FxHashMap<K, TimerId>,
+    wheel: &mut super::timers::TimerWheel,
+    payloads: &mut rustc_hash::FxHashMap<TimerId, TimerPayload>,
+    key: K,
+    after: Duration,
+    payload: TimerPayload,
+) {
+    if let Some(old_id) = pending.remove(&key) {
+        TimerHandle {
+            wheel: &mut *wheel,
+            payloads: &mut *payloads,
         }
+        .cancel(old_id.0);
     }
+    let id = wheel.schedule(after);
+    payloads.insert(id, payload);
+    pending.insert(key, id);
 }

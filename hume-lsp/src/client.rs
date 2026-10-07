@@ -305,6 +305,9 @@ pub struct LspClient {
     /// the raw capability on every position conversion, not an independent
     /// fact that could drift on its own.
     encoding: PositionEncoding,
+    /// The `didChange` form the server asked for, decoded from the
+    /// capabilities by `handle_initialize_response`; `FULL` until then.
+    change_sync: Option<TextDocumentSyncKind>,
     root: PathBuf,
     /// `initializationOptions` for the `initialize` request, set via
     /// `set_init_options` before `start_handshake` to take effect; `None`
@@ -340,6 +343,7 @@ impl LspClient {
             state: ServerState::Starting,
             caps_json: None,
             encoding: PositionEncoding::Utf16,
+            change_sync: Some(TextDocumentSyncKind::FULL),
             root,
             init_options: None,
             settings: None,
@@ -393,23 +397,9 @@ impl LspClient {
     /// handshake there is no declaration to read, so this answers `FULL`: a
     /// whole-document event is the one form every server accepts, and
     /// dropping edits queued while `Starting` would desync the mirror
-    /// permanently. Derived from `caps_json` rather than cached: read once
-    /// per flush, not once per position conversion, so `encoding`'s
-    /// decode-once rationale doesn't apply here.
+    /// permanently.
     pub fn change_sync(&self) -> Option<TextDocumentSyncKind> {
-        let Some(caps) = self.caps_json.as_deref() else {
-            return Some(TextDocumentSyncKind::FULL); // pre-handshake: nothing declared yet
-        };
-        let sync = caps.get("textDocumentSync").filter(|v| !v.is_null())?;
-        // The initialize result decoded as a whole, so this shape is valid.
-        let sync: TextDocumentSyncCapability = serde_json::from_value(sync.clone()).ok()?;
-        let kind = match &sync {
-            TextDocumentSyncCapability::Kind(k) => *k,
-            TextDocumentSyncCapability::Options(TextDocumentSyncOptions { change, .. }) => {
-                (*change)?
-            }
-        };
-        (kind != TextDocumentSyncKind::NONE).then_some(kind)
+        self.change_sync
     }
 
     pub fn root(&self) -> &std::path::Path {
@@ -723,6 +713,14 @@ impl LspClient {
         } else {
             PositionEncoding::Utf16
         };
+        self.change_sync = match &parsed.capabilities.text_document_sync {
+            Some(TextDocumentSyncCapability::Kind(kind)) => Some(*kind),
+            Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
+                change, ..
+            })) => *change,
+            None => None,
+        }
+        .filter(|kind| *kind != TextDocumentSyncKind::NONE);
         self.caps_json = raw_caps;
         self.state = ServerState::Running;
 

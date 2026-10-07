@@ -43,11 +43,28 @@ struct Pass {
     failed: FxHashSet<(ServerName, PathBuf)>,
 }
 
-/// What stopping a target ended: the `(name, root)` of each instance
-/// stopped, and the buffers that were attached to them, each once.
-struct Stopped {
-    servers: Vec<(ServerName, PathBuf)>,
-    buffers: Vec<BufferId>,
+/// Whether an `:lsp-stop`-style op leaves its servers stopped or starts
+/// them again.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ServerOp {
+    Stop,
+    Restart,
+}
+
+impl ServerOp {
+    fn verb(self) -> &'static str {
+        match self {
+            ServerOp::Stop => "stop",
+            ServerOp::Restart => "restart",
+        }
+    }
+
+    fn past(self) -> &'static str {
+        match self {
+            ServerOp::Stop => "stopped",
+            ServerOp::Restart => "restarted",
+        }
+    }
 }
 
 /// One server a buffer should be attached to, before its instance is
@@ -99,27 +116,24 @@ impl EditorState {
     }
 
     /// Stops `target`'s servers: every buffer attached to one detaches from
-    /// it, and the instance stops.
-    fn lsp_stop_targets(&mut self, view: &EngineView, target: &LspServerTarget) -> Stopped {
+    /// it, and the instance stops. Returns the `(name, root)` of each
+    /// instance stopped.
+    fn lsp_stop_targets(
+        &mut self,
+        view: &EngineView,
+        target: &LspServerTarget,
+    ) -> Vec<(ServerName, PathBuf)> {
         let sids: Vec<ServerId> = match target {
             LspServerTarget::Buffer(bid) => self.buffer_positions.lsp.servers(*bid).collect(),
             LspServerTarget::Name(name) => self.lsp.instances.ids_named(name),
         };
-        let mut stopped = Stopped {
-            servers: Vec::new(),
-            buffers: Vec::new(),
-        };
+        let mut stopped = Vec::new();
         for sid in sids {
             if let Some(instance) = self.lsp.instances.get(sid) {
-                stopped
-                    .servers
-                    .push((instance.name.clone(), instance.client.root().to_path_buf()));
+                stopped.push((instance.name.clone(), instance.client.root().to_path_buf()));
             }
             for bid in self.buffer_positions.lsp.buffers_of(sid) {
                 self.lsp_detach(view, bid, sid, Announce::Hooks);
-                if !stopped.buffers.contains(&bid) {
-                    stopped.buffers.push(bid);
-                }
             }
             self.lsp_stop_instance(view, sid);
         }
@@ -247,7 +261,7 @@ impl EditorState {
             language_id: self.config.languages.lsp_language_id_of(lang).to_owned(),
             uri: uri.as_str().to_owned(),
         };
-        let language_roots = self.config.languages.roots_of(lang);
+        let root = roots.root_for(self.config.languages.roots_of(lang), path, &self.cwd);
         let wanted = self
             .lsp
             .registry
@@ -255,7 +269,7 @@ impl EditorState {
             .into_iter()
             .map(|p| Wanted {
                 name: p.name.clone(),
-                root: roots.root_for(language_roots, path, &self.cwd),
+                root: root.clone(),
                 filter: p.filter,
             })
             .collect();
@@ -520,10 +534,10 @@ impl Editor {
                 self.state.lsp.registry.set_list(language, layer, entries);
             }
             PendingLspServerOp::Stop { target } => {
-                self.stop_servers(&target, "stop", "stopped", false);
+                self.stop_servers(&target, ServerOp::Stop);
             }
             PendingLspServerOp::Restart { target } => {
-                self.stop_servers(&target, "restart", "restarted", true);
+                self.stop_servers(&target, ServerOp::Restart);
             }
             PendingLspServerOp::ShowStatus => {
                 let content = self.lsp_status_text();
@@ -540,15 +554,15 @@ impl Editor {
         }
     }
 
-    /// Stops `target`'s servers and reports it with `verb` (nothing matched)
-    /// or `past` (n servers). A `restart` reconciles the buffers they were
-    /// attached to, which starts their servers again.
-    fn stop_servers(&mut self, target: &LspServerTarget, verb: &str, past: &str, restart: bool) {
+    /// Stops `target`'s servers and reports what `op` did. A restart
+    /// reconciles the buffers they were attached to, which starts their
+    /// servers again.
+    fn stop_servers(&mut self, target: &LspServerTarget, op: ServerOp) {
         if self.report_unknown_target(target) {
             return;
         }
-        let mut ended = self.state.lsp_stop_targets(&self.view, target).servers;
-        if restart {
+        let mut ended = self.state.lsp_stop_targets(&self.view, target);
+        if op == ServerOp::Restart {
             for key in self.state.lsp_unstop(target) {
                 if !ended.contains(&key) {
                     ended.push(key);
@@ -560,9 +574,9 @@ impl Editor {
         }
         let n = ended.len();
         let text = if n == 0 {
-            format!("lsp: no matching server to {verb}")
+            format!("lsp: no matching server to {}", op.verb())
         } else {
-            format!("lsp: {past} {n} server(s)")
+            format!("lsp: {} {n} server(s)", op.past())
         };
         self.report(Severity::Info, text);
     }

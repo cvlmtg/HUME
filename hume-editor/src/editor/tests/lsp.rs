@@ -30,7 +30,7 @@ fn running(
 type Answers = Rc<RefCell<Vec<Result<serde_json::Value, String>>>>;
 
 /// Sends `method` to `sid` and records every answer its responder gets.
-fn request(ed: &mut Editor, sid: ServerId, method: &str, allow_stale: bool) -> Answers {
+fn request(ed: &mut Editor, sid: ServerId, method: &str) -> Answers {
     let answers: Answers = Rc::default();
     let sink = answers.clone();
     let bid = ed.focused_buffer_id();
@@ -39,7 +39,6 @@ fn request(ed: &mut Editor, sid: ServerId, method: &str, allow_stale: bool) -> A
         sid,
         method,
         serde_json::Value::Null,
-        allow_stale,
         Box::new(move |_state, _view, answer| sink.borrow_mut().push(answer)),
     );
     answers
@@ -52,7 +51,7 @@ fn callback_fires_with_ok_outcome_on_response() {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     });
 
-    let answers = request(&mut ed, sid, "textDocument/hover", false);
+    let answers = request(&mut ed, sid, "textDocument/hover");
 
     ed.drain_lsp();
 
@@ -67,7 +66,7 @@ fn callback_never_fires_for_a_request_with_no_response() {
     let tmp = safe_tempdir();
     let (mut ed, sid) = running(&tmp, |_| {});
 
-    let answers = request(&mut ed, sid, "textDocument/hover", false);
+    let answers = request(&mut ed, sid, "textDocument/hover");
 
     ed.drain_lsp();
 
@@ -86,7 +85,7 @@ fn timed_out_request_dispatches_callback_with_a_timeout_error() {
     let (mut ed, sid) = running(&tmp, |_| {});
     ed.state.settings.lsp_request_timeout_ms = 0;
 
-    let answers = request(&mut ed, sid, "textDocument/completion", false);
+    let answers = request(&mut ed, sid, "textDocument/completion");
 
     ed.drain_lsp();
 
@@ -107,7 +106,7 @@ fn stale_response_is_dropped_when_buffer_moved_past_its_text_version() {
         );
     });
 
-    let answers = request(&mut ed, sid, "textDocument/hover", false);
+    let answers = request(&mut ed, sid, "textDocument/hover");
 
     // Move the buffer's text version past the value the request was sent at.
     ed.step(key('d'));
@@ -117,25 +116,6 @@ fn stale_response_is_dropped_when_buffer_moved_past_its_text_version() {
     assert!(
         answers.borrow().is_empty(),
         "the buffer moved past the request's text version: the callback must be dropped"
-    );
-}
-
-#[test]
-fn allow_stale_delivers_despite_buffer_moving_past_its_text_version() {
-    let tmp = safe_tempdir();
-    let (mut ed, sid) = running(&tmp, |b| {
-        b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
-    });
-
-    let answers = request(&mut ed, sid, "textDocument/hover", true);
-
-    ed.step(key('d'));
-    ed.drain_lsp();
-
-    assert_eq!(
-        answers.borrow().len(),
-        1,
-        "allow_stale opts out of the staleness drop: the callback must still fire"
     );
 }
 
@@ -168,7 +148,7 @@ fn crash_fails_in_flight_requests_immediately_instead_of_waiting_for_their_deadl
     // until its (far-future) deadline.
     let (mut ed, sid) = running(&tmp, |_| {});
 
-    let answers = request(&mut ed, sid, "textDocument/hover", false);
+    let answers = request(&mut ed, sid, "textDocument/hover");
 
     ed.dispatch_lsp_action(
         sid,
@@ -360,7 +340,7 @@ fn lsp_stop_fails_in_flight_requests_as_stopped_instead_of_orphaning_them() {
     let tmp = safe_tempdir();
     let (mut ed, sid) = running(&tmp, |_| {});
 
-    let answers = request(&mut ed, sid, "textDocument/hover", false);
+    let answers = request(&mut ed, sid, "textDocument/hover");
 
     ed.apply_lsp_server_op(hume_scripting::PendingLspServerOp::Stop {
         target: hume_scripting::LspServerTarget::Name(

@@ -23,8 +23,8 @@ use hume_scripting::{
 };
 use steel::rvals::SteelVal;
 
-use super::ResponseAnchor;
 use super::route::{Routed, route};
+use super::{ResponseAnchor, per_encoding};
 use crate::editor::EditorState;
 use crate::editor::message_log::Severity;
 
@@ -135,13 +135,10 @@ pub(in crate::editor) type RustResponder =
 
 /// What a delivery needs beyond its members, whoever asked for it.
 struct DeliverySpec {
-    bid: BufferId,
+    anchor: ResponseAnchor,
     method: String,
     mode: RequestMode,
     supersede: Option<String>,
-    allow_stale: bool,
-    require_focus: Option<hume_engine::pipeline::PaneId>,
-    tracked: Option<hume_scripting::host::HostToken>,
     responder: Responder,
 }
 
@@ -271,13 +268,16 @@ impl EditorState {
             }
         };
         let spec = DeliverySpec {
-            bid: req.bid,
+            anchor: ResponseAnchor {
+                bid: req.bid,
+                version: self.buffers.get(req.bid).text().version(),
+                allow_stale: req.allow_stale,
+                require_focus: req.require_focus,
+                tracked: req.tracked,
+            },
             method: req.method,
             mode: req.mode,
             supersede: req.supersede,
-            allow_stale: req.allow_stale,
-            require_focus: req.require_focus,
-            tracked: req.tracked,
             responder: Responder::Steel(req.callback),
         };
         if let Some(did) = self.begin_delivery(spec, members) {
@@ -294,7 +294,6 @@ impl EditorState {
         server: hume_lsp::backend::ServerId,
         method: &str,
         params: serde_json::Value,
-        allow_stale: bool,
         responder: RustResponder,
     ) {
         let Some(server) = self.lsp.instances.server_ref(server) else {
@@ -309,13 +308,16 @@ impl EditorState {
         };
         self.lsp_flush_pending();
         let spec = DeliverySpec {
-            bid,
+            anchor: ResponseAnchor {
+                bid,
+                version: self.buffers.get(bid).text().version(),
+                allow_stale: false,
+                require_focus: None,
+                tracked: None,
+            },
             method: method.to_string(),
             mode: RequestMode::Single,
             supersede: None,
-            allow_stale,
-            require_focus: None,
-            tracked: None,
             responder: Responder::Rust(responder),
         };
         let members = vec![Member::Send(routed.remove(0), params)];
@@ -328,14 +330,7 @@ impl EditorState {
     /// Sends to every member and files the delivery. `Some` when no member
     /// is waiting, so the caller completes it now.
     fn begin_delivery(&mut self, spec: DeliverySpec, members: Vec<Member>) -> Option<DeliveryId> {
-        let anchor = ResponseAnchor {
-            bid: spec.bid,
-            version: self.buffers.get(spec.bid).text().version(),
-            allow_stale: spec.allow_stale,
-            require_focus: spec.require_focus,
-            tracked: spec.tracked,
-        };
-
+        let anchor = spec.anchor;
         let did = self.lsp.deliveries.next_id();
         let deadline =
             Instant::now() + Duration::from_millis(self.settings.lsp_request_timeout_ms as u64);
@@ -420,16 +415,12 @@ impl EditorState {
             Vec::new();
         routed
             .iter()
-            .map(|r| {
-                if let Some(json) = &params.json {
-                    return Ok(json.clone());
-                }
-                if let Some((_, json)) = by_encoding.iter().find(|(e, _)| *e == r.encoding) {
-                    return json.clone();
-                }
-                let json = serialize_params(text, bid, r.encoding, &params.value);
-                by_encoding.push((r.encoding, json.clone()));
-                json
+            .map(|r| match &params.json {
+                Some(json) => Ok(json.clone()),
+                None => per_encoding(&mut by_encoding, r.encoding, || {
+                    serialize_params(text, bid, r.encoding, &params.value)
+                })
+                .clone(),
             })
             .collect()
     }

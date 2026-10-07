@@ -12,9 +12,17 @@ use hume_lsp::test_util::{RecordingLspBackend, RequestLog, ResponseLog, ServerNo
 use hume_lsp::transport::InboundEvent;
 use hume_scripting::ScriptingHost;
 
-use super::{Editor, eval_with_real_host, select_marked};
+use super::{Editor, eval_with_real_host, install_source, select_marked};
 use crate::editor::lsp::LspState;
 use test_fixtures::testing::parse_state;
+
+/// The `file://` URI of `path`.
+pub(in crate::editor) fn file_uri(path: &Path) -> String {
+    hume_lsp::uri::path_to_uri(path)
+        .expect("path converts")
+        .as_str()
+        .to_string()
+}
 
 /// One `rust-analyzer` server serving `rust` buffers, rooted at the nearest
 /// `Cargo.toml`: the setup most tests need.
@@ -163,9 +171,8 @@ impl LspRig {
 
     /// Evaluates `source` in the rig's scripting host, as `init.scm` would.
     pub(in crate::editor) fn eval(&mut self, source: &str) {
-        let mut host = self.ed.scripting.take().expect("the rig installs a host");
-        eval_with_real_host(&mut self.ed, &mut host, source, &self.root);
-        self.ed.scripting = Some(host);
+        let host = self.ed.scripting.take().expect("the rig installs a host");
+        install_source(&mut self.ed, host, source, &self.root);
     }
 
     /// Stops every instance of the server called `name`.
@@ -253,10 +260,7 @@ impl LspRig {
             .get(self.bid)
             .path()
             .expect("the rig's buffer has a path");
-        hume_lsp::uri::path_to_uri(path)
-            .expect("path converts")
-            .as_str()
-            .to_string()
+        file_uri(path)
     }
 
     /// Delivers `msg` from `sid` as if it had just arrived.

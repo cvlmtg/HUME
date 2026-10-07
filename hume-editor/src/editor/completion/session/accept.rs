@@ -491,7 +491,6 @@ impl BufferSession {
             server_id,
             "completionItem/resolve",
             raw.value().clone(),
-            false,
             respond,
         );
     }

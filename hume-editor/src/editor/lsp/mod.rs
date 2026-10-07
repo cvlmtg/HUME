@@ -33,6 +33,7 @@ use hume_lsp::codec::RequestId;
 #[cfg(test)]
 use hume_lsp::inline::InlineLspBackend;
 use hume_lsp::transport::WakeCallback;
+use hume_rope::position_encoding::PositionEncoding;
 use hume_scripting::ServerName;
 
 use super::Editor;
@@ -74,6 +75,23 @@ pub(in crate::editor) fn wire_to_cluster(
     let (line, char_col) =
         hume_rope::position_encoding::wire_to_line_char_col(text.rope(), pos, encoding);
     text.columns().place_char(line, char_col)
+}
+
+/// The value cached for `encoding` in `cache`, computed by `make` and
+/// cached the first time that encoding is asked for.
+pub(in crate::editor::lsp) fn per_encoding<T>(
+    cache: &mut Vec<(PositionEncoding, T)>,
+    encoding: PositionEncoding,
+    make: impl FnOnce() -> T,
+) -> &T {
+    let index = match cache.iter().position(|(cached, _)| *cached == encoding) {
+        Some(index) => index,
+        None => {
+            cache.push((encoding, make()));
+            cache.len() - 1
+        }
+    };
+    &cache[index].1
 }
 
 /// How a crashed server is named to the user, with the command that
@@ -227,11 +245,9 @@ impl LspState {
     /// Every running instance of the server called `name`.
     #[cfg(test)]
     pub(in crate::editor) fn instances_named_for_test(&self, name: &str) -> Vec<ServerId> {
-        self.instances
-            .iter()
-            .filter(|(_, i)| i.name.as_str() == name)
-            .map(|(sid, _)| sid)
-            .collect()
+        ServerName::parse(name)
+            .map(|name| self.instances.ids_named(&name))
+            .unwrap_or_default()
     }
 
     /// The config `name` is registered with, or `None` if it is not.

@@ -221,7 +221,7 @@ impl Drop for RealRuntimeGuard {
 // plugin's `on-lsp-attach` and `on-diagnostics-changed` handlers are
 // installed by the time the attach and the first publish fire them.
 
-use super::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec};
+use super::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec, file_uri};
 use crate::editor::lsp::LspState;
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
@@ -240,14 +240,6 @@ fn core_lsp_init() -> String {
 /// of a [`core_lsp_rig`] test lives in.
 fn rig_root(tmp: &Path) -> PathBuf {
     std::fs::canonicalize(tmp).unwrap()
-}
-
-/// The `file://` URI of `path`.
-fn file_uri(path: &Path) -> String {
-    hume_lsp::uri::path_to_uri(path)
-        .unwrap()
-        .as_str()
-        .to_string()
 }
 
 /// The URI of the file a [`RigSpec::rust`] rig rooted at `tmp` opens, for a
