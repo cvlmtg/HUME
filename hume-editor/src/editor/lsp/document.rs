@@ -322,8 +322,9 @@ impl LspDocuments {
 
     /// Replaces `sid`'s filter on `bid`. The trigger tables depend on what
     /// the filter admits, so they are emptied for the attach hook to
-    /// register again, and the diagnostics pull is forgotten so the new
-    /// filter's pull asks afresh.
+    /// register again, and the diagnostics pull and its `resultId` are
+    /// forgotten: the stored diagnostics may have been dropped, so the new
+    /// filter's pull must return a full report.
     pub(in crate::editor::lsp) fn set_filter(
         &mut self,
         bid: BufferId,
@@ -334,6 +335,7 @@ impl LspDocuments {
             att.filter = filter;
             att.triggers.clear();
             att.pulled_at = None;
+            att.pull_result_id = None;
         }
     }
 

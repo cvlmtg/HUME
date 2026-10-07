@@ -225,6 +225,29 @@ fn restoring_a_pull_only_servers_diagnostics_pulls_again() {
 }
 
 #[test]
+fn a_pull_after_a_filter_change_carries_no_previous_result_id() {
+    let tmp = safe_tempdir();
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", pull_capabilities());
+    backend.respond_to(PULL, full_report("r1", &["first"]));
+    backend.respond_to(PULL, full_report("r2", &["first"]));
+    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[w]>ord\n"), backend);
+    settle(&mut rig.ed);
+    let sid = rig.sid("rust-analyzer");
+
+    rig.eval(&excluding("diagnostics"));
+    settle(&mut rig.ed);
+    assert!(stored_messages(&rig).is_empty());
+    rig.eval(r#"(set-language-servers! "rust" '("rust-analyzer"))"#);
+    settle(&mut rig.ed);
+
+    let pulls = rig.requests_to(sid, PULL);
+    assert_eq!(pulls.len(), 2);
+    assert_eq!(pulls[1].get("previousResultId"), None);
+    assert_eq!(stored_messages(&rig), ["first"]);
+}
+
+#[test]
 fn a_save_right_after_typing_pulls_once() {
     let tmp = safe_tempdir();
     let (mut backend, _, _) = RecordingLspBackend::new();
