@@ -91,9 +91,9 @@ pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
 pub(crate) const POSITION_NOT_JSON: &str =
     "a position value can only be sent through lsp-request!, lsp-request-all! or lsp-notify!";
 
-/// Converts a `SteelVal` into request [`Params`]: the same conversion as
-/// [`steel_to_json`], except a [`crate::DocPos`]/[`crate::DocRange`] stays a
-/// position for the server it is sent to, whose encoding it needs.
+/// Converts a `SteelVal` into request [`Params`]: the plain JSON conversion,
+/// except a [`crate::DocPos`]/[`crate::DocRange`] stays a position for the
+/// server it is sent to, whose encoding it needs.
 pub fn steel_to_params(v: &SteelVal) -> Result<Params, String> {
     let json = |value| Ok(Params::Json(value));
     match v {
