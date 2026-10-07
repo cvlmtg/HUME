@@ -588,7 +588,7 @@ impl LspClient {
                 self.pending.remove(&id);
                 self.initialize_id = None;
                 if self.state == ServerState::Starting {
-                    self.state = ServerState::Crashed;
+                    self.crash();
                     actions.push(ClientAction::Crashed {
                         error: Some(format!(
                             "initialize timed out after {}s",
@@ -639,6 +639,12 @@ impl LspClient {
         );
     }
 
+    /// Moves to `Crashed`. What was queued for the handshake is never sent.
+    fn crash(&mut self) {
+        self.state = ServerState::Crashed;
+        self.queued.clear();
+    }
+
     /// Send `msg` now if the handshake has completed, otherwise queue it for
     /// delivery, in order, once `initialized` goes out. A whole-document
     /// `didChange` replaces a `didChange` for the same document that is the
@@ -671,7 +677,7 @@ impl LspClient {
                 if matches!(self.state, ServerState::Crashed | ServerState::Dead) {
                     return Vec::new();
                 }
-                self.state = ServerState::Crashed;
+                self.crash();
                 vec![ClientAction::Crashed { error }]
             }
             InboundEvent::Message(Message::Response { id, result })
@@ -717,7 +723,7 @@ impl LspClient {
         let value = match result {
             Ok(v) => v,
             Err(e) => {
-                self.state = ServerState::Crashed;
+                self.crash();
                 return vec![ClientAction::Crashed {
                     error: Some(format!("initialize failed: {} ({})", e.message, e.code)),
                 }];
@@ -731,7 +737,7 @@ impl LspClient {
         let parsed: InitializeResult = match serde_json::from_value(value) {
             Ok(r) => r,
             Err(e) => {
-                self.state = ServerState::Crashed;
+                self.crash();
                 return vec![ClientAction::Crashed {
                     error: Some(format!("malformed initialize result: {e}")),
                 }];

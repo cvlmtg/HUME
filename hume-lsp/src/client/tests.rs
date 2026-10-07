@@ -940,6 +940,52 @@ fn drain_pending_completes_every_request_as_stopped() {
     );
 }
 
+/// A client with a request queued behind its `initialize`.
+fn starting_client_with_a_queued_request() -> LspClient {
+    let mut backend = InlineLspBackend::new();
+    let sid = backend
+        .start("x", &[], std::path::Path::new("."), &[])
+        .unwrap();
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.start_handshake(&mut backend);
+    let meta = RequestMeta {
+        method: "textDocument/hover".to_string(),
+        deadline: Instant::now() + std::time::Duration::from_secs(10),
+    };
+    client.send_request(
+        &mut backend,
+        "textDocument/hover",
+        serde_json::Value::Null,
+        meta,
+    );
+    assert_eq!(client.queued.len(), 1);
+    client
+}
+
+#[test]
+fn a_crash_while_starting_drops_what_was_queued() {
+    let mut client = starting_client_with_a_queued_request();
+    client.on_event(InboundEvent::Eof { error: None });
+    assert_eq!(client.state, ServerState::Crashed);
+    assert!(client.queued.is_empty());
+}
+
+#[test]
+fn a_failed_initialize_drops_what_was_queued() {
+    let mut client = starting_client_with_a_queued_request();
+    let id = client.initialize_id.clone().expect("handshake started");
+    client.on_event(InboundEvent::Message(Message::Response {
+        id,
+        result: Err(ResponseError {
+            code: -32603,
+            message: "boom".to_string(),
+            data: None,
+        }),
+    }));
+    assert_eq!(client.state, ServerState::Crashed);
+    assert!(client.queued.is_empty());
+}
+
 #[test]
 fn send_request_after_crashed_times_out_immediately_via_the_sweep() {
     let mut backend = InlineLspBackend::new();
