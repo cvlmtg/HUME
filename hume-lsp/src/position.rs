@@ -1,8 +1,7 @@
 //! `hume_rope::position_encoding::WirePos` ↔ `lsp_types::Range`, plus
-//! `WirePos` → the protocol's raw JSON object shape (outbound only: nothing
-//! in this crate decodes JSON back into a `WirePos`). [`position_from_json`]
-//! and [`range_from_json`] are the inbound decoders here, and decode into
-//! `lsp_types` rather than `WirePos`: they serve *lenient* callers
+//! `WirePos` ↔ the protocol's raw JSON object shape. [`wire_pos_from_json`] is
+//! the one decoder of that shape here. [`position_from_json`] and
+//! [`range_from_json`] narrow it into `lsp_types` for *lenient* callers
 //! (`completion_item`'s text edit and default edit range) that want `None`
 //! on a malformed field, not the per-field error text
 //! `location::decode_location` needs. That decoder reads the same JSON shape
@@ -25,15 +24,17 @@ use hume_rope::position_encoding::WirePos;
 /// callers with a genuine "not our fault" source (untrusted plugin input)
 /// turn `None` into their own error message instead of unwrapping.
 pub fn to_lsp_range(range: ExclusiveRange<WirePos>) -> Option<lsp_types::Range> {
-    fn to_position(pos: WirePos) -> Option<lsp_types::Position> {
-        Some(lsp_types::Position {
-            line: u32::try_from(pos.line).ok()?,
-            character: u32::try_from(pos.character).ok()?,
-        })
-    }
     Some(lsp_types::Range {
-        start: to_position(range.start)?,
-        end: to_position(range.end)?,
+        start: to_lsp_position(range.start)?,
+        end: to_lsp_position(range.end)?,
+    })
+}
+
+/// A wire position → `lsp_types::Position`, or `None` past `u32`.
+fn to_lsp_position(pos: WirePos) -> Option<lsp_types::Position> {
+    Some(lsp_types::Position {
+        line: u32::try_from(pos.line).ok()?,
+        character: u32::try_from(pos.character).ok()?,
     })
 }
 
@@ -64,15 +65,22 @@ pub fn to_json_range(range: ExclusiveRange<WirePos>) -> serde_json::Value {
     })
 }
 
-/// The protocol's `{"line": N, "character": M}` object → `lsp_types::Position`.
-/// `None` on a missing, non-numeric or out-of-`u32` field; a lenient caller's own fallback
-/// applies from there. See this module's doc for why `location::decode_location`
-/// doesn't share this decoder.
-pub fn position_from_json(v: &serde_json::Value) -> Option<lsp_types::Position> {
-    Some(lsp_types::Position {
-        line: u32::try_from(v.get("line")?.as_u64()?).ok()?,
-        character: u32::try_from(v.get("character")?.as_u64()?).ok()?,
+/// The protocol's `{"line": N, "character": M}` object → a wire position.
+/// `None` on a missing or non-numeric field.
+pub fn wire_pos_from_json(v: &serde_json::Value) -> Option<WirePos> {
+    let field = |key| usize::try_from(v.get(key)?.as_u64()?).ok();
+    Some(WirePos {
+        line: field("line")?,
+        character: field("character")?,
     })
+}
+
+/// [`wire_pos_from_json`] as an `lsp_types::Position`: `None` too on an
+/// out-of-`u32` field; a lenient caller's own fallback applies from there.
+/// See this module's doc for why `location::decode_location` doesn't share
+/// this decoder.
+pub fn position_from_json(v: &serde_json::Value) -> Option<lsp_types::Position> {
+    to_lsp_position(wire_pos_from_json(v)?)
 }
 
 /// The protocol's `{"start": …, "end": …}` object → `lsp_types::Range`, by

@@ -94,3 +94,40 @@ fn position_from_json_none_when_a_field_exceeds_u32() {
     assert_eq!(position_from_json(&line), None);
     assert_eq!(position_from_json(&character), None);
 }
+
+#[test]
+fn wire_pos_from_json_reads_the_protocol_shape() {
+    let v = serde_json::json!({"line": 3, "character": 7});
+    assert_eq!(
+        wire_pos_from_json(&v),
+        Some(WirePos {
+            line: 3,
+            character: 7
+        })
+    );
+}
+
+#[test]
+fn wire_pos_from_json_none_when_a_field_is_missing_or_not_a_number() {
+    for v in [
+        serde_json::json!({"character": 7}),
+        serde_json::json!({"line": 3}),
+        serde_json::json!({"line": "3", "character": 7}),
+        serde_json::json!({"line": -1, "character": 7}),
+    ] {
+        assert_eq!(wire_pos_from_json(&v), None, "{v}");
+    }
+}
+
+#[test]
+fn wire_pos_from_json_keeps_a_value_past_u32() {
+    let past = u64::from(u32::MAX) + 1;
+    let v = serde_json::json!({"line": past, "character": 7});
+    assert_eq!(
+        wire_pos_from_json(&v),
+        Some(WirePos {
+            line: past as usize,
+            character: 7
+        })
+    );
+}

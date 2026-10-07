@@ -803,19 +803,11 @@ pub(crate) fn wire_position(
     v: &serde_json::Value,
     what: &str,
 ) -> Result<hume_rope::position_encoding::WirePos, SteelErr> {
-    let field = |key| {
-        v.get(key)
-            .and_then(serde_json::Value::as_u64)
-            .and_then(|n| usize::try_from(n).ok())
-    };
-    match (field("line"), field("character")) {
-        (Some(line), Some(character)) => {
-            Ok(hume_rope::position_encoding::WirePos { line, character })
-        }
-        _ => Err(generic_err(format!(
+    hume_lsp::position::wire_pos_from_json(v).ok_or_else(|| {
+        generic_err(format!(
             "{what}: position must be a hashmap with numeric 'line' and 'character' keys, got {v}"
-        ))),
-    }
+        ))
+    })
 }
 
 /// Decodes a wire `{"start" ... "end" ...}` range into its two positions;
