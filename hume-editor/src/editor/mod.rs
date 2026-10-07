@@ -129,20 +129,17 @@ pub(crate) struct ConfigState {
     pub(in crate::editor) completion_sources: completion::SourceRegistry,
     /// Registry of configured language identities.
     pub(crate) languages: LanguageRegistry,
-    /// Trigger characters set for a language, keyed by `(kind, source,
-    /// language)`, so a call only replaces its own entry and two languages
-    /// sharing a source never clobber each other. An attachment-scoped set
-    /// lives on the attachment instead (`lsp/document.rs`); see
-    /// `triggers.rs`.
-    pub(in crate::editor) trigger_chars:
-        rustc_hash::FxHashMap<(hume_scripting::TriggerKind, String, String), Vec<char>>,
+    /// Trigger characters set for a language, by language name; a language
+    /// with no set has no entry. An attachment-scoped set lives on the
+    /// attachment instead (`lsp/document.rs`); see `triggers`.
+    pub(in crate::editor) triggers: rustc_hash::FxHashMap<Box<str>, triggers::TriggerTable>,
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, EOL text, extra highlights, line backgrounds). The render
     /// providers read these.
     pub(in crate::editor) decorations: hume_decorations::DecorationStores,
     /// Text pushed by `(set-statusline-text! source bid text)`, wholesale
     /// per `(bid, source)`, same replace semantics as `decorations`. Nested
-    /// rather than flat like `trigger_chars` above: the render side needs a
+    /// rather than flat: the render side needs a
     /// borrowed `(bid, &str)` lookup every frame, and a `HashMap` keyed on
     /// `(BufferId, Box<str>)` has no borrowed-key form, so flat would force an
     /// allocation per element per frame just to look one up.
@@ -201,7 +198,7 @@ impl ConfigState {
             registry: CommandRegistry::with_defaults(),
             completion_sources: completion::SourceRegistry::with_defaults(),
             languages: LanguageRegistry::new(),
-            trigger_chars: rustc_hash::FxHashMap::default(),
+            triggers: rustc_hash::FxHashMap::default(),
             decorations: hume_decorations::DecorationStores::reset(prior_clock),
             statusline_text: rustc_hash::FxHashMap::default(),
             pending_work: VecDeque::new(),

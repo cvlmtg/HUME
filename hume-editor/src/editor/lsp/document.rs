@@ -11,15 +11,13 @@ use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_scripting::{FeatureFilter, LspFeature};
 use ropey::Rope;
-use rustc_hash::FxHashMap;
 use slotmap::SecondaryMap;
 
-use crate::editor::triggers::set_trigger_chars;
-use hume_scripting::TriggerKind;
+use crate::editor::triggers::{Listener, TriggerTable};
 
 /// One server a buffer is attached to, with the features its language's
 /// list lets that server handle for it, and the trigger characters plugins
-/// registered for this buffer under it (kind and source name -> chars).
+/// registered for this buffer under it.
 /// The trigger characters go with the attachment, and with a change of its
 /// filter. `pull_result_id` is the `resultId` of the last diagnostics report
 /// the server gave for this buffer, and `pulled_at` the text version the last
@@ -28,7 +26,7 @@ use hume_scripting::TriggerKind;
 pub(in crate::editor) struct Attachment {
     pub(in crate::editor) server: ServerId,
     pub(in crate::editor) filter: FeatureFilter,
-    triggers: FxHashMap<(TriggerKind, String), Vec<char>>,
+    triggers: TriggerTable,
     pull_result_id: Option<String>,
     pulled_at: Option<TextVersion>,
 }
@@ -38,7 +36,7 @@ impl Attachment {
         Self {
             server,
             filter,
-            triggers: FxHashMap::default(),
+            triggers: TriggerTable::default(),
             pull_result_id: None,
             pulled_at: None,
         }
@@ -185,33 +183,26 @@ impl LspDocuments {
         }
     }
 
-    /// Every `(source, chars)` of `kind` registered on any of `bid`'s
-    /// attachments.
-    pub(in crate::editor) fn triggers(
+    /// The trigger tables of `bid`'s attachments, in attachment order.
+    pub(in crate::editor) fn trigger_tables(
         &self,
         bid: BufferId,
-        kind: TriggerKind,
-    ) -> impl Iterator<Item = (&str, &[char])> {
-        self.attachments(bid)
-            .iter()
-            .flat_map(|a| a.triggers.iter())
-            .filter(move |((k, _), _)| *k == kind)
-            .map(|((_, source), chars)| (source.as_str(), chars.as_slice()))
+    ) -> impl Iterator<Item = &TriggerTable> {
+        self.attachments(bid).iter().map(|a| &a.triggers)
     }
 
-    /// Sets `source`'s characters of `kind` on `sid`'s attachment to `bid`,
-    /// replacing its previous set; empty `chars` removes it. Does nothing
+    /// Sets `listener`'s characters on `sid`'s attachment to `bid`,
+    /// replacing its previous set; no characters removes it. Does nothing
     /// when `sid` is not attached to `bid`.
     pub(in crate::editor) fn set_triggers(
         &mut self,
         bid: BufferId,
         sid: ServerId,
-        kind: TriggerKind,
-        source: String,
+        listener: Listener,
         chars: Vec<char>,
     ) {
         if let Some(att) = self.attachment_mut(bid, sid) {
-            set_trigger_chars(&mut att.triggers, (kind, source), chars);
+            att.triggers.set(listener, chars);
         }
     }
 

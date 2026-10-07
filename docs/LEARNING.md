@@ -59,6 +59,7 @@ language servers add semantic features like diagnostics and completion.
 | Language Identity and Detection | [learning/language-identity.md](learning/language-identity.md) |
 | Tree-sitter: Grammars, Queries, and Plum | [learning/tree-sitter-pipeline.md](learning/tree-sitter-pipeline.md) |
 | LSP: One Protocol Between Editors and Languages | [learning/lsp.md](learning/lsp.md) |
+| Trigger Tables: Who Fires on Which Character | [learning/trigger-tables.md](learning/trigger-tables.md) |
 
 ### Plugins & registers
 

@@ -51,23 +51,23 @@ fn a_language_set_joins_the_registered_source() {
         .config
         .completion_sources
         .register_buffer(source("dot"));
-    assert!(ed.state.completion_sources_for_trigger('.', bid).is_empty());
+    assert!(ed.state.triggered_by('.', bid).completions.is_empty());
 
     ed.state
         .set_triggers(Completion, "dot".into(), language("rust"), vec!['.'])
         .unwrap();
     let id = ed.state.config.completion_sources.buffer_id_of("dot");
     assert_eq!(
-        ed.state.completion_sources_for_trigger('.', bid),
+        ed.state.triggered_by('.', bid).completions,
         id.into_iter().collect::<Vec<_>>()
     );
-    assert!(ed.state.completion_sources_for_trigger(':', bid).is_empty());
+    assert!(ed.state.triggered_by(':', bid).completions.is_empty());
 
     ed.state
         .set_triggers(Completion, "dot".into(), language("python"), vec![':'])
         .unwrap();
     assert!(
-        ed.state.completion_sources_for_trigger(':', bid).is_empty(),
+        ed.state.triggered_by(':', bid).completions.is_empty(),
         "another language's set does not apply to a rust buffer"
     );
 }
@@ -85,7 +85,7 @@ fn an_empty_set_clears_the_entry() {
     ed.state
         .set_triggers(Completion, "dot".into(), language("rust"), Vec::new())
         .unwrap();
-    assert!(ed.state.completion_sources_for_trigger('.', bid).is_empty());
+    assert!(ed.state.triggered_by('.', bid).completions.is_empty());
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn re_registering_a_source_keeps_its_triggers() {
         .config
         .completion_sources
         .register_buffer(source("dot"));
-    assert_eq!(ed.state.completion_sources_for_trigger('.', bid).len(), 1);
+    assert_eq!(ed.state.triggered_by('.', bid).completions.len(), 1);
 }
 
 #[test]
@@ -120,7 +120,8 @@ fn sources_come_back_in_registration_order() {
         .unwrap();
     let names: Vec<String> = ed
         .state
-        .completion_sources_for_trigger('.', bid)
+        .triggered_by('.', bid)
+        .completions
         .into_iter()
         .map(|id| {
             ed.state
@@ -148,14 +149,33 @@ fn hook_and_completion_sets_of_one_source_are_independent() {
         .set_triggers(Completion, "both".into(), language("rust"), vec!['.'])
         .unwrap();
 
-    assert_eq!(ed.state.trigger_sources_for(Hook, '(', bid), ["both"]);
-    assert!(ed.state.trigger_sources_for(Hook, '.', bid).is_empty());
-    assert_eq!(ed.state.trigger_sources_for(Completion, '.', bid), ["both"]);
-    assert!(
-        ed.state
-            .trigger_sources_for(Completion, '(', bid)
-            .is_empty()
-    );
+    let fires = |kind_hooks: bool, ch| {
+        let triggered = ed.state.triggered_by(ch, bid);
+        if kind_hooks {
+            triggered
+                .hooks
+                .iter()
+                .map(|h| h.to_string())
+                .collect::<Vec<_>>()
+        } else {
+            triggered
+                .completions
+                .iter()
+                .map(|id| {
+                    ed.state
+                        .config
+                        .completion_sources
+                        .buffer_get(*id)
+                        .name
+                        .to_string()
+                })
+                .collect()
+        }
+    };
+    assert_eq!(fires(true, '('), ["both"]);
+    assert!(fires(true, '.').is_empty());
+    assert_eq!(fires(false, '.'), ["both"]);
+    assert!(fires(false, '(').is_empty());
 }
 
 #[test]
@@ -164,5 +184,33 @@ fn a_hook_set_needs_no_registered_source() {
     ed.state
         .set_triggers(Hook, "listener".into(), language("rust"), vec!['('])
         .unwrap();
-    assert_eq!(ed.state.trigger_sources_for(Hook, '(', bid), ["listener"]);
+    assert_eq!(*ed.state.triggered_by('(', bid).hooks[0], *"listener");
+}
+
+#[test]
+fn hooks_fire_in_name_order() {
+    let (mut ed, bid) = rust_buffer();
+    for name in ["zeta", "alpha", "mid"] {
+        ed.state
+            .set_triggers(Hook, name.into(), language("rust"), vec!['('])
+            .unwrap();
+    }
+    let names: Vec<String> = ed
+        .state
+        .triggered_by('(', bid)
+        .hooks
+        .iter()
+        .map(|h| h.to_string())
+        .collect();
+    assert_eq!(names, ["alpha", "mid", "zeta"]);
+}
+
+#[test]
+fn a_buffer_with_no_language_fires_nothing() {
+    let mut ed = editor_from("-[a]>b\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .set_triggers(Hook, "listener".into(), language("rust"), vec!['('])
+        .unwrap();
+    assert!(ed.state.triggered_by('(', bid).hooks.is_empty());
 }

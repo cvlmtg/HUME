@@ -83,21 +83,21 @@ pub(in crate::editor) fn insert_default_key(
             }
             if inserted {
                 let buf = fp.bid(view);
-                let sources = state.trigger_sources_for(hume_scripting::TriggerKind::Hook, ch, buf);
-                for source in sources {
+                let triggered = state.triggered_by(ch, buf);
+                for source in triggered.hooks {
                     state.queue_event(EditorEvent::OnTriggerChar {
                         target: hume_scripting::PaneHandle::with_pane(buf, fp.pid()),
                         ch,
-                        source,
+                        source: source.to_string(),
                     });
                 }
-                // The hook above is for any listener (signature help); a
-                // completion source's own trigger chars are looked up
-                // directly against the registry
-                // (`EditorState::completion_sources_for_trigger`), with no hook
-                // round trip, and no dependency on the hook triggers
-                // (`sources` above, used only to fire the generic hook).
-                state.trigger_buffer_completion(view, completion::Trigger::Char { ch, bid: buf });
+                // The hooks above are for any listener (signature help); a
+                // completion source's own trigger chars invoke it directly,
+                // with no hook round trip.
+                state.trigger_buffer_completion(
+                    view,
+                    completion::Trigger::Sources(triggered.completions),
+                );
             }
             true
         }

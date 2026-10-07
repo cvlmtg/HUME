@@ -20,6 +20,16 @@ fn starting_rig(tmp: &tempfile::TempDir, hooks: &str, backend: RecordingLspBacke
     )
 }
 
+/// How many listeners have trigger characters on `bid`'s attachments.
+fn trigger_count(ed: &Editor, bid: BufferId) -> usize {
+    ed.state
+        .buffer_positions
+        .lsp
+        .trigger_tables(bid)
+        .map(crate::editor::triggers::TriggerTable::len)
+        .sum()
+}
+
 fn answering_initialize() -> RecordingLspBackend {
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({ "capabilities": {} }));
@@ -466,15 +476,8 @@ fn attachment_triggers_are_per_buffer_not_per_instance() {
 
     rig.probe(r#"(set-attachment-hook-triggers! "test" pane (car (lsp-servers pane)) 'diagnostics '("."))"#);
 
-    let tables = |ed: &Editor, bid| {
-        ed.state
-            .buffer_positions
-            .lsp
-            .triggers(bid, hume_scripting::TriggerKind::Hook)
-            .count()
-    };
-    assert_eq!(tables(&rig.ed, lib_bid), 1);
-    assert_eq!(tables(&rig.ed, rig.bid), 0);
+    assert_eq!(trigger_count(&rig.ed, lib_bid), 1);
+    assert_eq!(trigger_count(&rig.ed, rig.bid), 0);
 }
 
 /// A set for a feature the server does not advertise is refused when it
@@ -490,14 +493,51 @@ fn attachment_triggers_for_an_unadvertised_feature_set_nothing() {
         r#"(set-attachment-hook-triggers! "test" pane (car (lsp-servers pane)) 'hover '("."))"#,
     );
 
-    let triggers = rig
-        .ed
-        .state
-        .buffer_positions
-        .lsp
-        .triggers(rig.bid, hume_scripting::TriggerKind::Hook)
-        .count();
-    assert_eq!(triggers, 0);
+    assert_eq!(trigger_count(&rig.ed, rig.bid), 0);
+}
+
+/// A listener set under the buffer's language and under its attachment
+/// fires once.
+#[test]
+fn a_listener_set_in_both_scopes_fires_once() {
+    let tmp = safe_tempdir();
+    let mut rig = starting_rig(&tmp, "", answering_initialize());
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+
+    rig.probe(r#"(set-hook-triggers! "test" "rust" '("."))"#);
+    rig.probe(
+        r#"(set-attachment-hook-triggers! "test" pane (car (lsp-servers pane)) 'diagnostics '("."))"#,
+    );
+
+    let hooks = rig.ed.state.triggered_by('.', rig.bid).hooks;
+    assert_eq!(hooks.len(), 1);
+    assert_eq!(*hooks[0], *"test");
+}
+
+/// A completion listener whose source is not registered fires nothing.
+#[test]
+fn an_attachment_completion_listener_naming_no_source_fires_nothing() {
+    let tmp = safe_tempdir();
+    let mut rig = starting_rig(&tmp, "", answering_initialize());
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+    let sid = rig.sid("rust-analyzer");
+
+    rig.ed.state.buffer_positions.lsp.set_triggers(
+        rig.bid,
+        sid,
+        crate::editor::triggers::Listener::Completion("ghost".into()),
+        vec!['.'],
+    );
+
+    assert!(
+        rig.ed
+            .state
+            .triggered_by('.', rig.bid)
+            .completions
+            .is_empty()
+    );
 }
 
 #[test]
@@ -545,14 +585,7 @@ fn a_filter_change_clears_the_attachments_triggers_and_refires_attach() {
     );
     rig.ed.drain_lsp();
     rig.ed.settle();
-    let hook_chars = |rig: &LspRig| {
-        rig.ed
-            .state
-            .buffer_positions
-            .lsp
-            .triggers(rig.bid, hume_scripting::TriggerKind::Hook)
-            .count()
-    };
+    let hook_chars = |rig: &LspRig| trigger_count(&rig.ed, rig.bid);
     assert_eq!(hook_chars(&rig), 1, "setup: installed on the first attach");
 
     rig.eval(
@@ -584,13 +617,5 @@ fn reload_clears_attachment_triggers() {
 
     rig.ed.reset_config_state();
 
-    assert!(
-        rig.ed
-            .state
-            .buffer_positions
-            .lsp
-            .triggers(rig.bid, hume_scripting::TriggerKind::Hook)
-            .next()
-            .is_none()
-    );
+    assert!(trigger_count(&rig.ed, rig.bid) == 0);
 }

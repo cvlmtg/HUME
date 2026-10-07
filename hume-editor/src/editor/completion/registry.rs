@@ -116,7 +116,7 @@ pub(in crate::editor) struct MinibufSourceEntry {
 /// so a caller can't hand a buffer-namespace id to a minibuf-namespace
 /// lookup (or the reverse): the two id spaces don't overlap, and there is
 /// no shared "which target" tag left to check at runtime.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub(in crate::editor) struct BufferSourceId(u32);
 
 /// [`BufferSourceId`]'s counterpart into [`SourceRegistry::minibuf`].
@@ -241,17 +241,6 @@ impl SourceRegistry {
     /// explicit Insert-mode trigger invokes.
     pub(in crate::editor) fn buffer_sources(&self) -> Vec<BufferSourceId> {
         (0..self.buffer.len() as u32).map(BufferSourceId).collect()
-    }
-
-    /// The ids of the `Buffer` sources called any of `names`, in
-    /// registration order.
-    pub(in crate::editor) fn buffer_sources_named(&self, names: &[String]) -> Vec<BufferSourceId> {
-        self.buffer
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| names.iter().any(|n| **n == *e.name))
-            .map(|(i, _)| BufferSourceId(i as u32))
-            .collect()
     }
 }
 
