@@ -11,7 +11,7 @@ use hume_engine::providers::HighlightTier;
 /// on a bracket.
 #[test]
 fn bracket_match_highlight_resolves_nearest_bracket_in_selection() {
-    let mut ed = Editor::open(None, Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(None, Arc::new(|| {}), hume_platform::dirs::Dirs::none()).unwrap();
     type_text(&mut ed, "(x) y");
 
     let pid = ed.state.focus.id();

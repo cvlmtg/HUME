@@ -2,13 +2,14 @@
 // (cancel-timer! id), (debounce ms proc).
 
 use super::*;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 #[test]
 fn after_fires_once_past_its_deadline() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -32,7 +33,7 @@ fn after_fires_once_past_its_deadline() {
 fn a_timer_not_yet_due_does_not_fire() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -56,7 +57,7 @@ fn a_timer_not_yet_due_does_not_fire() {
 fn cancel_timer_before_it_fires_prevents_the_thunk() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -82,7 +83,7 @@ fn cancel_timer_before_it_fires_prevents_the_thunk() {
 fn debounce_collapses_a_rapid_burst_into_one_trailing_call() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -113,7 +114,7 @@ fn debounce_collapses_a_rapid_burst_into_one_trailing_call() {
 fn debounce_shares_one_pending_timer_across_all_keys() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -141,7 +142,7 @@ fn debounce_shares_one_pending_timer_across_all_keys() {
 fn debounce_by_keys_pending_timers_independently() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -175,7 +176,7 @@ fn debounce_by_keys_pending_timers_independently() {
 fn an_erroring_thunk_lands_in_the_message_log_and_the_wheel_survives() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

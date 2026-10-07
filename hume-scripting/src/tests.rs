@@ -1,9 +1,10 @@
 use crate::ScriptingHost;
 use crate::null_host::NullHost;
+use hume_platform::dirs::Dirs;
 
 #[test]
 fn process_and_fs_globals_are_available_unrequired() {
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let src = r#"
         (if (and (function? command)
@@ -42,7 +43,7 @@ fn process_and_fs_globals_are_available_unrequired() {
         .expect("steel stdlib availability pin failed");
 
     // string-downcase, needed by lsp-install/verify-sha256!.
-    let mut host3 = ScriptingHost::new();
+    let mut host3 = ScriptingHost::new(&Dirs::none());
     let mut null_host3 = NullHost;
     let downcase_src = r#"
         (if (equal? (string-downcase "ABC123def") "abc123def")
@@ -55,7 +56,7 @@ fn process_and_fs_globals_are_available_unrequired() {
 
     // Round-trip proof, not just presence: `stdlib/list-subdirs` depends on
     // `sort` taking `(lst less?)` and `file-name` extracting a basename.
-    let mut host2 = ScriptingHost::new();
+    let mut host2 = ScriptingHost::new(&Dirs::none());
     let mut null_host2 = NullHost;
     let sort_src = r#"
         (define sorted (sort (list "b" "a" "c") string<?))
@@ -78,7 +79,7 @@ fn spawn_process_round_trip_with_fs_ops_and_piped_stdout() {
     let dir = tempfile::tempdir().unwrap();
     let base = crate::steel_path_literal(dir.path()).expect("tempdir path must not contain '\"'");
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let src = format!(
         r#"
@@ -110,7 +111,7 @@ fn file_write_read_port_round_trip() {
     let dir = tempfile::tempdir().unwrap();
     let path = crate::steel_path_literal(&dir.path().join("probe.txt"))
         .expect("tempdir path must not contain '\"'");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let src = format!(
         r#"
@@ -137,7 +138,7 @@ fn steel_path_literal_escapes_windows_backslashes_for_round_trip_through_steel()
     let path = std::path::Path::new(r"C:\Users\x");
     let literal = crate::steel_path_literal(path).expect("plain path must escape");
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let src = format!(
         r#"

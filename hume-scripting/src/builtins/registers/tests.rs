@@ -1,5 +1,6 @@
 use super::*;
 use crate::test_support::SteelCtxTestHarness;
+use hume_platform::dirs::Dirs;
 
 #[test]
 fn register_arg_rejects_multi_char_name() {
@@ -126,7 +127,7 @@ fn write_register_rejects_bare_string_value() {
 /// round-trip-via-log idiom as `fs::tests::data_dir_resolves_through_real_registration`.
 #[test]
 fn write_then_read_round_trips_through_real_registration() {
-    let mut host = crate::ScriptingHost::new();
+    let mut host = crate::ScriptingHost::new(&Dirs::none());
     let mut backing = RegisterCapableHost::default();
     host.eval_source(
         r#"(write-register! "3" (list "alpha" "beta"))

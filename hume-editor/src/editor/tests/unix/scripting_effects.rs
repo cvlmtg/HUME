@@ -2,6 +2,7 @@
 //! application across effect kinds, and atomic (all-or-nothing) evals.
 
 use super::*;
+use hume_platform::dirs::Dirs;
 use hume_scripting::attribution::PluginId;
 use hume_scripting::{Effect, PendingLanguageReg, PendingLspServerOp, PluginStatus, ScriptingHost};
 
@@ -42,7 +43,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
         dir.path(),
         // `%define-language!` (the raw builtin), not the `define-language!`
         // macro; that macro lives in `runtime/scheme/prelude.scm`, not
-        // loaded by this test's bare `ScriptingHost::new()`.
+        // loaded by this test's bare `ScriptingHost::new(&Dirs::none())`.
         r#"(register-lsp-server! "widget" #:command "widget-lsp")
            (set-buffer-option! (car (buffers)) "language" "widget")
            (%define-language! "widget" '("widget") '() '() #f '())
@@ -52,7 +53,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
 
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     // declare-plugin! queues no effects: nothing to apply from this eval.
     {
@@ -153,7 +154,7 @@ fn failed_command_delivers_committed_activation_effects() {
     );
 
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     {
         let mut ih = init_host!(ed);
@@ -218,7 +219,7 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
     );
 
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     let err = {
         let mut ih = init_host!(ed);
@@ -300,7 +301,7 @@ fn steel_open_buffer_detects_language() {
         .rebuild_glob_set()
         .expect("rebuild ok");
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -343,7 +344,7 @@ fn steel_open_buffer_missing_path_opens_new_file() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -402,7 +403,7 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
 
     let mut ed = editor_from("-[a]>bcdef\n");
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())

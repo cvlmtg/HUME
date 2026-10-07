@@ -1,7 +1,7 @@
 // core:git-diff: end-to-end plugin tests.
 //
 // Loads the real, multi-file `runtime/plugins/core/git-diff/plugin.scm`
-// against the repo's actual `runtime/` tree (`RealRuntimeGuard`, the same
+// against the repo's actual `runtime/` tree (`RealRuntimeDirs`, the same
 // approach `lsp_hover.rs`/`lsp_packaging.rs` use for `core:lsp`, another
 // multi-file plugin). A real `git` subprocess does the fetching, and
 // assertions read the Rust-side decoration stores the plugin's setter calls
@@ -50,10 +50,10 @@ fn commit_and_checkout(name: &str, content: &str, branch: &str) -> (tempfile::Te
 }
 
 /// Loads the real `core:git-diff` plugin eagerly against the repo's actual
-/// `runtime/` tree. `guard` must outlive every assertion: its `HUME_RUNTIME`
-/// env var is what makes `git-diff`'s `manifest.scm`/`*.scm` siblings
-/// resolvable at all.
-fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeGuard) {
+/// `runtime/` tree. `guard` must outlive every assertion: its data
+/// directory is the editor's and its runtime directory is what makes
+/// `git-diff`'s `manifest.scm`/`*.scm` siblings resolvable at all.
+fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeDirs) {
     setup_with_source(tmp, config_expr, "")
 }
 
@@ -63,10 +63,10 @@ fn setup_with_source(
     tmp: &Path,
     config_expr: Option<&str>,
     extra: &str,
-) -> (Editor, RealRuntimeGuard) {
-    let guard = RealRuntimeGuard::new();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    let mut host = ScriptingHost::new();
+) -> (Editor, RealRuntimeDirs) {
+    let guard = RealRuntimeDirs::new();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), guard.dirs()).unwrap();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     let load_git_diff = match config_expr {
         Some(cfg) => hume_scripting::eager_load_scm("core:git-diff", Some(cfg)),
         None => hume_scripting::eager_load_scm("core:git-diff", None),
@@ -83,7 +83,7 @@ fn setup_with_source(
 /// config: `branch.scm`'s fetch is gated on the element being placed (see
 /// README's "Branch tracking"), so every branch-tracking test below needs
 /// this.
-fn setup_with_git_branch(tmp: &Path) -> (Editor, RealRuntimeGuard) {
+fn setup_with_git_branch(tmp: &Path) -> (Editor, RealRuntimeDirs) {
     let (mut ed, guard) = setup(tmp, None);
     let mut host = ed.scripting.take().expect("setup() installs a host");
     eval_with_real_host(
@@ -697,7 +697,7 @@ fn render_probe_expectations(
     );
 }
 
-fn render_probe_buffer(hunks: &str) -> (Editor, RealRuntimeGuard, BufferId, tempfile::TempDir) {
+fn render_probe_buffer(hunks: &str) -> (Editor, RealRuntimeDirs, BufferId, tempfile::TempDir) {
     let tmp = safe_tempdir();
     let (mut ed, guard) = setup_with_source(tmp.path(), None, &render_probe_source(hunks));
     let dir = safe_tempdir();
@@ -764,7 +764,7 @@ fn render_diff_with_no_hunks_clears_the_callers_source() {
 }
 
 /// [`setup`] with `"inline"` on, then the [`render_probe_source`] commands.
-fn setup_inline_with_probes(tmp: &Path) -> (Editor, RealRuntimeGuard) {
+fn setup_inline_with_probes(tmp: &Path) -> (Editor, RealRuntimeDirs) {
     let (mut ed, guard) = setup(tmp, Some(r#"(hash "signs" #t "inline" #t)"#));
     let mut host = ed.scripting.take().expect("setup() installs a host");
     eval_with_real_host(
@@ -1427,7 +1427,7 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
     use hume_scripting::attribution::PluginId;
 
     let tmp = safe_tempdir();
-    let _guard = RealRuntimeGuard::new();
+    let _guard = RealRuntimeDirs::new();
     let init_path = tmp.path().join("init.scm");
     std::fs::write(
         &init_path,
@@ -1439,7 +1439,8 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    ed.state.dirs = _guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     let effects = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -1483,7 +1484,7 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
 #[test]
 fn missing_stdlib_errors_at_load() {
     let tmp = safe_tempdir();
-    let _guard = RealRuntimeGuard::new();
+    let _guard = RealRuntimeDirs::new();
     let init_path = tmp.path().join("init.scm");
     // No `(load-plugin! "core:stdlib")`: the test covers its absence.
     std::fs::write(
@@ -1493,7 +1494,8 @@ fn missing_stdlib_errors_at_load() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    ed.state.dirs = _guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())

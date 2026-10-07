@@ -56,7 +56,11 @@ pub fn run_keys(
     // worker, LSP transport) call this harmlessly into the void. The pane
     // viewport defaults to 80×24 (from Pane::new) and is never updated
     // without a terminal, so scores are reproducible.
-    let mut editor = editor::Editor::open(Some(input), std::sync::Arc::new(|| {}))?;
+    let mut editor = editor::Editor::open(
+        Some(input),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::from_env(),
+    )?;
     // Headless mode: no terminal to negotiate kitty protocol, so assume
     // full capability. Ctrl-letter keys (e.g. `<c-w>`) are no-ops without
     // this since the dispatcher strips the Ctrl modifier only when
@@ -157,7 +161,11 @@ pub fn run(
         .map_or((None, &[][..]), |(f, r)| (Some(f), r));
 
     let panic_wake = wake.clone();
-    let mut editor = editor::Editor::open(first.map(|f| f.path.clone()), wake)?;
+    let mut editor = editor::Editor::open(
+        first.map(|f| f.path.clone()),
+        wake,
+        hume_platform::dirs::Dirs::from_env(),
+    )?;
     editor.attach_terminate_flag(terminate.clone());
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     editor.set_kitty_support(kitty_enabled);
@@ -195,7 +203,7 @@ pub fn run(
     // restoring the terminal under a loop that keeps drawing.
     let worker_panics = hume_platform::worker_panic::WorkerPanics::install(panic_wake);
     editor.attach_worker_panics(worker_panics.clone());
-    let scratch_dumps = hume_platform::dirs::data_dir().map(|dir| dir.join("dumps"));
+    let scratch_dumps = editor.state.dirs.data.as_ref().map(|dir| dir.join("dumps"));
     let result = editor.run_dumping_on_panic(scratch_dumps.as_deref(), |editor| {
         editor.run(&shared, &mut term)
     });

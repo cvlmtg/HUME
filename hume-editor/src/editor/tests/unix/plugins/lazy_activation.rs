@@ -3,6 +3,7 @@
 use super::*;
 use crate::editor::event::EditorEvent;
 use crate::editor::registry::{MappableCommand, TypedBody};
+use hume_platform::dirs::Dirs;
 use hume_scripting::PluginStatus;
 
 /// After `eval_init`, a `Lazy` stub is present for the declared command name:
@@ -425,7 +426,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     // Mirror real init_scripting order: eager command is in command_table
     // before declare-plugin! runs, so the filter loop rejects "foo".
@@ -499,7 +500,7 @@ fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     {
         let mut ih = init_host!(ed);

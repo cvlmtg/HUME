@@ -85,8 +85,8 @@ pub(in crate::editor) const THEME_SOURCE: &str = "theme";
 /// Every installed theme name for `:theme`: the unfiltered universe (see
 /// [`super::theme_name_candidates`]), narrowed generically by the session's
 /// own `MatchKind::String`.
-pub(super) fn complete_theme(_ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
-    super::theme_name_candidates()
+pub(super) fn complete_theme(ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
+    super::theme_name_candidates(ctx.dirs)
         .into_iter()
         .map(|stem| CompletionItem::plain(stem.clone(), stem))
         .collect()

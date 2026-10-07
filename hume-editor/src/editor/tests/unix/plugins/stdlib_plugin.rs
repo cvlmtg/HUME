@@ -5,11 +5,11 @@ use hume_scripting::PluginStatus;
 
 // ── core:stdlib — real shipped plugin ─────────────────────────────────────────
 
-/// Stage the real shipped `core:stdlib` plugin into an isolated `HUME_RUNTIME`
+/// Stage the real shipped `core:stdlib` plugin into an isolated runtime directory
 /// and eagerly load it via a real `init.scm`, returning everything the caller
 /// needs kept alive plus the host for further inspection or `eval_source`.
-fn setup_stdlib_editor() -> (Editor, ScriptingHost, HumeRuntimeGuard, tempfile::TempDir) {
-    let guard = HumeRuntimeGuard::new();
+fn setup_stdlib_editor() -> (Editor, ScriptingHost, RuntimeDirs, tempfile::TempDir) {
+    let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
 
     let init_dir = safe_tempdir();
@@ -17,7 +17,8 @@ fn setup_stdlib_editor() -> (Editor, ScriptingHost, HumeRuntimeGuard, tempfile::
     std::fs::write(&init_path, r#"(load-plugin! "core:stdlib")"#).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    ed.state.dirs = guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())

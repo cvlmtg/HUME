@@ -2,6 +2,7 @@
 //! load-time activation reporting.
 
 use super::*;
+use hume_platform::dirs::Dirs;
 use hume_scripting::PluginStatus;
 
 // ── Lazy plugin loading — language/filetype activations ──────────────
@@ -168,7 +169,7 @@ fn language_trigger_one_to_many_activates_all() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     {
         let mut ih = init_host!(ed);
@@ -334,7 +335,7 @@ fn language_wildcard_and_specific_entry_coexist() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     {
         let mut ih = init_host!(ed);

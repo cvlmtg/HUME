@@ -14,6 +14,7 @@
 // The end-to-end wiring test (real `init.scm` on disk, `:reload-config`
 // dispatched through the minibuffer) lives in `unix/reload_config.rs`.
 
+use hume_platform::dirs::Dirs;
 use std::path::Path;
 
 use super::*;
@@ -37,7 +38,7 @@ use hume_lsp::test_util::RecordingLspBackend;
 fn reset_reverts_bind_key_to_default() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -73,7 +74,7 @@ fn reset_reverts_bind_key_to_default() {
 fn reset_reverts_unbind_key_to_default() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -120,7 +121,7 @@ fn reset_reverts_bind_wait_char_to_default() {
         "test setup invalid: 'gW' must not default to a wait-char binding"
     );
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -158,7 +159,7 @@ fn reset_reinstalls_kitty_defaults_after_a_config_override() {
     let mut ed = editor_from("-[a]>b\n");
     ed.set_kitty_support(true);
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -196,7 +197,7 @@ fn reset_reinstalls_kitty_defaults_after_a_config_override() {
 fn reset_reverts_set_option_to_compiled_in_default() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -246,7 +247,7 @@ fn reset_reverts_runtime_set_command_too() {
 fn reset_reverts_statusline_config_to_default() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -318,7 +319,7 @@ fn reset_reverts_theme_to_compiled_in_default() {
 fn reset_clears_buffer_overrides() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -383,7 +384,7 @@ fn reset_clears_stale_buffer_language_ids() {
 fn reset_clears_lsp_server_configs() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(&mut ed, &mut host, RUST_ANALYZER, tmp.path());
     ed.scripting = Some(host);
 
@@ -410,7 +411,7 @@ fn reset_clears_lsp_server_configs() {
 fn reset_clears_plugin_decorations() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -454,7 +455,7 @@ fn reset_clears_plugin_decorations() {
 fn reset_cancels_pending_steel_timers() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -534,7 +535,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
 fn reset_tears_down_an_open_prompt_session_completely() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -596,7 +597,7 @@ fn reset_tears_down_an_open_prompt_session_completely() {
 fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -690,7 +691,7 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
 fn reset_clears_dynamic_commands() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -747,7 +748,7 @@ fn resync_refires_lsp_attach_for_a_running_server() {
     let sid = rig.sid("rust-analyzer");
     let mut ed = rig.ed;
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(&mut ed, &mut host, ATTACH_MOVES_RIGHT, tmp.path());
     ed.scripting = Some(host);
     let before = state(&ed);
@@ -786,7 +787,7 @@ fn reload_that_changes_a_kept_filter_fires_lsp_attach_once() {
     let mut ed = rig.ed;
 
     let snapshot = ed.reset_config_state();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -827,7 +828,7 @@ fn reload_keeps_an_instance_the_new_config_still_plans() {
     );
     // The new config, as `init.scm` would re-run it: the language identity,
     // the server, and a fresh `on-lsp-attach` handler.
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -920,7 +921,7 @@ fn resync_does_not_refire_attach_for_a_starting_server() {
     backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
     let mut ed = LspRig::open(tmp.path(), RigSpec::rust("-[a]>b\n"), backend).ed;
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(&mut ed, &mut host, ATTACH_MOVES_RIGHT, tmp.path());
     ed.scripting = Some(host);
     let before = state(&ed);
@@ -960,7 +961,7 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
     ed.detect_pending_languages();
     ed.settle();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -1020,7 +1021,7 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
     // capturing its `ReloadSnapshot` before `init_scripting` runs.
     let snapshot = ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id));
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -1104,7 +1105,7 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
     ed.state.config.decorations =
         hume_decorations::DecorationStores::reset(ed.state.config.decorations.clock());
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -1179,7 +1180,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
     ed.state.config.decorations =
         hume_decorations::DecorationStores::reset(ed.state.config.decorations.clock());
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -1250,7 +1251,7 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -1308,7 +1309,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -1360,7 +1361,7 @@ fn resync_refires_buffer_enter_for_the_focused_buffer() {
     ed.settle();
     let bid = ed.focused_buffer_id();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

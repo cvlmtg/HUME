@@ -5,6 +5,7 @@
 use super::*;
 use crate::editor::buffer::Buffer;
 use hume_editing::text::BufferText;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 // ── Invocation ────────────────────────────────────────────────────────────
@@ -894,7 +895,7 @@ fn a_registration_in_a_failed_init_is_never_applied() {
         ),
     )
     .unwrap();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let err = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -969,7 +970,12 @@ fn minibuffer_tab_completion_opens_a_minibuf_session() {
 
 #[test]
 fn a_buffer_switch_dismisses_the_session_at_settle() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.feed_key(key('i'));
     type_chars(&mut ed, "hello");
     open_completion_session(&mut ed, &["candidate"]);

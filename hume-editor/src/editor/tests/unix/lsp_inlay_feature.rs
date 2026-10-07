@@ -5,7 +5,7 @@
 // Named lsp_inlay_feature.rs because lsp_inlay_hints.rs already covers rendering
 // of the decoration store directly; this file drives the same store through
 // the real shipped plugin and a real LSP round trip. Loads the real shipped
-// `core:lsp` plugin in place (`RealRuntimeGuard`).
+// `core:lsp` plugin in place (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -25,7 +25,7 @@ const MARKED_FIXTURE: &str = "-[l]>et x = 1;\n";
 fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, RequestLog) {
+) -> (Editor, RealRuntimeDirs, RequestLog) {
     let (rig, guard) = core_lsp_rig(
         tmp,
         MARKED_FIXTURE,
@@ -40,7 +40,7 @@ fn setup(
 /// `pylsp`) shown in `pane_b` beside it.
 struct TwoServers {
     ed: Editor,
-    _guard: RealRuntimeGuard,
+    _guard: RealRuntimeDirs,
     requests: RequestLog,
     sid_a: ServerId,
     sid_b: ServerId,
@@ -58,7 +58,7 @@ fn setup_two_servers(
     initialize_b: serde_json::Value,
     inlay_answers: usize,
 ) -> TwoServers {
-    let guard = RealRuntimeGuard::new();
+    let guard = RealRuntimeDirs::new();
     let (mut backend, _notifications, _requests) = RecordingLspBackend::new();
     backend.respond_to_server(ServerId(0), "initialize", initialize_a);
     backend.respond_to_server(ServerId(1), "initialize", initialize_b);
@@ -71,7 +71,13 @@ fn setup_two_servers(
         r#"(register-lsp-server! "pylsp" #:command "pylsp")
 (set-language-servers! "python" '("pylsp"))"#
     );
-    let mut rig = LspRig::drained(tmp, RigSpec::rust(MARKED_FIXTURE).with_init(&init), backend);
+    let mut rig = LspRig::drained(
+        tmp,
+        RigSpec::rust(MARKED_FIXTURE)
+            .with_init(&init)
+            .with_dirs(guard.dirs()),
+        backend,
+    );
     rig.ed
         .state
         .config

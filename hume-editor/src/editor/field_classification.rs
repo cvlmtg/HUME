@@ -28,6 +28,7 @@ fn editor_state_fields_are_classified() {
     #[allow(dead_code, unused_variables)]
     fn assert_exhaustive(e: EditorState) {
         let EditorState {
+            dirs: _, // preserved: resolved once at startup, not config
             // config: clear_languages_all/clear_overrides_all reset
             // language + overrides; content, undo history, and
             // everything else survive

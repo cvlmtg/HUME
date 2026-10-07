@@ -1,10 +1,11 @@
 use super::*;
+use hume_platform::dirs::Dirs;
 
 /// Eval `src` against a fresh host and return the error it must produce.
 fn declare_err(src: &str) -> String {
     use crate::ScriptingHost;
     use crate::null_host::LazyStubHost;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut editor_host = LazyStubHost::default();
     host.eval_source(src, &mut editor_host)
         .expect_err("expected declare-plugin! to error")
@@ -74,7 +75,7 @@ fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
         .unwrap();
 
     let id = EntryId::main(PluginId::parse("core:deep").unwrap());
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -120,7 +121,7 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
         .unwrap();
 
     let id = EntryId::main(PluginId::parse("core:ok").unwrap());
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.registries
         .lazy_registry
         .plugins
@@ -172,7 +173,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
         .unwrap();
 
     let id = EntryId::main(PluginId::parse("core:deep").unwrap());
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.registries.lazy_registry.declare(
         id.clone(),
         path,
@@ -282,7 +283,7 @@ fn declare_plugin_rejects_string_event_names() {
 fn declare_plugin_rejected_events_records_nothing() {
     use crate::ScriptingHost;
     use crate::null_host::LazyStubHost;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut editor_host = LazyStubHost::default();
     host.eval_source(
         r#"(declare-plugin! "user/tp" #:events '(not-a-real-hook))"#,
@@ -311,7 +312,7 @@ fn declare_plugin_command_name_with_quote_errors() {
     use crate::ScriptingHost;
     use crate::host::EditorHost;
     use crate::null_host::LazyStubHost;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut editor_host = LazyStubHost::default();
     let result = host.eval_source(
         r#"(declare-plugin! "user/tp" #:commands '("bad\"name"))"#,
@@ -342,7 +343,7 @@ fn declare_plugin_command_name_with_quote_errors() {
 #[test]
 fn declare_plugin_absent_on_disk_does_not_seed_cmd_owners() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     // `core:nonexistent-plugin` cannot exist on disk in any test environment.
     let result = host.eval_source(
         r#"(declare-plugin! "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
@@ -365,7 +366,7 @@ fn declare_plugin_absent_on_disk_does_not_seed_cmd_owners() {
 #[test]
 fn declare_plugin_core_absent_logs_error() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let result = host.eval_source(
         r#"(declare-plugin! "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
         &mut NullHost,
@@ -396,7 +397,7 @@ fn declare_plugin_core_absent_logs_error() {
 #[test]
 fn declare_plugin_user_absent_logs_info() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let result = host.eval_source(
         r#"(declare-plugin! "user/definitely-absent-99" #:commands '("my-cmd-2"))"#,
         &mut NullHost,
@@ -418,7 +419,7 @@ fn declare_plugin_user_absent_logs_info() {
 #[test]
 fn load_plugin_core_absent_logs_error() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let result = host.eval_source(r#"(load-plugin! "core:nonexistent-plugin")"#, &mut NullHost);
     assert!(
         result.is_ok(),
@@ -450,7 +451,7 @@ fn define_command_rejects_name_claimed_by_lazy_plugin() {
     use crate::null_host::LazyStubHost;
 
     let id = EntryId::main(PluginId::parse("core:my-plugin").unwrap());
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     // Simulate declare-plugin! having claimed the name as a `Lazy` stub.
     let mut editor_host = LazyStubHost::default();
     editor_host
@@ -492,7 +493,7 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
     use crate::null_host::LazyStubHost;
 
     let id = EntryId::main(PluginId::parse("core:my-plugin").unwrap());
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     // Simulate declare-plugin! having claimed the name as a typed `Lazy` stub.
     let mut editor_host = LazyStubHost::default();
     editor_host
@@ -537,7 +538,7 @@ fn begin_lazy_activation_escapes_backslashes_in_path() {
     use std::path::PathBuf;
 
     let id = EntryId::main(PluginId::parse("core:winpath").unwrap());
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.registries.lazy_registry.plugins.insert(
         id.clone(),
         PluginState::Declared {
@@ -578,7 +579,7 @@ fn begin_lazy_activation_escapes_backslashes_in_path() {
 #[test]
 fn plugin_config_outside_plugin_body_is_empty() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.eval_source(
         r#"(when (not (hash-empty? (plugin-config))) (error "expected empty hash"))"#,
         &mut NullHost,
@@ -592,7 +593,7 @@ fn plugin_config_outside_plugin_body_is_empty() {
 #[test]
 fn plugin_dir_outside_plugin_body_is_false() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.eval_source(
         r#"(when (plugin-dir) (error "expected #f outside a plugin body"))"#,
         &mut NullHost,
@@ -622,7 +623,7 @@ fn plugin_dir_inside_plugin_body_is_the_plugins_own_directory() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     let mut editor_host = LazyStubHost::default();
     host.eval_source(r#"(load-plugin! "me/probe")"#, &mut editor_host)
@@ -639,7 +640,7 @@ fn plugin_dir_inside_plugin_body_is_the_plugins_own_directory() {
 #[test]
 fn declare_plugin_bang_direct_no_trigger_call_errors() {
     use crate::{ScriptingHost, null_host::NullHost};
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let result = host.eval_source(
         r#"(%declare-plugin! "user/direct-zero" "plugin.scm" '() '() '() '())"#,
         &mut NullHost,
@@ -663,7 +664,7 @@ fn load_plugin_absent_dir_soft_logs_and_records_declared_plugins() {
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
 
     let result = host.eval_source(

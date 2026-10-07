@@ -5,6 +5,7 @@
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
 use hume_grid::Rect;
+use hume_platform::dirs::Dirs;
 use pretty_assertions::assert_eq;
 
 /// Overwrite `path`'s content with something a different length than
@@ -1955,7 +1956,7 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
     rewrite_externally(&target, "hi, externally changed!\n");
 
     let steel_target = steel_path(&target);
-    let mut host = hume_scripting::ScriptingHost::new();
+    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -2130,7 +2131,7 @@ fn inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm() {
     // reaches, since it only logs) needs a real terminal.
     ed.tui = crate::editor::tui::Tui::OnHeadless;
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     {
         let mut init_host = init_host!(ed);
         host.eval_source(

@@ -1,8 +1,8 @@
 //! `core:buffer-words`: end-to-end plugin tests. Loads the real, shipped
-//! `runtime/plugins/core/buffer-words/plugin.scm` (`HumeRuntimeGuard` +
+//! `runtime/plugins/core/buffer-words/plugin.scm` (`RuntimeDirs` +
 //! `write_core_plugin`, the pattern `pickers_plugin.rs` documents), except
 //! the last test, which needs the multi-file `core:lsp` too and so uses
-//! `RealRuntimeGuard` instead (`git_diff_plugin.rs`'s reason for the same
+//! `RealRuntimeDirs` instead (`git_diff_plugin.rs`'s reason for the same
 //! choice, see its module doc).
 //!
 //! Every expected word set below is written
@@ -28,11 +28,11 @@ const BUFFER_WORDS_PLUGIN: &str = include_str!(concat!(
 /// every test opens its own fixture afterward, via [`open`], so
 /// `on-buffer-open` fires with the plugin's hook already registered
 /// (`Editor::open`'s own startup buffer opens *before* any plugin loads).
-fn setup(guard: &HumeRuntimeGuard, tmp: &Path, config_expr: Option<&str>) -> Editor {
+fn setup(guard: &RuntimeDirs, tmp: &Path, config_expr: Option<&str>) -> Editor {
     write_core_plugin(guard, "buffer-words", BUFFER_WORDS_PLUGIN);
     write_core_plugin(guard, "stdlib", STDLIB_PLUGIN);
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    let mut host = ScriptingHost::new();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), guard.dirs()).unwrap();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     let load_bw = match config_expr {
         Some(cfg) => format!("(load-plugin! \"core:buffer-words\" #:config {cfg})"),
         None => "(load-plugin! \"core:buffer-words\")".to_string(),
@@ -52,8 +52,9 @@ fn open(ed: &mut Editor, path: &Path) -> BufferId {
 /// `src/main.rs` holding `marked`'s text, opened with `core:stdlib`,
 /// `core:buffer-words` and `core:lsp` loaded and one `rust-analyzer`
 /// attached over `backend`: handshake done, `on-lsp-attach` processed. The
-/// caller holds a `RealRuntimeGuard`.
+/// caller holds a `RealRuntimeDirs`.
 fn open_with_lsp(
+    guard: &RealRuntimeDirs,
     tmp: &Path,
     marked: &str,
     backend: hume_lsp::test_util::RecordingLspBackend,
@@ -61,7 +62,10 @@ fn open_with_lsp(
     let init = format!(
         "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\")\n(load-plugin! \"core:lsp\") (%activate-plugin-inline! \"core:lsp\" #f)\n{RUST_ANALYZER}"
     );
-    let mut rig = LspRig::drained(tmp, RigSpec::rust(marked).with_init(&init), backend);
+    let spec = RigSpec::rust(marked)
+        .with_init(&init)
+        .with_dirs(guard.dirs());
+    let mut rig = LspRig::drained(tmp, spec, backend);
     rig.ed.settle();
     rig.ed
 }
@@ -154,7 +158,7 @@ fn wait_for_word_gone(ed: &mut Editor, target: &str) {
 #[test]
 fn ctrl_space_offers_identifiers_from_the_buffer() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -177,7 +181,7 @@ fn ctrl_space_offers_identifiers_from_the_buffer() {
 #[test]
 fn a_word_many_lines_past_the_cursor_is_offered() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 20)"#));
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -192,7 +196,7 @@ fn a_word_many_lines_past_the_cursor_is_offered() {
 #[test]
 fn the_partially_typed_token_is_not_offered_back() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -221,7 +225,7 @@ fn the_partially_typed_token_is_not_offered_back() {
 #[test]
 fn backspace_widens_the_candidate_list_again() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -253,7 +257,7 @@ fn backspace_widens_the_candidate_list_again() {
 #[test]
 fn an_edit_refreshes_the_index() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -285,7 +289,7 @@ fn an_edit_refreshes_the_index() {
 #[test]
 fn a_second_background_finish_does_not_reset_the_menu_selection() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -363,7 +367,7 @@ fn reindex_via_option_change(ed: &mut Editor) {
 #[test]
 fn a_reindex_that_interrupts_a_running_walk_does_not_resurrect_a_removed_word() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     // A small per-tick budget over many lines: the first tick (anchored at
     // line 0, where "targetword" lives) picks the word up almost
     // immediately, while the walk as a whole takes many further ticks,
@@ -400,7 +404,7 @@ fn fuzzy_match_is_opt_in() {
     let path = file_dir.path().join("f.txt");
     std::fs::write(&path, "roundtrip\n\n").unwrap();
 
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     open(&mut ed, &path);
     ed.feed_key(key_down());
@@ -415,7 +419,7 @@ fn fuzzy_match_is_opt_in() {
     drop(guard);
 
     let tmp2 = safe_tempdir();
-    let guard2 = HumeRuntimeGuard::new();
+    let guard2 = RuntimeDirs::new();
     let mut ed2 = setup(&guard2, tmp2.path(), Some(r#"(hash "match" 'fuzzy)"#));
     open(&mut ed2, &path);
     ed2.feed_key(key_down());
@@ -431,7 +435,7 @@ fn fuzzy_match_is_opt_in() {
 #[test]
 fn word_chars_extends_what_counts_as_a_word() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     // Set the *global* default before opening the fixture, rather than a
     // buffer-scoped override after: the buffer this plugin cares about
@@ -464,7 +468,7 @@ fn word_chars_extends_what_counts_as_a_word() {
 #[test]
 fn non_ascii_punctuation_does_not_merge_the_words_around_it() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -483,7 +487,7 @@ fn non_ascii_punctuation_does_not_merge_the_words_around_it() {
 #[test]
 fn a_curly_apostrophe_splits_the_word_around_it() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -503,7 +507,7 @@ fn a_curly_apostrophe_splits_the_word_around_it() {
 #[test]
 fn a_combining_mark_stays_attached_to_its_word() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -522,7 +526,7 @@ fn an_invalid_match_config_fails_the_load() {
     use hume_scripting::attribution::PluginId;
 
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "buffer-words", BUFFER_WORDS_PLUGIN);
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
 
@@ -533,8 +537,8 @@ fn an_invalid_match_config_fails_the_load() {
     )
     .unwrap();
 
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    let mut host = ScriptingHost::new();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), guard.dirs()).unwrap();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     let effects = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -582,7 +586,7 @@ fn an_invalid_match_config_fails_the_load() {
 #[test]
 fn closing_a_buffer_drops_its_index() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 1)"#));
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -608,7 +612,7 @@ fn closing_a_buffer_drops_its_index() {
 #[test]
 fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 10)"#));
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -641,7 +645,7 @@ fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
 #[test]
 fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -690,7 +694,7 @@ fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() 
 #[test]
 fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -733,7 +737,7 @@ fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
 #[test]
 fn the_index_recovers_when_the_buffer_shrinks_mid_walk() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -773,7 +777,7 @@ fn the_index_recovers_when_the_buffer_shrinks_mid_walk() {
 #[test]
 fn the_exact_token_exclusion_tracks_further_typing() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -804,7 +808,7 @@ fn the_exact_token_exclusion_tracks_further_typing() {
 #[test]
 fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 20)"#));
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -844,7 +848,7 @@ fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
 #[test]
 fn a_global_word_chars_change_reindexes_an_already_open_buffer() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -873,8 +877,8 @@ fn a_global_word_chars_change_reindexes_an_already_open_buffer() {
 /// The plan's reason for existing: `core:buffer-words` and `core:lsp`
 /// sharing one buffer, exercising multi-source ranking (`#:priority`) with
 /// two real, independently-motivated sources. Nothing else in the
-/// codebase does this today. `RealRuntimeGuard` rather than
-/// `HumeRuntimeGuard`: `core:lsp` is multi-file (see `git_diff_plugin.rs`'s
+/// codebase does this today. `RealRuntimeDirs` rather than
+/// `RuntimeDirs`: `core:lsp` is multi-file (see `git_diff_plugin.rs`'s
 /// module doc for the same reasoning), and it picks up this plugin's own
 /// real, just-shipped `runtime/plugins/core/buffer-words/plugin.scm` too,
 /// no separate staging needed.
@@ -883,7 +887,7 @@ fn buffer_words_and_lsp_rank_together_lsp_first() {
     use hume_lsp::test_util::RecordingLspBackend;
 
     let tmp = safe_tempdir();
-    let _guard = RealRuntimeGuard::new();
+    let guard = RealRuntimeDirs::new();
 
     let (mut backend, _notifications, requests) = RecordingLspBackend::new();
     backend.respond_to(
@@ -895,7 +899,7 @@ fn buffer_words_and_lsp_rank_together_lsp_first() {
         serde_json::json!([{"label": "lsp_item"}]),
     );
 
-    let mut ed = open_with_lsp(tmp.path(), "-[b]>uffer_word\n", backend);
+    let mut ed = open_with_lsp(&guard, tmp.path(), "-[b]>uffer_word\n", backend);
 
     ed.feed_key(key('i'));
     trigger(&mut ed);
@@ -931,7 +935,7 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
     use hume_lsp::test_util::RecordingLspBackend;
 
     let tmp = safe_tempdir();
-    let _guard = RealRuntimeGuard::new();
+    let guard = RealRuntimeDirs::new();
 
     let (mut backend, _notifications, requests) = RecordingLspBackend::new();
     backend.respond_to(
@@ -947,7 +951,7 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
     // Mixed-case identifier, not `bw/case-twin`-eligible (an inner capital
     // means its tail isn't already all-lowercase). This test's exact-list
     // assertion needs buffer-words to answer with exactly one item.
-    let mut ed = open_with_lsp(tmp.path(), "-[b]>ufferWord\n", backend);
+    let mut ed = open_with_lsp(&guard, tmp.path(), "-[b]>ufferWord\n", backend);
 
     ed.feed_key(key('i'));
     trigger(&mut ed);
@@ -979,7 +983,7 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
     use hume_lsp::test_util::RecordingLspBackend;
 
     let tmp = safe_tempdir();
-    let _guard = RealRuntimeGuard::new();
+    let guard = RealRuntimeDirs::new();
 
     let (mut backend, _notifications, _requests) = RecordingLspBackend::new();
     backend.respond_to(
@@ -995,7 +999,7 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
     // test above's identical comment; this test needs LSP's and
     // buffer-words' items to carry the exact same one label for the dedup
     // check below to mean anything.
-    let mut ed = open_with_lsp(tmp.path(), "-[b]>ufferWord\n", backend);
+    let mut ed = open_with_lsp(&guard, tmp.path(), "-[b]>ufferWord\n", backend);
 
     ed.feed_key(key('i'));
     trigger(&mut ed);
@@ -1037,7 +1041,7 @@ fn once_something_is_typed_lsp_always_outranks_buffer_words() {
     use hume_lsp::test_util::RecordingLspBackend;
 
     let tmp = safe_tempdir();
-    let _guard = RealRuntimeGuard::new();
+    let guard = RealRuntimeDirs::new();
 
     let (mut backend, _notifications, _requests) = RecordingLspBackend::new();
     backend.respond_to(
@@ -1049,7 +1053,7 @@ fn once_something_is_typed_lsp_always_outranks_buffer_words() {
         serde_json::json!([{"label": "buffer_analog", "insertText": "buffer_analog"}]),
     );
 
-    let mut ed = open_with_lsp(tmp.path(), "-[b]>uffer_word_target\n\n", backend);
+    let mut ed = open_with_lsp(&guard, tmp.path(), "-[b]>uffer_word_target\n\n", backend);
 
     // Second (blank) line, so buffer-words' own index (built from the
     // whole buffer, "buffer_word_target" included) has a real candidate
@@ -1086,7 +1090,7 @@ fn once_something_is_typed_lsp_always_outranks_buffer_words() {
 #[test]
 fn a_capitalized_word_is_offered_lowercase_after_a_lowercase_prefix() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -1115,7 +1119,7 @@ fn a_capitalized_word_is_offered_lowercase_after_a_lowercase_prefix() {
 #[test]
 fn a_lowercase_word_is_offered_capitalized_after_an_uppercase_prefix() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
@@ -1136,7 +1140,7 @@ fn a_lowercase_word_is_offered_capitalized_after_an_uppercase_prefix() {
 #[test]
 fn mixed_case_and_all_caps_words_get_no_twin() {
     let tmp = safe_tempdir();
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");

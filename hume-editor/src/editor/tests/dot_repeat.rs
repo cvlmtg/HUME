@@ -1,5 +1,6 @@
 use super::*;
 use crate::editor::replay::InsertInput;
+use hume_platform::dirs::Dirs;
 use pretty_assertions::assert_eq;
 
 /// `i` is the recorded unbound key `ch`.
@@ -1265,7 +1266,7 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);

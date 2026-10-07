@@ -236,6 +236,7 @@ impl EditorState {
             buffers: &self.buffers,
             cwd: &self.cwd,
             languages: &self.config.languages,
+            dirs: &self.dirs,
         };
         let call = invoke_minibuf_source(
             &self.config.completion_sources,

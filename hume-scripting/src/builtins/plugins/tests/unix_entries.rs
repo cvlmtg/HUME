@@ -7,6 +7,7 @@ use crate::attribution::{EntryId, PluginId};
 use crate::host::EditorHost;
 use crate::lazy::PluginState;
 use crate::null_host::{LazyStubHost, NullHost};
+use hume_platform::dirs::Dirs;
 use tempfile::TempDir;
 
 fn state<'a>(host: &'a ScriptingHost, id: &EntryId) -> Option<&'a PluginState> {
@@ -574,7 +575,7 @@ fn init_host(
     }
     let init = dir.path().join("init.scm");
     std::fs::write(&init, init_src).unwrap();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let result = host
         .eval_init(&init, 10_000, editor_host, Default::default())
         .map(drop)
@@ -702,7 +703,7 @@ fn a_local_declare_takes_no_entry() {
 
 #[test]
 fn a_local_declare_without_an_init_file_errors() {
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
 
     let err = host
         .eval_source(
@@ -727,7 +728,7 @@ fn a_runtime_file_does_not_set_the_local_plugin_directory() {
     )
     .unwrap();
     std::fs::write(dir.path().join("x.scm"), "").unwrap();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
 
     let err = host
         .eval_runtime(&runtime, 10_000, &mut NullHost, Default::default())

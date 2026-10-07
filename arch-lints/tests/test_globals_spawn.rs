@@ -4,8 +4,9 @@
 //! this lint enforces: a test that spawns a subprocess by unqualified name
 //! (`Command::new("git")`, `Command::new("sh")`, …) reads process `PATH` at
 //! the spawn instant exactly as much as an explicit `std::env::var` call
-//! would, so it must hold a `Global::Env` claim for the spawn's duration,
-//! not just a test that mutates an env var directly.
+//! would, so it must hold a `Global::Env` claim or a `PathReader` (the shared
+//! side every `Dirs` fixture takes) for the spawn's duration, not just a test
+//! that mutates an env var directly.
 //!
 //! [`unguarded_unqualified_spawn`] scans every `#[test] fn` body in
 //! `editor/tests/` (the opposite direction from this file's sibling lints in
@@ -18,8 +19,8 @@
 //! `Command::new("git")` itself, two hops from the test, with no
 //! `Command::new` text anywhere in the test's own body. Symmetrically, those
 //! same tests call `setup()`, which claims `Global::Env` via
-//! `RealRuntimeGuard::new()` and returns the guard for the caller to bind and
-//! hold, again with no `RealRuntimeGuard`/`TEST_GLOBALS` text in the test
+//! `RealRuntimeDirs::new()` and returns the guard for the caller to bind and
+//! hold, again with no `RealRuntimeDirs`/`TEST_GLOBALS` text in the test
 //! body itself. A scan that only recognized literal `Command::new`/claim text
 //! would either flag every one of these tests as unguarded (wrong: they are
 //! guarded, just through a helper) or, worse, silently pass an
@@ -32,7 +33,7 @@
 //! `commit_file`, `setup`, …) is a bare free function; an `impl` method
 //! keeps only its bare name once extracted, and `fn new(...)` is defined
 //! identically-named inside dozens of unrelated structs across this tree.
-//! Recording `RealRuntimeGuard::new`'s claiming body under the bare name
+//! Recording `RealRuntimeDirs::new`'s claiming body under the bare name
 //! "new" would make [`calls_fn`] treat a call to *any* type's `::new()` as
 //! calling the one that happens to claim, which is exactly the false-positive
 //! flood this lint's first working draft produced.
@@ -75,10 +76,12 @@ use arch_lints::{Violation, editor_test_tree_paths, strip_line_comment, workspac
 /// checked independently.
 const AUTO_CLAIM_MARKERS: &[&str] = &[
     "TEST_GLOBALS.claim(Global::Env)",
-    "RealRuntimeGuard::new(",
-    "HumeRuntimeGuard::new(",
-    "RealThemeRuntimeGuard::new(",
-    "NoConfigDirGuard::new(",
+    "path_reader()",
+    "RealRuntimeDirs::new(",
+    "RuntimeDirs::new(",
+    "TutorGuard::new(",
+    "ReloadFixture::new(",
+    "StagedGrammarFixture::new(",
 ];
 
 const OPT_OUT_MARKER: &str = "// test-global-safe:";
@@ -360,7 +363,7 @@ fn spawning_helper_names(helper_fns: &[(String, String)]) -> Vec<String> {
 /// SomeGuard)` for the caller to bind and keep alive) or transitively (calls
 /// another name already known to claim). The same transitive-indirection gap
 /// [`spawning_helper_names`] closes on the spawn side, mirrored here: a test
-/// calling `setup(...)` never mentions `RealRuntimeGuard::new` itself.
+/// calling `setup(...)` never mentions `RealRuntimeDirs::new` itself.
 fn claiming_helper_names(helper_fns: &[(String, String)]) -> Vec<String> {
     let seed = helper_fns
         .iter()
@@ -492,7 +495,7 @@ fn unguarded_unqualified_spawn() {
          unqualified. The OS resolves an unqualified program name against process `PATH`\n\
          at the spawn instant: the same read a `std::env::var(\"PATH\")` call would need\n\
          to hold a claim for. Claim it directly (`TEST_GLOBALS.claim(Global::Env)`) or via\n\
-         a guard whose constructor already does (`RealRuntimeGuard::new()`, …) before the\n\
+         a fixture whose constructor holds a `PathReader` (`RealRuntimeDirs::new()`, …) before the\n\
          spawn, or add the guard to this lint's `AUTO_CLAIM_MARKERS` if it's a new one.\n\
          Violations:\n{}\n",
         violations.join("\n")

@@ -17,7 +17,12 @@ use hume_engine::pipeline::RenderContext;
 /// terminal-flush-time truncation.)
 #[test]
 fn full_message_reaches_the_render_provider_untruncated() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.feed_key(key('i'));
     for ch in "let x = 1".chars() {
         ed.feed_key(key(ch));
@@ -60,7 +65,12 @@ fn full_message_reaches_the_render_provider_untruncated() {
 /// entries and render them concatenated at the same byte offset.
 #[test]
 fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.feed_key(key('i'));
     for ch in "let x = 1".chars() {
         ed.feed_key(key(ch));
@@ -114,7 +124,12 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
 /// source wins.
 #[test]
 fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.feed_key(key('i'));
     for ch in "let x = 1".chars() {
         ed.feed_key(key(ch));
@@ -164,7 +179,12 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
 fn two_line_editor_with_eol(
     entries: &[(&str, usize, &str, bool)],
 ) -> (Editor, hume_engine::pipeline::PaneId) {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.feed_key(key('i'));
     for ch in "abc\ndef".chars() {
         ed.feed_key(key(ch));

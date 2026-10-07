@@ -1,4 +1,5 @@
 use super::*;
+use hume_platform::dirs::Dirs;
 
 use crate::editor::host_impl::EditorHostImpl;
 use crate::testing::MockHost;
@@ -24,7 +25,7 @@ fn attach_steel(ed: &mut Editor, src: &str) {
         .map(str::to_owned)
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.register_command_names(&name_refs);
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(src, &mut init_host)
@@ -1319,7 +1320,7 @@ fn plugin_calls_plugin_cursor_read_is_live() {
 /// empty table, `%lookup-plugin-proc` would always return `#f`.
 #[test]
 fn command_table_populated_after_define_command() {
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(define-command! "ping" "" (lambda () #t))
@@ -1369,7 +1370,7 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
         .map(str::to_owned)
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
@@ -1797,7 +1798,7 @@ fn steel_dispatch_consumes_pending_char() {
         .map(str::to_owned)
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.register_command_names(&name_refs);
     let mut init_host = live_host!(ed);
     host.eval_source(
@@ -2018,7 +2019,7 @@ fn buffer_selections_steel_roundtrip() {
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.register_command_names(&name_refs);
 
     let mut init_host = live_host!(ed);

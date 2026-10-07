@@ -2,7 +2,7 @@
 // that merge every server's answer (completion, code actions, locations,
 // inlay hints, diagnostics) and features that pick one (formatting), with
 // per-server trigger characters. Loads the real plugin in place
-// (`RealRuntimeGuard`).
+// (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -32,8 +32,8 @@ fn two_servers(
     lint: serde_json::Value,
     extra: &str,
     script: impl FnOnce(&mut RecordingLspBackend),
-) -> (LspRig, RealRuntimeGuard) {
-    let guard = RealRuntimeGuard::new();
+) -> (LspRig, RealRuntimeDirs) {
+    let guard = RealRuntimeDirs::new();
     let (mut backend, _, _) = RecordingLspBackend::new();
     backend.respond_to_server(RA, "initialize", init_result(ra));
     backend.respond_to_server(LINT, "initialize", init_result(lint));
@@ -41,7 +41,9 @@ fn two_servers(
     let init = format!("{}\n{RA_LINT}\n{extra}", core_lsp_init());
     let mut rig = LspRig::drained(
         tmp,
-        RigSpec::rust(&marked_at_start(content)).with_init(&init),
+        RigSpec::rust(&marked_at_start(content))
+            .with_init(&init)
+            .with_dirs(guard.dirs()),
         backend,
     );
     rig.ed.settle();

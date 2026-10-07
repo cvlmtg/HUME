@@ -1,4 +1,5 @@
 use super::*;
+use hume_platform::dirs::Dirs;
 
 use super::super::lsp_bridge::{OrderedLogBackend, bridge_initialize_result};
 
@@ -262,7 +263,7 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
         .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

@@ -9,7 +9,7 @@ use super::*;
 /// pure Scheme-syntax/logic smoke test, not an installation test.
 #[test]
 fn plum_plugin_loads_with_real_grammar_catalog() {
-    let _lock = lock();
+    let _path = path_reader();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -35,7 +35,7 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
 /// "Filesystem and processes") works for loading and basic discovery.
 #[test]
 fn plum_list_runs_with_no_errors_against_empty_data_dir() {
-    let _lock = lock();
+    let _path = path_reader();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -65,11 +65,10 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
 /// to an installed plugin raises the same error.
 #[test]
 fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
-    let _lock = lock();
+    let _path = path_reader();
 
-    // `load_plum` points `XDG_DATA_HOME` at `data_tmp`; HUME's data dir is
-    // `$XDG_DATA_HOME/hume/` (`hume_platform::dirs::data_dir`), so the plugin
-    // walk plum/`plugins-dir` reads is `<data_tmp>/hume/plugins/`.
+    // `load_plum` makes `<data_tmp>/hume/` the editor's data dir, so the
+    // plugin walk plum/`plugins-dir` reads is `<data_tmp>/hume/plugins/`.
     let data_tmp = safe_tempdir();
     let plugins_dir = data_tmp.path().join("hume").join("plugins");
     std::fs::create_dir_all(&plugins_dir).unwrap();
@@ -114,7 +113,7 @@ fn git_ok(dir: &std::path::Path, args: &[&str]) {
 /// at all; see that method's own doc).
 #[test]
 fn plum_update_runs_real_git_pull_against_local_origin() {
-    let _lock = lock();
+    let _path = path_reader();
 
     let origin_tmp = safe_tempdir();
     let origin_dir = origin_tmp.path();
@@ -178,7 +177,7 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
 /// it's an orphan by definition; `:plum-cleanup-plugins` must remove its directory.
 #[test]
 fn plum_cleanup_removes_orphan_plugin_directory() {
-    let _lock = lock();
+    let _path = path_reader();
 
     let data_tmp = safe_tempdir();
     let orphan_dir = data_tmp.path().join("hume/plugins/testuser/orphanrepo");
@@ -215,7 +214,7 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
 /// install-failure message instead.
 #[test]
 fn plum_install_grammar_no_arg_no_language_warns() {
-    let _lock = lock();
+    let _path = path_reader();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -266,7 +265,11 @@ fn plum_install_grammar_unreadable_query_fails_cleanly() {
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
     {
-        let _path = EnvVarGuard::set("PATH", format!("{}:/usr/bin:/bin", shims.path().display()));
+        let _path = EnvVarGuard::set(
+            &_lock,
+            "PATH",
+            format!("{}:/usr/bin:/bin", shims.path().display()),
+        );
         type_cmd(&mut ed, ":plum-install-grammar rust");
     }
 
@@ -301,7 +304,7 @@ fn plum_install_grammar_unreadable_query_fails_cleanly() {
 /// an unknown name deletes nothing.
 #[test]
 fn plum_install_grammar_unknown_name_warns() {
-    let _lock = lock();
+    let _path = path_reader();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -326,7 +329,7 @@ fn plum_install_grammar_unknown_name_warns() {
 /// language), so the message would never mention `nosuchlang`.
 #[test]
 fn plum_install_grammar_arg_overrides_buffer_language() {
-    let _lock = lock();
+    let _path = path_reader();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -362,7 +365,7 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
 /// below for the case that does.
 #[test]
 fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
-    let _lock = lock();
+    let _path = path_reader();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -394,7 +397,7 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
 /// real TTY or panic against a non-TTY stdin in CI.
 #[test]
 fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
-    let _lock = lock();
+    let _path = path_reader();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -432,11 +435,10 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 /// would log an error, so `out_path` would never appear.
 #[test]
 fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
-    let _lock = lock();
+    let _path = path_reader();
 
     let data_tmp = safe_tempdir();
-    // `load_plum` points XDG_DATA_HOME at data_tmp, so the real data dir is
-    // XDG_DATA_HOME/hume (see dirs.rs's ScriptDirs::new).
+    // `load_plum` makes `<data_tmp>/hume` the editor's data dir.
     let data_dir = data_tmp.path().join("hume");
     // Seed a stale, non-empty source dir exactly like a prior clone-succeeded/
     // compile-failed install would leave behind. git-clone-rev refuses to
@@ -484,7 +486,7 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 /// no `@capture` in it.
 #[test]
 fn plum_install_grammar_resolves_helix_inherits_chain() {
-    let _lock = lock();
+    let _path = path_reader();
 
     let data_tmp = safe_tempdir();
     let data_dir = data_tmp.path().join("hume");

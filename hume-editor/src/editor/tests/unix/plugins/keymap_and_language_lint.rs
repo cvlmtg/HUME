@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::editor::registry::MappableCommand;
+use hume_platform::dirs::Dirs;
 use hume_scripting::PluginStatus;
 
 // ── Post-init keymap lint ────────────────────────────────────
@@ -116,7 +117,7 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     let init_path = dir.path().join("init.scm");
     {

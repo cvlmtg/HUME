@@ -2,17 +2,10 @@
 //!
 //! `Editor::reset_config_state`'s per-surface contract (each config-owned
 //! piece of state reverting to its compiled-in default) is tested in the
-//! portable `tests/reload_config.rs`, which never touches `config_dir()`/
-//! `XDG_CONFIG_HOME` and so needs no OS-path isolation. This file has the
+//! portable `tests/reload_config.rs`, which never resolves a config
+//! directory and so needs no OS-path isolation. This file has the
 //! one test that proves the actual `:reload-config` typed command wires
 //! that reset to a real `init.scm` reload on disk.
-
-// `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars, always under a `TEST_GLOBALS` claim (a guard struct, or this
-// module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
-// *new* raw call elsewhere in the crate gets caught; these are the sanctioned
-// callers it lists as exempt.
-#![allow(clippy::disallowed_methods)]
 
 use super::*;
 
@@ -21,42 +14,45 @@ use crate::cli::ConfigSource;
 use crate::editor::keymap::{BindMode, Keymap};
 use crate::editor::minibuf::history::HistoryKind;
 
-/// Owns three isolated tempdirs (`config`, `data`, `runtime`) and keeps
-/// `XDG_CONFIG_HOME`/`HUME_RUNTIME`/`XDG_DATA_HOME` pointed at them for its
-/// whole lifetime, unlike `unix::plugins::setup_editor_with_init_scripting`,
-/// which unsets the env vars right after its one `init_scripting()` call,
-/// this fixture stays alive across an initial `init_scripting()` and a later
-/// `:reload-config` dispatch against the *same* config path.
+/// Owns three isolated tempdirs (`config`, `data`, `runtime`) that
+/// [`Self::dirs`] points a session at. Unlike
+/// `unix::plugins::setup_editor_with_init_scripting`, this fixture stays
+/// alive across an initial `init_scripting()` and a later `:reload-config`
+/// dispatch against the *same* config path.
 struct ReloadFixture {
     config_dir: std::path::PathBuf,
+    data_dir: std::path::PathBuf,
+    runtime_dir: std::path::PathBuf,
     _config_tmp: tempfile::TempDir,
     _data_tmp: tempfile::TempDir,
     _runtime_tmp: tempfile::TempDir,
-    // Last field: released after the tempdirs above are deleted (see
-    // `HumeRuntimeGuard`'s doc for why the drop order matters).
-    _lock: ClaimGuard,
+    _path: PathReader,
 }
 
 impl ReloadFixture {
     fn new(init_scm: &str) -> Self {
-        let lock = TEST_GLOBALS.claim(Global::Env);
         let config_tmp = safe_tempdir();
         let data_tmp = safe_tempdir();
         let runtime_tmp = safe_tempdir();
         let config_dir = config_tmp.path().join("hume");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("init.scm"), init_scm).unwrap();
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-            std::env::set_var("HUME_RUNTIME", runtime_tmp.path());
-            std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-        }
         Self {
             config_dir,
+            data_dir: data_tmp.path().join("hume"),
+            runtime_dir: runtime_tmp.path().to_path_buf(),
             _config_tmp: config_tmp,
             _data_tmp: data_tmp,
             _runtime_tmp: runtime_tmp,
-            _lock: lock,
+            _path: path_reader(),
+        }
+    }
+
+    fn dirs(&self) -> Dirs {
+        Dirs {
+            config: Some(self.config_dir.clone()),
+            data: Some(self.data_dir.clone()),
+            runtime: Some(self.runtime_dir.clone()),
         }
     }
 
@@ -74,16 +70,6 @@ impl ReloadFixture {
     }
 }
 
-impl Drop for ReloadFixture {
-    fn drop(&mut self) {
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-            std::env::remove_var("HUME_RUNTIME");
-            std::env::remove_var("XDG_DATA_HOME");
-        }
-    }
-}
-
 /// `:reload-config`, dispatched through the real minibuffer path against a
 /// real `init.scm` on disk: a bound key and a global option revert to their
 /// compiled-in defaults, the reloaded file's own `define-command!` for the
@@ -97,6 +83,7 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
            (define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
     ed.init_scripting(&mut Default::default());
 
     assert_eq!(
@@ -188,11 +175,12 @@ fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
     // Held for its `Drop` (env var cleanup) only: this test reloads the
     // same `init.scm` unchanged, unlike every other fixture user, which
     // rewrites it via `write_init` before reloading.
-    let _fixture = ReloadFixture::new(
+    let fixture = ReloadFixture::new(
         r#"(register-hook! 'on-buffer-enter (lambda (bid)
              (set-statusline-text! "greeting" bid "hello")))"#,
     );
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
     ed.init_scripting(&mut Default::default());
     ed.settle();
     assert_eq!(
@@ -238,6 +226,7 @@ fn config_override_is_evaluated_instead_of_default_init_scm() {
         fixture.write_override("override.scm", r#"(set-option! "scroll-margin" 42)"#);
 
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
     ed.set_config_source(ConfigSource::File(override_path));
     ed.init_scripting(&mut Default::default());
 
@@ -258,6 +247,7 @@ fn config_override_survives_reload_config() {
         fixture.write_override("override.scm", r#"(set-option! "scroll-margin" 42)"#);
 
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
     ed.set_config_source(ConfigSource::File(override_path.clone()));
     ed.init_scripting(&mut Default::default());
     assert_eq!(
@@ -300,6 +290,7 @@ fn config_override_missing_at_reload_reports_error_and_does_not_report_success()
         fixture.write_override("override.scm", r#"(set-option! "scroll-margin" 42)"#);
 
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
     ed.set_config_source(ConfigSource::File(override_path.clone()));
     ed.init_scripting(&mut Default::default());
     assert_eq!(
@@ -339,26 +330,27 @@ fn config_override_missing_at_reload_reports_error_and_does_not_report_success()
 }
 
 /// A `--config` override must work even with no resolvable config directory
-/// at all (`HOME`/`XDG_CONFIG_HOME` both unset): the whole point of an
+/// at all: the whole point of an
 /// explicit override is that it doesn't depend on the standard directories.
 /// Both `init_scripting` and the `:reload-config` fail-fast pre-check must
 /// treat the override as a valid config path.
 #[test]
 fn config_override_works_with_no_config_dir() {
-    let _guard = NoConfigDirGuard::new();
     let scm_tmp = safe_tempdir();
     let override_path = scm_tmp.path().join("override.scm");
     std::fs::write(&override_path, r#"(set-option! "scroll-margin" 42)"#).unwrap();
     // Isolate the scenario under test (no *config* dir) from data-dir and
-    // runtime-dir resolution: `NoConfigDirGuard` unsets `HOME` too, which
-    // `data_dir()` also falls back to, and the resulting warnings would
-    // otherwise be indistinguishable from a real reload failure below.
+    // runtime-dir resolution: missing ones would add warnings that are
+    // indistinguishable from a real reload failure below.
     let data_tmp = safe_tempdir();
     let runtime_tmp = safe_tempdir();
-    let _data_dir = EnvVarGuard::set("XDG_DATA_HOME", data_tmp.path());
-    let _runtime_dir = EnvVarGuard::set("HUME_RUNTIME", runtime_tmp.path());
 
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = Dirs {
+        data: Some(data_tmp.path().join("hume")),
+        runtime: Some(runtime_tmp.path().to_path_buf()),
+        ..Dirs::none()
+    };
     ed.set_config_source(ConfigSource::File(override_path));
     ed.init_scripting(&mut Default::default());
 
@@ -391,12 +383,13 @@ fn config_override_works_with_no_config_dir() {
 /// `scroll-margin` stays at its compiled-in default despite the fixture's
 /// `init.scm` setting it to 9, while still initialising the scripting host
 /// itself (the bundled runtime Scheme load is a silent no-op here since
-/// `HUME_RUNTIME` points at an empty tempdir, not exercised by this test).
+/// runtime directory is an empty tempdir, not exercised by this test).
 #[test]
 fn no_config_skips_init_scm_but_keeps_bundled_runtime() {
-    let _fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
+    let fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
 
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
     ed.set_config_source(ConfigSource::Skip);
     ed.init_scripting(&mut Default::default());
 
@@ -415,9 +408,10 @@ fn no_config_skips_init_scm_but_keeps_bundled_runtime() {
 /// `typed_reload_config`'s doc for why.
 #[test]
 fn reload_config_under_no_config_errors() {
-    let _fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
+    let fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
 
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
     ed.set_config_source(ConfigSource::Skip);
     ed.init_scripting(&mut Default::default());
 
@@ -451,7 +445,7 @@ fn reload_config_under_no_config_errors() {
 /// `None -> Some` transition and the hook fires again, instead of hitting
 /// `set_buffer_language`'s unchanged-value early return.
 ///
-/// The fixture's `HUME_RUNTIME` points at an empty tempdir, so neither the
+/// The fixture's runtime directory is an empty tempdir, so neither the
 /// real `runtime/scheme/languages.scm` nor `prelude.scm` loads, hence the
 /// raw `%define-language!` call below (the ergonomic `define-language!` is
 /// defined in `prelude.scm`, unavailable here). The test's own registration is
@@ -467,7 +461,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
     let file = file_tmp.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
-    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {}), fixture.dirs()).unwrap();
     ed.init_scripting(&mut Default::default());
     ed.settle();
 
@@ -553,7 +547,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
     let file = file_tmp.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
-    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {}), fixture.dirs()).unwrap();
     type_cmd(&mut ed, ":reload-config");
     ed.settle();
 
@@ -591,6 +585,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
 fn reload_config_does_not_report_success_when_init_scm_errors() {
     let fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
     ed.init_scripting(&mut Default::default());
     assert_eq!(
         ed.state.settings.scroll_margin, 9,
@@ -634,7 +629,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
     let file = file_tmp.path().join("README"); // no extension: never auto-detected
     std::fs::write(&file, "hello\n").unwrap();
 
-    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {}), fixture.dirs()).unwrap();
     ed.init_scripting(&mut Default::default());
 
     let bid = ed.focused_buffer_id();
@@ -689,7 +684,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
 /// language failed to re-detect after reload.
 ///
 /// Uses a real compiled JSON grammar staged under `StagedGrammarFixture`
-/// (real `HUME_RUNTIME`, so the real `grammar-sources.scm` catalog and
+/// (real runtime directory, so the real `grammar-sources.scm` catalog and
 /// `grammars.scm` registrar run both times) with no `core:plum` in
 /// `init.scm` at all, proving the survival is core's doing, not a reload
 /// re-running an install command.
@@ -707,7 +702,7 @@ fn reload_config_keeps_a_startup_grammar_registered() {
     let file = file_tmp.path().join("data.json");
     std::fs::write(&file, "{\"x\": 1}\n").unwrap();
 
-    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {}), fixture.dirs()).unwrap();
     ed.init_scripting(&mut Default::default());
 
     let bid = ed.focused_buffer_id();
@@ -752,44 +747,6 @@ fn reload_config_keeps_a_startup_grammar_registered() {
 // :reload-config with no resolvable config directory fails fast
 // ---------------------------------------------------------------------------
 
-/// RAII guard: unsets `XDG_CONFIG_HOME` and `HOME` for its lifetime (the
-/// only two env vars `hume_platform::dirs::config_dir()` ever consults on
-/// Unix), restoring each to its original value on drop rather than just
-/// removing it: several other tests read `HOME` via
-/// `hume_platform::dirs::home_dir().expect(...)` and would panic on a
-/// missing var. Restoring it here only protects those readers *after* this
-/// guard drops; it does not serialize against them while `HOME` is unset:
-/// none of those call sites claim `Global::Env` themselves, so this only
-/// narrows the unset window to this guard's own lifetime rather than
-/// closing it.
-struct NoConfigDirGuard {
-    _xdg_config_home: EnvVarGuard,
-    _home: EnvVarGuard,
-    // Last field: released after both vars above are restored (fields drop
-    // in declaration order; see `HumeRuntimeGuard`'s doc for why the order
-    // matters here too).
-    _lock: ClaimGuard,
-}
-
-impl NoConfigDirGuard {
-    fn new() -> Self {
-        let lock = TEST_GLOBALS.claim(Global::Env);
-        // `capture` (not `set`): the mutation here is `remove_var`, not a
-        // new value, so only the restore-on-drop half applies.
-        let xdg_config_home = EnvVarGuard::capture("XDG_CONFIG_HOME");
-        let home = EnvVarGuard::capture("HOME");
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-            std::env::remove_var("HOME");
-        }
-        Self {
-            _xdg_config_home: xdg_config_home,
-            _home: home,
-            _lock: lock,
-        }
-    }
-}
-
 /// `typed_reload_config` checks `config_dir()` *before* touching anything.
 /// A `None` config dir found only after `reset_config_state` had wiped
 /// languages/keymap/theme/highlighting would hit `init_scripting`'s own
@@ -799,8 +756,6 @@ impl NoConfigDirGuard {
 /// untouched.
 #[test]
 fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
-    let _guard = NoConfigDirGuard::new();
-
     let mut ed = editor_from("-[a]>b\n");
     // No scripting host at all, mirroring what a real editor looks like when
     // `Editor::open`'s caller never resolved a config dir either. Still has
@@ -860,6 +815,7 @@ fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
 fn reload_config_twice_in_a_row_both_apply_cleanly() {
     let fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 3)"#);
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
     ed.init_scripting(&mut Default::default());
     assert_eq!(
         ed.state.settings.scroll_margin, 3,
@@ -919,7 +875,7 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
     let file = file_tmp.path().join("README"); // no extension: never auto-detected
     std::fs::write(&file, "hello\n").unwrap();
 
-    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(Some(file), std::sync::Arc::new(|| {}), fixture.dirs()).unwrap();
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();
     type_cmd(&mut ed, ":set buffer language=notes");
@@ -976,6 +932,7 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
 fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
     let fixture = ReloadFixture::new("");
     let mut ed = editor_from("-[o]>ne\ntwo\nthree\nfour\nfive\n");
+    ed.state.dirs = fixture.dirs();
     ed.init_scripting(&mut Default::default());
 
     let pre_reload_bid = ed.focused_buffer_id();

@@ -103,7 +103,12 @@ fn markdown_popup_paints_per_run_styles() {
     // painting actually applies per-run styles to the terminal buffer).
     require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     register_markdown(&mut ed);
     run(
@@ -171,7 +176,12 @@ fn docked_popup_survives_a_multiline_capture_node() {
     // the docked layout, hover's actual long-content path.
     require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     register_markdown(&mut ed);
     run(

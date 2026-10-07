@@ -445,7 +445,12 @@ fn edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor
     std::fs::write(f2.path(), "other\n").unwrap();
     let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
 
-    let mut ed = Editor::open(Some(canonical1.clone()), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical1.clone()),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.execute_typed("e", Some(canonical2.to_str().unwrap()))
         .unwrap();
     assert_eq!(
@@ -466,7 +471,12 @@ fn edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor
 fn edit_position_suffix_on_the_focused_buffer_records_a_jump_entry() {
     let (_f, canonical) = three_line_file();
 
-    let mut ed = Editor::open(Some(canonical.clone()), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical.clone()),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     let before = ed.current_view().primary().head().offset();
 
     let arg = format!("{}:3", canonical.display());
@@ -492,7 +502,12 @@ fn edit_position_suffix_on_another_file_ctrl_o_returns_in_one_step() {
     std::fs::write(f2.path(), "b one\nb two\nb three\n").unwrap();
     let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
 
-    let mut ed = Editor::open(Some(canonical1.clone()), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical1.clone()),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.execute_typed("goto", Some("2")).unwrap();
     let before = ed.current_view().primary().head().offset();
 
@@ -675,7 +690,12 @@ fn open_extra_file_opens_the_path() {
     let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
     let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
 
-    let mut ed = Editor::open(Some(canonical1.clone()), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical1.clone()),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     let first_id = ed.focused_buffer_id();
 
     ed.open_extra_file(&canonical2);
@@ -707,7 +727,12 @@ fn apply_startup_positions_places_focused_cursor() {
     // Column 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two".
     let (_f, canonical) = three_line_file();
 
-    let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     let bid = ed.focused_buffer_id();
 
     ed.sync_viewport_dims(80, 24);
@@ -738,7 +763,12 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
     std::fs::write(f.path(), &content).unwrap();
     let canonical = std::fs::canonicalize(f.path()).unwrap();
 
-    let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     let bid = ed.focused_buffer_id();
 
     ed.sync_viewport_dims(80, 24); // 24 rows -> 23 usable after the statusline
@@ -774,7 +804,12 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
     let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
     let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
 
-    let mut ed = Editor::open(Some(canonical1), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical1),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     let focused_bid = ed.focused_buffer_id();
     let extra_bid = ed.open_extra_file(&canonical2).unwrap();
 
@@ -823,7 +858,12 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
     std::fs::write(f.path(), "line one\nline two\nlast line\n").unwrap();
     let canonical = std::fs::canonicalize(f.path()).unwrap();
 
-    let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     let bid = ed.focused_buffer_id();
 
     ed.sync_viewport_dims(80, 24);
@@ -852,7 +892,12 @@ fn startup_with_missing_first_file_opens_new_file_buffer() {
     let dir = safe_tempdir();
     let path = dir.path().join("startup_new.txt");
 
-    let ed = Editor::open(Some(path.clone()), std::sync::Arc::new(|| {})).unwrap();
+    let ed = Editor::open(
+        Some(path.clone()),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
 
     assert_eq!(ed.state.buffers.len(), 1);
     assert!(ed.doc().is_new_file());
@@ -869,7 +914,12 @@ fn open_extra_file_deduplicates() {
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
 
-    let mut ed = Editor::open(Some(canonical.clone()), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical.clone()),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     // Open the same path twice: must still result in exactly one buffer.
     ed.open_extra_file(&canonical);
     ed.open_extra_file(&canonical);
@@ -1046,7 +1096,12 @@ fn wa_preserves_focus_on_single_buffer() {
 /// it via `?`, and bid2 stays unsaved.
 #[test]
 fn wa_skips_read_only_dirty_buffer() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     // bid1: writable dirty buffer backed by a file.
     let (tmp1_path, bid1) = open_file_buffer(&mut ed, "one\n");
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid1);
@@ -1089,7 +1144,12 @@ fn open_extra_file_nonexistent_opens_new_file_buffer() {
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
 
-    let mut ed = Editor::open(Some(canonical.clone()), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical.clone()),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     let dir = safe_tempdir();
     let nonexistent = dir.path().join("hume_test_nonexistent_xyz_404.txt");
     let canonical_dir = std::fs::canonicalize(dir.path()).unwrap();
@@ -1143,7 +1203,12 @@ fn open_extra_file_new_file_shows_untransformed_display_path() {
     // can miss on a platform/CI layout where $HOME is itself a symlink.
     let canonical_home = std::fs::canonicalize(&home).unwrap();
 
-    let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     // Bypass shell tilde expansion by constructing the PathBuf directly:
     // exercises callers (e.g. Steel scripting) that may pass a literal `~`.
     let tilde_path = std::path::PathBuf::from("~/hume-test-no-such-file-xyz.txt");
@@ -1183,7 +1248,12 @@ fn open_extra_file_warns_with_untransformed_path() {
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
 
-    let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        Some(canonical),
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     let tilde_path = std::path::PathBuf::from("~");
 
     ed.open_extra_file(&tilde_path);

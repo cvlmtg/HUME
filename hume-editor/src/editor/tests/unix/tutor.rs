@@ -1,9 +1,48 @@
 use super::*;
 
-// All tutor tests set HUME_RUNTIME and TMPDIR to temp dirs, so they are
-// unix-only: HUME_RUNTIME is not honoured on Windows because runtime_dir()
-// uses a different branch there, and env::set_var in parallel tests is
-// unsafe and requires the mutex guard.
+// `:tutor` copies the lesson into `std::env::temp_dir()`, so every test
+// points `TMPDIR` at its own tempdir under a `Global::Env` claim. They are
+// unix-only because `TMPDIR` is not honoured on Windows.
+
+/// An isolated runtime directory holding the tutor source, plus a `TMPDIR`
+/// of its own for the copy `:tutor` writes.
+struct TutorGuard {
+    // Declaration order is drop order: `TMPDIR` is restored before the
+    // tempdirs are deleted, and the claim is released last.
+    _tmpdir: EnvVarGuard,
+    runtime: tempfile::TempDir,
+    tmp: tempfile::TempDir,
+    _lock: ClaimGuard,
+}
+
+impl TutorGuard {
+    fn new() -> Self {
+        let lock = TEST_GLOBALS.claim(Global::Env);
+        let runtime = safe_tempdir();
+        let tmp = safe_tempdir();
+        let tmpdir = EnvVarGuard::set(&lock, "TMPDIR", tmp.path());
+        Self {
+            _tmpdir: tmpdir,
+            runtime,
+            tmp,
+            _lock: lock,
+        }
+    }
+
+    fn runtime(&self) -> &std::path::Path {
+        self.runtime.path()
+    }
+
+    /// `editor_from(marked)` pointed at this guard's runtime directory.
+    fn editor(&self, marked: &str) -> Editor {
+        let mut ed = editor_from(marked);
+        ed.state.dirs = Dirs {
+            runtime: Some(self.runtime.path().to_path_buf()),
+            ..Dirs::none()
+        };
+        ed
+    }
+}
 
 const MARKER: &str = "=== HUME Tutor Test ===";
 const STUB: &str = "=== HUME Tutor Test ===\nLesson 1\n";
@@ -19,10 +58,10 @@ fn write_stub_tutor(dir: &std::path::Path) -> std::path::PathBuf {
 
 #[test]
 fn tutor_opens_buffer_with_lesson_content() {
-    let guard = HumeRuntimeGuard::new();
-    write_stub_tutor(guard.runtime.path());
+    let guard = TutorGuard::new();
+    write_stub_tutor(guard.runtime());
 
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = guard.editor("-[h]>ello\n");
     ed.execute_typed("tutor", None).unwrap();
 
     let text = ed.doc().text().rope().to_string();
@@ -43,10 +82,10 @@ fn tutor_opens_buffer_with_lesson_content() {
 
 #[test]
 fn tutor_is_idempotent() {
-    let guard = HumeRuntimeGuard::new();
-    write_stub_tutor(guard.runtime.path());
+    let guard = TutorGuard::new();
+    write_stub_tutor(guard.runtime());
 
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = guard.editor("-[h]>ello\n");
     let count_before = ed.state.buffers.iter().count();
 
     ed.execute_typed("tutor", None).unwrap();
@@ -76,10 +115,10 @@ fn tutor_is_idempotent() {
 
 #[test]
 fn tutor_after_bd_opens_fresh() {
-    let guard = HumeRuntimeGuard::new();
-    write_stub_tutor(guard.runtime.path());
+    let guard = TutorGuard::new();
+    write_stub_tutor(guard.runtime());
 
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = guard.editor("-[h]>ello\n");
     ed.execute_typed("tutor", None).unwrap();
     let bid_first = ed.focused_buffer_id();
 
@@ -103,10 +142,10 @@ fn tutor_after_bd_opens_fresh() {
 
 #[test]
 fn tutor_after_save_as_opens_fresh() {
-    let guard = HumeRuntimeGuard::new();
-    write_stub_tutor(guard.runtime.path());
+    let guard = TutorGuard::new();
+    write_stub_tutor(guard.runtime());
 
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = guard.editor("-[h]>ello\n");
     ed.execute_typed("tutor", None).unwrap();
     let bid_first = ed.focused_buffer_id();
     let count_after_first = ed.state.buffers.iter().count();
@@ -140,10 +179,10 @@ fn tutor_after_save_as_opens_fresh() {
 
 #[test]
 fn tutor_buffer_is_editable() {
-    let guard = HumeRuntimeGuard::new();
-    write_stub_tutor(guard.runtime.path());
+    let guard = TutorGuard::new();
+    write_stub_tutor(guard.runtime());
 
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = guard.editor("-[h]>ello\n");
     ed.execute_typed("tutor", None).unwrap();
 
     let before = ed.doc().text().rope().to_string();
@@ -170,9 +209,9 @@ fn tutor_buffer_is_editable() {
 #[test]
 fn tutor_missing_file_returns_error() {
     // Do NOT write tutor.rst: the runtime directory is empty.
-    let _guard = HumeRuntimeGuard::new();
+    let guard = TutorGuard::new();
 
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = guard.editor("-[h]>ello\n");
     let count_before = ed.state.buffers.iter().count();
 
     let result = ed.execute_typed("tutor", None);
@@ -197,11 +236,11 @@ fn tutor_missing_file_returns_error() {
 
 #[test]
 fn tutor_save_does_not_overwrite_source() {
-    let guard = HumeRuntimeGuard::new();
-    let source_path = guard.runtime.path().join("tutor.rst");
+    let guard = TutorGuard::new();
+    let source_path = guard.runtime().join("tutor.rst");
     std::fs::write(&source_path, STUB).unwrap();
 
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = guard.editor("-[h]>ello\n");
     ed.execute_typed("tutor", None).unwrap();
 
     // Edit the tutor buffer.

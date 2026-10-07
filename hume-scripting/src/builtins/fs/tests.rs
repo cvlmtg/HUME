@@ -1,6 +1,7 @@
 use super::*;
 use crate::builtins::dirs::ScriptDirs;
 use crate::test_support::SteelCtxTestHarness;
+use hume_platform::dirs::Dirs;
 use tempfile::TempDir;
 
 fn harness_with_data_dir(tmp: &TempDir) -> SteelCtxTestHarness {
@@ -127,7 +128,7 @@ fn path_separator_resolves_inside_loaded_plugin() {
     )
     .unwrap();
 
-    let mut host = crate::ScriptingHost::new();
+    let mut host = crate::ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     let mut null_host = crate::null_host::NullHost;
     host.eval_source(r#"(load-plugin! "user/probe")"#, &mut null_host)
@@ -177,7 +178,7 @@ fn data_dir_resolves_through_real_registration() {
     let data_dir = tmp.path().join("hume");
     std::fs::create_dir_all(&data_dir).unwrap();
 
-    let mut host = crate::ScriptingHost::new();
+    let mut host = crate::ScriptingHost::new(&Dirs::none());
     host.set_data_dir(data_dir.clone());
     let mut null_host = crate::null_host::NullHost;
     host.eval_source(r#"(log! 'info (data-dir))"#, &mut null_host)

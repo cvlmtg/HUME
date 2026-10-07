@@ -108,6 +108,7 @@ fn path_completer_missing_dir_returns_empty() {
         buffers: &store,
         cwd,
         languages: &langs,
+        dirs: &hume_platform::dirs::Dirs::none(),
     };
     let (_, candidates) = complete_path("e foo", 5, &ctx);
     assert!(candidates.is_empty());

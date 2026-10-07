@@ -5,6 +5,7 @@
 use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
 use hume_lsp::test_util::RecordingLspBackend;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 /// `marked` in a file attached to a `Running` scripted server (UTF-16
@@ -37,7 +38,7 @@ fn set_inlay_hints_composes_with_lsp_position_to_offset() {
     let bid = rig.bid;
     let mut ed = rig.ed;
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -73,7 +74,7 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
     let tmp = safe_tempdir();
     let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -112,7 +113,7 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
     let tmp = safe_tempdir();
     let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -152,7 +153,7 @@ fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
     let tmp = safe_tempdir();
     let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n"); // "xabcdef\n", 8 chars; offset 7 is the trailing '\n'
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -188,7 +189,7 @@ fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\n"); // 8 chars total
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -224,7 +225,7 @@ fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudl
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\n"); // one real line
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -297,7 +298,7 @@ fn inlay_hints_remap_through_an_edit() {
     let tmp = safe_tempdir();
     let mut ed = attached_editor(tmp.path(), "-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -346,7 +347,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
     // server and no path, nothing but the decoration itself.
     let mut ed = editor_from("-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -403,7 +404,7 @@ fn sign_remaps_through_a_line_inserted_above_it() {
     // "xaaaa\nbbbb\ncccc\n": the sign below sits on "bbbb\n", line 1.
     let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -446,7 +447,7 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -519,7 +520,7 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     // exactly at char 6, and the insertion below lands exactly there.
     let mut ed = editor_from("-[x]>aaaa\nbbbb\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -566,7 +567,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -649,7 +650,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
 fn every_setter_interns_its_scope_at_the_set_call_not_at_first_render() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -689,7 +690,7 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
     // 6 + 5 + 5 = 16.
     let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\ndddd\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -732,7 +733,7 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
     // is "xabcdef\n" (8 chars) and line 1 ("ghijkl\n") starts at char 8.
     let mut ed = editor_from("-[x]>abcdef\nghijkl\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -789,7 +790,7 @@ fn set_eol_text_hide_on_insert_line_defaults_off_and_round_trips() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -815,7 +816,7 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
     // "xabcdef\n" is line 0 (8 chars); "ghijkl\n" (line 1) starts at char 8.
     let mut ed = editor_from("-[x]>abcdef\nghijkl\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -870,7 +871,7 @@ fn line_background_remaps_through_a_line_inserted_above_it() {
     // The tint below sits on "bbbb\n", line 1.
     let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\n");
     let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -948,7 +949,7 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
         "counts must tally exactly the one error and one warning"
     );
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -1013,7 +1014,7 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
 fn diagnostics_for_buffer_errors_loudly_on_an_unknown_severity_name() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

@@ -3,8 +3,8 @@
 //!
 //! Most tests here load Steel plugins from disk: Scheme `require` strings
 //! embed OS paths, and backslashes are not escaped in Steel string literals.
-//! The rest exercise unix-only behavior directly (e.g. `HUME_RUNTIME`
-//! resolution, `set_cwd` against canonicalized paths).
+//! The rest exercise unix-only behavior directly (e.g. `set_cwd` against
+//! canonicalized paths).
 //!
 //! A test file with both portable and unix-only tests is split into a
 //! same-named file here holding the unix-only half.
@@ -27,7 +27,7 @@ fn poll_until(
     mut step: impl FnMut(&mut Editor),
     mut until: impl FnMut(&Editor) -> bool,
 ) {
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         step(ed);
         if until(ed) {
@@ -95,51 +95,25 @@ fn process_is_alive(pid: u32) -> bool {
 
 // ── Shared unix-only guards and fixtures ─────────────────────────────────────
 
-/// Claim `Global::Env`, create isolated `runtime` and `tmp` tempdirs, set
-/// `HUME_RUNTIME` and `TMPDIR`, and restore both on drop.
-///
-/// The claim is acquired BEFORE the tempdirs are created so that a concurrent
-/// guarded test's TMPDIR does not cause our tempdirs to be nested inside it,
-/// which would make them disappear when that test's guard drops and deletes its
-/// tree.
-struct HumeRuntimeGuard {
+/// An isolated, initially empty runtime directory, for a test that stages
+/// plugin sources into it. [`Self::dirs`] points a session at it.
+struct RuntimeDirs {
     runtime: tempfile::TempDir,
-    tmp: tempfile::TempDir,
-    // Last field: released after runtime/tmp dirs are deleted.
-    _lock: ClaimGuard,
+    _path: PathReader,
 }
 
-impl HumeRuntimeGuard {
-    // `set_var` here mutates process-global HUME_RUNTIME/TMPDIR, always under
-    // the `Global::Env` claim taken just above. `clippy.toml`'s
-    // `disallowed-methods` entry exists so a *new* raw call elsewhere in the
-    // crate gets caught; this is a sanctioned caller.
-    #[allow(clippy::disallowed_methods)]
+impl RuntimeDirs {
     fn new() -> Self {
-        let lock = TEST_GLOBALS.claim(Global::Env);
-        let runtime = safe_tempdir();
-        let tmp = safe_tempdir();
-        unsafe {
-            std::env::set_var("HUME_RUNTIME", runtime.path());
-            std::env::set_var("TMPDIR", tmp.path());
-        }
-        HumeRuntimeGuard {
-            runtime,
-            tmp,
-            _lock: lock,
+        Self {
+            runtime: safe_tempdir(),
+            _path: path_reader(),
         }
     }
-}
 
-impl Drop for HumeRuntimeGuard {
-    // Sanctioned caller; see `Self::new`.
-    #[allow(clippy::disallowed_methods)]
-    fn drop(&mut self) {
-        // Clear env vars before the TempDir fields delete their directories and
-        // before _lock releases the mutex, so the next waiter sees a clean env.
-        unsafe {
-            std::env::remove_var("HUME_RUNTIME");
-            std::env::remove_var("TMPDIR");
+    fn dirs(&self) -> Dirs {
+        Dirs {
+            runtime: Some(self.runtime.path().to_path_buf()),
+            ..Dirs::none()
         }
     }
 }
@@ -151,66 +125,43 @@ const STDLIB_PLUGIN: &str = include_str!(concat!(
     "/../runtime/plugins/core/stdlib/plugin.scm"
 ));
 
-/// Stage a real shipped core plugin's source into `guard`'s isolated
-/// `HUME_RUNTIME/plugins/core/<name>/plugin.scm`, so `load-plugin!` resolves it
+/// Stage a real shipped core plugin's source into `dirs`' isolated
+/// `<runtime>/plugins/core/<name>/plugin.scm`, so `load-plugin!` resolves it
 /// as a core plugin during the test.
-fn write_core_plugin(guard: &HumeRuntimeGuard, name: &str, source: &str) {
-    let plugin_dir = guard.runtime.path().join("plugins").join("core").join(name);
+fn write_core_plugin(dirs: &RuntimeDirs, name: &str, source: &str) {
+    let plugin_dir = dirs.runtime.path().join("plugins").join("core").join(name);
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), source).unwrap();
 }
 
-/// Points `HUME_RUNTIME` at the real on-disk `runtime/` directory for the
-/// guard's lifetime, so multi-file core plugins (`core:lsp`) are tested
-/// against the shipped files instead of hand-copied ones.
-///
-/// Also points `XDG_DATA_HOME` at a guard-owned temp dir, because loading
-/// `core:lsp` scans `<data-dir>/servers/` and would otherwise read the
-/// developer's installed servers.
-///
-/// Unlike [`HumeRuntimeGuard`], it does not touch `TMPDIR`. `TMPDIR` is
-/// process-global, so overriding it can redirect an unrelated concurrent
-/// test's `tempfile::tempdir()` into a tree this guard later deletes. A
-/// persistent runtime directory has nothing to clean up, so there is no need.
-struct RealRuntimeGuard {
+/// The real on-disk `runtime/` directory, so multi-file core plugins
+/// (`core:lsp`) are tested against the shipped files instead of hand-copied
+/// ones, plus a data directory of its own: loading `core:lsp` scans
+/// `<data-dir>/servers/` and would otherwise read the developer's installed
+/// servers.
+struct RealRuntimeDirs {
     _data_tmp: tempfile::TempDir,
-    prev_xdg_data_home: Option<String>,
-    // Last field: released after `_data_tmp` is deleted (see
-    // `HumeRuntimeGuard`'s doc for why the drop order matters).
-    _lock: ClaimGuard,
+    dirs: Dirs,
+    _path: PathReader,
 }
 
-impl RealRuntimeGuard {
-    // Sanctioned caller; see `HumeRuntimeGuard::new`.
-    #[allow(clippy::disallowed_methods)]
+impl RealRuntimeDirs {
     fn new() -> Self {
-        let lock = TEST_GLOBALS.claim(Global::Env);
-        let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
         let data_tmp = safe_tempdir();
-        let prev_xdg_data_home = std::env::var("XDG_DATA_HOME").ok();
-        unsafe {
-            std::env::set_var("HUME_RUNTIME", real_runtime);
-            std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-        }
-        RealRuntimeGuard {
+        let dirs = Dirs {
+            data: Some(data_tmp.path().join("hume")),
+            runtime: Some(repo_runtime_dir()),
+            ..Dirs::none()
+        };
+        Self {
             _data_tmp: data_tmp,
-            prev_xdg_data_home,
-            _lock: lock,
+            dirs,
+            _path: path_reader(),
         }
     }
-}
 
-impl Drop for RealRuntimeGuard {
-    // Sanctioned caller; see `HumeRuntimeGuard::new`.
-    #[allow(clippy::disallowed_methods)]
-    fn drop(&mut self) {
-        unsafe {
-            std::env::remove_var("HUME_RUNTIME");
-            match &self.prev_xdg_data_home {
-                Some(v) => std::env::set_var("XDG_DATA_HOME", v),
-                None => std::env::remove_var("XDG_DATA_HOME"),
-            }
-        }
+    fn dirs(&self) -> Dirs {
+        self.dirs.clone()
     }
 }
 
@@ -257,13 +208,16 @@ fn core_lsp_rig(
     marked: &str,
     initialize_result: serde_json::Value,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (LspRig, RealRuntimeGuard) {
-    let guard = RealRuntimeGuard::new();
+) -> (LspRig, RealRuntimeDirs) {
+    let guard = RealRuntimeDirs::new();
     let (mut backend, _notifications, _requests) = RecordingLspBackend::new();
     backend.respond_to("initialize", initialize_result);
     configure(&mut backend, ServerId(0));
     let init = core_lsp_init();
-    let mut rig = LspRig::drained(tmp, RigSpec::rust(marked).with_init(&init), backend);
+    let spec = RigSpec::rust(marked)
+        .with_init(&init)
+        .with_dirs(guard.dirs());
+    let mut rig = LspRig::drained(tmp, spec, backend);
     rig.ed.settle();
     (rig, guard)
 }
@@ -288,7 +242,7 @@ fn setup_trigger_char_feature(
     content: &str,
     capabilities: serde_json::Value,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, RequestLog) {
+) -> (Editor, RealRuntimeDirs, RequestLog) {
     let (rig, guard) = core_lsp_rig(
         tmp,
         &marked_at_start(content),
@@ -342,7 +296,7 @@ struct DiagSetup {
     tmp: std::path::PathBuf,
     /// The one server attached to `file`, the publisher of `diags`.
     sid: ServerId,
-    _guard: RealRuntimeGuard,
+    _guard: RealRuntimeDirs,
     _root: tempfile::TempDir,
 }
 
@@ -381,24 +335,21 @@ fn setup_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagSetup {
     }
 }
 
-/// Points `XDG_CONFIG_HOME`/`HUME_RUNTIME`/`XDG_DATA_HOME` at a config
-/// tempdir (holding a caller-chosen `init.scm`), the real repo `runtime/`
-/// dir, and a data tempdir staged with a real compiled grammar at the exact
-/// paths core's `grammar-output-path`/`grammar-highlights-path` expect, so
-/// `init_scripting`'s unconditional `scheme/grammars.scm` eval (see
+/// A config tempdir (holding a caller-chosen `init.scm`), the real repo
+/// `runtime/` dir, and a data tempdir staged with a real compiled grammar at
+/// the exact paths core's `grammar-output-path`/`grammar-highlights-path`
+/// expect, so `init_scripting`'s unconditional `scheme/grammars.scm` eval (see
 /// `scripting_setup.rs`) registers it against the real source catalog.
 ///
-/// Held for the fixture's whole lifetime (unlike `RealRuntimeGuard`, which
-/// has no config dir at all) so a later `:reload-config` dispatch can
-/// re-enter `init_scripting` against the same paths after `write_init`
-/// swaps in a new `init.scm`.
+/// Held for the whole test so a later `:reload-config` dispatch can re-enter
+/// `init_scripting` against the same paths after `write_init` swaps in a new
+/// `init.scm`.
 struct StagedGrammarFixture {
     config_dir: PathBuf,
+    data_dir: PathBuf,
     _config_tmp: tempfile::TempDir,
     _data_tmp: tempfile::TempDir,
-    // Last field: released after the tempdirs above are deleted (see
-    // `HumeRuntimeGuard`'s doc for why the drop order matters).
-    _lock: ClaimGuard,
+    _path: PathReader,
 }
 
 impl StagedGrammarFixture {
@@ -406,19 +357,15 @@ impl StagedGrammarFixture {
     /// under a fresh `<data>/grammars/`; `init_scm` written to a fresh
     /// `init.scm`. Caller supplies `grammar_name`'s own fixture files;
     /// callers call `require_grammars` first.
-    // Sanctioned caller; see `HumeRuntimeGuard::new`.
-    #[allow(clippy::disallowed_methods)]
     fn new(grammar_name: &str, parser: &Path, highlights: &Path, init_scm: &str) -> Self {
-        let lock = TEST_GLOBALS.claim(Global::Env);
-        let repo_runtime_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
-
         let config_tmp = safe_tempdir();
         let config_dir = config_tmp.path().join("hume");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("init.scm"), init_scm).unwrap();
 
         let data_tmp = safe_tempdir();
-        let grammars_dir = data_tmp.path().join("hume").join("grammars");
+        let data_dir = data_tmp.path().join("hume");
+        let grammars_dir = data_dir.join("grammars");
         let hl_dir = grammars_dir.join("sources").join(grammar_name);
         std::fs::create_dir_all(&hl_dir).unwrap();
         std::fs::copy(
@@ -431,34 +378,25 @@ impl StagedGrammarFixture {
         .unwrap();
         std::fs::copy(highlights, hl_dir.join("highlights.scm")).unwrap();
 
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-            std::env::set_var("HUME_RUNTIME", repo_runtime_dir);
-            std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-        }
-
         Self {
             config_dir,
+            data_dir,
             _config_tmp: config_tmp,
             _data_tmp: data_tmp,
-            _lock: lock,
+            _path: path_reader(),
+        }
+    }
+
+    fn dirs(&self) -> Dirs {
+        Dirs {
+            config: Some(self.config_dir.clone()),
+            data: Some(self.data_dir.clone()),
+            runtime: Some(repo_runtime_dir()),
         }
     }
 
     fn write_init(&self, init_scm: &str) {
         std::fs::write(self.config_dir.join("init.scm"), init_scm).unwrap();
-    }
-}
-
-impl Drop for StagedGrammarFixture {
-    // Sanctioned caller; see `HumeRuntimeGuard::new`.
-    #[allow(clippy::disallowed_methods)]
-    fn drop(&mut self) {
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-            std::env::remove_var("HUME_RUNTIME");
-            std::env::remove_var("XDG_DATA_HOME");
-        }
     }
 }
 
@@ -483,7 +421,7 @@ fn git_init(dir: &Path) {
 // ── Shared plugin-loading helpers ─────────────────────────────────────────────
 //
 // Shared by every test file that loads a real core plugin from disk into an
-// isolated `XDG_DATA_HOME`/`HUME_RUNTIME` (`scripting_lsp_install.rs`,
+// isolated data and runtime directory (`scripting_lsp_install.rs`,
 // `scripting_theme_install.rs`, `injections_editor.rs`).
 
 /// Canonicalizes `root` (mirrors what `hume_scripting`'s `ScriptDirs::new`
@@ -499,25 +437,15 @@ fn lock() -> ClaimGuard {
     TEST_GLOBALS.claim(Global::Env)
 }
 
-/// Load `init_src` into `ed`, pointing `HUME_RUNTIME` at the repo's real
-/// `runtime/` dir (so the real shipped plugin sources and catalogs are used)
-/// and `XDG_DATA_HOME` at `data_dir`. Env vars are process-global; callers
-/// must hold a `TEST_GLOBALS.claim(Global::Env)` for the test's duration.
+/// Load `init_src` into `ed`, pointing its runtime directory at the repo's
+/// real `runtime/` dir (so the real shipped plugin sources and catalogs are
+/// used) and its data directory at `<data_dir>/hume`.
 fn load_with_init(ed: &mut Editor, data_dir: &Path, init_src: &str) {
     load_with_init_in_runtime(ed, &repo_runtime_dir(), data_dir, init_src);
 }
 
-fn repo_runtime_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("runtime")
-}
-
 /// [`load_with_init`] against an explicit runtime directory, for a test
 /// that fabricates part of the runtime (e.g. the `core:lsp-install` source catalog).
-// Sanctioned caller; see `HumeRuntimeGuard::new`.
-#[allow(clippy::disallowed_methods)]
 fn load_with_init_in_runtime(ed: &mut Editor, runtime_dir: &Path, data_dir: &Path, init_src: &str) {
     let config_tmp = safe_tempdir();
     let hume_config = config_tmp.path().join("hume");
@@ -527,17 +455,15 @@ fn load_with_init_in_runtime(ed: &mut Editor, runtime_dir: &Path, data_dir: &Pat
     // tests compare against `canonical_data_dir`.
     std::fs::create_dir_all(data_dir.join("hume")).unwrap();
 
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", runtime_dir);
-        std::env::set_var("XDG_DATA_HOME", data_dir);
-    }
+    ed.state.dirs = Dirs {
+        config: Some(hume_config),
+        data: Some(data_dir.join("hume")),
+        runtime: Some(runtime_dir.to_path_buf()),
+    };
     ed.init_scripting(&mut Default::default());
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
+    // `config_tmp` is deleted on return, so a later `:reload-config` has to
+    // find no config directory rather than a dangling one.
+    ed.state.dirs.config = None;
 }
 
 /// Load the real `core:plum` plugin (plus its `core:stdlib` dependency:

@@ -592,7 +592,12 @@ fn typing_after_accept_composes_into_the_open_edit_group_without_panicking() {
 /// fail-safe covers a frame drawn before it.
 #[test]
 fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.feed_key(key('i'));
     for line in ["line0", "line1", "line2", "line3", "line4"] {
         type_chars(&mut ed, line);

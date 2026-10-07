@@ -1,6 +1,6 @@
 // Formatting: `:lsp-fmt`, composing `lsp-request!`,
 // `lsp-capabilities`, `selections-linewise?`/`selections-charwise?`, `apply-text-edits!`.
-// Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
+// Loads the real shipped `core:lsp` plugin in place (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -23,7 +23,7 @@ const THREE_LINES: &str = "line1\nline2\nline3\n";
 fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard) {
+) -> (Editor, RealRuntimeDirs) {
     setup_with_content(tmp, THREE_LINES, configure)
 }
 
@@ -33,7 +33,7 @@ fn setup_with_content(
     tmp: &Path,
     content: &str,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard) {
+) -> (Editor, RealRuntimeDirs) {
     setup_with_caps(
         tmp,
         content,
@@ -52,7 +52,7 @@ fn setup_with_caps(
     content: &str,
     initialize_result: serde_json::Value,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard) {
+) -> (Editor, RealRuntimeDirs) {
     let (rig, guard) = core_lsp_rig(tmp, &marked_at_start(content), initialize_result, configure);
     (rig.ed, guard)
 }

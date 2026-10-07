@@ -1,4 +1,5 @@
 use super::*;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 /// When a Lazy command stub is dispatched with extend=true (e.g. Ctrl-key), the
@@ -33,7 +34,7 @@ fn lazy_command_first_dispatch_forwards_extend() {
 
     // Buffer with 2 lines so move-down doesn't go to the structural newline.
     let mut ed = editor_from("-[a]>b\ncd\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     {
         let mut ih = init_host!(ed);

@@ -33,7 +33,7 @@ fn claiming_the_same_global_twice_on_one_thread_panics_instead_of_hanging() {
 fn claiming_a_different_global_while_holding_one_succeeds() {
     let _env = TEST_GLOBALS.claim(Global::Env);
     // Different resource: legitimate nesting (e.g. `CwdSandbox` constructed
-    // inside a live `HumeRuntimeGuard` in `unix/pickers_plugin.rs`) must
+    // inside a live `RuntimeDirs` in `unix/pickers_plugin.rs`) must
     // neither panic nor hang.
     let _cwd = TEST_GLOBALS.claim(Global::Cwd);
 }

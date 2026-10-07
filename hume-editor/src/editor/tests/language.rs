@@ -1,4 +1,5 @@
 use super::*;
+use hume_platform::dirs::Dirs;
 
 use crate::testing::MockHost;
 use hume_scripting::ScriptingHost;
@@ -7,7 +8,7 @@ use hume_scripting::ScriptingHost;
 
 /// Attach a scripting host to `ed`, optionally evaluating `src` in init mode.
 pub(super) fn attach_host(ed: &mut Editor, src: &str) {
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     if !src.is_empty() {
         host.eval_source(src, &mut mock).expect("eval failed");
@@ -69,7 +70,7 @@ fn set_buffer_language_no_op_when_unchanged() {
     ed.set_buffer_language(bid, None);
     assert!(ed.state.buffers.get(bid).language.is_none());
     // Now set a language and repeat: second set must short-circuit without panic.
-    ed.scripting = Some(ScriptingHost::new());
+    ed.scripting = Some(ScriptingHost::new(&Dirs::none()));
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     let lang = ed.state.config.languages.intern("rust");
@@ -137,7 +138,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
     std::fs::write(&file, "fn main() {}\n").unwrap();
     let file_str = steel_path(&file);
 
-    let mut host = hume_scripting::ScriptingHost::new();
+    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

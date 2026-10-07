@@ -23,12 +23,8 @@ fn lsp_home_dir() -> std::path::PathBuf {
 /// callers that evaluate more `.scm` with production's `builtin_names`.
 ///
 /// `grammars.scm` calls `(runtime-dir)`, and the crate-dir cwd under
-/// `cargo test` defeats the cwd-relative fallback, so `HUME_RUNTIME` is set
-/// around `ScriptingHost::new()`, which caches it.
-// Mutating the process-global env var is sound only under the
-// `TEST_GLOBALS.claim(Global::Env)` below, which makes this a sanctioned
-// `disallowed-methods` caller.
-#[allow(clippy::disallowed_methods)]
+/// `cargo test` defeats the cwd-relative fallback, so the host is given the
+/// real runtime directory explicitly.
 fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor, rustc_hash::FxHashSet<String>)
 {
     let runtime_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -36,19 +32,8 @@ fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor, rustc_hash:
         .expect("workspace root")
         .join("runtime");
 
-    let mut host = {
-        let _lock = TEST_GLOBALS.claim(Global::Env);
-        // SAFETY (not the unsafe-block kind; env vars are just inherently
-        // process-global): guarded by the claim above.
-        unsafe {
-            std::env::set_var("HUME_RUNTIME", &runtime_root);
-        }
-        let host = ScriptingHost::new();
-        unsafe {
-            std::env::remove_var("HUME_RUNTIME");
-        }
-        host
-    };
+    let dirs = repo_runtime_dirs();
+    let mut host = ScriptingHost::new(&dirs);
 
     let mut ed = editor_from("-[a]>b\n");
     let native_names: Vec<&str> = ed.state.config.registry.native_mappable_names().collect();

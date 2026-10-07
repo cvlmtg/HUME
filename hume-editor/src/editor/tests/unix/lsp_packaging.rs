@@ -1,6 +1,6 @@
 // Packaging: lazy `declare-plugin!` activation, and the goto-trie keybindings
 // bound in `plugin.scm`. Loads the real shipped `core:lsp` plugin in place
-// (`RealRuntimeGuard`).
+// (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -49,8 +49,8 @@ fn setup_declared(
     tmp: &Path,
     declare_src: &str,
     configure: impl FnOnce(&mut RecordingLspBackend),
-) -> (Editor, RealRuntimeGuard) {
-    let guard = RealRuntimeGuard::new();
+) -> (Editor, RealRuntimeDirs) {
+    let guard = RealRuntimeDirs::new();
 
     // 30 lines: comfortably taller than the default pane height's ⅓-cap
     // (see lsp_hover.rs's `setup` for the full rationale): a 1-2 line
@@ -70,7 +70,10 @@ fn setup_declared(
     );
     configure(&mut backend);
     let init = format!("{declare_src}\n{RUST_ANALYZER}");
-    let rig = LspRig::drained(tmp, RigSpec::rust(&marked).with_init(&init), backend);
+    let spec = RigSpec::rust(&marked)
+        .with_init(&init)
+        .with_dirs(guard.dirs());
+    let rig = LspRig::drained(tmp, spec, backend);
 
     (rig.ed, guard)
 }
@@ -243,11 +246,11 @@ fn every_default_lsp_binding_dispatches_without_error() {
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
-    let guard = RealRuntimeGuard::new();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let guard = RealRuntimeDirs::new();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), guard.dirs()).unwrap();
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -314,7 +317,7 @@ fn every_default_lsp_binding_dispatches_without_error() {
 /// was never declared or loaded at all).
 #[test]
 fn missing_stdlib_errors_at_load() {
-    let guard = RealRuntimeGuard::new();
+    let guard = RealRuntimeDirs::new();
     let tmp = safe_tempdir();
     let init_path = tmp.path().join("init.scm");
     std::fs::write(
@@ -324,7 +327,8 @@ fn missing_stdlib_errors_at_load() {
     .unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
-    let mut host = ScriptingHost::new();
+    ed.state.dirs = guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     let result = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())

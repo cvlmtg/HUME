@@ -7,7 +7,7 @@ use hume_scripting::ScriptingHost;
 // ── core:pickers — end-to-end plugin tests ────────────────────────────────────
 //
 // Loads the *real* runtime/plugins/core/pickers/plugin.scm (via
-// `include_str!`) into an isolated HUME_RUNTIME dir, then evaluates an
+// `include_str!`) into an isolated runtime dir, then evaluates an
 // init.scm that eagerly loads it, exercising the actual shipped file.
 //
 // Coverage note: the git-repo detection branch is proven only via full
@@ -35,14 +35,14 @@ fn call(ed: &mut Editor, name: &str) {
 /// same init.scm (evaluated after the plugin, so `call!`-dispatchable
 /// commands the plugin registered are reachable by name (see the module
 /// doc comment on why plain, non-command helpers are not used this way).
-fn setup(guard: &HumeRuntimeGuard, tmp: &Path, input: &str, extra_source: &str) -> Editor {
+fn setup(guard: &RuntimeDirs, tmp: &Path, input: &str, extra_source: &str) -> Editor {
     setup_with_config(guard, tmp, input, None, extra_source)
 }
 
 /// Like `setup`, but passes `config_expr` (a Scheme expression, e.g.
 /// `(hash "untracked" #f)`) as `core:pickers`'s `#:config`.
 fn setup_with_config(
-    guard: &HumeRuntimeGuard,
+    guard: &RuntimeDirs,
     tmp: &Path,
     input: &str,
     config_expr: Option<&str>,
@@ -53,7 +53,8 @@ fn setup_with_config(
     // plugin.scm's header); stage and load it first, same as core:git-diff.
     write_core_plugin(guard, "stdlib", STDLIB_PLUGIN);
     let mut ed = editor_from(input);
-    let mut host = ScriptingHost::new();
+    ed.state.dirs = guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     let load_pickers = match config_expr {
         Some(cfg) => format!("(load-plugin! \"core:pickers\" #:config {cfg})"),
         None => "(load-plugin! \"core:pickers\")".to_string(),
@@ -68,7 +69,7 @@ fn setup_with_config(
 
 #[test]
 fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
@@ -118,7 +119,7 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
 /// "tab-new")`, and the action handlers all compose.
 #[test]
 fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
@@ -172,7 +173,7 @@ fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
 /// case, not open a stray tab and then no-op the file open.
 #[test]
 fn files_picker_ctrl_t_on_no_match_does_not_open_a_tab() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
@@ -209,7 +210,7 @@ fn files_picker_ctrl_t_on_no_match_does_not_open_a_tab() {
 /// argument rather than after.
 #[test]
 fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
@@ -260,7 +261,7 @@ fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
 /// (handler payload))` guard.
 #[test]
 fn files_picker_ctrl_v_opens_selection_in_a_new_pane() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
@@ -313,7 +314,7 @@ fn files_picker_ctrl_v_opens_selection_in_a_new_pane() {
 
 #[test]
 fn files_picker_esc_dismisses_cleanly() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
@@ -354,7 +355,7 @@ fn files_picker_esc_dismisses_cleanly() {
 
 #[test]
 fn files_picker_fd_branch_spawns_given_binary() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let tmp = safe_tempdir();
 
     let fake_fd = tmp.path().join("fake-fd");
@@ -390,7 +391,7 @@ fn files_picker_fd_branch_spawns_given_binary() {
 
 #[test]
 fn files_picker_error_path_names_fd() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let tmp = safe_tempdir();
     let extra = r#"(define-command! "test-error-branch" "" (lambda (pane)
                      (call! "pickers/files-picker-with" pane #f #f)))"#;
@@ -412,7 +413,7 @@ fn files_picker_error_path_names_fd() {
 
 #[test]
 fn git_modified_picker_lists_changed_files_with_status_codes() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
@@ -460,7 +461,7 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
 // returned anything.
 #[test]
 fn git_modified_picker_is_pending_until_git_status_returns() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
@@ -494,7 +495,7 @@ fn git_modified_picker_is_pending_until_git_status_returns() {
 
 #[test]
 fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("root.txt"), "hello\n").unwrap();
@@ -531,7 +532,7 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
 
 #[test]
 fn git_modified_picker_row_and_accept_handle_path_with_space() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("has space.txt"), "hello\n").unwrap();
@@ -570,7 +571,7 @@ fn git_modified_picker_row_and_accept_handle_path_with_space() {
 
 #[test]
 fn git_modified_picker_accept_resolves_nested_relative_path() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git_init(sandbox.raw());
     std::fs::create_dir_all(sandbox.raw().join("sub")).unwrap();
@@ -607,7 +608,7 @@ fn git_modified_picker_accept_resolves_nested_relative_path() {
 
 #[test]
 fn git_modified_picker_untracked_false_config_hides_untracked_files() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
@@ -641,7 +642,7 @@ fn git_modified_picker_untracked_false_config_hides_untracked_files() {
 
 #[test]
 fn git_modified_picker_untracked_default_lists_files_inside_untracked_directory() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git_init(sandbox.raw());
     std::fs::create_dir_all(sandbox.raw().join("newdir")).unwrap();
@@ -670,7 +671,7 @@ fn git_modified_picker_untracked_default_lists_files_inside_untracked_directory(
 
 #[test]
 fn git_modified_picker_invalid_untracked_config_fails_load() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "pickers", PICKERS_PLUGIN);
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
     let tmp = safe_tempdir();
@@ -682,7 +683,8 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
     .unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
-    let mut host = ScriptingHost::new();
+    ed.state.dirs = guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     let result = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -703,7 +705,7 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
 /// before its `pickers/untracked` config read ever reaches `call!`.
 #[test]
 fn missing_stdlib_errors_at_load() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "pickers", PICKERS_PLUGIN);
     // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
     let tmp = safe_tempdir();
@@ -711,7 +713,8 @@ fn missing_stdlib_errors_at_load() {
     std::fs::write(&init_path, "(load-plugin! \"core:pickers\")").unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
-    let mut host = ScriptingHost::new();
+    ed.state.dirs = guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     let result = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -728,7 +731,7 @@ fn missing_stdlib_errors_at_load() {
 
 #[test]
 fn git_modified_picker_clean_tree_opens_empty_picker() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
@@ -758,7 +761,7 @@ fn git_modified_picker_clean_tree_opens_empty_picker() {
 
 #[test]
 fn git_modified_picker_not_a_repo_names_git() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let tmp = safe_tempdir();
     let extra = r#"(define-command! "test-git-not-a-repo" "" (lambda (pane)
                      (call! "pickers/git-picker-with" pane #f)))"#;
@@ -778,7 +781,7 @@ fn git_modified_picker_not_a_repo_names_git() {
 
 #[test]
 fn git_modified_picker_git_status_failure_does_not_say_clean() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     // Not a repo, no `git init`. The seam's `root` argument is only used by
     // `on-select`'s `path-join`, never to select `git status`'s cwd, so a
     // truthy-but-bogus root bypasses the not-a-repo check while `git status`
@@ -814,7 +817,7 @@ fn git_modified_picker_git_status_failure_does_not_say_clean() {
 
 #[test]
 fn git_modified_picker_esc_dismisses_cleanly() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "").unwrap();
@@ -868,7 +871,7 @@ fn git_modified_picker_esc_dismisses_cleanly() {
 
 #[test]
 fn buffers_picker_lists_switches_and_disambiguates() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let sandbox = CwdSandbox::new();
     std::fs::create_dir_all(sandbox.raw().join("a")).unwrap();
     std::fs::create_dir_all(sandbox.raw().join("b")).unwrap();
@@ -908,7 +911,7 @@ fn buffers_picker_lists_switches_and_disambiguates() {
 
 #[test]
 fn buffers_picker_esc_is_a_no_op() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let tmp = safe_tempdir();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
     let starting_bid = ed.focused_buffer_id();

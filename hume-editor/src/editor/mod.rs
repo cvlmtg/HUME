@@ -227,6 +227,10 @@ pub(in crate::editor) fn default_keymap_for(kitty_enabled: bool) -> Keymap {
 // enabling EditorCmd to dispatch synchronously from within a Steel eval.
 
 pub(crate) struct EditorState {
+    /// The config, data and runtime directories this session works from,
+    /// resolved once at startup. Every consumer reads them here instead of
+    /// the process environment.
+    pub(crate) dirs: hume_platform::dirs::Dirs,
     /// All open buffers. SSOT for buffer content, history, and file metadata.
     pub(crate) buffers: BufferStore,
     /// Each buffer's diagnostics and last insertion, carried with its text.
@@ -485,6 +489,7 @@ impl Default for EditorState {
         let settings = EditorSettings::default();
         let history_capacity = settings.history_capacity;
         Self {
+            dirs: hume_platform::dirs::Dirs::none(),
             buffers: BufferStore::new(),
             buffer_positions: position_stores::BufferPositions::default(),
             lsp: lsp::LspState::new_threaded(Arc::new(|| {})),

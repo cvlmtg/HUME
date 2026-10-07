@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 #[test]
@@ -421,7 +422,7 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(let* ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers))))
                   (shown (car (buffer-panes hidden))))
@@ -450,7 +451,7 @@ fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
     let other_bid = ed.open_extra_file(&extra).expect("extra file must open");
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), other_bid);
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

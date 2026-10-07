@@ -1,7 +1,7 @@
 // The locations drawer (`lsp-references`) follows edits: it remembers the
 // symbol it was opened for and, once the line count of a listed buffer
 // changes, asks the server again for that symbol and swaps the rows. Loads the
-// real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
+// real shipped `core:lsp` plugin in place (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -25,7 +25,7 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
 fn setup(
     tmp: &Path,
     references: Vec<serde_json::Value>,
-) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
+) -> (Editor, RealRuntimeDirs, ServerId, RequestLog) {
     setup_with(tmp, |backend| {
         for answer in references {
             backend.respond_to("textDocument/references", answer);
@@ -39,7 +39,7 @@ fn setup(
 fn setup_with(
     tmp: &Path,
     script: impl FnOnce(&mut RecordingLspBackend),
-) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
+) -> (Editor, RealRuntimeDirs, ServerId, RequestLog) {
     let (rig, guard) = core_lsp_rig(
         tmp,
         "-[f]>n main() {\n    foo();\n}\n",

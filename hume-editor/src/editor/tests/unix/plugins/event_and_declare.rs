@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::editor::registry::MappableCommand;
+use hume_platform::dirs::Dirs;
 use hume_scripting::PluginStatus;
 
 // ── Lazy plugin loading — event activations ──────────────────────────
@@ -155,7 +156,7 @@ fn event_trigger_one_to_many_activates_all() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b c d\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     {
         let mut ih = init_host!(ed);
@@ -294,7 +295,7 @@ fn declare_plugin_no_triggers_is_hard_error() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, "(declare-plugin! \"user/tp\")").unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     let mut ed = editor_from("-[a]>b\n");
     let result = {
@@ -320,7 +321,7 @@ fn load_plugin_absent_top_level_silently_skips() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(load-plugin! "user/tp")"#).unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     let mut ed = editor_from("-[a]>b\n");
     {
@@ -374,7 +375,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     {
         let mut ih = init_host!(ed);
@@ -515,7 +516,7 @@ fn nested_activation_multi_file_via_real_editor_host() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     {
         let mut ih = init_host!(ed);
@@ -597,7 +598,7 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     {
         let mut ih = init_host!(ed);

@@ -9,6 +9,7 @@
 // `editor_from`'s bare pane has no `PaneHighlights` entry at all).
 
 use hume_grid::Rect;
+use hume_platform::dirs::Dirs;
 
 use super::lsp_rig::LspRig;
 use super::*;
@@ -248,9 +249,14 @@ fn multi_line_diagnostic_hides_only_the_cursor_line_segment() {
 #[test]
 fn extra_highlight_gets_its_runtime_interned_scope() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "abcdefgh");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -283,9 +289,14 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
 #[test]
 fn extra_highlight_scope_is_cached_not_reinterned() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "abcdefgh");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -322,9 +333,14 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
 #[test]
 fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "abcdefgh");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -371,10 +387,15 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
 #[test]
 fn extra_highlight_style_resolves_correctly_on_the_frame_it_is_first_interned() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "abcdefgh");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -420,10 +441,15 @@ fn extra_highlight_style_resolves_correctly_on_the_frame_it_is_first_interned() 
 #[test]
 fn search_match_beats_extra_highlight_in_overlapping_region() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "abcdefgh");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     // Reuses the theme's "diagnostic.warning" name as the extra highlight's
     // scope purely so the span has a *visible* style to prove the tier
     // ordering with; extra highlights don't otherwise care what string a

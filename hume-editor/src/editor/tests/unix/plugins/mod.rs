@@ -1,14 +1,5 @@
-// `std::env::set_var`/`remove_var` in setup_editor_with_init_scripting and
-// setup_lang_lint_editor below mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars, always under a `TEST_GLOBALS` claim. `clippy.toml`'s
-// `disallowed-methods` entry exists so a *new* raw call elsewhere in the
-// crate gets caught; this file is the sanctioned caller it lists as exempt
-// for this test group: the only file in this directory that needs the
-// allow, since every raw env call lives in one of the two helpers below and
-// no leaf module calls std::env directly.
-#![allow(clippy::disallowed_methods)]
-
 use super::*;
+use hume_platform::dirs::Dirs;
 
 mod dispatch_parity;
 mod event_and_declare;
@@ -30,7 +21,7 @@ fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::T
     std::fs::write(&init_path, init_body).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     {
         let mut ih = init_host!(ed);
@@ -42,11 +33,11 @@ fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::T
     (ed, dir)
 }
 
-/// Helper: write `init_scm` to a temporary config dir, set `XDG_CONFIG_HOME`
-/// and `HUME_RUNTIME`, call `init_scripting` on a fresh Editor, restore env
-/// vars before returning.  Caller must keep the returned `Vec<TempDir>` alive.
+/// Helper: write `init_scm` to a temporary config dir, point a fresh Editor's
+/// config, data and runtime directories at it and fresh tempdirs, and call
+/// `init_scripting`.  Caller must keep the returned `Vec<TempDir>` alive.
 ///
-/// `runtime_dir`: `None` points `HUME_RUNTIME` at a fresh empty tempdir (for
+/// `runtime_dir`: `None` points the runtime directory at a fresh empty tempdir (for
 /// synthetic-fixture tests with no shipped plugin sources) and includes it in
 /// the returned `Vec`; `Some(path)` points at `path` instead (typically the
 /// repo's real `runtime/` tree, for tests exercising a real shipped
@@ -66,7 +57,7 @@ fn setup_editor_with_init_files(
     files: &[(&str, &str)],
     runtime_dir: Option<&std::path::Path>,
 ) -> (Editor, Vec<tempfile::TempDir>) {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _path = path_reader();
 
     let config_tmp = safe_tempdir();
     let data_tmp = safe_tempdir();
@@ -82,24 +73,17 @@ fn setup_editor_with_init_files(
         std::fs::write(path, src).unwrap();
     }
 
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", runtime_path);
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
-
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = Dirs {
+        config: Some(hume_config),
+        data: Some(data_tmp.path().join("hume")),
+        runtime: Some(runtime_path.to_path_buf()),
+    };
     ed.init_scripting(&mut Default::default());
 
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
-
-    let mut dirs = vec![config_tmp, data_tmp];
-    dirs.extend(runtime_tmp);
-    (ed, dirs)
+    let mut tmps = vec![config_tmp, data_tmp];
+    tmps.extend(runtime_tmp);
+    (ed, tmps)
 }
 
 /// Helper: create a `user/tp` plugin file, write init.scm, run `init_scripting`.
@@ -108,7 +92,7 @@ fn setup_editor_with_init_files(
 /// `#:languages` activation entries for `"user/tp"` are actually recorded.  (Absent-path
 /// plugins early-return in `declare_plugin` and skip activation registration.)
 fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _path = path_reader();
 
     let config_tmp = safe_tempdir();
     let runtime_tmp = safe_tempdir();
@@ -128,20 +112,13 @@ fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), init_body).unwrap();
 
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", runtime_tmp.path());
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
-
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = Dirs {
+        config: Some(hume_config),
+        data: Some(data_tmp.path().join("hume")),
+        runtime: Some(runtime_tmp.path().to_path_buf()),
+    };
     ed.init_scripting(&mut Default::default());
-
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
 
     (ed, vec![config_tmp, runtime_tmp, data_tmp])
 }

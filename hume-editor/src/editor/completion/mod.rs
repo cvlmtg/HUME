@@ -50,6 +50,7 @@ pub(in crate::editor) struct CompletionCtx<'a> {
     pub buffers: &'a BufferStore,
     pub cwd: &'a Path,
     pub languages: &'a LanguageRegistry,
+    pub dirs: &'a hume_platform::dirs::Dirs,
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -121,11 +122,11 @@ pub(in crate::editor) fn arg_span(
 /// (callers score/filter later): the one place every caller needs to
 /// agree on which theme names exist and which one wins under a shared
 /// stem.
-fn theme_name_candidates() -> Vec<String> {
+fn theme_name_candidates(dirs: &hume_platform::dirs::Dirs) -> Vec<String> {
     let mut seen: rustc_hash::FxHashSet<String> = rustc_hash::FxHashSet::default();
     let mut stems = Vec::new();
 
-    for dir in &super::theme_search_paths() {
+    for dir in &super::theme_search_paths(dirs) {
         let entries = match std::fs::read_dir(dir) {
             Ok(e) => e,
             Err(_) => continue,
@@ -183,11 +184,13 @@ mod testing {
         cwd: &'a Path,
         languages: &'a LanguageRegistry,
     ) -> CompletionCtx<'a> {
+        static NO_DIRS: hume_platform::dirs::Dirs = hume_platform::dirs::Dirs::none();
         CompletionCtx {
             registry,
             buffers,
             cwd,
             languages,
+            dirs: &NO_DIRS,
         }
     }
 

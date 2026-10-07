@@ -1,6 +1,7 @@
 use super::*;
 use crate::null_host::RecordingInlineOutputHost;
 use crate::test_support::SteelCtxTestHarness;
+use hume_platform::dirs::Dirs;
 
 // ── stdout_gate: behavior around the gate ──────────────────────────────────
 //
@@ -82,7 +83,7 @@ fn required_module_displayln_call_reaches_the_gate() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let escaped_path =
         crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");
@@ -128,7 +129,7 @@ fn required_module_other_print_fns_reach_the_gate() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let escaped_path =
         crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");
@@ -173,7 +174,7 @@ fn required_module_write_family_reaches_the_gate() {
     )
     .unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let escaped_path =
         crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");
@@ -199,7 +200,7 @@ fn top_level_displayln_call_reaches_the_gate() {
     use crate::ScriptingHost;
     use crate::null_host::{NullHost, RecordingInlineOutputHost};
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     host.eval_source(
         r#"
@@ -229,7 +230,7 @@ fn custom_port_write_bypasses_gate_when_closed() {
     use crate::ScriptingHost;
     use crate::null_host::NullHost;
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     host.eval_source(
         r#"
@@ -260,7 +261,7 @@ fn explicit_port_form_still_enforces_arity() {
     use crate::ScriptingHost;
     use crate::null_host::NullHost;
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     host.eval_source(
         r#"
@@ -288,7 +289,7 @@ fn explicit_stdout_port_call_reaches_the_gate() {
     use crate::ScriptingHost;
     use crate::null_host::{NullHost, RecordingInlineOutputHost};
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     host.eval_source(
         r#"
@@ -327,7 +328,7 @@ fn write_string_implicit_form_honors_output_redirect() {
     use crate::ScriptingHost;
     use crate::null_host::NullHost;
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     host.eval_source(
         r#"

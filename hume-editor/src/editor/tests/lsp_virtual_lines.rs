@@ -4,7 +4,7 @@
 // `decorations.virtual_lines` store, over the virtual-line-aware scroll/cursor
 // plumbing.
 //
-// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s
+// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}), hume_platform::dirs::Dirs::none())` (not `editor_from`'s
 // bare `Pane::new`): `PaneVirtualLines` is only registered by `build_pane`,
 // same reasoning as `lsp_render.rs`.
 
@@ -31,7 +31,12 @@ fn virtual_lines_at(ed: &Editor, line: usize) -> Vec<hume_engine::providers::Vir
 #[test]
 fn virtual_line_renders_after_its_anchor_line() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "let x = 5\nlet y = 10");
     let bid = ed.focused_buffer_id();
@@ -62,7 +67,12 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
     // line's own row; the row-counting fix must correctly push line
     // 1's content down by the one stolen row, never overlap or skip it.
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "aaa\nbbb\nccc");
     run(
@@ -98,7 +108,12 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
 #[test]
 fn before_anchored_virtual_line_renders_above_its_line() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "let x = 5\nlet y = 10");
     run(
@@ -121,7 +136,12 @@ fn before_anchored_virtual_line_renders_above_its_line() {
 #[test]
 fn per_segment_scopes_style_the_virtual_lines_text() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "let x = 5");
     run(
@@ -145,7 +165,12 @@ fn per_segment_scopes_style_the_virtual_lines_text() {
 #[test]
 fn scope_becomes_the_line_s_base_scope_segments_stay_sparse() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "let x = 5");
     run(
         &mut ed,
@@ -181,7 +206,12 @@ fn scope_becomes_the_line_s_base_scope_segments_stay_sparse() {
 #[test]
 fn no_segments_yields_an_empty_segment_list() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "let x = 5");
     run(
         &mut ed,
@@ -211,7 +241,12 @@ fn no_segments_yields_an_empty_segment_list() {
 #[test]
 fn no_scope_falls_back_to_ui_virtual_as_the_base_scope() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "let x = 5");
     run(
         &mut ed,
@@ -260,7 +295,12 @@ fn theme_with_tinted_ui_virtual() -> hume_engine::theme::Theme {
 #[test]
 fn generic_virtual_line_with_no_scope_tints_the_full_row_when_ui_virtual_has_a_bg() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = theme_with_tinted_ui_virtual();
     type_text(&mut ed, "hello");
     run(
@@ -295,7 +335,12 @@ const TINT_SCOPE: &str = "ui.cursor.match.search";
 #[test]
 fn virtual_line_background_tints_gutter_content_and_trailing_cells() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "hello");
     run(
@@ -344,7 +389,12 @@ fn virtual_line_background_tints_gutter_content_and_trailing_cells() {
 #[test]
 fn virtual_line_with_empty_text_still_renders_its_background_bar() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "hello");
     run(
@@ -379,7 +429,12 @@ fn virtual_line_with_empty_text_still_renders_its_background_bar() {
 #[test]
 fn segments_touching_both_ends_yield_no_zero_length_filler() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "let x = 5");
     run(
         &mut ed,
@@ -409,7 +464,12 @@ fn segments_touching_both_ends_yield_no_zero_length_filler() {
 
 #[test]
 fn clearing_the_store_removes_the_virtual_line_next_frame() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     let scope = ed.view.registry.intern("ui.virtual");
@@ -476,7 +536,12 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
 /// find-or-push instead of a sorted insert.
 #[test]
 fn same_line_virtual_lines_from_two_sources_order_alphabetically_by_source() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     let scope = ed.view.registry.intern("ui.virtual");

@@ -348,7 +348,12 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
     // (only `Editor::open`'s real startup path does), so a docked popup there
     // never actually shrinks `pane_area`. This test asserts on that
     // geometry, so it needs the real registration.
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     let tall = (0..30)
         .map(|i| format!("line{i}"))
         .collect::<Vec<_>>()
@@ -398,7 +403,12 @@ fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very
     let tmp = safe_tempdir();
     // See the sibling test above: needs `Editor::open`'s real `bottom_bands`
     // registration for the pane-shrinking geometry this test asserts on.
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     let tall = (0..30)
         .map(|i| format!("line{i}"))
         .collect::<Vec<_>>()
@@ -455,7 +465,12 @@ fn docked_popup_renders_as_a_band_above_the_statusline_and_shrinks_the_pane() {
     // chrome space (pane shrinks), not float over content like the cursor
     // layout.
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     run(
         &mut ed,
@@ -554,9 +569,9 @@ fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
 /// the theme's only invalidation trigger.
 #[test]
 fn popup_content_is_rebuilt_after_a_theme_reload() {
-    let _guard = crate::editor::tests::settings_effects::RealThemeRuntimeGuard::new();
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
+    ed.state.dirs = repo_runtime_dirs();
     run(
         &mut ed,
         tmp.path(),
@@ -947,7 +962,12 @@ fn scrollable_popup_paints_its_scrolled_window() {
     // just the underlying `scroll` field (a regression in `draw_menu_box`'s
     // windowing wouldn't be caught by the data-only assertions above).
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     let tall = (0..20)
         .map(|i| format!("line{i}"))
@@ -977,7 +997,12 @@ fn popup_never_paints_outside_the_pane_rect() {
     // confirm every non-space cell the popup could have touched stays
     // within the pane rows (no bleed into the statusline row).
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     ed.feed_key(key('i'));
     for ch in "hello".chars() {

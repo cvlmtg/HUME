@@ -5,7 +5,7 @@
 // applies additionalTextEdits or resolves; an `isIncomplete` answer is
 // re-requested as the user types. The orchestration itself is covered
 // without a server in `tests/completion/`; this file drives it end to end.
-// Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
+// Loads the real shipped `core:lsp` plugin in place (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -544,7 +544,7 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
 fn completion_resolve_goes_to_the_items_origin_server() {
     use hume_lsp::backend::ServerId;
     let tmp = safe_tempdir();
-    let _guard = RealRuntimeGuard::new();
+    let guard = RealRuntimeDirs::new();
     let (mut backend, _, requests) = RecordingLspBackend::new();
     let caps = serde_json::json!({ "capabilities": full_completion_caps() });
     backend.respond_to("initialize", caps.clone());
@@ -566,7 +566,9 @@ fn completion_resolve_goes_to_the_items_origin_server() {
     );
     let mut rig = LspRig::drained(
         tmp.path(),
-        RigSpec::rust(&marked_at_start(FOO)).with_init(&init),
+        RigSpec::rust(&marked_at_start(FOO))
+            .with_init(&init)
+            .with_dirs(guard.dirs()),
         backend,
     );
     rig.ed.settle();

@@ -692,7 +692,12 @@ fn closing_a_buffer_drops_its_wrap_override() {
 /// up here as display lines drawn from the wrong line.
 #[test]
 fn wrapped_and_scrolled_frame_pins_the_rendered_display_lines() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_cmd(&mut ed, ":set global wrap-mode=soft");
     // Ten lines that each wrap into several display lines at this width,

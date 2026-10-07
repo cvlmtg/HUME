@@ -671,7 +671,7 @@ impl Editor {
     /// just produced). Any error from `init.scm` is reported as
     /// `Severity::Error` and shown in the statusline.
     pub(crate) fn init_scripting(&mut self, snapshot: &mut ReloadSnapshot) {
-        let mut host = hume_scripting::ScriptingHost::new();
+        let mut host = hume_scripting::ScriptingHost::new(&self.state.dirs);
         // Pre-register every native command name as a callable Steel binding before
         // any user code sees the engine.  This lets `init.scm` call `(move-left)`
         // directly without a FreeIdentifier compile error.  Only native commands
@@ -907,7 +907,7 @@ impl Editor {
                 required: true,
             },
             ConfigSource::Skip => ConfigPath::Skipped,
-            ConfigSource::Default => match hume_platform::dirs::config_dir() {
+            ConfigSource::Default => match &self.state.dirs.config {
                 Some(dir) => ConfigPath::Resolved {
                     path: dir.join("init.scm"),
                     required: false,
@@ -981,18 +981,12 @@ pub(in crate::editor::scripting_setup) fn log_level_to_severity(
 /// the next by name. Both `theme::load_theme_by_name` and
 /// `completion::complete_theme` use this list as the single source of
 /// truth.
-pub(super) fn theme_search_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    if let Some(cfg) = hume_platform::dirs::config_dir() {
-        paths.push(cfg.join("themes"));
-    }
-    if let Some(data) = hume_platform::dirs::data_dir() {
-        paths.push(data.join("themes"));
-    }
-    if let Some(rt) = hume_platform::dirs::runtime_dir() {
-        paths.push(rt.join("themes"));
-    }
-    paths
+pub(super) fn theme_search_paths(dirs: &hume_platform::dirs::Dirs) -> Vec<PathBuf> {
+    [&dirs.config, &dirs.data, &dirs.runtime]
+        .into_iter()
+        .flatten()
+        .map(|dir| dir.join("themes"))
+        .collect()
 }
 
 /// `first` and the effects right behind it that `take` unwraps, in order;

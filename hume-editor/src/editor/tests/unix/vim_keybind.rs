@@ -5,7 +5,7 @@ use pretty_assertions::assert_eq;
 // ── core:vim-keybind — end-to-end plugin tests ────────────────────────────────
 //
 // Loads the *real* runtime/plugins/core/vim-keybind/plugin.scm (via
-// `include_str!`) into an isolated HUME_RUNTIME dir, then evaluates an
+// `include_str!`) into an isolated runtime dir, then evaluates an
 // init.scm that eagerly loads it, exercising the actual shipped file rather
 // than a hand-rolled stand-in.
 
@@ -15,10 +15,10 @@ const VIM_KEYBIND_PLUGIN: &str = include_str!(concat!(
 ));
 
 /// Build an editor with `core:vim-keybind` eagerly loaded via a real
-/// `init.scm` + the real plugin file. Uses `HUME_RUNTIME` (core plugin
+/// `init.scm` + the real plugin file. Uses a runtime dir (core plugin
 /// resolution) instead of a user data dir, and loads eagerly (no lazy stubs
 /// needed).
-fn setup_vim_keybind_editor(input: &str) -> (Editor, HumeRuntimeGuard, tempfile::TempDir) {
+fn setup_vim_keybind_editor(input: &str) -> (Editor, RuntimeDirs, tempfile::TempDir) {
     setup_vim_keybind_editor_with_config(input, None)
 }
 
@@ -29,8 +29,8 @@ fn setup_vim_keybind_editor(input: &str) -> (Editor, HumeRuntimeGuard, tempfile:
 fn setup_vim_keybind_editor_with_config(
     input: &str,
     config_expr: Option<&str>,
-) -> (Editor, HumeRuntimeGuard, tempfile::TempDir) {
-    let guard = HumeRuntimeGuard::new();
+) -> (Editor, RuntimeDirs, tempfile::TempDir) {
+    let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
     // `C`'s selection-width check dispatches to `stdlib/all-single-char?` via
     // `call!`, so vim-keybind depends on `core:stdlib` being loaded first.
@@ -48,7 +48,8 @@ fn setup_vim_keybind_editor_with_config(
     std::fs::write(&init_path, &init_source).unwrap();
 
     let mut ed = editor_from(input);
-    let mut host = ScriptingHost::new();
+    ed.state.dirs = guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     let effects = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -430,7 +431,7 @@ fn shift_d_is_dot_repeatable() {
 /// leave `C` picking the wrong branch the first time it's pressed.
 #[test]
 fn smart_change_to_eol_without_stdlib_errors_at_load() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
     // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
 
@@ -439,7 +440,8 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
     std::fs::write(&init_path, r#"(load-plugin! "core:vim-keybind")"#).unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
-    let mut host = ScriptingHost::new();
+    ed.state.dirs = guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -461,7 +463,7 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
 /// opposite contract from when only `'smart` depended on `core:stdlib`.
 #[test]
 fn change_to_eol_off_also_requires_stdlib() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
     // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
 
@@ -474,7 +476,8 @@ fn change_to_eol_off_also_requires_stdlib() {
     .unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
-    let mut host = ScriptingHost::new();
+    ed.state.dirs = guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -495,7 +498,7 @@ fn change_to_eol_off_also_requires_stdlib() {
 /// dead: `config-enum` has already rejected anything not in the allowed set).
 #[test]
 fn change_to_eol_bogus_value_fails_load_with_enum_message() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
 
@@ -508,7 +511,8 @@ fn change_to_eol_bogus_value_fails_load_with_enum_message() {
     .unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
-    let mut host = ScriptingHost::new();
+    ed.state.dirs = guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())

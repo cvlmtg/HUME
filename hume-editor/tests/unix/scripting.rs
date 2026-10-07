@@ -1,8 +1,9 @@
 use hume::testing::MockHost;
+use hume_platform::dirs::Dirs;
 use hume_scripting::*;
 
 fn host() -> ScriptingHost {
-    ScriptingHost::new()
+    ScriptingHost::new(&Dirs::none())
 }
 
 // ── Steel file-module isolation + prelude macro visibility ────────────────

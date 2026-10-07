@@ -1,3 +1,5 @@
+use hume_platform::dirs::Dirs;
+
 // These two tests exercise a `cmd` and a `config` table entry through a
 // real `ScriptingHost` (register_all → Steel dispatch → the wrapper
 // closure's gate call) rather than calling `errors::require_cmd`/
@@ -12,7 +14,7 @@
 /// must still raise "not available during init".
 #[test]
 fn cmd_gated_builtin_rejected_from_init_through_real_registration() {
-    let mut host = crate::ScriptingHost::new();
+    let mut host = crate::ScriptingHost::new(&Dirs::none());
     let mut null_host = crate::null_host::NullHost;
     let err = host
         .eval_source("(focused-pane)", &mut null_host)
@@ -29,7 +31,7 @@ fn cmd_gated_builtin_rejected_from_init_through_real_registration() {
 /// `bind-key!` is `config`-gated.
 #[test]
 fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
-    let mut host = crate::ScriptingHost::new();
+    let mut host = crate::ScriptingHost::new(&Dirs::none());
     let mut null_host = crate::null_host::NullHost;
     host.eval_source(
         r#"(define-command! "probe-bind-key" "doc" (lambda () (bind-key! 'normal "Q" "move-down")))"#,
@@ -178,7 +180,7 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
     ];
 
     for (i, (name, expr)) in PROBES.iter().enumerate() {
-        let mut host = crate::ScriptingHost::new();
+        let mut host = crate::ScriptingHost::new(&Dirs::none());
         let mut null_host = crate::null_host::NullHost;
         let cmd_name = format!("probe-{i}");
         host.eval_source(
@@ -210,7 +212,7 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
 #[test]
 fn lsp_stop_and_restart_reject_false_target_through_real_registration() {
     for expr in ["(lsp-stop! #f)", "(lsp-restart! #f)"] {
-        let mut host = crate::ScriptingHost::new();
+        let mut host = crate::ScriptingHost::new(&Dirs::none());
         let mut null_host = crate::null_host::NullHost;
         host.eval_source(
             &format!(r#"(define-command! "probe" "" (lambda () {expr}))"#),

@@ -2,6 +2,7 @@
 //! `mod unix;` declaration in the parent.
 
 use super::*;
+use hume_platform::dirs::Dirs;
 
 /// Pins a real gotcha in Steel's own `steel/process` stdlib: `child-stderr`
 /// (and by extension `child-stdin`/`child-stdout`) must be captured
@@ -15,7 +16,7 @@ use super::*;
 /// and worth pinning.
 #[test]
 fn child_stderr_must_be_captured_before_wait() {
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     // Failure path: stdout+stderr+stdin all piped, stdin closed
     // immediately, wait for exit, read stderr on nonzero.
@@ -55,7 +56,7 @@ fn child_stderr_must_be_captured_before_wait() {
 #[test]
 #[should_panic(expected = "Failed to find an open continuation on the stack")]
 fn known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack() {
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     // Exact shape of plum/fetch-raw-query (inner: catch, cleanup, re-raise
     // via raise-error) nested inside plum/resolve-query's tolerant outer
@@ -80,7 +81,7 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
     // Shape: the native-builtin-raising call (run-inline-output!) is NOT
     // wrapped by an inner with-handler at all; it propagates in one hop
     // straight to the outer tolerant handler.
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let src = r#"
         (define (inner-fetch)
@@ -106,7 +107,7 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
 /// No `#[should_panic]`: this shape must stay safe, not merely tolerated.
 #[test]
 fn fresh_raise_after_handler_return_propagates_cleanly_through_nested_levels() {
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let src = r#"
         (define (inner)
@@ -145,7 +146,7 @@ fn fresh_raise_after_handler_return_propagates_cleanly_through_nested_levels() {
 /// starts failing; revisit then.
 #[test]
 fn known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_unwind() {
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let src = r#"
         (define cleanup-ran #f)

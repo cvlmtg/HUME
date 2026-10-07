@@ -110,7 +110,7 @@ fn complete_set_value(
         prefix_completions(values.iter().copied(), value_prefix)
     } else if key == THEME_KEY {
         prefix_completions(
-            theme_name_candidates().iter().map(String::as_str),
+            theme_name_candidates(ctx.dirs).iter().map(String::as_str),
             value_prefix,
         )
     } else {

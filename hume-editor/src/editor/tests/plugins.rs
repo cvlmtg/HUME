@@ -5,6 +5,7 @@
 
 use super::*;
 use crate::editor::registry::MappableCommand;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 // ── CommandHost::register_lazy_command — collision rejection ─────────────────
@@ -73,7 +74,7 @@ fn keypress_dispatch_command_table_desync_reports_error() {
         });
     // A fresh scripting host's command_table has no entry for "ghost-cmd":
     // it never went through define-command!, simulating a registry/table desync.
-    ed.scripting = Some(ScriptingHost::new());
+    ed.scripting = Some(ScriptingHost::new(&Dirs::none()));
 
     let before = state(&ed);
     ed.execute_keymap_command("ghost-cmd".into(), Some(1), false);

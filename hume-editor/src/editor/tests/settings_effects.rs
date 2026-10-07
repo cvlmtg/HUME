@@ -1,5 +1,6 @@
 use super::*;
 use hume_grid::{Rect, Rgb};
+use hume_platform::dirs::Dirs;
 
 use crate::editor::buffer::Buffer;
 use crate::editor::message_log::Severity;
@@ -18,7 +19,7 @@ fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
         .map(str::to_owned)
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = hume_scripting::ScriptingHost::new();
+    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
     host.register_command_names(&name_refs);
     let mut init_host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(source, &mut init_host).map(|_| ())
@@ -355,51 +356,12 @@ fn typed_theme_bad_name_leaves_setting() {
     );
 }
 
-/// Points `HUME_RUNTIME` at the real bundled runtime dir for the duration of
-/// a test, so `theme::load_theme_by_name` can find real theme files.
-/// Mirrors `editor/tests/unix/mod.rs`'s `RealRuntimeGuard`, minus the
-/// `XDG_DATA_HOME` redirect (unneeded for a read-only theme load).
-pub(in crate::editor::tests) struct RealThemeRuntimeGuard {
-    _lock: ClaimGuard,
-}
-
-impl RealThemeRuntimeGuard {
-    // `std::env::set_var` mutates the process-global `HUME_RUNTIME` var,
-    // sound only under the `TEST_GLOBALS.claim(Global::Env)` taken just
-    // above, which is what makes this the sanctioned caller `clippy.toml`'s
-    // `disallowed-methods` entry lists as exempt.
-    #[allow(clippy::disallowed_methods)]
-    pub(in crate::editor::tests) fn new() -> Self {
-        let lock = TEST_GLOBALS.claim(Global::Env);
-        let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
-        // SAFETY: not unsafe in the memory-safety sense. Rust 2024 requires
-        // the block because env vars are process-global; the `Global::Env`
-        // claim above is what actually makes this test-safe (see
-        // `TestGlobals`'s doc at tests/mod.rs).
-        unsafe {
-            std::env::set_var("HUME_RUNTIME", real_runtime);
-        }
-        Self { _lock: lock }
-    }
-}
-
-impl Drop for RealThemeRuntimeGuard {
-    // Same sanctioned-caller reasoning as `new` above: `self._lock` (a live
-    // `TEST_GLOBALS` claim) is still held for the whole of `drop`.
-    #[allow(clippy::disallowed_methods)]
-    fn drop(&mut self) {
-        unsafe {
-            std::env::remove_var("HUME_RUNTIME");
-        }
-    }
-}
-
 #[test]
 fn typed_theme_sets_setting_on_success() {
     // A typo in the key string typed_theme delegates with (e.g. "themes")
     // would make write_global return Err("unknown setting").
-    let _guard = RealThemeRuntimeGuard::new();
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.dirs = repo_runtime_dirs();
     let fp = FocusedPane::current(&ed.state);
     let result = crate::editor::commands::typed_theme(&mut ed, fp, Some("gruvbox"), false);
     assert!(result.is_ok(), "command must not error: {result:?}");

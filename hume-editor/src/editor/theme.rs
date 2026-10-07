@@ -48,9 +48,10 @@ pub(in crate::editor) fn load_theme_by_name(
     message_log: &mut MessageLog,
     status_msg: &mut Option<String>,
     popup: Option<&mut PopupLayer>,
+    dirs: &hume_platform::dirs::Dirs,
     name: &str,
 ) -> bool {
-    match load_theme(name, &super::theme_search_paths()) {
+    match load_theme(name, &super::theme_search_paths(dirs)) {
         Ok(loaded) => {
             set_theme(engine_view, popup, loaded.theme);
             if !loaded.warnings.is_empty() {

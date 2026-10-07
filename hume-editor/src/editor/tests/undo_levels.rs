@@ -1,4 +1,5 @@
 use super::*;
+use hume_platform::dirs::Dirs;
 
 use crate::editor::buffer::Buffer;
 
@@ -78,7 +79,7 @@ fn steel_set_option_applies_undo_levels() {
         .map(str::to_owned)
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = hume_scripting::ScriptingHost::new();
+    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
     host.register_command_names(&name_refs);
 
     let mut init_host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);

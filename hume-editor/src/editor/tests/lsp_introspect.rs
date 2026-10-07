@@ -7,6 +7,7 @@ use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
 use hume_lsp::test_util::RecordingLspBackend;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 /// The JSON `rust-analyzer` receives for the params `expr` (a Scheme
@@ -71,7 +72,7 @@ fn lsp_capabilities_reads_raw_wire_caps_after_handshake() {
 
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (json-ref (lsp-capabilities (car (lsp-servers bid))) "hoverProvider") #t)"#,
     );
@@ -101,7 +102,7 @@ fn lsp_capabilities_surfaces_a_field_lsp_types_does_not_model() {
 
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (json-ref (lsp-capabilities (car (lsp-servers bid))) "documentRangeFormattingProvider" "rangesSupport")
                    #t)"#,
@@ -121,7 +122,7 @@ fn lsp_capabilities_is_false_before_running() {
 
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (lsp-capabilities (car (lsp-servers bid))) #f)"#,
     );
@@ -142,7 +143,7 @@ fn lsp_server_status_lists_the_running_server() {
 
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         &format!(
             r#"(let ((entry (car (lsp-server-status))))
@@ -178,7 +179,7 @@ fn lsp_servers_names_the_attached_server() {
 fn lsp_server_registered_reflects_registration() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -205,7 +206,7 @@ fn lsp_server_registered_is_false_when_unregistered() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(not (lsp-server-registered? "rust-analyzer"))"#,
     );
@@ -219,7 +220,7 @@ fn lsp_server_registered_is_false_when_unregistered() {
 fn buffer_generation_changes_after_an_edit() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -357,7 +358,7 @@ fn lsp_linewise_ranges_params_splits_on_a_gap() {
 
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (length (hash-ref (lsp-linewise-ranges-params bid) "ranges")) 2)"#,
     );
@@ -387,7 +388,7 @@ fn lsp_linewise_ranges_params_does_not_bridge_across_a_collapsed_blank_line_sele
 
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (length (hash-ref (lsp-linewise-ranges-params bid) "ranges")) 2)"#,
     );
@@ -414,7 +415,7 @@ fn lsp_linewise_ranges_params_is_empty_for_a_lone_collapsed_blank_line_selection
 
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (hash-ref (lsp-linewise-ranges-params bid) "ranges") '())"#,
     );
@@ -466,7 +467,7 @@ fn lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise() {
 
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(let ((p (lsp-linewise-ranges-params bid)))
              (and p
@@ -509,7 +510,7 @@ fn lsp_primary_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
 fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     // Captures the hook's own `(first . end)` payload so the assertion
     // compares two independently-reached values, not the builtin against
     // itself. Both paths share `introspect::pane_visible_range`, so this
@@ -557,7 +558,7 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (hash-ref (viewport-range bid) 'end) 3)"#,
     );
@@ -615,7 +616,7 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
         "test setup: the extra buffer must not be focused"
     );
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -702,7 +703,7 @@ fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
         "test setup: back on the original tab, hidden_bid's tab now in the background"
     );
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -751,7 +752,7 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
     rig.ed
         .switch_to_buffer_with_jump(FocusedPane::current(&rig.ed.state), other_bid);
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut rig.ed,
         &mut host,
@@ -812,7 +813,7 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
 
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(let* ((hidden (car (filter (lambda (b) (and (buffer-path b) (not (equal? (buffer-key b) (buffer-key bid))))) (buffers))))
                   (shown (car (buffer-panes hidden))))
@@ -856,7 +857,7 @@ fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
 
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(let* ((hidden (car (filter (lambda (b) (and (buffer-path b) (not (equal? (buffer-key b) (buffer-key bid))))) (buffers))))
                   (shown (car (buffer-panes hidden))))
@@ -873,7 +874,7 @@ fn lsp_position_params_is_false_for_an_unattached_buffer() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     // No server attached at all.
-    let host = ScriptingHost::new();
+    let host = ScriptingHost::new(&Dirs::none());
     let fired = run_probe(
         &mut ed,
         host,
@@ -1263,7 +1264,12 @@ fn tracked_rig(tmp: &std::path::Path) -> LspRig {
         "abc\nd-[e]>f\n",
         serde_json::json!({"capabilities": {}}),
     );
-    install_source(&mut rig.ed, ScriptingHost::new(), TRACKING_COMMANDS, tmp);
+    install_source(
+        &mut rig.ed,
+        ScriptingHost::new(&Dirs::none()),
+        TRACKING_COMMANDS,
+        tmp,
+    );
     type_cmd(&mut rig.ed, ":arm");
     rig
 }
@@ -1315,7 +1321,7 @@ fn a_false_token_answers_false_and_never_raises() {
     );
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         "(and (equal? (tracked-position-params #f) #f) (begin (untrack-position! #f) #t))",
     );

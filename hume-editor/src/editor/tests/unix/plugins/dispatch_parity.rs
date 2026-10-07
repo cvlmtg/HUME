@@ -216,9 +216,14 @@ fn init_scm_example_is_valid_source() {
     let example =
         std::fs::read_to_string(INIT_SCM_EXAMPLE_PATH).expect("init.scm.example must be readable");
     let tmp = safe_tempdir();
-    let guard = RealRuntimeGuard::new();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    let mut host = ScriptingHost::new();
+    let guard = RealRuntimeDirs::new();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
     eval_with_real_host(&mut ed, &mut host, &example, tmp.path());
     drop(guard);
 }

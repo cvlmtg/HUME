@@ -1,7 +1,7 @@
 // Hover: `lsp-hover` composing `lsp-request!`, `lsp-capabilities`,
 // `show-popup!`, `show-drawer-list!`. Loads the
-// real shipped `core:lsp` plugin in place (`RealRuntimeGuard` points
-// HUME_RUNTIME at the actual on-disk runtime/ dir) so tests exercise the
+// real shipped `core:lsp` plugin in place (`RealRuntimeDirs` points
+// the runtime dir at the actual on-disk runtime/ dir) so tests exercise the
 // actual code, not a hand-rolled stand-in.
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
@@ -25,7 +25,7 @@ fn setup(
     tmp: &Path,
     initialize_result: serde_json::Value,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, ServerId) {
+) -> (Editor, RealRuntimeDirs, ServerId) {
     // 30 lines: comfortably taller than the default pane height's ⅓-cap
     // (`Pane::new`'s default viewport is 24 rows tall; `(viewport-range bid)`
     // resolves against this immediately, no `prepare_frame` needed), so a

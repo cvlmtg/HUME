@@ -2,7 +2,7 @@
 // write side that feeds the new `InlineDecorationProvider` (INLINE-kind
 // `DecorationSource`) from the `decorations.inlay_hints` store.
 //
-// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s bare
+// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}), hume_platform::dirs::Dirs::none())` (not `editor_from`'s bare
 // `Pane::new`): `InlineDecorationProvider` is only registered by `build_pane`, same
 // reasoning as `lsp_render.rs`. Hints are injected directly via
 // `ed.state.config.decorations.set_inlay_hints` (bypassing `set-inlay-hints!`'s wire
@@ -16,7 +16,12 @@ use hume_grid::Rect;
 
 #[test]
 fn after_hint_renders_dimmed_immediately_after_its_char() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
@@ -40,7 +45,12 @@ fn after_hint_renders_dimmed_immediately_after_its_char() {
 
 #[test]
 fn before_hint_renders_immediately_before_its_char() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
@@ -80,7 +90,12 @@ fn before_hint_renders_immediately_before_its_char() {
 /// needs to move.
 #[test]
 fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.state.settings.scroll_margin = 0;
     type_text(&mut ed, "x\na\nb");
     let bid = ed.focused_buffer_id();
@@ -130,7 +145,12 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
     // emoji itself) must splice in right after its 4 bytes, not after 1
     // byte, proving the write side converts by rope char-to-byte, not by
     // treating `pos` as already a byte count.
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "🎉party");
     let bid = ed.focused_buffer_id();
@@ -158,7 +178,12 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
     // render time but are invisible to scroll/cursor row math). This test
     // only pins whatever `format_buffer_line` currently does, it does not
     // assert correctness of cursor placement on this line.
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd");
     let bid = ed.focused_buffer_id();
@@ -183,7 +208,12 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
 
 #[test]
 fn clearing_the_store_removes_the_hint_next_frame() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
@@ -245,7 +275,12 @@ fn setting_off_does_not_clear_an_unrelated_sources_hints() {
     // has no scripting host attached, so no hook fires. It's checking the
     // render bridge in isolation: a source with no relation to LSP must
     // render regardless of that setting, on or off.
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     ed.state.config.decorations.set_inlay_hints(
@@ -299,7 +334,12 @@ fn deleting_a_line_drops_its_inlay_hint_and_undo_does_not_resurrect_it() {
     // text moved into the deleted line's place, and then `u` (undo)
     // re-inserted the line and pinned the hint at its very start. See
     // `SourceStore::remap_points`'s doc.
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     type_text(&mut ed, "foo\nbar\nbaz");
     let bid = ed.focused_buffer_id();
     // Buffer is "foo\nbar\nbaz\n": pos 5 is the 'a' in "bar".

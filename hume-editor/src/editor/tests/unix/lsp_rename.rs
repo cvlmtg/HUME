@@ -1,7 +1,7 @@
 // Rename: `lsp-rename` composing `lsp-request!`, `lsp-capabilities`,
 // `apply-workspace-edit!`, `prompt!`, `symbol-under-cursor`. Loads the real
 // shipped `core:lsp` plugin in place
-// (`RealRuntimeGuard`).
+// (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -18,7 +18,7 @@ use hume_lsp::test_util::RecordingLspBackend;
 fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, ServerId) {
+) -> (Editor, RealRuntimeDirs, ServerId) {
     let (rig, guard) = core_lsp_rig(
         tmp,
         "fn main() {\n    -[h]>elper();\n}\n",

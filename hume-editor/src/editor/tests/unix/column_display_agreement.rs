@@ -90,7 +90,7 @@ fn diagnostics_drawer_shows_grapheme_column() {
 fn setup_refs(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard) {
+) -> (Editor, RealRuntimeDirs) {
     let (rig, guard) = core_lsp_rig(
         tmp,
         MARKED_FIXTURE_LINE,

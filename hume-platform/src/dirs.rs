@@ -20,6 +20,39 @@ fn env_var(key: &str) -> Option<String> {
     env::var(key).ok()
 }
 
+/// The base directories a session works from, resolved once at startup.
+///
+/// Consumers read them from here rather than the process environment, so a
+/// test builds a `Dirs` with explicit paths and never mutates global env.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Dirs {
+    pub config: Option<PathBuf>,
+    pub data: Option<PathBuf>,
+    pub runtime: Option<PathBuf>,
+}
+
+impl Dirs {
+    /// Resolve every directory from the process environment (and, for the
+    /// runtime directory, the executable and working directory).
+    pub fn from_env() -> Self {
+        Self {
+            config: config_dir_with(env_var),
+            data: data_dir_with(env_var),
+            runtime: runtime_dir_with(env_var, env::current_exe().ok(), env::current_dir().ok()),
+        }
+    }
+
+    /// No directory resolved: scripting runs without a runtime, data or
+    /// config directory.
+    pub const fn none() -> Self {
+        Self {
+            config: None,
+            data: None,
+            runtime: None,
+        }
+    }
+}
+
 /// Returns the configuration directory for HUME, if it can be resolved.
 ///
 /// - Unix / macOS: `$XDG_CONFIG_HOME/hume/` → `$HOME/.config/hume/`
@@ -28,10 +61,6 @@ fn env_var(key: &str) -> Option<String> {
 /// Returns `None` only if both the relevant env vars are unset (`HOME` on
 /// Unix, `APPDATA` on Windows). Callers should report and skip scripting
 /// init rather than fall back to a relative path.
-pub fn config_dir() -> Option<PathBuf> {
-    config_dir_with(env_var)
-}
-
 #[cfg(windows)]
 fn config_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     env("APPDATA").map(|base| PathBuf::from(base).join("hume"))
@@ -54,10 +83,6 @@ fn config_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 /// Returns `None` only if the relevant env vars are unset. Callers should
 /// disable features that need on-disk storage (PLUM install, user plugins,
 /// third-party theme installs).
-pub fn data_dir() -> Option<PathBuf> {
-    data_dir_with(env_var)
-}
-
 #[cfg(windows)]
 fn data_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     // Prefer LOCALAPPDATA (machine-local) for plugin binaries and caches;
@@ -120,10 +145,6 @@ fn home_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 ///    workspace root.
 ///
 /// Every candidate except (1) is existence-checked; returns `None` if none exist.
-pub fn runtime_dir() -> Option<PathBuf> {
-    runtime_dir_with(env_var, env::current_exe().ok(), env::current_dir().ok())
-}
-
 fn runtime_dir_with(
     env: impl Fn(&str) -> Option<String>,
     exe: Option<PathBuf>,

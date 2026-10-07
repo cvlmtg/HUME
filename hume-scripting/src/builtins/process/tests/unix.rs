@@ -2,6 +2,7 @@
 //! in the parent.
 
 use super::*;
+use hume_platform::dirs::Dirs;
 
 #[test]
 fn run_inline_output_returns_exit_code() {
@@ -57,13 +58,13 @@ fn run_inline_output_scheme_wrapper_raises_on_nonzero_exit() {
     use crate::ScriptingHost;
     use crate::null_host::NullHost;
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let ok_src = r#"(run-inline-output! "true" '())"#;
     host.eval_source(ok_src, &mut null_host)
         .expect("run-inline-output! success path must not raise");
 
-    let mut host2 = ScriptingHost::new();
+    let mut host2 = ScriptingHost::new(&Dirs::none());
     let mut null_host2 = NullHost;
     let fail_src = r#"
         (with-handler
@@ -93,7 +94,7 @@ fn run_inline_output_scheme_wrapper_passes_env() {
              #:env '(("HUME_ENV_PROBE" . "probe-value")))"#,
         out.display()
     );
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     host.eval_source(&src, &mut null_host)
         .expect("run-inline-output! with #:env must not raise");

@@ -1,4 +1,5 @@
 use super::*;
+use hume_platform::dirs::Dirs;
 
 /// A `#:repeatable` command inside a lazy plugin must be recorded in
 /// `last_repeatable_action` on its FIRST dispatch, after the Lazy→SteelBacked
@@ -32,7 +33,7 @@ fn lazy_repeatable_round_trip() {
     .unwrap();
 
     let mut ed = editor_from("-[foo]> bar\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(dir.path().to_path_buf());
     {
         let mut ih = init_host!(ed);

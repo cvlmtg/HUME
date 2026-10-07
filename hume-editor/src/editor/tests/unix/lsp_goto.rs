@@ -2,7 +2,7 @@
 // `-declaration` / `-type-definition` / `-implementation`, composing
 // `lsp-request!`, `lsp-capabilities`, `goto-location!`,
 // `show-drawer-list!` (via locations.scm's lsp/show-locations!). Loads the real
-// shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
+// shipped `core:lsp` plugin in place (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -24,7 +24,7 @@ fn setup(
     tmp: &Path,
     content: &str,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, ServerId) {
+) -> (Editor, RealRuntimeDirs, ServerId) {
     let (rig, guard) = core_lsp_rig(
         tmp,
         &marked_at_start(content),

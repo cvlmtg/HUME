@@ -1,10 +1,3 @@
-// `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars, always under a `TEST_GLOBALS` claim (a guard struct, or this
-// module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
-// *new* raw call elsewhere in the crate gets caught; these are the sanctioned
-// callers it lists as exempt.
-#![allow(clippy::disallowed_methods)]
-
 // Editor-level tests for the tree-sitter grammar wiring that load Steel
 // plugins or run `init_scripting` end-to-end. The platform-neutral half
 // (and the shared catalog/fixture helpers) lives in
@@ -17,6 +10,7 @@
 
 use super::*;
 use hume_grid::Rect;
+use hume_platform::dirs::Dirs;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -98,7 +92,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     );
     std::fs::write(&init_path, prelude_src + "\n" + &body).unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     {
@@ -143,7 +137,7 @@ fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
     std::fs::write(&init_path, prelude_src + "\n" + register_grammar_call).unwrap();
 
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let effects = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -325,7 +319,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     );
     std::fs::write(&init_path, prelude_src + &body).unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(data_dir.clone());
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(
         hume_editing::text::BufferText::empty(),
@@ -364,7 +358,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 /// module doc elsewhere in this test tree).
 #[test]
 fn plum_install_grammar_tab_completes_a_declared_name() {
-    let _lock = lock();
+    let _path = path_reader();
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
@@ -389,7 +383,7 @@ fn install_real_json_grammar_e2e() {
     // `scripting_lsp_install.rs` narrows process `PATH` to an empty or
     // shim-only dir in several tests, and a spawn landing inside that window
     // resolves to nothing (see `Global::Env`'s doc).
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _path = path_reader();
 
     // Read the JSON grammar's url + pinned rev straight from the runtime catalog
     // (single source of truth, no hardcoded pins to drift out of sync).
@@ -447,7 +441,7 @@ fn install_real_json_grammar_e2e() {
     );
     std::fs::write(&init_path, prelude_src + &body).unwrap();
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.set_data_dir(data_dir);
     {
         let mut ih = init_host!(ed);
@@ -496,15 +490,15 @@ fn install_real_json_grammar_e2e() {
 
 /// Helper: write a temp-runtime `scheme/prelude.scm` (copied verbatim from the
 /// real runtime; it's self-contained and defines the `define-language!`
-/// macro) plus a caller-supplied `scheme/languages.scm`, point
-/// `HUME_RUNTIME`/`XDG_CONFIG_HOME`/`XDG_DATA_HOME` at temp dirs, give the
+/// macro) plus a caller-supplied `scheme/languages.scm`, point the editor's
+/// runtime, config and data directories at temp dirs, give the
 /// editor's buffer a path so extension-based detection fires, and run
 /// `init_scripting`. Caller must keep the returned `TempDir`s alive.
 fn setup_editor_with_languages_scm(
     languages_scm: &str,
     file_name: &str,
 ) -> (Editor, Vec<tempfile::TempDir>) {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _path = path_reader();
 
     let config_tmp = safe_tempdir();
     let runtime_tmp = safe_tempdir();
@@ -527,19 +521,12 @@ fn setup_editor_with_languages_scm(
         .get_mut(bid)
         .set_path(Some(PathBuf::from(file_name)));
 
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", runtime_tmp.path());
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
-
+    ed.state.dirs = Dirs {
+        config: Some(hume_config),
+        data: Some(data_tmp.path().join("hume")),
+        runtime: Some(runtime_tmp.path().to_path_buf()),
+    };
     ed.init_scripting(&mut Default::default());
-
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
 
     (ed, vec![config_tmp, runtime_tmp, data_tmp])
 }
@@ -631,26 +618,20 @@ fn define_language_roots_keyword_round_trips_through_real_prelude() {
 /// `lsp_language_id_of` falling back to `name_of`, the id would be `"tsx"`.
 #[test]
 fn tsx_bundled_language_id_is_typescriptreact() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _path = path_reader();
     let config_tmp = safe_tempdir();
     let data_tmp = safe_tempdir();
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), "").unwrap();
-    let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
 
     let mut ed = editor_from("-[a]>b\n");
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", real_runtime);
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
+    ed.state.dirs = Dirs {
+        config: Some(hume_config),
+        data: Some(data_tmp.path().join("hume")),
+        runtime: Some(repo_runtime_dir()),
+    };
     ed.init_scripting(&mut Default::default());
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
 
     let id = ed
         .state
@@ -746,8 +727,8 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
 /// only needed to *install* a grammar in the first place.
 ///
 /// Stages a real compiled JSON grammar at the exact paths core's
-/// `grammar-output-path`/`grammar-highlights-path` expect, points
-/// `HUME_RUNTIME` at the repo's real `runtime/` dir (so the real
+/// `grammar-output-path`/`grammar-highlights-path` expect, points the
+/// runtime dir at the repo's real `runtime/` dir (so the real
 /// `grammar-sources.scm` catalog and `grammars.scm` registrar run), and runs
 /// `init_scripting` against an `init.scm` that never mentions PLUM.
 ///
@@ -761,6 +742,7 @@ fn grammar_registration_survives_plum_absence() {
     let fixture = StagedGrammarFixture::new("json", &parser, &hl, "");
 
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    ed.state.dirs = fixture.dirs();
     let bid = ed.focused_buffer_id();
     ed.state
         .buffers
@@ -834,6 +816,7 @@ fn define_language_override_in_init_keeps_startup_grammar() {
     );
 
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    ed.state.dirs = fixture.dirs();
     let bid = ed.focused_buffer_id();
     ed.state
         .buffers
@@ -886,7 +869,7 @@ fn init_errors_with_catalog(
     catalog_src: &str,
     populate_data: impl FnOnce(&std::path::Path),
 ) -> (Vec<String>, Editor, Vec<tempfile::TempDir>) {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _path = path_reader();
 
     let config_tmp = safe_tempdir();
     let runtime_tmp = safe_tempdir();
@@ -912,17 +895,12 @@ fn init_errors_with_catalog(
     populate_data(&data_tmp.path().join("hume"));
 
     let mut ed = editor_from("-[a]>b\n");
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", runtime_tmp.path());
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
+    ed.state.dirs = Dirs {
+        config: Some(hume_config),
+        data: Some(data_tmp.path().join("hume")),
+        runtime: Some(runtime_tmp.path().to_path_buf()),
+    };
     ed.init_scripting(&mut Default::default());
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
 
     let errors = ed
         .state
@@ -1150,26 +1128,20 @@ fn installed_grammars_sorts_by_stem_not_filename() {
 /// `go` lists two, `gomod` none.
 #[test]
 fn bundled_languages_carry_helix_roots() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _path = path_reader();
     let config_tmp = safe_tempdir();
     let data_tmp = safe_tempdir();
     let hume_config = config_tmp.path().join("hume");
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(hume_config.join("init.scm"), "").unwrap();
-    let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
 
     let mut ed = editor_from("-[a]>b\n");
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", real_runtime);
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
+    ed.state.dirs = Dirs {
+        config: Some(hume_config),
+        data: Some(data_tmp.path().join("hume")),
+        runtime: Some(repo_runtime_dir()),
+    };
     ed.init_scripting(&mut Default::default());
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
 
     let languages = &ed.state.config.languages;
     let go = languages

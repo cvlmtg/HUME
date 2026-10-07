@@ -3,6 +3,7 @@
 //! require strings embed OS paths) live in `unix/scripting_effects.rs`.
 
 use super::*;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 /// Atomic-eval contract, exercised through `call_steel_cmd` (a plain
@@ -16,7 +17,7 @@ use hume_scripting::ScriptingHost;
 #[test]
 fn failed_command_eval_effects_do_not_leak() {
     let mut ed = editor_from("-[a]>bcdef\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     {
         let mut ih = init_host!(ed);
         host.eval_source(

@@ -4,7 +4,7 @@
 // `decorations.line_backgrounds` store, and the engine's `row_bg`
 // generalization that renders it.
 //
-// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s
+// Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}), hume_platform::dirs::Dirs::none())` (not `editor_from`'s
 // bare `Pane::new`): `PaneLineBackgrounds` is only registered by
 // `build_pane`, same reasoning as `lsp_render.rs`.
 
@@ -20,7 +20,12 @@ const TINT_SCOPE: &str = "ui.cursor.match.search";
 #[test]
 fn line_background_tints_gutter_content_and_trailing_cells() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     // Esc lands the cursor on line 2 ("ghi"). Line 0 is tinted but not the
     // cursor's line, so this test isolates the tint from cursorline.
@@ -76,7 +81,12 @@ fn line_background_tints_gutter_content_and_trailing_cells() {
 #[test]
 fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     // Line 0 (20 cols, wraps at a narrow width) is tinted; line 1 ("b") is
     // short and holds the cursor after Esc, so cursorline never lands on
@@ -124,7 +134,12 @@ fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
 #[test]
 fn cursorline_wins_over_the_line_background_tint() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "abc\ndef"); // Esc lands the cursor on line 1 ("def").
     run(
@@ -176,7 +191,12 @@ fn cursorline_wins_over_the_line_background_tint() {
 #[test]
 fn line_background_shows_through_when_cursorline_has_no_bg() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     // A from-scratch theme with no `ui.cursorline` entry at all, rather than
     // overriding the snapshot theme's baked `ui.cursorline.bg` post hoc:
     // `Theme::bake` (run by `prepare_frame` whenever a new scope is
@@ -243,7 +263,12 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
 #[test]
 fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.state.settings.scroll_margin = 0; // isolate from margin-triggered auto-scroll
     type_text(
         &mut ed,

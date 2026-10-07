@@ -146,6 +146,7 @@ fn did_open_carries_the_lsp_language_id_override_not_the_hume_name() {
                  (register-lsp-server! "typescript-language-server"
                                        #:command "typescript-language-server")
                  (set-language-servers! "tsx" '("typescript-language-server"))"#,
+        dirs: hume_platform::dirs::Dirs::none(),
     };
     let _rig = LspRig::drained(tmp.path(), spec, backend);
 

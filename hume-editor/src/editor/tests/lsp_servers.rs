@@ -60,6 +60,7 @@ fn one_instance_serves_every_language_of_the_same_name_and_root() {
 (register-lsp-server! "tsls" #:command "tsls")
 (set-language-servers! "typescript" '("tsls"))
 (set-language-servers! "tsx" '("tsls"))"#,
+        dirs: hume_platform::dirs::Dirs::none(),
     };
     let mut rig = LspRig::drained(tmp.path(), spec, answering(1));
 
@@ -374,6 +375,7 @@ fn a_language_change_reopens_the_document_on_the_same_instance() {
 (register-lsp-server! "tsls" #:command "tsls")
 (set-language-servers! "typescript" '("tsls"))
 (set-language-servers! "tsx" '("tsls"))"#,
+        dirs: hume_platform::dirs::Dirs::none(),
     };
     let mut rig = LspRig::drained(tmp.path(), spec, answering(1));
     let sid = rig.sid("tsls");
@@ -539,6 +541,7 @@ fn a_user_list_attaches_a_registered_server_the_default_does_not_name() {
 (register-lsp-server! "eslint" #:command "eslint")
 (set-default-language-servers! "jsx" '("tsls"))
 (set-language-servers! "jsx" '("tsls" "eslint"))"#,
+        dirs: hume_platform::dirs::Dirs::none(),
     };
     let rig = LspRig::drained(tmp.path(), spec, answering(2));
 
@@ -575,6 +578,7 @@ fn a_servers_root_comes_from_its_languages_roots() {
         init: r#"(%define-language! "rust" '("rs") '() '() #f '("Cargo.toml"))
 (register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
 (set-language-servers! "rust" '("rust-analyzer"))"#,
+        dirs: hume_platform::dirs::Dirs::none(),
     };
     let mut rig = LspRig::drained(tmp.path(), spec, answering(1));
 

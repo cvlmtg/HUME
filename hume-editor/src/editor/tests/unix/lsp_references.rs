@@ -1,7 +1,7 @@
 // References: `lsp-references`, reusing the goto-definition family's
 // worker shape but always presenting the drawer (never auto-jumping even
 // for a single result). Loads the real shipped `core:lsp` plugin in place
-// (`RealRuntimeGuard`).
+// (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -17,7 +17,7 @@ use hume_lsp::test_util::RecordingLspBackend;
 fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, ServerId) {
+) -> (Editor, RealRuntimeDirs, ServerId) {
     let (rig, guard) = core_lsp_rig(
         tmp,
         "-[f]>n main() {\n    foo();\n}\n",

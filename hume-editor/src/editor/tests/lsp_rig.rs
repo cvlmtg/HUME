@@ -3,6 +3,7 @@
 //! a real file opened through `:e`, and a scripted backend, so every
 //! attachment a test sees was made by the production attach path.
 
+use hume_platform::dirs::Dirs;
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::BufferId;
@@ -63,6 +64,8 @@ pub(in crate::editor) struct RigSpec<'a> {
     /// Empty files created at the root, for root-marker resolution.
     pub(in crate::editor) markers: &'a [&'a str],
     pub(in crate::editor) init: &'a str,
+    /// The directories the rig's editor and scripting host work from.
+    pub(in crate::editor) dirs: Dirs,
 }
 
 impl<'a> RigSpec<'a> {
@@ -76,11 +79,16 @@ impl<'a> RigSpec<'a> {
             marked,
             markers: &["Cargo.toml"],
             init: RUST_ANALYZER,
+            dirs: Dirs::none(),
         }
     }
 
     pub(in crate::editor) fn with_init(self, init: &'a str) -> Self {
         Self { init, ..self }
+    }
+
+    pub(in crate::editor) fn with_dirs(self, dirs: Dirs) -> Self {
+        Self { dirs, ..self }
     }
 }
 
@@ -119,7 +127,8 @@ impl LspRig {
         let notifications = backend.server_notification_log();
         let requests = backend.request_log();
         let responses = backend.response_log();
-        let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).expect("editor opens");
+        let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), spec.dirs.clone())
+            .expect("editor opens");
         ed.state.lsp = LspState::with_backend(Box::new(backend));
         ed.state
             .config
@@ -127,7 +136,7 @@ impl LspRig {
             .register_identity(spec.language, &[spec.extension], &[], &[], None)
             .expect("register test language");
 
-        let mut host = ScriptingHost::new();
+        let mut host = ScriptingHost::new(&ed.state.dirs);
         eval_with_real_host(&mut ed, &mut host, spec.init, &root);
         ed.scripting = Some(host);
         ed.execute_typed("e", Some(file.to_str().expect("utf-8 path")))

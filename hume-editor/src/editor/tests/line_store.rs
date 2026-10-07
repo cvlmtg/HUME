@@ -22,7 +22,7 @@ use hume_grid::{Grid, Rect};
 /// a pane `:split` creates starts with no override of its own and would
 /// otherwise fall back to the default soft wrap instead of matching.
 fn many_lines_editor() -> Editor {
-    let mut ed = Editor::open(None, Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(None, Arc::new(|| {}), hume_platform::dirs::Dirs::none()).unwrap();
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).set_view_content(
         bid,

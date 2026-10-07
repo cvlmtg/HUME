@@ -2,6 +2,7 @@ use super::*;
 use crate::json::JsonHandle;
 use crate::test_support::{SteelCtxTestHarness, default_bid, default_pane, default_pane_with_pane};
 use crate::types::{RequestMode, RequestParams, RouteSpec, WhenUnavailable};
+use hume_platform::dirs::Dirs;
 use hume_rope::position_encoding::PositionEncoding;
 use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;
@@ -1337,7 +1338,7 @@ fn the_tracking_token_builtins_reject_init_context() {
         "untrack-position!",
         "keep-tracked-position!",
     ] {
-        let mut host = crate::ScriptingHost::new();
+        let mut host = crate::ScriptingHost::new(&Dirs::none());
         let mut null_host = crate::null_host::NullHost;
         let err = host
             .eval_source(&format!("({name} #f)"), &mut null_host)

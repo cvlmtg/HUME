@@ -1,61 +1,40 @@
 //! `theme_search_paths` tier ordering: config dir, then data dir, then
-//! runtime dir, each shadowing the next by stem. XDG env vars are
-//! unix-only (`dirs.rs`'s `config_dir_with`/`data_dir_with`), hence gated
-//! here rather than in the portable `tests/theme_loading.rs`.
-
-// `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars, always under a `TEST_GLOBALS` claim (a guard struct, or this
-// module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
-// *new* raw call elsewhere in the crate gets caught; these are the sanctioned
-// callers it lists as exempt.
-#![allow(clippy::disallowed_methods)]
+//! runtime dir, each shadowing the next by stem.
 
 use super::*;
 
-/// Points `XDG_CONFIG_HOME`/`XDG_DATA_HOME`/`HUME_RUNTIME` at three distinct
-/// tempdirs so all three tiers resolve to known, isolated paths.
+/// Three distinct tempdirs standing in for the config, data and runtime
+/// directories, so all three tiers resolve to known, isolated paths.
 struct ThemeDirsFixture {
-    config_dir: PathBuf,
-    data_dir: PathBuf,
-    runtime_dir: PathBuf,
+    dirs: hume_platform::dirs::Dirs,
     _tmps: (tempfile::TempDir, tempfile::TempDir, tempfile::TempDir),
-    _lock: ClaimGuard,
 }
 
 impl ThemeDirsFixture {
     fn new() -> Self {
-        let lock = TEST_GLOBALS.claim(Global::Env);
-
         let config_tmp = safe_tempdir();
         let data_tmp = safe_tempdir();
         let runtime_tmp = safe_tempdir();
-
-        let config_dir = config_tmp.path().join("hume");
-        let data_dir = data_tmp.path().join("hume");
-
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-            std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-            std::env::set_var("HUME_RUNTIME", runtime_tmp.path());
-        }
-
         Self {
-            config_dir,
-            data_dir,
-            runtime_dir: runtime_tmp.path().to_path_buf(),
+            dirs: hume_platform::dirs::Dirs {
+                config: Some(config_tmp.path().join("hume")),
+                data: Some(data_tmp.path().join("hume")),
+                runtime: Some(runtime_tmp.path().to_path_buf()),
+            },
             _tmps: (config_tmp, data_tmp, runtime_tmp),
-            _lock: lock,
         }
     }
-}
 
-impl Drop for ThemeDirsFixture {
-    fn drop(&mut self) {
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-            std::env::remove_var("XDG_DATA_HOME");
-            std::env::remove_var("HUME_RUNTIME");
-        }
+    fn config_dir(&self) -> &Path {
+        self.dirs.config.as_deref().expect("fixture sets config")
+    }
+
+    fn data_dir(&self) -> &Path {
+        self.dirs.data.as_deref().expect("fixture sets data")
+    }
+
+    fn runtime_dir(&self) -> &Path {
+        self.dirs.runtime.as_deref().expect("fixture sets runtime")
     }
 }
 
@@ -63,14 +42,14 @@ impl Drop for ThemeDirsFixture {
 fn theme_search_paths_orders_config_then_data_then_runtime() {
     let fixture = ThemeDirsFixture::new();
 
-    let paths = crate::editor::scripting_setup::theme_search_paths();
+    let paths = crate::editor::scripting_setup::theme_search_paths(&fixture.dirs);
 
     assert_eq!(
         paths,
         vec![
-            fixture.config_dir.join("themes"),
-            fixture.data_dir.join("themes"),
-            fixture.runtime_dir.join("themes"),
+            fixture.config_dir().join("themes"),
+            fixture.data_dir().join("themes"),
+            fixture.runtime_dir().join("themes"),
         ],
         "expected config, then data, then runtime themes dirs, in that order"
     );
@@ -83,7 +62,7 @@ fn theme_search_paths_orders_config_then_data_then_runtime() {
 fn data_dir_theme_shadows_bundled_theme_of_same_name() {
     let fixture = ThemeDirsFixture::new();
 
-    let data_themes = fixture.data_dir.join("themes");
+    let data_themes = fixture.data_dir().join("themes");
     std::fs::create_dir_all(&data_themes).unwrap();
     std::fs::write(
         data_themes.join("sand.toml"),
@@ -91,7 +70,7 @@ fn data_dir_theme_shadows_bundled_theme_of_same_name() {
     )
     .unwrap();
 
-    let runtime_themes = fixture.runtime_dir.join("themes");
+    let runtime_themes = fixture.runtime_dir().join("themes");
     std::fs::create_dir_all(&runtime_themes).unwrap();
     std::fs::write(
         runtime_themes.join("sand.toml"),
@@ -101,7 +80,7 @@ fn data_dir_theme_shadows_bundled_theme_of_same_name() {
 
     let theme = hume_engine::theme::loader::load_theme(
         "sand",
-        &crate::editor::scripting_setup::theme_search_paths(),
+        &crate::editor::scripting_setup::theme_search_paths(&fixture.dirs),
     )
     .expect("sand theme should load from the data dir")
     .theme;
@@ -119,7 +98,7 @@ fn data_dir_theme_shadows_bundled_theme_of_same_name() {
 #[test]
 fn load_theme_by_name_loads_despite_a_malformed_key_and_warns() {
     let fixture = ThemeDirsFixture::new();
-    let runtime_themes = fixture.runtime_dir.join("themes");
+    let runtime_themes = fixture.runtime_dir().join("themes");
     std::fs::create_dir_all(&runtime_themes).unwrap();
     std::fs::write(
         runtime_themes.join("flawed.toml"),
@@ -130,11 +109,13 @@ fn load_theme_by_name_loads_despite_a_malformed_key_and_warns() {
     .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs.clone();
     let ok = crate::editor::theme::load_theme_by_name(
         &mut ed.view,
         &mut ed.state.message_log,
         &mut ed.state.status_msg,
         ed.state.input.popup_mut(),
+        &ed.state.dirs,
         "flawed",
     );
     assert!(ok, "a theme with a malformed key still loads");

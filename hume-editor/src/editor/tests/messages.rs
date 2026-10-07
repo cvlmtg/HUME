@@ -19,7 +19,12 @@ use hume_grid::Rect;
 /// `bake_if_stale`.
 #[test]
 fn messages_renders_its_badge_color_on_the_first_frame() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.state
         .message_log
         .push(Severity::Warning, "bad key".to_string());
@@ -51,7 +56,12 @@ fn messages_renders_its_badge_color_on_the_first_frame() {
 
 #[test]
 fn messages_populates_the_extra_highlights_store() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.state
         .message_log
         .push(Severity::Warning, "bad key".to_string());
@@ -95,7 +105,12 @@ fn messages_populates_the_extra_highlights_store() {
 
 #[test]
 fn messages_spans_reach_the_pane_extra_highlight_arc() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.state
         .message_log
         .push(Severity::Warning, "bad key".to_string());
@@ -150,7 +165,12 @@ fn messages_spans_reach_the_pane_extra_highlight_arc() {
 
 #[test]
 fn repeat_messages_replaces_stale_spans_not_appends() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.state
         .message_log
         .push(Severity::Warning, "first".to_string());

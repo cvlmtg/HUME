@@ -3,7 +3,7 @@
 //! `editor/tests/mod.rs`'s `TestGlobals` (a reentrant lock) and its two
 //! constructors, `safe_tempdir()`/`safe_named_tempfile()`, exist because a
 //! bare `tempfile::tempdir()`/`NamedTempFile::new()` called while a
-//! `HumeRuntimeGuard` has `TMPDIR` redirected can land inside (and later be
+//! `TutorGuard` has `TMPDIR` redirected can land inside (and later be
 //! deleted along with) that guard's tree (see `safe_tempdir`'s own doc).
 //! [`no_bare_tempdir_outside_the_safe_constructors`] enforces routing
 //! through those constructors instead of a new one-off bypass, scanning for
@@ -58,7 +58,7 @@ fn no_bare_tempdir_outside_the_safe_constructors() {
     assert!(
         violations.is_empty(),
         "\nBare tempdir/named-tempfile constructor found outside `tests/mod.rs`.\n\
-         A `HumeRuntimeGuard`-redirected `TMPDIR` can engulf (and later delete) a\n\
+         A `TutorGuard`-redirected `TMPDIR` can engulf (and later delete) a\n\
          tempdir created while it's live. Use `safe_tempdir()`/`safe_named_tempfile()`\n\
          instead, which serialize creation against that redirect.\n\
          Violations:\n{}\n",

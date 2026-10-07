@@ -4,6 +4,7 @@
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
 use crate::editor::message_log::Severity;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 /// `buffer-text` returns the buffer's live, unsaved content, not a stale
@@ -18,7 +19,7 @@ fn buffer_text_returns_live_dirty_content() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (buffer-text bid) "Xabcdef\n")"#,
     );
@@ -38,7 +39,7 @@ fn buffer_lines_excludes_the_phantom_trailing_line() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (buffer-lines bid) (list "a" "b" "c"))"#,
     );
@@ -60,7 +61,7 @@ fn buffer_line_count_excludes_the_phantom_trailing_line() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(= (buffer-line-count bid) 3)"#,
     );
@@ -80,7 +81,7 @@ fn buffer_line_count_agrees_with_buffer_lines_length() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(= (buffer-line-count bid)
              (length (buffer-lines bid)))"#,
@@ -99,7 +100,7 @@ fn buffer_lines_supports_a_start_end_range() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (buffer-lines bid #:start 1 #:end 3) (list "b" "c"))"#,
     );
@@ -118,7 +119,7 @@ fn buffer_lines_start_only_defaults_end_to_the_line_count() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (buffer-lines bid #:start 1) (list "b" "c"))"#,
     );
@@ -140,7 +141,7 @@ fn buffer_text_normalizes_crlf_to_lf() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (buffer-text bid) "a\nb\n")"#,
     );
@@ -157,7 +158,7 @@ fn buffer_lines_out_of_range_end_raises() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -184,7 +185,7 @@ fn buffer_lines_start_past_end_raises() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -220,7 +221,7 @@ fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(let ((vr (viewport-range bid)))
              (equal? (buffer-lines bid
@@ -243,7 +244,7 @@ fn assert_stale_bid_raises(builtin_call: &str, builtin_name: &str) {
     std::fs::write(&scratch, "x\n").unwrap();
     let scratch_str = steel_path(&scratch);
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -297,7 +298,7 @@ fn line_to_offset_returns_each_lines_start_char_offset() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(and (= (line->offset bid 0) 0)
                  (= (line->offset bid 1) 2)
@@ -321,7 +322,7 @@ fn line_to_offset_counts_chars_not_bytes() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(= (line->offset bid 1) 2)"#,
     );
@@ -339,7 +340,7 @@ fn line_to_offset_out_of_range_line_raises() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\nb\n");
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -373,7 +374,7 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
     std::fs::write(&scratch, "x\n").unwrap();
     let scratch_str = steel_path(&scratch);
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -412,7 +413,12 @@ fn assert_selections_predicate(builtin: &str, initial: &str, expected: bool, why
     } else {
         format!("(not ({builtin} bid))")
     };
-    let fired = run_probe(&mut ed, ScriptingHost::new(), tmp.path(), &probe);
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(&Dirs::none()),
+        tmp.path(),
+        &probe,
+    );
     assert!(fired, "{why}");
 }
 
@@ -603,7 +609,7 @@ fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(let* ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers))))
                   (shown (car (buffer-panes hidden))))
@@ -626,7 +632,7 @@ fn diff_buffer_lines_agrees_with_diff_lines_over_buffer_text() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(let ((ref "a\nB\nc\n"))
              (equal? (diff-buffer-lines bid ref)

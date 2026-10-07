@@ -150,6 +150,7 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: Resy
             &mut state.message_log,
             &mut state.status_msg,
             state.input.popup_mut(),
+            &state.dirs,
             &state.settings.theme,
         ),
         // Empty theme (cleared, or never set): nothing to load.

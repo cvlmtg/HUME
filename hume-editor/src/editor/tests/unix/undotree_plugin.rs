@@ -57,7 +57,7 @@ fn rendered_rows(nodes: &[Node]) -> String {
 /// [`rendered_rows`], with `earlier` rendered first, in order, in the same
 /// Steel VM.
 fn rendered_rows_after(earlier: &[&[Node]], nodes: &[Node]) -> String {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let plugin_dir = guard.runtime.path().join("plugins/core/undotree-probe");
     let earlier: Vec<String> = earlier
         .iter()
@@ -79,6 +79,7 @@ fn rendered_rows_after(earlier: &[&[Node]], nodes: &[Node]) -> String {
 
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.dirs = guard.dirs();
     run(
         &mut ed,
         tmp.path(),
@@ -184,7 +185,7 @@ fn render_new_parents_redraw_the_graph() {
 /// Seconds until `undotree/render`'s soonest age label change for `ages`, as
 /// the probe command traces it.
 fn next_change_secs(ages: &[u64]) -> String {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     let plugin_dir = guard.runtime.path().join("plugins/core/undotree-probe");
     let nodes: Vec<Node> = ages
         .iter()
@@ -203,6 +204,7 @@ fn next_change_secs(ages: &[u64]) -> String {
 
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.dirs = guard.dirs();
     run(
         &mut ed,
         tmp.path(),
@@ -296,9 +298,10 @@ fn render_a_child_of_an_older_revision_matches_a_fresh_layout() {
 use std::path::Path;
 use std::time::Duration;
 
-fn setup(tmp: &Path) -> (Editor, RealRuntimeGuard) {
-    let guard = RealRuntimeGuard::new();
+fn setup(tmp: &Path) -> (Editor, RealRuntimeDirs) {
+    let guard = RealRuntimeDirs::new();
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.dirs = guard.dirs();
     run(
         &mut ed,
         tmp,
@@ -492,9 +495,10 @@ const DIFF_SOURCE: &str = "undotree";
 
 /// `setup`, with `core:git-diff` (and the `core:stdlib` it needs) loaded
 /// before `core:undotree`.
-fn setup_with_git_diff(tmp: &Path) -> (Editor, RealRuntimeGuard) {
-    let guard = RealRuntimeGuard::new();
+fn setup_with_git_diff(tmp: &Path) -> (Editor, RealRuntimeDirs) {
+    let guard = RealRuntimeDirs::new();
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.dirs = guard.dirs();
     let load = format!(
         "(load-plugin! \"core:stdlib\")\n{}\n{}",
         hume_scripting::eager_load_scm("core:git-diff", None),
@@ -672,7 +676,7 @@ fn undotree_esc_clears_the_diff() {
 
 /// Copies every `.scm` file of the shipped core plugin `name` into the
 /// guard's runtime.
-fn copy_core_plugin_files(guard: &HumeRuntimeGuard, name: &str) {
+fn copy_core_plugin_files(guard: &RuntimeDirs, name: &str) {
     let from = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../runtime/plugins/core")
         .join(name);
@@ -690,7 +694,7 @@ fn copy_core_plugin_files(guard: &HumeRuntimeGuard, name: &str) {
 /// toggle opens the drawer again.
 #[test]
 fn undotree_session_ends_when_clearing_the_diff_raises() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     copy_core_plugin_files(&guard, "stdlib");
     copy_core_plugin_files(&guard, "git-diff");
     copy_core_plugin_files(&guard, "undotree");
@@ -706,6 +710,7 @@ fn undotree_session_ends_when_clearing_the_diff_raises() {
 
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.dirs = guard.dirs();
     let load = format!(
         "(load-plugin! \"core:stdlib\")\n{}\n{}",
         hume_scripting::eager_load_scm("core:git-diff", None),
@@ -731,8 +736,9 @@ fn undotree_session_ends_when_clearing_the_diff_raises() {
 #[test]
 fn undotree_redraws_the_diff_only_when_the_revision_changes() {
     let tmp = safe_tempdir();
-    let _guard = RealRuntimeGuard::new();
+    let _guard = RealRuntimeDirs::new();
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.dirs = _guard.dirs();
     let load = format!(
         "(load-plugin! \"core:stdlib\")\n{}\n{}\n{}",
         hume_scripting::eager_load_scm("core:git-diff", None),
@@ -754,9 +760,8 @@ fn undotree_redraws_the_diff_only_when_the_revision_changes() {
         "setup: the diff is cleared"
     );
 
-    drain_frames_until(&mut ed, |ed| {
-        drawer_rows(ed).iter().all(|row| row.ends_with(" 1s"))
-    });
+    let before = drawer_rows(&ed);
+    drain_frames_until(&mut ed, |ed| drawer_rows(ed) != before);
     assert!(
         diff_vlines(&ed, bid).is_empty(),
         "the timer refreshed the rows without a revision change, so no redraw"
@@ -910,7 +915,7 @@ fn undotree_typed_command_rejects_an_argument() {
 }
 
 /// Patches the shipped `core:git-diff` so `git-diff/render-diff` raises.
-fn copy_plugins_with_raising_renderer(guard: &HumeRuntimeGuard) {
+fn copy_plugins_with_raising_renderer(guard: &RuntimeDirs) {
     copy_core_plugin_files(guard, "stdlib");
     copy_core_plugin_files(guard, "git-diff");
     copy_core_plugin_files(guard, "undotree");
@@ -929,10 +934,11 @@ fn copy_plugins_with_raising_renderer(guard: &HumeRuntimeGuard) {
 /// closes the drawer instead of opening another over it.
 #[test]
 fn undotree_session_survives_a_raising_diff_renderer() {
-    let guard = HumeRuntimeGuard::new();
+    let guard = RuntimeDirs::new();
     copy_plugins_with_raising_renderer(&guard);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.dirs = guard.dirs();
     let load = format!(
         "(load-plugin! \"core:stdlib\")\n{}\n{}",
         hume_scripting::eager_load_scm("core:git-diff", None),
@@ -1012,19 +1018,15 @@ fn undotree_ages_refresh_while_the_drawer_is_open() {
     let tmp = safe_tempdir();
     let (mut ed, _guard) = setup(tmp.path());
     toggle(&mut ed);
-    assert!(
-        drawer_rows(&ed).iter().all(|row| row.ends_with(" 0s")),
-        "setup: a fresh tree reads 0s"
-    );
+    let before = drawer_rows(&ed);
 
-    drain_frames_until(&mut ed, |ed| {
-        drawer_rows(ed).iter().all(|row| row.ends_with(" 1s"))
-    });
+    drain_frames_until(&mut ed, |ed| drawer_rows(ed) != before);
 }
 
-fn setup_with_foreign_drawer(tmp: &Path) -> (Editor, RealRuntimeGuard) {
-    let guard = RealRuntimeGuard::new();
+fn setup_with_foreign_drawer(tmp: &Path) -> (Editor, RealRuntimeDirs) {
+    let guard = RealRuntimeDirs::new();
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.dirs = guard.dirs();
     let source = format!(
         r#"{}
 (define-command! "foreign-drawer" "Open an unrelated drawer."

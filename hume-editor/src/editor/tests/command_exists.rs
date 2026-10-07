@@ -1,6 +1,7 @@
 // End-to-end coverage for `(command-exists? name)`.
 
 use super::*;
+use hume_platform::dirs::Dirs;
 
 /// Defines the fixtures, then a `:check` command that logs `(command-exists? name)`
 /// for each of `names`, and returns the logged values in order.
@@ -14,7 +15,7 @@ fn exists(ed: &mut Editor, tmp: &std::path::Path, setup: &str, names: &[&str]) -
         r#"{setup}
            (define-typed-command! "check" "" (lambda (bid) (log! 'info (to-string (list {calls})))))"#
     );
-    let mut host = hume_scripting::ScriptingHost::new();
+    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
     host.set_data_dir(tmp.to_path_buf());
     install_source(ed, host, &source, tmp);
     type_cmd(ed, ":check");

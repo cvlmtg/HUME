@@ -440,7 +440,7 @@ pub(in crate::editor) fn typed_tutor(
     _force: bool,
 ) -> Result<(), CommandError> {
     // Resolve the install source. Fail fast on missing runtime or file.
-    let Some(runtime) = hume_platform::dirs::runtime_dir() else {
+    let Some(runtime) = ed.state.dirs.runtime.clone() else {
         return Err(CommandError::new(
             "runtime directory not found (set HUME_RUNTIME to override)",
         ));

@@ -2,7 +2,7 @@
 // `lsp-capabilities`, `diagnostics-for-buffer`'s `raw`
 // field (echoed back as context.diagnostics; servers gate diagnostic-
 // derived quickfixes on this), `apply-workspace-edit!`, `show-menu!`.
-// Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
+// Loads the real shipped `core:lsp` plugin in place (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -19,7 +19,7 @@ const FIXTURE: &str = "fn main() {\n    let x = 1;\n}\n";
 fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
+) -> (Editor, RealRuntimeDirs, ServerId, RequestLog) {
     setup_with_capabilities(
         tmp,
         serde_json::json!({"codeActionProvider": true}),
@@ -35,7 +35,7 @@ fn setup_with_capabilities(
     tmp: &Path,
     capabilities: serde_json::Value,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
+) -> (Editor, RealRuntimeDirs, ServerId, RequestLog) {
     setup_over(tmp, FIXTURE, capabilities, configure)
 }
 
@@ -45,7 +45,7 @@ fn setup_over(
     content: &str,
     capabilities: serde_json::Value,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, ServerId, RequestLog) {
+) -> (Editor, RealRuntimeDirs, ServerId, RequestLog) {
     let (rig, guard) = core_lsp_rig(
         tmp,
         &marked_at_start(content),

@@ -6,6 +6,7 @@
 use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
 use hume_lsp::test_util::RecordingLspBackend;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 const PULL: &str = "textDocument/diagnostic";
@@ -415,7 +416,7 @@ fn a_config_reload_pulls_again_from_a_server_it_keeps() {
     let sid = rig.sid("rust-analyzer");
 
     let snapshot = rig.ed.reset_config_state();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut rig.ed,
         &mut host,

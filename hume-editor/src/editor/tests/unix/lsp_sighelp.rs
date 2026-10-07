@@ -1,7 +1,7 @@
 // Signature help: trigger chars fire a debounced
 // textDocument/signatureHelp, composing `lsp-request!`,
 // `lsp-capabilities`, debounce, `on-lsp-attach`, `on-trigger-char`.
-// Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
+// Loads the real shipped `core:lsp` plugin in place (`RealRuntimeDirs`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
@@ -18,7 +18,7 @@ use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, RequestLog) {
+) -> (Editor, RealRuntimeDirs, RequestLog) {
     setup_trigger_char_feature(
         tmp,
         FOO,

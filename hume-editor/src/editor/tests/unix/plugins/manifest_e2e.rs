@@ -364,8 +364,7 @@ fn core_plum_real_manifest_scm_resolves_via_load_plugin() {
 fn failed_third_party_load_does_not_block_plum_declared_afterward() {
     use crate::editor::Severity;
 
-    let _lock = TEST_GLOBALS.claim(Global::Env);
-
+    let _path = path_reader();
     let config_tmp = safe_tempdir();
     let data_tmp = safe_tempdir();
     let runtime_dir = repo_runtime_dir();
@@ -393,20 +392,13 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
     )
     .unwrap();
 
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", &runtime_dir);
-        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
-    }
-
     let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = Dirs {
+        config: Some(hume_config),
+        data: Some(data_tmp.path().join("hume")),
+        runtime: Some(runtime_dir),
+    };
     ed.init_scripting(&mut Default::default());
-
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
 
     // The failed load must still be reported, not silently swallowed.
     assert!(

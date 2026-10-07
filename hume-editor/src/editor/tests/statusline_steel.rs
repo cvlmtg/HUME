@@ -3,13 +3,14 @@
 
 use super::*;
 use crate::editor::message_log::Severity;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 #[test]
 fn pushed_text_renders_for_the_focused_buffer() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -31,7 +32,7 @@ fn pushed_text_is_not_shown_once_a_different_buffer_is_focused() {
     std::fs::write(&other, "x\n").unwrap();
     let other_str = steel_path(&other);
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -58,7 +59,7 @@ fn closing_the_buffer_clears_its_pushed_text() {
     std::fs::write(&scratch, "x\n").unwrap();
     let scratch_str = steel_path(&scratch);
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -84,7 +85,7 @@ fn closing_the_buffer_clears_its_pushed_text() {
 fn empty_text_clears_a_previously_pushed_value() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -115,7 +116,7 @@ fn set_statusline_text_on_a_stale_bid_raises_unknown_buffer() {
     std::fs::write(&scratch, "x\n").unwrap();
     let scratch_str = steel_path(&scratch);
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -147,7 +148,7 @@ fn set_statusline_text_on_a_stale_bid_raises_unknown_buffer() {
 fn set_statusline_text_on_an_unplaceable_name_raises_an_error() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\n");
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

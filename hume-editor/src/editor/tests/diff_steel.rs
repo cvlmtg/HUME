@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::editor::message_log::Severity;
+use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
 /// `diff-lines` returns 0-based hunk hashes, oldest side first.
@@ -17,7 +18,7 @@ fn diff_lines_returns_zero_based_hunk_hashes() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (diff-lines "a\nb\nc\n" "a\nB\nc\n")
                    (list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
@@ -42,7 +43,7 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (diff-buffer-lines bid "a\nB\nc\n")
                    (list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
@@ -77,7 +78,7 @@ fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
     std::fs::write(&scratch, "x\n").unwrap();
     let scratch_str = steel_path(&scratch);
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -116,7 +117,7 @@ fn buffer_revision_diff_returns_hunks_with_word_spans() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (buffer-revision-diff bid 0)
                    (list (hash 'old-start 0 'old-count 1 'new-start 0 'new-count 1
@@ -162,7 +163,7 @@ fn buffer_revision_diff_on_an_unknown_revision_raises() {
     let mut ed = editor_from("-[a]>bc\n");
     install_source(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         r#"(define-typed-command! "probe" "" (lambda (bid) (buffer-revision-diff bid 99)))"#,
         tmp.path(),
     );
@@ -192,7 +193,7 @@ fn diff_words_returns_a_hunks_and_deadline_hit_hash() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (diff-words "foo bar" "foo baz")
                    (hash 'hunks (list (hash 'old-start 4 'old-end 7 'new-start 4 'new-end 7
@@ -211,7 +212,7 @@ fn diff_lines_words_follow_the_edit_across_uneven_sides() {
 
     let fired = run_probe(
         &mut ed,
-        ScriptingHost::new(),
+        ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r##"(equal? (hash-ref (car (diff-lines "# h\n\nkeep one two\n" "keep two\n")) 'words)
                    (hash 'old (list (hash 'line 2 'start 4 'end 8)) 'new (list)))"##,

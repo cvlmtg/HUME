@@ -2,6 +2,7 @@
 // the on-lsp-notification hook, fired as an `EditorEvent` through `fire_hook`.
 
 #[cfg(unix)]
+use hume_platform::dirs::Dirs;
 use std::cell::RefCell;
 use std::path::Path;
 #[cfg(unix)]
@@ -67,7 +68,7 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
     let sid = rig.sid("rust-analyzer");
     let notifications = rig.notifications;
     let mut ed = rig.ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -111,7 +112,7 @@ fn lsp_stop_completes_a_superseding_delivery() {
         // No canned response: the request stays pending until :lsp-stop.
     })
     .ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -150,7 +151,7 @@ fn response_delivers_a_handle_to_callback() {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     })
     .ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -186,7 +187,7 @@ fn request_delivers_an_opaque_handle_not_a_hashmap() {
         );
     })
     .ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -220,7 +221,7 @@ fn request_with_a_null_response_still_gives_void() {
         b.respond_to("textDocument/completion", serde_json::Value::Null);
     })
     .ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -251,7 +252,7 @@ fn protocol_error_delivers_err_hashmap_to_callback() {
         b.fail_with("textDocument/hover", -32601, "nope");
     })
     .ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -282,7 +283,7 @@ fn timeout_delivers_a_timeout_err_to_callback() {
     // until the (zeroed) deadline scan in `take_completed` claims it.
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {}).ed;
     ed.state.settings.lsp_request_timeout_ms = 0;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -454,7 +455,7 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
         );
     })
     .ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -493,7 +494,7 @@ fn callback_error_lands_in_message_log_not_a_crash() {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     })
     .ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -620,7 +621,7 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
     rig.crash(sid);
     let mut ed = rig.ed;
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -671,7 +672,7 @@ fn lsp_request_against_a_crashed_server_names_it_and_the_restart_command() {
 fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
     let tmp = safe_tempdir();
     let mut ed = setup_with(tmp.path(), "-[a]>bcdef\n", |_b, _sid| {}).ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -705,7 +706,7 @@ fn require_focus_drops_the_callback_after_a_buffer_switch() {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     })
     .ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -753,7 +754,7 @@ fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     })
     .ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -805,7 +806,7 @@ fn no_require_focus_still_delivers_after_a_buffer_switch() {
         b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     })
     .ed;
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -859,7 +860,7 @@ fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
     std::fs::write(&other, "abc\n").unwrap();
     let other_path = steel_path(&other);
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
@@ -913,7 +914,7 @@ fn queued_callback_restales_against_an_earlier_siblings_edit_in_the_same_batch()
     })
     .ed;
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,

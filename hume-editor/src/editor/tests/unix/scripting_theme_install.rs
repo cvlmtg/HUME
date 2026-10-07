@@ -126,7 +126,7 @@ fn installed_fixture(files: &[(&str, &str)]) -> (tempfile::TempDir, tempfile::Te
 /// case starts a clone.
 #[test]
 fn install_theme_rejects_unsafe_slugs() {
-    let _lock = lock();
+    let _path = path_reader();
     let data_tmp = safe_tempdir();
     let mut ed = plum_editor(data_tmp.path());
 
@@ -176,7 +176,7 @@ fn install_theme_rejects_unsafe_slugs() {
 /// a theme upstream drops is pruned, one it gains is copied in.
 #[test]
 fn update_themes_pulls_and_syncs_copies() {
-    let _lock = lock();
+    let _path = path_reader();
     let (data_tmp, _origin_tmp, origin) = installed_fixture(&[("themes/old.toml", THEME_TOML)]);
 
     // Upstream drops old.toml, adds new.toml.
@@ -214,7 +214,7 @@ fn update_themes_pulls_and_syncs_copies() {
 /// half-pruning them.
 #[test]
 fn sync_errors_when_repo_has_no_themes_dir() {
-    let _lock = lock();
+    let _path = path_reader();
     let (data_tmp, _origin_tmp, origin) = installed_fixture(&[("themes/kept.toml", THEME_TOML)]);
 
     // Upstream removes the themes/ directory entirely.
@@ -249,7 +249,7 @@ fn sync_errors_when_repo_has_no_themes_dir() {
 /// sync-theme-files!` must at least warn instead of overwriting silently.
 #[test]
 fn update_themes_warns_on_shadowed_theme_name() {
-    let _lock = lock();
+    let _path = path_reader();
     let data_tmp = safe_tempdir();
 
     let origin_a_tmp = safe_tempdir();
@@ -284,7 +284,7 @@ fn update_themes_warns_on_shadowed_theme_name() {
 /// (and only) `log!` call, so it's exactly what `status_msg` holds after.
 #[test]
 fn list_themes_reports_installed_repo() {
-    let _lock = lock();
+    let _path = path_reader();
     let (data_tmp, _origin_tmp, _origin) = installed_fixture(&[
         ("themes/acme_dark.toml", THEME_TOML),
         ("themes/acme_light.toml", THEME_TOML),
@@ -304,7 +304,7 @@ fn list_themes_reports_installed_repo() {
 /// is logged last regardless, so it's what `status_msg` holds after.
 #[test]
 fn list_themes_reports_unmanaged_file() {
-    let _lock = lock();
+    let _path = path_reader();
     let data_tmp = safe_tempdir();
     let themes_dir = canonical_data_dir(data_tmp.path()).join("themes");
     std::fs::create_dir_all(&themes_dir).unwrap();
@@ -325,7 +325,7 @@ fn list_themes_reports_unmanaged_file() {
 /// `:plum-remove-theme` deletes both the data-dir copies and the clone.
 #[test]
 fn remove_theme_deletes_copies_and_clone() {
-    let _lock = lock();
+    let _path = path_reader();
     let (data_tmp, _origin_tmp, _origin) =
         installed_fixture(&[("themes/acme_dark.toml", THEME_TOML)]);
 
@@ -355,7 +355,7 @@ fn remove_theme_deletes_copies_and_clone() {
 /// repo slugs.
 #[test]
 fn remove_theme_tab_completes_an_installed_slug() {
-    let _lock = lock();
+    let _path = path_reader();
     let (data_tmp, _origin_tmp, _origin) =
         installed_fixture(&[("themes/acme_dark.toml", THEME_TOML)]);
 
@@ -373,7 +373,7 @@ fn remove_theme_tab_completes_an_installed_slug() {
 /// not on it still holding a `themes/` directory.
 #[test]
 fn remove_theme_survives_a_failed_sync() {
-    let _lock = lock();
+    let _path = path_reader();
     let (data_tmp, _origin_tmp, origin) = installed_fixture(&[("themes/kept.toml", THEME_TOML)]);
 
     // Upstream drops themes/ entirely; the update fails but the clone stays.
@@ -408,7 +408,7 @@ fn remove_theme_survives_a_failed_sync() {
 /// the missing dependency one at a time.
 #[test]
 fn plum_requires_core_stdlib() {
-    let _lock = lock();
+    let _path = path_reader();
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_with_init(
@@ -427,7 +427,7 @@ fn plum_requires_core_stdlib() {
 /// Removing a repo that was never installed is a no-op, not an error.
 #[test]
 fn remove_theme_not_installed_is_a_noop() {
-    let _lock = lock();
+    let _path = path_reader();
     let data_tmp = safe_tempdir();
     let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-remove-theme acme/theme.hume");
@@ -454,7 +454,7 @@ fn plum_entries_load_on_their_own_commands() {
     use hume_scripting::PluginStatus;
     use hume_scripting::attribution::{EntryFile, EntryId, PluginId};
 
-    let _lock = lock();
+    let _path = path_reader();
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
     load_with_init(

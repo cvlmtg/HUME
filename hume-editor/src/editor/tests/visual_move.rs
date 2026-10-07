@@ -1,6 +1,7 @@
 use super::doubles::InlineHint;
 use super::*;
 use hume_editing::selection::StickyDisplayCol;
+use hume_platform::dirs::Dirs;
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use pretty_assertions::assert_eq;
 
@@ -1315,7 +1316,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
         .map(str::to_owned)
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
@@ -1361,7 +1362,7 @@ fn steel_wrapper_bare_dispatch_moves_visual_display_line() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = visual_test_editor(0);
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(
         r#"(define-command! "steel-jk" ""
@@ -1406,7 +1407,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
         saved: None,
     });
 
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(
         r#"(define-command! "steel-jk" ""
@@ -1437,7 +1438,7 @@ fn steel_call_move_down_zero_count_moves_visual_display_line() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = visual_test_editor(0);
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(
         r#"(define-command! "steel-vis" ""
@@ -1482,7 +1483,7 @@ fn generated_bare_name_wrapper_accepts_zero_count() {
         .map(str::to_owned)
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
+    let mut host = ScriptingHost::new(&Dirs::none());
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);

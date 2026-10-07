@@ -51,9 +51,13 @@ impl Editor {
     /// parse worker) call after posting a result, so `run`'s event loop wakes
     /// instead of polling for completion. Works without a terminal too
     /// (headless): the loop simply never enters `run` to wait on it.
+    ///
+    /// `dirs` is the session's config, data and runtime directories; the
+    /// editor never reads them from the environment itself.
     pub(crate) fn open(
         file_path: Option<std::path::PathBuf>,
         wake: Arc<dyn Fn() + Send + Sync>,
+        dirs: hume_platform::dirs::Dirs,
     ) -> io::Result<Self> {
         use super::clipboard;
         use crate::editor::buffer::Buffer;
@@ -133,6 +137,7 @@ impl Editor {
 
         let mut editor = Self {
             state: super::EditorState {
+                dirs,
                 buffers,
                 buffer_positions: super::position_stores::BufferPositions::default(),
                 lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),

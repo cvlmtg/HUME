@@ -10,6 +10,7 @@ extern crate hume_editor as hume;
 
 use hume::testing::MockHost;
 use hume_engine::pipeline::BufferId;
+use hume_platform::dirs::Dirs;
 use hume_scripting::EvalWatchdog;
 use hume_scripting::host::BindMode;
 use hume_scripting::*;
@@ -19,7 +20,7 @@ use std::sync::{
 };
 
 fn host() -> ScriptingHost {
-    ScriptingHost::new()
+    ScriptingHost::new(&Dirs::none())
 }
 
 /// Real `runtime/scheme/prelude.scm` source, read fresh per call so these tests

@@ -19,6 +19,7 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
         buffers: &store,
         cwd,
         languages: &langs,
+        dirs: &hume_platform::dirs::Dirs::none(),
     };
 
     let home = home_dir.path().to_path_buf();
@@ -65,6 +66,7 @@ fn path_completer_dollar_var_expands_for_lookup() {
         buffers: &store,
         cwd,
         languages: &langs,
+        dirs: &hume_platform::dirs::Dirs::none(),
     };
 
     let expanded = dir.path().to_string_lossy().into_owned();
@@ -106,6 +108,7 @@ fn path_completer_dirs_only_mode() {
         buffers: &store,
         cwd: &canonical,
         languages: &langs,
+        dirs: &hume_platform::dirs::Dirs::none(),
     };
 
     // dirs_only: files must be excluded.

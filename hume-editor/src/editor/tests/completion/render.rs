@@ -14,7 +14,12 @@ use hume_grid::Rect;
 
 #[test]
 fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.feed_key(key('i'));
     // MAX_MENU_ROWS is 10: 12 items would size an unclamped box to 12
     // rows (+2 frame), taller than the short pane below.
@@ -34,7 +39,12 @@ fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
 
 #[test]
 fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.feed_key(key('i'));
     open_completion_session(
         &mut ed,
@@ -58,7 +68,12 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
 #[test]
 fn menu_appears_with_top_items_after_the_source_answers() {
     let tmp = safe_tempdir();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
     insert_with_source(
         &mut ed,
@@ -80,7 +95,12 @@ fn minibuf_completion_popup_renders_above_the_statusline() {
     // `Editor::open`, not `editor_from`: `Editor::for_testing` never goes
     // through `build_pane`, so no overlay providers are registered and the
     // popup would silently not paint.
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
 
     // "w" matches exactly three canonical command names: write, write-all,
@@ -104,7 +124,12 @@ fn minibuf_completion_popup_renders_above_the_statusline() {
 
 #[test]
 fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped() {
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let mut ed = Editor::open(
+        None,
+        std::sync::Arc::new(|| {}),
+        hume_platform::dirs::Dirs::none(),
+    )
+    .unwrap();
     let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(WrapMode::Soft { width: 6 }),
