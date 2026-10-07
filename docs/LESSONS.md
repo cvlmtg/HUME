@@ -28,8 +28,6 @@ numbers directly.
 - **L6** — Bound every test that blocks on a real wait primitive. CI needs
   `timeout-minutes`. Sabotage runs must be disposable. A long-running unfamiliar
   process is a "read before you act" moment, not proof of a live bug.
-- **L7** — Test globals take one reentrant, claim-tracked lock; no bare
-  `tempdir()` or raw `set_var` anywhere in the test tree.
 - **L8** — A baseline diff only cancels state the baseline *shares*. Regenerate
   twice before trusting a generated file as deterministic.
 - **L9** — The Nth call site is a design smell proportional to N; at N≥3 ask
@@ -431,51 +429,6 @@ at the time.)
 
 ---
 
-## L7 — Non-reentrant test mutex held across a helper that re-acquires it (2026-07-30, structurally fixed 2026-08-22)
-
-**Root cause:** A test held `HUME_RUNTIME_MUTEX` (a plain `std::sync::Mutex`,
-not reentrant) for its *entire* body via `let _lock = MUTEX.lock()...` bound
-at the top of the function — the standard pattern for guarding a process-global
-env var (`HUME_RUNTIME`) for as long as anything might read it. Later in the
-same function, a call to the shared `safe_tempdir()` helper tried to acquire
-the *same* mutex again, on the *same* thread. `std::sync::Mutex` doesn't
-detect same-thread re-entrancy — it just blocks forever, since the lock is
-already held by the very thread trying to acquire it.
-
-**Concrete instances:** `steel_server_plugin_registers_scheme_with_generated_globals_env`
-(`hume-editor/src/editor/tests/scripting_host_globals.rs`) held `_lock` for the
-whole test, then called `safe_tempdir()` near the end — `cargo test` reported
-the test as "running for over 60 seconds" instead of failing fast. The same
-pattern bit again in `bad_config_value_fails_plugin_load_with_prefixed_error`
-(`unix/git_diff_plugin.rs`), fixed the first time only by call-ordering
-discipline (create the tempdir before the guard) — a fix that has to be
-re-derived and re-applied by hand at every call site, and depends on nobody
-reordering the two lines later.
-
-**Structural fix (2026-08-22):** the discipline-based prevention rules below
-were replaced, not supplemented — the failure mode they guarded against is
-now impossible to hit by construction, so reader attention is no longer the
-backstop. `HUME_RUNTIME_MUTEX` and the separate `CWD_MUTEX` were replaced by
-one `TEST_GLOBALS` lock (`hume-editor/src/editor/tests/mod.rs`) built on
-`parking_lot::ReentrantMutex`: a thread that already holds it can re-enter
-via `safe_tempdir()`/`safe_named_tempfile()` without blocking on itself.
-Reentrancy alone would let a *nested guard* (as opposed to a momentary
-`safe_tempdir()` visit) silently corrupt teardown instead of hanging, so
-`TestGlobals::claim` tracks per-resource exclusivity and panics loudly on a
-same-thread double-claim rather than allowing it. A lint
-(`arch-lints/tests/test_globals.rs`) forbids a bare
-`tempfile::tempdir()`/`NamedTempFile::new()` anywhere in the test tree
-outside the sanctioned constructors; the `std::env::set_var`/`remove_var`
-half of the same hazard moved to `clippy.toml`'s `disallowed-methods`
-instead, since that call has no legitimate raw use anywhere else in the
-tree — so a new test can't reintroduce either hazard even by accident.
-
-**Files:** `hume-editor/src/editor/tests/mod.rs` (`TestGlobals`, `Global`,
-`ClaimGuard`, `safe_tempdir`, `safe_named_tempfile`, `EnvVarGuard`),
-`arch-lints/tests/test_globals.rs`.
-
----
-
 ## L8 — Diffing a live `Engine` against a fresh baseline still leaked non-deterministic internals (2026-07-30)
 
 **Root cause:** Generating a list of "every Steel identifier HUME adds" by
@@ -616,9 +569,8 @@ re-verification against current code.
 so tests that redirect process-global `PATH`/`TMPDIR`/`HUME_RUNTIME`/cwd
 don't race each other, and its own module doc already stated the real
 hazard: mutating one of these "races every other test *reading or writing*
-the same var." But the two enforcement lints
-(`arch-lints/tests/test_globals.rs`) only ever checked for
-*mutation* outside a claim-holding file. A test that spawns a subprocess by
+the same var." But its enforcement lints only
+ever checked for *mutation* outside a claim-holding file. A test that spawns a subprocess by
 unqualified name (`Command::new("tree-sitter")`, `Command::new("sh")`) is a
 `PATH` reader — the OS resolves that name against the live process `PATH` at
 the spawn instant — and no reader was required to hold a claim at all.
