@@ -5,7 +5,8 @@ Downloads, verifies and registers language servers: `:lsp-install`, `:lsp-uninst
 and removal through `unregister-lsp-server!`, the editor registry that `core:lsp` and every
 other plugin share. `core:lsp` therefore needs nothing from this plugin, and this plugin
 needs nothing from `core:lsp`. A manual `register-lsp-server!` call under the same name as a
-seeded server replaces what the installer registers for it.
+seeded server replaces what the scan registered for it, and a rescan leaves it alone. A
+download or build of that server registers the installed copy again.
 
 ## Usage
 

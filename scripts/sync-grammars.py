@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Regenerate runtime/scheme/{languages,grammar-sources,lsp-servers}.scm from
-helix-editor/helix languages.toml.
+"""Regenerate runtime/scheme/{languages,grammar-sources}.scm and the lsp-install
+catalog files from helix-editor/helix languages.toml.
 
 Reads the pinned SHA from runtime/scheme/helix-pin.scm, fetches helix's
 languages.toml at that commit, and rewrites:

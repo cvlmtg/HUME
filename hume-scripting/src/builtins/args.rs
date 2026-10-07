@@ -355,8 +355,8 @@ pub(crate) fn json_arg(val: SteelVal, ctx_name: &str) -> Result<crate::json::Jso
 /// Converts `val` to request params, so a malformed value raises at the
 /// call rather than when the request is sent. Rejects a bool explicitly:
 /// several callers pass through a value that is `#f` when absent, and
-/// without this check that would silently reach a JSON consumer as `false`
-/// instead of erroring at the boundary.
+/// without this check that would reach a JSON consumer as `false` instead of
+/// erroring at the boundary.
 pub(crate) fn checked_params(val: SteelVal, ctx_name: &str) -> Result<Params, SteelErr> {
     if matches!(val, SteelVal::BoolV(_)) {
         steel::stop!(TypeMismatch => "{}: expected a hashmap or JSON handle, got a boolean", ctx_name);
@@ -369,8 +369,8 @@ pub(crate) fn checked_params(val: SteelVal, ctx_name: &str) -> Result<Params, St
 /// a caller that has to build an outgoing message (the value must outlive
 /// this call to reach the wire). A host-trait method that only *reads* the
 /// JSON takes [`json_arg`]'s handle directly instead, borrowing rather than
-/// cloning. An already-handle `val` costs exactly one clone, which the wire
-/// message needs.
+/// cloning. An already-handle `val` costs one clone, which the wire message
+/// needs.
 pub(crate) fn json_params(val: SteelVal, ctx_name: &str) -> Result<serde_json::Value, SteelErr> {
     match checked_params(val, ctx_name)? {
         Params::Json(json) => Ok(json),

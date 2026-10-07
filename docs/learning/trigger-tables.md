@@ -15,30 +15,25 @@ shape matches it.
 
 A listener is one of two things: a *hook name* that `on-trigger-char` handlers
 filter on, or a *completion source* the editor invokes directly. Both are
-named by strings, so it is tempting to store the string and a tag saying
-which kind it is. Then "the hook called `sig`" and "the source called `sig`"
-differ only by a flag that every key, every lookup and every comparison must
-remember to carry.
-
-Make the kind part of the value instead:
+named by strings, so the kind has to travel with the name. Making the kind
+part of the value does that:
 
 ```
 enum Listener { Hook(name), Completion(name) }
 ```
 
-Two listeners are equal when they are the same kind with the same
-name. The compiler enforces what the flag only suggested, and deriving an
-ordering gives a deterministic firing order for free: hooks first, then
-sources, each by name.
+Two listeners are equal when they are the same kind with the same name. "The
+hook called `sig`" and "the source called `sig`" are different values, with
+no flag for a key, a lookup or a comparison to forget. Deriving an ordering
+gives a deterministic firing order for free: hooks first, then sources, each
+by name.
 
 ## An invariant belongs to the constructor
 
 A table must never hold a listener with an empty set of characters: such an
-entry fires on nothing, yet shows up when you count, list, or clear. The usual
-fix is a convention: "an empty set means delete the entry", repeated at every
-place that writes.
+entry fires on nothing, yet shows up when you count, list, or clear.
 
-A stronger fix is to make the bad state impossible to *build*:
+The way to enforce that is to make the bad state impossible to *build*:
 
 ```
 CharSet::new(chars) -> Option<CharSet>     // None when chars is empty
@@ -47,28 +42,20 @@ CharSet::new(chars) -> Option<CharSet>     // None when chars is empty
 The only way to obtain a character set is a function that refuses to make an
 empty one, and that sorts and de-duplicates what it keeps. Setting a
 listener's characters then has two outcomes, a stored non-empty set or
-a removal, and no other part of the program can get it wrong. The rule has
-moved from "everyone must remember" to "the type cannot say otherwise".
+a removal, and no other part of the program can get it wrong. The rule is held
+by the type, not by every place that writes.
 
-## One structure, one source of truth
+## One structure, addressed by scope
 
-The table is an ordered map from listener to character set, nothing more. It
-is tempting to add an index the other way round, from character to listeners,
-because that is the direction of the question. But an index is a second copy
-of the same facts. Every write must update both, and a bug in either makes
-them disagree with no error anywhere.
+The table is an ordered map from listener to character set, nothing more. A
+scope's table holds as many entries as there are features registering
+triggers for it, a handful, so asking it a question means reading one small
+map and comparing: there is no second structure to keep in step.
 
-The deciding fact is size. A scope's table holds as many entries as there are
-features registering triggers for it, a handful. Reading one small table per
-keystroke is cheap, and there is nothing to keep in step. An inverted index
-earns its keep when the table is large and queries dominate; here it would add
-a way to be wrong and no measurable gain.
-
-What did matter was *which* table to read. When every language's entries sit
-in one flat map, answering for one buffer means scanning all of them and
-discarding most. Keying by language first, and reading only the buffer's own
-language table plus the tables of its server attachments, makes the scope part
-of the address instead of a filter.
+Which table to read is part of the address. Tables are keyed by scope: one per
+language, and one per buffer's attachment to a server. Answering for a buffer
+reads its language's table and its attachments' tables, and the union of what
+fires is the answer, each listener once.
 
 ## Testing a data structure against a naive model
 
@@ -93,10 +80,9 @@ in one cannot hide behind the same mistake in the other.
 
 ## Names, not numbers, across a reset
 
-A completion source also has a numeric id inside the registry. Storing that id
-in the table would be slightly faster, and wrong in a subtle way: when the
-configuration is reloaded the registry is rebuilt and ids are handed out
-again, so an id kept by a table that outlives the reload could now name a
-different source. A stored *name* that no longer resolves simply fires
-nothing. Where a reference can outlive what it points at, prefer the form
-whose failure is harmless.
+A completion source also has a numeric id inside the registry. The table
+stores the source's name instead. When the configuration is reloaded the
+registry is rebuilt and ids are handed out again, so an id kept by a table
+that outlives the reload could now name a different source. A stored name that
+stops resolving fires nothing. Where a reference can outlive what it
+points at, prefer the form whose failure is harmless.

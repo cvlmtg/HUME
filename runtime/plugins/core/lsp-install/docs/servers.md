@@ -36,7 +36,7 @@ Installing or reinstalling a server always starts from a clean slate. That makes
 repair and upgrade path too, and it covers reinstalling over a running client:
 
 1. Run the blocker check, which includes the required tools.
-2. Unregister every seeded language, which shuts down any running client. When an install
+2. Unregister the server, which shuts down any running client. When an install
    already exists, the command unregisters first and runs steps 3 to 6 on the next tick, so
    the client has stopped before its files are touched.
 3. Purge any existing install; the receipt goes with it.
@@ -188,8 +188,8 @@ validates it with `core:stdlib`'s `stdlib/safe-path-segment?`. `:lsp-install` ne
 check, since its name is always a key of the seeded catalog. An invalid name logs
 `'error`, as any typed argument the command can't act on does, so a path-traversal attempt
 such as `"../plugins"` stays in `:messages` (see the index's
-[Log severity](../../README.md#log-severity)). The command unregisters the server's
-languages, then removes its directory. An orphan (on disk, not in `servers.scm`) skips
+[Log severity](../../README.md#log-severity)). The command unregisters the server, then
+removes its directory. An orphan (on disk, not in `servers.scm`) skips
 the unregister step. The removal is deferred with `after! 0` so the unregister has shut
 down any running client before the lock is taken. Its completion lists every server with a
 directory on disk, seeded or orphan, because the on-disk check decides what there is to

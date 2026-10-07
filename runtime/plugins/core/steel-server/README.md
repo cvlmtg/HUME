@@ -35,11 +35,11 @@ Mason registry, the two sources `core:lsp-install`'s catalog is generated from, 
 
 ### Registration
 
-At load, when `steel-language-server` is on `$PATH`, the plugin registers it under the
-name `steel-language-server`. It also redefines the `scheme` language with the root marker
-`cog.scm`, repeating the bundled extensions, globs and shebangs, and sets the language's
-default list to this server. Otherwise it logs a warning that points at `:steel-server-install`. A registration under
-that name that already exists, such as a manual
+At load the plugin redefines the `scheme` language with the root marker `cog.scm`,
+repeating the bundled extensions, globs and shebangs, and sets the language's default list
+to `steel-language-server`. When that binary is on `$PATH` it also registers the server under
+that name; otherwise it logs a warning that points at `:steel-server-install`. A registration
+under that name that already exists, such as a manual
 `register-lsp-server! "steel-language-server" …` in `init.scm`, is left alone.
 
 `:steel-server-install` logs that the server is already installed when the binary is on

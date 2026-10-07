@@ -111,12 +111,12 @@ Or name the language directly. Tab completes every language HUME has a seeded se
 HUME downloads the pinned release, verifies its checksum, unpacks it, and registers it;
 already-open buffers of that language attach immediately, no restart needed. Running
 `:lsp-install` again for a server that's already at the latest seeded version never
-re-downloads. (A server you've registered by hand under the same name is left alone,
-whether or not it is also managed by `:lsp-install`.)
+re-downloads. A download or build replaces a server you've registered by hand under the
+same name; to keep your own, register it under a name of its own.
 
 `:lsp-install` installs the first server HUME knows for a language. Some languages have
 more than one (Python: ty, ruff, jedi, pylsp, zuban; TOML: taplo, tombi). To install
-another, name it. Tab completes every server that can be installed:
+another, name it. Tab completes every server in HUME's catalog; one HUME can't install says why when you run it:
 
 ```
 :lsp-install ruff
@@ -292,8 +292,9 @@ A server limited this way contributes only those features: with `'(format diagno
 ruff's diagnostics are shown and its other answers are not used.
 
 Plugins can ship a list of their own with `set-default-language-servers!`, which takes the
-same arguments. It applies only while you haven't set a list for that language. Passing `#f`
-instead of a list clears what you set.
+same arguments. It applies only while you haven't set a list for that language. With
+`set-language-servers!`, passing `#f` instead of a list clears what you set; with
+`set-default-language-servers!`, it clears the plugin's default.
 
 ### Server configuration (`#:init-options` and `#:settings`)
 
@@ -453,8 +454,13 @@ answer came from, get its value from `(lsp-servers pane)` and pass `#:to server`
 `lsp-request-all!` asks every server that can answer and calls back once, when all of them have,
 with `(err results)`: one `(hash 'server s 'err e 'result r)` per server, in order. It takes the same
 keywords except `#:to`; its params can also be a list of `(server . params)` pairs, giving each
-named server its own; the method and `#:feature` still decide whether each of those servers is
-sent the request.
+named server its own. That list must not be empty or name a server twice, and the method and
+`#:feature` still decide whether each of those servers is sent the request. When none of them
+can take it, the request counts as one no server can take.
+
+A request the user did not ask for (completion, inlay hints) should pass `#:unavailable 'empty`:
+a request no server can take then calls back with no error and an empty result, instead of an
+`'unavailable` error.
 
 The position in `lsp-position-params` (and the ranges in its siblings) is not a line and column
 pair you can read: servers count columns in different units, so each server receives the position
@@ -463,4 +469,4 @@ position from these builtins rather than building one.
 
 `lsp-request!` also takes four keyword args for requests that fire more than once, or whose answer might arrive after the moment it was asked for has passed. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key (every server it went to gets `$/cancelRequest` and the old callback never fires), which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful. `#:require-focus #t` drops the callback entirely unless the exact pane you called it from is still the one you're looking at, still showing the same buffer, by the time the answer arrives. Hover, signature help, and code actions use it, so a slow answer never pops up over whatever you've moved on to, even if that's just a different split on the same file. `#:tracked token` takes a `track-position!` token for the position the request was asked about: the token follows edits made while the request is pending, and is forgotten once the callback has run, unless the callback calls `keep-tracked-position!`.
 
-A server's response sometimes carries its own position or range rather than the one you sent, such as a related location returned inside `res`, say. Convert it back into a plain buffer offset with `lsp-position->offset`/`lsp-range->offsets` before using it with any editing command; both return `#f` if the buffer has no server attached to convert against.
+A server's response sometimes carries its own position or range rather than the one you sent, such as a related location returned inside `res`, say. Convert it back into a plain buffer offset with `lsp-position->offset`/`lsp-range->offsets` before using it with any editing command; `lsp-position->offset` returns `#f` for a position at or past the end of the text.

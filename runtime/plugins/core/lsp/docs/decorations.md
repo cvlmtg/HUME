@@ -108,6 +108,7 @@ lsp.inlay-hints=true` turns them on.
 |---|---|---|
 | `on-viewport-change` | Live pane | Refreshed directly |
 | `on-diagnostics-changed` | Buffer only | Resolved with `lsp/resolve-pane`, skipped when no pane shows the buffer |
+| `on-lsp-detach` | Buffer only | Same, except that a buffer no pane shows has its hints cleared |
 | `on-text-changed` | Buffer only | Same. It covers undo, redo and edits that neither scroll nor republish diagnostics, so a hint dropped with its anchor character returns when the edit is undone |
 
 Refreshes are debounced by 200 ms per buffer (keyed, not global), so a diagnostics batch
@@ -119,16 +120,17 @@ hints when no server offers them.
 
 On the response:
 
-- A hint whose wire position cannot be converted to a buffer offset (the buffer detached
+- A hint whose wire position lands at or past the end of the text (the text changed
   between request and response) is dropped.
 - The hints shown are those of every server that answered; a null answer contributes
   none, so the hints left from an earlier, larger answer go.
-- A request no server could take leaves the existing hints untouched.
+- A request no server could take clears the buffer's hints.
 - When every server failed (an error, a timeout, a stop), the existing hints stay and each
   error is reported. A failure says nothing about what the buffer has, where a null answer
   says there are none.
 
 Turning `lsp.inlay-hints` off clears this plugin's hint source for every buffer, and
 turning it on refreshes every buffer. Detaching a server refreshes that buffer, so the
-other servers' hints stay. The
-hint store is per source, so another plugin's hints are unaffected.
+other servers' hints stay; a buffer no pane shows has its hints cleared instead, and they
+return when it is shown again. The hint store is per source, so another plugin's hints are
+unaffected.
