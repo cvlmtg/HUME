@@ -532,6 +532,135 @@ fn messages_sent_while_starting_are_queued_then_flushed_in_order() {
     }
 }
 
+fn notification(method: &str, params: serde_json::Value) -> Message {
+    Message::Notification {
+        method: method.to_string(),
+        params,
+    }
+}
+
+fn whole_document_change(uri: &str, text: &str) -> Message {
+    notification(
+        "textDocument/didChange",
+        serde_json::json!({
+            "textDocument": {"uri": uri, "version": 1},
+            "contentChanges": [{"text": text}],
+        }),
+    )
+}
+
+fn incremental_change(uri: &str, text: &str) -> Message {
+    notification(
+        "textDocument/didChange",
+        serde_json::json!({
+            "textDocument": {"uri": uri, "version": 1},
+            "contentChanges": [{
+                "range": {
+                    "start": {"line": 0, "character": 0},
+                    "end": {"line": 0, "character": 0},
+                },
+                "text": text,
+            }],
+        }),
+    )
+}
+
+/// What a client sends once its handshake completes after `queue` was
+/// sent to it while `Starting`: the method of each message, and the first
+/// `contentChanges` text of each `didChange`.
+fn flushed_after_queueing(queue: Vec<Message>) -> Vec<String> {
+    let mut backend = InlineLspBackend::with_default_handshake();
+    let sid = backend
+        .start("x", &[], std::path::Path::new("."), &[])
+        .unwrap();
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.start_handshake(&mut backend);
+    for msg in queue {
+        client.send_or_queue(&mut backend, msg);
+    }
+    let (_id, ev) = backend.drain().into_iter().next().unwrap();
+    let [ClientAction::BecameRunning { send }] = &client.on_event(ev)[..] else {
+        panic!("expected one BecameRunning action");
+    };
+    send.iter()
+        .map(|msg| match msg {
+            Message::Notification { method, params } if method == "textDocument/didChange" => {
+                format!("{method}:{}", params["contentChanges"][0]["text"])
+            }
+            Message::Notification { method, .. } => method.clone(),
+            other => panic!("unexpected {other:?}"),
+        })
+        .collect()
+}
+
+#[test]
+fn adjacent_whole_document_changes_for_one_uri_coalesce_while_starting() {
+    let sent = flushed_after_queueing(vec![
+        whole_document_change("file:///a", "one"),
+        whole_document_change("file:///a", "two"),
+    ]);
+    assert_eq!(sent, ["initialized", "textDocument/didChange:\"two\""]);
+}
+
+#[test]
+fn a_did_open_stays_ahead_of_the_one_coalesced_change() {
+    let sent = flushed_after_queueing(vec![
+        notification(
+            "textDocument/didOpen",
+            serde_json::json!({"uri": "file:///a"}),
+        ),
+        whole_document_change("file:///a", "one"),
+        whole_document_change("file:///a", "two"),
+    ]);
+    assert_eq!(
+        sent,
+        [
+            "initialized",
+            "textDocument/didOpen",
+            "textDocument/didChange:\"two\""
+        ]
+    );
+}
+
+#[test]
+fn a_message_between_two_changes_keeps_both() {
+    let sent = flushed_after_queueing(vec![
+        whole_document_change("file:///a", "one"),
+        notification(
+            "textDocument/didSave",
+            serde_json::json!({"uri": "file:///a"}),
+        ),
+        whole_document_change("file:///a", "two"),
+    ]);
+    assert_eq!(
+        sent,
+        [
+            "initialized",
+            "textDocument/didChange:\"one\"",
+            "textDocument/didSave",
+            "textDocument/didChange:\"two\""
+        ]
+    );
+}
+
+#[test]
+fn changes_for_different_uris_do_not_coalesce() {
+    let sent = flushed_after_queueing(vec![
+        whole_document_change("file:///a", "one"),
+        whole_document_change("file:///b", "two"),
+    ]);
+    assert_eq!(sent.len(), 3);
+}
+
+#[test]
+fn an_incremental_change_does_not_replace_the_one_before_it() {
+    let sent = flushed_after_queueing(vec![
+        whole_document_change("file:///a", "one"),
+        incremental_change("file:///a", "two"),
+    ]);
+    assert_eq!(sent.len(), 3);
+}
+
 #[test]
 fn send_request_while_starting_is_queued_then_flushed_and_still_correlates() {
     let mut backend = InlineLspBackend::with_default_handshake();

@@ -185,6 +185,31 @@ fn did_open_is_queued_until_the_handshake_completes_then_flushes_in_order() {
     );
 }
 
+/// Edits made while the server is still starting queue whole-document
+/// `didChange`s; the handshake flushes the latest one, not one per edit.
+#[test]
+fn edits_before_the_handshake_flush_one_didchange() {
+    let tmp = safe_tempdir();
+    let (backend, log, _requests) = RecordingLspBackend::with_default_handshake();
+    let mut rig = LspRig::open(tmp.path(), RigSpec::rust(SEED), backend);
+
+    for ch in ['x', 'y', 'z'] {
+        rig.ed.feed_key(key('i'));
+        rig.ed.feed_key(key(ch));
+        rig.ed.feed_key(key_esc());
+        rig.ed.state.lsp_flush_pending();
+    }
+    rig.ed.drain_lsp();
+
+    assert_eq!(did_changes(&log.borrow()).len(), 1);
+    assert_mirror_matches(
+        &rig.ed,
+        rig.bid,
+        &log.borrow(),
+        "three edits before the handshake",
+    );
+}
+
 #[test]
 fn no_notifications_for_a_buffer_without_a_server() {
     let (backend, log, _requests) = RecordingLspBackend::new();

@@ -336,6 +336,34 @@ pub struct LspClient {
     completed: Vec<(RequestId, RequestMeta, Outcome)>,
 }
 
+/// Whether `new` makes `last` redundant: `new` is a whole-document
+/// `didChange` and `last` a `didChange` for the same document.
+fn supersedes(last: &Message, new: &Message) -> bool {
+    let (
+        Message::Notification {
+            method: last_method,
+            params: last_params,
+        },
+        Message::Notification {
+            method: new_method,
+            params: new_params,
+        },
+    ) = (last, new)
+    else {
+        return false;
+    };
+    let did_change = lsp_types::notification::DidChangeTextDocument::METHOD;
+    let whole_document = new_params["contentChanges"]
+        .as_array()
+        .is_some_and(|changes| changes.len() == 1 && changes[0].get("range").is_none());
+    last_method == did_change
+        && new_method == did_change
+        && whole_document
+        && new_params["textDocument"]["uri"]
+            .as_str()
+            .is_some_and(|uri| last_params["textDocument"]["uri"].as_str() == Some(uri))
+}
+
 impl LspClient {
     pub fn new(id: ServerId, root: PathBuf) -> Self {
         Self {
@@ -612,14 +640,19 @@ impl LspClient {
     }
 
     /// Send `msg` now if the handshake has completed, otherwise queue it for
-    /// delivery, in order, once `initialized` goes out. A dead or crashed
-    /// connection silently drops the send; the crash is already reported
-    /// via the `Crashed` state, matching the transport's own
-    /// send-after-death discipline.
+    /// delivery, in order, once `initialized` goes out. A whole-document
+    /// `didChange` replaces a `didChange` for the same document that is the
+    /// last message queued, so a burst of edits queues one copy of the text.
+    /// A dead or crashed connection silently drops the send; the crash is
+    /// already reported via the `Crashed` state, matching the transport's
+    /// own send-after-death discipline.
     pub fn send_or_queue(&mut self, backend: &mut dyn LspBackend, msg: Message) {
         match self.state {
             ServerState::Running => backend.send(self.id, msg),
-            ServerState::Starting => self.queued.push(msg),
+            ServerState::Starting => match self.queued.last_mut() {
+                Some(last) if supersedes(last, &msg) => *last = msg,
+                _ => self.queued.push(msg),
+            },
             ServerState::Crashed | ServerState::Dead => {}
         }
     }
