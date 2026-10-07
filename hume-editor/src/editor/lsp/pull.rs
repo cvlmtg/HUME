@@ -115,6 +115,7 @@ impl EditorState {
         let mut report = match answer {
             Ok(report) => report,
             Err(error) => {
+                self.buffer_positions.lsp.set_pulled_at(bid, sid, None);
                 self.report(
                     Severity::Trace,
                     format!("lsp: '{name}' failed a diagnostics pull: {error}"),

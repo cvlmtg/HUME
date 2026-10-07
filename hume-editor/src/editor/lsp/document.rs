@@ -41,6 +41,11 @@ impl Attachment {
             pulled_at: None,
         }
     }
+
+    fn forget_pull(&mut self) {
+        self.pulled_at = None;
+        self.pull_result_id = None;
+    }
 }
 
 /// One text change not yet sent as `didChange`. `before` is the pre-change
@@ -206,6 +211,15 @@ impl LspDocuments {
         }
     }
 
+    /// Forgets what every server attached to `bid` was last asked and told
+    /// about its diagnostics: the next pull is a full report for the
+    /// current text.
+    pub(in crate::editor) fn forget_pulls(&mut self, bid: BufferId) {
+        if let Some(doc) = self.docs.get_mut(bid) {
+            doc.attachments.iter_mut().for_each(Attachment::forget_pull);
+        }
+    }
+
     /// Empties every attachment's trigger characters: the plugins that set them
     /// belong to an engine that is going away.
     pub(in crate::editor) fn clear_all_triggers(&mut self) {
@@ -325,8 +339,7 @@ impl LspDocuments {
         if let Some(att) = self.attachment_mut(bid, sid) {
             att.filter = filter;
             att.triggers.clear();
-            att.pulled_at = None;
-            att.pull_result_id = None;
+            att.forget_pull();
         }
     }
 

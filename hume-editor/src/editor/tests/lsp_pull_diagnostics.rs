@@ -6,6 +6,7 @@
 use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
 use hume_lsp::test_util::RecordingLspBackend;
+use hume_scripting::ScriptingHost;
 
 const PULL: &str = "textDocument/diagnostic";
 
@@ -367,4 +368,89 @@ fn an_unchanged_report_keeps_what_is_stored_and_moves_the_result_id() {
         serde_json::json!("r2")
     );
     assert_eq!(stored_messages(&rig), ["third"]);
+}
+
+#[test]
+fn a_reload_from_disk_pulls_without_the_previous_result_id() {
+    let tmp = safe_tempdir();
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", pull_capabilities());
+    backend.respond_to(PULL, full_report("r1", &["first"]));
+    backend.respond_to(
+        PULL,
+        serde_json::json!({"kind": "unchanged", "resultId": "r2"}),
+    );
+    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[w]>ord\n"), backend);
+    settle(&mut rig.ed);
+    let sid = rig.sid("rust-analyzer");
+    rig.ed.state.settings.lsp_diagnostics_pull_debounce_ms = 0;
+    assert_eq!(stored_messages(&rig), ["first"]);
+
+    let path = rig
+        .ed
+        .state
+        .buffers
+        .get(rig.bid)
+        .path()
+        .unwrap()
+        .to_path_buf();
+    std::fs::write(&path, "changed\n").unwrap();
+    rig.ed.execute_typed("e!", None).unwrap();
+    settle(&mut rig.ed);
+
+    let pulls = rig.requests_to(sid, PULL);
+    assert_eq!(pulls.len(), 2);
+    assert_eq!(pulls[1].get("previousResultId"), None);
+}
+
+#[test]
+fn a_config_reload_pulls_again_from_a_server_it_keeps() {
+    let tmp = safe_tempdir();
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", pull_capabilities());
+    backend.respond_to(PULL, full_report("r1", &["first"]));
+    backend.respond_to(PULL, full_report("r2", &["second"]));
+    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[w]>ord\n"), backend);
+    settle(&mut rig.ed);
+    let sid = rig.sid("rust-analyzer");
+
+    let snapshot = rig.ed.reset_config_state();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut rig.ed,
+        &mut host,
+        &format!(
+            "(%define-language! \"rust\" '(\"rs\") '() '() #f '(\"Cargo.toml\"))\n{}",
+            super::lsp_rig::RUST_ANALYZER
+        ),
+        tmp.path(),
+    );
+    rig.ed.scripting = Some(host);
+    rig.ed.detect_and_set_language(rig.bid);
+    rig.ed.resync_config_state(&snapshot);
+    settle(&mut rig.ed);
+
+    let pulls = rig.requests_to(sid, PULL);
+    assert_eq!(pulls.len(), 2);
+    assert_eq!(pulls[1]["previousResultId"], serde_json::json!("r1"));
+    assert_eq!(stored_messages(&rig), ["second"]);
+}
+
+#[test]
+fn a_failed_pull_is_asked_again_for_the_same_text() {
+    let tmp = safe_tempdir();
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", pull_capabilities());
+    backend.fail_with(PULL, -32802, "server cancelled");
+    backend.respond_to(PULL, full_report("r1", &["retried"]));
+    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[w]>ord\n"), backend);
+    settle(&mut rig.ed);
+    let sid = rig.sid("rust-analyzer");
+    assert!(stored_messages(&rig).is_empty());
+
+    rig.ed.state.lsp_pull_diagnostics(rig.bid);
+    settle(&mut rig.ed);
+
+    assert_eq!(rig.requests_to(sid, PULL).len(), 2);
+    assert_eq!(stored_messages(&rig), ["retried"]);
 }

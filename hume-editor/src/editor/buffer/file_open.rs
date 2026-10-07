@@ -276,6 +276,7 @@ impl Editor {
             if self.state.buffer_positions.diagnostics.remove_buffer(id) {
                 self.queue_diagnostics_changed(id);
             }
+            self.state.buffer_positions.lsp.forget_pulls(id);
             self.state.config.decorations.remove_buffer(id);
         }
         // `detect_and_set_language` handles a genuine language change

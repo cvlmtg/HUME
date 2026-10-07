@@ -264,8 +264,9 @@ impl Editor {
         // Attachments made before the reload, to a server already running:
         // reconcile keeps the ones the new config still plans, without
         // reopening them, so their `OnLspAttach` is replayed for the new
-        // engine's handlers. An attachment reconcile announces itself is
-        // not replayed.
+        // engine's handlers and pulled again, since the reset dropped any
+        // pull in flight. An attachment reconcile announces itself is not
+        // replayed.
         let running_attachments: Vec<_> = self
             .state
             .lsp_running_attachments()
@@ -279,6 +280,7 @@ impl Editor {
                 && !announced.contains(&(bid, sid))
             {
                 self.state.queue_lsp_attach(bid, sid);
+                self.state.lsp_repull_diagnostics(bid, sid);
             }
         }
 
