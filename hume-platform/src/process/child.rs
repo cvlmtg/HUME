@@ -58,7 +58,7 @@ pub(crate) const JOB_STDOUT_CAP: usize = 64 * 1024 * 1024;
 pub(crate) fn spawn_piped(
     cmd: &str,
     args: &[String],
-    cwd: Option<&Path>,
+    cwd: &Path,
 ) -> io::Result<(ReapOnDrop, ChildStdout, ChildStderr)> {
     let mut command = base_command(cmd, args, cwd);
     command

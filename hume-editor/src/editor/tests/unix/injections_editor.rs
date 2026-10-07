@@ -240,7 +240,7 @@ fn plum_install_grammar_no_arg_no_language_warns() {
 fn plum_install_grammar_unreadable_query_fails_cleanly() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _lock = lock();
+    let _lock = claim_env();
     let shims = tempfile::tempdir().unwrap();
     for (tool, body) in [
         (

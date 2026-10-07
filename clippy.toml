@@ -20,7 +20,7 @@ disallowed-methods = [
     "unicode_width::UnicodeWidthChar::width",
     "unicode_width::UnicodeWidthChar::width_cjk",
     # `PATH` is a process-global env var a parallel test run shares —
-    # mutating it outside a `TEST_GLOBALS`-holding guard races every test that
+    # mutating it outside an `EnvClaim` races every test that
     # spawns a program by name. `EnvClaim::set_var` and `EnvVarGuard`'s drop in
     # `hume-editor/src/editor/tests/mod.rs` are the sanctioned callers.
     "std::env::set_var",

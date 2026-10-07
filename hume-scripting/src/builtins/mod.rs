@@ -499,6 +499,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // once by `ScriptingHost::new`). Callable from anywhere (`open`).
         open "data-dir" fs::data_dir();
         open "runtime-dir" fs::runtime_dir();
+        open "cwd" fs::cwd();
+        cmd "set-cwd!" fs::set_cwd(path: String);
     }
 
     // Context-free builtins that don't fit the typed-arity table above: raw

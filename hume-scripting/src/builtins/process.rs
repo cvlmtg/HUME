@@ -15,13 +15,14 @@ use crate::log::LogLevel;
 
 use super::SteelResult;
 use super::args::{
-    list_to_env_pairs, list_to_strings, optional_path_arg, string_arg, symbol_hash, usize_arg,
+    cwd_arg, list_to_env_pairs, list_to_strings, string_arg, symbol_hash, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
 /// `(%spawn-async! cmd args cwd callback)`, wrapped by `spawn-async!`'s
 /// `#:cwd` keyword in `bootstrap.scm`: runs `cmd` with `args` (direct
-/// argv, no shell) in `cwd` (`#f` = the editor's own cwd), off the main
+/// argv, no shell) in `cwd` (`#f` = the editor's cwd, a relative path joins
+/// onto it), off the main
 /// thread. `callback` fires exactly once, with `(stdout stderr exit-code)`,
 /// once the child exits; never inline, so typing never stalls waiting for
 /// it. Unlike `picker-source-spawn!`, a spawn failure (missing binary, bad
@@ -43,7 +44,7 @@ pub(crate) fn spawn_async(
     // above), and `Command::new("")` already fails with ENOENT, producing
     // exactly the documented failure triple without a special case.
     let args = list_to_strings(args, "spawn-async! args")?;
-    let cwd = optional_path_arg(cwd, "spawn-async! cwd")?;
+    let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "spawn-async! cwd")?;
 
     let id = require_cap(ctx.host.async_process(), "spawn-async!")?
         .spawn_async(&cmd, args, cwd, callback);
@@ -65,8 +66,8 @@ pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
 
 /// `(%run-capture! cmd args cwd)` → `(hash 'stdout s 'stderr s 'exit code)`, wrapped by
 /// `run-capture!`'s `#:cwd` keyword in `bootstrap.scm`. Runs `cmd`
-/// with `args` (direct argv, no shell) in `cwd` (`#f` = the editor's own
-/// cwd), blocking the calling thread until it exits: the small-output,
+/// with `args` (direct argv, no shell) in `cwd` (`#f` = the editor's cwd, a
+/// relative path joins onto it), blocking the calling thread until it exits: the small-output,
 /// synchronous-with-the-TUI-still-up shape `stdlib/run!` is for; use
 /// `spawn-async!` instead for anything that shouldn't stall typing.
 ///
@@ -85,22 +86,21 @@ pub(crate) fn run_capture(
 ) -> SteelResult {
     let cmd = string_arg(cmd, "run-capture! cmd")?;
     let args = list_to_strings(args, "run-capture! args")?;
-    let cwd = optional_path_arg(cwd, "run-capture! cwd")?;
+    let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "run-capture! cwd")?;
 
     ctx.log(
         LogLevel::Trace,
         format!("run-capture!: running {cmd} {args:?}"),
     );
 
-    let (stdout, stderr, code) =
-        match hume_platform::process::run_capture(&cmd, &args, cwd.as_deref()) {
-            Ok(output) => (
-                String::from_utf8_lossy(&output.stdout).into_owned(),
-                String::from_utf8_lossy(&output.stderr).into_owned(),
-                output.status.code(),
-            ),
-            Err(e) => (String::new(), format!("{cmd}: {e}"), None),
-        };
+    let (stdout, stderr, code) = match hume_platform::process::run_capture(&cmd, &args, &cwd) {
+        Ok(output) => (
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+            output.status.code(),
+        ),
+        Err(e) => (String::new(), format!("{cmd}: {e}"), None),
+    };
     Ok(symbol_hash([
         ("stdout", SteelVal::StringV(stdout.into())),
         ("stderr", SteelVal::StringV(stderr.into())),
@@ -113,7 +113,8 @@ pub(crate) fn run_capture(
 
 /// `(%run-inline-output! cmd args cwd env)`: spawn `cmd` with `args` (a list of
 /// strings), inherited stdio, in its own process group; blocks until exit and
-/// returns the exit code as an int. `cwd` is a string or `#f`; `env` is a list
+/// returns the exit code as an int. `cwd` is a string or `#f` (the editor's
+/// cwd; a relative path joins onto it); `env` is a list
 /// of `("KEY" . "VALUE")` pairs added to the inherited environment.
 ///
 /// The process-group isolation is the entire reason this is a Rust builtin
@@ -133,7 +134,11 @@ pub(crate) fn run_inline_output(
     env_val: SteelVal,
 ) -> SteelResult {
     let args = list_to_strings(args_val, "%run-inline-output! args")?;
-    let cwd = optional_path_arg(cwd_val, "%run-inline-output! cwd")?;
+    let cwd = cwd_arg(
+        cwd_val,
+        &ctx.host.buffers().cwd(),
+        "%run-inline-output! cwd",
+    )?;
     let env = list_to_env_pairs(env_val, "%run-inline-output! env")?;
 
     // The child inherits stdio, so this is a real terminal write: open the
@@ -144,7 +149,7 @@ pub(crate) fn run_inline_output(
             .map_err(|e| generic_err(format!("run-inline-output!: {e}")))?;
     }
 
-    let status = hume_platform::process::run_inline_output(&cmd, &args, cwd.as_deref(), &env)
+    let status = hume_platform::process::run_inline_output(&cmd, &args, &cwd, &env)
         .map_err(|e| generic_err(format!("run-inline-output!: cannot run '{cmd}': {e}")))?;
 
     // `-1` for a signal-killed child (no exit code); matches the sentinel a

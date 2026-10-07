@@ -22,7 +22,7 @@ fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {
 
 #[test]
 fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
-    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -55,7 +55,7 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
 
 #[test]
 fn nul_delimited_source_splits_on_nul() {
-    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -77,7 +77,7 @@ fn nul_delimited_source_splits_on_nul() {
 
 #[test]
 fn nonzero_exit_reports_a_status_message() {
-    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -100,7 +100,7 @@ fn nonzero_exit_reports_a_status_message() {
 
 #[test]
 fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
-    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -137,7 +137,7 @@ fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
 
 #[test]
 fn picker_source_stop_kills_the_child_and_no_further_rows_land() {
-    // Spawns "sh" and "kill" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sh" and "kill" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -192,7 +192,7 @@ fn picker_source_stop_kills_the_child_and_no_further_rows_land() {
 
 #[test]
 fn respawn_reports_an_already_exited_outgoing_source() {
-    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -236,7 +236,7 @@ fn respawn_reports_an_already_exited_outgoing_source() {
 
 #[test]
 fn respawn_does_not_report_a_still_running_outgoing_source() {
-    // Spawns "sh"/"sleep" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sh"/"sleep" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -263,7 +263,7 @@ fn respawn_does_not_report_a_still_running_outgoing_source() {
 
 #[test]
 fn picker_close_kills_the_source_child() {
-    // Spawns "sleep" and "kill" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sleep" and "kill" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -326,7 +326,7 @@ fn picker_close_kills_the_source_child() {
 
 #[test]
 fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
-    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -408,7 +408,7 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
 
 #[test]
 fn live_picker_requery_with_no_output_clears_the_previous_rows() {
-    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let (mut ed, _tmp) = editor_with(
         r#"

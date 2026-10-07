@@ -339,7 +339,7 @@ fn position_element_width_stable_across_line_digit_growth() {
 
 #[test]
 fn cwd_element_renders_nonempty() {
-    // Smoke test: current_dir() succeeds in a normal test run.
+    // Smoke test: the element renders the editor's cwd.
     let ed = test_editor();
     let colors = crate::statusline::colors::EditorColors::default();
     let (text, _) = render_element(&StatusElement::Cwd, &ed.statusline(), &colors, "");

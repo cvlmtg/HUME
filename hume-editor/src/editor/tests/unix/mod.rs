@@ -434,10 +434,6 @@ fn canonical_data_dir(root: &Path) -> PathBuf {
     root.canonicalize().unwrap().join("hume")
 }
 
-fn lock() -> EnvClaim {
-    claim_env()
-}
-
 /// Load `init_src` into `ed`, pointing its runtime directory at the repo's
 /// real `runtime/` dir (so the real shipped plugin sources and catalogs are
 /// used) and its data directory at `<data_dir>/hume`.
@@ -524,35 +520,16 @@ fn load_lsp(ed: &mut Editor, data_dir: &Path) {
     );
 }
 
-/// Like `CwdGuard`, but also owns a tempdir the test can `cd` into.
-///
-/// Bundling the tempdir into the same struct as the restore-on-drop logic is
-/// what fixes the historical bug, not the fields' declaration order: Rust
-/// always runs a struct's custom `Drop::drop` to completion *before* dropping
-/// any of its own fields, regardless of their order. So restoring cwd inside
-/// `CwdSandbox::drop` is guaranteed to happen before `dir` (the `TempDir`
-/// field) is deleted.
-///
-/// A test that instead pairs a bare `CwdGuard` with a *separately-scoped*
-/// `tempfile::tempdir()` local doesn't get that guarantee: independent
-/// locals in a function body drop in reverse declaration order, so the
-/// tempdir (declared after the guard) drops *first*, deleting the directory
-/// while the process cwd still points inside it. Any concurrently-running
-/// test that calls `std::env::current_dir()` in that window (e.g. Steel's
-/// `Engine::new()`, which falls back to it while compiling `ALL_MODULES`)
-/// gets `ENOENT` and panics. `CwdSandbox` closes that window structurally.
-struct CwdSandbox {
+/// A tempdir and its canonical path, for tests that point the editor's cwd at it.
+struct Sandbox {
     dir: tempfile::TempDir,
-    saved: PathBuf,
-    _lock: ClaimGuard,
 }
 
-impl CwdSandbox {
+impl Sandbox {
     fn new() -> Self {
-        let _lock = TEST_GLOBALS.claim(Global::Cwd);
-        let saved = std::env::current_dir().expect("current_dir");
-        let dir = tempfile::tempdir().unwrap();
-        Self { dir, saved, _lock }
+        Self {
+            dir: tempfile::tempdir().unwrap(),
+        }
     }
 
     /// Raw tempdir path; build child dirs/files under this.
@@ -563,16 +540,6 @@ impl CwdSandbox {
     /// Canonicalized tempdir path (macOS /var → /private/var) for cwd asserts.
     fn path(&self) -> PathBuf {
         std::fs::canonicalize(self.dir.path()).expect("canonicalize")
-    }
-}
-
-impl Drop for CwdSandbox {
-    fn drop(&mut self) {
-        // Restore first; `dir` is only deleted afterwards, when the field drops.
-        // Must not swallow a failure here: `dir` deletes unconditionally right
-        // after this returns, and a silently-ignored restore would leave cwd
-        // dangling in the very directory that's about to disappear.
-        std::env::set_current_dir(&self.saved).expect("CwdSandbox restore must not fail");
     }
 }
 
@@ -587,6 +554,7 @@ mod column_display_agreement;
 mod command_mode;
 mod completion;
 mod dot_repeat;
+mod editor_cwd;
 mod file_io;
 mod git_diff_plugin;
 mod injections_editor;

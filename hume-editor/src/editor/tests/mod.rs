@@ -985,148 +985,24 @@ impl Editor {
 // ── process-global test lock ─────────────────────────────────────────────────
 //
 // test-global-safe: definitions below are the sanctioned owners of process
-// globals (cwd, PATH). Every other mutator
-// in the test tree routes through them.
+// `PATH`. Every other mutator in the test tree routes through them.
 
-/// The two process globals the suite serializes access to. A `Cell<bool>` per
-/// variant tracks whether *this thread* currently holds an exclusive claim on
-/// it (see [`TestGlobals::claim`]).
-#[derive(Clone, Copy, Debug)]
-enum Global {
-    /// Process `PATH`, the one env var a test in this tree changes,
-    /// exclusive against every [`PathReader`]. Also claimed by a test with
-    /// no fixture of its own that spawns a subprocess by unqualified name
-    /// (`Command::new("tree-sitter")`, `Command::new("sh")`, …): the OS
-    /// resolves that name against process `PATH` at the spawn instant, so
-    /// such a test is a `PATH` *reader* racing every `PATH` mutator just as
-    /// much as a `set_var` call would.
-    Env,
-    /// The process current directory.
-    Cwd,
-}
-
-struct Claims {
-    env: Cell<bool>,
-    cwd: Cell<bool>,
-}
-
-impl Claims {
-    const fn new() -> Self {
-        Claims {
-            env: Cell::new(false),
-            cwd: Cell::new(false),
-        }
-    }
-
-    fn flag(&self, what: Global) -> &Cell<bool> {
-        match what {
-            Global::Env => &self.env,
-            Global::Cwd => &self.cwd,
-        }
-    }
-}
-
-/// Exclusive claim on one [`Global`] for a guard's lifetime, released when
-/// this drops. Never construct directly; go through [`TestGlobals::claim`].
-struct ClaimGuard {
-    what: Global,
-    _lock: parking_lot::ReentrantMutexGuard<'static, Claims>,
-    /// Held for an `Env` claim: keeps every [`PathReader`] out for the
-    /// claim's lifetime.
-    _path_writer: Option<parking_lot::RwLockWriteGuard<'static, ()>>,
-}
-
-impl Drop for ClaimGuard {
-    fn drop(&mut self) {
-        self._lock.flag(self.what).set(false);
-    }
-}
-
-/// The single lock guarding every process global the suite mutates. Reentrant
-/// (`parking_lot::ReentrantMutex`, not `std::sync::Mutex`): a guard that
-/// claims a second `Global` on a thread that already holds one (`Cwd` inside
-/// `Env`) blocks only on *other* threads, never on itself. A non-reentrant
-/// mutex here would hang with no panic, just a silent "running for over 60s"
-/// from the test runner, on a process-wide lock that then starves every
-/// other concurrently-running test too.
-///
-/// One lock, not one per `Global`: two independently-ordered locks deadlock
-/// ABBA the moment both nesting directions exist. Reentrancy makes nesting
-/// safe as long as it never claims the *same* `Global` twice, which
-/// [`claim`](Self::claim) enforces.
-///
-/// `PATH_USERS` is always taken before this mutex, so `Cwd` may nest inside
-/// `Env` or inside a [`PathReader`], never the reverse: a thread holding the
-/// mutex while it waits on `PATH_USERS` would block a reader that is itself
-/// waiting on the mutex. Both acquisition sites panic on the reverse order.
-struct TestGlobals {
-    inner: parking_lot::ReentrantMutex<Claims>,
-}
-
-impl TestGlobals {
-    const fn new() -> Self {
-        TestGlobals {
-            inner: parking_lot::ReentrantMutex::new(Claims::new()),
-        }
-    }
-
-    /// Exclusive claim on `what` for a guard's lifetime. Panics if this
-    /// thread already claims `what`: reentrancy makes a *second* guard
-    /// construct without blocking, but its `Drop` would then clear state
-    /// (env vars, cwd) the outer guard still needs — silently, and strictly
-    /// worse than the hang this type replaces. A guard that legitimately
-    /// nests a *different* `Global` (e.g. `Cwd` inside `Env`) is fine; only
-    /// same-resource nesting is the bug.
-    fn claim(&'static self, what: Global) -> ClaimGuard {
-        let held = self.inner.is_owned_by_current_thread();
-        if held {
-            assert!(
-                !self.inner.lock().flag(what).get(),
-                "test already holds a {what:?} claim on this thread: a nested guard \
-                 for the same resource would clear it out from under the outer guard \
-                 on drop; scope the outer guard tighter instead of nesting"
-            );
-        }
-        let path_writer = matches!(what, Global::Env).then(|| {
-            assert!(
-                !held,
-                "test holds a Cwd claim and claims `Global::Env`: the write side of \
-                 `PATH_USERS` is always taken before the mutex, so claim `Global::Env` \
-                 first"
-            );
-            assert!(
-                PATH_READS.with(Cell::get) == 0,
-                "test holds a `PathReader` and claims `Global::Env`: a reader cannot \
-                 upgrade to the exclusive claim; claim `Global::Env` instead of \
-                 building the fixture"
-            );
-            PATH_USERS.write()
-        });
-        let lock = self.inner.lock();
-        lock.flag(what).set(true);
-        ClaimGuard {
-            what,
-            _lock: lock,
-            _path_writer: path_writer,
-        }
-    }
-}
-
-static TEST_GLOBALS: TestGlobals = TestGlobals::new();
-
-/// Tests running under a `Dirs` fixture hold this shared (see
-/// [`PathReader`]); a `Global::Env` claim holds it exclusively.
+/// Tests spawning a program by bare name hold this shared (see
+/// [`PathReader`]); a test that changes `PATH` holds it exclusively (see
+/// [`EnvClaim`]).
 static PATH_USERS: parking_lot::RwLock<()> = parking_lot::RwLock::new(());
 
 thread_local! {
     static PATH_READS: Cell<usize> = const { Cell::new(0) };
+    static ENV_CLAIMED: Cell<bool> = const { Cell::new(false) };
 }
 
-/// A shared hold on process `PATH` for a fixture's lifetime. Tests that
-/// build a `Dirs` fixture may spawn `git` and other programs by bare name,
-/// and only a `Global::Env` claimant ever changes `PATH`; readers do not
-/// exclude each other. Reentrant on a thread (a test may build two
-/// fixtures), never combined with an `Env` claim on the same thread.
+/// A shared hold on process `PATH` for a fixture's lifetime. A test that
+/// builds a `Dirs` fixture, or spawns `git`, `sh` and the like by bare name,
+/// holds one: the OS resolves the name against process `PATH` at the spawn
+/// instant, so the test is a `PATH` reader racing every [`EnvClaim`] holder.
+/// Readers do not exclude each other. Reentrant on a thread (a test may build
+/// two fixtures), never combined with an `EnvClaim` on the same thread.
 struct PathReader {
     _guard: parking_lot::RwLockReadGuard<'static, ()>,
     /// `PATH_READS` counts per thread, so the reader must drop where it was made.
@@ -1134,26 +1010,18 @@ struct PathReader {
 }
 
 fn path_reader() -> PathReader {
-    let guard = if PATH_READS.with(Cell::get) == 0 {
-        if TEST_GLOBALS.inner.is_owned_by_current_thread() {
-            assert!(
-                !TEST_GLOBALS.inner.lock().flag(Global::Env).get(),
-                "test claims `Global::Env` and builds a `Dirs` fixture: the exclusive \
-                 claim already excludes every other test, so drop the fixture's \
-                 `PathReader` by not nesting it"
-            );
-            panic!(
-                "test holds a Cwd claim and builds a `Dirs` fixture: the read side of \
-                 `PATH_USERS` is always taken before the mutex, so build the fixture \
-                 first"
-            );
-        }
-        // Queues behind a waiting `Env` claimant instead of overtaking it.
+    assert!(
+        !ENV_CLAIMED.get(),
+        "test holds an `EnvClaim` and builds a `Dirs` fixture: the exclusive claim \
+         already excludes every other test, so do not nest a `PathReader` in it"
+    );
+    let guard = if PATH_READS.get() == 0 {
+        // Queues behind a waiting `EnvClaim` instead of overtaking it.
         PATH_USERS.read()
     } else {
         PATH_USERS.read_recursive()
     };
-    PATH_READS.with(|n| n.set(n.get() + 1));
+    PATH_READS.set(PATH_READS.get() + 1);
     PathReader {
         _guard: guard,
         _not_send: std::marker::PhantomData,
@@ -1162,7 +1030,7 @@ fn path_reader() -> PathReader {
 
 impl Drop for PathReader {
     fn drop(&mut self) {
-        PATH_READS.with(|n| n.set(n.get() - 1));
+        PATH_READS.set(PATH_READS.get() - 1);
     }
 }
 
@@ -1329,38 +1197,36 @@ fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
     (buf, tmp_path)
 }
 
-/// Acquire the cwd lock, save the current directory, and restore it on drop.
-#[cfg(unix)]
-struct CwdGuard {
-    saved: PathBuf,
-    _lock: ClaimGuard,
-}
-
-#[cfg(unix)]
-impl CwdGuard {
-    fn new() -> Self {
-        let lock = TEST_GLOBALS.claim(Global::Cwd);
-        let saved = std::env::current_dir().expect("current_dir");
-        CwdGuard { saved, _lock: lock }
-    }
-}
-
-#[cfg(unix)]
-impl Drop for CwdGuard {
-    fn drop(&mut self) {
-        std::env::set_current_dir(&self.saved).expect("CwdGuard restore must not fail");
-    }
-}
-
 /// Exclusive claim on process env vars (`PATH`), the only way to
 /// change one: [`Self::set_var`] hands out the [`EnvVarGuard`] that does it.
 struct EnvClaim {
-    _claim: ClaimGuard,
+    _write: parking_lot::RwLockWriteGuard<'static, ()>,
+    /// `ENV_CLAIMED` is per thread, so the claim must drop where it was made.
+    _not_send: std::marker::PhantomData<*const ()>,
 }
 
 fn claim_env() -> EnvClaim {
+    assert!(
+        !ENV_CLAIMED.get(),
+        "test already holds an `EnvClaim`: a nested claim would hang on its own lock; \
+         scope the outer claim tighter instead of nesting"
+    );
+    assert!(
+        PATH_READS.get() == 0,
+        "test holds a `PathReader` and claims `PATH`: a reader cannot upgrade to the \
+         exclusive claim; claim first instead of building the fixture"
+    );
+    let write = PATH_USERS.write();
+    ENV_CLAIMED.set(true);
     EnvClaim {
-        _claim: TEST_GLOBALS.claim(Global::Env),
+        _write: write,
+        _not_send: std::marker::PhantomData,
+    }
+}
+
+impl Drop for EnvClaim {
+    fn drop(&mut self) {
+        ENV_CLAIMED.set(false);
     }
 }
 

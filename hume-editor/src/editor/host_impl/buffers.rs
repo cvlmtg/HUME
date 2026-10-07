@@ -68,6 +68,16 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         Some(self.state.config.languages.name_of(lang_id).to_owned())
     }
 
+    // ── Working directory ────────────────────────────────────────────────────
+    fn cwd(&self) -> PathBuf {
+        self.state.cwd.clone()
+    }
+    fn set_cwd(&mut self, path: &Path) -> Result<PathBuf, String> {
+        self.state
+            .set_cwd(path)
+            .map_err(|e| format!("set-cwd!: {}: {e}", path.display()))
+    }
+
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
         // `resolve_buffer_path`, not a hard `canonicalize`: a missing path is

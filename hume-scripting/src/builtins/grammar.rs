@@ -26,13 +26,18 @@ use super::errors::generic_err;
 /// Suffix appended to a grammar-compile failure message when no C compiler
 /// was found on `PATH`. Empty on non-Windows, where a compiler is either
 /// preinstalled or the platform-native error is already clear enough.
-fn windows_compiler_hint() -> String {
-    #[cfg(windows)]
-    if hume_platform::process::no_windows_compiler_found() {
+#[cfg(windows)]
+fn windows_compiler_hint(cwd: &std::path::Path) -> String {
+    if hume_platform::process::no_windows_compiler_found(cwd) {
         return ". No C compiler found; install one of: MSVC Build Tools, clang, gcc, or zig, \
                  and ensure it is on PATH"
             .to_string();
     }
+    String::new()
+}
+
+#[cfg(not(windows))]
+fn windows_compiler_hint(_cwd: &std::path::Path) -> String {
     String::new()
 }
 
@@ -62,7 +67,8 @@ pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> S
             .map_err(|e| generic_err(format!("compile-grammar!: {e}")))?;
     }
 
-    let result = hume_platform::process::tree_sitter_build(&src_path, &out_path);
+    let cwd = ctx.host.buffers().cwd();
+    let result = hume_platform::process::tree_sitter_build(&src_path, &out_path, &cwd);
     let msg = match result {
         Ok(status) if status.success() => return Ok(SteelVal::Void),
         Ok(status) => format!(
@@ -74,7 +80,7 @@ pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> S
     // A failure with no compiler at all on PATH is a common, fixable cause on
     // Windows (no MSVC Build Tools): point the user at it instead of leaving
     // them with a bare tree-sitter exit code.
-    let msg = format!("{msg}{}", windows_compiler_hint());
+    let msg = format!("{msg}{}", windows_compiler_hint(&cwd));
 
     if ctx.session == crate::context::EvalSession::Init {
         ctx.log(LogLevel::Warning, msg);

@@ -390,7 +390,7 @@ fn edit_directory_path_still_errors() {
 fn edit_relative_path_matches_existing_buffer() {
     // Open a file by absolute path, then :e its basename from the same dir.
     // The lexical-absolute fallback in find_buffer_by_path_arg must match.
-    let cwd = CwdSandbox::new();
+    let cwd = Sandbox::new();
     let canonical_dir = cwd.path();
     let path = canonical_dir.join("relpath_test.txt");
     std::fs::write(&path, "hello\n").unwrap();

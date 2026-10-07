@@ -70,7 +70,7 @@ fn setup_with_config(
 #[test]
 fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
     std::fs::write(sandbox.raw().join("beta.txt"), "").unwrap();
@@ -80,7 +80,7 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('f'));
@@ -120,13 +120,13 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
 #[test]
 fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
     let source_bid = ed.focused_buffer_id();
     let tabs_before = ed.state.tabs.len();
 
@@ -174,13 +174,13 @@ fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
 #[test]
 fn files_picker_ctrl_t_on_no_match_does_not_open_a_tab() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
     let tabs_before = ed.state.tabs.len();
 
     ed.feed_key(key('z'));
@@ -211,13 +211,13 @@ fn files_picker_ctrl_t_on_no_match_does_not_open_a_tab() {
 #[test]
 fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
     let source_bid = ed.focused_buffer_id();
     let panes_before = ed.view.panes.len();
 
@@ -262,13 +262,13 @@ fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
 #[test]
 fn files_picker_ctrl_v_opens_selection_in_a_new_pane() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
     let source_bid = ed.focused_buffer_id();
     let panes_before = ed.view.panes.len();
 
@@ -315,13 +315,13 @@ fn files_picker_ctrl_v_opens_selection_in_a_new_pane() {
 #[test]
 fn files_picker_esc_dismisses_cleanly() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git(sandbox.raw(), &["init", "-q"]);
     std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
     let starting_bid = ed.focused_buffer_id();
 
     ed.feed_key(key('z'));
@@ -362,7 +362,7 @@ fn files_picker_fd_branch_spawns_given_binary() {
     std::fs::write(&fake_fd, "#!/bin/sh\nprintf 'one.txt\\0two.txt'\n").unwrap();
     std::fs::set_permissions(&fake_fd, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     std::fs::write(sandbox.raw().join("one.txt"), "").unwrap();
     std::fs::write(sandbox.raw().join("two.txt"), "").unwrap();
 
@@ -372,7 +372,7 @@ fn files_picker_fd_branch_spawns_given_binary() {
         fake_fd.display()
     );
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", &extra);
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
 
     call(&mut ed, "test-fd-branch");
     drain_until_picker_total(&mut ed, 2);
@@ -414,7 +414,7 @@ fn files_picker_error_path_names_fd() {
 #[test]
 fn git_modified_picker_lists_changed_files_with_status_codes() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
     git(sandbox.raw(), &["add", "a.txt"]);
@@ -429,7 +429,7 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -462,13 +462,13 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
 #[test]
 fn git_modified_picker_is_pending_until_git_status_returns() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -496,7 +496,7 @@ fn git_modified_picker_is_pending_until_git_status_returns() {
 #[test]
 fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("root.txt"), "hello\n").unwrap();
     git(sandbox.raw(), &["add", "root.txt"]);
@@ -509,7 +509,7 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
     // :pwd is a subdirectory, not the repo root: git prints the entry as
     // "root.txt" (repo-root-relative); accept must not open it relative to
     // :pwd (which has no such file).
-    ed.set_cwd(&sandbox.path().join("sub")).unwrap();
+    ed.state.set_cwd(&sandbox.path().join("sub")).unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -533,7 +533,7 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
 #[test]
 fn git_modified_picker_row_and_accept_handle_path_with_space() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("has space.txt"), "hello\n").unwrap();
     git(sandbox.raw(), &["add", "has space.txt"]);
@@ -542,7 +542,7 @@ fn git_modified_picker_row_and_accept_handle_path_with_space() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -572,7 +572,7 @@ fn git_modified_picker_row_and_accept_handle_path_with_space() {
 #[test]
 fn git_modified_picker_accept_resolves_nested_relative_path() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git_init(sandbox.raw());
     std::fs::create_dir_all(sandbox.raw().join("sub")).unwrap();
     std::fs::write(sandbox.raw().join("sub/file.txt"), "hello\n").unwrap();
@@ -586,7 +586,7 @@ fn git_modified_picker_accept_resolves_nested_relative_path() {
     // `git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory`
     // above; this test isolates `path-join`'s handling of a multi-segment
     // relative path instead.
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -609,7 +609,7 @@ fn git_modified_picker_accept_resolves_nested_relative_path() {
 #[test]
 fn git_modified_picker_untracked_false_config_hides_untracked_files() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
     git(sandbox.raw(), &["add", "a.txt"]);
@@ -625,7 +625,7 @@ fn git_modified_picker_untracked_false_config_hides_untracked_files() {
         Some("(hash \"untracked\" #f)"),
         "",
     );
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -643,14 +643,14 @@ fn git_modified_picker_untracked_false_config_hides_untracked_files() {
 #[test]
 fn git_modified_picker_untracked_default_lists_files_inside_untracked_directory() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git_init(sandbox.raw());
     std::fs::create_dir_all(sandbox.raw().join("newdir")).unwrap();
     std::fs::write(sandbox.raw().join("newdir/file.txt"), "").unwrap();
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 1);
@@ -732,7 +732,7 @@ fn missing_stdlib_errors_at_load() {
 #[test]
 fn git_modified_picker_clean_tree_opens_empty_picker() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "hello\n").unwrap();
     git(sandbox.raw(), &["add", "a.txt"]);
@@ -740,7 +740,7 @@ fn git_modified_picker_clean_tree_opens_empty_picker() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -787,12 +787,12 @@ fn git_modified_picker_git_status_failure_does_not_say_clean() {
     // truthy-but-bogus root bypasses the not-a-repo check while `git status`
     // itself still runs (and fails) against this non-repo cwd: the failure
     // branch `pickers/open-git-picker!` must not fold into "clean".
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     let tmp = tempfile::tempdir().unwrap();
     let extra = r#"(define-command! "test-git-status-fails" "" (lambda (pane)
                      (call! "pickers/git-picker-with" pane "/nonexistent-root")))"#;
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", extra);
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
 
     ed.state.status_msg = None;
     call(&mut ed, "test-git-status-fails");
@@ -818,13 +818,13 @@ fn git_modified_picker_git_status_failure_does_not_say_clean() {
 #[test]
 fn git_modified_picker_esc_dismisses_cleanly() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git_init(sandbox.raw());
     std::fs::write(sandbox.raw().join("a.txt"), "").unwrap();
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
     let starting_bid = ed.focused_buffer_id();
 
     ed.feed_key(key('z'));
@@ -872,7 +872,7 @@ fn git_modified_picker_esc_dismisses_cleanly() {
 #[test]
 fn buffers_picker_lists_switches_and_disambiguates() {
     let guard = RuntimeDirs::new();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     std::fs::create_dir_all(sandbox.raw().join("a")).unwrap();
     std::fs::create_dir_all(sandbox.raw().join("b")).unwrap();
     std::fs::write(sandbox.raw().join("a/mod.rs"), "").unwrap();
@@ -880,7 +880,7 @@ fn buffers_picker_lists_switches_and_disambiguates() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.set_cwd(&sandbox.path()).unwrap();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
     type_cmd(&mut ed, ":e a/mod.rs");
     type_cmd(&mut ed, ":e b/mod.rs");
 

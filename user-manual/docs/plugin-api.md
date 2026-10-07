@@ -306,10 +306,10 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 
 | Call | Effect |
 |------|--------|
-| `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's own working directory); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later |
+| `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's working directory; a relative `dir` is joined onto it); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later |
 | `(cancel-async! id)` | Kill a still-running `spawn-async!` job and drop its callback; idempotent |
 | `(run-inline-output! cmd args #:cwd #:env)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; `#:env` is a list of `("KEY" . "VALUE")` pairs added to the environment; raises on nonzero exit |
-| `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's own working directory), blocking until it exits; returns `(hash 'stdout s 'stderr s 'exit code)`. `core:stdlib`'s `stdlib/run!` (see [Standard Library](standard-library.md)) is this call under its usual name |
+| `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's working directory; a relative `dir` is joined onto it), blocking until it exits; returns `(hash 'stdout s 'stderr s 'exit code)`. `core:stdlib`'s `stdlib/run!` (see [Standard Library](standard-library.md)) is this call under its usual name |
 
 Covered with examples in [Filesystem and processes](plugins.md#filesystem-and-processes).
 
@@ -338,10 +338,14 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 |------|--------|
 | `(data-dir)` | HUME's data directory, or `#f` if unavailable |
 | `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
+| `(cwd)` | HUME's working directory (what `:pwd` prints) |
+| `(set-cwd! path)` | Change HUME's working directory, like `:cd`; a relative `path` is joined onto the current one; raises if `path` is not a directory |
 | `(path-join seg ...)` | Join path segments with the OS-native separator |
 | `(path->display path)` | Run an absolute `path` string through HUME's display-form pipeline (Windows `\\?\` stripping, `~`-collapse); no filesystem access |
 
 The pattern for reading a plugin's own files is covered in [Filesystem and processes](plugins.md#filesystem-and-processes).
+
+Use `(cwd)` and `(set-cwd! path)` to read and change the working directory, not Steel's `current-directory` and `change-current-directory!`: HUME's own commands and spawned programs follow its working directory, and a plugin that moves the process directory with Steel's call leaves HUME behind. To pass a relative path to a program or to Steel's file functions, join it onto `(cwd)` first: `(path-join (cwd) "src")`. HUME's own calls (`spawn-async!`, `run-capture!`, `run-inline-output!`, `picker-source-spawn!`, `compile-grammar!`, `register-grammar!`, `open-buffer!`) join a relative path onto the working directory for you.
 
 ## JSON handles
 

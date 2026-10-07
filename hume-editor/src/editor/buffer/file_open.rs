@@ -11,7 +11,7 @@ use crate::editor::event::EditorEvent;
 
 use super::lifecycle;
 use crate::editor::position_stores::PositionStores;
-use crate::editor::{Editor, Severity};
+use crate::editor::{Editor, EditorState, Severity};
 
 /// Where the text that replaces a buffer's content comes from, for
 /// [`Editor::reload_buffer_in_place`].
@@ -38,27 +38,35 @@ impl ReplaceSource {
     }
 }
 
-impl Editor {
-    // ── Working directory ─────────────────────────────────────────────────────
-
-    /// Change the editor's working directory.
+impl EditorState {
+    /// Moves the working directory to `path`; a relative `path` joins onto the
+    /// current one. Canonicalizes and rejects non-directories.
     ///
-    /// Canonicalizes `path`, rejects non-directories, then updates both
-    /// `self.state.cwd` and the process cwd so that relative paths in `:e` and
-    /// subprocesses resolve consistently.
+    /// `:cd` and `(set-cwd! …)` both land here. The process cwd is moved too,
+    /// for code that reads it (plugins, Steel's filesystem primitives); nothing
+    /// in HUME does after startup. Unit tests skip that call so they cannot
+    /// race each other over it.
     pub(in crate::editor) fn set_cwd(&mut self, path: &std::path::Path) -> io::Result<PathBuf> {
-        let canonical = std::fs::canonicalize(path)?;
+        let canonical = std::fs::canonicalize(self.cwd.join(path))?;
         if !canonical.is_dir() {
             return Err(io::Error::new(
                 io::ErrorKind::NotADirectory,
                 "not a directory",
             ));
         }
-        std::env::set_current_dir(&canonical)?;
-        self.state.cwd = canonical;
-        Ok(self.state.cwd.clone())
+        self.cwd = canonical;
+        #[cfg(not(test))]
+        if let Err(e) = std::env::set_current_dir(&self.cwd) {
+            self.report(
+                Severity::Warning,
+                format!("cwd: the process directory did not follow: {e}"),
+            );
+        }
+        Ok(self.cwd.clone())
     }
+}
 
+impl Editor {
     // ── Buffer choke-points ───────────────────────────────────────────────────
 
     /// Resolve a typed path to the canonical form used as buffer identity

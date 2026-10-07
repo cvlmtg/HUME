@@ -63,8 +63,8 @@ pretty_assertions = "1.4.1"
 proptest = "1.11.0"
 insta = "1.47"
 tempfile = "3"
-# Reentrant lock for the test suite's process-global guards (PATH, cwd) —
-# see `editor/tests/mod.rs`'s `TestGlobals`.
+# Read-write lock over process `PATH` for the test suite — see
+# `editor/tests/mod.rs`'s `PathReader` and `EnvClaim`.
 parking_lot = "0.12"
 tree-sitter.workspace = true
 hume-scripting = { path = "../hume-scripting", features = ["test-util"] }

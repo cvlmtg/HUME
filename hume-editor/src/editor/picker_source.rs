@@ -45,7 +45,7 @@ pub(super) fn spawn_source(
     let source = hume_platform::process::line_source::spawn_line_source(
         cmd,
         &args,
-        opts.cwd.as_deref(),
+        &opts.cwd,
         delimiter,
         Arc::clone(&state.wake),
     )

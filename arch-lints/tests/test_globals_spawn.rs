@@ -1,17 +1,16 @@
 //! # Unguarded unqualified subprocess spawns
 //!
-//! `Global::Env`'s doc (`editor/tests/mod.rs`) states the reader obligation
+//! `PathReader`'s doc (`editor/tests/mod.rs`) states the reader obligation
 //! this lint enforces: a test that spawns a subprocess by unqualified name
 //! (`Command::new("git")`, `Command::new("sh")`, …) reads process `PATH` at
 //! the spawn instant exactly as much as an explicit `std::env::var` call
-//! would, so it must hold a `Global::Env` claim or a `PathReader` (the shared
+//! would, so it must hold an `EnvClaim` or a `PathReader` (the shared
 //! side every `Dirs` fixture takes) for the spawn's duration, not just a test
 //! that mutates an env var directly.
 //!
 //! [`unguarded_unqualified_spawn`] scans every `#[test] fn` body in
-//! `editor/tests/` (the opposite direction from this file's sibling lints in
-//! [`super::test_globals`], which scan every *non*-test file for a raw
-//! mutator) for a spawn appearing before a claim in the same function body.
+//! `editor/tests/` for a spawn appearing before a claim in the same function
+//! body.
 //!
 //! **Neither side is always literal text in the test's own body.**
 //! `git_diff_plugin.rs`'s tests call `git_init()`/`commit_file()`, which call
@@ -20,7 +19,7 @@
 //! `Command::new` text anywhere in the test's own body. Symmetrically, those
 //! same tests call `setup()`, which takes a shared `PathReader` via
 //! `RealRuntimeDirs::new()` and returns the guard for the caller to bind and
-//! hold, again with no `RealRuntimeDirs`/`TEST_GLOBALS` text in the test
+//! hold, again with no `RealRuntimeDirs` text in the test
 //! body itself. A scan that only recognized literal `Command::new`/claim text
 //! would either flag every one of these tests as unguarded (wrong: they are
 //! guarded, just through a helper) or, worse, silently pass an
@@ -70,12 +69,11 @@
 use arch_lints::{Violation, editor_test_tree_paths, strip_line_comment, workspace_root};
 
 /// A construct that, once seen in a `#[test] fn` body, is trusted to already
-/// hold (or have just claimed) `Global::Env` for the rest of that body. See
+/// hold (or have just claimed) `PATH` for the rest of that body. See
 /// this module's doc for why the list is a fixed set of textual patterns
 /// rather than a call-graph walk. Order doesn't matter; every entry is
 /// checked independently.
 const AUTO_CLAIM_MARKERS: &[&str] = &[
-    "TEST_GLOBALS.claim(Global::Env)",
     "claim_env()",
     "path_reader()",
     "RealRuntimeDirs::new(",
@@ -357,7 +355,7 @@ fn spawning_helper_names(helper_fns: &[(String, String)]) -> Vec<String> {
 }
 
 /// Every helper name (from [`collect_helper_fns`]) that claims (or returns an
-/// already-claimed guard for) `Global::Env`, directly (its own body
+/// already-claimed guard for) `PATH`, directly (its own body
 /// contains an [`AUTO_CLAIM_MARKERS`] entry, the shape `setup()`-style test
 /// fixtures across this tree follow: claim, do setup, return `(Editor,
 /// SomeGuard)` for the caller to bind and keep alive) or transitively (calls
@@ -490,11 +488,11 @@ fn unguarded_unqualified_spawn() {
 
     assert!(
         violations.is_empty(),
-        "\nUnqualified subprocess spawn found with no `Global::Env` claim held yet in its\n\
+        "\nUnqualified subprocess spawn found with no `EnvClaim` or `PathReader` held yet in its\n\
          `#[test] fn`, either directly, or through a helper that itself spawns one\n\
          unqualified. The OS resolves an unqualified program name against process `PATH`\n\
          at the spawn instant: the same read a `std::env::var(\"PATH\")` call would need\n\
-         to hold a claim for. Claim it directly (`TEST_GLOBALS.claim(Global::Env)`) or via\n\
+         to hold a claim for. Claim it directly (`claim_env()`) or via\n\
          a fixture whose constructor holds a `PathReader` (`RealRuntimeDirs::new()`, …) before the\n\
          spawn, or add the guard to this lint's `AUTO_CLAIM_MARKERS` if it's a new one.\n\
          Violations:\n{}\n",

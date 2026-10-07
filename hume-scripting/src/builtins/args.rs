@@ -15,7 +15,7 @@
 //! absent_marker_is_decoded_only_in_args_rs` (`arch-lints/tests/
 //! absent_decode.rs`).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{FromSteelVal, SteelVal};
@@ -160,6 +160,18 @@ pub(crate) fn optional_path_arg(
         SteelVal::StringV(s) => Ok(Some(PathBuf::from(s.as_str()))),
         _ => steel::stop!(TypeMismatch => "{}: expected a string path or #f", ctx_name),
     }
+}
+
+/// A `#:cwd` argument: `#f` is `editor_cwd`, a relative path joins onto it.
+pub(crate) fn cwd_arg(
+    val: SteelVal,
+    editor_cwd: &Path,
+    ctx_name: &str,
+) -> Result<PathBuf, SteelErr> {
+    Ok(match optional_path_arg(val, ctx_name)? {
+        Some(dir) => editor_cwd.join(dir),
+        None => editor_cwd.to_path_buf(),
+    })
 }
 
 /// A non-negative integer, as `usize`. Callers needing `u64` (timer ids,

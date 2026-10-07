@@ -6,8 +6,7 @@ use std::path::PathBuf;
 /// [`EditorHost::async_process`](super::EditorHost::async_process). Backs `(spawn-async! cmd args callback
 /// #:cwd dir)` / `(cancel-async! id)`.
 pub trait AsyncProcessHost {
-    /// Spawns `cmd` with `args` (direct argv, no shell) in `cwd` (`None` =
-    /// the editor's own cwd), capturing its whole stdout/stderr to
+    /// Spawns `cmd` with `args` (direct argv, no shell) in `cwd`, capturing its whole stdout/stderr to
     /// completion. Always returns a job id, even if the spawn itself fails;
     /// `callback` still fires exactly once either way, `(stdout stderr
     /// exit-code)`, `exit-code` `-1` for a signal-killed child, a status the
@@ -19,7 +18,7 @@ pub trait AsyncProcessHost {
         &mut self,
         cmd: &str,
         args: Vec<String>,
-        cwd: Option<PathBuf>,
+        cwd: PathBuf,
         callback: steel::rvals::SteelVal,
     ) -> u64;
 

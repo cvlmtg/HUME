@@ -221,6 +221,12 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
         self.inner.borrow_mut().buffers().buffer_stored_language(id)
     }
+    fn cwd(&self) -> PathBuf {
+        self.inner.borrow_mut().buffers().cwd()
+    }
+    fn set_cwd(&mut self, _path: &Path) -> Result<PathBuf, String> {
+        Err(self.refuse("set_cwd"))
+    }
     fn open_buffer(&mut self, _path: &Path) -> Result<BufferId, String> {
         Err(self.refuse("open_buffer"))
     }

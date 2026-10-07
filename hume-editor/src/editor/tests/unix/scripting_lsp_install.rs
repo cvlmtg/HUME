@@ -732,7 +732,7 @@ fn lsp_install_no_language_buffer_and_no_arg_warns() {
 
 #[test]
 fn lsp_install_tar_archive_requires_tar_on_path() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -1335,7 +1335,7 @@ fn discovery_hint_does_not_fire_for_a_blocked_server() {
 
 #[test]
 fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -1389,7 +1389,7 @@ fn discovery_hint_fires_for_cargo_kind() {
 
 #[test]
 fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -1414,7 +1414,7 @@ fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
 
 #[test]
 fn discovery_hint_does_not_fire_for_download_kind_when_download_tools_missing_from_path() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -1517,7 +1517,7 @@ fn go_layout(bin_name: &str) -> String {
 
 #[test]
 fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -1577,7 +1577,7 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
 
 #[test]
 fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -1705,7 +1705,7 @@ fn write_fake_curl_shim(fixture: &Path, args_file: &Path) -> (tempfile::TempDir,
 fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _lock = lock();
+    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let payload = work.path().join("payload");
     std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
@@ -1758,7 +1758,7 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
 fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _lock = lock();
+    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let payload = work.path().join("payload");
     for empty in ["a", "b", "c", "d"] {
@@ -1808,7 +1808,7 @@ fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
 fn lsp_install_raw_binary_is_marked_executable_and_kept() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _lock = lock();
+    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let asset = work.path().join("marksman-fake");
     std::fs::write(&asset, b"#!/bin/sh\n").unwrap();
@@ -1840,7 +1840,7 @@ fn lsp_install_raw_binary_is_marked_executable_and_kept() {
 /// hand under the same name: the installed copy is what runs afterwards.
 #[test]
 fn lsp_install_replaces_a_manual_registration_of_the_same_name() {
-    let _lock = lock();
+    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let asset = work.path().join("marksman-fake");
     std::fs::write(&asset, b"#!/bin/sh\n").unwrap();
@@ -1885,7 +1885,7 @@ fn lsp_install_replaces_a_manual_registration_of_the_same_name() {
 /// running binary cannot be replaced on every platform.
 #[test]
 fn lsp_install_over_an_existing_install_waits_for_the_server_to_stop() {
-    let _lock = lock();
+    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let asset = work.path().join("marksman-fake");
     std::fs::write(&asset, b"#!/bin/sh\necho new\n").unwrap();
@@ -1925,7 +1925,7 @@ fn lsp_install_over_an_existing_install_waits_for_the_server_to_stop() {
 
 #[test]
 fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
-    let _lock = lock();
+    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let payload = work.path().join("payload");
     std::fs::create_dir_all(&payload).unwrap();
@@ -2034,7 +2034,7 @@ fn install_status_with_command_on_path(
 /// named like itself.
 #[test]
 fn install_notes_a_path_command_named_like_the_server() {
-    let _lock = lock();
+    let _lock = claim_env();
 
     let msg = install_status_with_command_on_path(&_lock, "rust-analyzer", "rust", "rust-analyzer");
 
@@ -2046,7 +2046,7 @@ fn install_notes_a_path_command_named_like_the_server() {
 
 #[test]
 fn install_notes_a_path_command_from_the_commands_catalog() {
-    let _lock = lock();
+    let _lock = claim_env();
 
     let msg = install_status_with_command_on_path(
         &_lock,
@@ -2065,7 +2065,7 @@ fn install_notes_a_path_command_from_the_commands_catalog() {
 fn lsp_install_gz_asset_is_decoded_and_marked_executable() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _lock = lock();
+    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let plain = work.path().join("rust-analyzer-fake");
     std::fs::write(&plain, b"#!/bin/sh\necho decoded\n").unwrap();
@@ -2109,7 +2109,7 @@ fn lsp_install_gz_asset_is_decoded_and_marked_executable() {
 fn lsp_install_zip_marks_every_regular_file_executable_and_never_follows_symlinks() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _lock = lock();
+    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let outside = work.path().join("outside-target");
     std::fs::write(&outside, b"not part of the archive").unwrap();
@@ -2174,7 +2174,7 @@ fn lsp_install_zip_marks_every_regular_file_executable_and_never_follows_symlink
 
 #[test]
 fn lsp_install_missing_binary_after_unpack_fails_loudly() {
-    let _lock = lock();
+    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let payload = work.path().join("payload");
     std::fs::create_dir_all(&payload).unwrap();
@@ -2219,7 +2219,7 @@ fn lsp_install_missing_binary_after_unpack_fails_loudly() {
 
 #[test]
 fn lsp_install_sha256_mismatch_deletes_the_archive_and_fails() {
-    let _lock = lock();
+    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let archive = work.path().join("marksman-fake");
     std::fs::write(&archive, b"served bytes").unwrap();
@@ -2316,7 +2316,7 @@ fn lsp_install_treats_a_lock_dated_in_the_future_as_live() {
 
 #[test]
 fn lsp_install_golang_runs_go_install_into_gobin_and_registers() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2358,7 +2358,7 @@ fn lsp_install_golang_runs_go_install_into_gobin_and_registers() {
 
 #[test]
 fn lsp_install_golang_missing_binary_after_install_fails_loudly() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2385,7 +2385,7 @@ fn lsp_install_golang_missing_binary_after_install_fails_loudly() {
 
 #[test]
 fn lsp_install_golang_requires_go_on_path() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2439,7 +2439,7 @@ fn read_lines(path: &Path) -> Vec<String> {
 
 #[test]
 fn lsp_install_pypi_creates_a_venv_pip_installs_and_registers() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2482,7 +2482,7 @@ fn lsp_install_pypi_creates_a_venv_pip_installs_and_registers() {
 
 #[test]
 fn lsp_install_pypi_passes_extras_in_the_requirement() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2510,7 +2510,7 @@ fn lsp_install_pypi_passes_extras_in_the_requirement() {
 
 #[test]
 fn lsp_install_pypi_missing_binary_after_install_fails_loudly() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2536,7 +2536,7 @@ fn lsp_install_pypi_missing_binary_after_install_fails_loudly() {
 
 #[test]
 fn lsp_install_pypi_requires_python3_on_path() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2569,7 +2569,7 @@ fn load_lsp_with_sources(ed: &mut Editor, sources: &str, data_dir: &Path) -> tem
 
 #[test]
 fn lsp_install_refuses_a_server_restricted_to_other_platforms() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     let _runtime = load_lsp_with_sources(
@@ -2601,7 +2601,7 @@ fn lsp_install_refuses_a_server_restricted_to_other_platforms() {
 
 #[test]
 fn lsp_install_allows_a_server_whose_platform_list_includes_this_one() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     let _runtime = load_lsp_with_sources(
@@ -2641,7 +2641,7 @@ fn gem_layout(bin_name: &str) -> String {
 
 #[test]
 fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2704,7 +2704,7 @@ fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
 
 #[test]
 fn lsp_install_gem_missing_binary_after_install_fails_loudly() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2733,7 +2733,7 @@ fn lsp_install_gem_missing_binary_after_install_fails_loudly() {
 
 #[test]
 fn lsp_install_gem_requires_gem_on_path() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2766,7 +2766,7 @@ fn dotnet_layout(bin_name: &str) -> String {
 
 #[test]
 fn lsp_install_nuget_installs_a_dotnet_tool_and_registers() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2818,7 +2818,7 @@ fn lsp_install_nuget_installs_a_dotnet_tool_and_registers() {
 
 #[test]
 fn lsp_install_nuget_missing_binary_after_install_fails_loudly() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -2847,7 +2847,7 @@ fn lsp_install_nuget_missing_binary_after_install_fails_loudly() {
 
 #[test]
 fn lsp_install_nuget_requires_dotnet_on_path() {
-    let _lock = lock();
+    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());

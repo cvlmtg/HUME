@@ -63,16 +63,22 @@ pub(crate) fn register_grammar(
     injections_path: SteelVal,
     textobjects_path: SteelVal,
 ) -> SteelResult {
+    let cwd = ctx.host.buffers().cwd();
     let reg = GrammarReg {
         name: string_arg(name, "register-grammar! name")?,
-        grammar_path: path_arg(grammar_path, "register-grammar! grammar-path")?,
+        grammar_path: cwd.join(path_arg(grammar_path, "register-grammar! grammar-path")?),
         symbol: string_arg(symbol, "register-grammar! symbol")?,
-        highlights_path: path_arg(highlights_path, "register-grammar! highlights-path")?,
-        injections_path: optional_path_arg(injections_path, "register-grammar! injections-path")?,
+        highlights_path: cwd.join(path_arg(
+            highlights_path,
+            "register-grammar! highlights-path",
+        )?),
+        injections_path: optional_path_arg(injections_path, "register-grammar! injections-path")?
+            .map(|p| cwd.join(p)),
         textobjects_path: optional_path_arg(
             textobjects_path,
             "register-grammar! textobjects-path",
-        )?,
+        )?
+        .map(|p| cwd.join(p)),
     };
 
     if ctx.session == crate::context::EvalSession::Init {

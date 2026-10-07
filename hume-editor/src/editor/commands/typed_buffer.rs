@@ -149,7 +149,7 @@ pub(in crate::editor) fn typed_checktime(
 ///
 /// - No arg: change to `$HOME`.
 /// - `path` given: `~` / env-var expansion applied first; relative paths
-///   resolve against the current process cwd (which mirrors `editor.cwd`).
+///   resolve against the editor's cwd.
 pub(in crate::editor) fn typed_cd(
     ed: &mut Editor,
     _fp: FocusedPane,
@@ -165,6 +165,7 @@ pub(in crate::editor) fn typed_cd(
     };
 
     let resolved = ed
+        .state
         .set_cwd(&target)
         .map_err(|e| CommandError::new(format!("{}: {e}", target.display())))?;
     ed.report(

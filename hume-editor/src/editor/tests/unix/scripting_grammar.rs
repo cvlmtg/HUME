@@ -384,7 +384,7 @@ fn install_real_json_grammar_e2e() {
     // test is a `PATH` reader for its whole duration.
     // `scripting_lsp_install.rs` narrows process `PATH` to an empty or
     // shim-only dir in several tests, and a spawn landing inside that window
-    // resolves to nothing (see `Global::Env`'s doc).
+    // resolves to nothing (see `PathReader`'s doc).
     let _path = path_reader();
 
     // Read the JSON grammar's url + pinned rev straight from the runtime catalog
@@ -409,7 +409,7 @@ fn install_real_json_grammar_e2e() {
     }
     assert!(src_dir.exists(), "clone must create src dir");
 
-    let status = hume_platform::process::tree_sitter_build(&src_dir, &out_path)
+    let status = hume_platform::process::tree_sitter_build(&src_dir, &out_path, &src_dir)
         .expect("tree_sitter_build must not fail to spawn");
     assert!(status.success(), "tree-sitter build failed");
     assert!(out_path.exists(), "compiled grammar must exist after build");

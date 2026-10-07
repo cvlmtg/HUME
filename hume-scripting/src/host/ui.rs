@@ -124,9 +124,8 @@ pub struct LivePickerOpts {
 /// `Vec::default()`'s empty list, so a caller must always supply it
 /// explicitly rather than get a silently wrong allowlist.
 pub struct PickerSourceOpts {
-    /// `#:cwd`: working directory for the spawned process; `None` inherits
-    /// the caller's.
-    pub cwd: Option<std::path::PathBuf>,
+    /// `#:cwd`: working directory for the spawned process.
+    pub cwd: std::path::PathBuf,
     /// `#:nul`: split stdout on NUL bytes instead of newlines.
     pub nul: bool,
     /// `#:ok-exit-codes`: the complete set of exit codes that count as a

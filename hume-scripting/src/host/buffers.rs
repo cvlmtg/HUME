@@ -82,6 +82,15 @@ pub trait BufferHost {
     /// Language stored on the buffer (not accounting for pending `set-buffer-option!`'s `"language"`).
     fn buffer_stored_language(&self, id: BufferId) -> Option<String>;
 
+    // ── Working directory ────────────────────────────────────────────────────
+    /// The editor's working directory: the base for relative paths and the
+    /// default cwd of every spawned child. Backs `(cwd)`.
+    fn cwd(&self) -> PathBuf;
+    /// Moves the editor's working directory to `path` (a relative `path` joins
+    /// onto the current one) and returns the new directory. The same
+    /// operation as `:cd`. `Err` when `path` is not a directory.
+    fn set_cwd(&mut self, path: &Path) -> Result<PathBuf, String>;
+
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
     /// Open a file at `path`, deduplicating if already open.
     /// Returns the `BufferId` (new or existing).

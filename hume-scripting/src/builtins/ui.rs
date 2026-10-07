@@ -20,8 +20,8 @@ use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, callable_arg, list_items, list_to_i32s, list_to_strings, optional_callable_arg,
-    optional_path_arg, optional_string_arg, pair_fields, single_key_arg, string_arg,
+    bool_arg, callable_arg, cwd_arg, list_items, list_to_i32s, list_to_strings,
+    optional_callable_arg, optional_string_arg, pair_fields, single_key_arg, string_arg,
     symbol_enum_arg, token_arg, token_or_false, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
@@ -391,7 +391,7 @@ pub(crate) fn picker_source_spawn(
         steel::stop!(Generic => "picker-source-spawn!: cmd must not be empty");
     }
     let args = list_to_strings(args, "picker-source-spawn! args")?;
-    let cwd = optional_path_arg(cwd, "picker-source-spawn! #:cwd")?;
+    let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "picker-source-spawn! #:cwd")?;
     let nul = bool_arg(nul, "picker-source-spawn! #:nul")?;
     let ok_exit_codes = list_to_i32s(ok_exit_codes, "picker-source-spawn! #:ok-exit-codes")?;
     let opts = PickerSourceOpts {

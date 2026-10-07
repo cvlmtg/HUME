@@ -565,8 +565,8 @@ re-verification against current code.
 
 ## L11 — A process-global lock gated mutators but not readers (2026-08-23)
 
-**Root cause:** `TestGlobals` (`hume-editor/src/editor/tests/mod.rs`) exists
-so tests that redirect process-global `PATH`/`TMPDIR`/`HUME_RUNTIME`/cwd
+**Root cause:** The test-suite lock over process `PATH`
+(`hume-editor/src/editor/tests/mod.rs`) exists so tests that redirect it
 don't race each other, and its own module doc already stated the real
 hazard: mutating one of these "races every other test *reading or writing*
 the same var." But its enforcement lints only
@@ -578,7 +578,7 @@ the spawn instant — and no reader was required to hold a claim at all.
 **Concrete instance:** `install_real_json_grammar_e2e`
 (`hume-editor/src/editor/tests/unix/scripting_grammar.rs`) spawns `git`,
 `curl`, and `tree-sitter` by name with no `TEST_GLOBALS` claim.
-`scripting_lsp_install.rs` has four tests that claim `Global::Env` and then
+`scripting_lsp_install.rs` has four tests that claim `PATH` and then
 narrow `PATH` to an empty (or shim-only) directory. A spawn from the e2e
 test landing inside one of those windows resolved to nothing — `Os { code:
 2, kind: NotFound }` — reproducing exactly under `--test-threads=16` at
@@ -593,10 +593,10 @@ explicit mutator — must take the same claim. A subprocess spawned by
 unqualified name reads `PATH` (and, if it inherits cwd, the working
 directory) exactly as much as a `std::env::var` call does; a lint (or
 review pass) that greps for `set_var`/`remove_var` and stops there will
-miss it. State the reader obligation on the lock type itself (`Global::Env`'s
+miss it. State the reader obligation on the lock type itself (`PathReader`'s
 doc now names it) so it doesn't need re-discovering at each new spawn site.
 
-**Files:** `hume-editor/src/editor/tests/mod.rs` (`Global::Env` doc),
+**Files:** `hume-editor/src/editor/tests/mod.rs` (`PathReader` doc),
 `hume-editor/src/editor/tests/unix/scripting_grammar.rs`,
 `hume-editor/src/editor/tests/unix/async_job.rs`,
 `hume-editor/src/editor/tests/unix/picker_source.rs`,

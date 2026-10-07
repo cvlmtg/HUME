@@ -305,6 +305,12 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
         self.inner.buffer_stored_language(id)
     }
+    fn cwd(&self) -> std::path::PathBuf {
+        self.inner.cwd()
+    }
+    fn set_cwd(&mut self, path: &std::path::Path) -> Result<std::path::PathBuf, String> {
+        self.inner.set_cwd(path)
+    }
     fn open_buffer(&mut self, path: &std::path::Path) -> Result<BufferId, String> {
         self.inner.open_buffer(path)
     }

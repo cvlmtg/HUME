@@ -14,7 +14,7 @@ fn run_capture_child_leads_its_own_process_group() {
     let output = run_capture(
         "sh",
         &["-c".to_string(), "ps -o pgid= -p $$".to_string()],
-        None,
+        Path::new("."),
     )
     .expect("spawn sh");
     let child_pgid: i32 = String::from_utf8_lossy(&output.stdout)
@@ -37,7 +37,7 @@ fn run_capture_does_not_deadlock_on_large_stderr() {
     let out = run_capture(
         "sh",
         &["-c".to_string(), "yes | head -c 200000 1>&2".to_string()],
-        None,
+        Path::new("."),
     )
     .expect("run_capture");
     assert_eq!(out.stderr.len(), 200_000);
@@ -51,7 +51,7 @@ fn run_capture_captures_large_stdout_whole() {
     let out = run_capture(
         "sh",
         &["-c".to_string(), "yes | head -c 200000".to_string()],
-        None,
+        Path::new("."),
     )
     .expect("run_capture");
     assert_eq!(out.stdout.len(), 200_000);
@@ -68,7 +68,7 @@ fn run_capture_sets_git_terminal_prompt_to_deny_credential_prompts() {
             "-c".to_string(),
             "printf %s \"$GIT_TERMINAL_PROMPT\"".to_string(),
         ],
-        None,
+        Path::new("."),
     )
     .expect("run_capture");
     assert_eq!(String::from_utf8_lossy(&out.stdout), "0");
@@ -78,10 +78,10 @@ fn run_capture_sets_git_terminal_prompt_to_deny_credential_prompts() {
 
 #[test]
 fn run_inline_output_returns_exit_status_of_child() {
-    let status = run_inline_output("true", &[], None, &[]).expect("spawn true");
+    let status = run_inline_output("true", &[], Path::new("."), &[]).expect("spawn true");
     assert!(status.success());
 
-    let status = run_inline_output("false", &[], None, &[]).expect("spawn false");
+    let status = run_inline_output("false", &[], Path::new("."), &[]).expect("spawn false");
     assert!(!status.success());
 }
 
@@ -101,7 +101,7 @@ fn run_inline_output_sets_git_terminal_prompt_to_deny_credential_prompts() {
             "-c".to_string(),
             "printf %s \"$GIT_TERMINAL_PROMPT\" > out.txt".to_string(),
         ],
-        Some(dir.path()),
+        dir.path(),
         &[],
     )
     .expect("spawn sh");
@@ -119,7 +119,7 @@ fn run_inline_output_applies_env() {
             "-c".to_string(),
             "printf %s \"$HUME_ENV_PROBE\" > out.txt".to_string(),
         ],
-        Some(dir.path()),
+        dir.path(),
         &[("HUME_ENV_PROBE".to_string(), "probe-value".to_string())],
     )
     .expect("spawn sh");
@@ -135,7 +135,7 @@ fn run_inline_output_honors_cwd() {
     let status = run_inline_output(
         "test",
         &["-f".to_string(), "marker.txt".to_string()],
-        Some(dir.path()),
+        dir.path(),
         &[],
     )
     .expect("spawn test -f");

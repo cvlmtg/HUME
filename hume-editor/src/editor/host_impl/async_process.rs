@@ -10,7 +10,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         &mut self,
         cmd: &str,
         args: Vec<String>,
-        cwd: Option<PathBuf>,
+        cwd: PathBuf,
         callback: steel::rvals::SteelVal,
     ) -> u64 {
         let id = self.state.config.next_async_job_id;
@@ -19,7 +19,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         match hume_platform::process::job::spawn_job(
             cmd,
             &args,
-            cwd.as_deref(),
+            &cwd,
             std::sync::Arc::clone(&self.state.wake),
         ) {
             Ok(job) => {

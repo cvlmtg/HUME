@@ -109,6 +109,12 @@ impl BufferHost for NullHost {
     fn buffer_stored_language(&self, _id: BufferId) -> Option<String> {
         None
     }
+    fn cwd(&self) -> PathBuf {
+        PathBuf::from(".")
+    }
+    fn set_cwd(&mut self, _path: &Path) -> Result<PathBuf, String> {
+        Err("NullHost: set_cwd not available".into())
+    }
     fn open_buffer(&mut self, _path: &Path) -> Result<BufferId, String> {
         Err("NullHost: open_buffer not available".into())
     }

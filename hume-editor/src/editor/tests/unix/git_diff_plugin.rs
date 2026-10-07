@@ -263,10 +263,10 @@ fn highlights_in(
 
 #[test]
 fn signs_pure_addition_marks_one_plus_per_line() {
-    // `setup()` (claims `Global::Env`) runs before any `git`/`git_init` spawn
+    // `setup()` (holds a `PathReader`) runs before any `git`/`git_init` spawn
     // below: those are unqualified-name subprocess spawns that read `PATH`,
-    // so they must run under the same claim as any other `PATH` reader (see
-    // `Global::Env`'s doc in `tests/mod.rs`).
+    // so they must run under a `PathReader` like any other `PATH` reader (see
+    // `PathReader`'s doc in `tests/mod.rs`).
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), None);
 

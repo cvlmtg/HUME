@@ -131,7 +131,7 @@ pub struct SourceExit {
 pub fn spawn_line_source(
     cmd: &str,
     args: &[String],
-    cwd: Option<&Path>,
+    cwd: &Path,
     delimiter: u8,
     wake: WakeCallback,
 ) -> io::Result<SpawnedLineSource> {
@@ -363,7 +363,14 @@ mod tests {
     fn spawn_missing_binary_is_io_error() {
         let wake: WakeCallback = Arc::new(|| {});
         assert!(
-            spawn_line_source("definitely-not-a-real-binary-xyz", &[], None, b'\n', wake).is_err()
+            spawn_line_source(
+                "definitely-not-a-real-binary-xyz",
+                &[],
+                Path::new("."),
+                b'\n',
+                wake
+            )
+            .is_err()
         );
     }
 
@@ -405,8 +412,8 @@ mod tests {
         #[test]
         fn happy_path_streams_lines_and_reports_success() {
             let args = vec!["-c".to_string(), "printf 'a\\nb\\nc'".to_string()];
-            let mut source =
-                spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
+            let mut source = spawn_line_source("sh", &args, Path::new("."), b'\n', no_op_wake())
+                .expect("spawn sh");
             let lines = drain_until_disconnected(&mut source);
             assert_eq!(lines, vec!["a", "b", "c"]);
             let exit = source.finish();
@@ -417,8 +424,8 @@ mod tests {
         #[test]
         fn nul_delimited_output_splits_on_nul() {
             let args = vec!["-c".to_string(), "printf 'x\\0y\\0z'".to_string()];
-            let mut source =
-                spawn_line_source("sh", &args, None, b'\0', no_op_wake()).expect("spawn sh");
+            let mut source = spawn_line_source("sh", &args, Path::new("."), b'\0', no_op_wake())
+                .expect("spawn sh");
             let lines = drain_until_disconnected(&mut source);
             assert_eq!(lines, vec!["x", "y", "z"]);
         }
@@ -427,7 +434,8 @@ mod tests {
         fn wake_is_called_after_a_batch_arrives() {
             let (wake, count) = counting_wake();
             let args = vec!["-c".to_string(), "printf 'a\\n'".to_string()];
-            let mut source = spawn_line_source("sh", &args, None, b'\n', wake).expect("spawn sh");
+            let mut source =
+                spawn_line_source("sh", &args, Path::new("."), b'\n', wake).expect("spawn sh");
             drain_until_disconnected(&mut source);
             assert!(
                 count.load(Ordering::SeqCst) > 0,
@@ -438,8 +446,8 @@ mod tests {
         #[test]
         fn nonzero_exit_and_stderr_are_captured() {
             let args = vec!["-c".to_string(), "echo oops >&2; exit 3".to_string()];
-            let mut source =
-                spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
+            let mut source = spawn_line_source("sh", &args, Path::new("."), b'\n', no_op_wake())
+                .expect("spawn sh");
             drain_until_disconnected(&mut source);
             let exit = source.finish();
             assert_eq!(exit.status.and_then(|s| s.code()), Some(3));
@@ -455,8 +463,8 @@ mod tests {
                 "-c".to_string(),
                 "yes x | head -c 200000 1>&2; exit 0".to_string(),
             ];
-            let mut source =
-                spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
+            let mut source = spawn_line_source("sh", &args, Path::new("."), b'\n', no_op_wake())
+                .expect("spawn sh");
             drain_until_disconnected(&mut source);
             let exit = source.finish();
             assert!(exit.stderr.len() <= STDERR_CAPTURE_CAP);
@@ -474,8 +482,8 @@ mod tests {
             // would fork, leaving an orphaned `sleep` that `kill` can't
             // reach and that would hold the stderr pipe open for real).
             let args = vec!["-c".to_string(), "exec 1>&-; exec sleep 30".to_string()];
-            let mut source =
-                spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
+            let mut source = spawn_line_source("sh", &args, Path::new("."), b'\n', no_op_wake())
+                .expect("spawn sh");
             drain_until_disconnected(&mut source);
             let pid =
                 nix::unistd::Pid::from_raw(i32::try_from(source.child.id()).expect("pid fits i32"));
@@ -511,8 +519,8 @@ mod tests {
             // that case) `drop()` itself must return promptly, not block
             // for the child's remaining lifetime.
             let args = vec!["30".to_string()];
-            let source =
-                spawn_line_source("sleep", &args, None, b'\n', no_op_wake()).expect("spawn sleep");
+            let source = spawn_line_source("sleep", &args, Path::new("."), b'\n', no_op_wake())
+                .expect("spawn sleep");
             let pid =
                 nix::unistd::Pid::from_raw(i32::try_from(source.child.id()).expect("pid fits i32"));
             let started = Instant::now();
@@ -532,7 +540,7 @@ mod tests {
         fn nonexistent_cwd_is_error() {
             let dir = tempfile::tempdir().expect("tempdir");
             let bogus = dir.path().join("does-not-exist");
-            assert!(spawn_line_source("sh", &[], Some(&bogus), b'\n', no_op_wake()).is_err());
+            assert!(spawn_line_source("sh", &[], &bogus, b'\n', no_op_wake()).is_err());
         }
     }
 }

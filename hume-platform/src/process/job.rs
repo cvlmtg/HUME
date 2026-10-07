@@ -75,7 +75,7 @@ pub struct SpawnedJob {
 pub fn spawn_job(
     cmd: &str,
     args: &[String],
-    cwd: Option<&Path>,
+    cwd: &Path,
     wake: WakeCallback,
 ) -> io::Result<SpawnedJob> {
     let (child, stdout, stderr) = spawn_piped(cmd, args, cwd)?;
@@ -215,7 +215,15 @@ mod tests {
     #[test]
     fn spawn_missing_binary_is_io_error() {
         let wake: WakeCallback = std::sync::Arc::new(|| {});
-        assert!(spawn_job("definitely-not-a-real-binary-xyz", &[], None, wake).is_err());
+        assert!(
+            spawn_job(
+                "definitely-not-a-real-binary-xyz",
+                &[],
+                Path::new("."),
+                wake
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -223,7 +231,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let bogus = dir.path().join("does-not-exist");
         let wake: WakeCallback = std::sync::Arc::new(|| {});
-        assert!(spawn_job("sh", &[], Some(&bogus), wake).is_err());
+        assert!(spawn_job("sh", &[], &bogus, wake).is_err());
     }
 
     #[cfg(unix)]
@@ -264,7 +272,7 @@ mod tests {
         #[test]
         fn happy_path_captures_stdout_and_success() {
             let args = vec!["-c".to_string(), "printf 'hi'".to_string()];
-            let mut job = spawn_job("sh", &args, None, no_op_wake()).expect("spawn sh");
+            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert_eq!(result.stdout, "hi");
             assert_eq!(result.stderr, "");
@@ -274,7 +282,7 @@ mod tests {
         #[test]
         fn nonzero_exit_and_stderr_are_captured() {
             let args = vec!["-c".to_string(), "echo oops >&2; exit 3".to_string()];
-            let mut job = spawn_job("sh", &args, None, no_op_wake()).expect("spawn sh");
+            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert_eq!(result.status.and_then(|s| s.code()), Some(3));
             assert!(result.stderr.contains("oops"), "got: {:?}", result.stderr);
@@ -290,7 +298,7 @@ mod tests {
                 "-c".to_string(),
                 "printf hi; exec 1>&- 2>&-; sleep 0.3; exit 0".to_string(),
             ];
-            let mut job = spawn_job("sh", &args, None, no_op_wake()).expect("spawn sh");
+            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert_eq!(result.stdout, "hi");
             assert_eq!(
@@ -306,7 +314,7 @@ mod tests {
                 "-c".to_string(),
                 "yes x | head -c 200000 1>&2; exit 0".to_string(),
             ];
-            let mut job = spawn_job("sh", &args, None, no_op_wake()).expect("spawn sh");
+            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert!(result.stderr.len() <= STDERR_CAPTURE_CAP);
         }
@@ -317,7 +325,7 @@ mod tests {
                 "-c".to_string(),
                 "yes x | head -c 200000; exit 0".to_string(),
             ];
-            let mut job = spawn_job("sh", &args, None, no_op_wake()).expect("spawn sh");
+            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert_eq!(
                 result.stdout.len(),
@@ -335,7 +343,7 @@ mod tests {
                 "-c".to_string(),
                 "(yes x | head -c 200000) & (yes y | head -c 200000 1>&2) & wait".to_string(),
             ];
-            let mut job = spawn_job("sh", &args, None, no_op_wake()).expect("spawn sh");
+            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert_eq!(result.stdout.len(), 200_000);
             assert!(result.stderr.len() <= STDERR_CAPTURE_CAP);
@@ -345,7 +353,7 @@ mod tests {
         fn wake_fires_exactly_once() {
             let (wake, count) = counting_wake();
             let args = vec!["-c".to_string(), "printf hi".to_string()];
-            let mut job = spawn_job("sh", &args, None, wake).expect("spawn sh");
+            let mut job = spawn_job("sh", &args, Path::new("."), wake).expect("spawn sh");
             poll_until_result(&mut job);
             assert_eq!(count.load(Ordering::SeqCst), 1);
         }
@@ -353,7 +361,7 @@ mod tests {
         #[test]
         fn self_signal_kill_reports_no_exit_code() {
             let args = vec!["-c".to_string(), "kill -9 $$".to_string()];
-            let mut job = spawn_job("sh", &args, None, no_op_wake()).expect("spawn sh");
+            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert_eq!(
                 result.status.and_then(|s| s.code()),
@@ -365,7 +373,7 @@ mod tests {
         #[test]
         fn drop_kills_the_child_promptly() {
             let args = vec!["30".to_string()];
-            let job = spawn_job("sleep", &args, None, no_op_wake()).expect("spawn sleep");
+            let job = spawn_job("sleep", &args, Path::new("."), no_op_wake()).expect("spawn sleep");
             let pid = nix::unistd::Pid::from_raw(i32::try_from(job.pid()).expect("pid fits i32"));
             let started = Instant::now();
             drop(job);

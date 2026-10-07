@@ -63,12 +63,16 @@ pub mod tracked;
 /// would instead open `/dev/tty` directly and hang there. Left unset,
 /// either shape turns a private repo or an expired token into a hang
 /// instead of a fast, readable git error.
-fn base_command(cmd: &str, args: &[String], cwd: Option<&Path>) -> Command {
+fn base_command<I>(cmd: &str, args: I, cwd: &Path) -> Command
+where
+    I: IntoIterator,
+    I::Item: AsRef<std::ffi::OsStr>,
+{
     let mut command = Command::new(cmd);
-    command.args(args).env("GIT_TERMINAL_PROMPT", "0");
-    if let Some(dir) = cwd {
-        command.current_dir(strip_unc_prefix(dir.to_path_buf()));
-    }
+    command
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .current_dir(strip_unc_prefix(cwd.to_path_buf()));
     command
 }
 
@@ -93,7 +97,7 @@ fn base_command(cmd: &str, args: &[String], cwd: Option<&Path>) -> Command {
 pub fn run_inline_output(
     cmd: &str,
     args: &[String],
-    cwd: Option<&Path>,
+    cwd: &Path,
     env: &[(String, String)],
 ) -> io::Result<ExitStatus> {
     base_command(cmd, args, cwd)
@@ -114,11 +118,7 @@ pub fn run_inline_output(
 /// `#:inline-output` command with raw mode off, does not kill HUME with it.
 ///
 /// See `base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is set.
-pub fn run_capture(
-    cmd: &str,
-    args: &[String],
-    cwd: Option<&Path>,
-) -> io::Result<std::process::Output> {
+pub fn run_capture(cmd: &str, args: &[String], cwd: &Path) -> io::Result<std::process::Output> {
     base_command(cmd, args, cwd)
         .stdin(Stdio::null())
         .new_process_group()
@@ -132,14 +132,22 @@ pub fn run_capture(
 /// Windows that defaults to MSVC's `cl.exe`, which many machines don't have.
 /// If `cl` is missing, we point `cc` at whichever alternative compiler is on
 /// `PATH` (clang, gcc, or zig) via `CC`/`CXX` (see `choose_windows_compiler`).
-pub fn tree_sitter_build(src: &Path, out: &Path) -> io::Result<ExitStatus> {
+pub fn tree_sitter_build(src: &Path, out: &Path, cwd: &Path) -> io::Result<ExitStatus> {
     let src = strip_unc_prefix(src.to_path_buf());
     let out = strip_unc_prefix(out.to_path_buf());
-    let mut cmd = Command::new("tree-sitter");
-    cmd.args(["build", "-o"]).arg(&out).arg(&src);
+    let mut cmd = base_command(
+        "tree-sitter",
+        [
+            std::ffi::OsStr::new("build"),
+            std::ffi::OsStr::new("-o"),
+            out.as_os_str(),
+            src.as_os_str(),
+        ],
+        cwd,
+    );
 
     #[cfg(windows)]
-    if let Some(compiler) = choose_windows_compiler(exe_on_path) {
+    if let Some(compiler) = choose_windows_compiler(|name| exe_on_path(name, cwd)) {
         let (cc, cxx) = compiler_env_vars(compiler)?;
         cmd.env("CC", cc).env("CXX", cxx);
     }
@@ -153,8 +161,8 @@ pub fn tree_sitter_build(src: &Path, out: &Path) -> io::Result<ExitStatus> {
 /// outcome (success, nonzero exit, permission error) means the executable
 /// exists. This respects `PATHEXT` on Windows without an extra dependency.
 #[cfg(windows)]
-fn exe_on_path(name: &str) -> bool {
-    match Command::new(name).arg("--version").output() {
+fn exe_on_path(name: &str, cwd: &Path) -> bool {
+    match base_command(name, ["--version"], cwd).output() {
         Ok(_) => true,
         Err(e) => e.kind() != io::ErrorKind::NotFound,
     }
@@ -291,12 +299,12 @@ pub fn exit_code_str(status: ExitStatus) -> String {
 /// compile error (compiler present, grammar source broken) to a missing
 /// toolchain.
 #[cfg(windows)]
-pub fn no_windows_compiler_found() -> bool {
+pub fn no_windows_compiler_found(cwd: &Path) -> bool {
     // Probe `cl` once and reuse it: `choose_windows_compiler` checks `cl`
     // first internally, so passing `exe_on_path` straight through here would
     // spawn a second `cl --version` on top of the one `tree_sitter_build`
     // already ran on the same failure path.
-    let has_cl = exe_on_path("cl");
+    let has_cl = exe_on_path("cl", cwd);
     if has_cl {
         return false;
     }
@@ -304,7 +312,7 @@ pub fn no_windows_compiler_found() -> bool {
         if name == "cl" {
             has_cl
         } else {
-            exe_on_path(name)
+            exe_on_path(name, cwd)
         }
     })
     .is_none()

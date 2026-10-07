@@ -16,7 +16,7 @@ fn call(ed: &mut Editor, name: &str) {
 
 #[test]
 fn happy_path_delivers_stdout_stderr_and_exit_code() {
-    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
@@ -61,7 +61,7 @@ fn cwd_keyword_sets_the_child_working_directory() {
 
 #[test]
 fn nonzero_exit_and_stderr_reach_the_callback() {
-    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
@@ -162,7 +162,7 @@ fn spawn_failure_wakes_the_event_loop() {
 
 #[test]
 fn cancel_async_prevents_the_callback_and_kills_the_child() {
-    // Spawns "sleep" and "kill" by unqualified name; see `Global::Env`'s doc.
+    // Spawns "sleep" and "kill" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");

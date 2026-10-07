@@ -423,7 +423,7 @@ A few extra functions cover things Scheme has no way to know on its own:
   #:cwd repo-root)
 ```
 
-`spawn-async!` starts `cmd` with `args` (in `#:cwd`, or HUME's own working
+`spawn-async!` starts `cmd` with `args` (in `#:cwd`, or HUME's working
 directory when omitted) and returns immediately; nothing blocks. `callback` is called exactly once,
 later, once the command has finished: `stdout` and `stderr` are its complete output as
 strings, `exit-code` is its exit code (`-1` if it was killed by a signal, or if the

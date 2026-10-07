@@ -503,10 +503,10 @@ fn core_stdlib_split_words_uses_the_buffers_own_word_chars() {
 #[test]
 fn core_stdlib_git_probes_inside_a_work_tree() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
-    let sandbox = CwdSandbox::new();
+    let sandbox = Sandbox::new();
     git_init(sandbox.raw());
     std::fs::create_dir_all(sandbox.raw().join("sub")).unwrap();
-    ed.set_cwd(&sandbox.path().join("sub")).unwrap();
+    ed.state.set_cwd(&sandbox.path().join("sub")).unwrap();
 
     let root = steel_path(&sandbox.path());
     let assertions = format!(
@@ -537,8 +537,8 @@ fn core_stdlib_git_probes_inside_a_work_tree() {
 #[test]
 fn core_stdlib_git_probes_outside_a_work_tree() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
-    let sandbox = CwdSandbox::new();
-    ed.set_cwd(&sandbox.path()).unwrap();
+    let sandbox = Sandbox::new();
+    ed.state.set_cwd(&sandbox.path()).unwrap();
 
     let assertions = r#"
 (unless (equal? (call! "stdlib/git-repo?") #f)

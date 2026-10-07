@@ -1,43 +1,39 @@
-//! Regression tests for `TestGlobals`, the reentrant lock guarding the
-//! suite's process globals. Nesting a different `Global` must neither panic
-//! nor hang; claiming the same one twice, or taking `PATH_USERS` after the
-//! mutex, must panic. A hang is the failure this type exists to rule out, so
-//! no test here asserts against a timeout.
+//! Regression tests for the locks over process `PATH`: `EnvClaim` is
+//! exclusive, `PathReader` is shared. A nested claim, or a claim and a reader
+//! on one thread, must panic with a clear message. A hang is the failure
+//! these types exist to rule out, so no test here asserts against a timeout.
 
 use super::*;
 
 #[test]
-#[should_panic(expected = "already holds a Env claim")]
-fn claiming_the_same_global_twice_on_one_thread_panics_instead_of_hanging() {
-    let _outer = TEST_GLOBALS.claim(Global::Env);
-    let _inner = TEST_GLOBALS.claim(Global::Env);
+#[should_panic(expected = "already holds an `EnvClaim`")]
+fn claiming_twice_on_one_thread_panics_instead_of_hanging() {
+    let _outer = claim_env();
+    let _inner = claim_env();
 }
 
 #[test]
-fn claiming_a_different_global_while_holding_one_succeeds() {
-    let _env = TEST_GLOBALS.claim(Global::Env);
-    // Different resource: legitimate nesting (e.g. `CwdSandbox` constructed
-    // inside a live `RuntimeDirs` in `unix/pickers_plugin.rs`) must
-    // neither panic nor hang.
-    let _cwd = TEST_GLOBALS.claim(Global::Cwd);
+#[should_panic(expected = "holds a `PathReader` and claims `PATH`")]
+fn claiming_while_holding_a_reader_panics_instead_of_hanging() {
+    let _reader = path_reader();
+    let _claim = claim_env();
 }
 
 #[test]
-#[should_panic(expected = "holds a Cwd claim and claims `Global::Env`")]
-fn env_claim_inside_a_cwd_claim_panics_instead_of_risking_a_deadlock() {
-    let _cwd = TEST_GLOBALS.claim(Global::Cwd);
-    let _env = TEST_GLOBALS.claim(Global::Env);
-}
-
-#[test]
-#[should_panic(expected = "holds a Cwd claim and builds a `Dirs` fixture")]
-fn path_reader_inside_a_cwd_claim_panics_instead_of_risking_a_deadlock() {
-    let _cwd = TEST_GLOBALS.claim(Global::Cwd);
-    let _path = path_reader();
+#[should_panic(expected = "holds an `EnvClaim` and builds a `Dirs` fixture")]
+fn building_a_reader_while_holding_a_claim_panics_instead_of_hanging() {
+    let _claim = claim_env();
+    let _reader = path_reader();
 }
 
 #[test]
 fn nested_path_readers_on_one_thread_succeed() {
     let _outer = path_reader();
     let _inner = path_reader();
+}
+
+#[test]
+fn a_claim_can_be_retaken_after_it_drops() {
+    drop(claim_env());
+    let _again = claim_env();
 }

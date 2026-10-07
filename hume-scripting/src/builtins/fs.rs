@@ -11,6 +11,8 @@
 //! |-----------------|--------------------------------|----------------------------------------------|
 //! | `data-dir`      | `() → string \| #f`            | HUME data directory (XDG), or `#f` if unset  |
 //! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent               |
+//! | `cwd`           | `() → string`                  | The editor's working directory               |
+//! | `set-cwd!`      | `string → void`                | `:cd`: moves the editor's working directory  |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
 //! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
 //!
@@ -59,6 +61,27 @@ pub(crate) fn data_dir(ctx: &mut SteelCtx) -> SteelResult {
 /// Windows).
 pub(crate) fn runtime_dir(ctx: &mut SteelCtx) -> SteelResult {
     dir_builtin(ctx.dirs.runtime_dir_display.as_deref())
+}
+
+/// `(cwd)`: the editor's working directory as a string: the base `:e` and
+/// every spawned child resolve against. Display form, like `(data-dir)`.
+/// Steel's own `current-directory` reads the process cwd: `:cd` moves that
+/// too, but a plugin that moves it with `change-current-directory!` leaves
+/// the editor's cwd behind.
+pub(crate) fn cwd(ctx: &mut SteelCtx) -> SteelResult {
+    let cwd = hume_platform::path::strip_unc_prefix(ctx.host.buffers().cwd());
+    dir_builtin(Some(&cwd))
+}
+
+/// `(set-cwd! path)`: moves the editor's working directory, like
+/// `:cd path` (a relative `path` joins onto the current one). Raises when
+/// `path` is not a directory. Never calls Steel's `change-current-directory!`.
+pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: String) -> SteelResult {
+    ctx.host
+        .buffers()
+        .set_cwd(Path::new(&path))
+        .map_err(generic_err)?;
+    Ok(SteelVal::Void)
 }
 
 // ── path-join ─────────────────────────────────────────────────────────────────

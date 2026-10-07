@@ -152,6 +152,12 @@ impl BufferHost for MockHost {
     fn buffer_stored_language(&self, _id: BufferId) -> Option<String> {
         None
     }
+    fn cwd(&self) -> std::path::PathBuf {
+        std::path::PathBuf::from(".")
+    }
+    fn set_cwd(&mut self, _path: &std::path::Path) -> Result<std::path::PathBuf, String> {
+        Err("MockHost: set_cwd not available".into())
+    }
     fn open_buffer(&mut self, _path: &std::path::Path) -> Result<BufferId, String> {
         Err("MockHost: open_buffer not available".into())
     }
