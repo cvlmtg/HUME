@@ -107,7 +107,6 @@ impl EditorState {
                 serde_json::json!({ "textDocument": { "uri": uri } }),
             );
         }
-        self.lsp_pull_diagnostics(bid, None);
     }
 
     /// `textDocument/didOpen` with the full text, to `sid` alone, as

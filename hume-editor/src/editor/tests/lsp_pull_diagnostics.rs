@@ -203,12 +203,59 @@ fn excluding_pull_diagnostics_sends_no_pull() {
 }
 
 #[test]
-fn excluding_diagnostics_pulls_but_stores_nothing() {
+fn excluding_diagnostics_sends_no_pull() {
     let tmp = safe_tempdir();
     let rig = attached_to(&tmp, &excluding("diagnostics"), pull_capabilities());
 
-    assert_eq!(rig.requests_to(rig.sid("rust-analyzer"), PULL).len(), 1);
+    assert!(rig.requests_to(rig.sid("rust-analyzer"), PULL).is_empty());
     assert!(stored_messages(&rig).is_empty());
+}
+
+#[test]
+fn restoring_a_pull_only_servers_diagnostics_pulls_again() {
+    let tmp = safe_tempdir();
+    let mut rig = attached_to(&tmp, &excluding("diagnostics"), pull_capabilities());
+    let sid = rig.sid("rust-analyzer");
+
+    rig.eval(r#"(set-language-servers! "rust" '("rust-analyzer"))"#);
+    settle(&mut rig.ed);
+
+    assert_eq!(rig.requests_to(sid, PULL).len(), 1);
+    assert_eq!(stored_messages(&rig), ["from pull"]);
+}
+
+#[test]
+fn a_save_right_after_typing_pulls_once() {
+    let tmp = safe_tempdir();
+    let (mut backend, _, _) = RecordingLspBackend::new();
+    backend.respond_to("initialize", pull_capabilities());
+    backend.respond_to(PULL, full_report("r1", &["first"]));
+    backend.respond_to(PULL, full_report("r2", &["second"]));
+    backend.respond_to(PULL, full_report("r3", &["third"]));
+    let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[w]>ord\n"), backend);
+    settle(&mut rig.ed);
+    let sid = rig.sid("rust-analyzer");
+    rig.ed.state.settings.lsp_diagnostics_pull_debounce_ms = 0;
+
+    type_insert(&mut rig.ed, "x");
+    rig.ed.execute_typed("w", None).unwrap();
+    settle(&mut rig.ed);
+
+    assert_eq!(rig.requests_to(sid, PULL).len(), 2);
+}
+
+#[test]
+fn a_buffer_whose_servers_all_pushed_arms_no_pull_timer() {
+    let tmp = safe_tempdir();
+    let mut rig = attached_to(&tmp, super::lsp_rig::RUST_ANALYZER, pull_capabilities());
+    let sid = rig.sid("rust-analyzer");
+    rig.publish(sid, serde_json::json!([wire_diagnostic("pushed")]));
+    rig.ed.state.settings.lsp_diagnostics_pull_debounce_ms = 3_600_000;
+
+    type_insert(&mut rig.ed, "x");
+    settle(&mut rig.ed);
+
+    assert!(rig.ed.diagnostic_pull_debounce.is_empty());
 }
 
 #[test]

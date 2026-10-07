@@ -264,18 +264,25 @@ impl Editor {
         // Attachments made before the reload, to a server already running:
         // reconcile keeps the ones the new config still plans, without
         // reopening them, so their `OnLspAttach` is replayed for the new
-        // engine's handlers. An attachment reconcile makes fresh fires its
-        // own.
+        // engine's handlers. An attachment reconcile makes fresh, or whose
+        // filter it changes, fires its own.
         let running_attachments: Vec<_> = self
             .state
             .lsp_running_attachments()
             .into_iter()
             .filter(|(bid, _)| snapshot.survives(*bid, &self.state.buffers))
+            .map(|(bid, sid)| {
+                (
+                    bid,
+                    sid,
+                    self.state.buffer_positions.lsp.filter_of(bid, sid),
+                )
+            })
             .collect();
         self.state.lsp.resume_reconcile();
         self.state.lsp_reconcile_all(&self.view);
-        for (bid, sid) in running_attachments {
-            if self.state.buffer_positions.lsp.is_attached(bid, sid) {
+        for (bid, sid, filter) in running_attachments {
+            if filter.is_some() && self.state.buffer_positions.lsp.filter_of(bid, sid) == filter {
                 self.state.queue_lsp_attach(bid, sid);
             }
         }

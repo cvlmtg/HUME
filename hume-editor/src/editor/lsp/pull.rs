@@ -1,5 +1,6 @@
 //! Pull diagnostics: `textDocument/diagnostic` to a server that does not
-//! push. A server is pulled only until its first `publishDiagnostics`. The
+//! push. A server is pulled only until its first `publishDiagnostics`, and
+//! only while its list entry admits `diagnostics`. The
 //! client does not declare pull support, because a server that offers both
 //! then stops pushing; whether a server pushes is observed, not read from
 //! its capabilities.
@@ -17,7 +18,26 @@ use crate::editor::{EditorState, Severity};
 const PULL: &str = "textDocument/diagnostic";
 
 impl EditorState {
-    /// Asks each server attached to `bid` that has not pushed (only `only`,
+    /// Whether `sid`'s diagnostics for `bid` are worth a pull: it has not
+    /// pushed, and its list entry admits `diagnostics`.
+    fn lsp_wants_pull(&self, bid: BufferId, sid: ServerId) -> bool {
+        !self.lsp.instances.has_pushed_diagnostics(sid)
+            && self
+                .buffer_positions
+                .lsp
+                .filter_of(bid, sid)
+                .is_some_and(|filter| filter.admits(LspFeature::Diagnostics))
+    }
+
+    /// Whether any server attached to `bid` is worth a pull.
+    pub(in crate::editor) fn lsp_buffer_wants_pull(&self, bid: BufferId) -> bool {
+        self.buffer_positions
+            .lsp
+            .servers(bid)
+            .any(|sid| self.lsp_wants_pull(bid, sid))
+    }
+
+    /// Asks each server attached to `bid` that wants a pull (only `only`,
     /// when given) for its diagnostics. A server that is not running, or
     /// whose list entry excludes `pull-diagnostics`, or that advertises no
     /// `diagnosticProvider`, is not asked.
@@ -38,7 +58,7 @@ impl EditorState {
     }
 
     fn lsp_pull_diagnostics_from(&mut self, bid: BufferId, sid: ServerId) {
-        if self.lsp.instances.has_pushed_diagnostics(sid) {
+        if !self.lsp_wants_pull(bid, sid) {
             return;
         }
         let Some(opened) = self.buffer_positions.lsp.opened_as(bid) else {
@@ -67,15 +87,16 @@ impl EditorState {
 
     /// Stores a diagnostics report: a full one replaces what `sid` reported
     /// for `bid`, an unchanged one only moves the `resultId` on. A report
-    /// that arrives after `sid` has pushed is dropped, and a failed or
-    /// malformed one leaves what is stored as it is.
+    /// that arrives after `sid` has pushed or lost its `diagnostics` entry is
+    /// dropped, and a
+    /// failed or malformed one leaves what is stored as it is.
     fn lsp_apply_pull_report(
         &mut self,
         bid: BufferId,
         sid: ServerId,
         answer: Result<serde_json::Value, String>,
     ) {
-        if self.lsp.instances.has_pushed_diagnostics(sid) {
+        if !self.lsp_wants_pull(bid, sid) {
             return;
         }
         let name = self.lsp_server_name(sid);

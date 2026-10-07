@@ -282,6 +282,7 @@ fn mark_written_and_synced(
     // not one edit behind (didSave itself carries no text).
     ed.state.lsp_flush_pending();
     ed.state.lsp_did_save(bid);
+    ed.pull_diagnostics_now(bid);
 }
 
 impl Editor {

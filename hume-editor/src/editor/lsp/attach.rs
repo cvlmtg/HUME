@@ -305,11 +305,19 @@ impl EditorState {
 
     /// A kept attachment's new filter. A filter that no longer admits
     /// diagnostics drops what that server published for `bid`; one that
-    /// admits them again shows them from the server's next publish. The
-    /// attachment's trigger tables are emptied by the change, so
-    /// `OnLspAttach` fires again for plugins to register what the new filter
-    /// admits.
+    /// admits them again shows them from the server's next publish, or from
+    /// a pull when it has not pushed. The attachment's trigger tables are
+    /// emptied by the change, so `OnLspAttach` fires again for plugins to
+    /// register what the new filter admits.
     fn lsp_set_filter(&mut self, bid: BufferId, sid: ServerId, filter: FeatureFilter) {
+        let pulls = |filter: FeatureFilter| {
+            filter.admits(LspFeature::Diagnostics) && filter.admits(LspFeature::PullDiagnostics)
+        };
+        let pulled_before = self
+            .buffer_positions
+            .lsp
+            .filter_of(bid, sid)
+            .is_some_and(pulls);
         self.buffer_positions.lsp.set_filter(bid, sid, filter);
         self.queue_lsp_attach(bid, sid);
         if !filter.admits(LspFeature::Diagnostics)
@@ -319,6 +327,9 @@ impl EditorState {
                 .remove_source_for_buffer(sid, bid)
         {
             self.queue_event(EditorEvent::OnDiagnosticsChanged { buffer: bid });
+        }
+        if pulls(filter) && !pulled_before {
+            self.lsp_pull_diagnostics(bid, Some(sid));
         }
     }
 

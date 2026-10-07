@@ -109,6 +109,24 @@ impl Editor {
     /// from a previous call is still pending, so a typing burst collapses to
     /// one pull, `lsp.diagnostics-pull-debounce-ms` after it settles.
     pub(super) fn debounce_diagnostic_pull(&mut self, bid: BufferId) {
+        self.cancel_diagnostic_pull_debounce(bid);
+        let ms = self.state.settings.lsp_diagnostics_pull_debounce_ms as u64;
+        let id = self.timer_wheel.schedule(Duration::from_millis(ms));
+        self.timer_payloads
+            .insert(id, TimerPayload::DiagnosticPullDebounce(bid));
+        self.diagnostic_pull_debounce.insert(bid, id);
+    }
+
+    /// Pulls `bid`'s diagnostics now, in place of the debounced pull for its
+    /// latest edit: two pulls for the same text would be identical. The
+    /// edit is detected first so its debounce exists to be cancelled.
+    pub(super) fn pull_diagnostics_now(&mut self, bid: BufferId) {
+        self.detect_text_changed();
+        self.cancel_diagnostic_pull_debounce(bid);
+        self.state.lsp_pull_diagnostics(bid, None);
+    }
+
+    fn cancel_diagnostic_pull_debounce(&mut self, bid: BufferId) {
         if let Some(old_id) = self.diagnostic_pull_debounce.remove(&bid) {
             TimerHandle {
                 wheel: &mut self.timer_wheel,
@@ -116,10 +134,5 @@ impl Editor {
             }
             .cancel(old_id.0);
         }
-        let ms = self.state.settings.lsp_diagnostics_pull_debounce_ms as u64;
-        let id = self.timer_wheel.schedule(Duration::from_millis(ms));
-        self.timer_payloads
-            .insert(id, TimerPayload::DiagnosticPullDebounce(bid));
-        self.diagnostic_pull_debounce.insert(bid, id);
     }
 }

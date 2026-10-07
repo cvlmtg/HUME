@@ -776,6 +776,37 @@ fn resync_refires_lsp_attach_for_a_running_server() {
     assert_eq!(count("textDocument/didClose"), 0);
 }
 
+/// A kept attachment whose feature filter changes in the new config is
+/// announced once: the filter change and the resync replay are one attach.
+#[test]
+fn reload_that_changes_a_kept_filter_fires_lsp_attach_once() {
+    let tmp = safe_tempdir();
+    let rig = running_rig(tmp.path(), "-[a]>bcd\n");
+    let bid = rig.bid;
+    let mut ed = rig.ed;
+
+    let snapshot = ed.reset_config_state();
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &format!(
+            r#"(%define-language! "rust" '("rs") '() '() #f '("Cargo.toml"))
+(register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
+(set-language-servers! "rust" (list (hash 'name "rust-analyzer" 'except-features '(hover))))
+{ATTACH_MOVES_RIGHT}"#
+        ),
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    ed.detect_and_set_language(bid);
+
+    ed.resync_config_state(&snapshot);
+    ed.settle();
+
+    assert_eq!(state(&ed), "a-[b]>cd\n");
+}
+
 /// A full reload that registers the same server again keeps the running
 /// instance and its attachment: no `didClose`/`didOpen` traffic, the same
 /// `ServerId`, and `OnLspAttach` re-fired for the new engine's handlers.

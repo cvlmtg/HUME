@@ -4,12 +4,13 @@ helix-editor/helix languages.toml.
 
 Reads the pinned SHA from runtime/scheme/helix-pin.scm, fetches helix's
 languages.toml at that commit, and rewrites:
-  - languages.scm       — (define-language! …) for every [[language]] block
+  - languages.scm       — (define-language! …) for every [[language]] block,
+    with its root markers as `#:roots`
   - grammar-sources.scm — tree-sitter grammar source catalog
   - lsp-install/servers.scm — each server's args and config, derived from
     [language-server.*]
-  - lsp-install/language-servers.scm — each language's root markers and ordered
-    server list, with Helix's only-features/except-features per entry
+  - lsp-install/language-servers.scm — each language's ordered server list, with
+    Helix's only-features/except-features per entry
   - lsp-install/server-commands.scm — the command of each server whose command
     differs from its name, read by the install pipeline and by sync-lsp-sources.py
 

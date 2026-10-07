@@ -81,10 +81,11 @@ pub(in crate::editor) enum EditorEvent {
         server: ServerRef,
     },
     /// Fires once per (buffer, server) detach: `:lsp-stop`/`:lsp-restart`,
-    /// a server list or language change that drops the server, a buffer
-    /// close. The counterpart to `OnLspAttach`, so a plugin holding
-    /// buffer-scoped state derived from that server (e.g. inlay hints) can
-    /// refresh it from the servers that remain.
+    /// a server list or language change that drops the server. Closing the
+    /// buffer fires `OnBufferClose` instead. The counterpart to
+    /// `OnLspAttach`, so a plugin holding buffer-scoped state derived from
+    /// that server (e.g. inlay hints) can refresh it from the servers that
+    /// remain.
     OnLspDetach {
         buffer: BufferId,
         server: ServerRef,

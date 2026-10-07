@@ -443,18 +443,11 @@ impl Editor {
     /// mutations to one buffer between two passes still announce as one
     /// event (`BufferStore::take_text_changed` advances the baseline as it
     /// reports).
-    fn detect_text_changed(&mut self) {
+    pub(super) fn detect_text_changed(&mut self) {
         for buffer in self.state.buffers.take_text_changed() {
             self.state
                 .queue_event(EditorEvent::OnTextChanged { buffer });
-            if self
-                .state
-                .buffer_positions
-                .lsp
-                .servers(buffer)
-                .next()
-                .is_some()
-            {
+            if self.state.lsp_buffer_wants_pull(buffer) {
                 self.debounce_diagnostic_pull(buffer);
             }
         }
