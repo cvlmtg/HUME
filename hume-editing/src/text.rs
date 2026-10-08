@@ -45,7 +45,7 @@ impl std::str::FromStr for LineEnding {
         match s.to_ascii_lowercase().as_str() {
             "lf" => Ok(Self::Lf),
             "crlf" => Ok(Self::CrLf),
-            _ => Err(format!("invalid line-ending '{s}' (expected lf or crlf)")),
+            _ => Err(format!("invalid line-ending '{s}': expected lf or crlf")),
         }
     }
 }

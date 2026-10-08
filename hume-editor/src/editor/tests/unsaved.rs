@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::statusline::{StatusElement, render_element};
+use hume_editing::text::LineEnding;
 use hume_scripting::host::BufferHost;
 
 fn file_editor() -> (tempfile::TempDir, Editor) {
@@ -108,8 +109,6 @@ fn the_statusline_shows_the_indicator_while_an_insert_session_has_an_edit() {
 }
 
 // ── :set buffer line-ending ───────────────────────────────────────────────
-
-use hume_editing::text::LineEnding;
 
 #[test]
 fn setting_the_line_ending_makes_the_buffer_unsaved() {

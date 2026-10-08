@@ -678,7 +678,9 @@ fn undo_past_saved_revision_is_dirty() {
 #[test]
 fn changing_line_ending_marks_buffer_changed_without_a_revision() {
     let mut d = doc("-[h]>ello\n");
-    d.buf.set_line_ending(LineEnding::CrLf);
+    d.buf
+        .set_line_ending(LineEnding::CrLf)
+        .expect("writable buffer");
     assert!(d.buf.line_ending_changed());
     assert!(!d.revision_dirty());
     assert!(!d.can_undo());
@@ -688,8 +690,12 @@ fn changing_line_ending_marks_buffer_changed_without_a_revision() {
 #[test]
 fn restoring_the_saved_line_ending_reads_unchanged() {
     let mut d = doc("-[h]>ello\n");
-    d.buf.set_line_ending(LineEnding::CrLf);
-    d.buf.set_line_ending(LineEnding::Lf);
+    d.buf
+        .set_line_ending(LineEnding::CrLf)
+        .expect("writable buffer");
+    d.buf
+        .set_line_ending(LineEnding::Lf)
+        .expect("writable buffer");
     assert!(!d.buf.line_ending_changed());
 }
 
@@ -697,7 +703,9 @@ fn restoring_the_saved_line_ending_reads_unchanged() {
 fn undo_leaves_the_line_ending_alone() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'x'));
-    d.buf.set_line_ending(LineEnding::CrLf);
+    d.buf
+        .set_line_ending(LineEnding::CrLf)
+        .expect("writable buffer");
     d.undo();
     assert_eq!(d.text().line_ending(), LineEnding::CrLf);
     assert!(d.buf.line_ending_changed());
@@ -706,17 +714,23 @@ fn undo_leaves_the_line_ending_alone() {
 #[test]
 fn mark_saved_records_the_line_ending() {
     let mut d = doc("-[h]>ello\n");
-    d.buf.set_line_ending(LineEnding::CrLf);
+    d.buf
+        .set_line_ending(LineEnding::CrLf)
+        .expect("writable buffer");
     d.mark_saved();
     assert!(!d.buf.line_ending_changed());
-    d.buf.set_line_ending(LineEnding::Lf);
+    d.buf
+        .set_line_ending(LineEnding::Lf)
+        .expect("writable buffer");
     assert!(d.buf.line_ending_changed());
 }
 
 #[test]
 fn identical_content_reload_adopts_the_disk_line_ending() {
     let mut d = doc("-[h]>ello\n");
-    d.buf.set_line_ending(LineEnding::CrLf);
+    d.buf
+        .set_line_ending(LineEnding::CrLf)
+        .expect("writable buffer");
     let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
     let mutated =
         d.buf

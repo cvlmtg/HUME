@@ -208,8 +208,7 @@ pub(in crate::editor) fn typed_set(
                 Ok(())
             }
             BufferIntrinsicOption::LineEnding => {
-                settings_ops::apply_buffer(&mut ed.state, bid, key, value)
-                    .map_err(CommandError::new)
+                settings_ops::set_line_ending(&mut ed.state, bid, value).map_err(CommandError::new)
             }
         };
     }

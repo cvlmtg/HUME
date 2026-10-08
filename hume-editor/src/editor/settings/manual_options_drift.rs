@@ -2,8 +2,8 @@
 //!
 //! `user-manual/docs/configuration.md`'s "Global options"/"Buffer options"
 //! tables are a hand-maintained mirror of `settings::all_setting_keys()`
-//! (plus the buffer-intrinsic options, documented but excluded from that list by design;
-//! see `settings.rs`'s module doc). Nothing else keeps the two in sync;
+//! (plus the buffer-intrinsic options, documented but excluded from that list
+//! by design; see `settings.rs`'s module doc). Nothing else keeps the two in sync;
 //! `user_manual_option_tables_match_all_setting_keys` scans both tables for
 //! every backtick-quoted first-column key and diffs the set against the
 //! code's key list in both directions, catching a key added to
@@ -90,7 +90,8 @@ fn user_manual_option_tables_match_all_setting_keys() {
         .chain(
             buffer_documented
                 .iter()
-                .filter(|k| BufferIntrinsicOption::from_key(k).is_none()) // buffer-only by special case, no scope entry
+                // Buffer-only by special case, no scope entry.
+                .filter(|k| BufferIntrinsicOption::from_key(k).is_none())
                 .filter(|k| !super::setting_scopes(k).contains(&Scope::Buffer))
                 .map(|k| format!("'{k}' is under Buffer options but its scope list has no Buffer")),
         )

@@ -490,7 +490,7 @@ impl Buffer {
         // `on-text-changed` plus a spurious tree-sitter reparse) for a no-op.
         // Nothing is recorded, as there is nothing to undo to.
         if forward.is_identity() {
-            self.text = self.text.clone().with_line_ending(new_text.line_ending());
+            self.adopt_line_ending(new_text.line_ending());
             return false;
         }
 
@@ -547,8 +547,21 @@ impl Buffer {
     }
 
     /// Set the line ending a save writes. Not an edit: no revision is
-    /// recorded, so undo does not revert it.
-    pub(in crate::editor) fn set_line_ending(&mut self, line_ending: LineEnding) {
+    /// recorded, so undo does not revert it. Refused on a read-only buffer.
+    pub(in crate::editor) fn set_line_ending(
+        &mut self,
+        line_ending: LineEnding,
+    ) -> Result<(), String> {
+        if self.read_only {
+            return Err("buffer is read-only".to_string());
+        }
+        self.adopt_line_ending(line_ending);
+        Ok(())
+    }
+
+    /// Take the line ending of text read from disk, which a read-only buffer
+    /// accepts too.
+    fn adopt_line_ending(&mut self, line_ending: LineEnding) {
         self.text = self.text.clone().with_line_ending(line_ending);
     }
 
@@ -973,9 +986,8 @@ impl crate::editor::EditorState {
     /// Whether `bid` has changes that are not on disk: a revision past the
     /// saved one, a line ending different from the saved one, or edits in the
     /// open Insert or paste session, which have no revision until the
-    /// session commits. Every "is this buffer
-    /// unsaved" question outside `buffer` asks this, never [`Buffer`]'s own
-    /// revision check.
+    /// session commits. Every "is this buffer unsaved" question outside
+    /// `buffer` asks this, never [`Buffer`]'s own revision check.
     pub(crate) fn has_unsaved_changes(&self, bid: BufferId) -> bool {
         let buf = self.buffers.get(bid);
         buf.revision_dirty()

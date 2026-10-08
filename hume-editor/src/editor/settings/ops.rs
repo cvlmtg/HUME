@@ -147,16 +147,20 @@ pub(in crate::editor) fn apply_buffer(
     key: &str,
     value: &str,
 ) -> Result<(), String> {
-    let buf = state.buffers.get_mut(bid);
     if key == BufferIntrinsicOption::LineEnding.key() {
-        let line_ending = value.parse::<LineEnding>()?;
-        if buf.is_read_only() {
-            return Err("buffer is read-only".to_string());
-        }
-        buf.set_line_ending(line_ending);
-        return Ok(());
+        return set_line_ending(state, bid, value);
     }
-    super::write_buffer(key, value, &mut buf.overrides)
+    super::write_buffer(key, value, &mut state.buffers.get_mut(bid).overrides)
+}
+
+/// Parse `value` as a line ending and set it on `bid`'s text.
+pub(in crate::editor) fn set_line_ending(
+    state: &mut EditorState,
+    bid: BufferId,
+    value: &str,
+) -> Result<(), String> {
+    let line_ending = value.parse::<LineEnding>()?;
+    state.buffers.get_mut(bid).set_line_ending(line_ending)
 }
 
 /// Resync derived state after a successful [`super::write_global`]

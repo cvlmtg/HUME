@@ -704,7 +704,8 @@ macro_rules! define_settings {
         /// `(get-buffer-option bid key)` (`overrides` from `bid`'s stored
         /// `BufferOverrides`). `None` for a key with no generic storage.
         /// This covers the `BufferIntrinsicOption`s, which live on the
-        /// buffer; `get-buffer-option` reads them itself.
+        /// buffer: the `get-buffer-option` builtin reads `language`, and the
+        /// host's `get_buffer_option` reads `line-ending`.
         pub fn setting_value(
             key: &str,
             settings: &EditorSettings,
@@ -737,8 +738,8 @@ macro_rules! define_settings {
 
         /// The `Scope`s a setting accepts, as declared by its `scope: [...]`
         /// list in the `define_settings!` invocation below. Empty for any
-        /// key not declared there, notably `"language"`, which has no
-        /// generic storage and is handled entirely by `typed_set`'s own
+        /// key not declared there, notably the `BufferIntrinsicOption`s,
+        /// which have no generic storage and are handled by `typed_set`'s own
         /// special case, never through this table.
         pub(in crate::editor) fn setting_scopes(key: &str) -> &'static [Scope] {
             match key {
@@ -752,9 +753,10 @@ macro_rules! define_settings {
 
         /// Every setting key with a `:set` wire format: the union of the
         /// `global`/`buffer`/`subfield` macro entries and the `manual_keys`
-        /// entries (`statusline`). Notably **excludes** `"language"`, which
-        /// has no macro entry and is surfaced only when the completer knows
-        /// the scope is `"buffer"` (its sole valid scope).
+        /// entries (`statusline`). Notably **excludes** the
+        /// `BufferIntrinsicOption`s, which have no macro entry and are
+        /// surfaced only when the completer knows the scope is `"buffer"`
+        /// (their sole valid scope).
         pub(in crate::editor) fn all_setting_keys() -> &'static [&'static str] {
             &[$($gkey,)* $($bkey,)* $($skey,)* $($mkey,)*]
         }

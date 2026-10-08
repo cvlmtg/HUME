@@ -66,9 +66,9 @@ fn complete_set_scope(prefix: &str) -> Vec<CompletionItem> {
 
 /// Completes the key. Surfaces every declared key whose scopes
 /// include `scope`; the buffer-intrinsic keys have no macro entry and are
-/// valid only for buffer, so they're chained in when the scope matches. An unparseable
-/// `scope` token (mid-typing garbage) yields no candidates, same as any real
-/// key that doesn't accept it.
+/// valid only for buffer, so they're chained in when the scope matches. An
+/// unparseable `scope` token (mid-typing garbage) yields no candidates, same
+/// as any real key that doesn't accept it.
 fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
     let Ok(scope) = scope.parse::<Scope>() else {
         return Vec::new();
@@ -77,10 +77,11 @@ fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
         .iter()
         .copied()
         .filter(|k| setting_scopes(k).contains(&scope));
-    let intrinsic = BufferIntrinsicOption::ALL
+    let intrinsic = (scope == Scope::Buffer)
+        .then_some(BufferIntrinsicOption::ALL)
         .into_iter()
-        .map(BufferIntrinsicOption::key)
-        .filter(|_| scope == Scope::Buffer);
+        .flatten()
+        .map(BufferIntrinsicOption::key);
     prefix_completions(scope_keys.chain(intrinsic), rest)
 }
 
