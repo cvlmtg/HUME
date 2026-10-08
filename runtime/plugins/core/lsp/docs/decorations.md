@@ -78,7 +78,7 @@ always the leftmost. `lsp/first-line` splits once at the first newline, which th
 and drawer rows also use.
 
 - **Scope.** `<severity>.diagnostic.inline` (for example `error.diagnostic.inline`), a
-  HUME scope with no Helix counterpart. It is separate from `diagnostic.<severity>`,
+  HUME-specific scope. It is separate from `diagnostic.<severity>`,
   which themes use for the text squiggle (the bundled `sand` theme underlines it) and
   which virtual text past the end of the line must not inherit. Putting the severity name
   first lets a theme color all four from one `error`/`warning`/`info`/`hint` entry through

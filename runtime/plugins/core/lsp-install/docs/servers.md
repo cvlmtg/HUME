@@ -18,16 +18,16 @@ check), not at load.
 | Servers catalog | `servers.scm` | What a server is registered with: args, config |
 | Language catalog | `language-servers.scm` | Each language's ordered servers; a server's languages are derived from it |
 | Requirements catalog | `requirements.scm` | What installing a server needs on each platform |
-| Commands catalog | `server-commands.scm` | The command Helix runs for a server whose command differs from its name, for the install pipeline's `$PATH` note |
+| Commands catalog | `server-commands.scm` | The command that runs a server whose command differs from its name, for the install pipeline's `$PATH` note |
 | Sources catalog | `sources.scm` | How to get it: kind, version, download targets |
 
-The first three come from the Helix pin, the last two from the Mason pin, so they stay
+The first three come from the registration pin, the last two from the Mason pin, so they stay
 apart. Server, requirements and sources entries are tagged alist tails (`(key . value)` or `(key sub…)`, never a positional
 tuple), so one field lookup serves both. The hashes `catalog.scm` exposes are read-only:
 callers must not mutate what they return.
 
 The language catalog is also the language-to-server index. A language lists its servers in
-Helix's priority order, so `:lsp-install <lang>` installs the first and the discovery hint
+priority order, so `:lsp-install <lang>` installs the first and the discovery hint
 looks that one up.
 
 ## Installing a server
@@ -142,7 +142,7 @@ queue, so it is correct in queue order regardless of load order: the rescan afte
 sees the install's own queued unregister and re-admits the name.
 
 After the registrations, the scan sets every language's default server list. For every
-language in `language-servers.scm` it calls `set-default-language-servers!` with Helix's
+language in `language-servers.scm` it calls `set-default-language-servers!` with its
 whole list, filters included, whether or not any server in it is installed: a name that is
 not registered matches nothing until it registers, and the Rust side attaches every
 already-open buffer of the language when it does. The default applies only while the user
@@ -150,8 +150,7 @@ has set no list of their own for the language. A server the user registered by h
 a language only when a list names it. The last write to a language's default list wins, so
 only one plugin should write defaults for a language.
 
-A server's `config` field is delivered as both `#:init-options` and `#:settings`, matching
-Helix. The loader decodes the JSON string each time it registers a server. An empty config
+A server's `config` field is delivered as both `#:init-options` and `#:settings`. The loader decodes the JSON string each time it registers a server. An empty config
 tail decodes to `#f`, so nothing is sent.
 
 ## Install lock

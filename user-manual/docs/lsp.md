@@ -54,8 +54,8 @@ completions along with everything else.
 :::
 
 Opening a file attaches every server its language's list names, starting each one once per
-project root. A language's [list](#choosing-which-server-a-language-uses) is Helix's own once
-`core:lsp-install` is loaded, and empty until you set one otherwise.
+project root. A language's [list](#choosing-which-server-a-language-uses) is filled in by
+`core:lsp-install` once it is loaded, and empty until you set one otherwise.
 
 ## Installing servers
 
@@ -241,8 +241,8 @@ Examples for a few commonly used servers:
 ### Choosing which server a language uses
 
 A language uses the servers its list names, and a buffer attaches to all of them, in list
-order. With `core:lsp-install` loaded, every language it knows starts with Helix's list for
-it. Any other language has no list until you set one, so a server you register yourself
+order. With `core:lsp-install` loaded, every language it knows starts with a list of its
+own. Any other language has no list until you set one, so a server you register yourself
 serves nothing until a list names it. Diagnostics from every server
 show together, completion lists every server's items, code actions list every server's
 actions (with the server's name beside each when several offer some), goto and references
@@ -281,7 +281,7 @@ when you save.
 `:lsp-status` shows which languages each running server serves. A name that isn't registered
 yet takes its place in the list once it registers. An entry can
 also limit a server to some features, with `only-features` or `except-features` (give one,
-not both), using the feature names Helix uses in its own `languages.toml`:
+not both), using these feature names: `format`, `goto-declaration`, `goto-definition`, `goto-type-definition`, `goto-reference`, `goto-implementation`, `signature-help`, `hover`, `document-highlight`, `completion`, `code-action`, `document-links`, `workspace-command`, `document-symbols`, `workspace-symbols`, `diagnostics`, `pull-diagnostics`, `rename-symbol`, `inlay-hints`, `document-colors`, `call-hierarchy`.
 
 ```scheme
 (set-language-servers! "python"

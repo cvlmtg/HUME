@@ -2,8 +2,7 @@
 
 Registers [`steel-language-server`](https://github.com/mattwparas/steel/tree/master/crates/steel-language-server),
 a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), including HUME's own
-`init.scm` and plugin files. The server is in neither Helix's `languages.toml` nor the
-Mason registry, the two sources `core:lsp-install`'s catalog is generated from, so
+`init.scm` and plugin files. The server is in neither of the two sources `core:lsp-install`'s catalog is generated from, so
 `:lsp-install` cannot offer it. This plugin supplies its own `cargo install` step instead.
 
 ## Usage

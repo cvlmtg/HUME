@@ -35,7 +35,7 @@ download or build of that server registers the installed copy again.
 - **User docs:** [Language Servers](https://cvlmtg.github.io/HUME/lsp.html#installing-servers).
 
 How the pipeline works is in [`docs/servers.md`](docs/servers.md). The wider rationale (why
-Helix and Mason, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
+two pins, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 
 ## Files
 
@@ -72,7 +72,7 @@ Helix and Mason, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 
 The catalogs are generated, single literal sexprs. `servers.scm` (one record per server),
 `language-servers.scm` (one record per language) and `server-commands.scm` (one pair per server whose command differs from its name)
-come from the Helix pin (`scripts/sync-grammars.py`), `sources.scm` from the
+come from the registration pin (`scripts/sync-grammars.py`), `sources.scm` from the
 Mason pin (`scripts/sync-lsp-sources.py`), and `requirements.scm` from `sources.scm`
 (both by `scripts/sync-lsp-sources.py`). `scripts/README.md` has the run order.
 
@@ -85,11 +85,11 @@ Mason pin (`scripts/sync-lsp-sources.py`), and `requirements.scm` from `sources.
 ```
 
 - `args` is the empty tail `(args)`, never `#f`, when the server takes none.
-- `config` is Helix's `[language-server.*.config]` table copied as one canonical
+- `config` is the server's config table copied as one canonical
   (`sort_keys`) JSON string. With no config the whole tail is `(config)`, not a dotted
   pair.
 
-**`language-servers.scm`**: each language's servers in Helix's order, which is priority
+**`language-servers.scm`**: each language's servers in priority
 order. Root markers are not here: they belong to the language (`define-language! #:roots`).
 
 ```scheme
@@ -97,7 +97,7 @@ order. Root markers are not here: they belong to the language (`define-language!
 ```
 
 - A language's first server is the one `:lsp-install <lang>` installs.
-- The feature names are Helix's; at most one filter per entry.
+- At most one filter per entry.
 - A registration carries no languages. The scan hands every row's list to
   `set-default-language-servers!`, whether or not any server in it is installed: an entry
   naming a server that is not registered serves nothing. A user's own `set-language-servers!`
@@ -144,12 +144,12 @@ need, and `sources.scm` stays unread until something installs.
 - A package-manager row may carry `(platforms target …)` when Mason restricts it.
 - Any other kind is a stub and not installable: an unsupported purl kind, or a
   source-only `github-build` or `generic-build` package.
-- A Helix server with no Mason equivalent has no entry.
+- A server with no Mason equivalent has no entry.
 
 ## Mason pin
 
 `mason-pin.scm` holds one string: the `mason-org/mason-registry` release tag that
 `sources.scm` is generated from. To move to a newer registry, change the tag and run
-`python3 scripts/sync-lsp-sources.py`. If a Helix pin bump renamed or dropped servers, run
+`python3 scripts/sync-lsp-sources.py`. If a pin bump renamed or dropped servers, run
 `python3 scripts/sync-grammars.py` first. The script downloads every asset to record its
 sha256, so a run takes a while; `scripts/README.md` describes the hash cache.

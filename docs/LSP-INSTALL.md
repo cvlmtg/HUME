@@ -42,7 +42,7 @@ arrived at.
 
 ## Architecture: two seeded data sources, two pins
 
-Both data sources are consumed the way `grammar-sources.scm` consumes Helix data today:
+Both data sources are consumed the way `grammar-sources.scm` is produced today:
 a pin file names an upstream revision, a sync script (dev-time, Python) regenerates
 pure-data sexpr files checked into the repo, and the runtime reads only the dumb data.
 No upstream format is ever parsed inside the editor.
@@ -111,7 +111,7 @@ scan at activation loads no field only the installer needs. `servers.scm` is key
 server's `config` blob once per language (typescript-language-server serves four).
 `language-servers.scm` is keyed by *language* and holds the language's ordered server
 list; a server's languages are the inverse of that list, so they are not stored a second
-time under the server. Root markers are per-language in Helix (`roots` belongs to the
+time under the server. Root markers are per-language (`roots` belongs to the
 language, not the server, and languages sharing a server differ: javascript/jsx root on
 `jsconfig.json`, typescript/tsx on `tsconfig.json`), so they live in `languages.scm`
 (`define-language! #:roots`), not here. The scan registers each server with no languages
@@ -136,7 +136,7 @@ and writes every language's list as its default.
  ("typescript-language-server" . "typescript-language-server"))
 ```
 
-- **Languages live only in `language-servers.scm`.** Helix language names match
+- **Languages live only in `language-servers.scm`.** Its language names match
   `languages.scm` (same upstream, same pin). Mason's `languages:` field uses different
   naming ("TypeScript") and would need its own mapping — dropped entirely.
 - Field encoding (empty tail never `#f`, canonical JSON `config` string, delivered both ways
@@ -191,7 +191,7 @@ and writes every language's list as its default.
   `bin` = script name in `node_modules/.bin`. `version` kept separate for receipt/upgrade
   comparison.
 - **cargo**: crates.io semver installs only. `crate` = the crates.io package name (may
-  differ from both the server name and the bin name — Helix's `nls` is Mason/crates.io
+  differ from both the server name and the bin name — `nls` is Mason/crates.io
   `nickel-lang-lsp`, installed binary `nls`), installed via
   `cargo install --locked <crate>@<version> --root servers/<name>/`. `bin` = binary name;
   the installed path is `bin/<bin>` (cargo's own `--root` layout). A Mason cargo package
@@ -219,10 +219,10 @@ and writes every language's list as its default.
 - **Unsupported kinds** (`opam`, `luarocks`, `github-build`, `generic-build`, `cargo-git`, …):
   emitted as a *stub* — `(kind . opam)` plus `version`, no install fields. That is what lets
   `:lsp-install` fail naming the kind and `:lsp-catalog` mark the entry "not installable". A
-  Helix-primary server Mason doesn't carry at all (no name-mapping match) gets no entry;
+  seeded server Mason doesn't carry at all (no name-mapping match) gets no entry;
   `:lsp-install` for it fails with "no install source" and `:lsp-catalog` marks it the same
-  way. A Mason package that shares a Helix server's name but runs a different program
-  (`cuelsp`: Helix runs `cue lsp serve`) is listed in the sync script's
+  way. A Mason package that shares a seeded server's name but runs a different program
+  (`cuelsp`: the seeded command is `cue lsp serve`) is listed in the sync script's
   `MASON_NOT_HELIX_SERVER` and gets no entry either.
 
 ## Config delivery & per-server audit
@@ -232,12 +232,12 @@ and writes every language's list as its default.
   Mechanism: `hume-lsp/src/client.rs`'s `resolve_config_section`.
 - **Seeded catalog delivers its config correctly**: `servers.scm`'s `config` field is
   delivered as **both** `#:init-options` and `#:settings` by `core:lsp-install/register.scm`,
-  matching Helix's own delivery of the same blob — see
+  as the same blob goes to both — see
   `runtime/plugins/core/lsp-install/docs/servers.md`.
 - **Per-server config audit** (all 17 seeded servers carrying a `config` blob, verified
   against each server's own source): 15 work correctly as delivered. Two —
   `actions-language-server` and `pony-lsp` — need a correction, in both cases tracing to a
-  pre-existing mismatch in Helix's own upstream `languages.toml`. `scripts/sync-grammars.py`'s
+  pre-existing mismatch in the upstream catalog data. `scripts/sync-grammars.py`'s
   `CONFIG_OVERRIDES` table corrects both before emission — `actions-language-server`'s blob
   is double-wrapped under its own name (the server reads `sessionToken` flat, no wrapper);
   `pony-lsp`'s blob is unwrapped (the server only reads it via a `workspace/configuration`
@@ -383,7 +383,7 @@ lists) stays in the plugin — Rust never reads them.
   …) fail with a loud, specific error naming the unsupported kind. jdtls installs the
   tarball only: it needs a JDK and `python3` at run time, which the installer does not
   check.
-- **Several servers per language, in Helix's order.** Helix lists ordered *multiple*
+- **Several servers per language, in priority order.** A language lists *multiple*
   servers for some languages (python → `["ty", "ruff", "jedi", "pylsp", "zuban"]`,
   toml → `["taplo", "tombi"]`, go → `["gopls", "golangci-lint-lsp"]`), and their order is
   priority order. The sync keeps every listed server: `servers.scm` seeds each one that has
@@ -393,13 +393,13 @@ lists) stays in the plugin — Rust never reads them.
   except-features = [...] }`) is carried into the list as `(only-features "f" …)` or
   `(except-features "f" …)`. Both filters on one entry, an unknown feature name, a server
   listed twice for one language, or a listed server `servers.scm` does not seed all stop
-  the sync. The feature names are Helix's 21 (`LSP_FEATURES` in `sync-grammars.py`),
+  the sync. The feature names are the 21 in `LSP_FEATURES` in `sync-grammars.py`),
   mirrored by HUME's `LspFeature::ALL`; a test in `hume-editor` compares the two. The
   client attaches a buffer to every server of its language's list
   (`docs/LSP.md`), so installing a secondary server is useful on its own.
   `:lsp-install <lang>` installs the language's first server; `:lsp-install <name>`
   installs any seeded server by name. The scan registers each installed server once and
-  sets Helix's list, filters included, as the default list of every catalog language
+  sets that list, filters included, as the default list of every catalog language
   (`set-default-language-servers!`), whether or not any server in it is installed. An
   entry naming a server that is not registered serves nothing. A user's own
   `set-language-servers!` wins over that default, and may name any registered server for
