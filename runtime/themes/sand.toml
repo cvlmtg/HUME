@@ -123,7 +123,7 @@
 "variable.other.member" = { fg = "fg" }
 "label" = { fg = "sand" }
 "punctuation" = { fg = "muted" }
-"punctuation.bracket" = { fg = "sand", modifiers = [ "bold" ] }
+"punctuation.bracket" = { fg = "sand" }
 "punctuation.delimiter" = "muted"
 "punctuation.special" = { fg = "sand" }
 "keyword" = { fg = "sand", modifiers = [ "bold" ] }
