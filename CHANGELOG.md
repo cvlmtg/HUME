@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.14.0] - 2026-10-08
+
 ### Breaking changes
 - Every scripting function with an effect now ends in `!`: `declare-plugin!`, `load-plugin!`, `lsp-request!`, `lsp-notify!`, `after!`, `stdlib/run!`, `stdlib/write-file!`, `stdlib/delete-file!`, `stdlib/delete-dir!`.
 - `buffer-cursor-line` and `offset->line` return 0-based lines.
