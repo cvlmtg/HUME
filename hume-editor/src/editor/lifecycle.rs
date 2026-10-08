@@ -199,13 +199,6 @@ impl Editor {
         Ok(editor)
     }
 
-    /// The OSC 7 URL of `state.cwd`, which the terminal is told again on
-    /// teardown. Read it before `init_scripting`, while `state.cwd` is still
-    /// the directory the shell started in.
-    pub(crate) fn startup_cwd_url(&self) -> Option<String> {
-        super::cwd_report::working_directory_url(&self.state.cwd)
-    }
-
     /// Share the atomic the platform terminator thread stores the exit code
     /// into when a signal asks the editor to quit. Replaces the per-`Editor`
     /// default so `run`'s loop and `hume_editor::run` (after `run` returns)

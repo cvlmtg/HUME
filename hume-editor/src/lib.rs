@@ -128,7 +128,7 @@ pub fn run(
     config: cli::ConfigSource,
     cwd: std::path::PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let shared = hume_platform::terminal::create()?;
+    let shared = hume_platform::terminal::create(&cwd)?;
 
     // The cross-thread waker: background threads (LSP transport, parse
     // worker) call `wake()` after posting a result so the main loop wakes
@@ -173,7 +173,6 @@ pub fn run(
         cwd,
     )?;
     editor.attach_terminate_flag(terminate.clone());
-    let launch_cwd_url = editor.startup_cwd_url();
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     editor.set_kitty_support(kitty_enabled);
     // Must run before `init_scripting`, same as `set_kitty_support` above:
@@ -204,7 +203,6 @@ pub fn run(
         editor.state.settings.mouse,
         editor.state.settings.mouse_select,
         kitty_enabled,
-        launch_cwd_url,
     )?;
     // After `init`, so the hook it wraps is the terminal's: from here a panic
     // on a background thread is queued for the editor to report instead of

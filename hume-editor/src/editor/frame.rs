@@ -234,8 +234,7 @@ impl Editor {
             return;
         }
         if let Some(term) = self.tui.terminal() {
-            let url = super::cwd_report::working_directory_url(&self.state.cwd);
-            let _ = hume_platform::terminal::set_working_directory(term, url.as_deref());
+            let _ = hume_platform::terminal::set_working_directory(term, &self.state.cwd);
         }
         self.applied_cwd = Some(self.state.cwd.clone());
     }

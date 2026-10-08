@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 hume-grid = { path = "../hume-grid" }
 termina = "0.4.0"
+gethostname = "1"
 tempfile = "3"
 
 [features]

@@ -15,52 +15,6 @@ fn path_to_uri_rejects_relative_path() {
     );
 }
 
-// ── path_to_file_url: host in the authority ─────────────────────────────
-
-#[cfg(not(windows))]
-#[test]
-fn path_to_file_url_puts_the_host_in_the_authority() {
-    assert_eq!(
-        path_to_file_url(Path::new("/tmp/a b"), "box").as_deref(),
-        Ok("file://box/tmp/a%20b")
-    );
-}
-
-#[cfg(not(windows))]
-#[test]
-fn path_to_file_url_percent_encodes_the_host() {
-    assert_eq!(
-        path_to_file_url(Path::new("/tmp"), "my box").as_deref(),
-        Ok("file://my%20box/tmp")
-    );
-}
-
-#[test]
-fn path_to_file_url_rejects_relative_path() {
-    assert_eq!(
-        path_to_file_url(Path::new("rel/dir"), "box"),
-        Err(UriError::NotAbsolute)
-    );
-}
-
-#[cfg(windows)]
-#[test]
-fn path_to_file_url_puts_the_host_before_a_drive_letter_path() {
-    assert_eq!(
-        path_to_file_url(Path::new(r"D:\test"), "box").as_deref(),
-        Ok("file://box/D:/test")
-    );
-}
-
-#[cfg(windows)]
-#[test]
-fn path_to_file_url_keeps_a_unc_server_as_the_authority() {
-    assert_eq!(
-        path_to_file_url(Path::new(r"\\srv\share\x"), "box").as_deref(),
-        Ok("file://srv/share/x")
-    );
-}
-
 // ── uri_to_display_string: what a drawer row shows ──────────────────────
 
 #[test]

@@ -104,7 +104,7 @@ fn write_unwind_escapes_keeps_going_after_one_step_fails() {
         failed_once: false,
         writes_after_failure: 0,
     };
-    let result = write_unwind_escapes(&mut out);
+    let result = write_unwind_escapes(&mut out, None);
     assert!(result.is_err(), "first error must still be reported");
     assert!(
         out.writes_after_failure > 0,
@@ -113,26 +113,24 @@ fn write_unwind_escapes_keeps_going_after_one_step_fails() {
 }
 
 #[test]
-fn write_cwd_report_emits_the_url() {
-    let mut out = Vec::new();
-    write_cwd_report(&mut out, Some("file://box/tmp")).expect("writing to a Vec cannot fail");
-    assert_eq!(out, b"\x1b]7;file://box/tmp\x1b\\");
+fn write_cwd_report_emits_the_url_or_an_empty_one() {
+    for (url, expected) in [
+        (Some("file://box/tmp"), &b"\x1b]7;file://box/tmp\x1b\\"[..]),
+        (None, &b"\x1b]7;\x1b\\"[..]),
+    ] {
+        let mut out = Vec::new();
+        write_cwd_report(&mut out, url).expect("writing to a Vec cannot fail");
+        assert_eq!(out, expected);
+    }
 }
 
 #[test]
-fn write_cwd_report_without_a_url_emits_an_empty_one() {
+fn write_unwind_escapes_reports_the_launch_directory() {
     let mut out = Vec::new();
-    write_cwd_report(&mut out, None).expect("writing to a Vec cannot fail");
-    assert_eq!(out, b"\x1b]7;\x1b\\");
-}
-
-#[test]
-fn write_unwind_escapes_reports_the_working_directory() {
-    let mut out = Vec::new();
-    write_unwind_escapes(&mut out).expect("writing to a Vec cannot fail");
+    write_unwind_escapes(&mut out, Some("file://box/tmp")).expect("writing to a Vec cannot fail");
     let bytes = String::from_utf8(out).expect("escapes are ASCII");
     assert!(
-        bytes.contains("\x1b]7;"),
-        "teardown must emit OSC 7, got {bytes:?}"
+        bytes.contains("\x1b]7;file://box/tmp\x1b\\"),
+        "teardown must report the launch directory, got {bytes:?}"
     );
 }

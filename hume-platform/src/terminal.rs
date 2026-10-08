@@ -20,14 +20,17 @@
 //! read on one thread can never stall a write on another.
 
 use std::io::{self, Write};
+use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+use crate::file_url::path_to_file_url;
 use termina::Terminal as _;
 use termina::escape::csi::{
     Csi, Cursor, DecPrivateMode, DecPrivateModeCode, Keyboard, KittyKeyboardFlags, Mode,
 };
 use termina::escape::osc::{ColorOrQuery, DynamicColorNumber, Osc, Selection};
+use termina::escape::{OSC, ST};
 use termina::event::KeyEventKind;
 use termina::style::RgbColor;
 use termina::{Event, EventReader, PlatformHandle, PlatformTerminal, WindowSize};
@@ -49,6 +52,9 @@ pub use termina::style::CursorStyle;
 pub struct SharedTerm {
     inner: Arc<Mutex<PlatformTerminal>>,
     reader: EventReader,
+    /// OSC 7 URL of the directory the shell started HUME in. Teardown reports
+    /// it again, because the shell will not re-send it.
+    launch_cwd_url: Option<Arc<str>>,
 }
 
 impl SharedTerm {
@@ -107,13 +113,14 @@ impl termina::Terminal for SharedTerm {
 }
 
 /// Open the process terminal. Call once at startup; clone the result for
-/// every caller that needs to read or write it.
+/// every caller that needs to read or write it. `launch_cwd` is the
+/// directory the shell started HUME in.
 ///
 /// On Windows, `PlatformTerminal::new` enables VT input/output mode
 /// unconditionally (HUME has no legacy-console fallback); a console that
 /// can't provide it (older than Windows 10 1809, or a raw pipe such as
 /// mintty without winpty) fails here.
-pub fn create() -> io::Result<SharedTerm> {
+pub fn create(launch_cwd: &Path) -> io::Result<SharedTerm> {
     #[cfg(windows)]
     let inner = PlatformTerminal::new().map_err(|e| {
         io::Error::new(
@@ -128,6 +135,7 @@ pub fn create() -> io::Result<SharedTerm> {
     Ok(SharedTerm {
         inner: Arc::new(Mutex::new(inner)),
         reader,
+        launch_cwd_url: working_directory_url(launch_cwd).map(Arc::from),
     })
 }
 
@@ -241,14 +249,18 @@ fn write_leave_alt_screen(out: &mut impl io::Write) -> io::Result<()> {
     out.flush()
 }
 
-/// The working-directory URL [`init`] was given, re-reported on teardown.
-static LAUNCH_CWD_URL: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+/// The OSC 7 URL for `cwd`, naming this machine as the host. `None` for a
+/// path that has no URL (relative, or not UTF-8).
+fn working_directory_url(cwd: &Path) -> Option<String> {
+    let host = gethostname::gethostname();
+    path_to_file_url(cwd, &host.to_string_lossy()).ok()
+}
 
 /// OSC 7 with `url`, or with an empty URL for `None`. WezTerm reads an
 /// unparsable URL as "no reported directory", which hands the pane back to
 /// inspecting its processes.
 fn write_cwd_report(out: &mut impl io::Write, url: Option<&str>) -> io::Result<()> {
-    write!(out, "\x1b]7;{}\x1b\\", url.unwrap_or(""))?;
+    write!(out, "{OSC}7;{}{ST}", url.unwrap_or(""))?;
     out.flush()
 }
 
@@ -282,7 +294,7 @@ fn run_all(steps: impl IntoIterator<Item = io::Result<()>>) -> io::Result<()> {
 /// [`restore`] and the panic hook installed by [`init`]. The hook can only
 /// write bytes (no raw/cooked mode switch), and termina restores the
 /// platform mode itself right after the hook returns.
-fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
+fn write_unwind_escapes(out: &mut impl io::Write, launch_cwd_url: Option<&str>) -> io::Result<()> {
     run_all([
         write_sync_reset(out),
         write_focus_disable(out),
@@ -290,7 +302,7 @@ fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
         write_kitty_pop(out),
         write_mouse_disable(out),
         write_leave_alt_screen(out),
-        write_cwd_report(out, LAUNCH_CWD_URL.get().and_then(Option::as_deref)),
+        write_cwd_report(out, launch_cwd_url),
         // Second pop. Since `init()` pushes onto the alt screen's stack, the
         // first pop (above) clears it. This extra pop handles terminals with
         // a global keyboard stack; a harmless no-op on per-screen-buffer
@@ -339,9 +351,6 @@ pub fn probe_kitty(term: &SharedTerm) -> io::Result<bool> {
 /// click and scroll tracking with SGR coordinates, leaving drag-select to the
 /// terminal; `mouse_select` also reports drags so the editor can select.
 ///
-/// `launch_cwd_url` is the OSC 7 URL of the directory the shell started HUME
-/// in; teardown reports it again, because the shell will not re-send it.
-///
 /// Call [`restore`] before exiting. A panic hook, armed before any mode is
 /// entered, also restores, and a failure partway through is unwound before
 /// `Err` is returned.
@@ -350,16 +359,15 @@ pub fn init(
     mouse_enabled: bool,
     mouse_select: bool,
     kitty_enabled: bool,
-    launch_cwd_url: Option<String>,
 ) -> io::Result<crate::screen::Screen> {
     let mut term = term.clone();
-    let _ = LAUNCH_CWD_URL.set(launch_cwd_url);
 
     // Arm before entering any mode: a panic during the enable sequence below
     // still unwinds through this hook, and every escape it emits is a
     // documented no-op for a mode not yet entered.
-    term.set_panic_hook(|handle| {
-        let _ = write_unwind_escapes(handle);
+    let launch_cwd_url = term.launch_cwd_url.clone();
+    term.set_panic_hook(move |handle| {
+        let _ = write_unwind_escapes(handle, launch_cwd_url.as_deref());
     });
 
     let enter = (|| -> io::Result<()> {
@@ -400,7 +408,11 @@ pub fn init(
 /// a second is silently discarded.
 pub fn restore(term: &SharedTerm) -> io::Result<()> {
     let mut term = term.clone();
-    run_all([write_unwind_escapes(&mut term), term.enter_cooked_mode()])
+    let launch_cwd_url = term.launch_cwd_url.clone();
+    run_all([
+        write_unwind_escapes(&mut term, launch_cwd_url.as_deref()),
+        term.enter_cooked_mode(),
+    ])
 }
 
 /// Emit an OSC 12 sequence to set the terminal cursor colour.
@@ -431,13 +443,14 @@ pub fn set_cursor_color(term: &SharedTerm, black: bool) -> io::Result<()> {
     term.flush()
 }
 
-/// Tell the terminal the working directory (OSC 7) as a `file://` URL, so a
-/// new split or tab opens there instead of the terminal guessing from the
-/// process tree. `None` clears the report. [`restore`] and the panic hook
+/// Tell the terminal the working directory (OSC 7), so a new split or tab
+/// opens there instead of the terminal guessing from the process tree. A
+/// `cwd` with no URL (relative, or not UTF-8) clears the report so the
+/// terminal does not keep a stale directory. [`restore`] and the panic hook
 /// report the launch directory again.
-pub fn set_working_directory(term: &SharedTerm, url: Option<&str>) -> io::Result<()> {
+pub fn set_working_directory(term: &SharedTerm, cwd: &Path) -> io::Result<()> {
     let mut term = term.clone();
-    write_cwd_report(&mut term, url)
+    write_cwd_report(&mut term, working_directory_url(cwd).as_deref())
 }
 
 /// Ask the terminal to put `text` on the user's clipboard (OSC 52).

@@ -40,7 +40,6 @@ mod clipboard;
 mod commands;
 mod completion;
 mod cursor;
-mod cwd_report;
 mod dispatch;
 mod doc_ops;
 mod dot_chain;
@@ -944,8 +943,8 @@ pub(crate) struct Editor {
     applied_mouse_mode: (bool, bool),
     /// The working directory last reported to the terminal (OSC 7).
     /// `prepare_frame` compares it against `state.cwd` every frame, so `:cd`
-    /// and `(set-cwd! …)` need no hook of their own. Stays `None` while no
-    /// terminal is attached, so the first attached frame reports.
+    /// and `(set-cwd! …)` need no hook of their own. `None` until the first
+    /// frame, so that frame reports.
     applied_cwd: Option<PathBuf>,
     /// Startup cursor placements queued by `queue_startup_position` (one per
     /// CLI `path:line[:col]` argument) before `run`'s event loop starts.

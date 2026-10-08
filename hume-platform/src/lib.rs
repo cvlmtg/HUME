@@ -29,6 +29,7 @@
 mod unix;
 
 pub mod dirs;
+pub mod file_url;
 pub mod io;
 pub mod path;
 pub mod process;

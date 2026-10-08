@@ -801,7 +801,6 @@ version = "0.15.0"
 dependencies = [
  "arboard",
  "clap",
- "gethostname",
  "globset",
  "hume-decorations",
  "hume-editing",
@@ -900,6 +899,7 @@ name = "hume-platform"
 version = "0.15.0"
 dependencies = [
  "ctrlc",
+ "gethostname",
  "hume-grid",
  "nix",
  "signal-hook 0.4.4",
