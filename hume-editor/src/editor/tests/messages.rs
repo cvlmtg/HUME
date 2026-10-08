@@ -20,6 +20,7 @@ use hume_grid::Rect;
 #[test]
 fn messages_renders_its_badge_color_on_the_first_frame() {
     let mut ed = open_headless(None);
+    ed.view.theme = crate::testing::build_snapshot_theme();
     ed.state
         .message_log
         .push(Severity::Warning, "bad key".to_string());

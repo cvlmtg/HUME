@@ -632,6 +632,7 @@ fn a_one_row_terminal_leaves_the_tabbar_no_room_and_a_click_there_does_not_switc
     use super::render_snapshot::render_to_styled_string;
 
     let mut ed = editor_from("-[a]>bc\n");
+    ed.view.theme = crate::testing::build_snapshot_theme();
     ed.execute_typed("tabnew", None).unwrap();
     let tab_b = ed.state.tabs.current();
 
