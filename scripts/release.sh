@@ -132,6 +132,10 @@ echo "Releasing v$version, then bumping the dev version to v$next_version."
 cargo fmt --all
 bash scripts/test-all.sh
 
+# CI byte-diffs the committed theme editor bundle against a rebuild and
+# test-all.sh does not run that check, so rebuild it into the release commit.
+HUME_WRITE_THEME_EDITOR=1 bash scripts/check-theme-editor-bundle.sh
+
 release_date="$(date +%Y-%m-%d)"
 
 # Promote Unreleased's entries under a dated version header, same shape as
@@ -141,7 +145,7 @@ perl -0pi -e "s/^## Unreleased\n/## Unreleased\n\n## [$version] - $release_date\
 set_cargo_version "$version"
 cargo check -p hume-editor --offline >/dev/null
 
-git add CHANGELOG.md Cargo.toml Cargo.lock
+git add CHANGELOG.md Cargo.toml Cargo.lock tools/theme-editor/index.html
 git commit -m "release: bump to v$version"
 git tag -a "v$version" -m "v$version"
 
