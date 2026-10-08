@@ -10,6 +10,7 @@ Items tagged **[breaking]** change existing user-facing behavior or plugin API w
 - [ ] Code folding — tree-sitter-powered collapse/expand.
 - [ ] Docked panes — fixed-extent (along the split axis) `LayoutTree` variant alongside ratio-based splits, so a docked pane can be a column as well as a row. `equalize` (which currently rewrites every ratio in the tree on every split/close, see `LayoutTree::Split`'s doc comment) must be scoped to skip docked panes rather than resizing them. Clients: quickfix list, LSP references/diagnostics, embedded terminal/REPL, build/test runner, `:help` pager, DAP debugger views, undo-tree graph (`docs/UNDOTREE.md`). Deferred until the first concrete client is scoped.
 - [x] **[breaking]** `:ls` in the bottom drawer — `Enter` on a row switches buffer, so it is a jump. `(buffers)` and `on-text-changed` see no `[buffers]` buffer. `:messages` stays a read-only buffer so it can be navigated, selected and copied.
+- [ ] Notifications in the bottom drawer — a drawer client for notification history, alongside `:ls`.
 - [ ] Command and search history picker — fuzzy recall of earlier `:` commands and `/`/`?` searches into the prompt, in place of the Up/Down-only recall in `minibuf/history.rs`.
 - [ ] Wrap indicator — configurable char prepended to continuation display lines in soft-wrap mode.
 - [ ] Per-buffer keymaps (Steel) — `on-buffer-enter` already exists to key off of.

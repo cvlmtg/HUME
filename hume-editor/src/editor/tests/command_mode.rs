@@ -1700,7 +1700,7 @@ fn earlier_bang_is_rejected() {
 
 /// `:earlier`/`:later` must refuse a read-only buffer exactly like `u`/
 /// `Ctrl-r` do (same message, same side effects), since both now dispatch
-/// through the same `cmd_undo`/`cmd_redo` (`list_buffers.rs`'s
+/// through the same `cmd_undo`/`cmd_redo` (`read_only_view.rs`'s
 /// `read_only_buffer_blocks_undo_and_redo` is this test's key-driven
 /// counterpart).
 #[test]

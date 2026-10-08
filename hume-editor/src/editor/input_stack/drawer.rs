@@ -1,5 +1,6 @@
-//! The bottom-drawer layer: `(show-drawer-list! items on-select)`'s raw
-//! state, browsed with Helix-style "stay open while editing" semantics.
+//! The bottom-drawer layer, browsed with Helix-style "stay open while
+//! editing" semantics. A drawer is opened by `(show-drawer-list! items
+//! on-select)` or by `:ls`.
 
 use std::ops::Range;
 use std::sync::Arc;
@@ -45,9 +46,9 @@ pub(in crate::editor) struct DrawerLayer {
 impl DrawerLayer {
     /// Mints a fresh token for this drawer. The constructor is the only
     /// minting site, so every `DrawerLayer` in existence carries a token no
-    /// other one has (or ever had): `show_drawer_list`'s self-replace still
-    /// takes the outgoing drawer by value and drops it, rather than mutating
-    /// an existing one's token in place, so a stale token a plugin is still
+    /// other one has (or ever had): [`EditorState::open_drawer`] takes the
+    /// outgoing drawer by value and drops it, rather than mutating an
+    /// existing one's token in place, so a stale token a plugin is still
     /// holding can never alias a *different*, later drawer that happens to
     /// reuse the same stack slot.
     pub(in crate::editor) fn new(
@@ -74,17 +75,37 @@ impl DrawerLayer {
 
     /// The drawer `:ls` opens, on the row of `current`.
     pub(in crate::editor) fn buffer_list(state: &EditorState, current: BufferId) -> Self {
-        let (rows, buffers) = state.buffer_list_rows(current);
-        let selected = buffers.iter().position(|&b| b == current).unwrap_or(0);
+        let list = state.buffer_list(current);
+        let selected = list
+            .buffers
+            .iter()
+            .position(|&b| b == current)
+            .expect("the focused buffer is in the store");
         Self::new(
-            DrawerItems::Rows(rows),
-            DrawerSelect::Buffers(buffers),
+            DrawerItems::Rows(list.rows),
+            DrawerSelect::Buffers(list.buffers),
             selected,
         )
     }
 
-    /// Identifies this drawer to Steel: `show-drawer-list!`'s return value,
-    /// and the shared guard every token-scoped drawer mutation
+    /// Replaces a buffer-list drawer's rows and buffers together, keeping the
+    /// selection on the buffer it was on, or on the nearest row when that
+    /// buffer is gone.
+    fn set_buffer_list(&mut self, list: BufferList) {
+        let kept = match &self.select {
+            DrawerSelect::Buffers(old) => old.get(self.selected).copied(),
+            DrawerSelect::Steel(_) => None,
+        };
+        let selected = kept
+            .and_then(|b| list.buffers.iter().position(|&n| n == b))
+            .unwrap_or(self.selected);
+        self.rows = DrawerRows::new(DrawerItems::Rows(list.rows));
+        self.select = DrawerSelect::Buffers(list.buffers);
+        self.select_clamped(selected);
+    }
+
+    /// Identifies this drawer to a Steel owner: `show-drawer-list!`'s return
+    /// value, and the shared guard every token-scoped drawer mutation
     /// (`close-drawer!`, `update-drawer-list!`, `drawer-selected-index`)
     /// checks before touching the open drawer. Mirrors
     /// `PickerSession::token`.
@@ -172,16 +193,17 @@ impl Layer for DrawerLayer {
     // way a `Menu` can, and `push_layer` evicts it on the way in regardless
     // of which of the two opens second.
     //
-    /// Fires `#f` when `why` is [`Removal::Incidental`], i.e. swept up as
-    /// collateral above some other target. No concrete path reaches this
-    /// today: a `Drawer` only ever lands directly on `Base` (every entry
-    /// gate that pushes one requires the mode layer to be `Base`, and
-    /// `push_layer`'s eviction clears the one non-modal layer, `Popup`,
-    /// that could otherwise sit beneath a fresh one), and `Base` is never a
-    /// truncate target. Still branches on `why`, matching `MenuLayer`'s own
-    /// fix for the same bug class, rather than leaving "silent unless
-    /// swept as collateral" true only by that accident of what happens to
-    /// land where today. Stays silent on [`Removal::Explicit`]: an
+    /// Fires `#f` at a Steel drawer's callback when `why` is
+    /// [`Removal::Incidental`], i.e. swept up as collateral above some other
+    /// target. No concrete path reaches this today: a `Drawer` only ever
+    /// lands directly on `Base` (`show-drawer-list!` requires the mode layer
+    /// to be `Base` and `:ls` runs from the command line, which has closed
+    /// by then; `push_layer`'s eviction clears the one non-modal layer,
+    /// `Popup`, that could otherwise sit beneath a fresh one), and `Base` is
+    /// never a truncate target. Still branches on `why`, matching
+    /// `MenuLayer`'s own fix for the same bug class, rather than leaving
+    /// "silent unless swept as collateral" true only by that accident of
+    /// what happens to land where today. Stays silent on [`Removal::Explicit`]: an
     /// explicit `close-drawer!` (routed through `EditorState::excise_layer`,
     /// which reaches this as the named target without touching whatever
     /// else is stacked above it, such as an `Insert` session browsing the drawer,
@@ -212,8 +234,8 @@ impl Layer for DrawerLayer {
 impl EditorState {
     /// Opens `drawer`, replacing any drawer already open. The outgoing
     /// drawer's Steel owner, if it has one, learns it is gone through a
-    /// `#f` call; `Removal::Explicit` closes stay silent, so only this
-    /// path and `Esc` fire one.
+    /// `#f` call. `Removal::Explicit` closes stay silent; `Esc`, a failed
+    /// row render and an incidental teardown fire one too.
     pub(in crate::editor) fn open_drawer(
         &mut self,
         view: &EngineView,
@@ -314,9 +336,11 @@ impl super::stack::FiresFalseOnReplace for DrawerLayer {
     fn into_close_call(
         self: Box<Self>,
     ) -> Option<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)> {
-        let args = self.call_args(SteelVal::BoolV(false));
-        match self.select {
-            DrawerSelect::Steel(callback) => Some((callback, args)),
+        match &self.select {
+            DrawerSelect::Steel(callback) => {
+                let call = (callback.clone(), self.call_args(SteelVal::BoolV(false)));
+                Some(call)
+            }
             DrawerSelect::Buffers(_) => None,
         }
     }
@@ -353,9 +377,10 @@ impl super::stack::InputStack {
 
 /// Handles one key while the bottom drawer is open. Ctrl-d/Ctrl-u page by
 /// half the visible band, Shift-Down/Shift-Up step one row at a time for
-/// fine adjustment, and `Enter` (which fires `on-select` repeatedly across a
-/// browse session, unlike the menu, without closing the drawer) is handled
-/// in place; `Esc` retires the layer and fires `#f`; any other key,
+/// fine adjustment, and `Enter` (which runs the drawer's [`DrawerSelect`]
+/// repeatedly across a browse session, unlike the menu, without closing the
+/// drawer) is handled in place; `Esc` retires the layer and fires `#f` at a
+/// Steel drawer's callback; any other key,
 /// including bare `j`/`k`
 /// and the arrow keys, falls through completely untouched (no close, no
 /// callback), leaving the drawer open while focus moves to whatever the
@@ -427,37 +452,55 @@ fn select_row(ed: &mut Editor, r: LayerRef) {
             let target = buffers[drawer.selected];
             if ed.state.buffers.try_get(target).is_none() {
                 ed.report(Severity::Warning, "buffer was closed".to_string());
-                return;
+            } else {
+                ed.enter_buffer(FocusedPane::current(&ed.state), target);
             }
-            ed.enter_buffer(FocusedPane::current(&ed.state), target);
-            refresh_buffer_list(ed, r);
+            let current = FocusedPane::current(&ed.state).bid(&ed.view);
+            ed.state.refresh_buffer_list_drawer(current);
+            clamp_drawer_scroll(ed, r);
         }
     }
 }
 
-/// Rebuilds a buffer-list drawer's rows after a switch so the `%`/`#`
-/// markers follow it. The selection stays on its row.
-fn refresh_buffer_list(ed: &mut Editor, r: LayerRef) {
-    let (rows, buffers) = ed
-        .state
-        .buffer_list_rows(FocusedPane::current(&ed.state).bid(&ed.view));
-    let drawer = ed
-        .state
-        .input
-        .at_mut::<DrawerLayer>(r)
-        .expect("dispatch_at already checked kind(r) == DrawerLayer");
-    drawer.rows = DrawerRows::new(DrawerItems::Rows(rows));
-    drawer.select = DrawerSelect::Buffers(buffers);
-    drawer.select_clamped(drawer.selected);
-    clamp_drawer_scroll(ed, r);
+/// The rows of a buffer-list drawer and the buffers they name, in row order.
+struct BufferList {
+    rows: Vec<String>,
+    buffers: Vec<BufferId>,
 }
 
 impl EditorState {
+    /// Rebuilds the open drawer's rows when it lists buffers and the store,
+    /// the markers or the focused buffer have moved since it last did. Runs
+    /// every frame from `Editor::prepare_frame`, so a row's number is always
+    /// the one `:b <n>` resolves.
+    pub(in crate::editor) fn refresh_buffer_list_drawer(&mut self, current: BufferId) {
+        let Some(drawer) = self.input.drawer() else {
+            return;
+        };
+        let DrawerSelect::Buffers(listed) = &drawer.select else {
+            return;
+        };
+        let list = self.buffer_list(current);
+        if *listed == list.buffers && drawer.rows.text().iter().flatten().eq(list.rows.iter()) {
+            return;
+        }
+        let r = self
+            .input
+            .ref_of::<DrawerLayer>()
+            .expect("drawer() found a DrawerLayer");
+        self.input
+            .at_mut::<DrawerLayer>(r)
+            .expect("ref_of names a live DrawerLayer")
+            .set_buffer_list(list);
+        self.sync_drawer_view();
+    }
+
     /// One `:ls` row per open buffer, and the buffers they name, in row
     /// order. A row's number is the one `:b <n>` resolves.
-    fn buffer_list_rows(&self, current: BufferId) -> (Vec<String>, Vec<BufferId>) {
+    fn buffer_list(&self, current: BufferId) -> BufferList {
         let alternate = self.buffers.second_most_recent();
-        self.buffers
+        let (rows, buffers) = self
+            .buffers
             .iter()
             .enumerate()
             .map(|(i, (id, buf))| {
@@ -481,7 +524,8 @@ impl EditorState {
                 );
                 (row.trim_end().to_owned(), id)
             })
-            .unzip()
+            .unzip();
+        BufferList { rows, buffers }
     }
 }
 
