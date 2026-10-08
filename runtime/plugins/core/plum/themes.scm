@@ -1,7 +1,7 @@
 ;;; core:plum/themes.scm — third-party THEME install pipeline. See
 ;;; README.md.
 
-(require "lib.scm")
+(require "lib/helpers.scm")
 
 (plum/require-stdlib!)
 

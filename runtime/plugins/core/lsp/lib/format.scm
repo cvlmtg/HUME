@@ -1,7 +1,7 @@
 ;;; core:lsp/format.scm — textDocument/formatting / rangeFormatting /
 ;;; rangesFormatting. See docs/features.md.
 
-(require "lib.scm")
+(require "helpers.scm")
 
 (define (lsp/format-options pane)
   (hash "tabSize" (get-buffer-option pane "tab-width")

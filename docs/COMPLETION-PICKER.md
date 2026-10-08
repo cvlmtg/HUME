@@ -257,7 +257,7 @@ the sources with a ranked candidate.
 | `(define-typed-command! … #:complete "name")` | a `:` command's argument completer |
 | command `completion-trigger` (Insert, default `Ctrl-Space`) | native; `(call! "completion-trigger" pane)` from Steel |
 
-`core:lsp/completion.scm` is the reference source: `register-completion-
+`core:lsp/lib/completion.scm` is the reference source: `register-completion-
 source! "lsp"` with `#:priority 10 #:resolve #t`, whose proc sends
 `textDocument/completion` with `#:supersede "completion"` (it never reads a
 field of the response itself, so the handle every `lsp-request!` response

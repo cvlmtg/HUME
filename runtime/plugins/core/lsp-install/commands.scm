@@ -1,12 +1,12 @@
 ;;; core:lsp-install/commands.scm — see README.md.
 
-(require "catalog.scm")
-(require "receipts.scm")
-(require "register.scm")
-(require "blocker.scm")
-(require "source-catalog.scm")
-(require "install.scm")
-(require "lock.scm")
+(require "lib/catalog.scm")
+(require "lib/receipts.scm")
+(require "lib/register.scm")
+(require "lib/blocker.scm")
+(require "lib/source-catalog.scm")
+(require "lib/install.scm")
+(require "lib/lock.scm")
 
 (lsp-install/require-stdlib!)
 

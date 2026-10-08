@@ -107,18 +107,24 @@ fn read_scm(dir: &std::path::Path, file: &str) -> String {
     code_only(&src)
 }
 
-/// Every `*.scm` file name directly inside `dir` (plugins don't nest
-/// subdirectories).
+/// Every `*.scm` file inside `dir` and its `lib/` subdirectory, as paths
+/// relative to `dir`.
 fn scm_files(dir: &std::path::Path) -> Vec<String> {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut files: Vec<String> = rd
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("scm"))
-        .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .collect();
+    let mut files = Vec::new();
+    for (sub, prefix) in [(dir.to_path_buf(), ""), (dir.join("lib"), "lib/")] {
+        let Ok(rd) = std::fs::read_dir(sub) else {
+            continue;
+        };
+        files.extend(
+            rd.flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("scm"))
+                .filter_map(|p| {
+                    p.file_name()
+                        .map(|n| format!("{prefix}{}", n.to_string_lossy()))
+                }),
+        );
+    }
     files.sort();
     files
 }
@@ -143,7 +149,7 @@ fn defined_commands(dir: &std::path::Path, files: &[String], definer: &str) -> V
     names
 }
 
-/// The file names in `(require "x.scm")` forms of `src`.
+/// The paths in `(require "x.scm")` forms of `src`, relative to the requiring file.
 fn required_names(src: &str) -> Vec<String> {
     src.match_indices("(require \"")
         .filter_map(|(idx, needle)| {
@@ -154,7 +160,9 @@ fn required_names(src: &str) -> Vec<String> {
         .collect()
 }
 
-/// `entry` plus every file it `require`s, directly or transitively.
+/// `entry` plus every file it `require`s, directly or transitively, as paths
+/// relative to `dir`. A `require` resolves against the requiring file's own
+/// directory.
 fn entry_closure(dir: &std::path::Path, entry: &str) -> Vec<String> {
     let mut seen: Vec<String> = Vec::new();
     let mut pending = vec![entry.to_string()];
@@ -162,7 +170,18 @@ fn entry_closure(dir: &std::path::Path, entry: &str) -> Vec<String> {
         if seen.contains(&file) || !dir.join(&file).exists() {
             continue;
         }
-        pending.extend(required_names(&read_scm(dir, &file)));
+        let parent = file.rsplit_once('/').map_or("", |(parent, _)| parent);
+        pending.extend(
+            required_names(&read_scm(dir, &file))
+                .into_iter()
+                .map(|name| {
+                    if parent.is_empty() {
+                        name
+                    } else {
+                        format!("{parent}/{name}")
+                    }
+                }),
+        );
         seen.push(file);
     }
     seen

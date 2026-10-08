@@ -1,4 +1,4 @@
-;;; core:plum/lib.scm
+;;; core:plum/lib/helpers.scm
 
 (provide plum/require-stdlib! plum/batch-run! plum/read-file plum/two-level-repos
          plum/clone-github! plum/git-pull!)

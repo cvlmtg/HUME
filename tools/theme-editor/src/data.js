@@ -6,7 +6,7 @@
 // Only syntax/markup and Diff remain hand-maintained: syntax/markup are
 // tree-sitter capture names HUME has no fixed enum for (runtime/themes/
 // sand.toml is the de-facto catalog for those), and Diff comes from Steel
-// (runtime/plugins/core/git-diff/render.scm), not Rust.
+// (runtime/plugins/core/git-diff/lib/render.scm), not Rust.
 import {
   CURSOR_LADDERS, CURSOR_MATCH_SCOPES, DIAGNOSTIC_SCOPES, UI_SCOPES, VIRTUAL_SCOPES,
 } from "./lib/vocabulary.generated.js";

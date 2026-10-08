@@ -1,6 +1,6 @@
 ;;; core:lsp/hover.scm — textDocument/hover. See docs/features.md.
 
-(require "lib.scm")
+(require "helpers.scm")
 
 ;; ── Response decoding ───────────────────────────────────────────────────────
 

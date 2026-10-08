@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Regenerate runtime/plugins/core/lsp-install/sources.scm and requirements.scm from mason-org/mason-registry.
+"""Regenerate runtime/plugins/core/lsp-install/data/sources.scm and requirements.scm from mason-org/mason-registry.
 
-Reads the pinned release tag from runtime/plugins/core/lsp-install/mason-pin.scm, downloads
+Reads the pinned release tag from runtime/plugins/core/lsp-install/data/mason-pin.scm, downloads
 that release's compiled registry.json.zip, joins it against the checked-in
-runtime/plugins/core/lsp-install/servers.scm and server-commands.scm (server names Helix actually wires) through
+runtime/plugins/core/lsp-install/data/servers.scm and server-commands.scm (server names Helix actually wires) through
 an explicit name-mapping table, and rewrites sources.scm with per-server
 install records, then derives requirements.scm from the sources.scm it wrote: per
 server and platform, the format of the download and the programs the install needs
@@ -54,7 +54,7 @@ from sync_common import (  # noqa: E402
 )
 
 REPO = Path(__file__).resolve().parent.parent
-LSP_INSTALL_DIR = REPO / "runtime" / "plugins" / "core" / "lsp-install"
+LSP_INSTALL_DIR = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data"
 MASON_PIN_SCM = LSP_INSTALL_DIR / "mason-pin.scm"
 LSP_SERVERS_SCM = LSP_INSTALL_DIR / "servers.scm"
 LSP_SERVER_COMMANDS_SCM = LSP_INSTALL_DIR / "server-commands.scm"
@@ -62,13 +62,13 @@ LSP_SOURCES_SCM = LSP_INSTALL_DIR / "sources.scm"
 LSP_REQUIREMENTS_SCM = LSP_INSTALL_DIR / "requirements.scm"
 
 LSP_SOURCES_HEADER = """\
-;;; runtime/plugins/core/lsp-install/sources.scm — HUME bundled LSP server install catalog.
+;;; runtime/plugins/core/lsp-install/data/sources.scm — HUME bundled LSP server install catalog.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: mason-org/mason-registry @ {tag}
 """
 
 LSP_REQUIREMENTS_HEADER = """\
-;;; runtime/plugins/core/lsp-install/requirements.scm — HUME bundled LSP server install requirements.
+;;; runtime/plugins/core/lsp-install/data/requirements.scm — HUME bundled LSP server install requirements.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: sources.scm
 """

@@ -307,7 +307,7 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
 /// see `tall_content_docks_instead_of_using_the_drawer` below); a 23-row
 /// pane can (`⌊23/3⌋ == 7`, `⌊24/3⌋ == 8`).
 ///
-/// Computing one more than the range's width in `lib.scm`'s
+/// Computing one more than the range's width in `helpers.scm`'s
 /// `lsp/visible-lines` would report 24 visible lines instead of 23 and raise
 /// the threshold to 8, so 8 content lines would float instead of dock.
 #[test]

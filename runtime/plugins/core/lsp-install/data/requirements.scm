@@ -1,4 +1,4 @@
-;;; runtime/plugins/core/lsp-install/requirements.scm — HUME bundled LSP server install requirements.
+;;; runtime/plugins/core/lsp-install/data/requirements.scm — HUME bundled LSP server install requirements.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: sources.scm
 

@@ -1,6 +1,6 @@
 ;;; core:plum — see README.md.
 
-(require "lib.scm")
-(require "plugins.scm")
+(require "lib/helpers.scm")
+(require "lib/plugins.scm")
 
 (plum/require-stdlib!)

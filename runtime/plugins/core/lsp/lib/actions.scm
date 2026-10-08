@@ -1,6 +1,6 @@
 ;;; core:lsp/actions.scm — textDocument/codeAction. See docs/features.md.
 
-(require "lib.scm")
+(require "helpers.scm")
 
 (define (lsp/primary-selection-range pane)
   (let ((primary (call! "stdlib/primary-selection" (buffer-selections pane))))

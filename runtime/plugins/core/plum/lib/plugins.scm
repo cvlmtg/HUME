@@ -1,6 +1,6 @@
 ;;; core:plum/plugins.scm
 
-(require "lib.scm")
+(require "helpers.scm")
 
 ;; ── Path helpers ──────────────────────────────────────────────────────────────
 

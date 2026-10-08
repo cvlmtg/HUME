@@ -157,7 +157,7 @@ fn scan_does_not_read_the_install_requirements() {
     std::fs::write(
         runtime
             .path()
-            .join("plugins/core/lsp-install/requirements.scm"),
+            .join("plugins/core/lsp-install/data/requirements.scm"),
         "(",
     )
     .unwrap();
@@ -180,7 +180,7 @@ fn scan_does_not_read_the_install_requirements() {
 }
 
 /// The expected JSON is transcribed by hand from
-/// runtime/plugins/core/lsp-install/servers.scm's current text, not derived by calling
+/// runtime/plugins/core/lsp-install/data/servers.scm's current text, not derived by calling
 /// `lsp/settings->hash`: this is the settings-conversion correctness
 /// check, so it must not share logic with the thing it verifies.
 #[test]
@@ -696,7 +696,7 @@ fn lsp_install_unknown_language_reports_an_error() {
 }
 
 /// Tab on `:lsp-install`'s argument completes against the seeded catalog's
-/// own languages, read from the real `runtime/plugins/core/lsp-install/servers.scm` (not
+/// own languages, read from the real `runtime/plugins/core/lsp-install/data/servers.scm` (not
 /// a fixture subset): "rus" matches only "rust" (unlike "ru", which also
 /// matches "ruby").
 #[test]
@@ -1636,7 +1636,8 @@ fn runtime_with_sources(sources: &str) -> tempfile::TempDir {
         .path()
         .join("plugins")
         .join("core")
-        .join("lsp-install");
+        .join("lsp-install")
+        .join("data");
     std::fs::write(install_dir.join("sources.scm"), sources).unwrap();
     let status = std::process::Command::new("python3")
         .arg(repo_runtime_dir().join("../scripts/sync-lsp-sources.py"))
@@ -2877,7 +2878,7 @@ fn effective(ed: &Editor, language: &str) -> Vec<String> {
 /// test follows a re-pin.
 fn seeded_version(server: &str) -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../runtime/plugins/core/lsp-install/sources.scm");
+        .join("../runtime/plugins/core/lsp-install/data/sources.scm");
     let text = std::fs::read_to_string(path).unwrap();
     let row = text
         .lines()
@@ -3053,7 +3054,8 @@ fn install_rejects_a_name_that_is_neither_language_nor_server() {
 /// the server, so such a name must be its own language's primary.
 #[test]
 fn a_name_that_is_both_language_and_server_is_its_own_primary() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../runtime/plugins/core/lsp-install");
+    let dir =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../runtime/plugins/core/lsp-install/data");
     let servers = std::fs::read_to_string(dir.join("servers.scm")).unwrap();
     let languages = std::fs::read_to_string(dir.join("language-servers.scm")).unwrap();
     for row in languages.lines().filter(|l| l.starts_with(" (\"")) {

@@ -116,7 +116,7 @@ export const MARKDOWN_SAMPLE = {
 };
 
 // The diff buffer, laid out the way HUME's own git-diff plugin renders one
-// (`runtime/plugins/core/git-diff/render.scm`): a sign-column glyph per
+// (`runtime/plugins/core/git-diff/lib/render.scm`): a sign-column glyph per
 // changed line from the bare `diff.plus`/`.minus`/`.delta` scope (Helix's own
 // gutter-marker names), a row-wide `diff.plus.line`/`.minus.line`/`.delta.line`
 // background (HUME's own addition — Helix reads no background for these), and
@@ -197,13 +197,13 @@ export const PICKER_ROWS = [
   "hume-engine/src/style/mod.rs",
   "runtime/themes/sand.toml",
   "runtime/themes/gruvbox_light.toml",
-  "runtime/plugins/core/git-diff/render.scm",
+  "runtime/plugins/core/git-diff/lib/render.scm",
   "docs/LSP.md",
   "tools/theme-editor/src/preview/EditorPane.jsx",
 ];
 
 // Drawer row list — shaped like the goto/references drawer's own rows
-// (`runtime/plugins/core/lsp/lib.scm`): a `path:line:col` locator followed
+// (`runtime/plugins/core/lsp/lib/helpers.scm`): a `path:line:col` locator followed
 // by the matched line's text.
 export const DRAWER_ROWS = [
   "hume-editor/src/ui/theme.rs:42:5    pub fn mode_scope(mode: Mode) -> Scope {",

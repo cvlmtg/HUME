@@ -1,8 +1,8 @@
 ;;; core:lsp-install — plugin.scm (see README.md).
 
-(require "catalog.scm")
-(require "register.scm")
-(require "discovery.scm")
+(require "lib/catalog.scm")
+(require "lib/register.scm")
+(require "lib/discovery.scm")
 
 (lsp-install/require-stdlib!)
 

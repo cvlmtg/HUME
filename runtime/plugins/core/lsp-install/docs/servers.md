@@ -8,7 +8,7 @@ the contract with `core:lsp`, and the catalog record formats.
 
 ## Catalogs
 
-Files in the plugin's directory, read through `(plugin-dir)`. Registration (`plugin.scm`)
+Files in the plugin's `data/` directory, read through `(plugin-dir)`. Registration (`plugin.scm`)
 reads the first two at load; the install pipeline (`commands.scm`) reads the rest.
 `requirements.scm` is read on the first requirements lookup (the discovery hint, a blocker
 check), not at load.

@@ -116,27 +116,27 @@ fn generated_scm_headers_match_their_generator_templates() {
         (
             "scripts/sync-grammars.py",
             "LSP_SERVERS_HEADER",
-            "runtime/plugins/core/lsp-install/servers.scm",
+            "runtime/plugins/core/lsp-install/data/servers.scm",
         ),
         (
             "scripts/sync-grammars.py",
             "LANGUAGE_SERVERS_HEADER",
-            "runtime/plugins/core/lsp-install/language-servers.scm",
+            "runtime/plugins/core/lsp-install/data/language-servers.scm",
         ),
         (
             "scripts/sync-grammars.py",
             "SERVER_COMMANDS_HEADER",
-            "runtime/plugins/core/lsp-install/server-commands.scm",
+            "runtime/plugins/core/lsp-install/data/server-commands.scm",
         ),
         (
             "scripts/sync-lsp-sources.py",
             "LSP_SOURCES_HEADER",
-            "runtime/plugins/core/lsp-install/sources.scm",
+            "runtime/plugins/core/lsp-install/data/sources.scm",
         ),
         (
             "scripts/sync-lsp-sources.py",
             "LSP_REQUIREMENTS_HEADER",
-            "runtime/plugins/core/lsp-install/requirements.scm",
+            "runtime/plugins/core/lsp-install/data/requirements.scm",
         ),
     ];
 

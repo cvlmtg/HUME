@@ -1,6 +1,6 @@
 ;;; core:lsp/inlay.scm — textDocument/inlayHint. See docs/decorations.md.
 
-(require "lib.scm")
+(require "helpers.scm")
 
 (define (lsp/inlay-hint-text hint)
   (let ((label (json-ref hint "label")))

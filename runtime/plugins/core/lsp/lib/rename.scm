@@ -1,6 +1,6 @@
 ;;; core:lsp/rename.scm — textDocument/rename. See docs/features.md.
 
-(require "lib.scm")
+(require "helpers.scm")
 
 (define-command! "lsp-rename" "Rename the symbol under the cursor."
   (lambda (pane)

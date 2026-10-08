@@ -1,4 +1,4 @@
-;;; runtime/plugins/core/lsp-install/language-servers.scm — each language's ordered LSP server list.
+;;; runtime/plugins/core/lsp-install/data/language-servers.scm — each language's ordered LSP server list.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ ba40e547426b
 

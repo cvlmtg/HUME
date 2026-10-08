@@ -1,4 +1,4 @@
-;;; core:lsp/lib.scm — shared helpers used by every feature file. See
+;;; core:lsp/lib/helpers.scm — shared helpers used by every feature file. See
 ;;; docs/architecture.md.
 
 (provide lsp/report-error! lsp/answered lsp/answers lsp/none-answered? lsp/report-answer-errors! lsp/with-position-params

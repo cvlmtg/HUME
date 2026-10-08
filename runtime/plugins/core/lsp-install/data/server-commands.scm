@@ -1,4 +1,4 @@
-;;; runtime/plugins/core/lsp-install/server-commands.scm — the command of each bundled LSP server whose command differs from its name.
+;;; runtime/plugins/core/lsp-install/data/server-commands.scm — the command of each bundled LSP server whose command differs from its name.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ ba40e547426b
 

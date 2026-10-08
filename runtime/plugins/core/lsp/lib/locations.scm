@@ -1,6 +1,6 @@
 ;;; core:lsp/locations.scm — the locations drawer. See docs/architecture.md.
 
-(require "lib.scm")
+(require "helpers.scm")
 
 (provide lsp/show-locations! lsp/answer-locations)
 

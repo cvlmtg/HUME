@@ -1,6 +1,6 @@
 ;;; core:lsp/sighelp.scm — textDocument/signatureHelp. See docs/features.md.
 
-(require "lib.scm")
+(require "helpers.scm")
 
 (define (lsp/param-text sig-label param)
   (let ((param-label (json-ref param "label")))

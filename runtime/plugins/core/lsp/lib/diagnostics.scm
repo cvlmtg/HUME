@@ -1,7 +1,7 @@
 ;;; core:lsp/diagnostics.scm — diagnostics navigation, drawer, EOL summary, gutter
 ;;; signs. See docs/decorations.md.
 
-(require "lib.scm")
+(require "helpers.scm")
 
 ;; ── Helpers ──────────────────────────────────────────────────────────────────
 

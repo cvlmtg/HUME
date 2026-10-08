@@ -74,7 +74,7 @@ fn toggle_extend_from_insert_is_a_no_op() {
 }
 
 /// A sticky popup shown from Normal must close when the user toggles into
-/// Extend. The deleted `on-mode-change` hook (`lib.scm`) covered every mode
+/// Extend. The deleted `on-mode-change` hook (`helpers.scm`) covered every mode
 /// transition; `push_mode_layer`'s own `clear_popups()` call replaced it for
 /// every transition that goes through `push_mode_layer`, except
 /// Normal↔Extend, which never does, since both share the same `Base` mode

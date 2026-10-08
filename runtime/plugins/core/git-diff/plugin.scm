@@ -1,9 +1,9 @@
 ;;; core:git-diff — plugin.scm. See docs/architecture.md.
 
-(require "state.scm")
-(require "diff.scm")
-(require "branch.scm")
-(require "render.scm")
+(require "lib/state.scm")
+(require "lib/diff.scm")
+(require "lib/branch.scm")
+(require "lib/render.scm")
 
 (unless (member "core:stdlib" (declared-plugins))
   (error "core:git-diff: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:git-diff\")"))

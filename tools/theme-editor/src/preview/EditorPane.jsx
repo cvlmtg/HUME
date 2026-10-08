@@ -153,7 +153,7 @@ function renderToken(tok, i, tag, sc, pal, fallbackFg, editorBg) {
 // `.line`-suffixed background (HUME's own addition) and a sign-column glyph
 // from the matching bare scope (Helix's own gutter-marker name); the row's
 // own word-level change is a nested `diff.plus.word`/`.minus.word` span —
-// same layering as `runtime/plugins/core/git-diff/render.scm`.
+// same layering as `runtime/plugins/core/git-diff/lib/render.scm`.
 function DiffRows({ sc, pal, BG, FG, lnr, tagStyle }) {
   return DIFF_SAMPLE.rows.map(row => {
     const rowBg = row.rowScope ? bgc(row.rowScope, sc, pal, BG) : BG;

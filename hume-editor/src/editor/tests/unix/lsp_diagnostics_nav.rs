@@ -267,7 +267,7 @@ fn enter_jumps_into_the_drawer_s_buffer_even_after_switching_away() {
 // ── Live refresh: the drawer follows corrected publishes ────────────────────
 // The drawer freezes its rows at open time; the plugin rebuilds them on
 // every `on-diagnostics-changed` for its buffer (see
-// `runtime/plugins/core/lsp/diagnostics.scm`). These tests drive the whole
+// `runtime/plugins/core/lsp/lib/diagnostics.scm`). These tests drive the whole
 // path: scripted publish → store → hook → `update-drawer-list!`.
 
 const DIAG_C: DiagFixture = ((2, 0), (2, 2), 1, "problem C");

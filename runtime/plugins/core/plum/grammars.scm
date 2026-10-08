@@ -1,6 +1,6 @@
 ;;; core:plum/grammars.scm — the grammar install pipeline; see README.md.
 
-(require "lib.scm")
+(require "lib/helpers.scm")
 
 (plum/require-stdlib!)
 

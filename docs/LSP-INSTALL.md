@@ -140,7 +140,7 @@ and writes every language's list as its default.
   `languages.scm` (same upstream, same pin). Mason's `languages:` field uses different
   naming ("TypeScript") and would need its own mapping — dropped entirely.
 - Field encoding (empty tail never `#f`, canonical JSON `config` string, delivered both ways
-  by `core:lsp-install/register.scm`, decoded once via `(json-parse)` at the one consuming site):
+  by `core:lsp-install/lib/register.scm`, decoded once via `(json-parse)` at the one consuming site):
   see `runtime/plugins/core/lsp-install/README.md`'s record-shape reference. A JSON string sidesteps the fact that plain
   sexpr syntax can't tell an empty JSON array from an empty JSON object. See
   [Config delivery & per-server audit](#config-delivery--per-server-audit) for why delivering
@@ -231,7 +231,7 @@ and writes every language's list as its default.
   `initialized`, resolved per-item to answer `workspace/configuration` pull requests.
   Mechanism: `hume-lsp/src/client.rs`'s `resolve_config_section`.
 - **Seeded catalog delivers its config correctly**: `servers.scm`'s `config` field is
-  delivered as **both** `#:init-options` and `#:settings` by `core:lsp-install/register.scm`,
+  delivered as **both** `#:init-options` and `#:settings` by `core:lsp-install/lib/register.scm`,
   as the same blob goes to both — see
   `runtime/plugins/core/lsp-install/docs/servers.md`.
 - **Per-server config audit** (all 17 seeded servers carrying a `config` blob, verified

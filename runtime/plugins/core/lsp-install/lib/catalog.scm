@@ -18,7 +18,7 @@
     (error "core:lsp-install: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:lsp-install\")")))
 
 (define (lsp-install/read-data file)
-  (call-with-input-file (path-join lsp-install/dir file) read))
+  (call-with-input-file (path-join lsp-install/dir "data" file) read))
 
 (define (lsp-install/index-entries entries)
   (let loop ((entries entries) (index (hash)))

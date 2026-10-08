@@ -62,14 +62,14 @@ PLUM has three subsystems and a shared module. Each subsystem is its own manifes
 so a `:plum-list-plugins` never reads the grammar pin or registers the theme completion
 source:
 
-- **`plugins.scm`** (required by `plugin.scm`): third-party plugin install, update and
+- **`lib/plugins.scm`** (required by `plugin.scm`): third-party plugin install, update and
   cleanup.
 - **`grammars.scm`** (`#:entry`): the tree-sitter grammar install pipeline. It builds on the source
   catalog and path helpers core registers at startup (see
   [Grammar sources and the Helix pin](#grammar-sources-and-the-helix-pin)).
 - **`themes.scm`** (`#:entry`): third-party theme install, update, list and remove (see
   [Theme install](#theme-install)).
-- **`lib.scm`**: `plum/require-stdlib!` (the `core:stdlib` check each entry runs),
+- **`lib/helpers.scm`**: `plum/require-stdlib!` (the `core:stdlib` check each entry runs),
   `plum/clone-github!` and `plum/git-pull!` (the one GitHub clone URL shape
   and its update counterpart, shared by every install command), `plum/batch-run!` (see
   [Output model](#output-model)), and `plum/two-level-repos` (the `<root>/<user>/<repo>/`

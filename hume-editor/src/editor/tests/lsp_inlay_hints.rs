@@ -240,7 +240,7 @@ fn setting_off_does_not_clear_an_unrelated_sources_hints() {
     // `lsp.inlay-hints`: that setting belongs to the LSP inlay-hints
     // plugin, which owns clearing *its own* source
     // (`"lsp-inlay-hints"`) on toggle-off via the `on-option-change` hook
-    // (see `runtime/plugins/core/lsp/inlay.scm`, and the real-plugin
+    // (see `runtime/plugins/core/lsp/lib/inlay.scm`, and the real-plugin
     // regression coverage in `tests/unix/lsp_inlay_feature.rs`). This test
     // has no scripting host attached, so no hook fires. It's checking the
     // render bridge in isolation: a source with no relation to LSP must

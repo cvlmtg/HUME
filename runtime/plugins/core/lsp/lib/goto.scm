@@ -1,6 +1,6 @@
 ;;; core:lsp/goto.scm — goto family and references. See docs/features.md.
 
-(require "lib.scm")
+(require "helpers.scm")
 (require "locations.scm")
 
 ;; ── Response handling ────────────────────────────────────────────────────────

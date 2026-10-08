@@ -78,6 +78,6 @@ subtree under it (see `core:vim-keybind`'s README).
 
 | Doc | Covers |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | File layout, request pattern, response conventions, `lib.scm` helpers, the locations drawer, status commands |
+| [`docs/architecture.md`](docs/architecture.md) | File layout, request pattern, response conventions, `lib/helpers.scm` helpers, the locations drawer, status commands |
 | [`docs/features.md`](docs/features.md) | Request flags, goto and references, hover, signature help, completion, code actions, formatting, rename |
 | [`docs/decorations.md`](docs/decorations.md) | Diagnostics navigation and drawer, end-of-line summary, gutter signs, inlay hints |

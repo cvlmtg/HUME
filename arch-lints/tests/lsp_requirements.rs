@@ -1,7 +1,7 @@
 //! # `requirements.scm` drift
 //!
-//! `runtime/plugins/core/lsp-install/requirements.scm` is generated from the
-//! checked-in `sources.scm` by `scripts/sync-lsp-sources.py --requirements-only`, offline and
+//! `runtime/plugins/core/lsp-install/data/requirements.scm` is generated from the
+//! checked-in `data/sources.scm` by `scripts/sync-lsp-sources.py --requirements-only`, offline and
 //! deterministically. Editing `sources.scm` (or the generator) without
 //! regenerating leaves the runtime deciding what is installable from stale
 //! data. `requirements_scm_matches_its_generator` runs the generator's

@@ -13,10 +13,10 @@ and a line tint).
 | File | Owns |
 |---|---|
 | `plugin.scm` | Entry point; wires config, per-buffer state, and the fetch/diff pipeline to the buffer lifecycle hooks and the two toggle commands |
-| `state.scm` | Per-buffer state (see below) |
-| `diff.scm` | Ref-content fetch, the native line-diff call, and the reconcile step that paints both renderings, debounced per buffer (see `docs/pipeline.md`) |
-| `branch.scm` | Current-branch fetch, debounced per buffer, pushed to the statusline (see `docs/pipeline.md`) |
-| `render.scm` | Pure `hunks → decoration records` functions, one per rendering, and the word spans that feed the inline records. The inline renderers take their decoration source as a parameter, so `plugin.scm`'s `git-diff/render-diff` command can draw another plugin's hunks (see `docs/rendering.md`) |
+| `lib/state.scm` | Per-buffer state (see below) |
+| `lib/diff.scm` | Ref-content fetch, the native line-diff call, and the reconcile step that paints both renderings, debounced per buffer (see `docs/pipeline.md`) |
+| `lib/branch.scm` | Current-branch fetch, debounced per buffer, pushed to the statusline (see `docs/pipeline.md`) |
+| `lib/render.scm` | Pure `hunks → decoration records` functions, one per rendering, and the word spans that feed the inline records. The inline renderers take their decoration source as a parameter, so `plugin.scm`'s `git-diff/render-diff` command can draw another plugin's hunks (see `docs/rendering.md`) |
 
 ## State (`state.scm`)
 

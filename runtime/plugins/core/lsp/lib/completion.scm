@@ -1,6 +1,6 @@
 ;;; core:lsp/completion.scm — textDocument/completion. See docs/features.md.
 
-(require "lib.scm")
+(require "helpers.scm")
 
 ;; ── The source ───────────────────────────────────────────────────────────────
 

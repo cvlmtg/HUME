@@ -41,18 +41,18 @@ two pins, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 
 | File | Owns |
 |---|---|
-| `catalog.scm` | Reads `servers.scm` and `language-servers.scm` from this plugin's directory with `(plugin-dir)`, and `requirements.scm` on first use; field lookup; each language's ordered server list, its first (primary) server, and a server's languages |
-| `source-catalog.scm` | Reads `sources.scm` and `server-commands.scm`, which only the install pipeline needs |
-| `receipts.scm` | `<data>/servers/<name>/receipt.scm` paths, reading and writing |
-| `register.scm` | The scan that turns installed servers into registrations, and the default server list of every catalog language |
-| `blocker.scm` | This platform's requirements row for a server, and the check for what blocks installing it |
-| `install.scm` | The installers, and the per-kind choice between them |
-| `discovery.scm` | The discovery hint |
+| `lib/catalog.scm` | Reads `servers.scm` and `language-servers.scm` from this plugin's `data/` directory with `(plugin-dir)`, and `requirements.scm` on first use; field lookup; each language's ordered server list, its first (primary) server, and a server's languages |
+| `lib/source-catalog.scm` | Reads `sources.scm` and `server-commands.scm`, which only the install pipeline needs |
+| `lib/receipts.scm` | `<data>/servers/<name>/receipt.scm` paths, reading and writing |
+| `lib/register.scm` | The scan that turns installed servers into registrations, and the default server list of every catalog language |
+| `lib/blocker.scm` | This platform's requirements row for a server, and the check for what blocks installing it |
+| `lib/install.scm` | The installers, and the per-kind choice between them |
+| `lib/discovery.scm` | The discovery hint |
 | `commands.scm` | `:lsp-install`, `:lsp-uninstall`, `:lsp-catalog`, completion source |
-| `lock.scm` | Cross-process install lock |
-| `sha256.scm`, `unpack.scm` | Hashing, unpacking and chmod through system tools |
-| `platform.scm` | This platform's Mason target name, and whether it is Windows |
-| `servers.scm`, `language-servers.scm`, `server-commands.scm`, `requirements.scm`, `sources.scm`, `mason-pin.scm` | Generated catalogs and the Mason pin, described below |
+| `lib/lock.scm` | Cross-process install lock |
+| `lib/sha256.scm`, `lib/unpack.scm` | Hashing, unpacking and chmod through system tools |
+| `lib/platform.scm` | This platform's Mason target name, and whether it is Windows |
+| `data/servers.scm`, `data/language-servers.scm`, `data/server-commands.scm`, `data/requirements.scm`, `data/sources.scm`, `data/mason-pin.scm` | Generated catalogs and the Mason pin, described below |
 
 ## Internals
 

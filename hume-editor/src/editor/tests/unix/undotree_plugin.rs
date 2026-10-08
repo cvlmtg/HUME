@@ -681,11 +681,16 @@ fn copy_core_plugin_files(guard: &RuntimeDirs, name: &str) {
         .join("../runtime/plugins/core")
         .join(name);
     let to = guard.runtime.path().join("plugins/core").join(name);
-    std::fs::create_dir_all(&to).unwrap();
-    for entry in std::fs::read_dir(from).unwrap() {
-        let path = entry.unwrap().path();
-        if path.extension().is_some_and(|ext| ext == "scm") {
-            std::fs::copy(&path, to.join(path.file_name().unwrap())).unwrap();
+    for sub in ["", "lib", "data"] {
+        let Ok(entries) = std::fs::read_dir(from.join(sub)) else {
+            continue;
+        };
+        std::fs::create_dir_all(to.join(sub)).unwrap();
+        for entry in entries {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|ext| ext == "scm") {
+                std::fs::copy(&path, to.join(sub).join(path.file_name().unwrap())).unwrap();
+            }
         }
     }
 }

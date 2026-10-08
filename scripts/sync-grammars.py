@@ -47,12 +47,12 @@ REPO = Path(__file__).resolve().parent.parent
 HELIX_PIN_SCM = REPO / "runtime" / "scheme" / "helix-pin.scm"
 LANGUAGES_SCM = REPO / "runtime" / "scheme" / "languages.scm"
 GRAMMAR_SOURCES_SCM = REPO / "runtime" / "scheme" / "grammar-sources.scm"
-LSP_SERVERS_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "servers.scm"
+LSP_SERVERS_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data" / "servers.scm"
 LANGUAGE_SERVERS_SCM = (
-    REPO / "runtime" / "plugins" / "core" / "lsp-install" / "language-servers.scm"
+    REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data" / "language-servers.scm"
 )
 SERVER_COMMANDS_SCM = (
-    REPO / "runtime" / "plugins" / "core" / "lsp-install" / "server-commands.scm"
+    REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data" / "server-commands.scm"
 )
 
 LANGUAGES_HEADER = """\
@@ -68,7 +68,7 @@ GRAMMAR_SOURCES_HEADER = """\
 """
 
 LANGUAGE_SERVERS_HEADER = """\
-;;; runtime/plugins/core/lsp-install/language-servers.scm — each language's ordered LSP server list.
+;;; runtime/plugins/core/lsp-install/data/language-servers.scm — each language's ordered LSP server list.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
@@ -101,13 +101,13 @@ LSP_FEATURES = (
 )
 
 LSP_SERVERS_HEADER = """\
-;;; runtime/plugins/core/lsp-install/servers.scm — HUME bundled LSP server registration catalog.
+;;; runtime/plugins/core/lsp-install/data/servers.scm — HUME bundled LSP server registration catalog.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
 
 SERVER_COMMANDS_HEADER = """\
-;;; runtime/plugins/core/lsp-install/server-commands.scm — the command of each bundled LSP server whose command differs from its name.
+;;; runtime/plugins/core/lsp-install/data/server-commands.scm — the command of each bundled LSP server whose command differs from its name.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """

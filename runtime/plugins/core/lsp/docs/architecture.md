@@ -9,18 +9,18 @@ and binds the default keys. Installing servers is `core:lsp-install`'s job.
 |---|---|---|
 | `plugin.scm` | Requires, `core:stdlib` check, default key bindings | [README](../README.md#key-layout) |
 | `manifest.scm` | Lazy-activation triggers | [README](../README.md#usage) |
-| `lib.scm` | Capability guards, error reporting, trigger characters, pane and viewport helpers | this file |
-| `locations.scm` | Locations drawer and its refresh session | this file |
-| `status.scm` | `:lsp-status`, `:lsp-stop`, `:lsp-restart` | this file |
-| `diagnostics.scm` | Diagnostics navigation and drawer, EOL summary, gutter signs | `decorations.md` |
-| `inlay.scm` | Inlay hints | `decorations.md` |
-| `goto.scm` | Goto family, references | `features.md` |
-| `hover.scm` | Hover | `features.md` |
-| `sighelp.scm` | Signature help | `features.md` |
-| `completion.scm` | Completion | `features.md` |
-| `actions.scm` | Code actions | `features.md` |
-| `format.scm` | Formatting | `features.md` |
-| `rename.scm` | Rename | `features.md` |
+| `lib/helpers.scm` | Capability guards, error reporting, trigger characters, pane and viewport helpers | this file |
+| `lib/locations.scm` | Locations drawer and its refresh session | this file |
+| `lib/status.scm` | `:lsp-status`, `:lsp-stop`, `:lsp-restart` | this file |
+| `lib/diagnostics.scm` | Diagnostics navigation and drawer, EOL summary, gutter signs | `decorations.md` |
+| `lib/inlay.scm` | Inlay hints | `decorations.md` |
+| `lib/goto.scm` | Goto family, references | `features.md` |
+| `lib/hover.scm` | Hover | `features.md` |
+| `lib/sighelp.scm` | Signature help | `features.md` |
+| `lib/completion.scm` | Completion | `features.md` |
+| `lib/actions.scm` | Code actions | `features.md` |
+| `lib/format.scm` | Formatting | `features.md` |
+| `lib/rename.scm` | Rename | `features.md` |
 
 ## Request pattern
 
@@ -61,7 +61,7 @@ lsp-request! ──▶ transform response ──▶ UI builtin (show-popup!/show
   on every kind of miss. The feature or method names the capability, so no plugin spells
   a `ServerCapabilities` key.
 
-## Shared helpers (`lib.scm`)
+## Shared helpers (`lib/helpers.scm`)
 
 - **Trigger characters.** `lsp/setup-trigger-chars!` registers an `on-lsp-attach` handler
   for a feature. For every server that attaches it reads the

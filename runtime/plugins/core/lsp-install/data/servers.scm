@@ -1,4 +1,4 @@
-;;; runtime/plugins/core/lsp-install/servers.scm — HUME bundled LSP server registration catalog.
+;;; runtime/plugins/core/lsp-install/data/servers.scm — HUME bundled LSP server registration catalog.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ ba40e547426b
 
