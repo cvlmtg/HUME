@@ -44,46 +44,69 @@ fn or_list(values: &[&str]) -> String {
     }
 }
 
-/// Generate a `:set` enum's wire-format plumbing from one list of
-/// `Variant => "name"` pairs: the `VALUES` slice `:set <key>=<Tab>` completes
-/// from, a case-insensitive `FromStr` whose error names every accepted value,
-/// and the `Display` that writes the same names back.
+/// The text form of a `:set` value: the names `:set <key>=<Tab>` completes,
+/// the parser that reads a value, and the printer that writes it back.
 ///
-/// Hand-writing these meant four copies of one variant list per enum (the
-/// const, the parse arms, the error message's prose, the display arms) and
-/// four places for a new variant to be half-added. A variant missing from
-/// `VALUES` alone still parses and prints, so it fails silently: it just stops
-/// being completable. Only the enum declaration stays hand-written, so each
-/// variant keeps its own doc comment.
+/// Every value type behind a `from_str` or `enum_str` setting implements it,
+/// whichever crate defines the type. A trait local to this crate is the only
+/// way to give a foreign type that surface, which is why the text forms of
+/// the option enums live here and not next to the enums.
+pub(in crate::editor) trait SettingText: Sized {
+    /// The strings [`SettingText::parse`] accepts, offered by completion.
+    const VALUES: &'static [&'static str];
+
+    fn parse(s: &str) -> Result<Self, String>;
+
+    /// The text [`SettingText::parse`] reads back as `self`.
+    fn to_text(&self) -> String;
+}
+
+/// Implement [`SettingText`] for a type that already has `VALUES`, `FromStr`
+/// and `Display` of its own.
+macro_rules! delegate_setting_text {
+    ($ty:ty) => {
+        impl SettingText for $ty {
+            const VALUES: &'static [&'static str] = <$ty>::VALUES;
+
+            fn parse(s: &str) -> Result<Self, String> {
+                s.parse()
+            }
+
+            fn to_text(&self) -> String {
+                self.to_string()
+            }
+        }
+    };
+}
+
+/// Generate a closed `:set` enum's [`SettingText`] from one list of
+/// `Variant => "name"` pairs. The parse is case-insensitive and its error
+/// names every accepted value.
+///
+/// Only the enum declaration stays hand-written, so each variant keeps its
+/// own doc comment. `VALUES`, the parse arms and the print arms all come from
+/// the one list, so a variant cannot be completable but unparseable.
 macro_rules! settings_enum {
     ($ty:ty, $key:literal, [$($variant:ident => $name:literal),+ $(,)?]) => {
-        impl $ty {
-            /// The wire-format strings [`FromStr`] accepts: the single source
-            /// `:set <key>=<Tab>` completion mirrors, so the two can never
-            /// drift out of sync.
-            pub const VALUES: &'static [&'static str] = &[$($name),+];
-        }
+        impl SettingText for $ty {
+            const VALUES: &'static [&'static str] = &[$($name),+];
 
-        impl FromStr for $ty {
-            type Err = String;
-
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
+            fn parse(s: &str) -> Result<Self, String> {
                 match s.to_ascii_lowercase().as_str() {
                     $($name => Ok(Self::$variant),)+
                     _ => Err(format!(
                         concat!("invalid ", $key, " '{}': expected {}"),
                         s,
-                        or_list(<$ty>::VALUES),
+                        or_list(<$ty as SettingText>::VALUES),
                     )),
                 }
             }
-        }
 
-        impl fmt::Display for $ty {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(match self {
+            fn to_text(&self) -> String {
+                match self {
                     $(Self::$variant => $name,)+
-                })
+                }
+                .to_owned()
             }
         }
     };
@@ -220,6 +243,13 @@ impl FromStr for SignColumnConfig {
         Ok(Self { mode, pinned_slots })
     }
 }
+
+delegate_setting_text!(SignColumnConfig);
+delegate_setting_text!(crate::editor::lsp::diagnostics::DiagSeverity);
+delegate_setting_text!(TabStyle);
+delegate_setting_text!(LineNumberStyle);
+delegate_setting_text!(WhitespaceRender);
+delegate_setting_text!(WrapMode);
 
 /// Where a forward object jump (`}`, `goto-next-<kind>`) leaves the viewport.
 ///
@@ -422,10 +452,10 @@ macro_rules! parse_setting {
         parse_tab_width($value)
     };
     ($value:expr, $key:expr, from_str) => {
-        $value.parse()
+        SettingText::parse($value)
     };
     ($value:expr, $key:expr, enum_str) => {
-        $value.parse()
+        SettingText::parse($value)
     };
     ($value:expr, $key:expr, string) => {
         Ok::<String, String>(($value).to_owned())
@@ -444,10 +474,10 @@ macro_rules! parse_setting {
 /// `bool` fields round-trip as `Bool`, integer-ish fields (`usize`,
 /// `usize_nonzero`, `tab_width`) as `Int`, and closed sets of names
 /// (`enum_str`) as `Symbol`. The remaining `from_str` and `string` fields go
-/// via `Display`/`ToString` as `Str`: `wrap-mode` and `signcolumn` take
+/// via [`SettingText::to_text`] as `Str`: `wrap-mode` and `signcolumn` take
 /// `name:N` forms, so they are not closed sets. `from_str` and `enum_str`
-/// types must implement `Display` that round-trips through their own
-/// `FromStr` (see `TabStyle`, `DiagSeverity`, `LineNumberStyle`, `WrapMode`).
+/// types implement [`SettingText`], whose `to_text` round-trips through its
+/// own `parse`.
 /// `show_newline` stores a plain `bool` but its wire format is `none`/`all`,
 /// so it round-trips as `Symbol` via [`format_show_newline`], the inverse of
 /// [`parse_show_newline`].
@@ -465,10 +495,10 @@ macro_rules! option_value {
         hume_scripting::host::OptionValue::Int($value as i64)
     };
     ($value:expr, from_str) => {
-        hume_scripting::host::OptionValue::Str($value.to_string())
+        hume_scripting::host::OptionValue::Str($value.to_text())
     };
     ($value:expr, enum_str) => {
-        hume_scripting::host::OptionValue::Symbol($value.to_string())
+        hume_scripting::host::OptionValue::Symbol($value.to_text())
     };
     ($value:expr, string) => {
         hume_scripting::host::OptionValue::Str($value)
@@ -535,8 +565,8 @@ macro_rules! buffer_accessor {
 /// | `usize` | `parse_usize(value, key)` |
 /// | `usize_nonzero` | `parse_usize_nonzero(value, key)` |
 /// | `tab_width` | `parse_tab_width(value)` |
-/// | `from_str` | `value.parse()` (type inferred from field) |
-/// | `enum_str` | `value.parse()`, for a closed set of names; reads back as a symbol |
+/// | `from_str` | `SettingText::parse` (type inferred from field) |
+/// | `enum_str` | `SettingText::parse`, for a closed set of names; reads back as a symbol |
 /// | `string` | `value.to_owned()` |
 /// | `show_newline` | `parse_show_newline(value)` (`none`/`all` wire format, reads back as a symbol) |
 /// | `word_chars` | `parse_word_chars(value)` (validated, unlike `string`) |

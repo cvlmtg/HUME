@@ -5,8 +5,8 @@ use hume_engine::pane::{WhitespaceRender, WrapMode};
 
 use super::{CompletionCtx, CompletionItem, arg_prefix, arg_span, theme_name_candidates};
 use crate::editor::settings::{
-    SHOW_NEWLINE_VALUES, Scope, SignColumnConfig, THEME_KEY, WRAP_MODE_KEY, all_setting_keys,
-    setting_scopes,
+    SHOW_NEWLINE_VALUES, Scope, SettingText, SignColumnConfig, THEME_KEY, WRAP_MODE_KEY,
+    all_setting_keys, setting_scopes,
 };
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::LineEnding;

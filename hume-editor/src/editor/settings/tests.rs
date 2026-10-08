@@ -283,25 +283,25 @@ fn tab_style_values_round_trip_through_from_str() {
 
 #[test]
 fn cursor_shape_parses_case_insensitive() {
-    assert_eq!("block".parse::<CursorShape>().unwrap(), CursorShape::Block);
-    assert_eq!("BLOCK".parse::<CursorShape>().unwrap(), CursorShape::Block);
-    assert_eq!("bar".parse::<CursorShape>().unwrap(), CursorShape::Bar);
+    assert_eq!(CursorShape::parse("block").unwrap(), CursorShape::Block);
+    assert_eq!(CursorShape::parse("BLOCK").unwrap(), CursorShape::Block);
+    assert_eq!(CursorShape::parse("bar").unwrap(), CursorShape::Bar);
     assert_eq!(
-        "underline".parse::<CursorShape>().unwrap(),
+        CursorShape::parse("underline").unwrap(),
         CursorShape::Underline
     );
 }
 
 #[test]
 fn cursor_shape_rejects_unknown() {
-    assert!("bogus".parse::<CursorShape>().is_err());
+    assert!(CursorShape::parse("bogus").is_err());
 }
 
 #[test]
 fn cursor_shape_values_round_trip_through_from_str() {
     for v in CursorShape::VALUES {
         assert!(
-            v.parse::<CursorShape>().is_ok(),
+            CursorShape::parse(v).is_ok(),
             "'{v}' should parse as CursorShape"
         );
     }
@@ -1160,11 +1160,11 @@ fn set_buffer_signcolumn() {
 #[test]
 fn settings_enum_parse_error_lists_every_accepted_value() {
     assert_eq!(
-        "bogus".parse::<ObjectJumpAlign>().unwrap_err(),
+        ObjectJumpAlign::parse("bogus").unwrap_err(),
         "invalid object-jump-align 'bogus': expected top, center, or off"
     );
     assert_eq!(
-        "bogus".parse::<CursorShape>().unwrap_err(),
+        CursorShape::parse("bogus").unwrap_err(),
         "invalid cursor-shape-insert 'bogus': expected block, bar, or underline"
     );
 }
