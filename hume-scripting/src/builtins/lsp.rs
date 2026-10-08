@@ -641,7 +641,12 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
                 ("languages", string_list(e.languages)),
                 (
                     "root",
-                    SteelVal::StringV(e.root.to_string_lossy().into_owned().into()),
+                    SteelVal::StringV(
+                        hume_platform::path::strip_unc_prefix(e.root)
+                            .to_string_lossy()
+                            .into_owned()
+                            .into(),
+                    ),
                 ),
                 ("state", SteelVal::SymbolV(e.state.into())),
                 ("pending", SteelVal::IntV(e.pending as isize)),

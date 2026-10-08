@@ -89,7 +89,7 @@ pub(crate) fn buffer_key(_ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
 /// `(buffer-path pane)` → absolute path string, or `#f` for unsaved buffers.
 pub(crate) fn buffer_path(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     match ctx.host.buffers().buffer_path(pane.buffer()) {
-        Some(p) => p
+        Some(p) => hume_platform::path::strip_unc_prefix(p)
             .to_string_lossy()
             .into_owned()
             .into_steelval()
