@@ -455,8 +455,7 @@ fn select_row(ed: &mut Editor, r: LayerRef) {
             } else {
                 ed.enter_buffer(FocusedPane::current(&ed.state), target);
             }
-            let current = FocusedPane::current(&ed.state).bid(&ed.view);
-            ed.state.refresh_buffer_list_drawer(current);
+            ed.state.refresh_buffer_list_drawer(ed.focused_buffer_id());
             clamp_drawer_scroll(ed, r);
         }
     }
@@ -484,13 +483,9 @@ impl EditorState {
         if *listed == list.buffers && drawer.rows.text().iter().flatten().eq(list.rows.iter()) {
             return;
         }
-        let r = self
-            .input
-            .ref_of::<DrawerLayer>()
-            .expect("drawer() found a DrawerLayer");
         self.input
-            .at_mut::<DrawerLayer>(r)
-            .expect("ref_of names a live DrawerLayer")
+            .find_mut::<DrawerLayer>()
+            .expect("drawer() found a DrawerLayer")
             .set_buffer_list(list);
         self.sync_drawer_view();
     }
@@ -516,13 +511,14 @@ impl EditorState {
                 } else {
                     ' '
                 };
-                let row = format!(
+                let mut row = format!(
                     "{:>4}  {current_marker}{dirty_marker}  {:<32}  {}",
                     i + 1,
                     buf.display_name(),
                     buf.display_path().unwrap_or_default(),
                 );
-                (row.trim_end().to_owned(), id)
+                row.truncate(row.trim_end().len());
+                (row, id)
             })
             .unzip();
         BufferList { rows, buffers }

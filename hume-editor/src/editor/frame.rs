@@ -476,9 +476,8 @@ impl Editor {
         // left where the band was. Skipped without terminal geometry
         // (headless callers).
         self.sync_popup_band_view();
-        self.state.refresh_buffer_list_drawer(
-            super::commands::FocusedPane::current(&self.state).bid(&self.view),
-        );
+        self.state
+            .refresh_buffer_list_drawer(self.focused_buffer_id());
         self.state
             .clamp_drawer_scroll_to_terminal(self.view.last_terminal_area.height);
         self.fill_drawer_window();
