@@ -35,7 +35,7 @@ A **buffer** is an open file (or scratch text). HUME can have multiple buffers o
 
 | Command | Effect |
 |---------|--------|
-| `:ls` | List all open buffers |
+| `:ls` | List all open buffers in the bottom drawer |
 | `:b name` | Switch to buffer by name or number |
 | `:bnext` | Switch to next buffer |
 | `:bprev` | Switch to previous buffer |
@@ -43,6 +43,8 @@ A **buffer** is an open file (or scratch text). HUME can have multiple buffers o
 | `:bd!` | Force close, discarding unsaved changes |
 
 `:b` accepts a name prefix, a full path, a 1-based index as shown by `:ls`, or `#` to switch to the alternate buffer. When two open files share a name, Tab completion shows their parent directories to tell them apart.
+
+`:ls` opens a list across the bottom of the screen with one row per buffer: its number, `%` for the buffer you are in, `#` for the alternate, `+` for unsaved changes, its name and its path. `Shift-Down`/`Shift-Up` move the highlight, `Ctrl-d`/`Ctrl-u` page it, `Enter` switches the focused pane to the highlighted buffer and leaves the list open, and `Esc` closes it. It works like the [language server lists](lsp.md).
 
 `:bnext`/`:bprev` also have bindable editor-command spellings, `goto-next-buffer` and `goto-prev-buffer`, for mapping to a key.
 
@@ -137,7 +139,7 @@ If you launch HUME with no arguments, it opens a scratch buffer named `*scratch*
 
 ## Read-only buffers
 
-The editor's own informational buffers (`:messages`, `:ls`, `:plugin-status`) are read-only. The status bar shows `[RO]`, and editing commands are refused with a warning. Files you open are always editable, whatever their permissions on disk; a write you aren't allowed to make fails at `:w` rather than being blocked up front.
+The editor's own informational buffers (`:messages`, `:plugin-status`) are read-only. The status bar shows `[RO]`, and editing commands are refused with a warning. Files you open are always editable, whatever their permissions on disk; a write you aren't allowed to make fails at `:w` rather than being blocked up front.
 
 ## Synthetic buffers
 
@@ -146,7 +148,6 @@ Some commands open special read-only buffers for inspecting the editor's state:
 | Command | Buffer | Contents |
 |---------|--------|----------|
 | `:messages` | `[messages]` | Message log |
-| `:ls` | `[buffers]` | Open buffer list |
 | `:plugin-status` | `[plugin-status]` | Plugin states |
 
 These are regular buffers in all other respects: you can scroll, search, and quit them with `:q` or `:bd`.

@@ -22,6 +22,7 @@
 - `on-lsp-notification` is a hook, called with `(server method params)`. `register-lsp-notification-hook!` handles only chosen methods.
 - `:lsp-install`, `:lsp-uninstall` and `:lsp-servers` moved to the new `core:lsp-install` plugin. Add `(load-plugin! "core:lsp-install")` to keep them. `:lsp-servers` is now `:lsp-catalog`.
 - `:lsp-rescan-servers` is removed.
+- `:ls` lists buffers in the bottom drawer instead of a `[buffers]` buffer, so `Enter` on a row switches to that buffer. `(buffers)` and `on-text-changed` see no `[buffers]` buffer.
 - The bare `(declare-plugin! "core:x")` form is removed, and `declare-plugin!` no longer takes `#:config`. Use `(load-plugin! "core:x" #:config …)`. A plugin that ships a `manifest.scm` loads lazily.
 - `hume-target`, `sha256-file`, `unpack-gz`, `unpack-zip`, `unpack-tar`, `mark-executable!`, `acquire-install-lock!` and `release-install-lock!` are removed.
 - `register-lsp-server!` takes a server name and only says how to start it: `(register-lsp-server! "rust-analyzer" #:command "rust-analyzer")`. A language's servers come from `set-language-servers!`. `unregister-lsp-server!`, `:lsp-stop` and `:lsp-restart` take that name, and `lsp-registered-for-language?` is replaced by `lsp-server-registered?`.

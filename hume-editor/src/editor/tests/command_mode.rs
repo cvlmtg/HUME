@@ -1147,14 +1147,16 @@ fn colon_list_buffers_aliases_work() {
     let mut ed = editor_from("-[h]>ello\n");
     submit(&mut ed, "ls");
     assert!(
-        ed.doc().is_read_only() && ed.doc().display_name() == "[buffers]",
-        ":ls must open the read-only [buffers] view buffer"
+        ed.state.input.drawer().is_some(),
+        ":ls must open the drawer"
     );
 
+    ed.handle_key(key_esc());
+    assert!(ed.state.input.drawer().is_none());
     submit(&mut ed, "list-buffers");
     assert!(
-        ed.doc().is_read_only() && ed.doc().display_name() == "[buffers]",
-        ":list-buffers must open the read-only [buffers] view buffer"
+        ed.state.input.drawer().is_some(),
+        ":list-buffers must open the drawer"
     );
 }
 

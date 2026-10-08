@@ -10,6 +10,7 @@ use super::{CommandPane, FocusedPane, cmd_redo, cmd_undo};
 use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
+use crate::editor::input_stack::DrawerLayer;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::settings::THEME_KEY;
 use hume_ops::MotionMode;
@@ -53,70 +54,20 @@ pub(in crate::editor) fn typed_messages(
     Ok(())
 }
 
-/// `:ls` / `:list-buffers`: open a read-only buffer listing every open buffer.
+/// `:ls` / `:list-buffers`: list every open buffer in the bottom drawer.
 ///
-/// Each row shows: 1-based index, current (`%`) / alternate (`#`) marker,
-/// dirty (`+`) flag, short name, and home-shortened absolute path.
-/// Cursor is placed on the line corresponding to the currently focused buffer.
+/// Each row shows: 1-based index (the one `:b <n>` takes), current (`%`) /
+/// alternate (`#`) marker, dirty (`+`) flag, short name, and home-shortened
+/// absolute path. The focused buffer's row is selected; `Enter` on a row
+/// switches to that buffer.
 pub(in crate::editor) fn typed_list_buffers(
     ed: &mut Editor,
     fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    let current = fp.bid(&ed.view);
-    let alternate = ed.state.buffers.second_most_recent();
-
-    let header = format!("{:>4}      {:<32}  {}\n", "buf", "name", "path");
-    let mut out = header;
-    // The [buffers] view buffer (if it already exists from a prior :ls) must not
-    // appear in its own listing. All other buffers (including [messages] and
-    // [plugin-status]) are listed normally.
-    let buffers_view_id = ed.state.buffers.find_by_label("[buffers]");
-    // `line` counts emitted lines, offset by the header at content line 0:
-    // the header occupies line 0, so the Nth emitted row lands on content
-    // line N. Tracked independently from the slotmap iteration index because
-    // [buffers] may be skipped without a line being emitted.
-    let mut line = hume_rope::line::ContentLine::new(0);
-    let mut current_content_line = hume_rope::line::ContentLine::new(1);
-
-    for (id, buf) in ed.state.buffers.iter() {
-        if buffers_view_id == Some(id) {
-            continue;
-        }
-        line = line.advance(1);
-
-        let cur_marker = if id == current {
-            '%'
-        } else if matches!(alternate, Some(alt) if id == alt) {
-            '#'
-        } else {
-            ' '
-        };
-        let dirty_marker = if ed.state.has_unsaved_changes(id) {
-            '+'
-        } else {
-            ' '
-        };
-
-        let name = buf.display_name();
-        let path = buf.display_path().unwrap_or_default();
-
-        out.push_str(&format!(
-            "{:>4}  {}{}  {:<32}  {}\n",
-            line.index(),
-            cur_marker,
-            dirty_marker,
-            name,
-            path
-        ));
-
-        if id == current {
-            current_content_line = line;
-        }
-    }
-
-    ed.open_read_only_view(fp, "[buffers]", &out, Some(current_content_line));
+    let drawer = DrawerLayer::buffer_list(&ed.state, fp.bid(&ed.view));
+    ed.state.open_drawer(&ed.view, drawer);
     Ok(())
 }
 

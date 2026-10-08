@@ -302,7 +302,7 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 
 `on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within the same command never announces either one.
 
-`on-text-changed` covers edits, undo, redo, `:e!` reload, and refreshes of read-only view buffers (`:messages`, `:ls`, `:plugin-status`) alike. Those buffers have no file, so a handler that looks up a path must handle it being absent. It coalesces multiple mutations made by a single command (a multi-cursor edit, a macro, a paste) into one fire, but each keystroke while typing is its own command and so fires on its own. Pair it with `debounce` if you want to react only after typing settles rather than on every character.
+`on-text-changed` covers edits, undo, redo, `:e!` reload, and refreshes of read-only view buffers (`:messages`, `:plugin-status`) alike. Those buffers have no file, so a handler that looks up a path must handle it being absent. It coalesces multiple mutations made by a single command (a multi-cursor edit, a macro, a paste) into one fire, but each keystroke while typing is its own command and so fires on its own. Pair it with `debounce` if you want to react only after typing settles rather than on every character.
 
 `on-undo-history-changed` fires once per command in the same way, but only when the undo history moves or a write changes the saved revision, so typing in an insert session announces once, when the session ends. It also fires for an undo whose net change to the text is nothing (undoing an insert together with its later delete), which `on-text-changed` does not.
 

@@ -5,7 +5,7 @@ use super::EditorHostImpl;
 use crate::editor::Severity;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{
-    BaseLayer, DrawerLayer, MenuLayer, PickerSession, PopupLayer, PromptLayer,
+    BaseLayer, DrawerLayer, DrawerSelect, MenuLayer, PickerSession, PopupLayer, PromptLayer,
 };
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{
@@ -226,19 +226,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         {
             return Ok(None);
         }
-        // Retires a prior `Drawer` on the self-replace path, firing its
-        // callback with `#f` explicitly (`take_firing_false`, shared with
-        // the menu): only *this* path, a genuine replace, should fire one,
-        // so the outgoing drawer owner learns its drawer is gone and can
-        // drop its own open-tracking.
-        if let Some(r) = self.state.input.ref_of::<DrawerLayer>() {
-            self.state.take_firing_false::<DrawerLayer>(self.view, r);
-        }
-        let drawer = DrawerLayer::new(items, callback, selected);
-        let token = drawer.token();
-        self.state.push_layer(self.view, drawer);
-        self.state.sync_drawer_view();
-        Ok(Some(token))
+        let drawer = DrawerLayer::new(items, DrawerSelect::Steel(callback), selected);
+        Ok(Some(self.state.open_drawer(self.view, drawer)))
     }
 
     /// Idempotent: a no-op if no drawer is open, or if `token` doesn't

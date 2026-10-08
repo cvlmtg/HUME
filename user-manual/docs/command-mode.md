@@ -53,7 +53,7 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 
 | Command | Effect |
 |---------|--------|
-| `:ls`, `:list-buffers` | List open buffers |
+| `:ls`, `:list-buffers` | List open buffers in the bottom drawer |
 | `:b <name>`, `:buffer <name>` | Switch buffer. Accepts a name, a unique filename prefix, a full path, a number from `:ls`, or `#` for the previous buffer (`:b#` and `:b #` both work) |
 | `:bn`, `:bnext` | Next buffer |
 | `:bp`, `:bprev` | Previous buffer |

@@ -1434,6 +1434,7 @@ mod language;
 mod lazy_drawer;
 mod line_store;
 mod list_buffers;
+mod list_buffers_drawer;
 mod lsp;
 mod lsp_bridge;
 mod lsp_decorations;

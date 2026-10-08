@@ -190,7 +190,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
     // common case (no expansion) stays allocation-free. Skip expansion for
     // `:b`/`:buffer`: their `#` is the alternate-buffer specifier itself,
     // not a filename token; expanding it to a path loses pathless
-    // alternates (scratch, [messages], the [buffers] view from :ls).
+    // alternates (scratch, [messages], [plugin-status]).
     let needs_expansion = !matches!(cmd, "b" | "buffer");
     let expanded: Option<String> = match arg {
         Some(a) if needs_expansion && (a.contains('%') || a.contains('#')) => {

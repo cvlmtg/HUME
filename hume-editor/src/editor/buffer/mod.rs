@@ -291,7 +291,7 @@ impl Buffer {
 
     /// Create a read-only view buffer from in-memory content.
     ///
-    /// Used for `:messages`, `:ls`, and `:plugin-status`. The buffer has no
+    /// Used for `:messages` and `:plugin-status`. The buffer has no
     /// backing file, no language detection, and blocks all user edits.
     pub(in crate::editor) fn read_only_view(text: BufferText, label: String) -> Self {
         let mut buf = Self::at_start(text);
@@ -324,7 +324,7 @@ impl Buffer {
         self.read_only
     }
 
-    /// `true` for in-memory view buffers (e.g. `[messages]`, `[buffers]`).
+    /// `true` for in-memory view buffers (e.g. `[messages]`, `[plugin-status]`).
     ///
     /// Synthetic buffers have no backing file (`path = None`) but carry a
     /// display label. Scratch buffers are path-less too, but have no label;

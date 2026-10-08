@@ -3,7 +3,7 @@ use super::*;
 
 /// `:b#` (no space) must switch to the alternate buffer via the minibuf path.
 /// The alternate must be reachable even when it has no file name: the
-/// `[buffers]` view opened by `:ls` is the canonical pathless case, so the
+/// `[messages]` view opened by `:messages` is the canonical pathless case, so the
 /// arg must not be expanded to the alternate's path before `:b` sees it
 /// (that would error with "Alternate buffer has no file name"). Also covers
 /// the `:buffer#` full-alias form.
@@ -19,9 +19,10 @@ fn colon_b_hash_switches_to_alternate() {
     // focused=f1, alternate=scratch
     assert_eq!(ed.doc().path(), Some(c1.as_path()));
 
-    // :ls opens the pathless [buffers] view buffer; alternate is now f1.
-    submit(&mut ed, "ls");
-    assert_eq!(ed.doc().display_name(), "[buffers]");
+    // :messages opens the pathless [messages] view buffer; alternate is now f1.
+    ed.report(Severity::Warning, "test message".to_string());
+    submit(&mut ed, "messages");
+    assert_eq!(ed.doc().display_name(), "[messages]");
     assert_eq!(
         ed.state
             .buffers
@@ -33,7 +34,7 @@ fn colon_b_hash_switches_to_alternate() {
     // :b# returns to f1 (alternate has a path; this already worked).
     submit(&mut ed, "b#");
     assert_eq!(ed.doc().path(), Some(c1.as_path()));
-    // The alternate is now the pathless [buffers] view: the bug case.
+    // The alternate is now the pathless [messages] view: the bug case.
     assert_eq!(
         ed.state.buffers.second_most_recent().map(|id| ed
             .state
@@ -41,7 +42,7 @@ fn colon_b_hash_switches_to_alternate() {
             .get(id)
             .display_name()
             .to_string()),
-        Some("[buffers]".to_string()),
+        Some("[messages]".to_string()),
     );
 
     // :b# again must switch to the pathless alternate, not error with
@@ -49,7 +50,7 @@ fn colon_b_hash_switches_to_alternate() {
     submit(&mut ed, "b#");
     assert_eq!(
         ed.doc().display_name(),
-        "[buffers]",
+        "[messages]",
         ":b# must switch to the pathless alternate buffer",
     );
 

@@ -90,7 +90,7 @@ hints at 200ms.
 
 `refresh!` is the immediate entry point. It re-reads the buffer's live entry and path, since
 a debounced fire happens after state may have moved. A buffer with neither rendering on is
-skipped, as is a pathless buffer (`:messages`, `:ls`), which still fires `on-text-changed`
+skipped, as is a pathless buffer (`:messages`), which still fires `on-text-changed`
 and has nothing to diff against. The `"ref-text"` value decides the rest:
 
 | `"ref-text"` | `refresh!` does |

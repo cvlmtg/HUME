@@ -100,7 +100,7 @@ fn edit_seq_starts_at_zero_and_bumps_explicitly() {
     assert_eq!(store.edit_seq(), 2);
 }
 
-/// `Buffer::set_view_content` (`:messages`/`:ls` refresh) is a system refresh,
+/// `Buffer::set_view_content` (`:messages` refresh) is a system refresh,
 /// not a user edit: it must not advance `edit_seq`, or a `PasteStamp`
 /// stamped by a capture would go stale just from the user glancing at
 /// `:messages` between a kill and a paste.

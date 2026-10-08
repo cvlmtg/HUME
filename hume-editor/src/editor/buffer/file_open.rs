@@ -349,10 +349,10 @@ impl Editor {
         }
     }
 
-    /// Open or refresh a read-only view buffer (`:messages`, `:ls`, `:plugin-status`).
+    /// Open or refresh a read-only view buffer (`:messages`, `:plugin-status`).
     ///
     /// If a buffer with this label already exists, replaces its content in-place
-    /// so repeated calls don't accumulate duplicates in `:ls`. Otherwise opens a
+    /// so repeated calls don't accumulate duplicates in the buffer list. Otherwise opens a
     /// fresh read-only buffer. Then switches `fp` to it and positions
     /// the cursor at `cursor_line` (clamped to last content line), or the last
     /// content line itself when `cursor_line` is `None`: `:messages` wants the
@@ -370,7 +370,7 @@ impl Editor {
         let bid = if let Some(existing) = self.state.buffers.find_by_label(label) {
             // `set_view_content` resets history and every position stored
             // for the buffer: a regenerated view buffer (`[messages]`,
-            // `[buffers]`) shares nothing but its id with the old content.
+            // `[plugin-status]`) shares nothing but its id with the old content.
             self.state.buffers.get_mut(existing).set_view_content(
                 existing,
                 &mut PositionStores::new(

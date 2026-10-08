@@ -205,8 +205,11 @@ pub(in crate::editor) trait Layer: Any {
 /// `MenuLayer`/`DrawerLayer` (the two self-replacing widgets); read by
 /// [`EditorState::take_firing_false`](super::super::EditorState::take_firing_false).
 pub(in crate::editor) trait FiresFalseOnReplace: Layer {
-    /// The callback and the arguments of its closing call.
-    fn into_close_call(self: Box<Self>) -> (steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>);
+    /// The callback and the arguments of its closing call, or `None` for a
+    /// layer with no Steel owner to tell.
+    fn into_close_call(
+        self: Box<Self>,
+    ) -> Option<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)>;
 }
 
 /// What a `close-*!`/Rust-internal retirement of this layer does to whatever
@@ -807,8 +810,9 @@ impl EditorState {
         r: LayerRef,
     ) {
         let old: Box<L> = self.take_layer(view, r);
-        let (callback, args) = old.into_close_call();
-        self.queue_steel_call(callback, args);
+        if let Some((callback, args)) = old.into_close_call() {
+            self.queue_steel_call(callback, args);
+        }
     }
 
     /// Removes exactly `r` via [`InputStack::excise`], running its own
@@ -926,7 +930,7 @@ mod tests {
     use crate::editor::input_stack::PickerLayer;
     use crate::editor::input_stack::command::CommandLayer;
     use crate::editor::input_stack::confirm::{ConfirmAction, ConfirmLayer};
-    use crate::editor::input_stack::drawer::DrawerLayer;
+    use crate::editor::input_stack::drawer::{DrawerLayer, DrawerSelect};
     use crate::editor::input_stack::insert::InsertLayer;
     use crate::editor::input_stack::menu::MenuLayer;
     use steel::rvals::SteelVal;
@@ -1039,7 +1043,7 @@ mod tests {
         stack.push(menu("m"));
         stack.push(DrawerLayer::new(
             hume_scripting::host::DrawerItems::Rows(vec!["d".to_string()]),
-            SteelVal::BoolV(false),
+            DrawerSelect::Steel(SteelVal::BoolV(false)),
             0,
         ));
         assert!(stack.is_settled_for::<MenuLayer>());

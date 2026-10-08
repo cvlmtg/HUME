@@ -2,141 +2,6 @@ use super::*;
 use crate::editor::doc_ops;
 use pretty_assertions::assert_eq;
 
-pub(super) fn ls_output(ed: &mut Editor) -> String {
-    ed.execute_typed("ls", None).unwrap();
-    // After :ls the focused buffer is the read-only [buffers] view.
-    ed.doc().text().rope().to_string()
-}
-
-// ── Single buffer ─────────────────────────────────────────────────────────────
-
-#[test]
-fn ls_single_buffer_marks_current() {
-    let mut ed = editor_from("-[h]>ello\n");
-    let out = ls_output(&mut ed);
-    assert!(
-        out.contains('%'),
-        ":ls must mark the focused buffer with '%'"
-    );
-    assert!(
-        !out.contains('#'),
-        ":ls must not show '#' when there is no alternate buffer"
-    );
-    // Row count: 1 header + 1 buffer
-    assert_eq!(out.lines().count(), 2, "must have header + 1 buffer row");
-}
-
-#[test]
-fn ls_long_alias_works() {
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.execute_typed("list-buffers", None).unwrap();
-    assert!(
-        ed.doc().is_read_only(),
-        ":list-buffers must open a read-only view buffer"
-    );
-    assert_eq!(
-        ed.doc().display_name(),
-        "[buffers]",
-        ":list-buffers must focus the [buffers] view buffer"
-    );
-}
-
-// ── Multiple buffers ──────────────────────────────────────────────────────────
-
-/// Bug regression: header labels must line up with the data columns beneath
-/// them. Locates "name"/"path" in the header independently of the data row's
-/// actual filename/path text, so the check fails if the two format strings'
-/// column widths ever drift apart again (as they did when the header didn't
-/// reserve space for the two 1-char marker columns).
-#[test]
-fn ls_header_columns_align_with_data_columns() {
-    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    // `set_path` derives `display_path` from the same path it stores, so the
-    // expected value can read `path()` directly with no canonicalize step.
-    let doc_path = ed.doc().path().unwrap().to_path_buf();
-    let out = ls_output(&mut ed);
-    let mut lines = out.lines();
-    let header = lines.next().expect("header row");
-    let row = lines.next().expect("buffer row");
-
-    let name_col = header.find("name").expect("header must contain 'name'");
-    let path_col = header.find("path").expect("header must contain 'path'");
-
-    let file_name = doc_path.file_name().unwrap().to_str().unwrap().to_string();
-    let shortened_path = hume_platform::path::display_form(&doc_path);
-    let name_start = row
-        .find(file_name.as_str())
-        .expect("row must contain the buffer's file name");
-    let path_start = row
-        .find(shortened_path.as_str())
-        .expect("row must contain the buffer's path");
-
-    assert_eq!(
-        name_col, name_start,
-        "'name' header column must align with the name field:\n{header}\n{row}"
-    );
-    assert_eq!(
-        path_col, path_start,
-        "'path' header column must align with the path field:\n{header}\n{row}"
-    );
-}
-
-// ── Dirty indicator ───────────────────────────────────────────────────────────
-
-#[test]
-fn ls_dirty_buffer_shows_plus() {
-    let mut ed = editor_from("-[h]>ello\n");
-    // Make the buffer dirty: enter insert, type a char, escape.
-    ed.handle_key(key('i'));
-    ed.handle_key(key('x'));
-    ed.handle_key(key_esc());
-    assert!(focused_unsaved(&ed), "buffer must be dirty after edit");
-    let out = ls_output(&mut ed);
-    assert!(out.contains('+'), ":ls must show '+' for dirty buffers");
-}
-
-#[test]
-fn ls_clean_buffer_no_plus() {
-    let mut ed = editor_from("-[h]>ello\n");
-    let out = ls_output(&mut ed);
-    // Header has no '+'. Buffer row should not have '+' (clean).
-    // Only check the buffer rows (skip header).
-    for line in out.lines().skip(1) {
-        assert!(!line.contains('+'), "clean buffer row must not contain '+'");
-    }
-}
-
-// ── Scratch buffer ────────────────────────────────────────────────────────────
-
-#[test]
-fn ls_scratch_buffer_shows_scratch_name() {
-    let mut ed = editor_from("-[h]>ello\n");
-    let out = ls_output(&mut ed);
-    // The initial unnamed buffer has path=None, label=None → display_name() = "*scratch*".
-    assert!(
-        out.contains("*scratch*"),
-        ":ls must show '*scratch*' for nameless buffers, got:\n{out}"
-    );
-}
-
-/// A buffer carrying both a label and a path must show the label, matching
-/// `Buffer::display_name()`, which every other surface (`:tabnew`'s tabline,
-/// the statusline) reads through.
-#[test]
-fn ls_prefers_a_buffers_label_over_its_path_basename() {
-    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    ed.doc_mut().label = Some("[custom]".to_string());
-
-    let out = ls_output(&mut ed);
-
-    assert!(
-        out.contains("[custom]"),
-        ":ls must show the buffer's label, got:\n{out}"
-    );
-}
-
-// ── Cursor placement ──────────────────────────────────────────────────────────
-
 // ── Read-only view buffer properties ─────────────────────────────────────────
 
 /// `:messages` opens a real read-only buffer with label `[messages]`.
@@ -254,65 +119,6 @@ fn view_buffer_blocks_insert_mode() {
 }
 
 // ── Post-review fixes ─────────────────────────────────────────────────────────
-
-/// `:ls` called twice must not list the `[buffers]` buffer in its own output.
-/// Validity: remove the `find_by_label("[buffers]")` skip from typed_list_buffers
-/// and this test fails on the second call (output contains a `[buffers]` row).
-#[test]
-fn ls_does_not_list_itself_on_second_call() {
-    let mut ed = editor_from("-[h]>ello\n");
-
-    // First call: [buffers] doesn't yet exist, so output is clean.
-    let out1 = ls_output(&mut ed);
-    assert!(
-        !out1.contains("[buffers]"),
-        "first :ls must not mention [buffers]"
-    );
-
-    // Switch back to the scratch buffer so the second :ls triggers a real switch.
-    let scratch_id = ed
-        .state
-        .buffers
-        .iter()
-        .find(|(_, buf)| buf.label.is_none() && buf.path().is_none())
-        .map(|(id, _)| id)
-        .expect("scratch buffer must still exist");
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), scratch_id);
-
-    // Second call: [buffers] exists now but must be excluded from the listing.
-    let out2 = ls_output(&mut ed);
-    assert!(
-        !out2.contains("[buffers]"),
-        ":ls must not list the [buffers] view buffer in its own output; got:\n{out2}"
-    );
-
-    // Row count must be stable: one content row for the scratch buffer, one header.
-    assert_eq!(
-        out1.lines().count(),
-        out2.lines().count(),
-        ":ls row count must not grow across repeated calls"
-    );
-}
-
-/// `:ls` must not push an entry to the jump list: view buffers are ephemeral.
-/// Validity: change switch_to_buffer_without_jump back to switch_to_buffer_with_jump
-/// in open_read_only_view and this test fails (departure buffer gains a jump entry).
-#[test]
-fn ls_does_not_pollute_jump_list() {
-    let mut ed = editor_from("-[h]>ello\n");
-    let scratch_id = ed.focused_buffer_id(); // the buffer we switch away from
-    let pid = ed.state.focus.id();
-
-    // No jump entries for the scratch buffer before :ls.
-    assert!(!ed.state.panes.jumps[pid].entries_for_buffer(scratch_id));
-
-    ed.execute_typed("ls", None).unwrap();
-
-    assert!(
-        !ed.state.panes.jumps[pid].entries_for_buffer(scratch_id),
-        ":ls must not push a jump entry for the departure buffer"
-    );
-}
 
 /// `u` and `Ctrl-r` on a read-only buffer leave the text alone, report why,
 /// and mark the command refused.
@@ -566,7 +372,8 @@ fn read_only_buffer_blocks_change_kill() {
 fn read_only_refusal_clears_register_prefix_on_delete() {
     let mut ed = editor_from("-[hell]>o\n");
 
-    ed.execute_typed("ls", None).unwrap();
+    ed.report(Severity::Warning, "test message".to_string());
+    ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
 
     ed.handle_key(key('"'));
@@ -593,7 +400,8 @@ fn read_only_refusal_clears_register_prefix_on_delete() {
 fn read_only_refusal_clears_register_prefix_on_paste() {
     let mut ed = editor_from("-[hell]>o\n");
 
-    ed.execute_typed("ls", None).unwrap();
+    ed.report(Severity::Warning, "test message".to_string());
+    ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
 
     ed.handle_key(key('"'));
@@ -606,7 +414,7 @@ fn read_only_refusal_clears_register_prefix_on_paste() {
     );
 }
 
-/// `:w` on a read-only view buffer ([buffers]) must error with
+/// `:w` on a read-only view buffer ([messages]) must error with
 /// "Buffer is read-only", not "no file name".
 ///
 /// Validity: remove the `is_read_only()` guard from `write_file` and this
@@ -615,7 +423,8 @@ fn read_only_refusal_clears_register_prefix_on_paste() {
 fn view_buffer_blocks_write() {
     let mut ed = editor_from("-[h]>ello\n");
 
-    ed.execute_typed("ls", None).unwrap();
+    ed.report(Severity::Warning, "test message".to_string());
+    ed.execute_typed("messages", None).unwrap();
     assert!(ed.doc().is_read_only());
 
     ed.execute_typed("w", None).unwrap_err();

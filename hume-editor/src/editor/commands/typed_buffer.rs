@@ -276,8 +276,8 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     };
 
     // 0. `#`: the alternate buffer (Vim's `<C-^>` equivalent). Resolved by
-    //    ID, not by path, so pathless buffers (scratch, [messages], the
-    //    [buffers] view from :ls) remain reachable as the alternate.
+    //    ID, not by path, so pathless buffers (scratch, [messages],
+    //    [plugin-status]) remain reachable as the alternate.
     if arg == "#" {
         return ed
             .state

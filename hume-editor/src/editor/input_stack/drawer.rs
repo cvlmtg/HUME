@@ -7,7 +7,7 @@ use std::sync::Arc;
 use steel::rvals::{IntoSteelVal, SteelVal};
 use termina::event::{KeyCode, Modifiers};
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{BufferId, EngineView};
 use hume_engine::types::EditorMode;
 use hume_scripting::host::{DrawerItems, HostToken};
 
@@ -16,21 +16,28 @@ use crate::editor::host_impl::EditorHostImpl;
 
 use super::super::Editor;
 use super::super::EditorState;
-use super::super::commands::half_page;
+use super::super::commands::{FocusedPane, half_page};
 use super::super::host_token;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalScope};
 
-/// `(show-drawer-list! items on-select)`'s raw state, including the
-/// not-yet-exhausted Steel callback. Cleared by `Esc` or `close-drawer!`,
-/// not by `Enter` (the drawer stays open across selections).
+/// What `Enter` on a drawer row does.
+pub(in crate::editor) enum DrawerSelect {
+    /// Calls a Steel `on-select` with the row index and the drawer's token.
+    Steel(SteelVal),
+    /// Row `i` names `buffers[i]`: switches the focused pane to it.
+    Buffers(Vec<BufferId>),
+}
+
+/// An open drawer's rows, selection and select action. Cleared by `Esc` or
+/// `close-drawer!`, not by `Enter` (the drawer stays open across selections).
 pub(in crate::editor) struct DrawerLayer {
     pub(in crate::editor) rows: DrawerRows,
     pub(in crate::editor) selected: usize,
     /// Index of the first visible row, clamped to keep `selected` in view
     /// whenever the selection moves ([`clamp_drawer_scroll`]).
     pub(in crate::editor) scroll: usize,
-    pub(in crate::editor) callback: steel::rvals::SteelVal,
-    /// Identifies which `show-drawer-list!` call opened this drawer; see
+    pub(in crate::editor) select: DrawerSelect,
+    /// Identifies which call opened this drawer; see
     /// [`Self::token`]'s doc.
     token: HostToken,
 }
@@ -45,14 +52,14 @@ impl DrawerLayer {
     /// reuse the same stack slot.
     pub(in crate::editor) fn new(
         items: DrawerItems,
-        callback: steel::rvals::SteelVal,
+        select: DrawerSelect,
         selected: usize,
     ) -> Self {
         let mut drawer = Self {
             rows: DrawerRows::new(items),
             selected: 0,
             scroll: 0,
-            callback,
+            select,
             token: host_token::mint(),
         };
         drawer.select_clamped(selected);
@@ -65,6 +72,17 @@ impl DrawerLayer {
         self.selected = selected.min(self.rows.len() - 1);
     }
 
+    /// The drawer `:ls` opens, on the row of `current`.
+    pub(in crate::editor) fn buffer_list(state: &EditorState, current: BufferId) -> Self {
+        let (rows, buffers) = state.buffer_list_rows(current);
+        let selected = buffers.iter().position(|&b| b == current).unwrap_or(0);
+        Self::new(
+            DrawerItems::Rows(rows),
+            DrawerSelect::Buffers(buffers),
+            selected,
+        )
+    }
+
     /// Identifies this drawer to Steel: `show-drawer-list!`'s return value,
     /// and the shared guard every token-scoped drawer mutation
     /// (`close-drawer!`, `update-drawer-list!`, `drawer-selected-index`)
@@ -74,7 +92,7 @@ impl DrawerLayer {
         self.token
     }
 
-    /// The arguments of every call to this drawer's callback: `payload`
+    /// The arguments of every call to a Steel drawer's callback: `payload`
     /// (the selected row, or `#f` on close) and this drawer's token, so an
     /// owner can tell its own drawer's close from a replaced one's.
     fn call_args(&self, payload: SteelVal) -> Vec<SteelVal> {
@@ -171,11 +189,8 @@ impl Layer for DrawerLayer {
     /// *by value* via `EditorState::take_firing_false` and fires its own
     /// callback explicitly instead.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, why: Removal) {
-        if let Removal::Incidental = why {
-            state.queue_steel_call(
-                self.callback.clone(),
-                self.call_args(SteelVal::BoolV(false)),
-            );
+        if let (Removal::Incidental, DrawerSelect::Steel(callback)) = (why, &self.select) {
+            state.queue_steel_call(callback.clone(), self.call_args(SteelVal::BoolV(false)));
         }
     }
     /// Non-modal: the drawer is built to be worked over (a stray key falls
@@ -195,6 +210,24 @@ impl Layer for DrawerLayer {
 }
 
 impl EditorState {
+    /// Opens `drawer`, replacing any drawer already open. The outgoing
+    /// drawer's Steel owner, if it has one, learns it is gone through a
+    /// `#f` call; `Removal::Explicit` closes stay silent, so only this
+    /// path and `Esc` fire one.
+    pub(in crate::editor) fn open_drawer(
+        &mut self,
+        view: &EngineView,
+        drawer: DrawerLayer,
+    ) -> HostToken {
+        if let Some(r) = self.input.ref_of::<DrawerLayer>() {
+            self.take_firing_false::<DrawerLayer>(view, r);
+        }
+        let token = drawer.token();
+        self.push_layer(view, drawer);
+        self.sync_drawer_view();
+        token
+    }
+
     /// Mirror the open drawer layer into `self.views`' drawer slot for
     /// `DrawerWidget` to read. Called directly at every drawer mutation site
     /// (open, selection move, scroll, close) for immediacy, *and*
@@ -245,7 +278,7 @@ impl EditorState {
             .at_mut::<DrawerLayer>(r)
             .expect("drawer_ref_with_token names a live DrawerLayer");
         drawer.rows = DrawerRows::new(items);
-        drawer.callback = callback;
+        drawer.select = DrawerSelect::Steel(callback);
         drawer.select_clamped(selected);
         self.sync_drawer_view();
         true
@@ -278,9 +311,14 @@ impl EditorState {
 }
 
 impl super::stack::FiresFalseOnReplace for DrawerLayer {
-    fn into_close_call(self: Box<Self>) -> (steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>) {
+    fn into_close_call(
+        self: Box<Self>,
+    ) -> Option<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)> {
         let args = self.call_args(SteelVal::BoolV(false));
-        (self.callback, args)
+        match self.select {
+            DrawerSelect::Steel(callback) => Some((callback, args)),
+            DrawerSelect::Buffers(_) => None,
+        }
     }
 }
 
@@ -361,16 +399,7 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     }
 
     match key.code {
-        KeyCode::Enter => {
-            let drawer = ed
-                .state
-                .input
-                .at::<DrawerLayer>(r)
-                .expect("dispatch_at already checked kind(r) == DrawerLayer");
-            let args = drawer.call_args(SteelVal::IntV(drawer.selected as isize));
-            let callback = drawer.callback.clone();
-            ed.state.queue_steel_call(callback, args);
-        }
+        KeyCode::Enter => select_row(ed, r),
         KeyCode::Escape => {
             ed.state.take_firing_false::<DrawerLayer>(&ed.view, r);
             ed.state.sync_drawer_view();
@@ -378,6 +407,81 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         _ => {
             ed.fall_through(r, InputEvent::Key(key));
         }
+    }
+}
+
+/// `Enter` on the selected row, per the drawer's [`DrawerSelect`].
+fn select_row(ed: &mut Editor, r: LayerRef) {
+    let drawer = ed
+        .state
+        .input
+        .at::<DrawerLayer>(r)
+        .expect("dispatch_at already checked kind(r) == DrawerLayer");
+    match &drawer.select {
+        DrawerSelect::Steel(callback) => {
+            let args = drawer.call_args(SteelVal::IntV(drawer.selected as isize));
+            let callback = callback.clone();
+            ed.state.queue_steel_call(callback, args);
+        }
+        DrawerSelect::Buffers(buffers) => {
+            let target = buffers[drawer.selected];
+            if ed.state.buffers.try_get(target).is_none() {
+                ed.report(Severity::Warning, "buffer was closed".to_string());
+                return;
+            }
+            ed.enter_buffer(FocusedPane::current(&ed.state), target);
+            refresh_buffer_list(ed, r);
+        }
+    }
+}
+
+/// Rebuilds a buffer-list drawer's rows after a switch so the `%`/`#`
+/// markers follow it. The selection stays on its row.
+fn refresh_buffer_list(ed: &mut Editor, r: LayerRef) {
+    let (rows, buffers) = ed
+        .state
+        .buffer_list_rows(FocusedPane::current(&ed.state).bid(&ed.view));
+    let drawer = ed
+        .state
+        .input
+        .at_mut::<DrawerLayer>(r)
+        .expect("dispatch_at already checked kind(r) == DrawerLayer");
+    drawer.rows = DrawerRows::new(DrawerItems::Rows(rows));
+    drawer.select = DrawerSelect::Buffers(buffers);
+    drawer.select_clamped(drawer.selected);
+    clamp_drawer_scroll(ed, r);
+}
+
+impl EditorState {
+    /// One `:ls` row per open buffer, and the buffers they name, in row
+    /// order. A row's number is the one `:b <n>` resolves.
+    fn buffer_list_rows(&self, current: BufferId) -> (Vec<String>, Vec<BufferId>) {
+        let alternate = self.buffers.second_most_recent();
+        self.buffers
+            .iter()
+            .enumerate()
+            .map(|(i, (id, buf))| {
+                let current_marker = if id == current {
+                    '%'
+                } else if alternate == Some(id) {
+                    '#'
+                } else {
+                    ' '
+                };
+                let dirty_marker = if self.has_unsaved_changes(id) {
+                    '+'
+                } else {
+                    ' '
+                };
+                let row = format!(
+                    "{:>4}  {current_marker}{dirty_marker}  {:<32}  {}",
+                    i + 1,
+                    buf.display_name(),
+                    buf.display_path().unwrap_or_default(),
+                );
+                (row.trim_end().to_owned(), id)
+            })
+            .unzip()
     }
 }
 

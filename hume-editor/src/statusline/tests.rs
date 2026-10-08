@@ -631,8 +631,8 @@ fn shorten_path_actually_abbreviates_when_too_wide() {
 //
 // Scratch/synthetic buffers have no path, so display_path()/path() alone
 // would render "". The label-aware display_name() (same as `:ls` in
-// typed_misc.rs) is required for their name to show. The expected strings
-// below are literal names (`*scratch*`, `[buffers]`), not derived from
+// input_stack/drawer.rs) is required for their name to show. The expected strings
+// below are literal names (`*scratch*`, `[plugin-status]`), not derived from
 // display_name()'s own logic.
 
 #[test]
@@ -644,8 +644,8 @@ fn statusline_display_path_scratch_buffer_shows_scratch_name() {
 
 #[test]
 fn statusline_display_path_synthetic_buffer_shows_label() {
-    let ed = crate::editor::tests::editor_with_read_only_view("hello\n", "[buffers]");
-    assert_eq!(statusline_display_path(&ed.statusline()), "[buffers]");
+    let ed = crate::editor::tests::editor_with_read_only_view("hello\n", "[plugin-status]");
+    assert_eq!(statusline_display_path(&ed.statusline()), "[plugin-status]");
 }
 
 #[test]
