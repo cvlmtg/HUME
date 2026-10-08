@@ -1,10 +1,10 @@
 //! `gruvbox.toml`, embedded for renderer snapshot tests that assert exact
 //! colors. Those tests exercise seam/junction/dimming *rendering mechanics*,
 //! not the default theme's palette. Pinning them to a stable theme means
-//! retuning `sand.toml` (the compiled-in fallback theme) never forces an unrelated
+//! retuning the compiled-in fallback theme never forces an unrelated
 //! snapshot re-record. `gruvbox.toml` is a vendored upstream file rather
 //! than one HUME tunes for its own sake, so it stays stable for the same
-//! reason `sand.toml` doesn't serve this role.
+//! reason the fallback theme doesn't serve this role.
 //!
 //! Lives here rather than in `editor::theme` (where `fallback_theme`
 //! lives): it is a test fixture used from `editor::tests`, not an

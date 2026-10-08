@@ -138,97 +138,33 @@ fn install_load_result(
 
 // ── Engine theme builder ──────────────────────────────────────────────────────
 
-// Fallback theme content: single source of truth is the TOML file. Scope
-// names and palette values live in `runtime/themes/sand.toml`, whose content
-// the fallback currently copies. Nothing else may assume the two stay equal.
-const FALLBACK_THEME_TOML: &str = include_str!("../../../runtime/themes/sand.toml");
+// Scope names and palette values live in `assets/fallback-theme.toml`. It is
+// compiled in only and never shipped to the user's disk, so it is independent
+// of the bundled `sand` theme.
+const FALLBACK_THEME_TOML: &str = include_str!("../../assets/fallback-theme.toml");
 
 /// Parse and return the fallback engine [`hume_engine::theme::Theme`] from the embedded TOML.
 ///
 /// Installed until a named theme loads, and again when the configured theme
-/// is missing or empty. The content is `runtime/themes/sand.toml`, embedded
+/// is missing or empty. The content is `assets/fallback-theme.toml`, embedded
 /// at compile time via `include_str!`, so editing that file requires a
 /// rebuild to change the fallback.
 pub(in crate::editor) fn fallback_theme() -> hume_engine::theme::Theme {
     let loaded = hume_engine::theme::loader::parse_theme(FALLBACK_THEME_TOML)
-        .expect("embedded sand.toml must parse: file is compile-time embedded");
-    // Unlike a user's own theme, sand.toml is HUME's shipped content: a
+        .expect("embedded fallback-theme.toml must parse: file is compile-time embedded");
+    // Unlike a user's own theme, fallback-theme.toml is HUME's shipped content: a
     // warning here is a bug in this repo, not a typo to shrug off, so it's
     // stated as an invariant at the one site that would otherwise drop it
     // silently (`load_theme_by_name` surfaces the same warnings for every
-    // other load path). `load_bundled_themes` in `editor/tests/theme_loading.rs`
-    // pins the same guarantee for the on-disk copy of this file.
+    // other load path).
     // A real `assert!`, not `debug_assert!`: this runs once at startup over
     // content fixed at compile time, so it costs nothing, and a `debug_assert`
     // would drop in release exactly the builds where a shipped-theme mistake
     // reaches users. `crate::testing::build_snapshot_theme` asserts the same way.
     assert!(
         loaded.warnings.is_empty(),
-        "embedded sand.toml produced load warnings: {:?}",
+        "embedded fallback-theme.toml produced load warnings: {:?}",
         loaded.warnings
     );
     loaded.theme
-}
-
-#[cfg(test)]
-mod tests {
-    use super::fallback_theme;
-    use hume_engine::theme::ScopeRegistry;
-    use hume_engine::theme::ui_scopes;
-    use hume_engine::types::Scope;
-
-    /// The embedded fallback theme (`sand.toml`, inlined via `include_str!` at
-    /// compile time) must match the *same* file loaded through the production
-    /// runtime loader (`load_theme`, the path `:theme <name>` uses), not
-    /// hardcoded hex colors, which drift every time the palette is tuned and
-    /// then need manual updates here. This only breaks if the embed points at
-    /// the wrong file, the content fails to parse, or the two loaders disagree.
-    #[test]
-    fn fallback_matches_sand_toml_on_disk() {
-        use std::path::PathBuf;
-
-        let mut embedded = fallback_theme();
-        let themes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
-        let mut from_disk = hume_engine::theme::loader::load_theme("sand", &[themes_dir])
-            .expect("runtime/themes/sand.toml must load via the production theme loader")
-            .theme;
-
-        let registry = ScopeRegistry::new();
-        embedded.bake(&registry);
-        from_disk.bake(&registry);
-
-        // Scopes exercised by the renderer's hot paths: cursor, selection,
-        // menu, statusline, pane background/seam.
-        for scope in [
-            hume_engine::theme::CURSOR_PRIMARY,
-            hume_engine::theme::CURSOR,
-            ui_scopes::SELECTION,
-            ui_scopes::MENU,
-            ui_scopes::TEXT_FOCUS,
-            ui_scopes::STATUSLINE,
-            ui_scopes::STATUSLINE_SEPARATOR,
-            ui_scopes::STATUSLINE_NORMAL,
-            ui_scopes::TABLINE,
-            ui_scopes::TABLINE_ACTIVE,
-            ui_scopes::BACKGROUND,
-            ui_scopes::WINDOW,
-            ui_scopes::WINDOW_FOCUSED,
-        ] {
-            assert_eq!(
-                embedded.resolve_by_name(Scope(scope)),
-                from_disk.resolve_by_name(Scope(scope)),
-                "embedded sand.toml disagrees with the on-disk file for scope '{scope}'"
-            );
-        }
-
-        // `ui.text` must fold into `theme.default`, the base style every
-        // plain-text cell starts from (see `style::apply_styles`), so
-        // unhighlighted text carries an explicit color the focus-dimming
-        // blend can act on instead of escaping it as `None` (the terminal's
-        // own default, which the blend has no numeric value to act on).
-        assert_eq!(
-            embedded.default, from_disk.default,
-            "embedded sand.toml's default style (ui.text fold) disagrees with the on-disk file"
-        );
-    }
 }
