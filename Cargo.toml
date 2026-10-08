@@ -3,7 +3,7 @@ members = ["hume-engine", "hume-editor", "hume-platform", "hume-scripting", "hum
 resolver = "2"
 
 [workspace.package]
-version = "0.14.0"
+version = "0.15.0"
 
 [profile.dev]
 debug = "line-tables-only"
