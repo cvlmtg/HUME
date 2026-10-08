@@ -163,7 +163,7 @@ it goes to whichever server supports it when the name is accepted.
 | Whole-buffer formatting | `'format` and `documentFormattingProvider` | | yes | |
 | Range formatting (both shapes) | `#:to` the first range-formatting server | | yes | |
 | Rename | `'rename-symbol` | | yes | |
-| Inlay hints, every server | `'inlay-hints` | | | |
+| Inlay hints, every server | `'inlay-hints` | | | `"lsp-inlay-hints-"` plus the buffer's key |
 | Locations drawer refresh | the drawer's own feature | | yes | `"lsp-locations"` |
 
 "Routed by" is what picks the server among a buffer's servers when the request is sent:

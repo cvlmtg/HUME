@@ -814,3 +814,55 @@ fn undo_also_refreshes_hints() {
          generation exactly like the insert above did"
     );
 }
+
+/// A refresh while the buffer's previous inlay request is still unanswered
+/// cancels the old one on the wire, so a server busy loading a project is
+/// not left with a queue of stale requests.
+#[test]
+fn a_new_refresh_cancels_the_buffers_unanswered_request() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = core_lsp_rig(
+        tmp.path(),
+        MARKED_FIXTURE,
+        serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+        |_, _| {},
+    );
+    rig.ed.state.settings.lsp_inlay_hints = true;
+    let sid = rig.sid("rust-analyzer");
+
+    rig.ed.feed_key(key('i'));
+    rig.ed.feed_key(key('a'));
+    rig.ed.feed_key(key_esc());
+    settle_after_debounce(&mut rig.ed);
+    assert_eq!(request_count(&rig.requests, "textDocument/inlayHint"), 1);
+    assert_eq!(rig.ed.state.lsp.delivery_count_for_test(), 1);
+
+    rig.ed.feed_key(key('u'));
+    settle_after_debounce(&mut rig.ed);
+
+    assert_eq!(request_count(&rig.requests, "textDocument/inlayHint"), 2);
+    assert_eq!(rig.sent(sid, "$/cancelRequest").len(), 1);
+    assert_eq!(rig.ed.state.lsp.delivery_count_for_test(), 1);
+}
+
+/// Buffers refresh independently: a refresh of one buffer leaves another
+/// buffer's unanswered request in flight.
+#[test]
+fn a_refresh_leaves_another_buffers_request_in_flight() {
+    let tmp = tempfile::tempdir().unwrap();
+    let caps = || serde_json::json!({"capabilities": {"inlayHintProvider": true}});
+    let mut t = setup_two_servers(tmp.path(), caps(), caps(), 0);
+    t.ed.state.settings.lsp_inlay_hints = true;
+
+    t.ed.feed_key(key('i'));
+    t.ed.feed_key(key('a'));
+    t.ed.feed_key(key_esc());
+    settle_after_debounce(&mut t.ed);
+    assert_eq!(request_count(&t.requests, "textDocument/inlayHint"), 1);
+
+    t.ed.queue_viewport_change(t.pane_b);
+    settle_after_debounce(&mut t.ed);
+
+    assert_eq!(request_count(&t.requests, "textDocument/inlayHint"), 2);
+    assert_eq!(t.ed.state.lsp.delivery_count_for_test(), 2);
+}

@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- A server that is slow to start, such as typescript-language-server loading a project, no longer gets one inlay-hint request per refresh. A new request cancels the buffer's pending one, so the burst of `lsp inlay hints: timed out` messages is gone.
 - On Windows, `buffer-path` and the `'root` of a `lsp-server-status` entry no longer start with `\\?\`.
 - HUME reports its working directory to the terminal (OSC 7). A new WezTerm split or tab opens in HUME's directory, including after `:cd`, instead of in the directory of a program HUME started. Quitting HUME hands the terminal back the directory it was started in.
 

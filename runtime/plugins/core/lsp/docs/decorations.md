@@ -113,7 +113,8 @@ lsp.inlay-hints=true` turns them on.
 
 Refreshes are debounced by 200 ms per buffer (keyed, not global), so a diagnostics batch
 touching two buffers cannot have the second buffer's call cancel the first's pending
-refresh. A refresh asks every server of the buffer that offers inlay hints and merges their
+refresh. A refresh whose request is sent while the same buffer's previous one is still
+unanswered cancels it, so a slow server is never left with a queue of stale requests. A refresh asks every server of the buffer that offers inlay hints and merges their
 hints into one set. It sends nothing when the option is off or the request params cannot be
 built because the buffer is hidden by the time the debounce fires, and clears the buffer's
 hints when no server offers them.
