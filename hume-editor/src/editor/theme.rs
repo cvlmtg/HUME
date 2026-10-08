@@ -1,13 +1,15 @@
 //! Theme loading applied to a live editor.
 
 use hume_engine::pipeline::EngineView;
-use hume_engine::theme::loader::load_theme;
+use hume_engine::theme::error::ThemeError;
+use hume_engine::theme::loader::{LoadedTheme, load_theme};
 
 use crate::editor::input_stack::PopupLayer;
 use crate::editor::message_log::{MessageLog, Severity};
 
-/// Replace `view.theme` and invalidate everything that caches against its
-/// baked colors: currently just an open popup's per-width/style cache
+/// Replace `view.theme`, record the name it came from in `shown_theme` (empty
+/// for the fallback), and invalidate everything that caches against its baked
+/// colors: currently just an open popup's per-width/style cache
 /// (`PopupLayer::content`), the one input to that cache besides `text`/
 /// `syntax` (which never change during a popup's lifetime) that can change
 /// out from under it. The single chokepoint for replacing a *live*
@@ -17,10 +19,13 @@ use crate::editor::message_log::{MessageLog, Severity};
 /// purpose; there is no popup yet to invalidate.
 pub(in crate::editor) fn set_theme(
     view: &mut EngineView,
+    shown_theme: &mut String,
     popup: Option<&mut PopupLayer>,
     theme: hume_engine::theme::Theme,
+    name: &str,
 ) {
     view.theme = theme;
+    name.clone_into(shown_theme);
     if let Some(popup) = popup {
         popup.content = None;
     }
@@ -45,15 +50,71 @@ pub(in crate::editor) fn set_theme(
 /// `&editor.settings.theme` for `name` without cloning.
 pub(in crate::editor) fn load_theme_by_name(
     engine_view: &mut EngineView,
+    shown_theme: &mut String,
     message_log: &mut MessageLog,
     status_msg: &mut Option<String>,
     popup: Option<&mut PopupLayer>,
     dirs: &hume_platform::dirs::Dirs,
     name: &str,
 ) -> bool {
+    let result = load_theme(name, &super::theme_search_paths(dirs));
+    install_load_result(
+        result,
+        engine_view,
+        shown_theme,
+        message_log,
+        status_msg,
+        popup,
+        name,
+    )
+}
+
+/// [`load_theme_by_name`] for the default theme config never chose. A theme
+/// file that is not there is the expected way to end up on the fallback, so it
+/// logs a Trace line and leaves the view alone; any other failure is reported
+/// like a named theme's.
+pub(in crate::editor) fn load_default_theme(
+    engine_view: &mut EngineView,
+    shown_theme: &mut String,
+    message_log: &mut MessageLog,
+    status_msg: &mut Option<String>,
+    popup: Option<&mut PopupLayer>,
+    dirs: &hume_platform::dirs::Dirs,
+    name: &str,
+) {
     match load_theme(name, &super::theme_search_paths(dirs)) {
+        Err(ThemeError::NotFound { name: missing }) if missing == name => {
+            message_log.push(
+                Severity::Trace,
+                format!("theme '{name}' not found, using the built-in fallback"),
+            );
+        }
+        result => {
+            install_load_result(
+                result,
+                engine_view,
+                shown_theme,
+                message_log,
+                status_msg,
+                popup,
+                name,
+            );
+        }
+    }
+}
+
+fn install_load_result(
+    result: Result<LoadedTheme, ThemeError>,
+    engine_view: &mut EngineView,
+    shown_theme: &mut String,
+    message_log: &mut MessageLog,
+    status_msg: &mut Option<String>,
+    popup: Option<&mut PopupLayer>,
+    name: &str,
+) -> bool {
+    match result {
         Ok(loaded) => {
-            set_theme(engine_view, popup, loaded.theme);
+            set_theme(engine_view, shown_theme, popup, loaded.theme, name);
             if !loaded.warnings.is_empty() {
                 let count = loaded.warnings.len();
                 for warning in &loaded.warnings {
@@ -77,17 +138,19 @@ pub(in crate::editor) fn load_theme_by_name(
 
 // ── Engine theme builder ──────────────────────────────────────────────────────
 
-// Default theme content: single source of truth is the TOML file.
-// Scope names and palette values live in `runtime/themes/sand.toml`
-// (HUME's signature theme).
-const DEFAULT_THEME_TOML: &str = include_str!("../../../runtime/themes/sand.toml");
+// Fallback theme content: single source of truth is the TOML file. Scope
+// names and palette values live in `runtime/themes/sand.toml`, whose content
+// the fallback currently copies. Nothing else may assume the two stay equal.
+const FALLBACK_THEME_TOML: &str = include_str!("../../../runtime/themes/sand.toml");
 
-/// Parse and return the default engine [`hume_engine::theme::Theme`] from the embedded TOML.
+/// Parse and return the fallback engine [`hume_engine::theme::Theme`] from the embedded TOML.
 ///
-/// The content is `runtime/themes/sand.toml`, embedded at compile time via
-/// `include_str!`, so editing that file requires a rebuild to take effect.
-pub(in crate::editor) fn build_default_theme() -> hume_engine::theme::Theme {
-    let loaded = hume_engine::theme::loader::parse_theme(DEFAULT_THEME_TOML)
+/// Installed until a named theme loads, and again when the configured theme
+/// is missing or empty. The content is `runtime/themes/sand.toml`, embedded
+/// at compile time via `include_str!`, so editing that file requires a
+/// rebuild to change the fallback.
+pub(in crate::editor) fn fallback_theme() -> hume_engine::theme::Theme {
+    let loaded = hume_engine::theme::loader::parse_theme(FALLBACK_THEME_TOML)
         .expect("embedded sand.toml must parse: file is compile-time embedded");
     // Unlike a user's own theme, sand.toml is HUME's shipped content: a
     // warning here is a bug in this repo, not a typo to shrug off, so it's
@@ -109,22 +172,22 @@ pub(in crate::editor) fn build_default_theme() -> hume_engine::theme::Theme {
 
 #[cfg(test)]
 mod tests {
-    use super::build_default_theme;
+    use super::fallback_theme;
     use hume_engine::theme::ScopeRegistry;
     use hume_engine::theme::ui_scopes;
     use hume_engine::types::Scope;
 
-    /// The embedded default theme (`sand.toml`, inlined via `include_str!` at
+    /// The embedded fallback theme (`sand.toml`, inlined via `include_str!` at
     /// compile time) must match the *same* file loaded through the production
     /// runtime loader (`load_theme`, the path `:theme <name>` uses), not
     /// hardcoded hex colors, which drift every time the palette is tuned and
     /// then need manual updates here. This only breaks if the embed points at
     /// the wrong file, the content fails to parse, or the two loaders disagree.
     #[test]
-    fn embedded_default_matches_sand_toml_on_disk() {
+    fn fallback_matches_sand_toml_on_disk() {
         use std::path::PathBuf;
 
-        let mut embedded = build_default_theme();
+        let mut embedded = fallback_theme();
         let themes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
         let mut from_disk = hume_engine::theme::loader::load_theme("sand", &[themes_dir])
             .expect("runtime/themes/sand.toml must load via the production theme loader")

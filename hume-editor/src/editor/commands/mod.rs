@@ -13,8 +13,8 @@
 //! The `count` parameter is the user's numeric prefix (default 1). Commands
 //! that don't use a count accept it and ignore it (`_count`).
 
-/// Display label used when no named theme is active (the compiled-in default).
-pub(in crate::editor::commands) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
+/// Display label used when the compiled-in fallback theme is active.
+pub(in crate::editor::commands) const FALLBACK_THEME_LABEL: &str = "fallback (built-in)";
 
 use hume_editing::selection::SelectionSet;
 use hume_editing::tab_style::TabStyle;

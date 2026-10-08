@@ -229,7 +229,7 @@ pub(in crate::editor) fn typed_tabprev(
 /// is called.
 fn active_theme_name(ed: &Editor) -> &str {
     if ed.state.settings.theme.is_empty() {
-        super::DEFAULT_THEME_LABEL
+        super::FALLBACK_THEME_LABEL
     } else {
         &ed.state.settings.theme
     }

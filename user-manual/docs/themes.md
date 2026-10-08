@@ -8,6 +8,8 @@ HUME colors its interface and your code from a theme: a TOML file in the Helix t
 
 To see which themes are available, type `:theme ` and press `Tab`.
 
+HUME reads `sand` from the `themes/` directories like any other theme, so editing your copy changes what you see. A built-in fallback theme is used instead when no `sand` theme is found or when the theme set in `init.scm` fails to load.
+
 Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory, hand-authored, alongside `init.scm`. A theme installed by a tool instead goes in the `themes/` subdirectory of your HUME data directory (see [File locations](configuration.md#file-locations)); a config-dir theme of the same name wins.
 
 HUME reads the Helix theme format and aims to support Helix themes as they are written. It is not there in every detail yet, but it is close: most Helix themes load and render unchanged. A scope can be written as a flat key (`"ui.cursor" = { fg = "..." }`) or as a TOML section header (`[ui.cursor]` / `fg = "..."`). HUME treats the two as equivalent, though Helix itself reads only the flat form, so a section-header theme won't travel back.

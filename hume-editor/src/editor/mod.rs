@@ -303,6 +303,11 @@ pub(crate) struct EditorState {
     pub(crate) message_log: MessageLog,
     /// All editor settings: global defaults and per-buffer-overridable values.
     pub(crate) settings: EditorSettings,
+    /// Name of the theme `EngineView::theme` was loaded from; empty while the
+    /// compiled-in fallback is installed. `settings.theme` is what config asks
+    /// for, this is what is on screen, and a failed theme load rolls the
+    /// setting back to it.
+    pub(in crate::editor) shown_theme: String,
     /// The character and kind from the last find/till motion.
     pub(super) last_find: Option<commands::FindChar>,
     pub(super) search: SearchState,
@@ -514,6 +519,7 @@ impl Default for EditorState {
             summary_ttl: 0,
             message_log: MessageLog::new(),
             settings,
+            shown_theme: String::new(),
             last_find: None,
             search: SearchState::default(),
             focus: focus::Focus::default(),

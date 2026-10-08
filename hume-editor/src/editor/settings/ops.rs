@@ -32,15 +32,14 @@ pub(in crate::editor) fn apply_global(
     key: &str,
     value: &str,
 ) -> Result<(), String> {
-    // Theme is the only effect that can fail after a successful write, so it's
-    // the only one that needs a value to roll back to.
-    let prev_theme = (key == THEME_KEY).then(|| state.settings.theme.clone());
-
     super::write_global(key, value, &mut state.settings)?;
 
     let resynced = resync_key(key).is_none_or(|rk| resync_derived_state(state, view, rk));
-    if !resynced && let Some(prev) = prev_theme {
-        let failed_theme = std::mem::replace(&mut state.settings.theme, prev);
+    if !resynced && key == THEME_KEY {
+        // Theme is the only effect that can fail after a successful write.
+        // The setting goes back to the theme still on screen.
+        let shown = state.shown_theme.clone();
+        let failed_theme = std::mem::replace(&mut state.settings.theme, shown);
         return Err(format!(
             "theme '{failed_theme}' failed to load (see :messages)"
         ));
@@ -89,23 +88,48 @@ pub(crate) fn write_global_for_test(
 /// one applied by the previous `init.scm`) never survives a reload.
 ///
 /// `state.settings = EditorSettings::default()` alone would leave
-/// `view.theme` still baked with the old theme: `theme`'s default is the
-/// empty string, and `resync_derived_state`'s `ResyncKey::theme` arm
-/// no-ops on empty (nothing to load), so the view's theme is
-/// set directly to the same compiled-in default `Editor::open` uses instead
-/// of relying on that arm.
+/// `view.theme` still baked with the old theme, so the view gets the
+/// compiled-in fallback `Editor::open` starts with. The default theme is not
+/// loaded here: `init_scripting` applies it after `init.scm`, so a configured
+/// theme that fails to load ends on the fallback rather than on the default.
 pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {
     state.settings = crate::editor::settings::EditorSettings::default();
     theme::set_theme(
         view,
+        &mut state.shown_theme,
         state.input.popup_mut(),
-        crate::editor::theme::build_default_theme(),
+        crate::editor::theme::fallback_theme(),
+        "",
     );
     for &key in crate::editor::settings::all_setting_keys() {
-        if let Some(rk) = resync_key(key) {
+        if let Some(rk) = resync_key(key)
+            && rk != ResyncKey::theme
+        {
             resync_derived_state(state, view, rk);
         }
     }
+}
+
+/// Load the `theme` setting if config left it naming something other than
+/// the theme on screen. Run once after `init.scm`; a theme `init.scm` set has
+/// already loaded, so this only ever loads the default config never chose.
+/// When that theme is not on disk the setting becomes empty, matching the
+/// fallback on screen.
+pub(in crate::editor) fn apply_pending_theme(state: &mut EditorState, view: &mut EngineView) {
+    if state.settings.theme == state.shown_theme {
+        return;
+    }
+    let wanted = state.settings.theme.clone();
+    theme::load_default_theme(
+        view,
+        &mut state.shown_theme,
+        &mut state.message_log,
+        &mut state.status_msg,
+        state.input.popup_mut(),
+        &state.dirs,
+        &wanted,
+    );
+    state.settings.theme.clone_from(&state.shown_theme);
 }
 
 /// Write a buffer-scoped setting override. No buffer-scoped key has a
@@ -147,13 +171,23 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: Resy
         }
         ResyncKey::theme if !state.settings.theme.is_empty() => theme::load_theme_by_name(
             view,
+            &mut state.shown_theme,
             &mut state.message_log,
             &mut state.status_msg,
             state.input.popup_mut(),
             &state.dirs,
             &state.settings.theme,
         ),
-        // Empty theme (cleared, or never set): nothing to load.
-        ResyncKey::theme => true,
+        // Empty theme: the compiled-in fallback.
+        ResyncKey::theme => {
+            theme::set_theme(
+                view,
+                &mut state.shown_theme,
+                state.input.popup_mut(),
+                crate::editor::theme::fallback_theme(),
+                "",
+            );
+            true
+        }
     }
 }

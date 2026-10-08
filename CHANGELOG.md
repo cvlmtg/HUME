@@ -2,10 +2,12 @@
 
 ## Unreleased
 
+- With no `theme` in `init.scm`, HUME loads `sand` from the `themes/` directories instead of always showing the built-in copy, so edits to `sand.toml` take effect. The built-in theme remains as a fallback when no `sand` is found or the configured theme fails to load.
+
 ## [0.14.1] - 2026-10-08
 
 ### Fixed
-- A server that is slow to start, such as typescript-language-server loading a project, no longer gets one inlay-hint request per refresh. A new request cancels the buffer's pending one, so the burst of `lsp inlay hints: timed out` messages is gone.
+- A server that is slow to start no longer gets one inlay-hint request per refresh. A new request cancels the buffer's pending one, so the burst of `lsp inlay hints: timed out` messages is gone.
 - On Windows, `buffer-path` and the `'root` of a `lsp-server-status` entry no longer start with `\\?\`.
 - HUME reports its working directory to the terminal (OSC 7). A new WezTerm split or tab opens in HUME's directory, including after `:cd`, instead of in the directory of a program HUME started. Quitting HUME hands the terminal back the directory it was started in.
 

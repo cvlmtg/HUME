@@ -809,7 +809,7 @@ impl Editor {
     /// Use the builder methods below to override specific fields.
     pub(crate) fn for_testing(doc: Buffer) -> Self {
         // Minimal engine view for test contexts. Uses 80×24 with tab_width=4.
-        let theme = crate::editor::theme::build_default_theme();
+        let theme = crate::editor::theme::fallback_theme();
         let mut engine_view = EngineView::new(theme);
         // Unlike `bottom_bands` (which needs real Steel-callback wiring
         // `for_testing` skips, see `tests/lsp_popup.rs`), the

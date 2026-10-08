@@ -266,6 +266,7 @@ fn load_theme_by_name_fails_gracefully() {
     let mut ed = editor_from("-[a]>b\n");
     let ok = crate::editor::theme::load_theme_by_name(
         &mut ed.view,
+        &mut ed.state.shown_theme,
         &mut ed.state.message_log,
         &mut ed.state.status_msg,
         ed.state.input.popup_mut(),

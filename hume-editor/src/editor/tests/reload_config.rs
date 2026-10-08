@@ -270,17 +270,16 @@ fn reset_reverts_statusline_config_to_default() {
     assert_eq!(ed.state.settings.statusline().right, default.right);
 }
 
-/// The loaded theme reverts to the compiled-in default (`sand.toml`), not
-/// via `resync_derived_state`'s ordinary "theme" arm (which
-/// no-ops when `settings.theme` is empty, the reset value), but via the
-/// explicit `view.theme = build_default_theme()` write `reset_globals` makes.
+/// The loaded theme reverts to the compiled-in fallback through the explicit
+/// `set_theme` write `reset_globals` makes, which also empties `shown_theme`.
+/// The default theme is only loaded afterwards, by `init_scripting`.
 ///
 /// Swaps in a synthetic theme directly (no Steel eval, no dependency on a
 /// real bundled theme file) so the test is self-contained; only the
 /// synthetic swap's arbitrary color needs to differ from the default's, not
 /// match any real theme's palette.
 #[test]
-fn reset_reverts_theme_to_compiled_in_default() {
+fn reset_reverts_theme_to_compiled_in_fallback() {
     let mut ed = editor_from("-[a]>b\n");
     let default_style = ed.view.theme.resolve_by_name(Scope("ui.statusline"));
 
@@ -303,7 +302,11 @@ fn reset_reverts_theme_to_compiled_in_default() {
 
     ed.reset_config_state();
 
-    assert_eq!(ed.state.settings.theme, "");
+    assert_eq!(
+        ed.state.settings.theme,
+        crate::editor::settings::DEFAULT_THEME
+    );
+    assert_eq!(ed.state.shown_theme, "");
     assert_eq!(
         ed.view.theme.resolve_by_name(Scope("ui.statusline")),
         default_style

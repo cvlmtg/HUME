@@ -83,7 +83,7 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `theme` | string | `""` (built-in `sand`) | Active color [theme](themes.md) name |
+| `theme` | string | `sand` | Active color [theme](themes.md) name. Empty selects the built-in fallback theme |
 | `cursor-shape-insert` | `block`/`bar`/`underline` | `bar` | Cursor shape while in Insert mode, applied to every cursor when multiple are active |
 | `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor |
 | `object-jump-align` | `top`/`center`/`off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` is still subject to `scroll-margin` |

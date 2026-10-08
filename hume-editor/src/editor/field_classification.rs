@@ -66,6 +66,9 @@ fn editor_state_fields_are_classified() {
             // config: settings::ops::reset_globals rebuilds
             // EditorSettings wholesale
             settings: _,
+            // config: settings::ops::reset_globals reinstalls the fallback
+            // theme, which empties this
+            shown_theme: _,
             last_find: _,                       // preserved
             search: _,                          // preserved
             focus: _,                           // preserved

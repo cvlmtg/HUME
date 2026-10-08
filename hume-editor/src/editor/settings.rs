@@ -373,6 +373,10 @@ impl FromStr for Scope {
 /// off the macro's own key string.
 pub(in crate::editor) const THEME_KEY: &str = "theme";
 
+/// Name the `theme` setting starts as: the theme loaded from the search path
+/// when config doesn't pick one.
+pub(in crate::editor) const DEFAULT_THEME: &str = "sand";
+
 /// Same rationale as [`THEME_KEY`], for `wrap-mode`'s non-macro call sites.
 pub(in crate::editor) const WRAP_MODE_KEY: &str = "wrap-mode";
 
@@ -845,9 +849,9 @@ define_settings! {
             scope: [Scope::Global],
             parser: enum_str;
         // Loads and applies the named theme immediately, rolling back to the
-        // previous value on failure. See
-        // `editor::settings::ops::resync_derived_state`.
-        "theme" => theme: String = String::new(),
+        // theme on screen on failure; empty selects the compiled-in fallback.
+        // See `editor::settings::ops::resync_derived_state`.
+        "theme" => theme: String = DEFAULT_THEME.to_string(),
             scope: [Scope::Global],
             parser: string,
             resync: true;

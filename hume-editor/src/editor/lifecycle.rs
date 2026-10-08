@@ -88,7 +88,7 @@ impl Editor {
         }
 
         // ── Engine view setup ─────────────────────────────────────────────────
-        let theme = crate::editor::theme::build_default_theme();
+        let theme = crate::editor::theme::fallback_theme();
         let mut engine_view = EngineView::new(theme);
 
         // Every overlay view shared between the per-frame write side and the

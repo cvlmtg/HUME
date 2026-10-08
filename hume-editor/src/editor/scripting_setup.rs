@@ -779,6 +779,7 @@ impl Editor {
                 self.apply_script_result(result, &err_prefix);
             }
         }
+        crate::editor::settings::ops::apply_pending_theme(&mut self.state, &mut self.view);
         // Snapshot language activation entries for the post-init lint below:
         // every eval's effects (identities, grammars, LSP server ops) are
         // already applied above, each right after its own eval, so
