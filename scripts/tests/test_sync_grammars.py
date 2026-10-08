@@ -194,11 +194,12 @@ class Emit(unittest.TestCase):
             ],
         )
 
-    def test_servers_rows_carry_only_args_and_config(self):
+    def test_servers_rows_omit_the_command_args_and_config_that_are_defaults(self):
         rows = sync.emit_lsp_servers(
             {
                 "b": {"command": "bb", "args": ["--stdio"], "config": {"x": 1}},
                 "a": {"command": "aa", "args": [], "config": None},
+                "same": {"command": "same", "args": [], "config": None},
             }
         )
 
@@ -206,22 +207,12 @@ class Emit(unittest.TestCase):
             rows,
             [
                 "(",
-                ' ("a" (args) (config))',
-                ' ("b" (args "--stdio") (config . "{\\"x\\": 1}"))',
+                ' ("a" (command . "aa"))',
+                ' ("b" (command . "bb") (args "--stdio") (config . "{\\"x\\": 1}"))',
+                ' ("same")',
                 ")",
             ],
         )
-
-    def test_server_commands_rows_list_only_commands_that_differ_from_the_name(self):
-        rows = sync.emit_server_commands(
-            {
-                "same": {"command": "same", "args": [], "config": None},
-                "b": {"command": "bb", "args": [], "config": None},
-                "a": {"command": "aa", "args": [], "config": None},
-            }
-        )
-
-        self.assertEqual(rows, ["(", ' ("a" . "aa")', ' ("b" . "bb")', ")"])
 
     def test_the_feature_vocabulary_is_helixs(self):
         self.assertEqual(set(sync.LSP_FEATURES), HELIX_FEATURES)

@@ -15,10 +15,9 @@ check), not at load.
 
 | Hash | Source | Answers |
 |---|---|---|
-| Servers catalog | `servers.scm` | What a server is registered with: args, config |
+| Servers catalog | `servers.scm` | What a server is registered with: command, args and config, each omitted when it is the default |
 | Language catalog | `language-servers.scm` | Each language's ordered servers; a server's languages are derived from it |
 | Requirements catalog | `requirements.scm` | What installing a server needs on each platform |
-| Commands catalog | `server-commands.scm` | The command that runs a server whose command differs from its name, for the install pipeline's `$PATH` note |
 | Sources catalog | `sources.scm` | How to get it: kind, version, download targets |
 
 The first three come from the registration pin, the last two from the Mason pin, so they stay

@@ -2031,7 +2031,7 @@ fn install_status_with_command_on_path(
     ed.state.status_msg.clone().unwrap_or_default()
 }
 
-/// A server whose catalog has no `server-commands.scm` row runs a command
+/// A server whose catalog record has no `command` field runs a command
 /// named like itself.
 #[test]
 fn install_notes_a_path_command_named_like_the_server() {

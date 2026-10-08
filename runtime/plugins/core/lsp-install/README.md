@@ -42,7 +42,7 @@ two pins, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 | File | Owns |
 |---|---|
 | `lib/catalog.scm` | Reads `servers.scm` and `language-servers.scm` from this plugin's `data/` directory with `(plugin-dir)`, and `requirements.scm` on first use; field lookup; each language's ordered server list, its first (primary) server, and a server's languages |
-| `lib/source-catalog.scm` | Reads `sources.scm` and `server-commands.scm`, which only the install pipeline needs |
+| `lib/source-catalog.scm` | Reads `sources.scm`, which only the install pipeline needs |
 | `lib/receipts.scm` | `<data>/servers/<name>/receipt.scm` paths, reading and writing |
 | `lib/register.scm` | The scan that turns installed servers into registrations, and the default server list of every catalog language |
 | `lib/blocker.scm` | This platform's requirements row for a server, and the check for what blocks installing it |
@@ -52,7 +52,7 @@ two pins, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 | `lib/lock.scm` | Cross-process install lock |
 | `lib/sha256.scm`, `lib/unpack.scm` | Hashing, unpacking and chmod through system tools |
 | `lib/platform.scm` | This platform's Mason target name, and whether it is Windows |
-| `data/servers.scm`, `data/language-servers.scm`, `data/server-commands.scm`, `data/requirements.scm`, `data/sources.scm`, `data/mason-pin.scm` | Generated catalogs and the Mason pin, described below |
+| `data/servers.scm`, `data/language-servers.scm`, `data/requirements.scm`, `data/sources.scm`, `data/mason-pin.scm` | Generated catalogs and the Mason pin, described below |
 
 ## Internals
 
@@ -71,7 +71,7 @@ two pins, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 ## Catalogs
 
 The catalogs are generated, single literal sexprs. `servers.scm` (one record per server),
-`language-servers.scm` (one record per language) and `server-commands.scm` (one pair per server whose command differs from its name)
+and `language-servers.scm` (one record per language)
 come from the registration pin (`scripts/sync-grammars.py`), `sources.scm` from the
 Mason pin (`scripts/sync-lsp-sources.py`), and `requirements.scm` from `sources.scm`
 (both by `scripts/sync-lsp-sources.py`). `scripts/README.md` has the run order.
@@ -80,14 +80,17 @@ Mason pin (`scripts/sync-lsp-sources.py`), and `requirements.scm` from `sources.
 
 ```scheme
 (name
- (args arg…)
- (config . json-string))
+ [(command . executable)]
+ [(args arg…)]
+ [(config . json-string)])
 ```
 
-- `args` is the empty tail `(args)`, never `#f`, when the server takes none.
-- `config` is the server's config table copied as one canonical
-  (`sort_keys`) JSON string. With no config the whole tail is `(config)`, not a dotted
-  pair.
+- `command` is present only when the server's executable differs from its name; without it
+  the server runs a command named like itself. The install pipeline reads it for its `$PATH`
+  note.
+- `args` is present only when the server takes arguments; without it the server takes none.
+- `config` is the server's config table copied as one canonical (`sort_keys`) JSON string,
+  present only when the server has one.
 
 **`language-servers.scm`**: each language's servers in priority
 order. Root markers are not here: they belong to the language (`define-language! #:roots`).
@@ -104,13 +107,6 @@ order. Root markers are not here: they belong to the language (`define-language!
   wins over it, and may name any registered server for any language.
 - The last write to a language's default list wins, so keep one plugin writing defaults for
   a language.
-
-**`server-commands.scm`**: the command of each server whose command differs from its name,
-read by the install pipeline. A server with no row runs a command named like itself.
-
-```scheme
-(name . command)
-```
 
 **`requirements.scm`**: what installing a server needs on each platform. The runtime reads it
 when the discovery hint or a blocker check first needs a row, so it holds only what those

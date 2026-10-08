@@ -49,7 +49,7 @@ No upstream format is ever parsed inside the editor.
 
 | Concern | Upstream | Pin | Generated data |
 |---|---|---|---|
-| **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/plugins/core/lsp-install/servers.scm`, `language-servers.scm`, `server-commands.scm` (and each language's root markers in `runtime/scheme/languages.scm`) |
+| **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/plugins/core/lsp-install/servers.scm`, `language-servers.scm` (and each language's root markers in `runtime/scheme/languages.scm`) |
 | **Installation** — where to download, per platform | `mason-org/mason-registry` (Apache-2.0; one `package.yaml` per tool, purl sources, per-platform assets; publishes compiled `registry.json` per release tag) | new `mason-pin.scm` (registry release tag) | `runtime/plugins/core/lsp-install/sources.scm` |
 
 One generated file per pin: a helix-pin bump touches only registration data, a mason-pin
@@ -70,12 +70,12 @@ Scripts align with *pins*, not features (see `scripts/README.md`):
 
 - **`scripts/sync-grammars.py`** (existing, extended): already fetches `languages.toml` at
   helix-pin and emits `languages.scm` + `grammar-sources.scm`; additionally emits
-  `servers.scm`, `language-servers.scm` and `server-commands.scm` from the same parsed TOML. One bump, one run, all helix-derived files
+  `servers.scm` and `language-servers.scm` from the same parsed TOML. One bump, one run, all helix-derived files
   move in one diff.
 - **`scripts/sync-lsp-sources.py`** (new, standalone): mason-pin → `sources.scm`.
   Standalone because it is *expensive* — it downloads every asset per server×platform to
   compute sha256s; a routine helix bump must not pay that.
-- **Ordering**: the Mason script reads the checked-in `servers.scm` and `server-commands.scm` for the server-name
+- **Ordering**: the Mason script reads the checked-in `servers.scm` for the server-name
   intersection filter, so after a helix bump that changes server names run helix sync
   first, mason sync second. Both outputs are checked in; normally each runs alone.
 - Shared sexpr-emission/pin-reading helpers move to `scripts/sync_common.py` (hyphenated
@@ -116,13 +116,13 @@ language, not the server, and languages sharing a server differ: javascript/jsx 
 `jsconfig.json`, typescript/tsx on `tsconfig.json`), so they live in `languages.scm`
 (`define-language! #:roots`), not here. The scan registers each server with no languages
 and writes every language's list as its default.
-`server-commands.scm` holds the command of each server whose command differs from its name
-(a missing server runs a command named like itself), which only the install pipeline and
-`sync-lsp-sources.py` read.
+A `servers.scm` record omits each default field: `command` when it equals the server's name, `args` when empty, `config` when absent. Only the install pipeline and
+`sync-lsp-sources.py` read `command`.
 
 ```scheme
 ;; servers.scm
-(("rust-analyzer" (args) (config))
+(("rust-analyzer")
+ ("ada-language-server" (command . "ada_language_server"))
  ("typescript-language-server"
   (args "--stdio")
   (config . "{\"hostInfo\": \"hume\", \"typescript\": {\"inlayHints\": {…}}}")))
@@ -130,10 +130,6 @@ and writes every language's list as its default.
 ;; language-servers.scm
 (("rust" (servers ("rust-analyzer")))
  ("typescript" (servers ("typescript-language-server"))))
-
-;; server-commands.scm
-(("rust-analyzer" . "rust-analyzer")
- ("typescript-language-server" . "typescript-language-server"))
 ```
 
 - **Languages live only in `language-servers.scm`.** Its language names match

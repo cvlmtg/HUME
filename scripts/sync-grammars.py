@@ -7,12 +7,11 @@ languages.toml at that commit, and rewrites:
   - languages.scm       — (define-language! …) for every [[language]] block,
     with its root markers as `#:roots`
   - grammar-sources.scm — tree-sitter grammar source catalog
-  - lsp-install/servers.scm — each server's args and config, derived from
+  - lsp-install/servers.scm — each server's command, args and config, each omitted when it
+    is the default (the server's name, no args, no config), derived from
     [language-server.*]
   - lsp-install/language-servers.scm — each language's ordered server list, with
     Helix's only-features/except-features per entry
-  - lsp-install/server-commands.scm — the command of each server whose command
-    differs from its name, read by the install pipeline and by sync-lsp-sources.py
 
 Idempotent: running twice produces byte-identical files.
 """
@@ -50,9 +49,6 @@ GRAMMAR_SOURCES_SCM = REPO / "runtime" / "scheme" / "grammar-sources.scm"
 LSP_SERVERS_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data" / "servers.scm"
 LANGUAGE_SERVERS_SCM = (
     REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data" / "language-servers.scm"
-)
-SERVER_COMMANDS_SCM = (
-    REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data" / "server-commands.scm"
 )
 
 LANGUAGES_HEADER = """\
@@ -102,12 +98,6 @@ LSP_FEATURES = (
 
 LSP_SERVERS_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/servers.scm — HUME bundled LSP server registration catalog.
-;;; Generated — do not hand-edit. Record format: README.md, this directory.
-;;; Source: helix-editor/helix languages.toml @ {sha}
-"""
-
-SERVER_COMMANDS_HEADER = """\
-;;; runtime/plugins/core/lsp-install/data/server-commands.scm — the command of each bundled LSP server whose command differs from its name.
 ;;; Generated — do not hand-edit. Record format: README.md, this directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
@@ -418,27 +408,14 @@ def emit_lsp_servers(servers: dict[str, dict]) -> list[str]:
     rows = []
     for name in sorted(servers):
         s = servers[name]
-        args_sexpr = " ".join(scheme_str(a) for a in s["args"])
-        config_field = (
-            " (config . {})".format(scheme_str(json.dumps(s["config"], sort_keys=True)))
-            if s["config"]
-            else " (config)"
-        )
-        row = " ({} (args{}){})".format(
-            scheme_str(name),
-            f" {args_sexpr}" if args_sexpr else "",
-            config_field,
-        )
-        rows.append(row)
-    return ["("] + rows + [")"]
-
-
-def emit_server_commands(servers: dict[str, dict]) -> list[str]:
-    rows = [
-        f" ({scheme_str(name)} . {scheme_str(servers[name]['command'])})"
-        for name in sorted(servers)
-        if servers[name]["command"] != name
-    ]
+        fields = []
+        if s["command"] != name:
+            fields.append("(command . {})".format(scheme_str(s["command"])))
+        if s["args"]:
+            fields.append("(args {})".format(" ".join(scheme_str(a) for a in s["args"])))
+        if s["config"]:
+            fields.append("(config . {})".format(scheme_str(json.dumps(s["config"], sort_keys=True))))
+        rows.append(" ({})".format(" ".join([scheme_str(name), *fields])))
     return ["("] + rows + [")"]
 
 
@@ -491,19 +468,11 @@ def main() -> None:
     )
     read_sexpr(GRAMMAR_SOURCES_SCM)  # self-check: emitted file must re-parse
 
-    # servers.scm — LSP server args and config
+    # servers.scm — LSP server command, args and config, defaults omitted
     write_generated_file(
         LSP_SERVERS_SCM, LSP_SERVERS_HEADER.format(sha=sha), emit_lsp_servers(servers)
     )
     read_sexpr(LSP_SERVERS_SCM)  # self-check: emitted file must re-parse
-
-    # server-commands.scm — each server's command
-    write_generated_file(
-        SERVER_COMMANDS_SCM,
-        SERVER_COMMANDS_HEADER.format(sha=sha),
-        emit_server_commands(servers),
-    )
-    read_sexpr(SERVER_COMMANDS_SCM)  # self-check: emitted file must re-parse
 
     # language-servers.scm — each language's ordered server list
     write_generated_file(

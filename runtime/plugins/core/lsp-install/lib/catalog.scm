@@ -1,6 +1,7 @@
 ;;; core:lsp-install/catalog.scm — see README.md.
 
 (provide lsp-install/ref
+         lsp-install/ref-or
          lsp-install/require-stdlib!
          lsp-install/read-data
          lsp-install/index-entries
@@ -31,6 +32,11 @@
 
 (define (lsp-install/ref fields key)
   (cdr (assoc key fields)))
+
+;; A field absent from the tail is `default`.
+(define (lsp-install/ref-or fields key default)
+  (let ((entry (assoc key fields)))
+    (if entry (cdr entry) default)))
 
 (define (lsp-install/lookup table name)
   (if (hash-contains? table name)

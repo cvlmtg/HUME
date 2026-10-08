@@ -162,7 +162,7 @@
              (bin-rel   (car installed)))
         (lsp-install/write-receipt! name (lsp-install/ref source 'version)
                                     bin-rel (cdr installed))
-        (let ((cmd (lsp-install/server-command name)))
+        (let ((cmd (lsp-install/ref-or (hash-ref lsp-install/servers name) 'command name)))
           (when (which cmd)
             (log! 'info (string-append "LSP: " cmd " is also on $PATH — the managed install at "
                                        (path-join dir bin-rel) " takes precedence"))))))))

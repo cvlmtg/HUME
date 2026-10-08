@@ -8,9 +8,9 @@
 (define (lsp-install/register-server! name cmd env)
   (unless (lsp-server-registered? name)
     (let* ((fields (hash-ref lsp-install/servers name))
-           (args        (lsp-install/ref fields 'args))
-           (config-json (lsp-install/ref fields 'config))
-           (config (if (null? config-json) #f (json-parse config-json))))
+           (args        (lsp-install/ref-or fields 'args '()))
+           (config-json (lsp-install/ref-or fields 'config #f))
+           (config (and config-json (json-parse config-json))))
       (register-lsp-server! name
                             #:command cmd
                             #:args args
