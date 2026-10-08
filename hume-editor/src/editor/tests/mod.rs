@@ -1409,13 +1409,13 @@ mod completion;
 mod copy_selection;
 mod count_prefix;
 mod crash_dump;
+mod cwd_report;
 mod decoration_providers;
 mod diff_steel;
 mod disk_change;
 mod dump_restore;
 // `pub(in crate::editor)`, unlike its siblings: the sibling `editor::{cursor,scroll,mouse}
 // ::tests` subtrees register the same doubles and reach them through here.
-mod cwd_report;
 mod dot_repeat;
 pub(in crate::editor) mod doubles;
 mod editor_cwd;

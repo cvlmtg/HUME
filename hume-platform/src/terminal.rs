@@ -241,10 +241,14 @@ fn write_leave_alt_screen(out: &mut impl io::Write) -> io::Result<()> {
     out.flush()
 }
 
-/// OSC 7 with an empty URL. WezTerm reads an unparsable URL as "no reported
-/// directory", which hands the pane back to inspecting its processes.
-fn write_cwd_clear(out: &mut impl io::Write) -> io::Result<()> {
-    write!(out, "\x1b]7;\x1b\\")?;
+/// The working-directory URL [`init`] was given, re-reported on teardown.
+static LAUNCH_CWD_URL: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// OSC 7 with `url`, or with an empty URL for `None`. WezTerm reads an
+/// unparsable URL as "no reported directory", which hands the pane back to
+/// inspecting its processes.
+fn write_cwd_report(out: &mut impl io::Write, url: Option<&str>) -> io::Result<()> {
+    write!(out, "\x1b]7;{}\x1b\\", url.unwrap_or(""))?;
     out.flush()
 }
 
@@ -273,8 +277,8 @@ fn run_all(steps: impl IntoIterator<Item = io::Result<()>>) -> io::Result<()> {
 /// SSOT byte sequence that undoes every application-level mode [`init`]
 /// turns on: closes any open synchronized-update envelope, disables focus
 /// tracking and bracketed paste, pops the kitty keyboard stack, disables
-/// mouse tracking, leaves the alternate screen, and clears the working
-/// directory reported through [`set_working_directory`]. Shared between
+/// mouse tracking, leaves the alternate screen, and reports the launch
+/// directory again, undoing [`set_working_directory`]. Shared between
 /// [`restore`] and the panic hook installed by [`init`]. The hook can only
 /// write bytes (no raw/cooked mode switch), and termina restores the
 /// platform mode itself right after the hook returns.
@@ -286,7 +290,7 @@ fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
         write_kitty_pop(out),
         write_mouse_disable(out),
         write_leave_alt_screen(out),
-        write_cwd_clear(out),
+        write_cwd_report(out, LAUNCH_CWD_URL.get().and_then(Option::as_deref)),
         // Second pop. Since `init()` pushes onto the alt screen's stack, the
         // first pop (above) clears it. This extra pop handles terminals with
         // a global keyboard stack; a harmless no-op on per-screen-buffer
@@ -335,6 +339,9 @@ pub fn probe_kitty(term: &SharedTerm) -> io::Result<bool> {
 /// click and scroll tracking with SGR coordinates, leaving drag-select to the
 /// terminal; `mouse_select` also reports drags so the editor can select.
 ///
+/// `launch_cwd_url` is the OSC 7 URL of the directory the shell started HUME
+/// in; teardown reports it again, because the shell will not re-send it.
+///
 /// Call [`restore`] before exiting. A panic hook, armed before any mode is
 /// entered, also restores, and a failure partway through is unwound before
 /// `Err` is returned.
@@ -343,8 +350,10 @@ pub fn init(
     mouse_enabled: bool,
     mouse_select: bool,
     kitty_enabled: bool,
+    launch_cwd_url: Option<String>,
 ) -> io::Result<crate::screen::Screen> {
     let mut term = term.clone();
+    let _ = LAUNCH_CWD_URL.set(launch_cwd_url);
 
     // Arm before entering any mode: a panic during the enable sequence below
     // still unwinds through this hook, and every escape it emits is a
@@ -424,11 +433,11 @@ pub fn set_cursor_color(term: &SharedTerm, black: bool) -> io::Result<()> {
 
 /// Tell the terminal the working directory (OSC 7) as a `file://` URL, so a
 /// new split or tab opens there instead of the terminal guessing from the
-/// process tree. [`restore`] and the panic hook clear it again.
-pub fn set_working_directory(term: &SharedTerm, url: &str) -> io::Result<()> {
+/// process tree. `None` clears the report. [`restore`] and the panic hook
+/// report the launch directory again.
+pub fn set_working_directory(term: &SharedTerm, url: Option<&str>) -> io::Result<()> {
     let mut term = term.clone();
-    write!(term, "\x1b]7;{url}\x1b\\")?;
-    term.flush()
+    write_cwd_report(&mut term, url)
 }
 
 /// Ask the terminal to put `text` on the user's clipboard (OSC 52).

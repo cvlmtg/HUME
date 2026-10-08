@@ -224,19 +224,18 @@ impl Editor {
     }
 
     /// Report `state.cwd` to the terminal when it differs from what the
-    /// terminal was last told. A no-op without a terminal.
+    /// terminal was last told. A cwd with no URL clears the report so the
+    /// terminal does not keep a stale directory.
+    ///
+    /// As in `resync_mouse_mode`, the comparison and update sit outside the
+    /// terminal check so they are testable headless.
     fn resync_cwd(&mut self) {
-        let Some(term) = self.tui.terminal() else {
-            return;
-        };
         if self.applied_cwd.as_ref() == Some(&self.state.cwd) {
             return;
         }
-        let host = gethostname::gethostname();
-        if let Some(url) =
-            super::cwd_report::working_directory_url(&host.to_string_lossy(), &self.state.cwd)
-        {
-            let _ = hume_platform::terminal::set_working_directory(term, &url);
+        if let Some(term) = self.tui.terminal() {
+            let url = super::cwd_report::working_directory_url(&self.state.cwd);
+            let _ = hume_platform::terminal::set_working_directory(term, url.as_deref());
         }
         self.applied_cwd = Some(self.state.cwd.clone());
     }

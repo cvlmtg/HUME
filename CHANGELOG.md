@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Fixed
-- HUME reports its working directory to the terminal (OSC 7). A new WezTerm split or tab opens in HUME's directory, including after `:cd`, instead of in the directory of a program HUME started.
+- HUME reports its working directory to the terminal (OSC 7). A new WezTerm split or tab opens in HUME's directory, including after `:cd`, instead of in the directory of a program HUME started. Quitting HUME hands the terminal back the directory it was started in.
 
 ## [0.14.0] - 2026-10-08
 

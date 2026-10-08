@@ -43,20 +43,31 @@ impl fmt::Display for UriError {
 
 impl std::error::Error for UriError {}
 
-/// Absolute path → `file://` URI. Percent-encodes everything but unreserved
-/// chars (`A-Za-z0-9-._~`), `/`, and `:` (pchar-legal, left bare so a drive
-/// letter reads `C:` not `C%3A`). Windows: any `\\?\` verbatim prefix is
-/// stripped first; a UNC path (`\\server\share\…` or
-/// `\\?\UNC\server\share\…`) emits `server` as the URI authority
-/// (`file://server/share/…`) instead of folding it into the path;
-/// otherwise backslashes become `/` and a drive letter gets a synthetic
-/// leading `/` so the result reads `file:///C:/…`.
+/// Absolute path → `file://` URI. See [`path_to_file_url`] for the encoding.
+///
+/// # Errors
+/// As [`path_to_file_url`].
+pub fn path_to_uri(path: &Path) -> Result<lsp_types::Uri, UriError> {
+    let url = path_to_file_url(path, "")?;
+    Ok(lsp_types::Uri::from_str(&url)
+        .expect("percent-encoded file URI is always syntactically valid"))
+}
+
+/// Absolute path → `file://{host}/…` URL, for a consumer that wants the
+/// machine named (OSC 7); an LSP URI passes an empty `host`. Percent-encodes
+/// everything but unreserved chars (`A-Za-z0-9-._~`), `/`, and `:` (pchar-legal,
+/// left bare so a drive letter reads `C:` not `C%3A`), in `host` as in the
+/// path. Windows: any `\\?\` verbatim prefix is stripped first; a UNC path
+/// (`\\server\share\…` or `\\?\UNC\server\share\…`) emits `server` as the
+/// authority (`file://server/share/…`, `host` ignored) instead of folding it
+/// into the path; otherwise backslashes become `/` and a drive letter gets a
+/// synthetic leading `/` so the result reads `file://{host}/C:/…`.
 ///
 /// # Errors
 /// [`UriError::NotAbsolute`] if `path` is relative, never joined against a
 /// cwd; the caller owns canonicalization. [`UriError::NotUtf8`] if `path`
 /// is not valid UTF-8, never silently mangled via a lossy conversion.
-pub fn path_to_uri(path: &Path) -> Result<lsp_types::Uri, UriError> {
+pub fn path_to_file_url(path: &Path, host: &str) -> Result<String, UriError> {
     if !path.is_absolute() {
         return Err(UriError::NotAbsolute);
     }
@@ -68,22 +79,21 @@ pub fn path_to_uri(path: &Path) -> Result<lsp_types::Uri, UriError> {
     let stripped = path_str;
 
     #[cfg(windows)]
-    if let Some((host, rest)) = unc_host_and_rest(stripped) {
+    if let Some((unc_host, rest)) = unc_host_and_rest(stripped) {
         let with_leading_slash = ensure_leading_slash(normalize_separators(rest));
-        let uri_str = format!(
+        return Ok(format!(
             "file://{}{}",
-            percent_encode_path(host),
+            percent_encode_path(unc_host),
             percent_encode_path(&with_leading_slash)
-        );
-        return Ok(lsp_types::Uri::from_str(&uri_str)
-            .expect("percent-encoded file URI is always syntactically valid"));
+        ));
     }
 
     let with_leading_slash = ensure_leading_slash(normalize_separators(stripped));
-    let encoded = percent_encode_path(&with_leading_slash);
-    let uri_str = format!("file://{encoded}");
-    Ok(lsp_types::Uri::from_str(&uri_str)
-        .expect("percent-encoded file URI is always syntactically valid"))
+    Ok(format!(
+        "file://{}{}",
+        percent_encode_path(host),
+        percent_encode_path(&with_leading_slash)
+    ))
 }
 
 /// Backslash → `/`, so a Windows path reads as a URI path. A no-op on
