@@ -72,7 +72,11 @@ fn user_manual_option_tables_match_all_setting_keys() {
     // The buffer-intrinsic options have no define_settings! entry by design
     // (see settings.rs's module doc) but are documented in the Buffer options
     // table, so they're added here rather than to all_setting_keys() itself.
-    code_keys.extend(BufferIntrinsicOption::ALL.map(|o| o.key().to_string()));
+    code_keys.extend(
+        BufferIntrinsicOption::ALL
+            .iter()
+            .map(|o| o.key().to_string()),
+    );
 
     let missing_from_docs: Vec<_> = code_keys.difference(&documented).collect();
     let stale_in_docs: Vec<_> = documented.difference(&code_keys).collect();

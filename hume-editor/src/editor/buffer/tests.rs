@@ -740,6 +740,30 @@ fn identical_content_reload_adopts_the_disk_line_ending() {
     assert!(!d.buf.line_ending_changed());
 }
 
+#[test]
+fn a_read_only_buffer_refuses_a_line_ending_change() {
+    let mut d = doc("-[h]>ello\n");
+    d.buf.read_only = true;
+    assert!(d.buf.set_line_ending(LineEnding::CrLf).is_err());
+    assert_eq!(d.text().line_ending(), LineEnding::Lf);
+    assert!(!d.buf.line_ending_changed());
+}
+
+#[test]
+fn a_read_only_buffer_still_adopts_the_disk_line_ending_on_reload() {
+    let mut d = doc("-[h]>ello\n");
+    d.buf.read_only = true;
+    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
+    let mutated = d.buf.replace_text_recorded(
+        id,
+        &mut stores.stores(),
+        BufferText::from("hello\r\n"),
+        pane,
+    );
+    assert!(!mutated);
+    assert_eq!(d.text().line_ending(), LineEnding::CrLf);
+}
+
 // ── undo-levels ───────────────────────────────────────────────────────────
 
 #[test]

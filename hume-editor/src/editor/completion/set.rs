@@ -81,7 +81,7 @@ fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
         .then_some(BufferIntrinsicOption::ALL)
         .into_iter()
         .flatten()
-        .map(BufferIntrinsicOption::key);
+        .map(|opt| opt.key());
     prefix_completions(scope_keys.chain(intrinsic), rest)
 }
 

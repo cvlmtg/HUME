@@ -14,19 +14,32 @@ pub enum BufferIntrinsicOption {
     LineEnding,
 }
 
-impl BufferIntrinsicOption {
-    pub const ALL: [Self; 2] = [Self::Language, Self::LineEnding];
+/// Generate `BufferIntrinsicOption`'s `ALL` and `key` from one list of
+/// `Variant => "key"` pairs. `key` is an exhaustive match, so a variant left
+/// out of the list fails to compile instead of going missing from `ALL`.
+macro_rules! buffer_intrinsic_options {
+    ($($variant:ident => $key:literal),+ $(,)?) => {
+        impl BufferIntrinsicOption {
+            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
 
-    /// The option name as `:set` and the scripting API spell it.
-    pub const fn key(self) -> &'static str {
-        match self {
-            Self::Language => "language",
-            Self::LineEnding => "line-ending",
+            /// The option name as `:set` and the scripting API spell it.
+            pub const fn key(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $key,)+
+                }
+            }
         }
-    }
+    };
+}
 
+buffer_intrinsic_options! {
+    Language => "language",
+    LineEnding => "line-ending",
+}
+
+impl BufferIntrinsicOption {
     pub fn from_key(key: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|opt| opt.key() == key)
+        Self::ALL.iter().copied().find(|opt| opt.key() == key)
     }
 }
 
