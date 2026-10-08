@@ -801,6 +801,7 @@ version = "0.15.0"
 dependencies = [
  "arboard",
  "clap",
+ "gethostname",
  "globset",
  "hume-decorations",
  "hume-editing",

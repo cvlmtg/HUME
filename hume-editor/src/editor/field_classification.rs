@@ -169,6 +169,9 @@ fn editor_fields_are_classified() {
             // state.settings after a reload, same as any runtime
             // :set mouse/mouse-select change
             applied_mouse_mode: _,
+            // preserved: state.cwd survives a reload, and so does what the
+            // terminal was last told
+            applied_cwd: _,
             // preserved: drained by apply_startup_positions at the
             // first settle, long before any :reload-config could run
             startup_positions: _,

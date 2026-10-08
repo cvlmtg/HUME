@@ -111,3 +111,14 @@ fn write_unwind_escapes_keeps_going_after_one_step_fails() {
         "remaining unwind steps must still run after an earlier one fails"
     );
 }
+
+#[test]
+fn write_unwind_escapes_clears_the_reported_working_directory() {
+    let mut out = Vec::new();
+    write_unwind_escapes(&mut out).expect("writing to a Vec cannot fail");
+    let bytes = String::from_utf8(out).expect("escapes are ASCII");
+    assert!(
+        bytes.contains("\x1b]7;\x1b\\"),
+        "teardown must reset OSC 7 to an empty URL, got {bytes:?}"
+    );
+}

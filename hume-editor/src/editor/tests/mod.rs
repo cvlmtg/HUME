@@ -889,6 +889,7 @@ impl Editor {
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
             tui: super::tui::Tui::Off,
             applied_mouse_mode: initial_mouse_mode,
+            applied_cwd: None,
             startup_positions: Vec::new(),
         }
     }
@@ -1414,6 +1415,7 @@ mod disk_change;
 mod dump_restore;
 // `pub(in crate::editor)`, unlike its siblings: the sibling `editor::{cursor,scroll,mouse}
 // ::tests` subtrees register the same doubles and reach them through here.
+mod cwd_report;
 mod dot_repeat;
 pub(in crate::editor) mod doubles;
 mod editor_cwd;

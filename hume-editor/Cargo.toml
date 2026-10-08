@@ -19,6 +19,7 @@ hume-lsp = { path = "../hume-lsp" }
 hume-ui = { path = "../hume-ui" }
 hume-decorations = { path = "../hume-decorations" }
 lsp-types = "0.97"
+gethostname = "1"
 serde.workspace = true
 serde_json.workspace = true
 globset = "0.4"

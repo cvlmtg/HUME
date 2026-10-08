@@ -185,6 +185,7 @@ impl Editor {
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
             tui: Tui::Off,
             applied_mouse_mode: initial_mouse_mode,
+            applied_cwd: None,
             startup_positions: Vec::new(),
         };
         // This buffer predates the scripting host, so it can't route through

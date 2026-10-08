@@ -40,6 +40,7 @@ mod clipboard;
 mod commands;
 mod completion;
 mod cursor;
+mod cwd_report;
 mod dispatch;
 mod doc_ops;
 mod dot_chain;
@@ -941,6 +942,11 @@ pub(crate) struct Editor {
     /// take effect immediately instead of only at the next restart. See
     /// `hume_platform::terminal::set_mouse_mode`.
     applied_mouse_mode: (bool, bool),
+    /// The working directory last reported to the terminal (OSC 7).
+    /// `prepare_frame` compares it against `state.cwd` every frame, so `:cd`
+    /// and `(set-cwd! …)` need no hook of their own. Stays `None` while no
+    /// terminal is attached, so the first attached frame reports.
+    applied_cwd: Option<PathBuf>,
     /// Startup cursor placements queued by `queue_startup_position` (one per
     /// CLI `path:line[:col]` argument) before `run`'s event loop starts.
     /// Applied and drained by `apply_startup_positions`, once, right after

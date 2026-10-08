@@ -241,6 +241,13 @@ fn write_leave_alt_screen(out: &mut impl io::Write) -> io::Result<()> {
     out.flush()
 }
 
+/// OSC 7 with an empty URL. WezTerm reads an unparsable URL as "no reported
+/// directory", which hands the pane back to inspecting its processes.
+fn write_cwd_clear(out: &mut impl io::Write) -> io::Result<()> {
+    write!(out, "\x1b]7;\x1b\\")?;
+    out.flush()
+}
+
 /// Runs every step in `steps`, even if an earlier one fails. The goal is to
 /// leave the shell as usable as possible rather than abandon teardown at the
 /// first error. Returns the first error encountered; later ones are silently
@@ -266,7 +273,8 @@ fn run_all(steps: impl IntoIterator<Item = io::Result<()>>) -> io::Result<()> {
 /// SSOT byte sequence that undoes every application-level mode [`init`]
 /// turns on: closes any open synchronized-update envelope, disables focus
 /// tracking and bracketed paste, pops the kitty keyboard stack, disables
-/// mouse tracking, and leaves the alternate screen. Shared between
+/// mouse tracking, leaves the alternate screen, and clears the working
+/// directory reported through [`set_working_directory`]. Shared between
 /// [`restore`] and the panic hook installed by [`init`]. The hook can only
 /// write bytes (no raw/cooked mode switch), and termina restores the
 /// platform mode itself right after the hook returns.
@@ -278,6 +286,7 @@ fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
         write_kitty_pop(out),
         write_mouse_disable(out),
         write_leave_alt_screen(out),
+        write_cwd_clear(out),
         // Second pop. Since `init()` pushes onto the alt screen's stack, the
         // first pop (above) clears it. This extra pop handles terminals with
         // a global keyboard stack; a harmless no-op on per-screen-buffer
@@ -410,6 +419,15 @@ pub fn set_cursor_color(term: &SharedTerm, black: bool) -> io::Result<()> {
             Osc::ResetDynamicColor(DynamicColorNumber::TextCursorColor)
         )?;
     }
+    term.flush()
+}
+
+/// Tell the terminal the working directory (OSC 7) as a `file://` URL, so a
+/// new split or tab opens there instead of the terminal guessing from the
+/// process tree. [`restore`] and the panic hook clear it again.
+pub fn set_working_directory(term: &SharedTerm, url: &str) -> io::Result<()> {
+    let mut term = term.clone();
+    write!(term, "\x1b]7;{url}\x1b\\")?;
     term.flush()
 }
 

@@ -223,6 +223,24 @@ impl Editor {
         self.applied_mouse_mode = desired;
     }
 
+    /// Report `state.cwd` to the terminal when it differs from what the
+    /// terminal was last told. A no-op without a terminal.
+    fn resync_cwd(&mut self) {
+        let Some(term) = self.tui.terminal() else {
+            return;
+        };
+        if self.applied_cwd.as_ref() == Some(&self.state.cwd) {
+            return;
+        }
+        let host = gethostname::gethostname();
+        if let Some(url) =
+            super::cwd_report::working_directory_url(&host.to_string_lossy(), &self.state.cwd)
+        {
+            let _ = hume_platform::terminal::set_working_directory(term, &url);
+        }
+        self.applied_cwd = Some(self.state.cwd.clone());
+    }
+
     /// Send the clipboard text queued for OSC 52, if any. A no-op without a
     /// terminal (tests, headless `run_keys`), which leaves the text queued.
     pub(super) fn flush_osc52(&mut self) {
@@ -461,6 +479,7 @@ impl Editor {
         // Mouse modes are terminal state applied once at startup; resyncing
         // here makes `:set global mouse=…` take effect immediately.
         self.resync_mouse_mode();
+        self.resync_cwd();
         self.flush_osc52();
 
         // Bake scopes interned since the last frame. It must run before the
