@@ -272,9 +272,9 @@ impl Editor {
         // The replacement went through `install` as a line-diff change, so
         // the buffer's servers get it as an ordinary queued `didChange`.
         // Everything below discards state computed against the replaced
-        // text. A no-op replacement (`mutated == false`) never touched
-        // `self.text` or the text generation, so that state is still valid
-        // against the unchanged content and is kept.
+        // text. A no-op replacement (`mutated == false`) keeps the content and the
+        // text generation, so that state is still valid against the unchanged
+        // content and is kept. It does adopt the new text's line ending.
         if mutated {
             // Diagnostics and LSP-sourced decorations describe the replaced
             // content, so they are dropped, and so is what each server was

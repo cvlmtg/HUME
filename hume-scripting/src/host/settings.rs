@@ -2,20 +2,33 @@
 
 use hume_engine::pipeline::BufferId;
 
-/// The buffer option naming a buffer's language. It lives on the buffer's
-/// language identity rather than in the settings tables, so
-/// `set-buffer-option!`/`get-buffer-option` handle it themselves: a change
-/// is queued as `Effect::SetBufferLanguage`, and a read has to see one
-/// queued earlier in the same eval.
-pub const LANGUAGE_OPTION: &str = "language";
+/// A buffer option stored on the buffer itself rather than in the settings
+/// tables. Each has no global default and is valid only for `:set buffer`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufferIntrinsicOption {
+    /// The buffer's language. `set-buffer-option!`/`get-buffer-option` handle
+    /// it themselves: a change is queued as `Effect::SetBufferLanguage`, and a
+    /// read has to see one queued earlier in the same eval.
+    Language,
+    /// The line ending a save writes (`lf` or `crlf`).
+    LineEnding,
+}
 
-/// The buffer option naming a buffer's save line ending (`lf` or `crlf`).
-/// Like [`LANGUAGE_OPTION`] it lives on the buffer itself rather than in the
-/// settings tables, and has no global default.
-pub const LINE_ENDING_OPTION: &str = "line-ending";
+impl BufferIntrinsicOption {
+    pub const ALL: [Self; 2] = [Self::Language, Self::LineEnding];
 
-/// Buffer-only options stored on the buffer, outside the settings tables.
-pub const BUFFER_INTRINSIC_OPTIONS: &[&str] = &[LANGUAGE_OPTION, LINE_ENDING_OPTION];
+    /// The option name as `:set` and the scripting API spell it.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Language => "language",
+            Self::LineEnding => "line-ending",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|opt| opt.key() == key)
+    }
+}
 
 /// A `language` option value as a language name: `""` is the spelling of
 /// "no language", so it decodes to `None`.

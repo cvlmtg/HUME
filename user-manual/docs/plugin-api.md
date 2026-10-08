@@ -23,7 +23,7 @@ This page is a lookup reference: tables of signatures and one-line effects. For 
 | `(set-option! key value)` | Set a global option |
 | `(set-buffer-option! pane key value)` | Set an option on `pane`'s buffer only |
 | `(get-option key)` | Read an option's global value, ignoring any buffer override |
-| `(get-buffer-option pane key)` | Read `pane`'s buffer's effective value: its own override if set, else the global default |
+| `(get-buffer-option pane key)` | Read `pane`'s buffer's effective value: its own override if set, else the global default (`language` and `line-ending` are per-buffer and have no global default) |
 | `(configure-statusline! left center right)` | Configure the three statusline sections, each a list of element name strings |
 | `(set-statusline-text! source pane text)` | Push `text` for a `"steel:<source>"` statusline element, scoped to `pane`'s buffer; empty string clears it |
 

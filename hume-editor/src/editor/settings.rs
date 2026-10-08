@@ -15,9 +15,11 @@
 //! whose write has a derived-state effect declares `resync: true` (wired in
 //! `editor::settings::ops::apply_global`).
 //!
-//! `language` has no macro entry: it has no global default, and its write
-//! needs `Editor`-level access (`OnLanguageSet` hook, registry lookup), so it
-//! is a special case in `typed_set`.
+//! The `BufferIntrinsicOption`s have no macro entry: they have no global
+//! default and live on the buffer. `language` needs `Editor`-level access
+//! (`OnLanguageSet` hook, registry lookup), so `typed_set` handles it;
+//! `line-ending` is written by `ops::apply_buffer` and read by
+//! `get_buffer_option`.
 
 use std::fmt;
 use std::str::FromStr;
@@ -701,8 +703,8 @@ macro_rules! define_settings {
         /// `(get-option key)` (`overrides` always `None`: global only) and
         /// `(get-buffer-option bid key)` (`overrides` from `bid`'s stored
         /// `BufferOverrides`). `None` for a key with no generic storage.
-        /// This covers only `"language"` today, which lives on the buffer's
-        /// language identity; `get-buffer-option` reads it itself.
+        /// This covers the `BufferIntrinsicOption`s, which live on the
+        /// buffer; `get-buffer-option` reads them itself.
         pub fn setting_value(
             key: &str,
             settings: &EditorSettings,

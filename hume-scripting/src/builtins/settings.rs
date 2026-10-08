@@ -7,7 +7,7 @@ use steel::rvals::SteelVal;
 use hume_engine::pipeline::BufferId;
 
 use crate::SteelCtx;
-use crate::host::{LANGUAGE_OPTION, language_option_value};
+use crate::host::{BufferIntrinsicOption, language_option_value};
 use crate::types::{Effect, PaneHandle, QueuedEffect};
 
 use super::SteelResult;
@@ -54,6 +54,9 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 /// string/symbol/bool/int coercion as `set-option!`). The override persists on the buffer until
 /// overwritten, same as `:set buffer key=value`.
 ///
+/// `"line-ending"` takes the symbol `lf` or `crlf` (or a string of that name)
+/// and sets the line ending a save writes; it errors on a read-only buffer.
+///
 /// `"language"` takes a string, `""` meaning no language, and is queued as
 /// `Effect::SetBufferLanguage` rather than written here: setting it can
 /// activate plugins, which must not happen inside the current eval.
@@ -69,7 +72,7 @@ pub(crate) fn set_buffer_option(
     value: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    if key == LANGUAGE_OPTION {
+    if key == BufferIntrinsicOption::Language.key() {
         let SteelVal::StringV(language) = value else {
             steel::stop!(TypeMismatch =>
                 "set-buffer-option!: \"language\" must be a string, got {:?}", value);
@@ -108,7 +111,8 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 /// `(get-buffer-option pane key)`: the effective value of `key` for `pane`'s buffer:
 /// its buffer override if one is set, else the global default. `"language"`
 /// reads the buffer's language name (`""` for none), including a change
-/// queued earlier in this same eval.
+/// queued earlier in this same eval. `"line-ending"` reads the symbol `lf` or
+/// `crlf`; it has no global default.
 ///
 /// Command/hook context only (`cmd` kind). The idiomatic caller is an
 /// `on-language-set` hook handler, which receives the target buffer id as an
@@ -116,7 +120,7 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 /// that may differ from the buffer whose language just changed), same
 /// reasoning as `set-buffer-option!`.
 pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, pane: PaneHandle, key: String) -> SteelResult {
-    if key == LANGUAGE_OPTION {
+    if key == BufferIntrinsicOption::Language.key() {
         return Ok(SteelVal::StringV(
             effective_language(ctx, pane.buffer())
                 .unwrap_or_default()

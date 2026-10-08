@@ -470,8 +470,9 @@ impl Buffer {
     /// through the diff. The history revision records `focused`'s selections
     /// for the buffer before and after.
     ///
-    /// Returns whether the text changed (`install` ran, the version moved),
-    /// `false` when `new_text` equals the current text.
+    /// Returns whether the content changed (`install` ran, the version moved),
+    /// `false` when `new_text` has the same content. The line ending is
+    /// adopted from `new_text` either way.
     pub(in crate::editor::buffer) fn replace_text_recorded(
         &mut self,
         id: BufferId,
@@ -970,8 +971,9 @@ impl crate::editor::EditorState {
     }
 
     /// Whether `bid` has changes that are not on disk: a revision past the
-    /// saved one, or edits in the open Insert or paste session, which have
-    /// no revision until the session commits. Every "is this buffer
+    /// saved one, a line ending different from the saved one, or edits in the
+    /// open Insert or paste session, which have no revision until the
+    /// session commits. Every "is this buffer
     /// unsaved" question outside `buffer` asks this, never [`Buffer`]'s own
     /// revision check.
     pub(crate) fn has_unsaved_changes(&self, bid: BufferId) -> bool {

@@ -20,7 +20,7 @@
 
 use hume_editing::text::LineEnding;
 use hume_engine::pipeline::{BufferId, EngineView};
-use hume_scripting::host::LINE_ENDING_OPTION;
+use hume_scripting::host::BufferIntrinsicOption;
 
 use super::{ResyncKey, THEME_KEY, resync_key};
 use crate::editor::EditorState;
@@ -137,6 +137,10 @@ pub(in crate::editor) fn apply_pending_theme(state: &mut EditorState, view: &mut
 /// Write a buffer-scoped setting override. No buffer-scoped key has a
 /// derived-state effect today (see [`super::write_buffer`]'s doc), so unlike
 /// [`apply_global`] there is nothing to resync here.
+///
+/// `line-ending` is not an override: it sets the buffer text's line ending,
+/// which changes whether the buffer reads as unsaved, and is refused on a
+/// read-only buffer.
 pub(in crate::editor) fn apply_buffer(
     state: &mut EditorState,
     bid: BufferId,
@@ -144,7 +148,7 @@ pub(in crate::editor) fn apply_buffer(
     value: &str,
 ) -> Result<(), String> {
     let buf = state.buffers.get_mut(bid);
-    if key == LINE_ENDING_OPTION {
+    if key == BufferIntrinsicOption::LineEnding.key() {
         let line_ending = value.parse::<LineEnding>()?;
         if buf.is_read_only() {
             return Err("buffer is read-only".to_string());

@@ -174,7 +174,7 @@ pub(in crate::editor) fn typed_set(
     _force: bool,
 ) -> Result<(), CommandError> {
     use crate::editor::settings::Scope;
-    use hume_scripting::host::{LANGUAGE_OPTION, LINE_ENDING_OPTION, language_option_value};
+    use hume_scripting::host::{BufferIntrinsicOption, language_option_value};
 
     const USAGE: &str = "Usage: :set global|buffer|pane key=value";
     let Some(arg) = arg else {
@@ -192,31 +192,25 @@ pub(in crate::editor) fn typed_set(
     };
     let bid = fp.bid(&ed.view);
 
-    // `language` has no global default and no generic storage (it lives on
-    // `Buffer.language`, not `EditorSettings`/`BufferOverrides`), so it has no
-    // `scope:` entry in `settings::setting_scopes`. Checked here first and
-    // unconditionally, or it would fall through to "unknown setting" below.
-    if key == LANGUAGE_OPTION {
-        return match scope_str {
-            "buffer" => {
+    // Buffer-intrinsic options live on the buffer, not in `EditorSettings`/
+    // `BufferOverrides`, so they have no `scope:` entry in
+    // `settings::setting_scopes`. Checked here first, or they would fall
+    // through to "unknown setting" below.
+    if let Some(opt) = BufferIntrinsicOption::from_key(key) {
+        if scope_str.parse::<Scope>() != Ok(Scope::Buffer) {
+            return Err(CommandError::transient(format!(
+                "'{key}' is per-buffer: use ':set buffer {key}=<value>'"
+            )));
+        }
+        return match opt {
+            BufferIntrinsicOption::Language => {
                 ed.set_buffer_language_by_name(bid, language_option_value(value));
                 Ok(())
             }
-            _ => Err(CommandError::transient(
-                "'language' is per-buffer: use ':set buffer language=<name>'",
-            )),
-        };
-    }
-
-    // `line-ending` lives on the buffer's text, like `language`, so it has no
-    // `scope:` entry either.
-    if key == LINE_ENDING_OPTION {
-        return match scope_str {
-            "buffer" => settings_ops::apply_buffer(&mut ed.state, bid, key, value)
-                .map_err(CommandError::new),
-            _ => Err(CommandError::transient(
-                "'line-ending' is per-buffer: use ':set buffer line-ending=lf|crlf'",
-            )),
+            BufferIntrinsicOption::LineEnding => {
+                settings_ops::apply_buffer(&mut ed.state, bid, key, value)
+                    .map_err(CommandError::new)
+            }
         };
     }
 

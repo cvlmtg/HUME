@@ -10,7 +10,7 @@ use crate::editor::settings::{
 };
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::LineEnding;
-use hume_scripting::host::{BUFFER_INTRINSIC_OPTIONS, LANGUAGE_OPTION, LINE_ENDING_OPTION};
+use hume_scripting::host::BufferIntrinsicOption;
 
 // ── :set arguments ────────────────────────────────────────────────────────────
 
@@ -77,9 +77,9 @@ fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
         .iter()
         .copied()
         .filter(|k| setting_scopes(k).contains(&scope));
-    let intrinsic = BUFFER_INTRINSIC_OPTIONS
-        .iter()
-        .copied()
+    let intrinsic = BufferIntrinsicOption::ALL
+        .into_iter()
+        .map(BufferIntrinsicOption::key)
         .filter(|_| scope == Scope::Buffer);
     prefix_completions(scope_keys.chain(intrinsic), rest)
 }
@@ -97,27 +97,22 @@ fn complete_set_value(
     value_prefix: &str,
     ctx: &CompletionCtx<'_>,
 ) -> Vec<CompletionItem> {
-    // `language` and `line-ending` have no `setting_scopes` entry by design
-    // (see settings.rs): valid only for buffer scope, checked directly
-    // instead of through the generic gate below. An unparseable `scope` token falls through both
-    // branches to the same empty result as a real key rejecting that scope.
+    // Buffer-intrinsic options have no `setting_scopes` entry by design (see
+    // settings.rs): valid only for buffer scope, checked directly instead of
+    // through the generic gate below. An unparseable `scope` token falls
+    // through to the same empty result as a real key rejecting that scope.
     let scope = scope.parse::<Scope>().ok();
-    if key == LANGUAGE_OPTION {
-        if scope == Some(Scope::Buffer) {
-            prefix_completions(ctx.languages.iter_names(), value_prefix)
-        } else {
-            Vec::new()
+    if let Some(opt) = BufferIntrinsicOption::from_key(key) {
+        if scope != Some(Scope::Buffer) {
+            return Vec::new();
         }
-    } else if key == LINE_ENDING_OPTION {
-        if scope == Some(Scope::Buffer) {
-            prefix_completions(
-                [LineEnding::Lf, LineEnding::CrLf]
-                    .into_iter()
-                    .map(LineEnding::as_str),
-                value_prefix,
-            )
-        } else {
-            Vec::new()
+        match opt {
+            BufferIntrinsicOption::Language => {
+                prefix_completions(ctx.languages.iter_names(), value_prefix)
+            }
+            BufferIntrinsicOption::LineEnding => {
+                prefix_completions(LineEnding::VALUES.iter().copied(), value_prefix)
+            }
         }
     } else if !scope.is_some_and(|s| setting_scopes(key).contains(&s)) {
         Vec::new()

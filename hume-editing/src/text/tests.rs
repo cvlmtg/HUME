@@ -420,5 +420,17 @@ fn line_ending_names_round_trip() {
 fn line_ending_parse_rejects_unknown_names() {
     let err = "dos".parse::<LineEnding>().unwrap_err();
     assert!(err.contains("lf") && err.contains("crlf"), "{err}");
-    assert!("LF".parse::<LineEnding>().is_err());
+}
+
+#[test]
+fn line_ending_parse_ignores_case() {
+    assert_eq!("LF".parse::<LineEnding>(), Ok(LineEnding::Lf));
+    assert_eq!("CrLf".parse::<LineEnding>(), Ok(LineEnding::CrLf));
+}
+
+#[test]
+fn line_ending_values_parse_to_their_own_spelling() {
+    for v in LineEnding::VALUES {
+        assert_eq!(v.parse::<LineEnding>().map(LineEnding::as_str), Ok(*v));
+    }
 }

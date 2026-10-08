@@ -25,6 +25,10 @@ pub enum LineEnding {
 }
 
 impl LineEnding {
+    /// The spellings `FromStr` accepts, which `:set buffer line-ending=`
+    /// completion offers.
+    pub const VALUES: &'static [&'static str] = &["lf", "crlf"];
+
     /// The spelling `:set buffer line-ending=` takes and reports.
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -38,7 +42,7 @@ impl std::str::FromStr for LineEnding {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+        match s.to_ascii_lowercase().as_str() {
             "lf" => Ok(Self::Lf),
             "crlf" => Ok(Self::CrLf),
             _ => Err(format!("invalid line-ending '{s}' (expected lf or crlf)")),
