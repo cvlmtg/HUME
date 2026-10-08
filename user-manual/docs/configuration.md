@@ -9,13 +9,13 @@ HUME reads persistent configuration from:
 - **macOS / Linux:** `$XDG_CONFIG_HOME/hume/init.scm` (defaults to `~/.config/hume/init.scm`)
 - **Windows:** `%APPDATA%\hume\init.scm`
 
-Pass `--config <FILE>` (see [Command-line Flags](cli.md)) to load a different file instead. Themes and the data directory still resolve from the standard directories above. `:reload-config` re-runs whichever file the session started from.
+Pass `--config <FILE>` (see [Command-line Flags](cli.md)) to load a different file instead. [Themes](themes.md) and the data directory still resolve from the standard directories above. `:reload-config` re-runs whichever file the session started from.
 
 If the file does not exist, HUME starts with defaults, except an explicit `--config` path, which is a startup (and reload) error if missing: unlike the default `init.scm`, an explicitly named file is expected to be there, so `:reload-config` reports an error rather than silently resetting to defaults if it's gone by the time you reload. If it fails partway through, the error is reported in `:messages` and everything up to that point stays applied, so a broken line late in the file leaves you half-configured rather than back at defaults. Fix it and run `:reload-config` to re-run the file without restarting.
 
 A plugin that fails to load is handled more gracefully than a broken line of plain configuration: HUME reports the error, naming the plugin and pointing at the exact file and line the problem is in, and then keeps going with the rest of `init.scm`, so a broken third-party plugin near the top of your file no longer takes everything after it down with it. See [Plugins](plugins.md) for how to recover.
 
-`:reload-config` starts from a clean slate: every option, key binding, hook, command, and plugin goes back to its default first, then the file runs again, so removing a line from `init.scm` and reloading does undo what it did. Any `:set global`/`:set buffer`/`:theme` change you made during the session is discarded too, not just what `init.scm` set, with two exceptions: a pane-scoped `:set pane` override, which stays as you left it (panes are editing state, not config), and an explicit `:set buffer language=<name>`, which is restored after the reload rather than discarded: detection can't reconstruct it on its own (that's exactly why you had to set it explicitly), so losing it on every reload would be more surprising than keeping it. If the file fails partway through this time, you're left with defaults plus whatever ran before the error, same as at startup.
+`:reload-config` starts from a clean slate: every option, key binding, hook, command, and plugin goes back to its default first, then the file runs again, so removing a line from `init.scm` and reloading does undo what it did. Any `:set global`/`:set buffer`/[`:theme`](themes.md) change you made during the session is discarded too, not just what `init.scm` set, with two exceptions: a pane-scoped `:set pane` override, which stays as you left it (panes are editing state, not config), and an explicit `:set buffer language=<name>`, which is restored after the reload rather than discarded: detection can't reconstruct it on its own (that's exactly why you had to set it explicitly), so losing it on every reload would be more surprising than keeping it. If the file fails partway through this time, you're left with defaults plus whatever ran before the error, same as at startup.
 
 Buffers stay open and language servers stay attached across a reload: it behaves as if every open file were closed and reopened. Completion triggers, inline diagnostics, and any per-language setup your config applies (e.g. from `on-language-set`) come back too, without restarting the language server or losing your place in the file.
 
@@ -83,7 +83,7 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `theme` | string | `""` (built-in `sand`) | Active color theme name |
+| `theme` | string | `""` (built-in `sand`) | Active color [theme](themes.md) name |
 | `cursor-shape-insert` | `block`/`bar`/`underline` | `bar` | Cursor shape while in Insert mode, applied to every cursor when multiple are active |
 | `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor |
 | `object-jump-align` | `top`/`center`/`off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` is still subject to `scroll-margin` |
@@ -101,7 +101,7 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
 | `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections of comma-separated element names. Set it with `configure-statusline!` |
-| `statusline.mode-colors` | bool | `#t` | Tint the whole statusline with the current mode's color; off shows the theme's base `ui.statusline` color in every mode |
+| `statusline.mode-colors` | bool | `#t` | Tint the whole statusline with the current mode's color; off shows the [theme](themes.md)'s base `ui.statusline` color in every mode |
 | `tabline` | `always`/`never`/`dynamic` | `dynamic` | When to show the tab bar: always, never, or only once more than one tab is open |
 
 The `lsp.*` options below configure `core:lsp`. See [Language Servers](lsp.md) for setup, commands, and how they're used.
@@ -140,7 +140,7 @@ These options have a global default that every buffer without its own override r
 | `whitespace-newline` | `none` \| `all` | `none` | When to render newline indicators |
 | `language` | string | *(auto-detected)* | The buffer's language: picks its syntax highlighting, language server, and language-specific plugins |
 
-Characters the terminal cannot be shown (control characters, and invisible ones such as a zero-width space or a bidirectional override) are always displayed as their codepoint (`<200b>`), styled with the theme's `ui.virtual.invisible` scope, whatever the options above are set to. They are not whitespace you can choose to hide: left invisible they misalign the rest of the line, and an unseen bidirectional override can make code read differently from how it runs.
+Characters the terminal cannot be shown (control characters, and invisible ones such as a zero-width space or a bidirectional override) are always displayed as their codepoint (`<200b>`), styled with the [theme](themes.md#scopes-hume-adds)'s `ui.virtual.invisible` scope, whatever the options above are set to. They are not whitespace you can choose to hide: left invisible they misalign the rest of the line, and an unseen bidirectional override can make code read differently from how it runs.
 
 ## Text wrap
 
@@ -159,142 +159,6 @@ Accepted values:
 - `word`: break at the pane width but prefer whitespace, so words aren't split.
 - `indent`: like `word`, but wrapped continuation lines are indented to match the line's leading whitespace, so nested code stays visually nested (this is the default).
 - `:N` suffix: wrap at column `N` instead of the pane's content width (e.g. `word:80`). `0` or omitted means content width.
-
-## Themes
-
-```scheme
-(set-option! "theme" "sand")
-```
-
-To see which themes are available, type `:theme ` and press `Tab`.
-
-Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory, hand-authored, alongside `init.scm`. A theme installed by a tool instead goes in the `themes/` subdirectory of your HUME data directory (see [File locations](#file-locations)); a config-dir theme of the same name wins.
-
-HUME reads the Helix theme format and aims to support Helix themes as they are written. It is not there in every detail yet, but it is close: most Helix themes load and render unchanged. A scope can be written as a flat key (`"ui.cursor" = { fg = "..." }`) or as a TOML section header (`[ui.cursor]` / `fg = "..."`). HUME treats the two as equivalent, though Helix itself reads only the flat form, so a section-header theme won't travel back.
-
-A color can be a hex literal, a palette name you define, or one of the sixteen terminal color names Helix themes use (`red`, `light-gray`, and so on). These resolve to fixed colors from the standard terminal palette rather than to whatever your own terminal happens to have those colors set to, so a theme looks the same everywhere and unfocused-pane dimming has an actual color to blend toward. A color value outside these three forms leaves that one entry unstyled rather than failing the whole load, and `:messages` names it.
-
-One thing a Helix theme can contain isn't supported, but it doesn't stop the rest of the theme from loading either: the top-level `rainbow` array. HUME has no rainbow-bracket highlighting, so it has nothing to drive. The theme still loads, and the entry is reported in `:messages` like any other one HUME couldn't use.
-
-A theme fails to load outright only when the problem is with the document rather than one entry in it: invalid TOML syntax, an `inherits` parent that doesn't exist or forms a cycle or nests more than eight deep, or an `inherits`/`palette` key that isn't a string/table. Loading then keeps your current theme.
-
-### Installing themes
-
-To install a third-party theme repository, run `:plum-install-theme <user/repo>` (see [Core Plugins → core:plum](core-plugins.md#core-plum)), for example:
-
-```
-:plum-install-theme cvlmtg/everforest.hume
-```
-
-::: info
-[cvlmtg/everforest.hume](https://github.com/cvlmtg/everforest.hume) is Everforest, ported from Helix: a green-based, low-contrast color scheme designed to feel warm and comfortable on the eyes, inspired by forest colors in fall.
-:::
-
-`:theme <Tab>` picks it up right away, no restart needed.
-
-A theme editor is available online: a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
-
-### Theme scopes
-
-A scope not listed below behaves as
-[Helix's own theme reference](https://docs.helix-editor.com/themes.html) describes it.
-Every syntax-highlighting scope works this way, so the part of a theme that colors your
-code carries over as-is.
-
-#### Scopes HUME adds
-
-These have no Helix equivalent:
-
-- `ui.cursor.match.search`: coloring every visible search match, falling back to
-  `ui.cursor.match` when unset
-- `ui.popup.scroll`: scrollbar thumb on a scrolled hover popup (Helix only themes a
-  scrollbar for `ui.menu`)
-- `ui.window.focused`: seam divider segments adjacent to the focused pane, falling back
-  to `ui.window`
-- `ui.drawer`: background of the bottom drawer (`show-drawer-list!`), a generic pick-list
-  panel Helix doesn't have
-- `ui.tabline` / `ui.tabline.active`: the tab bar's row and its active tab. `.active` left
-  unset falls back to the base `ui.tabline` style, unlike the statusline separator below
-- `ui.statusline.search` / `.command` / `.sift`: one more mode-tinted statusline scope
-  per HUME mode Helix doesn't have, alongside Helix's own
-  `ui.statusline.normal`/`.insert`/`.select` (`.select` colors **Extend**, HUME's name for
-  what Helix calls Select mode; `.sift` colors HUME's own Sift mode, the `s` regex prompt)
-- `ui.virtual.invisible`: the `<200b>`-style stand-in for a character the terminal must
-  not be shown as itself (see the note under Buffer options above)
-- `diff.plus.line` / `diff.minus.line` / `diff.delta.line`: the whole-line background tint
-  `core:git-diff` paints for an added, deleted, or changed line (`diff.minus.line` also
-  colors the ghost text of a deleted line, since nothing is left in the buffer to color).
-  Falls back to nothing if left undefined. An unmodified Helix theme colors the gutter
-  marker (below) but paints no line tint, which is the deliberate trade-off rather than a bug
-- `diff.plus.word` / `diff.minus.word`: word-level highlight inside a changed line
-  (`core:git-diff`'s inline diff), inside the line-level `.line` tint above
-- `diagnostic.error.message` / `.warning.message` / `.info.message` / `.hint.message` and
-  their `.message-text` counterparts: the `:messages` log's severity badge and body text,
-  a HUME-only feature
-- `error.diagnostic.inline` / `warning.diagnostic.inline` / `info.diagnostic.inline` /
-  `hint.diagnostic.inline`: the diagnostic summary shown at the end of an offending line.
-  Separate from `diagnostic.error` and friends, which style the squiggle under the code
-  itself, so the summary doesn't pick up that scope's underline. Each falls back to the
-  matching `error`/`warning`/`info`/`hint` gutter color when unset
-
-#### Helix scopes HUME doesn't read
-
-Declaring any of these has no effect today. They fall into two groups, and the difference
-matters if you're deciding whether to keep them in a theme you maintain.
-
-**Waiting on a feature.** HUME doesn't have the thing these color yet. When it does, these
-scopes are the natural way to theme it, so leaving them in a theme costs nothing:
-
-- No debugger (DAP) support: `ui.debug`, `ui.debug.breakpoint`, `ui.debug.active`
-- No which-key-style prompts: `ui.popup.info`, `ui.help`, `ui.text.info`
-- No picker-preview highlighting: `ui.highlight`, `ui.highlight.frameline`
-- No cursor-column ruler: `ui.cursorcolumn`, `ui.cursorcolumn.primary`,
-  `ui.cursorcolumn.secondary`
-- No per-kind completion-entry styling: `ui.text.directory`, `ui.text.symlink`
-- No LSP deprecated/unnecessary diagnostic tags: `diagnostic.deprecated`,
-  `diagnostic.unnecessary`
-- No move- or conflict-specific diff styling: `diff.delta.moved`, `diff.delta.conflict`
-- No snippet support: `tabstop`
-- Ruler columns, the soft-wrap indicator, virtual jump labels, and per-kind inlay hints:
-  `ui.virtual.ruler`, `ui.virtual.wrap`, `ui.virtual.jump-label`,
-  `ui.virtual.inlay-hint.parameter`, `ui.virtual.inlay-hint.type`
-
-**HUME's interface works differently.** These color a piece of Helix's UI that HUME either
-doesn't present the same way or styles from another scope. They may never apply, so the
-listed alternative is where to put the color instead:
-
-- `ui.picker.header`, `ui.picker.header.column`, `ui.picker.header.column.active`: HUME's
-  picker has no column headers to style
-- `ui.gutter`, `ui.gutter.selected`: the gutter takes no background of its own; style it
-  with `ui.linenr` and `ui.linenr.selected`
-- `ui.statusline.inactive`, `ui.text.inactive`: HUME tints the whole statusline row by
-  mode rather than dimming an unfocused one, and dims an unfocused pane wholesale instead
-  of theming an inactive state
-- `ui.cursorline.secondary`: only the primary selection's line is tinted, via
-  `ui.cursorline.primary`
-- `ui.background.separator`: HUME's prompt line has no separator rule beneath it
-- `ui.bufferline.background`: the tab bar's ground comes from `ui.tabline` (or
-  `ui.bufferline`, see below), not a separate background layer
-
-#### Scopes HUME reads differently
-
-`ui.window` is the seam between split panes. HUME draws the divider glyph itself, so it
-reads that scope's foreground; a theme that sets only a background falls back to the
-theme's own base text color (`ui.text`) for it, the same fallback every other undecorated
-element uses.
-
-`ui.statusline.separator` divides the statusline's segments. HUME tints the whole
-statusline row by mode, so leaving this scope undefined takes the row's own current color
-rather than the untinted `ui.statusline`; otherwise the separator would show through a
-mode-tinted row as a stripe of the wrong color. Set it explicitly and that wins, in every
-mode.
-
-HUME's tab bar is a saved window layout per tab (Vim's tab pages), not a per-buffer strip,
-so it's styled with its own `ui.tabline` / `ui.tabline.active` scopes rather than Helix's
-`ui.bufferline` / `ui.bufferline.active`. A theme that sets only the latter (every Helix
-theme, since `ui.tabline` is HUME's own addition) still renders correctly: `ui.tabline`
-falls back to `ui.bufferline` when unset, and `ui.tabline.active` to `ui.bufferline.active`,
-so the bar picks up a ported theme's colors without it needing to name HUME's scopes at all.
 
 ## Key bindings
 

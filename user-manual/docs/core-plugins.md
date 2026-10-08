@@ -41,7 +41,7 @@ PLUM never installs anything on its own: the commands below do the work when you
 (call! "plum-ensure-grammars" '("rust" "toml"))
 ```
 
-Leaving PLUM out only removes these commands. Already-installed plugins, grammars, and themes keep working without it. PLUM is only needed to install new ones. See [Syntax Highlighting](syntax-highlighting.md) for the grammar workflow and [Configuration](configuration.md#themes) for the theme workflow.
+Leaving PLUM out only removes these commands. Already-installed plugins, grammars, and themes keep working without it. PLUM is only needed to install new ones. See [Syntax Highlighting](syntax-highlighting.md) for the grammar workflow and [Themes](themes.md#installing-themes) for the theme workflow.
 
 ## core:lsp
 

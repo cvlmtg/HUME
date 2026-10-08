@@ -109,6 +109,7 @@ export default defineConfig({
         text: 'Customization',
         items: [
           { text: 'Configuration', link: '/configuration' },
+          { text: 'Themes', link: '/themes' },
           { text: 'Core Plugins', link: '/core-plugins' },
           { text: 'Plugins', link: '/plugins' },
         ],

@@ -85,7 +85,7 @@ Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. H
 ::: details Where HUME's theme format differs
 A terminal color name resolves to a fixed value from the standard terminal palette rather than to your own terminal's configured color, so a theme reads the same everywhere.
 
-One thing a theme can contain isn't supported, though it doesn't stop the rest of the theme from loading: the top-level `rainbow` array, which HUME has no rainbow-bracket feature to read. A theme fails to load outright only when the problem is with the document rather than one entry in it: invalid TOML, an `inherits` parent that doesn't exist or forms a cycle or nests more than eight deep, or an `inherits`/`palette` key of the wrong type. Any other malformed entry is left unstyled and named in `:messages` instead. See [Theme scopes](configuration.md#theme-scopes) for the scopes HUME doesn't read.
+One thing a theme can contain isn't supported, though it doesn't stop the rest of the theme from loading: the top-level `rainbow` array, which HUME has no rainbow-bracket feature to read. A theme fails to load outright only when the problem is with the document rather than one entry in it: invalid TOML, an `inherits` parent that doesn't exist or forms a cycle or nests more than eight deep, or an `inherits`/`palette` key of the wrong type. Any other malformed entry is left unstyled and named in `:messages` instead. See [Theme scopes](themes.md#theme-scopes) for the scopes HUME doesn't read.
 
 HUME also extends the format in one direction: a scope can be written as a TOML section header (`[ui.cursor]`) where Helix only reads flat dotted keys. A theme hand-authored in HUME using section headers needs them flattened to plain dotted keys before Helix will take it. The theme editor's own exports are already flat, so this only matters for a theme you write by hand.
 :::
@@ -182,7 +182,7 @@ Helix's `bufferline` (`never` / `always` / `multiple`) is a strip of open **buff
 
 `:set global tabline=never/always/dynamic` controls visibility; `dynamic` (the default) is the analogue of Helix's `multiple`, showing the bar only once a second tab is open. Click a tab to switch to it; the bar scrolls when tabs overflow the width.
 
-A Helix theme needs no changes to look right: HUME's `ui.tabline` falls back to Helix's `ui.bufferline` when unset; see [Theme scopes](configuration.md#theme-scopes).
+A Helix theme needs no changes to look right: HUME's `ui.tabline` falls back to Helix's `ui.bufferline` when unset; see [Theme scopes](themes.md#theme-scopes).
 
 ### Surround
 
