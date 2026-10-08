@@ -168,12 +168,12 @@ fn global_define_syntax_is_visible_inside_required_module() {
 /// Helper: create a temp user plugin at `plugins/user/tp/plugin.scm` and
 /// return `(TempDir, init.scm path)`.  Caller must keep TempDir alive.
 fn plugin_fixture(init_body: &str, plugin_body: &str) -> (tempfile::TempDir, std::path::PathBuf) {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().expect("creating the temp dir failed");
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), plugin_body).unwrap();
+    std::fs::create_dir_all(&plugin_dir).expect("creating the plugin dir failed");
+    std::fs::write(plugin_dir.join("plugin.scm"), plugin_body).expect("writing plugin.scm failed");
     let init_path = dir.path().join("init.scm");
-    std::fs::write(&init_path, init_body).unwrap();
+    std::fs::write(&init_path, init_body).expect("writing init.scm failed");
     (dir, init_path)
 }
 

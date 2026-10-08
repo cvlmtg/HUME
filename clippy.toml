@@ -1,3 +1,7 @@
+# `clippy::unwrap_used` is denied in CI and scripts/test-all.sh. Test code is
+# exempt: `#[test]` fns and `#[cfg(test)]` modules may `.unwrap()`.
+allow-unwrap-in-tests = true
+
 # Workspace-wide `clippy::disallowed_methods` entries, three groups: a
 # constant reachable from most crates (`unicode-width`'s methods — CLAUDE.md's
 # "Display columns" section), a set with essentially zero legitimate

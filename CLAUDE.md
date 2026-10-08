@@ -18,7 +18,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 ## Rules
 - **Comments** follow the global ⛔ Comments rules. Rationale lives at the implementing site; update `docs/ROADMAP.md` only to remove a resolved open question or when milestones change.
 - **Comment vocabulary lint**: `arch-lints/tests/comment_vocabulary.rs` rejects the unambiguous banned phrases in any `.rs` comment.
-- **Rust idioms**: Write idiomatic Rust. Prefer pattern matching, iterators, and the type system over runtime checks. Use `Result` and `Option`; no `.unwrap()` in non-test code.
+- **Rust idioms**: Write idiomatic Rust. Prefer pattern matching, iterators, and the type system over runtime checks. Use `Result` and `Option`; no `.unwrap()` in non-test code (`clippy::unwrap_used` is denied in CI, tests exempt).
 - **Terminal compatibility**: Require true color (24-bit) and synchronized output. Prefer kitty keyboard protocol but fall back gracefully to legacy encoding when unavailable. No shims for truly ancient terminals.
 - **Cross-platform**: macOS primary, Linux and Windows (Git Bash / WSL) secondary. Use `termina` or similar abstractions for platform differences. No platform-specific code unless behind `cfg` gates.
 - **Testing**: Every editing command, text object, and selection operation must be tested. No untested commands. Core editing logic uses state triples (`initial, op, expected` with cursor/selection markers). Appearance (glyphs, spacing, exact rendered strings) is tested with `insta` snapshots (inline for short one-line element strings, file snapshots for full-frame renders), never with hardcoded string assertions in unit tests; unit/integration tests assert data/semantics only. The full suite is this exact command from the repo root, after `cargo fmt`:
@@ -37,7 +37,7 @@ These must be respected from the first line of code — retrofitting them later 
 
 Most are enforced by a family of domain types (`CharOffset`, `RopeyLine`/`ContentLine`, the five column types) with a private field and no `Add`/`Sub`/`AddAssign` impl: a raw `x + 1` doesn't type-check, and a function typed for one domain can't be handed another's value. Each entry below states only its own mints, arithmetic, and exceptions, not that boilerplate again. `.index()`/`.get()` is each type's own escape hatch into a foreign coordinate system (ropey, tree-sitter, LSP wire positions) with no domain of its own; a terminal/pane cell coordinate uses the `x`-family (`screen_x`/`content_x`/`pane_x`) instead of a column type.
 
-See `CONTRIBUTING.md`'s "strongest tool that fits" bullet for why some invariants stop at the type system, some are a `clippy::disallowed_methods` entry instead (workspace-wide, enforced by `cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods` via `scripts/test-all.sh`/CI — CI runs `ubuntu-latest` only, so a banned call behind `#[cfg(windows)]` is invisible to this gate), and some are an `arch-lints/` scanner.
+See `CONTRIBUTING.md`'s "strongest tool that fits" bullet for why some invariants stop at the type system, some are a `clippy::disallowed_methods` entry instead (workspace-wide, enforced by `cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods -D clippy::unwrap_used` via `scripts/test-all.sh`/CI, which runs it on `ubuntu-latest` and `windows-latest`), and some are an `arch-lints/` scanner.
 
 ### Selections
 

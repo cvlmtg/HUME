@@ -23,12 +23,12 @@ bash scripts/fetch-test-grammars.sh
 # The sync scripts' parsing logic, against fixtures: no network, instant.
 python3 -m unittest discover -s scripts/tests
 
-# Denies only `disallowed_methods` — the workspace-wide bans `clippy.toml`
-# lists (raw `unicode-width` calls, `std::env::set_var`/`remove_var`, raw
-# `ropey` line-index methods). Every other clippy lint stays at its default
-# (non-failing) level: adopting those is a separate decision, not a side
-# effect of this one.
-cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods
+# Denies `disallowed_methods` (the workspace-wide bans `clippy.toml` lists:
+# raw `unicode-width` calls, `std::env::set_var`/`remove_var`, raw `ropey`
+# line-index methods) and `unwrap_used` (tests exempt, see `clippy.toml`).
+# Every other clippy lint stays at its default (non-failing) level: adopting
+# those is a separate decision, not a side effect of this one.
+cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods -D clippy::unwrap_used
 
 # Every crate root denies `rustdoc::broken_intra_doc_links` — this is what
 # actually evaluates those links, since the attribute alone is inert without

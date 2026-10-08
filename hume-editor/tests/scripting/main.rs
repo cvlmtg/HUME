@@ -30,9 +30,9 @@ fn host() -> ScriptingHost {
 fn real_prelude_source() -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .unwrap()
+        .expect("hume-editor manifest dir has a parent")
         .join("runtime/scheme/prelude.scm");
-    std::fs::read_to_string(&path).unwrap()
+    std::fs::read_to_string(&path).expect("reading runtime/scheme/prelude.scm failed")
 }
 
 mod call_and_hooks;

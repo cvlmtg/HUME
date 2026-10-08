@@ -165,7 +165,8 @@ fn declared_plugins_includes_core_plugins() {
 
 fn host_with_prelude(mock: &mut MockHost) -> ScriptingHost {
     let mut h = host();
-    h.eval_source(&real_prelude_source(), mock).unwrap();
+    h.eval_source(&real_prelude_source(), mock)
+        .expect("evaluating the prelude failed");
     h
 }
 

@@ -37,13 +37,19 @@ jobs:
 
       - run: cargo fmt --all -- --check
 
-  # Separate from the test matrix for the same reason `fmt` is: this check is
-  # platform-independent, so it runs once rather than three times. Denies
-  # only `clippy::disallowed_methods` (clippy.toml) — every other clippy lint
-  # stays at its default level; adopting those is a separate decision.
+  # Separate from the test matrix so it fails before the full build. Runs on
+  # Ubuntu and Windows: `#[cfg(windows)]` code is invisible to the Ubuntu run,
+  # and macOS adds nothing over it since the `cfg(unix)` paths are shared.
+  # Denies `clippy::disallowed_methods` (clippy.toml) and
+  # `clippy::unwrap_used` (tests exempt, see clippy.toml); every other clippy
+  # lint stays at its default level, adopting those is a separate decision.
   clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
+    name: Clippy (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v6
 
@@ -51,9 +57,9 @@ jobs:
         with:
           components: clippy
 
-      - run: cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods
+      - run: cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods -D clippy::unwrap_used
 
-  # Same reasoning as `clippy` above: platform-independent, so it runs once.
+  # Platform-independent, so it runs once.
   # Every crate root denies `rustdoc::broken_intra_doc_links` — this is what
   # actually evaluates those links, since the attribute alone is inert
   # without a `cargo doc` run to check it against.
@@ -69,8 +75,8 @@ jobs:
 
   # The committed tools/theme-editor/index.html is generated from src/ by
   # vite and shipped as a direct download (the user manual links to it), so a
-  # stale bundle reaches users. Ubuntu-only and node pinned, like `fmt`,
-  # `clippy`, and `doc` above: the check is a byte-diff against a rebuild, so
+  # stale bundle reaches users. Ubuntu-only and node pinned, like `fmt`
+  # and `doc` above: the check is a byte-diff against a rebuild, so
   # every input to that build has to be fixed.
   theme-editor-bundle:
     name: Theme editor bundle
