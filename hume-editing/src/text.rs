@@ -24,6 +24,28 @@ pub enum LineEnding {
     CrLf,
 }
 
+impl LineEnding {
+    /// The spelling `:set buffer line-ending=` takes and reports.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Lf => "lf",
+            Self::CrLf => "crlf",
+        }
+    }
+}
+
+impl std::str::FromStr for LineEnding {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "lf" => Ok(Self::Lf),
+            "crlf" => Ok(Self::CrLf),
+            _ => Err(format!("invalid line-ending '{s}' (expected lf or crlf)")),
+        }
+    }
+}
+
 /// Collapse every line-ending convention (`\r\n`, bare `\r`) to `\n`. See
 /// [`crate::changeset::ChangeSetBuilder::insert`] for why every text-insertion
 /// path funnels through this.

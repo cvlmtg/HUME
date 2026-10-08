@@ -9,7 +9,8 @@ use crate::editor::settings::{
     setting_scopes,
 };
 use hume_editing::tab_style::TabStyle;
-use hume_scripting::host::LANGUAGE_OPTION;
+use hume_editing::text::LineEnding;
+use hume_scripting::host::{BUFFER_INTRINSIC_OPTIONS, LANGUAGE_OPTION, LINE_ENDING_OPTION};
 
 // ── :set arguments ────────────────────────────────────────────────────────────
 
@@ -64,8 +65,8 @@ fn complete_set_scope(prefix: &str) -> Vec<CompletionItem> {
 }
 
 /// Completes the key. Surfaces every declared key whose scopes
-/// include `scope`; `language` is the one key with no macro entry, valid
-/// only for buffer, so it's chained in when the scope matches. An unparseable
+/// include `scope`; the buffer-intrinsic keys have no macro entry and are
+/// valid only for buffer, so they're chained in when the scope matches. An unparseable
 /// `scope` token (mid-typing garbage) yields no candidates, same as any real
 /// key that doesn't accept it.
 fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
@@ -76,8 +77,11 @@ fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
         .iter()
         .copied()
         .filter(|k| setting_scopes(k).contains(&scope));
-    let language = (scope == Scope::Buffer).then_some(LANGUAGE_OPTION);
-    prefix_completions(scope_keys.chain(language), rest)
+    let intrinsic = BUFFER_INTRINSIC_OPTIONS
+        .iter()
+        .copied()
+        .filter(|_| scope == Scope::Buffer);
+    prefix_completions(scope_keys.chain(intrinsic), rest)
 }
 
 /// Completes the value. Static enum/bool lists come from
@@ -93,14 +97,25 @@ fn complete_set_value(
     value_prefix: &str,
     ctx: &CompletionCtx<'_>,
 ) -> Vec<CompletionItem> {
-    // `language` has no `setting_scopes` entry by design (see settings.rs):
-    // valid only for buffer scope, checked directly instead of through the
-    // generic gate below. An unparseable `scope` token falls through both
+    // `language` and `line-ending` have no `setting_scopes` entry by design
+    // (see settings.rs): valid only for buffer scope, checked directly
+    // instead of through the generic gate below. An unparseable `scope` token falls through both
     // branches to the same empty result as a real key rejecting that scope.
     let scope = scope.parse::<Scope>().ok();
     if key == LANGUAGE_OPTION {
         if scope == Some(Scope::Buffer) {
             prefix_completions(ctx.languages.iter_names(), value_prefix)
+        } else {
+            Vec::new()
+        }
+    } else if key == LINE_ENDING_OPTION {
+        if scope == Some(Scope::Buffer) {
+            prefix_completions(
+                [LineEnding::Lf, LineEnding::CrLf]
+                    .into_iter()
+                    .map(LineEnding::as_str),
+                value_prefix,
+            )
         } else {
             Vec::new()
         }

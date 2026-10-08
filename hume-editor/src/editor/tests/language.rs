@@ -220,6 +220,36 @@ fn language_option_parses_like_set_and_reads_back_a_queued_change() {
     );
 }
 
+/// `line-ending` reads back as a symbol and accepts a string or symbol
+/// through `set-buffer-option!`, the same funnel `:set buffer` uses.
+#[test]
+fn line_ending_option_round_trips_through_scripts() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>b\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "read-ending" "" (lambda (bid)
+             (log! 'info (symbol->string (get-buffer-option bid "line-ending")))))
+           (define-typed-command! "to-crlf" "" (lambda (bid)
+             (set-buffer-option! bid "line-ending" "crlf")))
+           (define-typed-command! "to-lf" "" (lambda (bid)
+             (set-buffer-option! bid "line-ending" 'lf)))"#,
+    );
+    let bid = ed.focused_buffer_id();
+
+    type_cmd(&mut ed, ":read-ending");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("lf"));
+
+    type_cmd(&mut ed, ":to-crlf");
+    assert!(ed.state.has_unsaved_changes(bid));
+    type_cmd(&mut ed, ":read-ending");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("crlf"));
+
+    type_cmd(&mut ed, ":to-lf");
+    assert!(!ed.state.has_unsaved_changes(bid));
+}
+
 // ── :set buffer language= intercept ──────────────────────────────────────────
 
 #[test]

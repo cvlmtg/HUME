@@ -2,7 +2,7 @@
 //!
 //! `user-manual/docs/configuration.md`'s "Global options"/"Buffer options"
 //! tables are a hand-maintained mirror of `settings::all_setting_keys()`
-//! (plus `"language"`, documented but excluded from that list by design;
+//! (plus the buffer-intrinsic options, documented but excluded from that list by design;
 //! see `settings.rs`'s module doc). Nothing else keeps the two in sync;
 //! `user_manual_option_tables_match_all_setting_keys` scans both tables for
 //! every backtick-quoted first-column key and diffs the set against the
@@ -59,6 +59,7 @@ fn user_manual_option_tables_match_all_setting_keys() {
     let text = std::fs::read_to_string(&manual_path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", manual_path.display()));
 
+    use hume_scripting::host::BUFFER_INTRINSIC_OPTIONS;
     let global_documented = first_cell_keys(section_after(&text, "## Global options"));
     let buffer_documented = first_cell_keys(section_after(&text, "## Buffer options"));
     let mut documented = global_documented.clone();
@@ -68,10 +69,10 @@ fn user_manual_option_tables_match_all_setting_keys() {
         .iter()
         .map(|k| k.to_string())
         .collect();
-    // "language" has no define_settings! entry by design (see
-    // settings.rs's module doc) but is documented in the Buffer options
-    // table, so it's added here rather than to all_setting_keys() itself.
-    code_keys.insert("language".to_string());
+    // The buffer-intrinsic options have no define_settings! entry by design
+    // (see settings.rs's module doc) but are documented in the Buffer options
+    // table, so they're added here rather than to all_setting_keys() itself.
+    code_keys.extend(BUFFER_INTRINSIC_OPTIONS.iter().map(|k| k.to_string()));
 
     let missing_from_docs: Vec<_> = code_keys.difference(&documented).collect();
     let stale_in_docs: Vec<_> = documented.difference(&code_keys).collect();
@@ -83,13 +84,13 @@ fn user_manual_option_tables_match_all_setting_keys() {
     use super::Scope;
     let misplaced: Vec<String> = global_documented
         .iter()
-        .filter(|k| k.as_str() != "language")
+        .filter(|k| !BUFFER_INTRINSIC_OPTIONS.contains(&k.as_str()))
         .filter(|k| !super::setting_scopes(k).contains(&Scope::Global))
         .map(|k| format!("'{k}' is under Global options but its scope list has no Global"))
         .chain(
             buffer_documented
                 .iter()
-                .filter(|k| k.as_str() != "language") // buffer-only by special case, no scope entry
+                .filter(|k| !BUFFER_INTRINSIC_OPTIONS.contains(&k.as_str())) // buffer-only by special case, no scope entry
                 .filter(|k| !super::setting_scopes(k).contains(&Scope::Buffer))
                 .map(|k| format!("'{k}' is under Buffer options but its scope list has no Buffer")),
         )

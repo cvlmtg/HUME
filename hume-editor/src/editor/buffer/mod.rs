@@ -93,6 +93,9 @@ pub(crate) struct Buffer {
     /// promotion and no longer exists anywhere in the tree: the buffer is
     /// dirty until the next save.
     saved_revision: Option<RevisionId>,
+    /// The line ending at the last save (or first open). A line-ending change
+    /// records no revision, so unsaved-ness compares this against the text's.
+    saved_line_ending: LineEnding,
     /// Canonical file path (after symlink resolution). `None` for scratch buffers.
     pub(super) path: Option<PathBuf>,
     /// Fully display-ready path string (absolutized, lexically normalized,
@@ -189,12 +192,14 @@ impl Buffer {
     pub(crate) fn at_start(text: BufferText) -> Self {
         let history = History::new();
         let saved_revision = Some(history.current_id());
+        let saved_line_ending = text.line_ending();
         let announced_generation = text.generation();
         let announced_history = HistoryMark::of(&history, saved_revision);
         Self {
             text,
             history,
             saved_revision,
+            saved_line_ending,
             path: None,
             display_path: None,
             file_meta: None,
@@ -314,6 +319,7 @@ impl Buffer {
         let text = self.text.replaced_with(content);
         self.history.reset();
         self.saved_revision = Some(self.history.current_id());
+        self.saved_line_ending = text.line_ending();
         self.search_pattern = None;
         self.search_matches = SearchMatches::default();
         self.install(id, stores, text, Change::Replace, None);
@@ -483,6 +489,7 @@ impl Buffer {
         // `on-text-changed` plus a spurious tree-sitter reparse) for a no-op.
         // Nothing is recorded, as there is nothing to undo to.
         if forward.is_identity() {
+            self.text = self.text.clone().with_line_ending(new_text.line_ending());
             return false;
         }
 
@@ -534,7 +541,19 @@ impl Buffer {
     /// Call this immediately after a successful file write.
     pub(in crate::editor) fn mark_saved(&mut self) {
         self.saved_revision = Some(self.history.current_id());
+        self.saved_line_ending = self.text.line_ending();
         self.disk_state = disk::DiskState::InSync;
+    }
+
+    /// Set the line ending a save writes. Not an edit: no revision is
+    /// recorded, so undo does not revert it.
+    pub(in crate::editor) fn set_line_ending(&mut self, line_ending: LineEnding) {
+        self.text = self.text.clone().with_line_ending(line_ending);
+    }
+
+    /// `true` if the line ending differs from the one last saved.
+    pub(in crate::editor) fn line_ending_changed(&self) -> bool {
+        self.text.line_ending() != self.saved_line_ending
     }
 
     /// `true` if the last disk-state check found the backing file changed or
@@ -956,7 +975,9 @@ impl crate::editor::EditorState {
     /// unsaved" question outside `buffer` asks this, never [`Buffer`]'s own
     /// revision check.
     pub(crate) fn has_unsaved_changes(&self, bid: BufferId) -> bool {
-        self.buffers.get(bid).revision_dirty()
+        let buf = self.buffers.get(bid);
+        buf.revision_dirty()
+            || buf.line_ending_changed()
             || self
                 .active_session
                 .as_ref()

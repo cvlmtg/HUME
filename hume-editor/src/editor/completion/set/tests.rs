@@ -119,6 +119,19 @@ fn set_completer_value_tab_style() {
 }
 
 #[test]
+fn set_completer_keys_for_buffer_scope_include_line_ending() {
+    assert!(names_of(&set_result("set buffer ")).contains(&"line-ending"));
+    assert!(!names_of(&set_result("set global ")).contains(&"line-ending"));
+}
+
+#[test]
+fn set_completer_value_line_ending() {
+    let result = set_result("set buffer line-ending=");
+    assert_eq!(names_of(&result), vec!["crlf", "lf"]);
+    assert!(names_of(&set_result("set global line-ending=")).is_empty());
+}
+
+#[test]
 fn set_completer_value_wrap_mode() {
     let result = set_result("set global wrap-mode=");
     assert_eq!(names_of(&result), vec!["indent", "none", "soft", "word"]);

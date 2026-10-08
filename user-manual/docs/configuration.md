@@ -120,7 +120,7 @@ The `lsp.*` options below configure `core:lsp`. See [Language Servers](lsp.md) f
 
 These options have a global default that every buffer without its own override resolves to (including buffers already open when you change it, not just ones opened afterward) and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`; override the current buffer with `:set buffer <option>=<value>`, or from a script with `(set-buffer-option! pane "option" value)`. See [Plugins](plugins.md) for setting per-language overrides from the `on-language-set` hook.
 
-`language` is an exception, it has no global default: it is auto-detected per buffer, and setting it overrides the detection for that buffer. `:set buffer language=` with nothing after the `=` (or `""` from a script) clears it.
+`language` and `line-ending` are exceptions, they have no global default. `language` is auto-detected per buffer, and setting it overrides the detection for that buffer. `:set buffer language=` with nothing after the `=` (or `""` from a script) clears it. `line-ending` is read from the file when it opens (new buffers use `lf`) and can only be set per buffer.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -139,6 +139,7 @@ These options have a global default that every buffer without its own override r
 | `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |
 | `whitespace-newline` | `none` \| `all` | `none` | When to render newline indicators |
 | `language` | string | *(auto-detected)* | The buffer's language: picks its syntax highlighting, language server, and language-specific plugins |
+| `line-ending` | `lf` \| `crlf` | *(from the file)* | The line ending a save writes. Changing it marks the buffer modified but is not an undo step, so `u` does not revert it; set it back to the file's own ending and the buffer reads unmodified again |
 
 Characters the terminal cannot be shown (control characters, and invisible ones such as a zero-width space or a bidirectional override) are always displayed as their codepoint (`<200b>`), styled with the [theme](themes.md#scopes-hume-adds)'s `ui.virtual.invisible` scope, whatever the options above are set to. They are not whitespace you can choose to hide: left invisible they misalign the rest of the line, and an unseen bidirectional override can make code read differently from how it runs.
 

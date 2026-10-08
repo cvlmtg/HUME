@@ -406,3 +406,19 @@ fn remove_grapheme_cluster_range() {
     let new = text.remove(0..2); // remove the 'e' + combining accent
     assert_eq!(new.to_string(), "hello\n");
 }
+
+#[test]
+fn line_ending_names_round_trip() {
+    for ending in [LineEnding::Lf, LineEnding::CrLf] {
+        assert_eq!(ending.as_str().parse::<LineEnding>(), Ok(ending));
+    }
+    assert_eq!(LineEnding::Lf.as_str(), "lf");
+    assert_eq!(LineEnding::CrLf.as_str(), "crlf");
+}
+
+#[test]
+fn line_ending_parse_rejects_unknown_names() {
+    let err = "dos".parse::<LineEnding>().unwrap_err();
+    assert!(err.contains("lf") && err.contains("crlf"), "{err}");
+    assert!("LF".parse::<LineEnding>().is_err());
+}

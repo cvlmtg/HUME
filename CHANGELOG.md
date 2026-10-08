@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `:set buffer line-ending=lf` and `:set buffer line-ending=crlf` change the line ending a buffer is saved with, so a CRLF file can be converted to LF and back. The change marks the buffer modified but is not an undo step. Scripts read and set it with `get-buffer-option`/`set-buffer-option!`.
+- `:e!` after a line-ending change restores the file's line ending even when its text is unchanged.
 - With no `theme` in `init.scm`, HUME loads `sand` from the `themes/` directories instead of always showing the built-in copy, so edits to `sand.toml` take effect. The built-in theme remains as a fallback when no `sand` is found or the configured theme fails to load.
 
 ## [0.14.1] - 2026-10-08

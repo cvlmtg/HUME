@@ -4,7 +4,7 @@
 use hume_engine::pipeline::BufferId;
 
 use super::EditorHostImpl;
-use hume_scripting::host::{OptionValue, SettingsHost};
+use hume_scripting::host::{LINE_ENDING_OPTION, OptionValue, SettingsHost};
 
 impl<'a> SettingsHost for EditorHostImpl<'a> {
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
@@ -32,6 +32,11 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         let Some(buf) = self.state.buffers.try_get(bid) else {
             return Err(format!("get-buffer-option: invalid buffer id {bid:?}"));
         };
+        if key == LINE_ENDING_OPTION {
+            return Ok(OptionValue::Symbol(
+                buf.text().line_ending().as_str().to_string(),
+            ));
+        }
         crate::editor::settings::setting_value(key, &self.state.settings, Some(&buf.overrides))
             .ok_or_else(|| format!("get-buffer-option: unknown setting '{key}'"))
     }

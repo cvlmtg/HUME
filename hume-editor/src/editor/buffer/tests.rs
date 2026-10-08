@@ -673,6 +673,59 @@ fn undo_past_saved_revision_is_dirty() {
     assert!(d.revision_dirty());
 }
 
+// ── line ending ───────────────────────────────────────────────────────────
+
+#[test]
+fn changing_line_ending_marks_buffer_changed_without_a_revision() {
+    let mut d = doc("-[h]>ello\n");
+    d.buf.set_line_ending(LineEnding::CrLf);
+    assert!(d.buf.line_ending_changed());
+    assert!(!d.revision_dirty());
+    assert!(!d.can_undo());
+    assert_eq!(d.buf.serialized(), "hello\r\n");
+}
+
+#[test]
+fn restoring_the_saved_line_ending_reads_unchanged() {
+    let mut d = doc("-[h]>ello\n");
+    d.buf.set_line_ending(LineEnding::CrLf);
+    d.buf.set_line_ending(LineEnding::Lf);
+    assert!(!d.buf.line_ending_changed());
+}
+
+#[test]
+fn undo_leaves_the_line_ending_alone() {
+    let mut d = doc("-[h]>ello\n");
+    d.apply_edit(|s| insert_char(s, 'x'));
+    d.buf.set_line_ending(LineEnding::CrLf);
+    d.undo();
+    assert_eq!(d.text().line_ending(), LineEnding::CrLf);
+    assert!(d.buf.line_ending_changed());
+}
+
+#[test]
+fn mark_saved_records_the_line_ending() {
+    let mut d = doc("-[h]>ello\n");
+    d.buf.set_line_ending(LineEnding::CrLf);
+    d.mark_saved();
+    assert!(!d.buf.line_ending_changed());
+    d.buf.set_line_ending(LineEnding::Lf);
+    assert!(d.buf.line_ending_changed());
+}
+
+#[test]
+fn identical_content_reload_adopts_the_disk_line_ending() {
+    let mut d = doc("-[h]>ello\n");
+    d.buf.set_line_ending(LineEnding::CrLf);
+    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
+    let mutated =
+        d.buf
+            .replace_text_recorded(id, &mut stores.stores(), BufferText::from("hello\n"), pane);
+    assert!(!mutated);
+    assert_eq!(d.text().line_ending(), LineEnding::Lf);
+    assert!(!d.buf.line_ending_changed());
+}
+
 // ── undo-levels ───────────────────────────────────────────────────────────
 
 #[test]

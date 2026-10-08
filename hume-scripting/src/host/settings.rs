@@ -9,6 +9,14 @@ use hume_engine::pipeline::BufferId;
 /// queued earlier in the same eval.
 pub const LANGUAGE_OPTION: &str = "language";
 
+/// The buffer option naming a buffer's save line ending (`lf` or `crlf`).
+/// Like [`LANGUAGE_OPTION`] it lives on the buffer itself rather than in the
+/// settings tables, and has no global default.
+pub const LINE_ENDING_OPTION: &str = "line-ending";
+
+/// Buffer-only options stored on the buffer, outside the settings tables.
+pub const BUFFER_INTRINSIC_OPTIONS: &[&str] = &[LANGUAGE_OPTION, LINE_ENDING_OPTION];
+
 /// A `language` option value as a language name: `""` is the spelling of
 /// "no language", so it decodes to `None`.
 pub fn language_option_value(value: &str) -> Option<&str> {

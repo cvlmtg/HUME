@@ -106,3 +106,73 @@ fn the_statusline_shows_the_indicator_while_an_insert_session_has_an_edit() {
     );
     assert_eq!(during.as_ref(), "[+]");
 }
+
+// ── :set buffer line-ending ───────────────────────────────────────────────
+
+use hume_editing::text::LineEnding;
+
+#[test]
+fn setting_the_line_ending_makes_the_buffer_unsaved() {
+    let (_dir, mut ed) = file_editor();
+    let bid = ed.focused_buffer_id();
+
+    run_set(&mut ed, "buffer line-ending=crlf").expect("set line-ending");
+
+    assert_eq!(ed.doc().text().line_ending(), LineEnding::CrLf);
+    assert!(ed.state.has_unsaved_changes(bid));
+}
+
+#[test]
+fn setting_the_original_line_ending_back_is_clean() {
+    let (_dir, mut ed) = file_editor();
+    let bid = ed.focused_buffer_id();
+
+    run_set(&mut ed, "buffer line-ending=crlf").expect("set crlf");
+    run_set(&mut ed, "buffer line-ending=lf").expect("set lf");
+
+    assert!(!ed.state.has_unsaved_changes(bid));
+}
+
+#[test]
+fn line_ending_is_buffer_scoped_only() {
+    let (_dir, mut ed) = file_editor();
+
+    assert!(run_set(&mut ed, "global line-ending=crlf").is_err());
+    assert!(run_set(&mut ed, "pane line-ending=crlf").is_err());
+    assert_eq!(ed.doc().text().line_ending(), LineEnding::Lf);
+}
+
+#[test]
+fn an_unknown_line_ending_value_is_rejected() {
+    let (_dir, mut ed) = file_editor();
+
+    assert!(run_set(&mut ed, "buffer line-ending=dos").is_err());
+    assert_eq!(ed.doc().text().line_ending(), LineEnding::Lf);
+}
+
+#[test]
+fn a_read_only_buffer_refuses_a_line_ending_change() {
+    let mut ed = editor_from("-[a]>b\n");
+    ed.report(Severity::Warning, "msg".to_string());
+    ed.execute_typed("messages", None).unwrap();
+    assert!(
+        ed.doc().is_read_only(),
+        "setup: focused buffer is read-only"
+    );
+
+    assert!(run_set(&mut ed, "buffer line-ending=crlf").is_err());
+    assert_eq!(ed.doc().text().line_ending(), LineEnding::Lf);
+}
+
+#[test]
+fn saving_records_the_new_line_ending() {
+    let (_dir, mut ed) = file_editor();
+    let bid = ed.focused_buffer_id();
+    run_set(&mut ed, "buffer line-ending=crlf").expect("set crlf");
+
+    ed.execute_typed("w", None).expect("write");
+
+    assert!(!ed.state.has_unsaved_changes(bid));
+    let path = ed.doc().path().expect("file buffer").to_path_buf();
+    assert_eq!(std::fs::read(path).unwrap(), b"hello\r\n");
+}

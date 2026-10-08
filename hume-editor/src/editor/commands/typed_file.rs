@@ -174,7 +174,7 @@ pub(in crate::editor) fn typed_set(
     _force: bool,
 ) -> Result<(), CommandError> {
     use crate::editor::settings::Scope;
-    use hume_scripting::host::{LANGUAGE_OPTION, language_option_value};
+    use hume_scripting::host::{LANGUAGE_OPTION, LINE_ENDING_OPTION, language_option_value};
 
     const USAGE: &str = "Usage: :set global|buffer|pane key=value";
     let Some(arg) = arg else {
@@ -204,6 +204,18 @@ pub(in crate::editor) fn typed_set(
             }
             _ => Err(CommandError::transient(
                 "'language' is per-buffer: use ':set buffer language=<name>'",
+            )),
+        };
+    }
+
+    // `line-ending` lives on the buffer's text, like `language`, so it has no
+    // `scope:` entry either.
+    if key == LINE_ENDING_OPTION {
+        return match scope_str {
+            "buffer" => settings_ops::apply_buffer(&mut ed.state, bid, key, value)
+                .map_err(CommandError::new),
+            _ => Err(CommandError::transient(
+                "'line-ending' is per-buffer: use ':set buffer line-ending=lf|crlf'",
             )),
         };
     }

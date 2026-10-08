@@ -18,7 +18,9 @@
 //! `pub(in crate::editor::settings)`, reachable from exactly this module and
 //! `settings::tests`, rather than from every file under `crate::editor`.
 
+use hume_editing::text::LineEnding;
 use hume_engine::pipeline::{BufferId, EngineView};
+use hume_scripting::host::LINE_ENDING_OPTION;
 
 use super::{ResyncKey, THEME_KEY, resync_key};
 use crate::editor::EditorState;
@@ -141,7 +143,16 @@ pub(in crate::editor) fn apply_buffer(
     key: &str,
     value: &str,
 ) -> Result<(), String> {
-    super::write_buffer(key, value, &mut state.buffers.get_mut(bid).overrides)
+    let buf = state.buffers.get_mut(bid);
+    if key == LINE_ENDING_OPTION {
+        let line_ending = value.parse::<LineEnding>()?;
+        if buf.is_read_only() {
+            return Err("buffer is read-only".to_string());
+        }
+        buf.set_line_ending(line_ending);
+        return Ok(());
+    }
+    super::write_buffer(key, value, &mut buf.overrides)
 }
 
 /// Resync derived state after a successful [`super::write_global`]
