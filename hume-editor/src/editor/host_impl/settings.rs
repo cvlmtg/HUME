@@ -4,6 +4,7 @@
 use hume_engine::pipeline::BufferId;
 
 use super::EditorHostImpl;
+use crate::editor::settings::SettingText;
 use hume_scripting::host::{BufferIntrinsicOption, OptionValue, SettingsHost};
 
 impl<'a> SettingsHost for EditorHostImpl<'a> {
@@ -33,9 +34,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
             return Err(format!("get-buffer-option: invalid buffer id {bid:?}"));
         };
         if key == BufferIntrinsicOption::LineEnding.key() {
-            return Ok(OptionValue::Symbol(
-                buf.text().line_ending().as_str().to_string(),
-            ));
+            return Ok(OptionValue::Symbol(buf.text().line_ending().to_text()));
         }
         crate::editor::settings::setting_value(key, &self.state.settings, Some(&buf.overrides))
             .ok_or_else(|| format!("get-buffer-option: unknown setting '{key}'"))

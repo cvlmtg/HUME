@@ -25,6 +25,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use hume_editing::tab_style::TabStyle;
+use hume_editing::text::LineEnding;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 
@@ -246,10 +247,70 @@ impl FromStr for SignColumnConfig {
 
 delegate_setting_text!(SignColumnConfig);
 delegate_setting_text!(crate::editor::lsp::diagnostics::DiagSeverity);
-delegate_setting_text!(TabStyle);
-delegate_setting_text!(LineNumberStyle);
-delegate_setting_text!(WhitespaceRender);
-delegate_setting_text!(WrapMode);
+settings_enum!(LineEnding, "line-ending", [
+    Lf => "lf",
+    CrLf => "crlf",
+]);
+
+settings_enum!(TabStyle, "tab-style", [
+    Hard => "hard",
+    Soft => "soft",
+]);
+
+settings_enum!(LineNumberStyle, "line-number-style", [
+    Absolute => "absolute",
+    Relative => "relative",
+    Hybrid => "hybrid",
+]);
+
+settings_enum!(WhitespaceRender, "whitespace render", [
+    None => "none",
+    All => "all",
+    Trailing => "trailing",
+]);
+
+/// `none`, a bare `soft`/`word`/`indent` (wrap at the content width), or
+/// `soft:N`/`word:N`/`indent:N` (wrap at column N, `0` also meaning the
+/// content width). `VALUES` lists the bare keywords only: completion leaves
+/// the column count to the user. `to_text` always writes the width, so it
+/// never emits a bare keyword.
+impl SettingText for WrapMode {
+    const VALUES: &'static [&'static str] = &["none", "soft", "word", "indent"];
+
+    fn parse(s: &str) -> Result<Self, String> {
+        let lower = s.to_ascii_lowercase();
+        match lower.as_str() {
+            "none" => return Ok(Self::None),
+            "soft" => return Ok(Self::Soft { width: 0 }),
+            "word" => return Ok(Self::Word { width: 0 }),
+            "indent" => return Ok(Self::Indent { width: 0 }),
+            _ => {}
+        }
+        let (kind, rest) = lower.split_once(':').ok_or_else(|| {
+            format!("invalid wrap-mode '{s}': expected none, soft[:N], word[:N], or indent[:N]")
+        })?;
+        let width: u16 = rest.parse().map_err(|_| {
+            format!("invalid wrap-mode width in '{s}': expected a column count, got '{rest}'")
+        })?;
+        match kind {
+            "soft" => Ok(Self::Soft { width }),
+            "word" => Ok(Self::Word { width }),
+            "indent" => Ok(Self::Indent { width }),
+            _ => Err(format!(
+                "invalid wrap-mode kind '{kind}' in '{s}': expected soft, word, or indent"
+            )),
+        }
+    }
+
+    fn to_text(&self) -> String {
+        match self {
+            Self::None => "none".to_owned(),
+            Self::Soft { width } => format!("soft:{width}"),
+            Self::Word { width } => format!("word:{width}"),
+            Self::Indent { width } => format!("indent:{width}"),
+        }
+    }
+}
 
 /// Where a forward object jump (`}`, `goto-next-<kind>`) leaves the viewport.
 ///

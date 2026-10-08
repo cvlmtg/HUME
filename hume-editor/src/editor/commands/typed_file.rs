@@ -5,8 +5,8 @@ use super::super::Editor;
 use super::super::Severity;
 use super::FocusedPane;
 use crate::editor::error::CommandError;
-use crate::editor::settings::WRAP_MODE_KEY;
 use crate::editor::settings::ops as settings_ops;
+use crate::editor::settings::{SettingText, WRAP_MODE_KEY};
 
 /// Shared by every stale-write refusal, so `typed_write_all` can tell a
 /// stale refusal apart from any other write failure by comparing against it.
@@ -253,9 +253,7 @@ pub(in crate::editor) fn typed_set(
             // (`settings/tests.rs`) fails immediately if one is added
             // without a matching arm.
             if key == WRAP_MODE_KEY {
-                use std::str::FromStr;
-                let mode =
-                    hume_engine::pane::WrapMode::from_str(value).map_err(CommandError::new)?;
+                let mode = hume_engine::pane::WrapMode::parse(value).map_err(CommandError::new)?;
                 ed.set_wrap_override(fp, mode);
                 return Ok(());
             }

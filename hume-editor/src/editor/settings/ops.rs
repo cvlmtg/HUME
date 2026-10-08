@@ -22,7 +22,7 @@ use hume_editing::text::LineEnding;
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_scripting::host::BufferIntrinsicOption;
 
-use super::{ResyncKey, THEME_KEY, resync_key};
+use super::{ResyncKey, SettingText, THEME_KEY, resync_key};
 use crate::editor::EditorState;
 use crate::editor::theme;
 
@@ -159,7 +159,7 @@ pub(in crate::editor) fn set_line_ending(
     bid: BufferId,
     value: &str,
 ) -> Result<(), String> {
-    let line_ending = value.parse::<LineEnding>()?;
+    let line_ending = LineEnding::parse(value)?;
     state.buffers.get_mut(bid).set_line_ending(line_ending)
 }
 

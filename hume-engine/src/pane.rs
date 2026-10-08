@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use slotmap::SecondaryMap;
 
 use crate::display_lines::DisplayLinePos;
@@ -233,61 +231,6 @@ pub struct WrapOverride {
     pub saved: Option<WrapMode>,
 }
 
-impl FromStr for WrapMode {
-    type Err = String;
-
-    /// Parse a wrap mode from a string.
-    ///
-    /// Accepted forms:
-    /// - `none`: no wrapping
-    /// - `soft` / `word` / `indent`: wrap at terminal width
-    /// - `soft:N` / `word:N` / `indent:N`: wrap at column N (N=0 also means terminal width)
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let lower = s.to_ascii_lowercase();
-        if lower == "none" {
-            return Ok(WrapMode::None);
-        }
-        // Bare keyword with no colon → sentinel width 0 (terminal width).
-        if lower == "soft" {
-            return Ok(WrapMode::Soft { width: 0 });
-        }
-        if lower == "word" {
-            return Ok(WrapMode::Word { width: 0 });
-        }
-        if lower == "indent" {
-            return Ok(WrapMode::Indent { width: 0 });
-        }
-        let (kind, rest) = lower.split_once(':').ok_or_else(|| {
-            format!("invalid wrap-mode '{s}': expected none, soft[:N], word[:N], or indent[:N]")
-        })?;
-        let width: u16 = rest.parse().map_err(|_| {
-            format!("invalid wrap-mode width in '{s}': expected a column count, got '{rest}'")
-        })?;
-        match kind {
-            "soft" => Ok(WrapMode::Soft { width }),
-            "word" => Ok(WrapMode::Word { width }),
-            "indent" => Ok(WrapMode::Indent { width }),
-            _ => Err(format!(
-                "invalid wrap-mode kind '{kind}' in '{s}': expected soft, word, or indent"
-            )),
-        }
-    }
-}
-
-impl std::fmt::Display for WrapMode {
-    /// Canonical `kind:width` form (width always explicit, even the `0`
-    /// sentinel). Round-trips through `FromStr`, which also accepts the
-    /// bare-keyword shorthand this never emits.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::None => write!(f, "none"),
-            Self::Soft { width } => write!(f, "soft:{width}"),
-            Self::Word { width } => write!(f, "word:{width}"),
-            Self::Indent { width } => write!(f, "indent:{width}"),
-        }
-    }
-}
-
 impl WrapMode {
     /// Concrete wrap column, or `None` if wrapping is off.
     ///
@@ -340,16 +283,6 @@ impl WrapMode {
     pub fn is_wrapping(&self) -> bool {
         !matches!(self, WrapMode::None)
     }
-
-    /// The bare-keyword wire-format strings `FromStr` accepts: the single
-    /// source `:set global wrap-mode=<Tab>` completion mirrors. `FromStr` also
-    /// accepts `soft:N`/`word:N`/`indent:N` suffix forms, which completion
-    /// intentionally doesn't offer (the user types the column count).
-    ///
-    /// Struct-variant fields (`width`) mean this can't be derived from the
-    /// enum itself. It's hand-maintained here, next to `FromStr`, so the two
-    /// stay adjacent and a round-trip test can catch drift.
-    pub const VALUES: &'static [&'static str] = &["none", "soft", "word", "indent"];
 }
 
 // ---------------------------------------------------------------------------
@@ -366,38 +299,6 @@ pub enum WhitespaceRender {
     All,
     /// Only render for trailing whitespace (before end-of-line).
     Trailing,
-}
-
-impl WhitespaceRender {
-    /// The wire-format strings `FromStr` accepts: the single source
-    /// `:set buffer whitespace-*=<Tab>` completion mirrors, so the two can
-    /// never drift out of sync.
-    pub const VALUES: &'static [&'static str] = &["none", "all", "trailing"];
-}
-
-impl FromStr for WhitespaceRender {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "none" => Ok(WhitespaceRender::None),
-            "all" => Ok(WhitespaceRender::All),
-            "trailing" => Ok(WhitespaceRender::Trailing),
-            _ => Err(format!(
-                "invalid whitespace render '{s}': expected none, all, or trailing"
-            )),
-        }
-    }
-}
-
-impl std::fmt::Display for WhitespaceRender {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            WhitespaceRender::None => "none",
-            WhitespaceRender::All => "all",
-            WhitespaceRender::Trailing => "trailing",
-        })
-    }
 }
 
 /// Configuration for whitespace indicator rendering.

@@ -256,26 +256,23 @@ fn setting_value_statusline_round_trips_through_write_global() {
 
 #[test]
 fn tab_style_parses_hard_soft_case_insensitive() {
-    assert_eq!("hard".parse::<TabStyle>().unwrap(), TabStyle::Hard);
-    assert_eq!("HARD".parse::<TabStyle>().unwrap(), TabStyle::Hard);
-    assert_eq!("soft".parse::<TabStyle>().unwrap(), TabStyle::Soft);
-    assert_eq!("SOFT".parse::<TabStyle>().unwrap(), TabStyle::Soft);
+    assert_eq!(TabStyle::parse("hard").unwrap(), TabStyle::Hard);
+    assert_eq!(TabStyle::parse("HARD").unwrap(), TabStyle::Hard);
+    assert_eq!(TabStyle::parse("soft").unwrap(), TabStyle::Soft);
+    assert_eq!(TabStyle::parse("SOFT").unwrap(), TabStyle::Soft);
 }
 
 #[test]
 fn tab_style_rejects_unknown() {
-    assert!("bogus".parse::<TabStyle>().is_err());
+    assert!(TabStyle::parse("bogus").is_err());
 }
 
 #[test]
-fn tab_style_values_round_trip_through_from_str() {
+fn tab_style_values_round_trip_through_parse() {
     // Every completion-offered value must
-    // actually parse, so `VALUES` can't silently drift from `FromStr`.
+    // actually parse, so `VALUES` can't silently drift from `parse`.
     for v in TabStyle::VALUES {
-        assert!(
-            v.parse::<TabStyle>().is_ok(),
-            "'{v}' should parse as TabStyle"
-        );
+        assert!(TabStyle::parse(v).is_ok(), "'{v}' should parse as TabStyle");
     }
 }
 
@@ -669,7 +666,7 @@ fn set_global_whitespace_newline_trailing_rejected() {
 
 #[test]
 fn show_newline_values_round_trip_through_parse_show_newline() {
-    // Mirrors `whitespace_render_values_round_trip_through_from_str`
+    // Mirrors `whitespace_render_values_round_trip_through_parse`
     // (hume-engine/src/pane.rs): every completion-offered value must
     // actually parse, so `SHOW_NEWLINE_VALUES` can't silently drift from
     // `parse_show_newline`.
@@ -1111,7 +1108,7 @@ fn signcolumn_rejects_columns_above_127() {
 fn signcolumn_values_round_trip_through_from_str() {
     // Every completion-offered value must
     // actually parse, so `VALUES` can't silently drift from `FromStr`
-    // (mirrors `tab_style_values_round_trip_through_from_str`).
+    // (mirrors `tab_style_values_round_trip_through_parse`).
     for v in SignColumnConfig::VALUES {
         assert!(
             v.parse::<SignColumnConfig>().is_ok(),
@@ -1174,4 +1171,275 @@ fn or_list_joins_one_two_and_many() {
     assert_eq!(super::or_list(&["a"]), "a");
     assert_eq!(super::or_list(&["a", "b"]), "a or b");
     assert_eq!(super::or_list(&["a", "b", "c"]), "a, b, or c");
+}
+
+// ── WrapMode text form ───────────────────────────────────────────────
+
+#[test]
+fn wrap_mode_parse_none() {
+    assert_eq!(WrapMode::parse("none").unwrap(), WrapMode::None);
+    assert_eq!(WrapMode::parse("NONE").unwrap(), WrapMode::None);
+}
+
+#[test]
+fn wrap_mode_parse_variants() {
+    assert_eq!(
+        WrapMode::parse("soft:80").unwrap(),
+        WrapMode::Soft { width: 80 }
+    );
+    assert_eq!(
+        WrapMode::parse("word:40").unwrap(),
+        WrapMode::Word { width: 40 }
+    );
+    assert_eq!(
+        WrapMode::parse("indent:76").unwrap(),
+        WrapMode::Indent { width: 76 }
+    );
+}
+
+#[test]
+fn wrap_mode_parse_bare_keywords() {
+    // Bare keyword (no colon) → sentinel width 0 (terminal width).
+    assert_eq!(
+        WrapMode::parse("soft").unwrap(),
+        WrapMode::Soft { width: 0 }
+    );
+    assert_eq!(
+        WrapMode::parse("word").unwrap(),
+        WrapMode::Word { width: 0 }
+    );
+    assert_eq!(
+        WrapMode::parse("indent").unwrap(),
+        WrapMode::Indent { width: 0 }
+    );
+}
+
+#[test]
+fn wrap_mode_parse_colon_zero_is_sentinel() {
+    // `:0` is the same sentinel as bare keyword.
+    assert_eq!(
+        WrapMode::parse("soft:0").unwrap(),
+        WrapMode::Soft { width: 0 }
+    );
+}
+
+#[test]
+fn wrap_mode_parse_case_insensitive() {
+    assert_eq!(
+        WrapMode::parse("Soft:80").unwrap(),
+        WrapMode::Soft { width: 80 }
+    );
+    assert_eq!(
+        WrapMode::parse("INDENT:76").unwrap(),
+        WrapMode::Indent { width: 76 }
+    );
+}
+
+#[test]
+fn wrap_mode_parse_error_unknown_kind() {
+    assert!(WrapMode::parse("hard:80").is_err());
+}
+
+#[test]
+fn wrap_mode_parse_error_non_numeric_width() {
+    assert!(WrapMode::parse("soft:abc").is_err());
+}
+
+#[test]
+fn wrap_mode_values_round_trip_through_parse() {
+    // Every completion-offered value must
+    // actually parse, so `VALUES` can't silently drift from `parse`.
+    // One-directional: this can't catch a variant added to `parse` but
+    // left out of `VALUES` (it would just silently vanish from
+    // completion). `wrap_mode_parse_bare_keywords` above is the
+    // closest thing to a reverse check, but it's a second
+    // hand-maintained list, not a derived one.
+    for v in WrapMode::VALUES {
+        assert!(WrapMode::parse(v).is_ok(), "'{v}' should parse as WrapMode");
+    }
+}
+
+#[test]
+fn wrap_mode_display_round_trips_through_parse() {
+    for mode in [
+        WrapMode::None,
+        WrapMode::Soft { width: 0 },
+        WrapMode::Soft { width: 80 },
+        WrapMode::Word { width: 40 },
+        WrapMode::Indent { width: 76 },
+    ] {
+        let rendered = mode.to_text();
+        assert_eq!(WrapMode::parse(&rendered).unwrap(), mode);
+    }
+}
+
+// ── WhitespaceRender text form ───────────────────────────────────────
+
+#[test]
+fn whitespace_render_parse_all_variants() {
+    assert_eq!(
+        WhitespaceRender::parse("none").unwrap(),
+        WhitespaceRender::None
+    );
+    assert_eq!(
+        WhitespaceRender::parse("all").unwrap(),
+        WhitespaceRender::All
+    );
+    assert_eq!(
+        WhitespaceRender::parse("trailing").unwrap(),
+        WhitespaceRender::Trailing
+    );
+}
+
+#[test]
+fn whitespace_render_parse_case_insensitive() {
+    assert_eq!(
+        WhitespaceRender::parse("None").unwrap(),
+        WhitespaceRender::None
+    );
+    assert_eq!(
+        WhitespaceRender::parse("ALL").unwrap(),
+        WhitespaceRender::All
+    );
+    assert_eq!(
+        WhitespaceRender::parse("Trailing").unwrap(),
+        WhitespaceRender::Trailing
+    );
+}
+
+#[test]
+fn whitespace_render_parse_error() {
+    let err = WhitespaceRender::parse("always").unwrap_err();
+    assert!(err.contains("always"), "error should contain input: {err}");
+}
+
+#[test]
+fn whitespace_render_values_round_trip_through_parse() {
+    // Every completion-offered value must
+    // actually parse, so `VALUES` can't silently drift from `parse`.
+    // One-directional: this can't catch a variant added to `parse` but
+    // left out of `VALUES` (it would just silently vanish from
+    // completion). `whitespace_render_parse_all_variants` above is
+    // the closest thing to a reverse check, but it's a second
+    // hand-maintained list, not a derived one.
+    for v in WhitespaceRender::VALUES {
+        assert!(
+            WhitespaceRender::parse(v).is_ok(),
+            "'{v}' should parse as WhitespaceRender"
+        );
+    }
+}
+
+#[test]
+fn whitespace_render_display_round_trips_through_parse() {
+    // `option_value!`'s `from_str` kind (settings.rs) renders this type via
+    // `to_string()` for `(get-option "whitespace-space"|"whitespace-tab")`, so
+    // this must round-trip through the same `parse` that writes it.
+    for variant in [
+        WhitespaceRender::None,
+        WhitespaceRender::All,
+        WhitespaceRender::Trailing,
+    ] {
+        let rendered = variant.to_text();
+        assert_eq!(WhitespaceRender::parse(&rendered).unwrap(), variant);
+    }
+}
+
+// ── LineNumberStyle text form ────────────────────────────────────────
+
+#[test]
+fn line_number_style_parse_all_variants() {
+    assert_eq!(
+        LineNumberStyle::parse("absolute").unwrap(),
+        LineNumberStyle::Absolute
+    );
+    assert_eq!(
+        LineNumberStyle::parse("relative").unwrap(),
+        LineNumberStyle::Relative
+    );
+    assert_eq!(
+        LineNumberStyle::parse("hybrid").unwrap(),
+        LineNumberStyle::Hybrid
+    );
+}
+
+#[test]
+fn line_number_style_parse_case_insensitive() {
+    assert_eq!(
+        LineNumberStyle::parse("Absolute").unwrap(),
+        LineNumberStyle::Absolute
+    );
+    assert_eq!(
+        LineNumberStyle::parse("RELATIVE").unwrap(),
+        LineNumberStyle::Relative
+    );
+    assert_eq!(
+        LineNumberStyle::parse("Hybrid").unwrap(),
+        LineNumberStyle::Hybrid
+    );
+}
+
+#[test]
+fn line_number_style_parse_error() {
+    let err = LineNumberStyle::parse("invalid").unwrap_err();
+    assert!(err.contains("invalid"), "error should mention input: {err}");
+    assert!(
+        err.contains("absolute"),
+        "error should list valid values: {err}"
+    );
+}
+
+#[test]
+fn line_number_style_values_round_trip_through_parse() {
+    // Every completion-offered value must
+    // actually parse, so `VALUES` can't silently drift from `parse`.
+    // One-directional: this can't catch a variant added to `parse` but
+    // left out of `VALUES` (it would just silently vanish from
+    // completion). `line_number_style_parse_all_variants` above is
+    // the closest thing to a reverse check, but it's a second
+    // hand-maintained list, not a derived one.
+    for v in LineNumberStyle::VALUES {
+        assert!(
+            LineNumberStyle::parse(v).is_ok(),
+            "'{v}' should parse as LineNumberStyle"
+        );
+    }
+}
+
+#[test]
+fn line_number_style_display_round_trips_through_parse() {
+    for v in LineNumberStyle::VALUES {
+        let parsed = LineNumberStyle::parse(v).unwrap();
+        assert_eq!(&parsed.to_text(), v);
+    }
+}
+
+// ── LineEnding text form ─────────────────────────────────────────────────
+
+#[test]
+fn line_ending_names_round_trip() {
+    for ending in [LineEnding::Lf, LineEnding::CrLf] {
+        assert_eq!(LineEnding::parse(&ending.to_text()), Ok(ending));
+    }
+    assert_eq!(LineEnding::Lf.to_text(), "lf");
+    assert_eq!(LineEnding::CrLf.to_text(), "crlf");
+}
+
+#[test]
+fn line_ending_parse_rejects_unknown_names() {
+    let err = LineEnding::parse("dos").unwrap_err();
+    assert!(err.contains("lf") && err.contains("crlf"), "{err}");
+}
+
+#[test]
+fn line_ending_parse_ignores_case() {
+    assert_eq!(LineEnding::parse("LF"), Ok(LineEnding::Lf));
+    assert_eq!(LineEnding::parse("CrLf"), Ok(LineEnding::CrLf));
+}
+
+#[test]
+fn line_ending_values_parse_to_their_own_spelling() {
+    for v in LineEnding::VALUES {
+        assert_eq!(LineEnding::parse(v).map(|e| e.to_text()).as_deref(), Ok(*v));
+    }
 }
