@@ -218,6 +218,8 @@ fn is_extendable_editor_cmd_true_for_extendable() {
         "half-page-up",
         "search-next",
         "search-prev",
+        "search-forward",
+        "search-backward",
         "move-down",
         "move-up",
     ] {

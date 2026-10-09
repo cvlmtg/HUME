@@ -357,6 +357,7 @@ impl CommandRegistry {
             cmd_search_forward,
             PatternPrompt::Search(SearchDirection::Forward),
         )
+        .extendable()
         .reg(self);
         ecmd_pane_text(
             "search-backward",
@@ -364,6 +365,7 @@ impl CommandRegistry {
             cmd_search_backward,
             PatternPrompt::Search(SearchDirection::Backward),
         )
+        .extendable()
         .reg(self);
         ecmd_pane(
             "search-next",

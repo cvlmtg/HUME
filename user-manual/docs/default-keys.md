@@ -123,7 +123,7 @@ Text objects (use the `m` prefix):
 | `O` | `open-line-above` |  | Open new line above, insert |
 | `:` | `command-mode` |  | Open command mode prompt |
 | `/` | `search-forward` |  | Search forward |
-| `?` | `search-backward` |  | Search backward |
+| `?` | `search-backward` |  | Search backward. `Ctrl-?` (kitty) extends the selection to the match |
 | `s` | `sift-within` |  | Sift within (narrow each selection to its regex matches) |
 
 ### Search

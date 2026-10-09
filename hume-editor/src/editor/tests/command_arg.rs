@@ -340,6 +340,26 @@ fn call_search_forward_with_extend_extends_from_the_anchor() {
 }
 
 #[test]
+fn search_key_in_extend_mode_extends_from_the_anchor() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.feed_key(key('e'));
+    type_keys(&mut ed, "/wor");
+    ed.feed_key(key_enter());
+    assert_eq!(state(&ed), "-[hello wor]>ld\n");
+}
+
+#[test]
+fn call_search_forward_without_extend_in_extend_mode_moves() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    with_probe(&mut ed, r#"(call! "search-forward" (focused-pane) 1 #f)"#);
+    ed.feed_key(key('e'));
+    run_probe(&mut ed);
+    type_keys(&mut ed, "wor");
+    ed.feed_key(key_enter());
+    assert_eq!(state(&ed), "hello -[wor]>ld\n");
+}
+
+#[test]
 fn call_search_forward_with_a_char_raises() {
     let mut ed = editor_from("-[h]>ello\n");
     with_probe(&mut ed, r#"(call! "search-forward" (focused-pane) #\l)"#);

@@ -3,7 +3,6 @@
 //! or the pattern typed at the command's prompt.
 
 use hume_engine::pipeline::EngineView;
-use hume_engine::types::EditorMode;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::CommandArg;
 
@@ -14,9 +13,7 @@ use super::{BoundCommand, Missing, MissingOperand, PendingDispatch, open_pattern
 
 /// Read `missing` from the user, then run its command on `pane` as
 /// dispatched with `ctx`. Starting the read commits the open paste session
-/// as the command's keypress would, even if the read is then cancelled. A
-/// prompt also runs it in Extend mode when sticky Extend is on, as opening
-/// the prompt leaves that mode.
+/// as the command's keypress would, even if the read is then cancelled.
 pub(in crate::editor) fn collect_operand(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -38,10 +35,6 @@ pub(in crate::editor) fn collect_operand(
             read_char(state, view, then);
         }
         MissingOperand::Pattern { prompt, fp } => {
-            let ctx = CmdCtx {
-                extend: ctx.extend || state.mode() == EditorMode::Extend,
-                ..ctx
-            };
             open_pattern_prompt(state, view, fp, prompt, PendingDispatch { name, pane, ctx });
         }
     }
