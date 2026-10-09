@@ -9,6 +9,7 @@
 // source itself and its interaction with an ordinary plugin sign.
 
 use super::*;
+use crate::editor::settings::{SettingText, SignColumnConfig};
 use hume_engine::providers::HighlightTier;
 
 #[test]
@@ -223,7 +224,8 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
         ..
     } = setup_diagnostics("abcdefgh\n", &[diag]);
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("auto:2".parse().unwrap());
+    ed.state.buffers.get_mut(bid).overrides.signcolumn =
+        Some(SignColumnConfig::parse("auto:2").unwrap());
     let pid = ed.state.focus.id();
     render(&mut ed);
     assert_eq!(
@@ -261,7 +263,8 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     } = setup_diagnostics("abcdefgh\n", &[diag]);
 
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("always:2".parse().unwrap());
+    ed.state.buffers.get_mut(bid).overrides.signcolumn =
+        Some(SignColumnConfig::parse("always:2").unwrap());
 
     run(
         &mut ed,

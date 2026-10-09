@@ -63,6 +63,14 @@ pub(in crate::editor) trait SettingText: Sized {
     fn to_text(&self) -> String;
 }
 
+/// Parse `value` as the setting `key`'s type, naming `key` in the error.
+pub(in crate::editor) fn parse_setting_text<T: SettingText>(
+    key: &str,
+    value: &str,
+) -> Result<T, String> {
+    T::parse(value).map_err(|e| format!("invalid value for '{key}': {e}"))
+}
+
 /// Generate a closed `:set` enum's [`SettingText`] from one list of
 /// `Variant => "name"` pairs. The parse is case-insensitive and its error
 /// names every accepted value.
@@ -80,7 +88,7 @@ macro_rules! settings_enum {
                     $($name => Ok(Self::$variant),)+
                     _ => Err(format!(
                         "expected {}, got '{s}'",
-                        or_list(<$ty as SettingText>::VALUES),
+                        or_list(Self::VALUES),
                     )),
                 }
             }
@@ -109,26 +117,10 @@ pub enum SignColumnMode {
     Auto,
 }
 
-impl fmt::Display for SignColumnMode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Always => f.write_str("always"),
-            Self::Auto => f.write_str("auto"),
-        }
-    }
-}
-
-impl FromStr for SignColumnMode {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "always" => Ok(Self::Always),
-            "auto" => Ok(Self::Auto),
-            _ => Err(format!("expected 'always' or 'auto', got '{s}'")),
-        }
-    }
-}
+settings_enum!(SignColumnMode, [
+    Always => "always",
+    Auto => "auto",
+]);
 
 /// Sign column configuration: visibility mode and, optionally, a pinned
 /// number of sign slots.
@@ -180,33 +172,23 @@ impl SignColumnConfig {
         self.pinned_slots
             .unwrap_or_else(|| source_count.clamp(1, Self::MAX_SLOTS as usize) as u8)
     }
+}
 
-    /// Completion hints only, not an exhaustive enum like `TabStyle::VALUES`
-    /// because `:N` accepts 1–127, which can't be listed in full. `:1`/`:2` are
-    /// illustrative of the pinned-vs-auto-size distinction, not a reflection
-    /// of `MAX_SLOTS`; raising that cap doesn't require extending this list.
-    pub const VALUES: &'static [&'static str] =
+impl SettingText for SignColumnConfig {
+    /// Completion hints only, not an exhaustive list like the closed enums'
+    /// `VALUES`, because `:N` accepts 1–127, which can't be listed in full.
+    /// `:1`/`:2` are illustrative of the pinned-vs-auto-size distinction, not
+    /// a reflection of `MAX_SLOTS`; raising that cap doesn't require
+    /// extending this list.
+    const VALUES: &'static [&'static str] =
         &["always", "auto", "always:1", "auto:1", "always:2", "auto:2"];
-}
 
-impl fmt::Display for SignColumnConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.pinned_slots {
-            Some(n) => write!(f, "{}:{}", self.mode, n),
-            None => write!(f, "{}", self.mode),
-        }
-    }
-}
-
-impl FromStr for SignColumnConfig {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn parse(s: &str) -> Result<Self, String> {
         let (mode_str, slots_str) = match s.split_once(':') {
             Some((m, c)) => (m, Some(c)),
             None => (s, None),
         };
-        let mode: SignColumnMode = mode_str.parse()?;
+        let mode = SignColumnMode::parse(mode_str)?;
         let pinned_slots = match slots_str {
             Some(c) => {
                 let n: u8 = c
@@ -221,17 +203,12 @@ impl FromStr for SignColumnConfig {
         };
         Ok(Self { mode, pinned_slots })
     }
-}
-
-impl SettingText for SignColumnConfig {
-    const VALUES: &'static [&'static str] = SignColumnConfig::VALUES;
-
-    fn parse(s: &str) -> Result<Self, String> {
-        s.parse()
-    }
 
     fn to_text(&self) -> String {
-        self.to_string()
+        match self.pinned_slots {
+            Some(n) => format!("{}:{n}", self.mode.to_text()),
+            None => self.mode.to_text(),
+        }
     }
 }
 
@@ -511,10 +488,10 @@ macro_rules! parse_setting {
         parse_tab_width($value)
     };
     ($value:expr, $key:expr, from_str) => {
-        SettingText::parse($value).map_err(|e| format!("invalid value for '{}': {e}", $key))
+        parse_setting_text($key, $value)
     };
     ($value:expr, $key:expr, enum_str) => {
-        SettingText::parse($value).map_err(|e| format!("invalid value for '{}': {e}", $key))
+        parse_setting!($value, $key, from_str)
     };
     ($value:expr, $key:expr, string) => {
         Ok::<String, String>(($value).to_owned())

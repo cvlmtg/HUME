@@ -11,6 +11,7 @@
 // reasoning as `lsp_render.rs`.
 
 use super::*;
+use crate::editor::settings::{SettingText, SignColumnConfig};
 
 /// Builds an untitled editor containing `"abcdefgh\n"`, arms `arm_body` as a
 /// Steel `"arm"` command, runs it, pins `signcolumn` if given, and renders
@@ -25,7 +26,8 @@ fn plugin_sign_editor(signcolumn: Option<&str>, arm_body: &str) -> (Editor, Pane
     type_text(&mut ed, "abcdefgh");
     if let Some(signcolumn) = signcolumn {
         let bid = ed.focused_buffer_id();
-        ed.state.buffers.get_mut(bid).overrides.signcolumn = Some(signcolumn.parse().unwrap());
+        ed.state.buffers.get_mut(bid).overrides.signcolumn =
+            Some(SignColumnConfig::parse(signcolumn).unwrap());
     }
     let source = format!(r#"(define-typed-command! "arm" "" (lambda (bid) {arm_body}))"#);
     run(&mut ed, tmp.path(), &source);

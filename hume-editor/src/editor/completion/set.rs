@@ -54,9 +54,7 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
         "signcolumn" => SignColumnConfig::VALUES,
         "tabline" => crate::editor::settings::TablineVisibility::VALUES,
         "command-completion" => crate::editor::settings::CommandCompletion::VALUES,
-        "lsp.diagnostics-severity-floor" => {
-            <crate::editor::lsp::diagnostics::DiagSeverity as SettingText>::VALUES
-        }
+        "lsp.diagnostics-severity-floor" => crate::editor::lsp::diagnostics::DiagSeverity::VALUES,
         _ => return None,
     })
 }

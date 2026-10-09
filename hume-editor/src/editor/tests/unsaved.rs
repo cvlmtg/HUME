@@ -150,6 +150,24 @@ fn an_unknown_line_ending_value_is_rejected() {
 }
 
 #[test]
+fn a_rejected_line_ending_or_pane_wrap_mode_names_its_key() {
+    let (_dir, mut ed) = file_editor();
+
+    assert_eq!(
+        run_set(&mut ed, "buffer line-ending=dos")
+            .unwrap_err()
+            .to_string(),
+        "invalid value for 'line-ending': expected lf or crlf, got 'dos'"
+    );
+    assert_eq!(
+        run_set(&mut ed, "pane wrap-mode=bogus")
+            .unwrap_err()
+            .to_string(),
+        "invalid value for 'wrap-mode': expected none, soft[:N], word[:N], or indent[:N], got 'bogus'"
+    );
+}
+
+#[test]
 fn a_read_only_buffer_refuses_a_line_ending_change() {
     let mut ed = editor_from("-[a]>b\n");
     ed.report(Severity::Warning, "msg".to_string());

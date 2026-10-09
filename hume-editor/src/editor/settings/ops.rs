@@ -18,11 +18,10 @@
 //! `pub(in crate::editor::settings)`, reachable from exactly this module and
 //! `settings::tests`, rather than from every file under `crate::editor`.
 
-use hume_editing::text::LineEnding;
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_scripting::host::BufferIntrinsicOption;
 
-use super::{ResyncKey, SettingText, THEME_KEY, resync_key};
+use super::{ResyncKey, THEME_KEY, parse_setting_text, resync_key};
 use crate::editor::EditorState;
 use crate::editor::theme;
 
@@ -159,7 +158,7 @@ pub(in crate::editor) fn set_line_ending(
     bid: BufferId,
     value: &str,
 ) -> Result<(), String> {
-    let line_ending = LineEnding::parse(value)?;
+    let line_ending = parse_setting_text(BufferIntrinsicOption::LineEnding.key(), value)?;
     state.buffers.get_mut(bid).set_line_ending(line_ending)
 }
 

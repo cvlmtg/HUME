@@ -1,5 +1,4 @@
 use super::*;
-use crate::editor::lsp::diagnostics::DiagSeverity;
 
 // ── Default values match previous hardcoded constants ─────────────────────
 
@@ -1054,22 +1053,22 @@ fn signcolumn_auto_size_caps_at_max_slots() {
 
 #[test]
 fn signcolumn_parses_always() {
-    let cfg: SignColumnConfig = "always".parse().unwrap();
+    let cfg = SignColumnConfig::parse("always").unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Always);
     assert_eq!(cfg.pinned_slots, None, "bare always auto-sizes");
 }
 
 #[test]
 fn signcolumn_parses_auto() {
-    let cfg: SignColumnConfig = "auto".parse().unwrap();
+    let cfg = SignColumnConfig::parse("auto").unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Auto);
     assert_eq!(cfg.pinned_slots, None, "bare auto auto-sizes");
 }
 
 #[test]
 fn signcolumn_bare_and_explicit_one_are_distinct() {
-    let bare: SignColumnConfig = "always".parse().unwrap();
-    let explicit: SignColumnConfig = "always:1".parse().unwrap();
+    let bare = SignColumnConfig::parse("always").unwrap();
+    let explicit = SignColumnConfig::parse("always:1").unwrap();
     assert_ne!(
         bare, explicit,
         "bare always auto-sizes; always:1 pins to exactly one slot"
@@ -1078,7 +1077,7 @@ fn signcolumn_bare_and_explicit_one_are_distinct() {
 
 #[test]
 fn signcolumn_parses_always_with_columns() {
-    let cfg: SignColumnConfig = "always:3".parse().unwrap();
+    let cfg = SignColumnConfig::parse("always:3").unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Always);
     assert_eq!(cfg.pinned_slots, Some(3));
     assert_eq!(cfg.slots_for(0), 3, "pinned count ignores the ladder");
@@ -1086,7 +1085,7 @@ fn signcolumn_parses_always_with_columns() {
 
 #[test]
 fn signcolumn_parses_auto_with_columns() {
-    let cfg: SignColumnConfig = "auto:2".parse().unwrap();
+    let cfg = SignColumnConfig::parse("auto:2").unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Auto);
     assert_eq!(cfg.pinned_slots, Some(2));
     assert_eq!(cfg.slots_for(0), 2, "pinned count ignores the ladder");
@@ -1094,14 +1093,14 @@ fn signcolumn_parses_auto_with_columns() {
 
 #[test]
 fn signcolumn_rejects_zero_columns() {
-    assert!("always:0".parse::<SignColumnConfig>().is_err());
-    assert!("auto:0".parse::<SignColumnConfig>().is_err());
+    assert!(SignColumnConfig::parse("always:0").is_err());
+    assert!(SignColumnConfig::parse("auto:0").is_err());
 }
 
 #[test]
 fn signcolumn_rejects_columns_above_127() {
-    assert!("always:128".parse::<SignColumnConfig>().is_err());
-    assert!("auto:255".parse::<SignColumnConfig>().is_err());
+    assert!(SignColumnConfig::parse("always:128").is_err());
+    assert!(SignColumnConfig::parse("auto:255").is_err());
 }
 
 #[test]
@@ -1111,7 +1110,7 @@ fn signcolumn_values_round_trip_through_from_str() {
     // (mirrors `tab_style_values_round_trip_through_parse`).
     for v in SignColumnConfig::VALUES {
         assert!(
-            v.parse::<SignColumnConfig>().is_ok(),
+            SignColumnConfig::parse(v).is_ok(),
             "'{v}' should parse as SignColumnConfig"
         );
     }
@@ -1119,20 +1118,20 @@ fn signcolumn_values_round_trip_through_from_str() {
 
 #[test]
 fn signcolumn_rejects_invalid_mode() {
-    assert!("bogus".parse::<SignColumnConfig>().is_err());
-    assert!("bogus:1".parse::<SignColumnConfig>().is_err());
+    assert!(SignColumnConfig::parse("bogus").is_err());
+    assert!(SignColumnConfig::parse("bogus:1").is_err());
 }
 
 #[test]
 fn signcolumn_rejects_non_numeric_columns() {
-    assert!("always:abc".parse::<SignColumnConfig>().is_err());
+    assert!(SignColumnConfig::parse("always:abc").is_err());
 }
 
 #[test]
 fn signcolumn_display_round_trips() {
     for input in ["always", "auto", "always:1", "auto:1", "always:3", "auto:2"] {
-        let cfg: SignColumnConfig = input.parse().unwrap();
-        assert_eq!(cfg.to_string(), input);
+        let cfg = SignColumnConfig::parse(input).unwrap();
+        assert_eq!(cfg.to_text(), input);
     }
 }
 
@@ -1402,17 +1401,6 @@ fn line_number_style_parse_error() {
         err.contains("absolute"),
         "error should list valid values: {err}"
     );
-}
-
-#[test]
-fn line_number_style_values_round_trip_through_parse() {
-    // Every completion-offered value must parse.
-    for v in LineNumberStyle::VALUES {
-        assert!(
-            LineNumberStyle::parse(v).is_ok(),
-            "'{v}' should parse as LineNumberStyle"
-        );
-    }
 }
 
 #[test]
