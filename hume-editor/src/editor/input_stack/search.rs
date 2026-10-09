@@ -52,13 +52,7 @@ impl Layer for SearchLayer {
         self.snap.capture(state, view);
     }
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        if let Some(bid) = self
-            .snap
-            .take_restore(&mut state.panes.state, &state.buffers)
-        {
-            search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
-        }
-        state.history.begin_session_all();
+        self.end(state, None);
     }
     fn snapshot_mut(&mut self) -> Option<&mut PaneSnapshot> {
         Some(&mut self.snap)
@@ -68,6 +62,26 @@ impl Layer for SearchLayer {
     }
     fn minibuf_mut(&mut self) -> Option<&mut MiniBuffer> {
         Some(&mut self.minibuf)
+    }
+}
+
+impl SearchLayer {
+    /// Restores the pre-search selections and clears the buffer's search,
+    /// unless the live preview searched for `confirmed` itself: the search
+    /// command run with `confirmed` then reuses the matches it found. An
+    /// invalid `confirmed` never matches the preview, which only keeps
+    /// patterns that compile.
+    fn end(&mut self, state: &mut EditorState, confirmed: Option<&str>) {
+        if let Some(bid) = self
+            .snap
+            .take_restore(&mut state.panes.state, &state.buffers)
+        {
+            let previewed = state.buffers.get(bid).search_pattern.as_ref();
+            if !confirmed.is_some_and(|raw| previewed.is_some_and(|sp| sp.pattern_str == raw)) {
+                search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
+            }
+        }
+        state.history.begin_session_all();
     }
 }
 
@@ -83,12 +97,11 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             ed.state.truncate_layers(&ed.view, r);
         }
         MiniBufferEvent::Confirm(pattern) => {
-            let Some(then) = ed.state.input.at::<SearchLayer>(r).map(|s| s.then.clone()) else {
-                return;
-            };
-            // Teardown restores the pre-search selections, so the command
-            // searches from where the prompt opened, as a `call!` would.
-            ed.state.truncate_layers(&ed.view, r);
+            // The command searches from where the prompt opened, as a
+            // `call!` would.
+            let mut search = ed.state.take_layer::<SearchLayer>(&ed.view, r);
+            search.end(&mut ed.state, Some(&pattern));
+            let then = search.then;
             commands::run_collected(&mut ed.state, &mut ed.view, then, CommandArg::Text(pattern));
         }
         MiniBufferEvent::EmptiedByBackspace => {

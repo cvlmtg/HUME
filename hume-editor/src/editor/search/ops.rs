@@ -79,6 +79,10 @@ pub(in crate::editor) fn update_buffer_matches(buffers: &mut BufferStore, bid: B
 
     let text = buf.text().clone();
     buf.search_matches.set(pattern_str, matches, &text);
+    #[cfg(test)]
+    {
+        buf.search_scans += 1;
+    }
 }
 
 /// Recompute `pane_state[pid][bid].search_cursor.match_count` if stale.

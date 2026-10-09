@@ -383,6 +383,13 @@ pub(crate) struct EditorState {
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
+    /// The live sift preview's result for the `sift-within` its Enter runs,
+    /// taken by the next `sift-within` whatever it sifts.
+    pub(in crate::editor) sift_reuse: Option<input_stack::SiftReuse>,
+    /// How many times a sift has scanned selections for a pattern, the live
+    /// preview and `sift-within` alike.
+    #[cfg(test)]
+    pub(in crate::editor) sift_scans: usize,
     /// `true` for `replay_dot`'s whole extent, `false` otherwise. Read by
     /// [`EditorState::refuse_during_dot`], which every interactive
     /// builtin (`completion-accept!`/`picker!`/`live-picker!`/
@@ -526,6 +533,9 @@ impl Default for EditorState {
             selection_recipe_writes: 0,
             command_refused: false,
             pending_repeat: None,
+            sift_reuse: None,
+            #[cfg(test)]
+            sift_scans: 0,
             dot_replay: false,
             in_insert_key_dispatch: false,
             active_session: None,

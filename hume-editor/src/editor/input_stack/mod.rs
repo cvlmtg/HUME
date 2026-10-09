@@ -54,5 +54,5 @@ pub(in crate::editor) use prompt::PromptLayer;
 pub(in crate::editor) use search::{
     InvalidPattern, SearchLayer, SearchOrigin, commit_search, preview_search,
 };
-pub(in crate::editor) use sift::{SiftFailure, SiftLayer, sift_within};
+pub(in crate::editor) use sift::{SiftFailure, SiftLayer, SiftReuse, sift_within};
 pub(in crate::editor) use snapshot::PaneSnapshot;

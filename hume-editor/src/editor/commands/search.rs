@@ -140,6 +140,7 @@ pub(in crate::editor) fn open_pattern_prompt(
                     minibuf: MiniBuffer::new("⫽"),
                     snap: PaneSnapshot::new(fp.pid()),
                     then,
+                    preview: None,
                 },
             );
         }
@@ -305,12 +306,21 @@ pub(in crate::editor) fn cmd_sift_within(
     _mode: MotionMode,
     pattern: &str,
 ) -> Result<(), CommandError> {
+    let reuse = state.sift_reuse.take();
     if all_cursors(state, view, t) {
         return Err(CommandError::transient(
             "sift-within needs a selection wider than one character",
         ));
     }
     let sels = pane_selections(state, view, t).clone();
+    if let Some(sifted) = reuse.and_then(|r| r.result_for(t.pid(), t.bid(view), &sels, pattern)) {
+        set_pane_selections(state, view, t, sifted);
+        return Ok(());
+    }
+    #[cfg(test)]
+    {
+        state.sift_scans += 1;
+    }
     let sifted = sift_within(doc(state, view, t).text(), sels, pattern).map_err(|e| match e {
         SiftFailure::Invalid => invalid_pattern(pattern),
         SiftFailure::NoMatch => CommandError::transient("no match"),

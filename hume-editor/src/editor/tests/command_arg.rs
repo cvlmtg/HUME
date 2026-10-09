@@ -443,6 +443,29 @@ fn call_sift_within_with_a_pattern_keeps_each_match() {
     assert!(reg(&ed, 's').is_empty(), "sift is not a search");
 }
 
+#[test]
+fn enter_on_a_sift_reuses_the_selections_the_preview_found() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    type_keys(&mut ed, "sab");
+    let scans = ed.state.sift_scans;
+    ed.feed_key(key_enter());
+    assert_eq!(ed.state.sift_scans, scans);
+    let mut called = editor_from("-[ab cd ab]>\n");
+    with_probe(&mut called, r#"(call! "sift-within" (focused-pane) "ab")"#);
+    run_probe(&mut called);
+    assert_eq!(state(&ed), state(&called));
+}
+
+#[test]
+fn a_sift_after_a_cancelled_prompt_scans_its_own_pattern() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    type_keys(&mut ed, "sab");
+    ed.feed_key(key_esc());
+    with_probe(&mut ed, r#"(call! "sift-within" (focused-pane) "cd")"#);
+    run_probe(&mut ed);
+    assert_eq!(state(&ed), "ab -[cd]> ab\n");
+}
+
 /// The `:trim-trailing` typed command `plugins.md` shows: sift each line's
 /// trailing blanks out of the selected lines, or out of the whole buffer when
 /// no selection covers whole lines, then delete them.
@@ -556,6 +579,32 @@ fn enter_on_an_invalid_search_pattern_reports_and_records_nothing() {
     assert!(has_error(&ed, "invalid pattern"));
     assert!(reg(&ed, 's').is_empty());
     assert!(search_history(&ed, HistoryKind::SearchForward).is_empty());
+}
+
+#[test]
+fn enter_on_an_invalid_search_pattern_keeps_no_previewed_prefix() {
+    let mut ed = editor_from("-[h]>ello\n");
+    type_keys(&mut ed, "/l(");
+    ed.feed_key(key_enter());
+    assert!(has_error(&ed, "invalid pattern"));
+    assert!(
+        ed.state
+            .buffers
+            .get(ed.focused_buffer_id())
+            .search_pattern
+            .is_none()
+    );
+}
+
+#[test]
+fn enter_on_a_search_reuses_the_matches_the_preview_found() {
+    let mut ed = editor_from("-[h]>ello\n");
+    type_keys(&mut ed, "/ll");
+    let bid = ed.focused_buffer_id();
+    let scans = ed.state.buffers.get(bid).search_scans;
+    ed.feed_key(key_enter());
+    assert_eq!(state(&ed), "he-[ll]>o\n");
+    assert_eq!(ed.state.buffers.get(bid).search_scans, scans);
 }
 
 #[test]

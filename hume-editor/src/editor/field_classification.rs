@@ -80,6 +80,8 @@ fn editor_state_fields_are_classified() {
             selection_recipe_writes: _,         // preserved
             command_refused: _,                 // preserved
             pending_repeat: _,                  // preserved
+            sift_reuse: _,                      // preserved: the next sift-within takes it
+            sift_scans: _,                      // preserved: a test-only count
             // preserved: owned by `replay_dot`, which restores it on exit
             dot_replay: _,
             // preserved: never live across a reload (a keymap dispatch

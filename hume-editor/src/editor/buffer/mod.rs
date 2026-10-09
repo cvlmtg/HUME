@@ -117,6 +117,10 @@ pub(crate) struct Buffer {
     /// Cached match list for `search_pattern`. Invalidated by revision change
     /// or pattern change; rebuilt lazily by `update_buffer_matches`.
     pub(in crate::editor) search_matches: SearchMatches,
+    /// How many times `update_buffer_matches` has scanned this buffer for
+    /// matches. Clearing the cache leaves it as it is.
+    #[cfg(test)]
+    pub(in crate::editor) search_scans: usize,
     /// Per-buffer setting overrides. `None` fields inherit from
     /// [`crate::editor::settings::EditorSettings`].
     pub(in crate::editor) overrides: BufferOverrides,
@@ -205,6 +209,8 @@ impl Buffer {
             file_meta: None,
             search_pattern: None,
             search_matches: SearchMatches::default(),
+            #[cfg(test)]
+            search_scans: 0,
             overrides: BufferOverrides::default(),
             language: None,
             language_explicit: false,
