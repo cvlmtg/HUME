@@ -1,0 +1,470 @@
+//! A native command's operand (`CommandArg`) reaching it from a script's
+//! `call!` and from a key binding, and being refused when it doesn't fit.
+
+use super::*;
+use crate::editor::keymap::{BindMode, WalkResult};
+use crate::editor::message_log::Severity;
+use crate::editor::minibuf::history::HistoryKind;
+use crate::editor::registry::MappableCommand;
+
+/// Attach a scripting host defining `probe`, a no-parameter command whose
+/// body is `body`, run on the focused pane.
+fn with_probe(ed: &mut Editor, body: &str) {
+    attach_steel(
+        ed,
+        &format!(r#"(define-command! "probe" "" (lambda () {body}))"#),
+    );
+}
+
+fn run_probe(ed: &mut Editor) {
+    ed.execute_keymap_command("probe".into(), Some(1), false, None);
+}
+
+fn text(ed: &Editor) -> String {
+    ed.state
+        .buffers
+        .get(ed.focused_buffer_id())
+        .text()
+        .to_string()
+}
+
+fn has_error(ed: &Editor, needle: &str) -> bool {
+    ed.state
+        .message_log
+        .entries()
+        .any(|e| e.severity == Severity::Error && e.text.contains(needle))
+}
+
+// ── Character commands from a script ────────────────────────────────────────
+
+#[test]
+fn call_find_forward_with_a_one_char_string_moves_to_it() {
+    let mut ed = editor_from("-[h]>ello a world\n");
+    with_probe(&mut ed, r#"(call! "find-forward" (focused-pane) "a")"#);
+    run_probe(&mut ed);
+    assert_eq!(state(&ed), "hello -[a]> world\n");
+}
+
+#[test]
+fn call_replace_with_a_one_char_string_replaces_the_selection() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(&mut ed, r#"(call! "replace" (focused-pane) "x")"#);
+    run_probe(&mut ed);
+    assert_eq!(text(&ed), "xello\n");
+}
+
+#[test]
+fn call_replace_with_a_steel_char_replaces_the_selection() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(&mut ed, r#"(call! "replace" (focused-pane) #\x)"#);
+    run_probe(&mut ed);
+    assert_eq!(text(&ed), "xello\n");
+}
+
+#[test]
+fn call_surround_add_wraps_the_selection() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(&mut ed, r#"(call! "surround-add" (focused-pane) "(")"#);
+    run_probe(&mut ed);
+    assert_eq!(text(&ed), "(h)ello\n");
+}
+
+// ── Operands that don't fit ─────────────────────────────────────────────────
+
+#[test]
+fn call_replace_without_a_char_raises_and_leaves_the_buffer() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(&mut ed, r#"(call! "replace" (focused-pane))"#);
+    run_probe(&mut ed);
+    assert_eq!(text(&ed), "hello\n");
+    assert!(has_error(&ed, "'replace': needs a character argument"));
+}
+
+#[test]
+fn call_replace_with_a_longer_string_raises() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(&mut ed, r#"(call! "replace" (focused-pane) "xy")"#);
+    run_probe(&mut ed);
+    assert_eq!(text(&ed), "hello\n");
+    assert!(has_error(
+        &ed,
+        "'replace': needs a single character, got a 2-character string"
+    ));
+}
+
+#[test]
+fn call_with_an_operand_to_a_command_taking_none_raises() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(&mut ed, r#"(call! "move-right" (focused-pane) "x")"#);
+    run_probe(&mut ed);
+    assert_eq!(state(&ed), "-[h]>ello\n");
+    assert!(has_error(&ed, "'move-right': takes no argument"));
+}
+
+// ── Character commands from a key binding ───────────────────────────────────
+
+/// `replace` dispatched from a key with no character reports and runs
+/// nothing.
+#[test]
+fn key_bound_to_replace_without_wait_char_reports_and_leaves_the_buffer() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_keymap_command("replace".into(), Some(1), false, None);
+    assert_eq!(text(&ed), "hello\n");
+    assert!(has_error(&ed, "'replace': needs a character argument"));
+}
+
+// ── Bindings that don't fit their command ───────────────────────────────────
+
+#[test]
+fn bind_key_to_a_character_command_is_refused_when_bound() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(&mut ed, tmp.path(), r#"(bind-key! 'normal "Z" "replace")"#);
+    assert!(has_error(&ed, "'replace' needs a character"));
+    assert_eq!(
+        ed.state
+            .config
+            .keymap
+            .lookup_command(BindMode::Normal, &[key('Z')]),
+        None
+    );
+}
+
+#[test]
+fn bind_wait_char_to_a_command_taking_no_character_is_refused_when_bound() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(bind-wait-char! 'normal "Z" "move-right")"#,
+    );
+    assert!(has_error(&ed, "'move-right' takes no character"));
+    assert!(matches!(
+        ed.state.config.keymap.normal.walk(&[key('Z')]),
+        WalkResult::NoMatch
+    ));
+}
+
+#[test]
+fn bind_wait_char_to_a_pattern_command_is_refused_when_bound() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(bind-wait-char! 'normal "Z" "search-forward")"#,
+    );
+    assert!(has_error(&ed, "'search-forward' takes no character"));
+    assert!(matches!(
+        ed.state.config.keymap.normal.walk(&[key('Z')]),
+        WalkResult::NoMatch
+    ));
+}
+
+#[test]
+fn bind_wait_char_to_a_character_command_binds() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(bind-wait-char! 'normal "Z" "replace")"#,
+    );
+    ed.feed_key(key('Z'));
+    ed.feed_key(key('x'));
+    assert_eq!(text(&ed), "xello\n");
+}
+
+#[test]
+fn every_default_binding_fits_its_command() {
+    let ed = editor_from("-[h]>ello\n");
+    let registry = &ed.state.config.registry;
+    let misfits: Vec<(String, bool)> = ed
+        .state
+        .config
+        .keymap
+        .all_bindings()
+        .into_iter()
+        .filter(|(name, waits_for_char)| {
+            registry
+                .get_mappable(name)
+                .and_then(MappableCommand::operand)
+                .is_some_and(|operand| !operand.fits_binding(*waits_for_char))
+        })
+        .collect();
+    assert_eq!(misfits, Vec::new());
+}
+
+// ── Search with a pattern from a script ─────────────────────────────────────
+
+fn search_history(ed: &Editor, kind: HistoryKind) -> Vec<String> {
+    ed.state
+        .history
+        .get(kind)
+        .entries()
+        .iter()
+        .cloned()
+        .collect()
+}
+
+fn jump_count(ed: &Editor) -> usize {
+    ed.state.panes.jumps[ed.state.focus.id()].len()
+}
+
+#[test]
+fn call_search_forward_with_a_pattern_acts_as_typed_and_confirmed() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    let jumps_before = jump_count(&ed);
+    with_probe(
+        &mut ed,
+        r#"(call! "search-forward" (focused-pane) "world")"#,
+    );
+    run_probe(&mut ed);
+    assert_eq!(state(&ed), "hello -[world]>\n");
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert_eq!(reg(&ed, 's'), vec!["world"]);
+    assert_eq!(
+        search_history(&ed, HistoryKind::SearchForward),
+        vec!["world"]
+    );
+    assert!(search_history(&ed, HistoryKind::SearchBackward).is_empty());
+    assert_eq!(
+        jump_count(&ed),
+        jumps_before + 1,
+        "the pre-search position must be recorded"
+    );
+}
+
+#[test]
+fn call_search_backward_with_a_pattern_selects_the_previous_match() {
+    let mut ed = editor_from("hello -[w]>orld\n");
+    with_probe(&mut ed, r#"(call! "search-backward" (focused-pane) "hel")"#);
+    run_probe(&mut ed);
+    assert_eq!(state(&ed), "-[hel]>lo world\n");
+    assert_eq!(
+        search_history(&ed, HistoryKind::SearchBackward),
+        vec!["hel"]
+    );
+}
+
+#[test]
+fn search_next_after_a_script_search_jumps_to_the_next_match() {
+    let mut ed = editor_from("-[x]> abc abc\n");
+    with_probe(&mut ed, r#"(call! "search-forward" (focused-pane) "abc")"#);
+    run_probe(&mut ed);
+    assert_eq!(state(&ed), "x -[abc]> abc\n");
+    ed.handle_key(key('n'));
+    assert_eq!(state(&ed), "x abc -[abc]>\n");
+}
+
+#[test]
+fn call_search_forward_with_extend_extends_from_the_anchor() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    with_probe(
+        &mut ed,
+        r#"(call! "search-forward" (focused-pane) 1 #t "world")"#,
+    );
+    run_probe(&mut ed);
+    assert_eq!(state(&ed), "-[hello world]>\n");
+}
+
+#[test]
+fn call_search_forward_with_a_char_raises() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(&mut ed, r#"(call! "search-forward" (focused-pane) #\l)"#);
+    run_probe(&mut ed);
+    assert_eq!(state(&ed), "-[h]>ello\n");
+    assert!(has_error(
+        &ed,
+        "'search-forward': takes a text argument, got a character"
+    ));
+}
+
+#[test]
+fn call_search_forward_with_an_invalid_pattern_writes_nothing() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(&mut ed, r#"(call! "search-forward" (focused-pane) "(")"#);
+    run_probe(&mut ed);
+    assert_eq!(state(&ed), "-[h]>ello\n");
+    assert!(has_error(&ed, "invalid pattern"));
+    assert!(reg(&ed, 's').is_empty());
+    assert!(search_history(&ed, HistoryKind::SearchForward).is_empty());
+    assert!(
+        ed.state
+            .buffers
+            .get(ed.focused_buffer_id())
+            .search_pattern
+            .is_none()
+    );
+}
+
+/// An empty pattern, or one that is only flags, is an invalid pattern: the
+/// previous search stays in place and `call!` answers `#f`.
+#[test]
+fn call_search_forward_with_an_empty_pattern_keeps_the_last_search() {
+    for empty in ["", "m/", "v/"] {
+        let mut ed = editor_from("-[h]>ello\n");
+        with_probe(
+            &mut ed,
+            &format!(
+                r#"(call! "search-forward" (focused-pane) "lo")
+                   (if (call! "search-forward" (focused-pane) "{empty}") (+ 1 0) {REPLACE_ON_FALSE})"#
+            ),
+        );
+        run_probe(&mut ed);
+        assert_eq!(text(&ed), "helxx\n", "pattern {empty:?}");
+        assert!(has_error(&ed, "invalid pattern"), "pattern {empty:?}");
+        assert_eq!(reg(&ed, 's'), vec!["lo"], "pattern {empty:?}");
+        assert_eq!(
+            search_history(&ed, HistoryKind::SearchForward),
+            vec!["lo"],
+            "pattern {empty:?}"
+        );
+        assert_eq!(
+            ed.state
+                .buffers
+                .get(ed.focused_buffer_id())
+                .search_pattern
+                .as_ref()
+                .map(|p| p.pattern_str.as_str()),
+            Some("lo"),
+            "pattern {empty:?}"
+        );
+    }
+}
+
+/// Like Enter on a pattern with no match: the pattern, register, and history
+/// are written and the selection stays; `call!` answers `#f`, which the probe
+/// turns into a visible move.
+#[test]
+fn call_search_forward_with_no_match_records_it_and_returns_false() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(
+        &mut ed,
+        r#"(if (call! "search-forward" (focused-pane) "zzz")
+               (+ 1 0)
+               (call! "move-right" (focused-pane)))"#,
+    );
+    run_probe(&mut ed);
+    assert_eq!(state(&ed), "h-[e]>llo\n", "call! must return #f");
+    assert_eq!(reg(&ed, 's'), vec!["zzz"]);
+    assert_eq!(search_history(&ed, HistoryKind::SearchForward), vec!["zzz"]);
+    assert!(
+        ed.state
+            .buffers
+            .get(ed.focused_buffer_id())
+            .search_pattern
+            .is_some()
+    );
+}
+
+// ── Sift with a pattern from a script ───────────────────────────────────────
+
+#[test]
+fn call_sift_within_with_a_pattern_keeps_each_match() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    with_probe(&mut ed, r#"(call! "sift-within" (focused-pane) "ab")"#);
+    run_probe(&mut ed);
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert_eq!(ed.current_view().len(), 2);
+    assert_eq!(ed.current_view().primary().anchor().offset(), co(0));
+    assert_eq!(ed.current_view().primary().head().offset(), co(1));
+    assert!(reg(&ed, 's').is_empty(), "sift is not a search");
+}
+
+/// The `:trim-trailing` typed command `plugins.md` shows: sift each line's
+/// trailing blanks out of the selected lines, or out of the whole buffer when
+/// no selection covers whole lines, then delete them.
+const TRIM_TRAILING: &str = r#"(define-typed-command! "trim-trailing" "Remove trailing blanks."
+     (lambda (pane)
+       (when (selections-charwise? pane)
+         (call! "select-all" pane))
+       (when (call! "sift-within" pane "(?m)[ \t]+$")
+         (call! "delete-selection" pane))))"#;
+
+#[test]
+fn trim_trailing_without_line_selections_trims_the_whole_buffer() {
+    let mut ed = editor_from("-[a]>  \nb \t\nc\n");
+    attach_steel(&mut ed, TRIM_TRAILING);
+    type_cmd(&mut ed, ":trim-trailing");
+    assert_eq!(text(&ed), "a\nb\nc\n");
+}
+
+#[test]
+fn trim_trailing_with_line_selections_trims_only_those_lines() {
+    let mut ed = editor_from("-[a  \n]>b \t\nc \n");
+    attach_steel(&mut ed, TRIM_TRAILING);
+    type_cmd(&mut ed, ":trim-trailing");
+    assert_eq!(text(&ed), "a\nb \t\nc \n");
+}
+
+#[test]
+fn trim_trailing_on_a_buffer_without_trailing_blanks_changes_nothing() {
+    let mut ed = editor_from("-[a]>\nb\nc\n");
+    attach_steel(&mut ed, TRIM_TRAILING);
+    type_cmd(&mut ed, ":trim-trailing");
+    assert_eq!(text(&ed), "a\nb\nc\n");
+}
+
+#[test]
+fn trim_trailing_on_selected_lines_without_trailing_blanks_changes_nothing() {
+    let mut ed = editor_from("-[a\n]>b \nc\n");
+    attach_steel(&mut ed, TRIM_TRAILING);
+    type_cmd(&mut ed, ":trim-trailing");
+    assert_eq!(text(&ed), "a\nb \nc\n");
+}
+
+/// The probe replaces the selection with `x` when `call!` answers `#f`, so
+/// the text shows both the `#f` and that the selection was left as it was.
+const REPLACE_ON_FALSE: &str = r#"(call! "replace" (focused-pane) "x")"#;
+
+#[test]
+fn call_sift_within_with_an_invalid_pattern_reports_and_keeps_the_selection() {
+    let mut ed = editor_from("-[ab]> cd\n");
+    with_probe(
+        &mut ed,
+        &format!(r#"(if (call! "sift-within" (focused-pane) "(") (+ 1 0) {REPLACE_ON_FALSE})"#),
+    );
+    run_probe(&mut ed);
+    assert_eq!(text(&ed), "xx cd\n");
+    assert!(has_error(&ed, "invalid pattern"));
+}
+
+#[test]
+fn call_sift_within_with_no_match_returns_false_and_keeps_the_selection() {
+    let mut ed = editor_from("-[ab]> cd\n");
+    with_probe(
+        &mut ed,
+        &format!(r#"(if (call! "sift-within" (focused-pane) "zz") (+ 1 0) {REPLACE_ON_FALSE})"#),
+    );
+    run_probe(&mut ed);
+    assert_eq!(text(&ed), "xx cd\n");
+}
+
+#[test]
+fn call_sift_within_with_an_empty_pattern_reports_and_keeps_the_selection() {
+    for empty in ["", "m/"] {
+        let mut ed = editor_from("-[ab]> cd\n");
+        with_probe(
+            &mut ed,
+            &format!(
+                r#"(if (call! "sift-within" (focused-pane) "{empty}") (+ 1 0) {REPLACE_ON_FALSE})"#
+            ),
+        );
+        run_probe(&mut ed);
+        assert_eq!(text(&ed), "xx cd\n", "pattern {empty:?}");
+        assert!(has_error(&ed, "invalid pattern"), "pattern {empty:?}");
+    }
+}
+
+#[test]
+fn call_sift_within_on_bare_cursors_returns_false() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(
+        &mut ed,
+        &format!(r#"(if (call! "sift-within" (focused-pane) "h") (+ 1 0) {REPLACE_ON_FALSE})"#),
+    );
+    run_probe(&mut ed);
+    assert_eq!(text(&ed), "xello\n");
+}

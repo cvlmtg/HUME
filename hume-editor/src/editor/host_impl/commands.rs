@@ -167,9 +167,12 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         &mut self,
         name: &str,
         pane: hume_scripting::PaneHandle,
-        count: Option<usize>,
-        extend: bool,
-        register: Option<char>,
+        hume_scripting::host::NativeCall {
+            count,
+            extend,
+            register,
+            arg,
+        }: hume_scripting::host::NativeCall,
     ) -> Result<bool, String> {
         let Some(cmd) = self.state.config.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
@@ -179,7 +182,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         // register prefix, so a refusal here leaves no prefix armed behind
         // it.
         let bound = match crate::editor::commands::BoundCommand::resolve(
-            self.state, self.view, cmd, pane,
+            self.state, self.view, cmd, pane, arg,
         ) {
             Ok(bound) => bound,
             Err(crate::editor::commands::BindError::NotNative) => {
@@ -188,6 +191,9 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 ));
             }
             Err(crate::editor::commands::BindError::Target(e)) => {
+                return Err(format!("'{name}': {e}"));
+            }
+            Err(crate::editor::commands::BindError::Arg(e)) => {
                 return Err(format!("'{name}': {e}"));
             }
         };
@@ -206,7 +212,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             self.view,
             bound,
             crate::editor::dispatch::CmdCtx {
-                // `count` came from `parse_count_extend`, which decodes a
+                // `count` came from `parse_native_args`, which decodes a
                 // Steel-side count of 0 to `None`, the script's way of asking
                 // for "as if no count was typed" (move-down/move-up read this
                 // as visual-line movement instead of buffer-line movement).

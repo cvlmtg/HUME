@@ -47,7 +47,6 @@ fn editor_state_fields_are_classified() {
             pending_keys: _,        // preserved
             count: _,               // preserved
             wait_char: _,           // preserved
-            pending_char: _,        // preserved
             registers: _,           // preserved
             kill_ring: _,           // preserved
             clipboard: _,           // preserved

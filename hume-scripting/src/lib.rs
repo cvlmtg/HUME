@@ -277,7 +277,7 @@ impl ScriptingHost {
     /// "name" args)))`. This makes bare `(move-left pane)` callable without
     /// `(call! "move-left" pane)`, and variadic, so `(move-down pane 3)` /
     /// `(move-down pane 0)` work too (count `0` = "no count typed", see
-    /// `parse_count_extend`). `pane` is always the first arg, same as
+    /// `parse_native_args`). `pane` is always the first arg, same as
     /// `%call-native!`'s own contract: this binding is a thin wrapper over
     /// the same dispatcher, not a separate calling convention.
     ///

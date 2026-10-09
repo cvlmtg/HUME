@@ -49,6 +49,8 @@ pub(in crate::editor) use picker::{PickerItem, PickerSession};
 pub(in crate::editor) use picker::PickerLayer;
 pub(in crate::editor) use popup::PopupLayer;
 pub(in crate::editor) use prompt::PromptLayer;
-pub(in crate::editor) use search::SearchLayer;
-pub(in crate::editor) use sift::SiftLayer;
+pub(in crate::editor) use search::{
+    InvalidPattern, SearchLayer, SearchOrigin, commit_search, preview_search,
+};
+pub(in crate::editor) use sift::{SiftFailure, SiftLayer, sift_within};
 pub(in crate::editor) use snapshot::PaneSnapshot;

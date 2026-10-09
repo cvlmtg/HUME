@@ -76,7 +76,7 @@ fn close_popup_clears_the_view() {
     ed.prepare_frame(&mut ctx);
     assert!(popup_view(&ed).is_some(), "sanity: showing");
 
-    ed.execute_keymap_command("gone".into(), None, false);
+    ed.execute_keymap_command("gone".into(), None, false, None);
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
@@ -100,7 +100,7 @@ fn close_popup_with_a_replaced_popups_token_leaves_the_newer_one() {
     );
     type_cmd(&mut ed, ":first");
     type_cmd(&mut ed, ":second");
-    ed.execute_keymap_command("gone".into(), None, false);
+    ed.execute_keymap_command("gone".into(), None, false, None);
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);
     ed.settle();
@@ -239,7 +239,7 @@ fn close_popup_clears_the_band_view_too() {
     ed.prepare_frame(&mut ctx);
     assert!(popup_band_lines(&ed).is_some(), "sanity: showing");
 
-    ed.execute_keymap_command("gone".into(), None, false);
+    ed.execute_keymap_command("gone".into(), None, false, None);
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);

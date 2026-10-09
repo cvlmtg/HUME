@@ -2,6 +2,7 @@ use super::*;
 use crate::editor::doc_ops;
 use crate::editor::position_stores::PositionStores;
 use hume_scripting::host::CommandHost;
+use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
 
 /// One `undo_n(1)` walk through the history funnel, on the focused pane.
@@ -184,7 +185,14 @@ fn split_with_moved_cursor(ed: &mut Editor) -> (PaneId, PaneId, BufferId) {
     ed.feed_key(key('d'));
     let handle = focused_pane(ed);
     live_host!(ed)
-        .run_command_sync("pane-vsplit", handle, Some(1), false, None)
+        .run_command_sync(
+            "pane-vsplit",
+            handle,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("pane-vsplit must succeed");
     let pane_b = ed.state.focus.id();
     assert_ne!(pane_a, pane_b);

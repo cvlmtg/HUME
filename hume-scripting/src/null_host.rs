@@ -198,9 +198,7 @@ impl CommandHost for NullHost {
         &mut self,
         _name: &str,
         _pane: PaneHandle,
-        _count: Option<usize>,
-        _extend: bool,
-        _register: Option<char>,
+        _call: crate::host::NativeCall,
     ) -> Result<bool, String> {
         Err("stub host has no native command registry".into())
     }
@@ -294,12 +292,9 @@ impl CommandHost for FailingRegisterHost {
         &mut self,
         name: &str,
         pane: PaneHandle,
-        count: Option<usize>,
-        extend: bool,
-        register: Option<char>,
+        call: crate::host::NativeCall,
     ) -> Result<bool, String> {
-        self.inner
-            .run_command_sync(name, pane, count, extend, register)
+        self.inner.run_command_sync(name, pane, call)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
         Err(format!(
@@ -486,12 +481,9 @@ impl CommandHost for LazyStubHost {
         &mut self,
         name: &str,
         pane: PaneHandle,
-        count: Option<usize>,
-        extend: bool,
-        register: Option<char>,
+        call: crate::host::NativeCall,
     ) -> Result<bool, String> {
-        self.inner
-            .run_command_sync(name, pane, count, extend, register)
+        self.inner.run_command_sync(name, pane, call)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
         self.register_defined(def.name)

@@ -17,8 +17,8 @@ Move the cursor/selection. Callable as `(name pane)` or `(call! "name" pane)`.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
-| `find-backward` | `F` + char | Find previous occurrence of a character (inclusive, backward). |
-| `find-forward` | `f` + char | Find next occurrence of a character (inclusive, forward). |
+| `find-backward` | `F` + char | Find previous occurrence of a character (inclusive, backward). From `call!`, pass the character as an argument. |
+| `find-forward` | `f` + char | Find next occurrence of a character (inclusive, forward). From `call!`, pass the character as an argument. |
 | `goto-first-line` | `g g` | Move cursors to the first character of the buffer. |
 | `goto-first-nonblank` | `g s` | Move cursors to the first non-blank character on the line. |
 | `goto-last-line` | `g e` | Move cursors to the first character of the last line. |
@@ -53,8 +53,8 @@ Move the cursor/selection. Callable as `(name pane)` or `(call! "name" pane)`.
 | `select-next-word` | `w` | Select the next word. |
 | `select-prev-uppercase-word` | `B` | Select the previous uppercase word (whitespace-delimited). |
 | `select-prev-word` | `b` | Select the previous word. |
-| `till-backward` | `T` + char | Move to just after previous occurrence of a character (exclusive). |
-| `till-forward` | `t` + char | Move to just before next occurrence of a character (exclusive). |
+| `till-backward` | `T` + char | Move to just after previous occurrence of a character (exclusive). From `call!`, pass the character as an argument. |
+| `till-forward` | `t` + char | Move to just before next occurrence of a character (exclusive). From `call!`, pass the character as an argument. |
 
 ## Selection commands
 
@@ -74,7 +74,7 @@ Create, refine, or manipulate the selection set.
 | `remove-primary-selection` | `Ctrl-,` | Remove the primary selection, promoting the next. |
 | `select-all` | `%` | Select the entire buffer. |
 | `select-last-insertion` | `m i i` | Select the text typed during the most recently completed insert session. |
-| `sift-within` | `s` | Narrow each selection down to its regex matches. |
+| `sift-within` | `s` | Narrow each selection down to its regex matches. From `call!`, pass a pattern to sift without opening the prompt. |
 | `split-selection-on-newlines` | `S` | Split each multi-line selection into one per line. |
 | `trim-selection-whitespace` | `_` | Trim leading and trailing whitespace from each selection. |
 
@@ -128,7 +128,7 @@ Select or wrap delimiter pairs.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
-| `surround-add` | `m w` + char | Wrap each selection with a delimiter pair. Reads the next typed character to determine the pair. |
+| `surround-add` | `m w` + char | Wrap each selection with a delimiter pair. Reads the next typed character to determine the pair. From `call!`, pass the character as an argument. |
 | `surround-angle` | `m s <` / `m s >` | Select surrounding `<>` delimiters. |
 | `surround-backtick` | `` m s ` `` | Select surrounding `` ` `` delimiters. |
 | `surround-brace` | `m s {` / `m s }` | Select surrounding `{}` delimiters. |
@@ -157,7 +157,7 @@ Modify buffer text.
 | `make-text-uppercase` | `G U` | Uppercase the text in each selection. |
 | `open-line-above` | `O` | Open a new line above the cursor and enter insert mode. |
 | `open-line-below` | `o` | Open a new line below the cursor and enter insert mode. |
-| `replace` | `r` + char | Replace every character in each selection with the next typed character. |
+| `replace` | `r` + char | Replace every character in each selection with the next typed character. From `call!`, pass the character as an argument. |
 | `unindent` | `<` | Unindent every line touched by a selection by one level. |
 
 ## Clipboard and registers
@@ -191,8 +191,8 @@ Find text and act on the matches.
 | Command | Default key | Effect |
 |---------|-------------|--------|
 | `clear-search` | — | Clear search highlights. `Esc` also clears them; bind a key to run this directly. |
-| `search-backward` | `?` | Enter search mode (backward). |
-| `search-forward` | `/` | Enter search mode (forward). |
+| `search-backward` | `?` | Enter search mode (backward). From `call!`, pass a pattern to search without opening the prompt. |
+| `search-forward` | `/` | Enter search mode (forward). From `call!`, pass a pattern to search without opening the prompt. |
 | `search-next` | `n` | Jump to the next search match. |
 | `search-prev` | `N` | Jump to the previous search match. |
 | `search-selection` | `Ctrl-/` | Use the primary selection text literally as the search pattern. |

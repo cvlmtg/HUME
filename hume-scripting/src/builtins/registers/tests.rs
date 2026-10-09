@@ -1,4 +1,5 @@
 use super::*;
+use crate::host::NativeCall;
 use crate::test_support::SteelCtxTestHarness;
 use hume_platform::dirs::Dirs;
 
@@ -192,12 +193,9 @@ impl crate::host::CommandHost for ValidNameHost {
         &mut self,
         name: &str,
         pane: crate::types::PaneHandle,
-        count: Option<usize>,
-        extend: bool,
-        register: Option<char>,
+        call: NativeCall,
     ) -> Result<bool, String> {
-        self.inner
-            .run_command_sync(name, pane, count, extend, register)
+        self.inner.run_command_sync(name, pane, call)
     }
     fn register_command(&mut self, def: crate::types::SteelCmdDef) -> Result<(), String> {
         self.inner.register_command(def)
@@ -282,12 +280,9 @@ impl crate::host::CommandHost for RegisterCapableHost {
         &mut self,
         name: &str,
         pane: crate::types::PaneHandle,
-        count: Option<usize>,
-        extend: bool,
-        register: Option<char>,
+        call: NativeCall,
     ) -> Result<bool, String> {
-        self.inner
-            .run_command_sync(name, pane, count, extend, register)
+        self.inner.run_command_sync(name, pane, call)
     }
     fn register_command(&mut self, def: crate::types::SteelCmdDef) -> Result<(), String> {
         self.inner.register_command(def)

@@ -1,6 +1,8 @@
 //! The `Sift` layer: the `s`-prompt (sift-within) minibuffer mode.
 
+use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::search::compile_search_input;
@@ -94,40 +96,51 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
     }
 }
 
-/// Recompile the regex and replace selections with matches within the
-/// original selections. Called on every keystroke in Sift mode.
-///
-/// Shares `parse_search_input`'s flag grammar with the search prompt: `v`
-/// (verbatim) literalizes the pattern the same way it does in search. `m`
-/// (multi) parses but is inert here: sift already operates on every selection.
+/// Replace selections with the matches within the original selections
+/// ([`sift_within`]). Called on every keystroke in Sift mode.
 fn update_live_sift(ed: &mut Editor, r: LayerRef) {
     let pattern = match ed.state.input.minibuf() {
         Some(mb) if !mb.input.is_empty() => mb.input.clone(),
         _ => return,
     };
 
-    let Some((_, regex)) = compile_search_input(&pattern) else {
-        // Invalid regex in progress: restore originals.
-        restore_sift_snapshot(ed, r);
-        return;
-    };
-
     let Some(sift) = ed.state.input.at::<SiftLayer>(r) else {
         return;
     };
     let pane = sift.snap.pane();
-    let result = sift.snap.selections().and_then(|(bid, sels)| {
-        let text = ed.state.buffers.get(bid).text();
-        sift_matches_within(&EditState::bind(text, sels.clone()), &regex).map(|s| (bid, s))
-    });
+    let Some((bid, sels)) = sift.snap.selections().map(|(bid, s)| (bid, s.clone())) else {
+        return;
+    };
 
-    match result {
-        Some((bid, new_state)) => {
+    match sift_within(ed.state.buffers.get(bid).text(), sels, &pattern) {
+        Ok(new_state) => {
             let text = new_state.text().clone();
             ed.state.panes.state[pane][bid].set_selections(new_state.into_selections(), &text);
         }
-        None => restore_sift_snapshot(ed, r),
+        // Invalid regex in progress, or nothing matched: restore originals.
+        Err(SiftFailure::Invalid | SiftFailure::NoMatch) => restore_sift_snapshot(ed, r),
     }
+}
+
+/// Why [`sift_within`] left the selections alone.
+pub(in crate::editor) enum SiftFailure {
+    /// The input doesn't compile to a regex.
+    Invalid,
+    /// No selection contains a match.
+    NoMatch,
+}
+
+/// Narrow each of `sels` to the matches of `raw` inside it, parsed with the
+/// search prompt's flag grammar: `v` (verbatim) literalizes the pattern the
+/// same way it does in search, `m` (multi) parses but is inert, since sift
+/// already operates on every selection.
+pub(in crate::editor) fn sift_within(
+    text: &BufferText,
+    sels: SelectionSet,
+    raw: &str,
+) -> Result<EditState, SiftFailure> {
+    let (_, regex) = compile_search_input(raw).ok_or(SiftFailure::Invalid)?;
+    sift_matches_within(&EditState::bind(text, sels), &regex).ok_or(SiftFailure::NoMatch)
 }
 
 // ── Snapshot restore helpers ────────────────────────────────────────────────

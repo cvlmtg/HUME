@@ -133,6 +133,13 @@ fn render_leaves_leading_slash_pattern_untouched() {
 }
 
 #[test]
+fn compile_refuses_an_empty_pattern_with_or_without_flags() {
+    for input in ["", "m/", "v/", "mv/"] {
+        assert!(compile_search_input(input).is_none(), "input {input:?}");
+    }
+}
+
+#[test]
 fn compile_verbatim_dot_matches_literal_dot_only() {
     let (flags, r) = compile_search_input("v/a.b").expect("valid pattern");
     assert!(flags.verbatim);

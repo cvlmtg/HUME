@@ -27,7 +27,7 @@ fn run_copy(ed: &mut Editor, down: bool, count: usize) {
     } else {
         "copy-selection-on-prev-line"
     };
-    ed.execute_keymap_command(name.into(), Some(count), false);
+    ed.execute_keymap_command(name.into(), Some(count), false, None);
 }
 
 /// Build an editor from `initial`, run the copy command, and compare the

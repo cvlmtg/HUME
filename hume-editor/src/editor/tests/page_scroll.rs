@@ -315,7 +315,7 @@ fn view_top_lands_the_cursor_at_scroll_margin_through_the_real_frame() {
 
     ed.render_to_buf(rect); // settle before `z k` writes the viewport
 
-    ed.execute_keymap_command("top-view-on-cursor".into(), None, false);
+    ed.execute_keymap_command("top-view-on-cursor".into(), None, false, None);
     ed.render_to_buf(rect);
 
     assert_eq!(

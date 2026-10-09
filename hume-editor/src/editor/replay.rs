@@ -7,6 +7,7 @@
 //! keys through the normal event path.
 
 use hume_engine::pipeline::EngineView;
+use hume_scripting::host::CommandArg;
 use std::borrow::Cow;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
@@ -98,9 +99,9 @@ pub(crate) struct RepeatableAction {
     pub command: Cow<'static, str>,
     /// The count prefix used originally. Overridden when `.` itself is given a count.
     pub count: usize,
-    /// Character argument for wait-char commands (`r`, `f`, `t`, …).
-    /// `None` for commands that don't consume a char.
-    pub char_arg: Option<char>,
+    /// The operand the command ran with (the character `r`, `f`, `t`, …
+    /// read). `None` for commands that take none.
+    pub arg: Option<CommandArg>,
     /// Inputs the Insert session this command opened received, if any.
     ///
     /// Appended to directly while that session is live (see
@@ -334,17 +335,24 @@ impl Editor {
     /// native-vs-Steel branch. Returns `false` on the same failure classes
     /// as `run_steel_command` (a Steel body can fail on replay even though
     /// the original run didn't: different buffer state, no match at the
-    /// new cursor); a native command has no failure mode here, so this
-    /// dispatches it and always returns `true`.
+    /// new cursor), and when `arg` doesn't fit `cmd`, which is reported. A
+    /// native command that binds runs and returns `true`.
     fn replay_command(
         &mut self,
         cmd: MappableCommand,
         fp: commands::FocusedPane,
         ctx: &CmdCtx,
-        char_arg: Option<char>,
+        arg: Option<CommandArg>,
     ) -> bool {
         match &cmd {
             MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
+                let char_arg = match commands::steel_char_operand(arg) {
+                    Ok(ch) => ch,
+                    Err(error) => {
+                        commands::report_arg_error(&mut self.state, cmd.name(), &error);
+                        return false;
+                    }
+                };
                 if !self.run_steel_command(cmd.name(), ctx, char_arg) {
                     return false;
                 }
@@ -355,16 +363,19 @@ impl Editor {
                 self.state.selection_recipe.clear();
                 true
             }
-            _ => {
-                // Native bodies that consume a char argument (`replace`,
-                // `surround-add`) read it via `state.pending_char.take()`.
-                self.state.pending_char = char_arg;
-                let Ok(bound) = commands::BoundCommand::focused(cmd, fp) else {
+            _ => match commands::BoundCommand::focused(cmd, fp, arg) {
+                Ok(bound) => {
+                    commands::run_body(&mut self.state, &mut self.view, bound, ctx);
+                    true
+                }
+                Err(commands::FocusedBindError::Arg { name, error }) => {
+                    commands::report_arg_error(&mut self.state, &name, &error);
+                    false
+                }
+                Err(commands::FocusedBindError::NotNative(_)) => {
                     unreachable!("this arm already excluded SteelBacked/Lazy above")
-                };
-                commands::run_body(&mut self.state, &mut self.view, bound, ctx);
-                true
-            }
+                }
+            },
         }
     }
 
@@ -463,9 +474,9 @@ impl Editor {
         }
 
         // Rebuild the selection extent the edit originally acted on. No
-        // recipe-step command reads `pending_char`: every `wait_char!`-bound
+        // recipe-step command takes an operand: every `wait_char!`-bound
         // command is `Untracked` and so can never reach the recipe. So
-        // unlike the edit body below, no step here needs it set.
+        // unlike the edit body below, every step binds with `None`.
         for step in &action.selection_recipe {
             // A recipe step is only ever pushed for a `selection_tracking !=
             // Untracked` command, and `SteelBacked`/`Lazy` are always
@@ -482,8 +493,10 @@ impl Editor {
                 .get_mappable(step.command.as_ref())
                 .cloned()
                 .expect("a dot-repeat selection-recipe step always names a native command");
-            let Ok(bound) = commands::BoundCommand::focused(cmd, fp) else {
-                unreachable!("a dot-repeat selection-recipe step always names a native command")
+            let Ok(bound) = commands::BoundCommand::focused(cmd, fp, None) else {
+                unreachable!(
+                    "a dot-repeat selection-recipe step always names a native command taking no character"
+                )
             };
             commands::run_body(
                 &mut self.state,
@@ -500,7 +513,7 @@ impl Editor {
             count: Some(count),
             extend: false,
         };
-        if !self.replay_command(edit_cmd, fp, &ctx, action.char_arg) {
+        if !self.replay_command(edit_cmd, fp, &ctx, action.arg.clone()) {
             // Close whatever the group opened above became so it can't
             // leak, the same decision the success path below makes (see
             // `finish_replay_session`'s own doc). commit drops an empty

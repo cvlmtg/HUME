@@ -17,6 +17,7 @@
 
 use super::*;
 use hume_scripting::PaneHandle;
+use hume_scripting::host::NativeCall;
 use hume_scripting::host::{BufferHost, CommandHost, EditHost};
 use pretty_assertions::assert_eq;
 
@@ -190,7 +191,7 @@ fn goto_alternate_buffer_call_ends_insert_session_on_focused_pane() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", pane, None, false, None)
+        .run_command_sync("goto-alternate-buffer", pane, NativeCall::default())
         .expect("goto-alternate-buffer must run");
 
     assert_eq!(
@@ -518,7 +519,14 @@ fn goto_next_buffer_from_an_auto_indented_blank_line_records_a_jump_back() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-next-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-next-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-next-buffer must not error");
     assert_eq!(
         ed.focused_buffer_id(),

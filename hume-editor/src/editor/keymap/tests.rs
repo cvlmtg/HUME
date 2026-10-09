@@ -138,10 +138,10 @@ fn unbind_user_normal_mode() {
     assert!(matches!(km.normal.walk(&[key!('z')]), WalkResult::NoMatch));
 }
 
-// ── collect_command_names ─────────────────────────────────────────────────
+// ── collect_bindings ──────────────────────────────────────────────────────
 
 #[test]
-fn collect_command_names_includes_leaves_and_waitchars() {
+fn collect_bindings_includes_leaves_and_waitchars() {
     let mut trie = KeyTrie::new();
     trie.bind_sequence(
         &[key!('x')],
@@ -165,22 +165,17 @@ fn collect_command_names_includes_leaves_and_waitchars() {
         },
     );
 
-    let mut names: Vec<String> = Vec::new();
-    trie.collect_command_names(&mut names);
-    names.sort();
+    let mut bindings = Vec::new();
+    trie.collect_bindings(&mut bindings);
+    bindings.sort();
 
-    // Exact expected set.
-    assert!(
-        names.contains(&"delete-char-forward".to_string()),
-        "leaf must appear"
-    );
-    assert!(
-        names.contains(&"goto-first-line".to_string()),
-        "nested leaf must appear"
-    );
-    assert!(
-        names.contains(&"find-char".to_string()),
-        "wait-char must appear"
+    assert_eq!(
+        bindings,
+        vec![
+            ("delete-char-forward".to_string(), false),
+            ("find-char".to_string(), true),
+            ("goto-first-line".to_string(), false),
+        ]
     );
 }
 

@@ -19,13 +19,13 @@
 use hume_engine::pipeline::BufferId;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{
-    BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
-    SelectionInfo, SettingsHost,
+    BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, NativeCall,
+    OptionValue, SelectionInfo, SettingsHost,
 };
 
-/// One recorded `run_command_sync` call: `(name, pane, count, extend,
-/// register)`; see [`MockHost::dispatched_native`]'s own doc.
-pub type DispatchedNativeCall = (String, PaneHandle, Option<usize>, bool, Option<char>);
+/// One recorded `run_command_sync` call: `(name, pane, call)`; see
+/// [`MockHost::dispatched_native`]'s own doc.
+pub type DispatchedNativeCall = (String, PaneHandle, NativeCall);
 
 pub struct MockHost {
     pub settings: hume::editor::settings::EditorSettings,
@@ -278,9 +278,7 @@ impl CommandHost for MockHost {
         &mut self,
         name: &str,
         pane: PaneHandle,
-        count: Option<usize>,
-        extend: bool,
-        register: Option<char>,
+        call: NativeCall,
     ) -> Result<bool, String> {
         // Unlike `EditorHostImpl::run_command_sync`, this mock has no pane
         // model at all, so it can't resolve `pane` against a command's own
@@ -289,8 +287,7 @@ impl CommandHost for MockHost {
         // names a live pane, the focused pane, or is out of reach) is the
         // real host's job; a test that needs to assert on a resolution
         // failure exercises `EditorHostImpl` directly, not this mock.
-        self.dispatched_native
-            .push((name.to_owned(), pane, count, extend, register));
+        self.dispatched_native.push((name.to_owned(), pane, call));
         Ok(true)
     }
     fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {

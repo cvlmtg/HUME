@@ -10,7 +10,7 @@ use super::*;
 use hume_engine::pipeline::RenderContext;
 
 fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false);
+    ed.execute_keymap_command(name.to_string().into(), None, false, None);
 }
 
 fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {

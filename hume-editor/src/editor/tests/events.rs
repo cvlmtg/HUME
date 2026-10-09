@@ -2,6 +2,7 @@ use super::*;
 use crate::editor::commands::open_pane_in_layout;
 use hume_grid::Rect;
 use hume_platform::dirs::Dirs;
+use hume_scripting::host::NativeCall;
 
 // ── OnModeChange: Insert → Normal ─────────────────────────────────────────────
 
@@ -2390,9 +2391,7 @@ fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
         .run_command_sync(
             "pane-close",
             PaneHandle::with_pane(bid, pid_b),
-            None,
-            false,
-            None,
+            NativeCall::default(),
         )
         .expect("pane-close must succeed");
     ed.settle();

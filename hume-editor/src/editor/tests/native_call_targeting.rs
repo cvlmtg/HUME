@@ -10,6 +10,7 @@ use crate::editor::commands::open_pane_in_layout;
 use hume_engine::pipeline::Direction;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::CommandHost;
+use hume_scripting::host::NativeCall;
 
 /// Open a second buffer B (`b`'s content) and split A's pane so B is shown
 /// in a non-focused pane. Returns `(pid_a, bid_a, pid_b, bid_b)`; focus
@@ -44,9 +45,10 @@ fn pane_category_remote_call_edits_target_pane_leaves_focus_untouched() {
         .run_command_sync(
             "delete",
             PaneHandle::with_pane(bid_b, pid_b),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("delete on a split-shown pane must not error");
     assert!(ran, "delete must report it ran");
@@ -73,9 +75,10 @@ fn pane_category_paneless_handle_errors_no_pane() {
         .run_command_sync(
             "delete",
             PaneHandle::buffer_only(bid_b),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect_err("delete on a pane-less handle must error");
     assert!(err.contains("needs a pane"), "unexpected error: {err}");
@@ -95,9 +98,10 @@ fn focused_pane_category_errors_on_a_non_focused_pane() {
         .run_command_sync(
             "insert-before",
             PaneHandle::with_pane(bid_b, pid_b),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect_err("insert-before on a non-focused pane must error");
     assert!(err.contains("focused pane"), "unexpected error: {err}");
@@ -147,7 +151,7 @@ fn a_buffer_only_handle_to_a_live_buffer_is_refused_by_every_native_command() {
     let bid = ed.focused_buffer_id();
     for name in FORMERLY_PANELESS {
         let err = live_host!(ed)
-            .run_command_sync(name, PaneHandle::buffer_only(bid), None, false, None)
+            .run_command_sync(name, PaneHandle::buffer_only(bid), NativeCall::default())
             .expect_err("a pane-less handle must be refused");
         assert!(
             err.contains("needs a pane"),
@@ -168,7 +172,11 @@ fn focus_commands_refuse_a_non_focused_pane() {
     let tabs_before = ed.state.tabs.len();
     for name in focus_only() {
         let err = live_host!(ed)
-            .run_command_sync(name, PaneHandle::with_pane(bid_b, pid_b), None, false, None)
+            .run_command_sync(
+                name,
+                PaneHandle::with_pane(bid_b, pid_b),
+                NativeCall::default(),
+            )
             .expect_err("a non-focused pane must be refused");
         assert!(
             err.contains("focused pane"),
@@ -197,9 +205,7 @@ fn clear_search_acts_on_its_panes_buffer_even_when_remote() {
         .run_command_sync(
             "clear-search",
             PaneHandle::with_pane(bid_b, pid_b),
-            None,
-            false,
-            None,
+            NativeCall::default(),
         )
         .expect("clear-search through a live remote pane must not error");
     assert!(ran);
@@ -222,7 +228,7 @@ fn tab_new_opens_a_tab_on_the_focused_buffer() {
 
     let pane = focused_pane(&ed);
     let ran = live_host!(ed)
-        .run_command_sync("tab-new", pane, None, false, None)
+        .run_command_sync("tab-new", pane, NativeCall::default())
         .expect("tab-new on the focused pane must not error");
     assert!(ran);
 
@@ -235,7 +241,7 @@ fn toggle_extend_runs_on_the_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let pane = focused_pane(&ed);
     let ran = live_host!(ed)
-        .run_command_sync("toggle-extend", pane, None, false, None)
+        .run_command_sync("toggle-extend", pane, NativeCall::default())
         .expect("toggle-extend on the focused pane must not error");
     assert!(ran);
     assert_eq!(ed.state.mode(), Mode::Extend);
@@ -257,9 +263,10 @@ fn closed_buffer_errors_for_every_command() {
         let result = live_host!(ed).run_command_sync(
             name,
             PaneHandle::buffer_only(bid_b),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         );
         let err = match result {
             Err(e) => e,
@@ -298,9 +305,7 @@ fn remote_call_leaves_focused_panes_dot_repeat_recipe_untouched() {
         .run_command_sync(
             "move-down",
             PaneHandle::with_pane(bid_b, pid_b),
-            None,
-            false,
-            None,
+            NativeCall::default(),
         )
         .expect("move-down on B must not error");
 
@@ -339,9 +344,7 @@ fn remote_call_jump_list_follows_the_target_pane() {
         .run_command_sync(
             "goto-last-line",
             PaneHandle::with_pane(bid_b, pid_b),
-            None,
-            false,
-            None,
+            NativeCall::default(),
         )
         .expect("goto-last-line on B must not error");
 
@@ -368,7 +371,14 @@ fn mock_host_records_a_non_focused_pane_unchanged() {
     let pane = PaneHandle::buffer_only(BufferId::default());
 
     let ran = mock
-        .run_command_sync("delete", pane, Some(1), false, None)
+        .run_command_sync(
+            "delete",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("MockHost must accept any pane: it has no pane model to resolve against");
     assert!(ran);
     assert_eq!(mock.dispatched_native.len(), 1);
@@ -395,9 +405,10 @@ fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
         .run_command_sync(
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_a),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("pane-vsplit must succeed");
     let pid_b = ed.state.focus.id();
@@ -414,9 +425,10 @@ fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
         .run_command_sync(
             "delete",
             PaneHandle::with_pane(bid, pid_b),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("a refused command is still a successful dispatch, not an error");
     assert!(
@@ -455,9 +467,10 @@ fn remote_undo_is_refused_while_another_pane_has_an_open_insert_session() {
         .run_command_sync(
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_a),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("pane-vsplit must succeed");
     let pid_b = ed.state.focus.id();
@@ -471,9 +484,10 @@ fn remote_undo_is_refused_while_another_pane_has_an_open_insert_session() {
         .run_command_sync(
             "undo",
             PaneHandle::with_pane(bid, pid_b),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("a refused command is still a successful dispatch, not an error");
     assert!(
@@ -508,9 +522,10 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
         .run_command_sync(
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_a),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("pane-vsplit must succeed");
     let pid_b = ed.state.focus.id();
@@ -521,9 +536,10 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
         .run_command_sync(
             "pane-close",
             PaneHandle::with_pane(bid, pid_a),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("pane-close must succeed");
     assert_ne!(
@@ -539,9 +555,10 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
         .run_command_sync(
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_b),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("pane-vsplit must succeed");
     let pid_c = ed.state.focus.id();
@@ -615,9 +632,10 @@ fn a_refused_delete_clears_the_register_prefix_and_writes_nothing() {
         .run_command_sync(
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_a),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("pane-vsplit must succeed");
     let pid_b = ed.state.focus.id();
@@ -630,9 +648,10 @@ fn a_refused_delete_clears_the_register_prefix_and_writes_nothing() {
         .run_command_sync(
             "delete",
             PaneHandle::with_pane(bid, pid_b),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("a refused command is still a successful dispatch");
 

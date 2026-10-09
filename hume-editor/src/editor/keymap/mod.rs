@@ -3,9 +3,9 @@
 //! Each mode has a [`KeyTrie`] mapping [`KeyEvent`] sequences to
 //! [`KeymapCommand`]s: single keys, multi-key sequences (`m i <char>`,
 //! `g <key>`), and wait-for-char bindings (f/t/F/T/r) whose [`WaitCharPending`]
-//! takes the next character as an argument via `Editor.pending_char`. The
-//! dispatcher in `mappings/execute.rs` walks the trie, accumulates a count
-//! prefix, and runs commands through [`crate::editor::registry::CommandRegistry`].
+//! takes the next character as the command's operand. The dispatcher in
+//! `mappings/execute.rs` walks the trie, accumulates a count prefix, and runs
+//! commands through [`crate::editor::registry::CommandRegistry`].
 //!
 //! Only base command names are stored; Extend mode is a `MotionMode` parameter
 //! chosen at dispatch time (for wait-char bindings, via `ctrl_extend` when the
@@ -26,9 +26,9 @@ use termina::event::KeyEvent;
 
 /// State stored on the editor after a wait-char key (f/t/F/T/r).
 ///
-/// On the next keypress the dispatcher stores the character in
-/// `Editor.pending_char` and dispatches `cmd_name`. Extend-mode resolution
-/// happens at char-consumption time via the registry.
+/// On the next keypress the dispatcher dispatches `cmd_name` with that
+/// character as its operand. Extend-mode resolution happens at
+/// char-consumption time via the registry.
 #[derive(Debug, Clone)]
 pub(crate) struct WaitCharPending {
     pub cmd_name: Cow<'static, str>,
@@ -63,8 +63,8 @@ pub(super) enum WalkResult {
     /// At an interior trie node: more keys are needed.
     Interior,
     /// The last key of the sequence matches a wait-char binding. The caller
-    /// should consume the next character, store it in `pending_char`, and
-    /// dispatch the named command.
+    /// should consume the next character and dispatch the named command
+    /// with it as the operand.
     WaitChar(WaitCharPending),
     /// The sequence has no match in this trie.
     NoMatch,
@@ -114,8 +114,8 @@ impl KeyTrie {
     }
 
     /// Bind a multi-key sequence prefix to a WaitChar node, creating interior
-    /// nodes as needed. The next character the user presses after the sequence
-    /// will be stored in `pending_char` and `wc.cmd_name` will be dispatched.
+    /// nodes as needed. `wc.cmd_name` will be dispatched with the next
+    /// character the user presses after the sequence as its operand.
     pub(in crate::editor) fn bind_wait_char_sequence(
         &mut self,
         keys: &[KeyEvent],
@@ -220,12 +220,14 @@ impl KeyTrie {
         WalkResult::NoMatch
     }
 
-    pub(in crate::editor::keymap) fn collect_command_names(&self, out: &mut Vec<String>) {
+    /// Every binding under this trie, as its command name and whether it
+    /// waits for a character.
+    fn collect_bindings(&self, out: &mut Vec<(String, bool)>) {
         for node in self.map.values() {
             match node {
-                KeyTrieNode::Leaf(cmd) => out.push(cmd.name.to_string()),
-                KeyTrieNode::WaitChar(wc) => out.push(wc.cmd_name.to_string()),
-                KeyTrieNode::Node(sub) => sub.collect_command_names(out),
+                KeyTrieNode::Leaf(cmd) => out.push((cmd.name.to_string(), false)),
+                KeyTrieNode::WaitChar(wc) => out.push((wc.cmd_name.to_string(), true)),
+                KeyTrieNode::Node(sub) => sub.collect_bindings(out),
             }
         }
     }
@@ -271,9 +273,9 @@ impl Default for Keymap {
 impl Keymap {
     /// Bind a key sequence to a WaitChar node in the given mode.
     ///
-    /// After the user completes `keys`, the next character is stored in
-    /// `pending_char` and `command` is dispatched.  Interior nodes are created
-    /// as needed.  `keys` must not be empty.
+    /// After the user completes `keys`, `command` is dispatched with the next
+    /// character as its operand.  Interior nodes are created as needed.
+    /// `keys` must not be empty.
     pub(in crate::editor) fn bind_wait_char_user(
         &mut self,
         mode: BindMode,
@@ -366,12 +368,21 @@ impl Keymap {
         }
     }
 
-    pub(super) fn all_command_names(&self) -> Vec<String> {
+    /// Every binding in every mode, as its command name and whether it waits
+    /// for a character.
+    pub(in crate::editor) fn all_bindings(&self) -> Vec<(String, bool)> {
         let mut out = Vec::new();
-        self.normal.collect_command_names(&mut out);
-        self.extend.collect_command_names(&mut out);
-        self.insert.collect_command_names(&mut out);
+        self.normal.collect_bindings(&mut out);
+        self.extend.collect_bindings(&mut out);
+        self.insert.collect_bindings(&mut out);
         out
+    }
+
+    pub(super) fn all_command_names(&self) -> Vec<String> {
+        self.all_bindings()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect()
     }
 }
 

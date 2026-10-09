@@ -1375,7 +1375,7 @@ fn enter_buffer_disk_check_leaves_a_layer_stacked_above_the_confirm_untouched() 
     // Lands above the confirm the same ungated way a timer's `prompt!`
     // would (`push_mode_layer` never gates on what's already open).
     let fp = FocusedPane::current(&ed.state);
-    cmd_search_forward(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
+    cmd_search_forward(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move, None).unwrap();
     for ch in "world".chars() {
         ed.handle_key(key(ch));
     }

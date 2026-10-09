@@ -141,9 +141,13 @@ pub fn render_search_input(flags: SearchFlags, pattern: &str) -> String {
 
 /// Parse `input` for leading flags, then compile the remaining pattern:
 /// literally (via `escape_regex`) when `verbatim` is set, as smart-case
-/// regex otherwise. `None` when the resulting pattern is not a valid regex.
+/// regex otherwise. `None` when the pattern after the flags is empty or is
+/// not a valid regex.
 pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
     let (flags, pattern) = parse_search_input(input);
+    if pattern.is_empty() {
+        return None;
+    }
     let owned;
     let effective = if flags.verbatim {
         owned = escape_regex(pattern);

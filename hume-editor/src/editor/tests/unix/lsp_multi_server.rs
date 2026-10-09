@@ -57,7 +57,7 @@ fn settle(ed: &mut Editor) {
 }
 
 fn run(ed: &mut Editor, command: &str) {
-    ed.execute_keymap_command(command.to_string().into(), Some(1), false);
+    ed.execute_keymap_command(command.to_string().into(), Some(1), false, None);
     settle(ed);
 }
 

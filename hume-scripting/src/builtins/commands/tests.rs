@@ -109,39 +109,39 @@ fn pending_char_returns_string_when_set() {
     assert_eq!(result, SteelVal::StringV("(".into()));
 }
 
-// ── parse_count_extend direct tests ──────────────────────────────────────
+// ── parse_native_args direct tests ───────────────────────────────────────
 
 #[test]
-fn parse_count_extend_empty_gives_defaults() {
-    assert_eq!(parse_count_extend(&[]).unwrap(), (Some(1), false));
+fn parse_native_args_empty_gives_defaults() {
+    assert_eq!(parse_native_args(&[]).unwrap(), (Some(1), false, None));
 }
 
 #[test]
-fn parse_count_extend_count_only() {
+fn parse_native_args_count_only() {
     assert_eq!(
-        parse_count_extend(&[SteelVal::IntV(5)]).unwrap(),
-        (Some(5), false)
+        parse_native_args(&[SteelVal::IntV(5)]).unwrap(),
+        (Some(5), false, None)
     );
 }
 
 #[test]
-fn parse_count_extend_count_and_extend() {
+fn parse_native_args_count_and_extend() {
     assert_eq!(
-        parse_count_extend(&[SteelVal::IntV(3), SteelVal::BoolV(true)]).unwrap(),
-        (Some(3), true)
+        parse_native_args(&[SteelVal::IntV(3), SteelVal::BoolV(true)]).unwrap(),
+        (Some(3), true, None)
     );
 }
 
 /// Negative counts clamp to `Some(1)`, same as a native keypress count.
 #[test]
-fn parse_count_extend_negative_clamps_to_one() {
+fn parse_native_args_negative_clamps_to_one() {
     assert_eq!(
-        parse_count_extend(&[SteelVal::IntV(-7)]).unwrap(),
-        (Some(1), false)
+        parse_native_args(&[SteelVal::IntV(-7)]).unwrap(),
+        (Some(1), false, None)
     );
     assert_eq!(
-        parse_count_extend(&[SteelVal::IntV(-1), SteelVal::BoolV(false)]).unwrap(),
-        (Some(1), false)
+        parse_native_args(&[SteelVal::IntV(-1), SteelVal::BoolV(false)]).unwrap(),
+        (Some(1), false, None)
     );
 }
 
@@ -149,14 +149,14 @@ fn parse_count_extend_negative_clamps_to_one() {
 /// not `Some(1)` (a bare keypress and an explicit count of 1 are different
 /// dispatch origins even though both apply a command once).
 #[test]
-fn parse_count_extend_zero_means_no_count() {
+fn parse_native_args_zero_means_no_count() {
     assert_eq!(
-        parse_count_extend(&[SteelVal::IntV(0)]).unwrap(),
-        (None, false)
+        parse_native_args(&[SteelVal::IntV(0)]).unwrap(),
+        (None, false, None)
     );
     assert_eq!(
-        parse_count_extend(&[SteelVal::IntV(0), SteelVal::BoolV(true)]).unwrap(),
-        (None, true)
+        parse_native_args(&[SteelVal::IntV(0), SteelVal::BoolV(true)]).unwrap(),
+        (None, true, None)
     );
 }
 
@@ -165,23 +165,70 @@ fn parse_count_extend_zero_means_no_count() {
 /// ceiling the keyboard accumulator enforces, or a command that loops the
 /// count with no fixed-point exit (e.g. macro replay) can be made to hang.
 #[test]
-fn parse_count_extend_caps_at_max_count() {
+fn parse_native_args_caps_at_max_count() {
     assert_eq!(
-        parse_count_extend(&[SteelVal::IntV(isize::MAX)]).unwrap(),
-        (Some(MAX_COUNT), false)
+        parse_native_args(&[SteelVal::IntV(isize::MAX)]).unwrap(),
+        (Some(MAX_COUNT), false, None)
     );
 }
 
 #[test]
-fn parse_count_extend_string_arg_is_err() {
-    let bad = &[SteelVal::StringV("garbage".into())];
-    assert!(parse_count_extend(bad).is_err());
+fn parse_native_args_string_alone_is_text_arg() {
+    assert_eq!(
+        parse_native_args(&[SteelVal::StringV("x".into())]).unwrap(),
+        (Some(1), false, Some(CommandArg::Text("x".to_string())))
+    );
 }
 
 #[test]
-fn parse_count_extend_extra_arg_is_err() {
-    let bad = &[SteelVal::IntV(1), SteelVal::BoolV(false), SteelVal::IntV(0)];
-    assert!(parse_count_extend(bad).is_err());
+fn parse_native_args_char_alone_is_char_arg() {
+    assert_eq!(
+        parse_native_args(&[SteelVal::CharV('x')]).unwrap(),
+        (Some(1), false, Some(CommandArg::Char('x')))
+    );
+}
+
+#[test]
+fn parse_native_args_count_then_arg() {
+    assert_eq!(
+        parse_native_args(&[SteelVal::IntV(3), SteelVal::StringV("ab".into())]).unwrap(),
+        (Some(3), false, Some(CommandArg::Text("ab".to_string())))
+    );
+}
+
+#[test]
+fn parse_native_args_count_extend_then_arg() {
+    assert_eq!(
+        parse_native_args(&[
+            SteelVal::IntV(3),
+            SteelVal::BoolV(true),
+            SteelVal::CharV('y')
+        ])
+        .unwrap(),
+        (Some(3), true, Some(CommandArg::Char('y')))
+    );
+}
+
+#[test]
+fn parse_native_args_two_trailing_args_is_err() {
+    let bad = &[SteelVal::StringV("a".into()), SteelVal::StringV("b".into())];
+    assert!(parse_native_args(bad).is_err());
+}
+
+#[test]
+fn parse_native_args_non_text_arg_slot_is_err() {
+    let int_slot = &[SteelVal::IntV(1), SteelVal::BoolV(false), SteelVal::IntV(0)];
+    assert!(parse_native_args(int_slot).is_err());
+    let bool_slot = &[
+        SteelVal::IntV(1),
+        SteelVal::BoolV(false),
+        SteelVal::BoolV(true),
+    ];
+    assert!(parse_native_args(bool_slot).is_err());
+    let list_slot = &[SteelVal::ListV(
+        vec![SteelVal::CharV('x')].into_iter().collect(),
+    )];
+    assert!(parse_native_args(list_slot).is_err());
 }
 
 #[test]

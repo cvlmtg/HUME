@@ -1,4 +1,5 @@
 use super::*;
+use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
 
 // ── Explicit-register paste reads (`"N`/`"k`p) ──────────────────────────────
@@ -1298,7 +1299,7 @@ fn consecutive_paste_repeats_last_not_ring_head() {
 // unrelated command in between two calls).
 
 fn dispatch_command(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false);
+    ed.execute_keymap_command(name.to_string().into(), None, false, None);
 }
 
 /// Bare plain paste reads the kill-ring head, not the clipboard. Unlike
@@ -1501,7 +1502,7 @@ fn paste_during_an_open_insert_session_is_refused_and_leaves_the_session_intact(
 
     let pane = focused_pane(&ed);
     let ran = live_host!(ed)
-        .run_command_sync("paste-after", pane, None, false, None)
+        .run_command_sync("paste-after", pane, NativeCall::default())
         .expect("a refused paste reports through its return value, not Err");
     assert!(!ran, "paste-after must report that it refused");
     assert_eq!(
@@ -1539,7 +1540,7 @@ fn paste_during_an_empty_open_insert_session_is_refused_and_leaves_the_session_i
 
     let pane = focused_pane(&ed);
     let ran = live_host!(ed)
-        .run_command_sync("paste-after", pane, None, false, None)
+        .run_command_sync("paste-after", pane, NativeCall::default())
         .expect("a refused paste reports through its return value, not Err");
     assert!(!ran, "paste-after must report that it refused");
     assert_eq!(

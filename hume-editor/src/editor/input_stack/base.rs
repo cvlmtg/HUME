@@ -4,9 +4,10 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use hume_engine::types::{EditorMode, MAX_COUNT};
+use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
 use hume_ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
+use hume_scripting::host::MAX_COUNT;
 
 use super::super::Editor;
 use super::super::commands::cmd_clear_search;
@@ -143,7 +144,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     // ── Consume WaitChar argument ─────────────────────────────────────────
     // If a f/t/F/T/r binding fired on the previous keypress, `wait_char`
     // holds the command name to dispatch. The next character (any key)
-    // becomes the argument, stored in `pending_char` for the command to read.
+    // becomes the command's operand.
     // Enter and Tab are accepted as their literal characters ('\n' / '\t'),
     // for Kakoune parity (e.g. `r<ret>` replaces with a newline, `f<tab>` finds a
     // tab), since both have an unambiguous char meaning as a target/argument.
@@ -156,11 +157,10 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
         };
         if let Some(ch) = arg {
             let count = ed.state.count.take();
-            ed.state.pending_char = Some(ch);
             // Extend resolution: sticky extend (mode == Extend) OR one-shot
             // ctrl_extend carried into WaitCharPending from the original keypress.
             let extend = (ed.state.mode() == EditorMode::Extend) || wc.ctrl_extend;
-            ed.execute_keymap_command(wc.cmd_name.clone(), count, extend);
+            ed.execute_keymap_command(wc.cmd_name.clone(), count, extend, Some(ch));
         }
         // Non-char/Enter/Tab key (e.g. Esc after pressing `f`): cancel the wait.
         // Clear count so a prefix like `3f<Esc>` doesn't leak into the next command.
@@ -325,7 +325,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                 ed.state.pending_keys.clear();
                 ed.state.pending_ctrl_extend = false;
                 let count = ed.state.count.take();
-                ed.execute_keymap_command(cmd.name.clone(), count, false);
+                ed.execute_keymap_command(cmd.name.clone(), count, false, None);
                 return;
             }
             WalkResult::Interior => {
@@ -457,7 +457,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                     .get_mappable(cmd.name.as_ref())
                     .is_some_and(|r| r.is_extendable());
             let count = ed.state.count.take();
-            ed.execute_keymap_command(cmd.name.clone(), count, extend);
+            ed.execute_keymap_command(cmd.name.clone(), count, extend, None);
         }
         WalkResult::WaitChar(mut wc) => {
             ed.state.pending_keys.clear();

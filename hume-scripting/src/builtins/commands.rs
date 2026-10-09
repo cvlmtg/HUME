@@ -7,7 +7,9 @@
 //! - **Lazy commands**: activates the owner inline, then retries.
 //! - **Native commands**: `%call-native!` runs `run_command_sync`. A native
 //!   command has no Steel parameter list to receive a pane, so the caller
-//!   passes one as the first argument: `(call! "move-right" pane 5)`. Returns
+//!   passes one as the first argument: `(call! "move-right" pane 5)`. A
+//!   trailing string or char is the command's operand:
+//!   `(call! "find-forward" pane "x")`, `(call! "sift-within" pane "\\w+")`. Returns
 //!   `#f` if the command refused, `#t` otherwise; in init mode it warns and
 //!   returns `#f`.
 //! - **Unknown**: error logged, `#f` returned.
@@ -22,9 +24,9 @@ use super::SteelResult;
 use super::errors::generic_err;
 use crate::SteelCtx;
 use crate::attribution::Owner;
+use crate::host::{CommandArg, MAX_COUNT, NativeCall};
 use crate::log::LogLevel;
 use crate::types::{SteelCmdDef, SteelTypedCmdDef};
-use hume_engine::types::MAX_COUNT;
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
@@ -216,9 +218,10 @@ pub(crate) fn define_typed_command(
 /// `%call-native!`: `%dispatch-command!`'s fallback for a name that is neither
 /// in `command_table` nor owned by a lazy plugin.
 ///
-/// - **Native**: decodes the leading `pane` argument, validates count/extend,
-///   and returns `run_command_sync`'s `#t`/`#f`. In init mode it warns and
-///   returns `#f`, since buffers aren't available yet.
+/// - **Native**: decodes the leading `pane` argument, validates count/extend
+///   and the optional trailing operand, and returns `run_command_sync`'s
+///   `#t`/`#f`. In init mode it warns and returns `#f`, since buffers aren't
+///   available yet.
 /// - **Steel command missing from the table** or **unknown**: logs an `Error`
 ///   and returns `#f`.
 ///
@@ -243,17 +246,26 @@ pub(crate) fn call_command_primitive(
             }
             let (pane, rest) = args_vec.split_first().ok_or_else(|| {
                 generic_err(format!(
-                    "%call-native!: '{name}' needs a pane: (call! \"{name}\" pane [count [extend]])"
+                    "%call-native!: '{name}' needs a pane: (call! \"{name}\" pane [count [extend]] [arg])"
                 ))
             })?;
             let pane = super::ids::downcast_pane(pane).ok_or_else(|| {
                 generic_err(format!("%call-native!: '{name}': first arg must be a pane"))
             })?;
-            let (count, extend) =
-                parse_count_extend(rest).map_err(|e| generic_err(format!("%call-native!: {e}")))?;
+            let (count, extend, arg) =
+                parse_native_args(rest).map_err(|e| generic_err(format!("%call-native!: {e}")))?;
             ctx.host
                 .commands()
-                .run_command_sync(&name, pane, count, extend, ctx.current_register_prefix)
+                .run_command_sync(
+                    &name,
+                    pane,
+                    NativeCall {
+                        count,
+                        extend,
+                        register: ctx.current_register_prefix,
+                        arg,
+                    },
+                )
                 .map(SteelVal::BoolV)
                 .map_err(|e| generic_err(format!("%call-native!: {e}")))
         }
@@ -313,11 +325,15 @@ pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResul
     }
 }
 
-/// Parse count/extend from a native command's args list.
+/// Parse count, extend, and the optional operand from a native command's
+/// args list.
 ///
 /// Valid shapes: `[]` → `(Some(1), false)`; `[n]` → `(decode(n), false)`;
-/// `[n, bool]` → `(decode(n), bool)`. All other shapes (e.g. a leading string,
-/// extra args) return `Err`.
+/// `[n, bool]` → `(decode(n), bool)`; each optionally followed by one string
+/// or char, the command's [`CommandArg`] (`"x"` → `Text`, `#\x` → `Char`).
+/// All other shapes (a second trailing arg, a number or boolean in the
+/// operand's place) return `Err`. Whether the command takes that operand is
+/// checked by the editor, not here.
 ///
 /// `decode(0)` is `None`: the Scheme spelling of "no count typed" (a bare
 /// keypress), since Scheme has no `Option` to pass across the builtin-call
@@ -328,8 +344,9 @@ pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResul
 /// [`MAX_COUNT`] clamp there, since a script has no digit-by-digit accumulator to
 /// cap, so this is the only ceiling standing between an arbitrary `isize` and
 /// a command that loops the count with no fixed-point exit.
-///
-pub(crate) fn parse_count_extend(args: &[SteelVal]) -> Result<(Option<usize>, bool), String> {
+pub(crate) fn parse_native_args(
+    args: &[SteelVal],
+) -> Result<(Option<usize>, bool, Option<CommandArg>), String> {
     fn decode(n: isize) -> Option<usize> {
         if n == 0 {
             None
@@ -337,15 +354,23 @@ pub(crate) fn parse_count_extend(args: &[SteelVal]) -> Result<(Option<usize>, bo
             Some((n.max(1) as usize).min(MAX_COUNT))
         }
     }
-    match args {
-        [] => Ok((Some(1), false)),
-        [SteelVal::IntV(n)] => Ok((decode(*n), false)),
-        [SteelVal::IntV(n), SteelVal::BoolV(ext)] => Ok((decode(*n), *ext)),
-        _ => Err(format!(
-            "native command args must be [], [count], or [count extend]; got {:?}",
-            args
-        )),
-    }
+    let (head, arg) = match args.split_last() {
+        Some((SteelVal::StringV(s), head)) => (head, Some(CommandArg::Text(s.to_string()))),
+        Some((SteelVal::CharV(c), head)) => (head, Some(CommandArg::Char(*c))),
+        _ => (args, None),
+    };
+    let (count, extend) = match head {
+        [] => (Some(1), false),
+        [SteelVal::IntV(n)] => (decode(*n), false),
+        [SteelVal::IntV(n), SteelVal::BoolV(ext)] => (decode(*n), *ext),
+        _ => {
+            return Err(format!(
+                "native command args must be [count [extend]] then an optional string or char; got {:?}",
+                args
+            ));
+        }
+    };
+    Ok((count, extend, arg))
 }
 
 fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, SteelErr> {
@@ -359,8 +384,8 @@ fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, SteelErr> {
 /// `(request-wait-char! cmd-name)`
 ///
 /// Requests that after the current Steel command's queue is fully drained,
-/// the editor enters WaitChar mode for `cmd-name`.  The next character the
-/// user types becomes `pending_char` and `cmd-name` is dispatched.
+/// the editor enters WaitChar mode for `cmd-name`.  `cmd-name` is then
+/// dispatched with the next character the user types as its operand.
 ///
 /// Typical use: composing surround-select with replace.
 ///   `(call! "surround-paren" pane) (request-wait-char! "replace")`

@@ -4,12 +4,57 @@
 use crate::attribution::EntryId;
 use crate::types::{PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
+/// Ceiling on a command's numeric count prefix (e.g. the `3` in `3w`).
+///
+/// Shared by the keyboard accumulator (`hume-editor`'s `Editor::handle_normal`,
+/// which builds a count one digit at a time and would otherwise overflow
+/// `usize` past ~20 digits) and Steel's `parse_native_args`, which decodes a
+/// script-supplied count with no digit-by-digit limit of its own. Without a
+/// shared ceiling, a count from either origin can still make a command loop
+/// `count` times with no fixed-point exit (e.g. macro replay growing its
+/// replay queue by `count × macro length`) run long enough to hang the editor.
+pub const MAX_COUNT: usize = 10_000;
+
+/// The operand a native command acts with: the character a wait-char key
+/// binding reads (`f`, `r`, …) or the pattern a prompt command takes in
+/// place of opening its prompt. A command declares which kind it takes
+/// through its body's signature; the editor checks the two match before the
+/// body runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandArg {
+    Char(char),
+    Text(String),
+}
+
+/// How a native command is invoked from a script: everything
+/// [`CommandHost::run_command_sync`] takes besides the command and its pane.
+/// The default is a bare keypress: no count typed, no extend, no register,
+/// no operand.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NativeCall {
+    /// `None` means "as if no count was typed". For `move-down`/`move-up`
+    /// this selects visual-line movement instead of buffer-line movement
+    /// (every other native command treats `None` the same as `Some(1)`).
+    /// `parse_native_args` decodes a Steel-side count of `0` to `None`.
+    pub count: Option<usize>,
+    pub extend: bool,
+    /// Armed as `state.register_prefix` before dispatch, so register-aware
+    /// commands (`yank`, `delete`, `paste-after`, etc.) route to the right
+    /// destination.
+    pub register: Option<char>,
+    /// The command's operand. It must match what the command takes: a
+    /// character command (`find-forward`, `replace`, …) needs one, a prompt
+    /// command (`search-forward`, `sift-within`) runs with it in place of
+    /// opening its prompt, and any other command takes none.
+    pub arg: Option<CommandArg>,
+}
+
 /// Command registry queries, synchronous native dispatch, and Steel command
 /// registration, accessed through [`EditorHost::commands`](super::EditorHost::commands).
 pub trait CommandHost {
     /// Returns `Ok(true)` if `name` is a native (Rust-registered) command
     /// (`Motion`, `Selection`, `Edit`, or `EditorCmd`) whose only valid `call!`
-    /// args are `count` and `extend`. Returns `Ok(false)` for Steel-defined
+    /// args are `count`, `extend`, and an optional trailing [`CommandArg`]. Returns `Ok(false)` for Steel-defined
     /// commands (`SteelBacked`, `Lazy`) that accept arbitrary positional args.
     /// Returns `Err(msg)` if the name is unknown.
     ///
@@ -38,14 +83,8 @@ pub trait CommandHost {
     /// callback whose captured `pane` no longer resolves gets a loud
     /// failure instead of quietly editing the wrong buffer.
     ///
-    /// `count`: `None` means "as if no count was typed". For `move-down`/`move-up`
-    /// this selects visual-line movement instead of buffer-line movement (every other
-    /// native command treats `None` the same as `Some(1)`). `parse_count_extend`
-    /// decodes a Steel-side count of `0` to `None`.
-    ///
-    /// `register` arms `state.register_prefix` before dispatch so register-aware
-    /// commands (`yank`, `delete`, `paste-after`, etc.) route to the right
-    /// destination. Pass `None` when no explicit register was set.
+    /// `call` carries the count, extend flag, register and operand; see
+    /// [`NativeCall`].
     ///
     /// Returns `Ok(false)` if the command's body refused outright (a
     /// too-small split, the last pane, a read-only buffer, no stashed
@@ -57,17 +96,16 @@ pub trait CommandHost {
     /// last step), still returns `Ok(true)`. This is the value `(call! …)`
     /// yields for a native command.
     /// Returns `Err(msg)` when the name is not found, is not a native
-    /// command, `pane`'s buffer isn't live, or `pane` doesn't resolve
-    /// against the command's own target requirement (see above).
+    /// command, `pane`'s buffer isn't live, `pane` doesn't resolve
+    /// against the command's own target requirement (see above), or
+    /// `call.arg` doesn't match what the command takes.
     ///
     /// Valid only in command mode; gated by the caller's `cmd`-kind registration.
     fn run_command_sync(
         &mut self,
         name: &str,
         pane: PaneHandle,
-        count: Option<usize>,
-        extend: bool,
-        register: Option<char>,
+        call: NativeCall,
     ) -> Result<bool, String>;
 
     /// Register a Steel command in the editor's `CommandRegistry`.

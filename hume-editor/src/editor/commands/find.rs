@@ -32,13 +32,12 @@ fn find_char(
     t: CommandPane,
     count: usize,
     mode: MotionMode,
-    kind: FindKind,
+    find: FindChar,
     find_fn: fn(EditState, usize, MotionMode, char, FindKind) -> EditState,
 ) {
-    if let Some(ch) = state.pending_char.take() {
-        apply_pane_motion(state, view, t, |st| find_fn(st, count, mode, ch, kind));
-        state.last_find = Some(FindChar { ch, kind });
-    }
+    let FindChar { ch, kind } = find;
+    apply_pane_motion(state, view, t, |st| find_fn(st, count, mode, ch, kind));
+    state.last_find = Some(find);
 }
 
 pub(in crate::editor) fn cmd_find_forward(
@@ -47,6 +46,7 @@ pub(in crate::editor) fn cmd_find_forward(
     t: CommandPane,
     count: usize,
     mode: MotionMode,
+    ch: char,
 ) -> Result<(), CommandError> {
     find_char(
         state,
@@ -54,7 +54,10 @@ pub(in crate::editor) fn cmd_find_forward(
         t,
         count,
         mode,
-        FindKind::Inclusive,
+        FindChar {
+            ch,
+            kind: FindKind::Inclusive,
+        },
         find_char_forward,
     );
     Ok(())
@@ -65,6 +68,7 @@ pub(in crate::editor) fn cmd_find_backward(
     t: CommandPane,
     count: usize,
     mode: MotionMode,
+    ch: char,
 ) -> Result<(), CommandError> {
     find_char(
         state,
@@ -72,7 +76,10 @@ pub(in crate::editor) fn cmd_find_backward(
         t,
         count,
         mode,
-        FindKind::Inclusive,
+        FindChar {
+            ch,
+            kind: FindKind::Inclusive,
+        },
         find_char_backward,
     );
     Ok(())
@@ -83,6 +90,7 @@ pub(in crate::editor) fn cmd_till_forward(
     t: CommandPane,
     count: usize,
     mode: MotionMode,
+    ch: char,
 ) -> Result<(), CommandError> {
     find_char(
         state,
@@ -90,7 +98,10 @@ pub(in crate::editor) fn cmd_till_forward(
         t,
         count,
         mode,
-        FindKind::Exclusive,
+        FindChar {
+            ch,
+            kind: FindKind::Exclusive,
+        },
         find_char_forward,
     );
     Ok(())
@@ -101,6 +112,7 @@ pub(in crate::editor) fn cmd_till_backward(
     t: CommandPane,
     count: usize,
     mode: MotionMode,
+    ch: char,
 ) -> Result<(), CommandError> {
     find_char(
         state,
@@ -108,7 +120,10 @@ pub(in crate::editor) fn cmd_till_backward(
         t,
         count,
         mode,
-        FindKind::Exclusive,
+        FindChar {
+            ch,
+            kind: FindKind::Exclusive,
+        },
         find_char_backward,
     );
     Ok(())

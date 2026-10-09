@@ -51,7 +51,7 @@ fn setup_with(
 }
 
 fn run_references(ed: &mut Editor) {
-    ed.execute_keymap_command("lsp-references".into(), Some(1), false);
+    ed.execute_keymap_command("lsp-references".into(), Some(1), false, None);
     ed.settle();
     ed.drain_lsp();
     ed.settle();

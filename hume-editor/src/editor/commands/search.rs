@@ -12,7 +12,10 @@ use hume_ops::search::{
 };
 use hume_ops::text_object::inner_word_impl;
 
-use super::super::input_stack::{PaneSnapshot, SearchLayer, SiftLayer};
+use super::super::input_stack::{
+    InvalidPattern, PaneSnapshot, SearchLayer, SearchOrigin, SiftFailure, SiftLayer, commit_search,
+    preview_search, sift_within,
+};
 use super::super::{EditorState, MiniBuffer};
 use super::{
     CommandPane, FocusedPane, doc, effective_word_chars, pane_selections, pane_view,
@@ -46,28 +49,100 @@ fn begin_search(
     );
 }
 
-/// Enter forward search mode.
+/// Search with `raw` as if it were typed at the search prompt and
+/// confirmed: the same preview and the same confirm the prompt runs, from
+/// the pane's current selections. An invalid pattern touches nothing; a
+/// pattern with no match is still recorded, as Enter records it, and
+/// reported as "no match".
+fn search_with_pattern(
+    state: &mut EditorState,
+    view: &EngineView,
+    fp: FocusedPane,
+    direction: SearchDirection,
+    mode: MotionMode,
+    raw: &str,
+) -> Result<(), CommandError> {
+    let t = fp.pane();
+    let bid = t.bid(view);
+    let sels = pane_selections(state, view, t).clone();
+    let origin = |sels| SearchOrigin {
+        pane: t.pid(),
+        bid,
+        sels,
+    };
+    let matched = preview_search(state, origin(sels.clone()), direction, mode, raw)
+        .map_err(|InvalidPattern| invalid_pattern(raw))?;
+    commit_search(state, view, raw.to_string(), direction, Some(origin(sels)));
+    state.history.begin_session_all();
+    if matched {
+        Ok(())
+    } else {
+        Err(CommandError::transient("no match"))
+    }
+}
+
+/// `raw` doesn't compile to a regex.
+fn invalid_pattern(raw: &str) -> CommandError {
+    CommandError::new(format!("invalid pattern: {raw}"))
+}
+
+/// Enter search mode with `prompt`, or search for `pattern` when given.
+fn search_or_prompt(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    fp: FocusedPane,
+    mode: MotionMode,
+    pattern: Option<&str>,
+    direction: SearchDirection,
+    prompt: &str,
+) -> Result<(), CommandError> {
+    match pattern {
+        None => {
+            begin_search(state, view, fp, direction, prompt);
+            Ok(())
+        }
+        Some(raw) => search_with_pattern(state, view, fp, direction, mode, raw),
+    }
+}
+
+/// Enter forward search mode, or search forward for `pattern` when given.
 pub(in crate::editor) fn cmd_search_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
     _count: usize,
-    _mode: MotionMode,
+    mode: MotionMode,
+    pattern: Option<&str>,
 ) -> Result<(), CommandError> {
-    begin_search(state, view, fp, SearchDirection::Forward, "/");
-    Ok(())
+    search_or_prompt(
+        state,
+        view,
+        fp,
+        mode,
+        pattern,
+        SearchDirection::Forward,
+        "/",
+    )
 }
 
-/// Enter backward search mode.
+/// Enter backward search mode, or search backward for `pattern` when given.
 pub(in crate::editor) fn cmd_search_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
     _count: usize,
-    _mode: MotionMode,
+    mode: MotionMode,
+    pattern: Option<&str>,
 ) -> Result<(), CommandError> {
-    begin_search(state, view, fp, SearchDirection::Backward, "?");
-    Ok(())
+    search_or_prompt(
+        state,
+        view,
+        fp,
+        mode,
+        pattern,
+        SearchDirection::Backward,
+        "?",
+    )
 }
 
 /// Ensure `t`'s buffer has an active search pattern.
@@ -219,17 +294,36 @@ pub(in crate::editor) fn cmd_select_all_matches(
 
 // ── Sift within (s) ──────────────────────────────────────────────────────────
 
+/// Open the sift prompt, or sift each selection down to `pattern`'s matches
+/// when given. Selections that are all bare cursors have nothing to sift: the
+/// prompt doesn't open, and a given pattern is refused.
 pub(in crate::editor) fn cmd_sift_within(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
+    pattern: Option<&str>,
 ) -> Result<(), CommandError> {
-    if pane_view(state, view, fp.pane())
+    let all_cursors = pane_view(state, view, fp.pane())
         .iter()
-        .all(|sel| sel.is_cursor())
-    {
+        .all(|sel| sel.is_cursor());
+    if all_cursors {
+        return match pattern {
+            Some(_) => Err(CommandError::transient(
+                "sift-within needs a selection wider than one character",
+            )),
+            None => Ok(()),
+        };
+    }
+    if let Some(raw) = pattern {
+        let t = fp.pane();
+        let sels = pane_selections(state, view, t).clone();
+        let sifted = sift_within(doc(state, view, t).text(), sels, raw).map_err(|e| match e {
+            SiftFailure::Invalid => invalid_pattern(raw),
+            SiftFailure::NoMatch => CommandError::transient("no match"),
+        })?;
+        set_pane_selections(state, view, t, sifted.into_selections());
         return Ok(());
     }
     // `SiftLayer::setup` snapshots the current selections once the layer

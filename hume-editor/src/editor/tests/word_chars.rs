@@ -111,6 +111,7 @@ fn select_word_nearest_on_line_follows_word_chars() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
+        None,
     );
     assert_eq!(state(&ed), "-[foo-bar ]>baz\n");
 }
@@ -138,6 +139,7 @@ fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_display_line(
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
+        None,
     );
     assert_eq!(state(&ed), "hello world -[foo-bar]>\n");
 }

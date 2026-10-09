@@ -24,7 +24,8 @@ fn set_register_prefix_passed_to_dispatch() {
         1,
         "paste-after must be dispatched once"
     );
-    let (name, _, _, _, reg) = &mock.dispatched_native[0];
+    let (name, _, call) = &mock.dispatched_native[0];
+    let reg = &call.register;
     assert_eq!(name, "paste-after");
     assert_eq!(
         *reg,
@@ -35,11 +36,11 @@ fn set_register_prefix_passed_to_dispatch() {
 
 /// `(call! "paste-after" bid 0)` must decode to `count: None` at the
 /// `run_command_sync` boundary: `0` is the Scheme spelling of "no count
-/// typed" (`parse_count_extend`), distinct from `Some(1)` even though both
+/// typed" (`parse_native_args`), distinct from `Some(1)` even though both
 /// apply the command once.
 ///
-/// Clamping `0` to `1` in `parse_count_extend` would make
-/// `dispatched_native[0].2` come out `Some(1)`.
+/// Clamping `0` to `1` in `parse_native_args` would make
+/// `dispatched_native[0].2.count` come out `Some(1)`.
 #[test]
 fn call_native_zero_count_decodes_to_none() {
     let mut h = host();
@@ -55,7 +56,8 @@ fn call_native_zero_count_decodes_to_none() {
     h.call_steel_cmd("paste-zero", None, vec![], &mut mock)
         .unwrap();
     assert_eq!(mock.dispatched_native.len(), 1);
-    let (name, _, count, _, _) = &mock.dispatched_native[0];
+    let (name, _, call) = &mock.dispatched_native[0];
+    let count = &call.count;
     assert_eq!(name, "paste-after");
     assert_eq!(
         *count, None,
@@ -85,8 +87,10 @@ fn set_register_prefix_sticky_across_multiple_calls() {
         2,
         "yank and delete must each be dispatched"
     );
-    let (name0, _, _, _, reg0) = &mock.dispatched_native[0];
-    let (name1, _, _, _, reg1) = &mock.dispatched_native[1];
+    let (name0, _, call0) = &mock.dispatched_native[0];
+    let reg0 = &call0.register;
+    let (name1, _, call1) = &mock.dispatched_native[1];
+    let reg1 = &call1.register;
     assert_eq!(name0, "yank");
     assert_eq!(*reg0, Some('5'), "prefix must be '5' for yank");
     assert_eq!(name1, "delete");
@@ -112,8 +116,10 @@ fn set_register_prefix_change_mid_body() {
     mock.native_names.insert("paste-after".to_string());
     h.call_steel_cmd("switch", None, vec![], &mut mock).unwrap();
     assert_eq!(mock.dispatched_native.len(), 2);
-    let (name0, _, _, _, reg0) = &mock.dispatched_native[0];
-    let (name1, _, _, _, reg1) = &mock.dispatched_native[1];
+    let (name0, _, call0) = &mock.dispatched_native[0];
+    let reg0 = &call0.register;
+    let (name1, _, call1) = &mock.dispatched_native[1];
+    let reg1 = &call1.register;
     assert_eq!(name0, "yank");
     assert_eq!(*reg0, Some('5'), "first dispatch must use register '5'");
     assert_eq!(name1, "paste-after");

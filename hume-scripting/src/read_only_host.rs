@@ -104,9 +104,7 @@ impl CommandHost for ReadOnlyHost<'_> {
         &mut self,
         _name: &str,
         _pane: PaneHandle,
-        _count: Option<usize>,
-        _extend: bool,
-        _register: Option<char>,
+        _call: crate::host::NativeCall,
     ) -> Result<bool, String> {
         Err(self.refuse("run_command_sync"))
     }

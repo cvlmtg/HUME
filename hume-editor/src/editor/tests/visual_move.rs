@@ -3,6 +3,7 @@ use super::*;
 use hume_editing::selection::StickyDisplayCol;
 use hume_platform::dirs::Dirs;
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
+use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
 
 /// A `DisplayLine`-tagged latch: what `j`/`k` write while wrapping, which
@@ -1084,6 +1085,7 @@ fn select_word_nearest_scopes_to_visual_display_line() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
+        None,
     );
 
     let sel = ed.current_view().primary();
@@ -1118,6 +1120,7 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
             std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
             Some(1),
             false,
+            None,
         )
     };
 
@@ -1157,6 +1160,7 @@ fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
+        None,
     );
 
     let sel = ed.current_view().primary();
@@ -1190,6 +1194,7 @@ fn select_word_nearest_does_not_absorb_previous_display_line_whitespace() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
+        None,
     );
 
     let sel = ed.current_view().primary();
@@ -1227,7 +1232,12 @@ fn select_word_absorbs_previous_display_line_whitespace_unlike_nearest_on_line()
         saved: None,
     });
 
-    ed.execute_keymap_command(std::borrow::Cow::Borrowed("select-word"), Some(1), false);
+    ed.execute_keymap_command(
+        std::borrow::Cow::Borrowed("select-word"),
+        Some(1),
+        false,
+        None,
+    );
 
     let sel = ed.current_view().primary();
     assert_eq!(
@@ -1250,6 +1260,7 @@ fn select_word_nearest_respects_word_selects_whitespace_off() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
+        None,
     );
 
     let sel = ed.current_view().primary();
@@ -1267,7 +1278,7 @@ fn select_word_nearest_respects_word_selects_whitespace_off() {
 // `CmdCtx.count: Option<usize>`, where `None` means "as if no count was typed".
 // The keymap trie leaves / WaitChar arm produce `None` for a bare keypress.
 // Steel can produce the same `None` explicitly: a script passes a count of
-// `0` (the Scheme spelling of "no count"), which `parse_count_extend` decodes
+// `0` (the Scheme spelling of "no count"), which `parse_native_args` decodes
 // to `None` before it ever reaches `CmdCtx`. A no-arg `call!`/typed `:move-down`
 // still defaults to `Some(1)` (buffer line): the script has to opt into
 // visual-display-line movement by name (passing `0`), it never happens implicitly.
@@ -1285,8 +1296,15 @@ fn run_command_sync_some_count_moves_buffer_line() {
     let pane = focused_pane(&ed);
     {
         let mut host = live_host!(ed);
-        host.run_command_sync("move-down", pane, Some(1), false, None)
-            .expect("run_command_sync must not error for move-down");
+        host.run_command_sync(
+            "move-down",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
+        .expect("run_command_sync must not error for move-down");
     }
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1332,7 +1350,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
     ed.scripting = Some(host);
     // Simulates `5<key>` bound to "steel-move-down": the outer count (5) must
     // have no bearing on the inner call's buffer-line-vs-visual-display-line choice.
-    ed.execute_keymap_command("steel-move-down".into(), Some(5), false);
+    ed.execute_keymap_command("steel-move-down".into(), Some(5), false, None);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1351,7 +1369,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
 /// `(call! "move-down" bid count extend)` must preserve bare-press visual-display-line
 /// movement: dispatching it with `None` (as a keymap trie leaf would for a
 /// bare keypress) injects `count = 0` into the lambda, which round-trips back
-/// to `None` through `parse_count_extend`: the count-forwarding contract
+/// to `None` through `parse_native_args`: the count-forwarding contract
 /// documented in `plugins.md`'s "Calling other commands" section.
 ///
 /// If `run_steel_command` injected `ctx.count.unwrap_or(1)` instead of `0`,
@@ -1373,7 +1391,7 @@ fn steel_wrapper_bare_dispatch_moves_visual_display_line() {
 
     ed.scripting = Some(host);
     // Simulates a bare `<key>` bound to "steel-jk": no count was typed.
-    ed.execute_keymap_command("steel-jk".into(), None, false);
+    ed.execute_keymap_command("steel-jk".into(), None, false, None);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1417,7 +1435,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
     .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    ed.execute_keymap_command("steel-jk".into(), Some(3), false);
+    ed.execute_keymap_command("steel-jk".into(), Some(3), false, None);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1449,7 +1467,7 @@ fn steel_call_move_down_zero_count_moves_visual_display_line() {
 
     ed.scripting = Some(host);
     // Outer count is Some(1), irrelevant since the body hardcodes 0.
-    ed.execute_keymap_command("steel-vis".into(), Some(1), false);
+    ed.execute_keymap_command("steel-vis".into(), Some(1), false, None);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1495,7 +1513,7 @@ fn generated_bare_name_wrapper_accepts_zero_count() {
     .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    ed.execute_keymap_command("steel-vis-direct".into(), Some(1), false);
+    ed.execute_keymap_command("steel-vis-direct".into(), Some(1), false, None);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),

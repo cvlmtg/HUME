@@ -35,10 +35,10 @@ See [Reading options from Scheme](plugins.md#reading-options-from-scheme) for `g
 
 | Call | Effect |
 |------|--------|
-| `(bind-key! mode key-string cmd-name)` | Bind a key in `'normal`, `'insert`, or `'extend` mode |
+| `(bind-key! mode key-string cmd-name)` | Bind a key in `'normal`, `'insert`, or `'extend` mode. A built-in command that needs a character is refused; bind it with `bind-wait-char!` |
 | `(bind-key-extend! mode key-string cmd-name)` | Same, but the binding always extends the selection |
 | `(unbind-key! mode key-string)` | Remove a binding |
-| `(bind-wait-char! mode key-string cmd-name)` | Bind a key sequence that captures the *next* keypress instead of looking it up; read it back with `(pending-char)` |
+| `(bind-wait-char! mode key-string cmd-name)` | Bind a key sequence that captures the *next* keypress instead of looking it up; read it back with `(pending-char)`. A built-in command that takes no character is refused |
 | `(bind-keys! mode (key cmd) ...)`, `(bind-keys-extend! mode (key cmd) ...)`, `(unbind-keys! mode key ...)` | Batched forms of the three above |
 | `(set-register-prefix! name)` | Target a specific register (`0`–`9`, `k`, `c`, `b`) for the rest of the current command body's `call!`s |
 
@@ -50,7 +50,7 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 |------|--------|
 | `(define-command! name doc proc #:repeatable #:inline-output)` | Register `name` as an editor command |
 | `(define-typed-command! name doc proc #:inline-output #:complete)` | Register `name` as a typed command, reachable as `:name` |
-| `(call! name args ...)` | Dispatch any editor command (built-in or Scheme-defined), activating its plugin on demand |
+| `(call! name args ...)` | Dispatch any editor command (built-in or Scheme-defined), activating its plugin on demand. A built-in takes `pane`, an optional count and extend flag, then the character or pattern the few that need one act with; see [Calling other commands](plugins.md#calling-other-commands) |
 | `(request-wait-char! cmd-name)` | From inside a running command, dispatch `cmd-name` once the user types a character |
 | `(pending-char)` | Read the character captured by a `bind-wait-char!` binding or `request-wait-char!`, or `#f` outside that context |
 | `(command-plugin name)` | The id string of the plugin that registered command `name`: `"user"` for a top-level `init.scm` definition, `"hume"` for a built-in or a name that isn't a command |

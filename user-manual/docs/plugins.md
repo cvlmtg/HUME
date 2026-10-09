@@ -183,6 +183,26 @@ For a built-in command, `call!` returns `#f` when the command refused (a too-sma
 Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`: only editor commands work here. Calling one logs an error and does nothing, so `(call! "write")` will not save.
 :::
 
+A few built-ins take one more argument, after the optional count and extend flag: what the command acts with.
+
+- `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add` need a character, given as a one-character string or a Scheme character: `(call! "find-forward" pane "x")`, `(call! "find-forward" pane 2 #\x)`.
+- `search-forward`, `search-backward`, and `sift-within` take a pattern. With one, they work as if you had typed it at their prompt and pressed Enter, without opening the prompt. A search with no match still becomes the current search, as it does after Enter, and `call!` returns `#f`. So does an invalid or empty pattern, which is also reported in `:messages` and leaves the current search as it was, and a `sift-within` that finds no match.
+
+Calling one of the character commands without its character raises an error, and so does passing an argument to a command that takes none, or a character to a command that takes a pattern.
+
+Together, these make a command that removes trailing spaces and tabs from the selected lines, or from every line when no selection covers whole lines:
+
+```scheme
+(define-typed-command! "trim-trailing" "Remove trailing spaces and tabs."
+  (lambda (pane)
+    (when (selections-charwise? pane)
+      (call! "select-all" pane))
+    (when (call! "sift-within" pane "(?m)[ \t]+$")
+      (call! "delete-selection" pane))))
+```
+
+When nothing matches, `sift-within` leaves the selections as they were and returns `#f`, so the `when` is what keeps the command from deleting them.
+
 When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed". This is how `move-down`/`move-up` decide between visual-line and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
 
 ### Reading selections
@@ -242,7 +262,7 @@ Some commands need a character argument from the user (like surround operations)
     (request-wait-char! "replace")))
 ```
 
-HUME shows nothing while it waits, so make it obvious from context that a character is expected.
+HUME shows nothing while it waits, so make it obvious from context that a character is expected. When you already have the character, pass it to the built-in directly instead (see [Calling other commands](#calling-other-commands)).
 
 ### Register prefix
 

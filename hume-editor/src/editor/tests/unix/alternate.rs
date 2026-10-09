@@ -1,5 +1,6 @@
 use super::*;
 use hume_scripting::host::CommandHost;
+use hume_scripting::host::NativeCall;
 
 #[test]
 fn alternate_buffer_is_previous_focused() {
@@ -28,7 +29,14 @@ fn goto_alternate_buffer_switches_to_alternate_and_is_involutive() {
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-alternate-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-alternate-buffer must not error");
     assert_eq!(
         ed.focused_buffer_id(),
@@ -39,7 +47,14 @@ fn goto_alternate_buffer_switches_to_alternate_and_is_involutive() {
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-alternate-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-alternate-buffer must not error");
     assert_eq!(
         ed.focused_buffer_id(),
@@ -60,7 +75,14 @@ fn goto_alternate_buffer_pushes_jump_entry() {
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-alternate-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-alternate-buffer must not error");
     assert_ne!(
         ed.focused_buffer_id(),
@@ -70,7 +92,14 @@ fn goto_alternate_buffer_pushes_jump_entry() {
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("jump-backward", pane, Some(1), false, None)
+        .run_command_sync(
+            "jump-backward",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("jump-backward must not error");
     assert_eq!(
         ed.focused_buffer_id(),
@@ -140,7 +169,14 @@ fn alternate_follows_focus_order_not_open_order() {
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-alternate-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-alternate-buffer must not error");
     ed.settle();
     assert_eq!(ed.focused_buffer_id(), id_c);
@@ -154,7 +190,14 @@ fn alternate_follows_focus_order_not_open_order() {
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-alternate-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-alternate-buffer must not error");
     ed.settle();
     assert_eq!(

@@ -8,6 +8,7 @@ use hume_engine::pipeline::LayoutTree;
 use hume_grid::Rect;
 use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
+use hume_scripting::host::NativeCall;
 
 #[test]
 fn tabnew_opens_a_fresh_pane_in_a_new_tab_and_focuses_it() {
@@ -69,7 +70,7 @@ fn tab_new_mappable_command_opens_a_fresh_tab_viewing_the_focused_buffer() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("tab-new", pane, None, false, None)
+        .run_command_sync("tab-new", pane, NativeCall::default())
         .expect("tab-new must not error");
 
     assert_eq!(ed.state.tabs.len(), 2, "tab-new must add a tab");
@@ -451,7 +452,7 @@ fn goto_next_tab_via_call_while_in_insert_exits_insert_and_commits_the_outgoing_
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-next-tab", pane, None, false, None)
+        .run_command_sync("goto-next-tab", pane, NativeCall::default())
         .expect("goto-next-tab must not error");
 
     assert_eq!(

@@ -2,7 +2,8 @@ use std::borrow::Cow;
 
 use crate::editor::commands::NativeBody;
 use crate::editor::registry::{
-    CommandRegistry, EditorCmdBody, FocusedCmdFn, MappableCommand, PaneCmdFn, SelectionTracking,
+    CommandRegistry, EditorCmdBody, FocusedCmdFn, FocusedTextCmdFn, MappableCommand, PaneCharCmdFn,
+    PaneCmdFn, SelectionTracking,
 };
 
 // Builder for EditorCmd registration. Each method sets one field (a bool,
@@ -117,12 +118,12 @@ fn ecmd_builder(name: &'static str, doc: &'static str, fun: EditorCmdBody) -> Ed
     }
 }
 
-// Two constructors, one per `EditorCmdBody` variant: a call site names its
+// One constructor per `EditorCmdBody` variant: a call site names its
 // command's shape by which one it calls, and the compiler rejects a
 // function pointer of the wrong shape (see `EditorCmdBody`'s own doc). No
 // bare `ecmd` that takes a pre-built `EditorCmdBody`: that would let a
 // registration build the enum value without ever naming its shape at the
-// call site, the one thing this two-way split exists to force.
+// call site, the one thing this split exists to force.
 
 /// A command needing any pane showing the target buffer, not necessarily
 /// the focused one. See [`crate::editor::registry::EditorCmdBody::Pane`].
@@ -138,4 +139,24 @@ pub(super) fn ecmd_focused(
     fun: FocusedCmdFn,
 ) -> EditorCmdBuilder {
     ecmd_builder(name, doc, EditorCmdBody::FocusedPane(fun))
+}
+
+/// An [`ecmd_pane`] command that takes a character operand. See
+/// [`crate::editor::registry::EditorCmdBody::PaneChar`].
+pub(super) fn ecmd_pane_char(
+    name: &'static str,
+    doc: &'static str,
+    fun: PaneCharCmdFn,
+) -> EditorCmdBuilder {
+    ecmd_builder(name, doc, EditorCmdBody::PaneChar(fun))
+}
+
+/// An [`ecmd_focused`] command that takes an optional text operand in place
+/// of its prompt. See [`crate::editor::registry::EditorCmdBody::FocusedText`].
+pub(super) fn ecmd_focused_text(
+    name: &'static str,
+    doc: &'static str,
+    fun: FocusedTextCmdFn,
+) -> EditorCmdBuilder {
+    ecmd_builder(name, doc, EditorCmdBody::FocusedText(fun))
 }

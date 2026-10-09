@@ -426,8 +426,9 @@ pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 #[cfg(test)]
 pub(in crate::editor) use pane::open_pane_in_layout;
 pub(in crate::editor) use pipeline::{
-    BindError, BoundCommand, CommandPane, FocusedPane, NativeBody, TargetError, repeat_slot_owned,
-    run, run_body, step_paste_commit, step_stamp_repeatable,
+    BindError, BoundCommand, CommandPane, FocusedBindError, FocusedPane, NativeBody, Operand,
+    TargetError, repeat_slot_owned, report_arg_error, run, run_body, steel_char_operand,
+    step_paste_commit, step_stamp_repeatable,
 };
 
 // DisplayLineMap-dependent commands live in visual_move.rs; re-export for the registry glob.

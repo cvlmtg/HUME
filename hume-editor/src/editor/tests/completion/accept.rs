@@ -15,7 +15,7 @@ use hume_rope::offset::CharOffset;
 const ACCEPT_0: &str = r#"(define-command! "finish" "" (lambda () (completion-accept! 0)))"#;
 
 fn accept_via_steel(ed: &mut Editor) {
-    ed.execute_keymap_command("finish".into(), None, false);
+    ed.execute_keymap_command("finish".into(), None, false, None);
 }
 
 // ── The insertText fallback over the token ────────────────────────────────
@@ -88,7 +88,7 @@ fn accept_with_no_text_edit_replaces_the_run_of_the_sources_token_chars() {
     );
     ed.state
         .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
-    ed.execute_keymap_command("completion-trigger".into(), None, false);
+    ed.execute_keymap_command("completion-trigger".into(), None, false, None);
     ed.settle();
     accept_via_steel(&mut ed);
     assert_eq!(ed.doc().text().to_string(), "foo-bar bar\n");
@@ -813,7 +813,7 @@ fn multi_cursor_accept_is_one_undo_step_from_steel_outside_insert_mode() {
     // By name rather than `u`: the raw-pushed Insert layer has no session
     // bookkeeping to tear down, so it is never left. `undo` runs as the
     // plain (no open group) command it is.
-    ed.execute_keymap_command("undo".into(), None, false);
+    ed.execute_keymap_command("undo".into(), None, false, None);
     assert_eq!(ed.doc().text().to_string(), "abcdef ghijkl\n");
 }
 

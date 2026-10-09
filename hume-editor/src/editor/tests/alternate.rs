@@ -1,5 +1,6 @@
 use super::*;
 use hume_scripting::host::CommandHost;
+use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -74,9 +75,10 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
         .run_command_sync(
             "goto-alternate-buffer",
             PaneHandle::with_pane(baz_bid, pid_b),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("goto-alternate-buffer on B must not error");
     assert!(ran);
@@ -96,9 +98,10 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
         .run_command_sync(
             "goto-alternate-buffer",
             PaneHandle::with_pane(bar_bid, pid_b),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("goto-alternate-buffer on B must not error");
     assert!(ran);
@@ -119,7 +122,14 @@ fn goto_alternate_buffer_warns_when_no_alternate() {
     let id_before = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     let ran = live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-alternate-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-alternate-buffer must not error");
     assert!(!ran, "a refusal with no alternate must report Ok(false)");
     assert_eq!(

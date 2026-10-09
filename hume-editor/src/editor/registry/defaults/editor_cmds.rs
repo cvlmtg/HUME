@@ -1,7 +1,7 @@
 use crate::editor::commands::*;
 use crate::editor::registry::CommandRegistry;
 
-use super::builder::{ecmd_focused, ecmd_pane};
+use super::builder::{ecmd_focused, ecmd_focused_text, ecmd_pane, ecmd_pane_char};
 
 impl CommandRegistry {
     pub(super) fn register_editor_cmds(&mut self) {
@@ -225,31 +225,31 @@ impl CommandRegistry {
         )
         .reg(self);
 
-        // ── Editor commands — find / till (read pending_char) ─────────────────
-        ecmd_pane(
+        // ── Editor commands — find / till (take a character) ──────────────────
+        ecmd_pane_char(
             "find-forward",
-            "Find next occurrence of a character (inclusive, forward).",
+            "Find next occurrence of a character (inclusive, forward). From `call!`, pass the character as an argument.",
             cmd_find_forward,
         )
         .extendable()
         .reg(self);
-        ecmd_pane(
+        ecmd_pane_char(
             "find-backward",
-            "Find previous occurrence of a character (inclusive, backward).",
+            "Find previous occurrence of a character (inclusive, backward). From `call!`, pass the character as an argument.",
             cmd_find_backward,
         )
         .extendable()
         .reg(self);
-        ecmd_pane(
+        ecmd_pane_char(
             "till-forward",
-            "Move to just before next occurrence of a character (exclusive).",
+            "Move to just before next occurrence of a character (exclusive). From `call!`, pass the character as an argument.",
             cmd_till_forward,
         )
         .extendable()
         .reg(self);
-        ecmd_pane(
+        ecmd_pane_char(
             "till-backward",
-            "Move to just after previous occurrence of a character (exclusive).",
+            "Move to just after previous occurrence of a character (exclusive). From `call!`, pass the character as an argument.",
             cmd_till_backward,
         )
         .extendable()
@@ -269,10 +269,10 @@ impl CommandRegistry {
         .extendable()
         .reg(self);
 
-        // ── Editor commands — replace (reads pending_char) ───────────────────
-        ecmd_pane(
+        // ── Editor commands — replace (takes a character) ────────────────────
+        ecmd_pane_char(
             "replace",
-            "Replace every character in each selection with the next typed character.",
+            "Replace every character in each selection with the next typed character. From `call!`, pass the character as an argument.",
             cmd_replace,
         )
         .repeatable()
@@ -349,15 +349,15 @@ impl CommandRegistry {
         .reg(self);
 
         // ── Editor commands — search ──────────────────────────────────────────
-        ecmd_focused(
+        ecmd_focused_text(
             "search-forward",
-            "Enter search mode (forward).",
+            "Enter search mode (forward). From `call!`, pass a pattern to search without opening the prompt.",
             cmd_search_forward,
         )
         .reg(self);
-        ecmd_focused(
+        ecmd_focused_text(
             "search-backward",
-            "Enter search mode (backward).",
+            "Enter search mode (backward). From `call!`, pass a pattern to search without opening the prompt.",
             cmd_search_backward,
         )
         .reg(self);
@@ -385,9 +385,9 @@ impl CommandRegistry {
         .reg(self);
 
         // ── Editor commands — sift ────────────────────────────────────────────
-        ecmd_focused(
+        ecmd_focused_text(
             "sift-within",
-            "Sift each selection down to the regex matches inside it.",
+            "Narrow each selection down to its regex matches. From `call!`, pass a pattern to sift without opening the prompt.",
             cmd_sift_within,
         )
         .reg(self);

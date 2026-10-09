@@ -101,7 +101,7 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             // a repeatable command from stamping over the session's owner.
             let fallback = InsertInput::Binding { name: cmd.name };
             ed.with_dot_capture(Some(fallback), |ed| {
-                ed.with_insert_key_dispatch(|ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
+                ed.with_insert_key_dispatch(|ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX, None));
             });
             return;
         }

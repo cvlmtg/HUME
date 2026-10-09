@@ -187,7 +187,7 @@ fn f_then_esc_cancels_without_side_effects() {
     ed.handle_key(key_esc());
 
     assert!(ed.state.wait_char.is_none(), "wait_char cleared after Esc");
-    assert!(ed.state.pending_char.is_none(), "pending_char not set");
+    assert!(ed.state.last_find.is_none(), "no find recorded");
     assert_eq!(
         state(&ed),
         "-[h]>ello a\n",

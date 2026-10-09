@@ -7,7 +7,7 @@ use hume_ops::surround::{
     cmd_surround_double_quote, cmd_surround_paren, cmd_surround_single_quote,
 };
 
-use super::builder::ecmd_pane;
+use super::builder::ecmd_pane_char;
 
 impl CommandRegistry {
     pub(super) fn register_surround(&mut self) {
@@ -56,9 +56,9 @@ impl CommandRegistry {
         );
 
         // ── Surround add ──────────────────────────────────────────────────────
-        ecmd_pane(
+        ecmd_pane_char(
             "surround-add",
-            "Wrap each selection with a delimiter pair. Reads the next typed character to determine the pair.",
+            "Wrap each selection with a delimiter pair. Reads the next typed character to determine the pair. From `call!`, pass the character as an argument.",
             cmd_surround_add,
         )
         .repeatable()

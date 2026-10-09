@@ -1,13 +1,14 @@
 //! The `Search` layer: the `/`/`?`-prompt minibuffer mode.
 
+use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
-use hume_ops::search::{MatchScan, MatchSeed};
+use hume_ops::search::{MatchScan, MatchSeed, SearchDirection};
 
 use super::super::jump_list::JumpEntry;
-use super::super::minibuf::history::{HistoryDir, HistoryStore};
+use super::super::minibuf::history::{HistoryDir, HistoryKind, HistoryStore};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::search::SearchPattern;
 use super::super::{Editor, EditorState, commands, search};
@@ -79,35 +80,20 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             ed.state.truncate_layers(&ed.view, r);
         }
         MiniBufferEvent::Confirm(pattern) => {
-            // Record into the correct search ring before truncating.
-            let kind = ed
-                .state
-                .input
-                .minibuf()
-                .and_then(|m| HistoryStore::kind_for_prompt(&m.prompt));
-            if let Some(k) = kind {
-                ed.state.history.get_mut(k).push(pattern.clone());
-            }
-            // Persist pattern in 's' register for future n/N.
-            ed.state.registers.set_search_register(pattern);
-            // Record the pre-search position in the jump list before
-            // discarding it, unless the match confirmed is the position
-            // search started from (`record_if_moved`). The `Confirm`
-            // arm does its own accept work (taking the stash) before
-            // truncating; teardown's `Search` arm restores it on every
-            // *other* removal, so it's already gone here and would be a
-            // no-op if left to teardown.
-            let pre_sels = ed
-                .state
-                .input
-                .at_mut::<SearchLayer>(r)
-                .and_then(|s| Some((s.snap.pane(), s.snap.take_selections()?)));
-            if let Some((pane, (bid, sels))) = pre_sels
-                && let Some(t) = commands::CommandPane::existing(&ed.view, pane)
-            {
-                let entry = JumpEntry::new(sels, ed.state.buffers.get(bid).text(), bid);
-                crate::editor::jump_list::record_if_moved(&mut ed.state, &ed.view, t, entry);
-            }
+            // The `Confirm` arm does its own accept work (taking the stash)
+            // before truncating; teardown's `Search` arm restores it on
+            // every *other* removal, so it's already gone here and would be
+            // a no-op if left to teardown.
+            let pre = ed.state.input.at_mut::<SearchLayer>(r).and_then(|s| {
+                let (bid, sels) = s.snap.take_selections()?;
+                Some(SearchOrigin {
+                    pane: s.snap.pane(),
+                    bid,
+                    sels,
+                })
+            });
+            let direction = ed.state.search.direction;
+            commit_search(&mut ed.state, &ed.view, pattern, direction, pre);
             // search_pattern stays alive on the buffer for immediate n/N
             // without recompile. The stash is already taken above, so
             // teardown's `Search` arm (gated on the same stash) won't
@@ -165,42 +151,17 @@ fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
     update_live_search(ed, r);
 }
 
-/// Recompile the regex from the current mini-buffer input, warm the match
-/// cache, and jump to the first match from the pre-search position: every
-/// selection independently when the input's `m` flag is set, the primary
-/// alone otherwise. Both are [`MatchScan::advance`]/[`MatchScan::advance_all`]
-/// with the `AtSelection` seed; `search_jump` (`commands/search.rs`) is the
-/// same scan with `PastSelection`, for `n`/`N`.
-///
-/// Called on every keystroke while in Search mode. Targets the session's own
-/// pane and the buffer its snapshot was read from, the only text the
-/// snapshot's selections belong to, as cancel-restore/clear below do (see
+/// Recompile the regex from the current mini-buffer input and preview it
+/// from the pre-search position ([`preview_search`]). Called on every
+/// keystroke while in Search mode. Targets the session's own pane and the
+/// buffer its snapshot was read from, the only text the snapshot's
+/// selections belong to, as cancel-restore/clear below do (see
 /// [`PaneSnapshot`]'s own doc).
-///
-/// Warms the match cache ([`search::ops::update_buffer_matches`]) before
-/// scanning so every selection's hop binary-searches it instead of running
-/// its own full-buffer regex scan. The per-frame highlight rebuild would
-/// warm the same cache moments later anyway, so this spends that scan once
-/// per keystroke instead of once per selection.
 fn update_live_search(ed: &mut Editor, r: LayerRef) {
     let pattern = match ed.state.input.minibuf() {
         Some(mb) if !mb.input.is_empty() => mb.input.clone(),
         _ => return,
     };
-
-    let Some(sp) = SearchPattern::compile(&pattern) else {
-        // Invalid regex in progress: clear pattern so highlights disappear.
-        if let Some((bid, _)) = ed
-            .state
-            .input
-            .at::<SearchLayer>(r)
-            .and_then(|s| s.snap.selections())
-        {
-            search::ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.panes.state, bid);
-        }
-        return;
-    };
-
     let direction = ed.state.search.direction;
     let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
         return;
@@ -210,15 +171,65 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
     } else {
         MotionMode::Move
     };
-    let Some((bid, sels)) = search.snap.selections().map(|(bid, s)| (bid, s.clone())) else {
+    let Some(origin) = search.snap.selections().map(|(bid, sels)| SearchOrigin {
+        pane: search.snap.pane(),
+        bid,
+        sels: sels.clone(),
+    }) else {
         return;
     };
-    let pane = search.snap.pane();
-    let multi = sp.multi();
-    ed.state.buffers.get_mut(bid).search_pattern = Some(sp);
-    search::ops::update_buffer_matches(&mut ed.state.buffers, bid);
 
-    let buf = ed.state.buffers.get(bid);
+    let bid = origin.bid;
+    match preview_search(&mut ed.state, origin, direction, mode, &pattern) {
+        Ok(true) => {}
+        // No match: restore position to pre-search.
+        Ok(false) => restore_search_snapshot(ed, r),
+        // Invalid regex in progress: clear pattern so highlights disappear.
+        Err(InvalidPattern) => {
+            search::ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.panes.state, bid);
+        }
+    }
+}
+
+/// `raw` doesn't compile to a search regex.
+pub(in crate::editor) struct InvalidPattern;
+
+/// Where a search starts: pane `pane`'s selections `sels` on buffer `bid`.
+pub(in crate::editor) struct SearchOrigin {
+    pub(in crate::editor) pane: PaneId,
+    pub(in crate::editor) bid: BufferId,
+    pub(in crate::editor) sels: SelectionSet,
+}
+
+/// Make `raw` the search pattern of `origin`'s buffer and select its first
+/// match from `origin`'s selections: every selection independently when the
+/// input's `m` flag is set, the primary alone otherwise. Both are
+/// [`MatchScan::advance`]/[`MatchScan::advance_all`] with the `AtSelection`
+/// seed; `search_jump` (`commands/search.rs`) is the same scan with
+/// `PastSelection`, for `n`/`N`.
+///
+/// `Ok(false)` when nothing matched: the pattern is stored but the
+/// selections are left as they were. `Err` touches nothing.
+///
+/// Warms the match cache ([`search::ops::update_buffer_matches`]) before
+/// scanning so every selection's hop binary-searches it instead of running
+/// its own full-buffer regex scan. The per-frame highlight rebuild would
+/// warm the same cache moments later anyway, so this spends that scan once
+/// instead of once per selection.
+pub(in crate::editor) fn preview_search(
+    state: &mut EditorState,
+    origin: SearchOrigin,
+    direction: SearchDirection,
+    mode: MotionMode,
+    raw: &str,
+) -> Result<bool, InvalidPattern> {
+    let SearchOrigin { pane, bid, sels } = origin;
+    let sp = SearchPattern::compile(raw).ok_or(InvalidPattern)?;
+    let multi = sp.multi();
+    state.buffers.get_mut(bid).search_pattern = Some(sp);
+    search::ops::update_buffer_matches(&mut state.buffers, bid);
+
+    let buf = state.buffers.get(bid);
     let cached = buf.search_matches.matches(buf.text());
     let scan = MatchScan {
         text: buf.text(),
@@ -229,30 +240,44 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
         seed: MatchSeed::AtSelection,
     };
 
-    let state = EditState::bind(buf.text(), sels);
-    let matched = if multi {
-        match scan.advance_all(state, 1) {
-            Some((new_state, _wrapped)) => {
-                let text = new_state.text().clone();
-                ed.state.panes.state[pane][bid].set_selections(new_state.into_selections(), &text);
-                true
-            }
-            None => false,
-        }
+    let current = EditState::bind(buf.text(), sels);
+    let moved = if multi {
+        scan.advance_all(current, 1)
+            .map(|(new_state, _wrapped)| new_state)
     } else {
-        match scan.advance(state.view().primary(), 1) {
-            Some((new_sel, _wrapped)) => {
-                let text = state.text().clone();
-                let moved = state.replace_primary(new_sel).into_selections();
-                ed.state.panes.state[pane][bid].set_selections(moved, &text);
-                true
-            }
-            None => false,
-        }
+        scan.advance(current.view().primary(), 1)
+            .map(|(new_sel, _wrapped)| current.replace_primary(new_sel))
     };
-    if !matched {
-        // No match: restore position to pre-search.
-        restore_search_snapshot(ed, r);
+    let Some(moved) = moved else {
+        return Ok(false);
+    };
+    let text = moved.text().clone();
+    state.panes.state[pane][bid].set_selections(moved.into_selections(), &text);
+    Ok(true)
+}
+
+/// Accept `raw` as the confirmed search: record it in `direction`'s history
+/// ring and the `s` register (for `n`/`N`), and record `pre`, the pane's
+/// selections before the search, in its jump list unless the search left
+/// them where they were (`record_if_moved`).
+pub(in crate::editor) fn commit_search(
+    state: &mut EditorState,
+    view: &EngineView,
+    raw: String,
+    direction: SearchDirection,
+    pre: Option<SearchOrigin>,
+) {
+    let kind = match direction {
+        SearchDirection::Forward => HistoryKind::SearchForward,
+        SearchDirection::Backward => HistoryKind::SearchBackward,
+    };
+    state.history.get_mut(kind).push(raw.clone());
+    state.registers.set_search_register(raw);
+    if let Some(SearchOrigin { pane, bid, sels }) = pre
+        && let Some(t) = commands::CommandPane::existing(view, pane)
+    {
+        let entry = JumpEntry::new(sels, state.buffers.get(bid).text(), bid);
+        crate::editor::jump_list::record_if_moved(state, view, t, entry);
     }
 }
 

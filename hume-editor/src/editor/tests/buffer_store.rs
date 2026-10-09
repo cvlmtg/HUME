@@ -1,4 +1,5 @@
 use super::*;
+use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
 
 // ── BufferStore + buffer choke-points ─────────────────────────────────────────
@@ -174,28 +175,63 @@ fn goto_next_prev_buffer_cycle() {
     // Still focused on a. goto-next-buffer → b.
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-next-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-next-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-next-buffer must not error");
     assert_eq!(ed.focused_buffer_id(), bid_b, "advances to b");
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-next-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-next-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-next-buffer must not error");
     assert_eq!(ed.focused_buffer_id(), bid_c, "advances to c");
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-next-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-next-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-next-buffer must not error");
     assert_eq!(ed.focused_buffer_id(), bid_a, "wraps to a");
     // goto-prev-buffer from a → c.
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-prev-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-prev-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-prev-buffer must not error");
     assert_eq!(ed.focused_buffer_id(), bid_c, "wraps to c");
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-prev-buffer", pane, Some(1), false, None)
+        .run_command_sync(
+            "goto-prev-buffer",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
         .expect("goto-prev-buffer must not error");
     assert_eq!(ed.focused_buffer_id(), bid_b, "back to b");
 }

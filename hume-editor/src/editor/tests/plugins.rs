@@ -77,7 +77,7 @@ fn keypress_dispatch_command_table_desync_reports_error() {
     ed.scripting = Some(ScriptingHost::new(&Dirs::none()));
 
     let before = state(&ed);
-    ed.execute_keymap_command("ghost-cmd".into(), Some(1), false);
+    ed.execute_keymap_command("ghost-cmd".into(), Some(1), false, None);
 
     assert_eq!(
         state(&ed),

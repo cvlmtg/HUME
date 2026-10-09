@@ -283,17 +283,16 @@ pub(in crate::editor) fn cmd_redo(
 
 // ── Replace / surround ────────────────────────────────────────────────────────
 
-/// Replace every character in each selection with the next typed character.
+/// Replace every character in each selection with `ch`.
 pub(in crate::editor) fn cmd_replace(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
     _count: usize,
     _mode: MotionMode,
+    ch: char,
 ) -> Result<(), CommandError> {
-    if let Some(ch) = state.pending_char.take() {
-        apply_pane_edit(state, view, t, |s| replace_selections(s, ch))?;
-    }
+    apply_pane_edit(state, view, t, |s| replace_selections(s, ch))?;
     Ok(())
 }
 
@@ -384,17 +383,16 @@ pub(in crate::editor) fn cmd_delete_word_backward(
     Ok(())
 }
 
-/// Wrap every selection with a pair determined by the next typed character.
+/// Wrap every selection with the pair `ch` opens or closes, or with `ch` on
+/// both sides when it is neither.
 pub(in crate::editor) fn cmd_surround_add(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
     _count: usize,
     _mode: MotionMode,
+    ch: char,
 ) -> Result<(), CommandError> {
-    let Some(ch) = state.pending_char.take() else {
-        return Ok(());
-    };
     let (_ap_enabled, ap_pairs) = super::doc(state, view, t)
         .overrides
         .auto_pairs_ref(&state.settings);

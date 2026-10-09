@@ -59,7 +59,7 @@ fn setup_over(
 fn run_actions(ed: &mut Editor) {
     // lsp-code-actions is key-bindable, not typed: dispatch through the
     // keymap pipeline, the way its bound key (`z a`) would.
-    ed.execute_keymap_command("lsp-code-actions".into(), Some(1), false);
+    ed.execute_keymap_command("lsp-code-actions".into(), Some(1), false, None);
     ed.settle();
     ed.drain_lsp();
     ed.settle();
@@ -570,7 +570,7 @@ fn stale_response_after_a_buffer_switch_opens_no_menu() {
     // deliver the response (and close the race window) before the switch
     // ever happens. Same technique as `lsp_hover.rs`'s own
     // `stale_response_after_a_buffer_switch_shows_no_popup`.
-    ed.execute_keymap_command("lsp-code-actions".into(), Some(1), false);
+    ed.execute_keymap_command("lsp-code-actions".into(), Some(1), false, None);
 
     let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();

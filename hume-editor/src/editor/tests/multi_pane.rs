@@ -2,6 +2,7 @@ use super::*;
 use crate::editor::commands::open_pane_in_layout;
 use hume_engine::providers::HighlightTier;
 use hume_grid::Rect;
+use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
 
 // ── Multi-pane contract tests ──────────────────────────────────────────────────
@@ -2004,9 +2005,7 @@ fn close_pane_under_open_session(ed: &mut Editor, keys: &str) -> PaneId {
         .run_command_sync(
             "pane-close",
             PaneHandle::with_pane(bid, pid_b),
-            None,
-            false,
-            None,
+            NativeCall::default(),
         )
         .expect("pane-close must succeed");
     ed.settle();

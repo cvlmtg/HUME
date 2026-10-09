@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::editor::commands::{CommandPane, FocusedPane, NativeBody};
+use crate::editor::commands::{CommandPane, FocusedPane, NativeBody, Operand};
 use crate::editor::error::CommandError;
 use hume_editing::edit::Edited;
 use hume_editing::state::EditState;
@@ -32,8 +32,35 @@ pub(in crate::editor) type FocusedCmdFn = fn(
     MotionMode,
 ) -> Result<(), CommandError>;
 
+/// Function pointer for an [`EditorCmdBody::PaneChar`] handler: a
+/// [`PaneCmdFn`] that also takes the character its operand names (the key a
+/// wait-char binding read, or a `call!` argument). The character is required:
+/// dispatch refuses the command before it runs when none was given.
+pub(in crate::editor) type PaneCharCmdFn = fn(
+    &mut super::super::EditorState,
+    &mut EngineView,
+    CommandPane,
+    usize,
+    MotionMode,
+    char,
+) -> Result<(), CommandError>;
+
+/// Function pointer for an [`EditorCmdBody::FocusedText`] handler: a
+/// [`FocusedCmdFn`] that also takes an optional text operand. `None` means
+/// the user is to type it (the handler opens its prompt); `Some` is the text
+/// a script passed in its place.
+pub(in crate::editor) type FocusedTextCmdFn = fn(
+    &mut super::super::EditorState,
+    &mut EngineView,
+    FocusedPane,
+    usize,
+    MotionMode,
+    Option<&str>,
+) -> Result<(), CommandError>;
+
 /// Body shape for [`MappableCommand::EditorCmd`]'s `fun` field: decides at
-/// compile time whether `(call! "cmd" pane)` may act on a non-focused pane.
+/// compile time whether `(call! "cmd" pane)` may act on a non-focused pane,
+/// and which operand, if any, the command takes.
 /// Motion/Selection/Edit need no such field, since a pure body can only reach
 /// the buffer it is handed.
 ///
@@ -50,6 +77,8 @@ pub(in crate::editor) type FocusedCmdFn = fn(
 pub(in crate::editor) enum EditorCmdBody {
     Pane(PaneCmdFn),
     FocusedPane(FocusedCmdFn),
+    PaneChar(PaneCharCmdFn),
+    FocusedText(FocusedTextCmdFn),
 }
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────
@@ -549,6 +578,18 @@ impl MappableCommand {
                 aligns_view: false,
                 manages_own_session: false,
             },
+        }
+    }
+
+    /// The operand a native command takes; `None` for a Steel-backed or lazy
+    /// command, which reads an optional character itself.
+    pub(in crate::editor) fn operand(&self) -> Option<Operand> {
+        match self {
+            Self::Motion { .. } | Self::Selection { .. } | Self::Edit { .. } => {
+                Some(Operand::Nothing)
+            }
+            Self::EditorCmd { fun, .. } => Some(fun.operand()),
+            Self::SteelBacked { .. } | Self::Lazy { .. } => None,
         }
     }
 

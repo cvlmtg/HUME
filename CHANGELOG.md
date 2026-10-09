@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Scripts can pass a pattern to `search-forward`, `search-backward`, and `sift-within` through `call!`, which runs them as if the pattern were typed at the prompt and confirmed, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add`: `(call! "sift-within" pane "(?m)[ \t]+$")`, `(call! "replace" pane "x")`.
+- Binding one of those character commands to a key that does not wait for a character, or a key that waits for a character to a built-in command that takes none, is refused with an error when the configuration loads.
 - `:set buffer line-ending=lf` and `:set buffer line-ending=crlf` change the line ending a buffer is saved with, so a CRLF file can be converted to LF and back. The change marks the buffer modified but is not an undo step. Scripts read and set it with `get-buffer-option`/`set-buffer-option!`.
 - `:e!` after a line-ending change restores the file's line ending even when its text is unchanged.
 - With no `theme` in `init.scm`, HUME loads `sand` from the `themes/` directories instead of always showing the built-in copy, so edits to `sand.toml` take effect. The built-in theme remains as a fallback when no `sand` is found or the configured theme fails to load.

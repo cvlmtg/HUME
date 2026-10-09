@@ -1,8 +1,9 @@
 // Generic LSP bridge: lsp-request!, lsp-notify!,
 // the on-lsp-notification hook, fired as an `EditorEvent` through `fire_hook`.
 
-#[cfg(unix)]
 use hume_platform::dirs::Dirs;
+#[cfg(unix)]
+use hume_scripting::host::NativeCall;
 use std::cell::RefCell;
 use std::path::Path;
 #[cfg(unix)]
@@ -773,8 +774,15 @@ fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
     let pane = focused_pane(&ed);
     {
         let mut host = live_host!(ed);
-        host.run_command_sync("pane-vsplit", pane, Some(1), false, None)
-            .expect("pane-vsplit must succeed");
+        host.run_command_sync(
+            "pane-vsplit",
+            pane,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
+        .expect("pane-vsplit must succeed");
     }
 
     ed.drain_lsp();

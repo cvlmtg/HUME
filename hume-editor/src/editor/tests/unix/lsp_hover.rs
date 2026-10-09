@@ -54,7 +54,7 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
 fn run_hover(ed: &mut Editor) {
     // `lsp-hover` is key-bindable, not typed, so dispatch it the way `K` would,
     // through the keymap pipeline, not `:`.
-    ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
+    ed.execute_keymap_command("lsp-hover".into(), Some(1), false, None);
     // Settle *before* the async response arrives. Mirrors the real
     // interactive loop, which drains hooks after every keystroke, well
     // before any network response could land. Draining only at the end
@@ -472,7 +472,7 @@ fn stale_response_after_a_buffer_switch_shows_no_popup() {
     // switch below: settle() unconditionally drains LSP, which would
     // deliver the response (and close the race window) before the switch
     // ever happens.
-    ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
+    ed.execute_keymap_command("lsp-hover".into(), Some(1), false, None);
 
     let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();
@@ -507,7 +507,7 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
         },
     );
 
-    ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
+    ed.execute_keymap_command("lsp-hover".into(), Some(1), false, None);
 
     // Bump the buffer's generation between send and drain. Without
     // #:allow-stale this response would be dropped. No settle() call until

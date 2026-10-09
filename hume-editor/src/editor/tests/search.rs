@@ -74,7 +74,7 @@ fn search_backward_reentry_while_forward_search_open_replaces_and_restashes() {
     );
 
     let fp = FocusedPane::current(&ed.state);
-    cmd_search_backward(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
+    cmd_search_backward(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move, None).unwrap();
     assert_eq!(
         ed.state.minibuf().unwrap().prompt,
         "?",
@@ -256,7 +256,7 @@ fn clear_search_command_clears_search() {
         "pre-condition: search pattern is set"
     );
 
-    ed.execute_keymap_command("clear-search".into(), Some(1), false);
+    ed.execute_keymap_command("clear-search".into(), Some(1), false, None);
     ed.sync_search_cache();
 
     assert_eq!(ed.state.mode(), Mode::Normal);

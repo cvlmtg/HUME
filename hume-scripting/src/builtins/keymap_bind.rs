@@ -80,6 +80,9 @@ fn bind_inner(
 /// - `command-name`: the canonical command name (must be registered in
 ///   the editor's `CommandRegistry` at dispatch time; not validated here).
 ///
+/// The editor refuses the binding when it is applied if `command-name` is a
+/// native command that needs a character.
+///
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_key(
     ctx: &mut SteelCtx,
@@ -136,8 +139,10 @@ pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode: SteelVal, key_str: String) ->
 /// `(bind-wait-char! 'mode key-sequence command-name)`
 ///
 /// Binds a key sequence to a WaitChar node so that after the user completes
-/// the sequence, the next character is stored in `pending_char` and
-/// `command-name` is dispatched.
+/// the sequence, `command-name` is dispatched with the next character as its
+/// operand, which a Steel command reads with `(pending-char)`.
+/// The editor refuses the binding when it is applied if `command-name` is a
+/// native command that takes no character.
 ///
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_wait_char(

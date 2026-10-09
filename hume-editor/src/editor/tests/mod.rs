@@ -2,6 +2,7 @@
 // Each submodule does `use super::*;` to access these.
 
 use hume_platform::dirs::Dirs;
+use hume_scripting::host::NativeCall;
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -36,6 +37,30 @@ use super::{Editor, Mode, Severity};
 fn editor_from(input: &str) -> Editor {
     let (text, sels) = parse_state(input);
     Editor::for_testing_with(test_fixtures::testing::state(text, sels))
+}
+
+/// Build a `ScriptingHost`, pre-register every native command name as a Steel
+/// binding (so `(move-right)`-style calls in `src` resolve), eval `src`, and
+/// install the result as `ed.scripting`.
+///
+/// Not a fit for a test that needs `live_host!`'s LSP/timer access instead of
+/// a bare `EditorHostImpl`, or one that inspects `eval_source`'s `Result`
+/// itself rather than treating a failed eval as a test-harness bug.
+fn attach_steel(ed: &mut Editor, src: &str) {
+    let names: Vec<String> = ed
+        .state
+        .config
+        .registry
+        .native_mappable_names()
+        .map(str::to_owned)
+        .collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
+    host.register_command_names(&name_refs);
+    let mut init_host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.eval_source(src, &mut init_host)
+        .expect("the test's Steel source must evaluate");
+    ed.scripting = Some(host);
 }
 
 /// The working directory a test editor starts in: the test binary's own.
@@ -722,9 +747,10 @@ pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, Buffer
         .run_command_sync(
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_a),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("pane-vsplit must succeed");
 
@@ -733,9 +759,10 @@ pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, Buffer
         .run_command_sync(
             "pane-close",
             PaneHandle::with_pane(bid, pid_a),
-            Some(1),
-            false,
-            None,
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
         )
         .expect("pane-close must succeed");
     assert_ne!(
@@ -1339,10 +1366,10 @@ impl Editor {
 /// snapshot has no viewport field to compare it against.
 #[derive(Debug, PartialEq)]
 pub(super) struct BookkeepingSnapshot {
-    /// `ed.state.last_repeatable_action`: (command, count, char_arg) if set.
+    /// `ed.state.last_repeatable_action`: (command, count, arg) if set.
     /// `insert_inputs` is excluded: it is always empty at dispatch time and
     /// only filled by the Insert session's own later inputs.
-    pub last_repeatable: Option<(String, usize, Option<char>)>,
+    pub last_repeatable: Option<(String, usize, Option<hume_scripting::host::CommandArg>)>,
     /// Total jump entries in the focused pane (not filtered by buffer) after dispatch.
     pub jump_len: usize,
     /// Whether `EditorState::active_session` is open with a Paste kind.
@@ -1379,7 +1406,7 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
             .state
             .last_repeatable_action
             .as_ref()
-            .map(|a| (a.command.to_string(), a.count, a.char_arg)),
+            .map(|a| (a.command.to_string(), a.count, a.arg.clone())),
         // JumpList::len() is cfg(test)-only; safe to call here.
         jump_len: ed.state.panes.jumps[pane_id].len(),
         paste_session_open: ed.state.active_session.as_ref().is_some_and(|s| {
@@ -1402,6 +1429,7 @@ mod bracketed_paste;
 mod buffer;
 mod buffer_store;
 mod buffer_text_steel;
+mod command_arg;
 mod command_exists;
 mod command_mode;
 mod commands;

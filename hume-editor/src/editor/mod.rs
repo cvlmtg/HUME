@@ -263,8 +263,6 @@ pub(crate) struct EditorState {
     pub(super) count: Option<usize>,
     /// Pending wait-char state for a f/t/F/T/r binding.
     pub(super) wait_char: Option<WaitCharPending>,
-    /// Character argument for the current parameterized command (find/till/replace).
-    pub(super) pending_char: Option<char>,
     pub(super) registers: RegisterSet,
     /// Kill ring: bounded history of yanked / deleted text.
     pub(super) kill_ring: KillRing,
@@ -505,7 +503,6 @@ impl Default for EditorState {
             pending_keys: Vec::new(),
             count: None,
             wait_char: None,
-            pending_char: None,
             registers: RegisterSet::new(),
             kill_ring: KillRing::new(),
             clipboard: clipboard::SystemClipboard::osc52(),

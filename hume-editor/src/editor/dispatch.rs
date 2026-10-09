@@ -6,6 +6,8 @@
 //! path, which additionally needs `self.scripting` and the
 //! timer bridge: fields only reachable through `&mut Editor`.
 
+use hume_scripting::host::CommandArg;
+
 use super::event::EditorEvent;
 use super::registry::MappableCommand;
 use super::{Editor, Severity, commands};
@@ -20,7 +22,7 @@ pub(in crate::editor) struct CmdCtx {
     /// keyboard press, which visual-move commands read as one visual line
     /// (`state.explicit_count`, set from this by `run_body`). Producible
     /// by the keymap trie leaves / WaitChar arm, and also by Steel: a script
-    /// passes a count of `0` (`parse_count_extend` decodes it to `None`) to ask
+    /// passes a count of `0` (`parse_native_args` decodes it to `None`) to ask
     /// for the same "as if no count was typed" behavior. `Some(n)` is every
     /// other case: an explicit user count, a script's explicit `n`, or a
     /// non-keybind origin's default (insert-mode leaf, no-arg `call!`).
@@ -42,26 +44,36 @@ impl Editor {
     /// Dot-repeat replay bypasses this for the commands it replays. It
     /// calls [`commands::run_body`] or `run_steel_command` directly, though
     /// a replayed Steel body's own `call!`s still reach [`commands::run`].
-    pub(in crate::editor) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) {
-        // Native path: a keypress always acts at the focused pane. `Err`
-        // hands `cmd` back unbound for a Steel-backed/Lazy command, which
-        // the path below dispatches instead.
+    ///
+    /// `arg` is the character a wait-char binding read, or `None`. A native
+    /// command it doesn't fit is reported and nothing runs.
+    pub(in crate::editor) fn dispatch(
+        &mut self,
+        cmd: MappableCommand,
+        ctx: CmdCtx,
+        arg: Option<char>,
+    ) {
+        // Native path: a keypress always acts at the focused pane.
+        // `NotNative` hands `cmd` back unbound for a Steel-backed/Lazy
+        // command, which the path below dispatches instead.
         let fp = commands::FocusedPane::current(&self.state);
-        let cmd = match commands::BoundCommand::focused(cmd, fp) {
+        let cmd = match commands::BoundCommand::focused(cmd, fp, arg.map(CommandArg::Char)) {
             Ok(bound) => {
                 commands::run(&mut self.state, &mut self.view, bound, ctx);
                 return;
             }
-            Err(cmd) => cmd,
+            Err(commands::FocusedBindError::Arg { name, error }) => {
+                commands::report_arg_error(&mut self.state, &name, &error);
+                return;
+            }
+            Err(commands::FocusedBindError::NotNative(cmd)) => cmd,
         };
 
         // Steel path, composed from shared step functions.
         let meta = cmd.meta();
         let name = cmd.name();
-
         // BEFORE
         commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
-        let char_arg = self.state.pending_char.take();
         // Snapshot the recipe before the body by cloning, not `mem::take`: an
         // inner `call!` dispatch (e.g. vim-keybind's `C` wrapper calling
         // `copy-selection-on-next-line`) must see and compose onto whatever
@@ -76,7 +88,7 @@ impl Editor {
         let slot_owned = commands::repeat_slot_owned(&self.state);
 
         // BODY
-        if !self.run_steel_command(name.as_ref(), &ctx, char_arg) {
+        if !self.run_steel_command(name.as_ref(), &ctx, arg) {
             // Failed command: undo whatever a partial inner dispatch wrote,
             // so the failure has no residual effect on the recipe.
             self.state.selection_recipe = pre_recipe;
@@ -98,7 +110,7 @@ impl Editor {
                 &mut self.state,
                 name,
                 ctx.count.unwrap_or(1),
-                char_arg,
+                arg.map(CommandArg::Char),
                 Some(pre_recipe),
             );
         }
@@ -191,7 +203,7 @@ impl Editor {
         // Injected into the lambda's `count` param verbatim: `0` is the Scheme
         // spelling of `None` ("no count was typed"), so a wrapper that forwards
         // this value straight into `(call! "move-down" pane count extend)` round-trips
-        // a bare keypress back to visual-line movement (`parse_count_extend`
+        // a bare keypress back to visual-line movement (`parse_native_args`
         // decodes `0` back to `None` on the way in).
         let count = ctx.count.unwrap_or(0);
         let extend = ctx.extend;
