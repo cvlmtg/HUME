@@ -13,6 +13,7 @@ use super::diagnostics::DiagSeverity;
 use super::features::provider;
 use crate::editor::Editor;
 use crate::editor::EditorState;
+use crate::editor::settings::SettingText;
 use hume_scripting::{CapabilityQuery, ListEntry, LspFeature, ServerName};
 
 /// The feature a standard request `method` belongs to.
@@ -278,10 +279,10 @@ pub(in crate::editor) fn diagnostics_for_buffer(
     range: Option<hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>>,
 ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
     const CAP: usize = 1000;
-    let floor = match severity_floor.map(str::parse::<DiagSeverity>) {
+    let floor = match severity_floor.map(DiagSeverity::parse) {
         None => state.settings.lsp_diagnostics_severity_floor,
         Some(Ok(f)) => f,
-        Some(Err(e)) => return Err(e),
+        Some(Err(e)) => return Err(format!("invalid severity floor: {e}")),
     };
     let Some(text) = state.buffers.try_get(bid).map(|b| b.text()) else {
         return Ok(Vec::new());
@@ -328,7 +329,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
                 end_line: end_line.index(),
                 char_col: char_col.index(),
                 grapheme_col: grapheme_col.index(),
-                severity: d.severity.to_string(),
+                severity: d.severity.to_text(),
                 severity_rank: d.severity as u8,
                 message: d.message.clone(),
                 code: d.code.clone(),

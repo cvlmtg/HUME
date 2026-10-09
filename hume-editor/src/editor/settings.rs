@@ -29,6 +29,7 @@ use hume_editing::text::LineEnding;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 
+use crate::editor::lsp::diagnostics::DiagSeverity;
 use crate::statusline::{StatusElement, StatusLineConfig};
 use hume_ops::auto_pairs::Pair;
 
@@ -62,24 +63,6 @@ pub(in crate::editor) trait SettingText: Sized {
     fn to_text(&self) -> String;
 }
 
-/// Implement [`SettingText`] for a type that already has `VALUES`, `FromStr`
-/// and `Display` of its own.
-macro_rules! delegate_setting_text {
-    ($ty:ty) => {
-        impl SettingText for $ty {
-            const VALUES: &'static [&'static str] = <$ty>::VALUES;
-
-            fn parse(s: &str) -> Result<Self, String> {
-                s.parse()
-            }
-
-            fn to_text(&self) -> String {
-                self.to_string()
-            }
-        }
-    };
-}
-
 /// Generate a closed `:set` enum's [`SettingText`] from one list of
 /// `Variant => "name"` pairs. The parse is case-insensitive and its error
 /// names every accepted value.
@@ -88,7 +71,7 @@ macro_rules! delegate_setting_text {
 /// own doc comment. `VALUES`, the parse arms and the print arms all come from
 /// the one list, so a variant cannot be completable but unparseable.
 macro_rules! settings_enum {
-    ($ty:ty, $key:literal, [$($variant:ident => $name:literal),+ $(,)?]) => {
+    ($ty:ty, [$($variant:ident => $name:literal),+ $(,)?]) => {
         impl SettingText for $ty {
             const VALUES: &'static [&'static str] = &[$($name),+];
 
@@ -96,8 +79,7 @@ macro_rules! settings_enum {
                 match s.to_ascii_lowercase().as_str() {
                     $($name => Ok(Self::$variant),)+
                     _ => Err(format!(
-                        concat!("invalid ", $key, " '{}': expected {}"),
-                        s,
+                        "expected {}, got '{s}'",
                         or_list(<$ty as SettingText>::VALUES),
                     )),
                 }
@@ -143,9 +125,7 @@ impl FromStr for SignColumnMode {
         match s.to_ascii_lowercase().as_str() {
             "always" => Ok(Self::Always),
             "auto" => Ok(Self::Auto),
-            _ => Err(format!(
-                "invalid signcolumn mode: expected 'always' or 'auto', got '{s}'"
-            )),
+            _ => Err(format!("expected 'always' or 'auto', got '{s}'")),
         }
     }
 }
@@ -231,11 +211,9 @@ impl FromStr for SignColumnConfig {
             Some(c) => {
                 let n: u8 = c
                     .parse()
-                    .map_err(|_| format!("invalid signcolumn slots: expected 1–127, got '{c}'"))?;
+                    .map_err(|_| format!("expected 1–127 slots, got '{c}'"))?;
                 if n == 0 || n > Self::MAX_SLOTS {
-                    return Err(format!(
-                        "invalid signcolumn slots: expected 1–127, got '{n}'"
-                    ));
+                    return Err(format!("expected 1–127 slots, got '{n}'"));
                 }
                 Some(n)
             }
@@ -245,25 +223,42 @@ impl FromStr for SignColumnConfig {
     }
 }
 
-delegate_setting_text!(SignColumnConfig);
-delegate_setting_text!(crate::editor::lsp::diagnostics::DiagSeverity);
-settings_enum!(LineEnding, "line-ending", [
+impl SettingText for SignColumnConfig {
+    const VALUES: &'static [&'static str] = SignColumnConfig::VALUES;
+
+    fn parse(s: &str) -> Result<Self, String> {
+        s.parse()
+    }
+
+    fn to_text(&self) -> String {
+        self.to_string()
+    }
+}
+
+settings_enum!(DiagSeverity, [
+    Error => "error",
+    Warning => "warning",
+    Info => "info",
+    Hint => "hint",
+]);
+
+settings_enum!(LineEnding, [
     Lf => "lf",
     CrLf => "crlf",
 ]);
 
-settings_enum!(TabStyle, "tab-style", [
+settings_enum!(TabStyle, [
     Hard => "hard",
     Soft => "soft",
 ]);
 
-settings_enum!(LineNumberStyle, "line-number-style", [
+settings_enum!(LineNumberStyle, [
     Absolute => "absolute",
     Relative => "relative",
     Hybrid => "hybrid",
 ]);
 
-settings_enum!(WhitespaceRender, "whitespace render", [
+settings_enum!(WhitespaceRender, [
     None => "none",
     All => "all",
     Trailing => "trailing",
@@ -279,25 +274,28 @@ impl SettingText for WrapMode {
 
     fn parse(s: &str) -> Result<Self, String> {
         let lower = s.to_ascii_lowercase();
-        match lower.as_str() {
-            "none" => return Ok(Self::None),
-            "soft" => return Ok(Self::Soft { width: 0 }),
-            "word" => return Ok(Self::Word { width: 0 }),
-            "indent" => return Ok(Self::Indent { width: 0 }),
-            _ => {}
-        }
-        let (kind, rest) = lower.split_once(':').ok_or_else(|| {
-            format!("invalid wrap-mode '{s}': expected none, soft[:N], word[:N], or indent[:N]")
-        })?;
-        let width: u16 = rest.parse().map_err(|_| {
-            format!("invalid wrap-mode width in '{s}': expected a column count, got '{rest}'")
-        })?;
-        match kind {
-            "soft" => Ok(Self::Soft { width }),
-            "word" => Ok(Self::Word { width }),
-            "indent" => Ok(Self::Indent { width }),
+        let (kind, width) = match lower.split_once(':') {
+            Some((kind, rest)) => {
+                let width = rest
+                    .parse()
+                    .map_err(|_| format!("width in '{s}' must be a column count, got '{rest}'"))?;
+                (kind, Some(width))
+            }
+            None => (lower.as_str(), None),
+        };
+        match (kind, width) {
+            ("none", None) => Ok(Self::None),
+            ("soft", w) => Ok(Self::Soft {
+                width: w.unwrap_or(0),
+            }),
+            ("word", w) => Ok(Self::Word {
+                width: w.unwrap_or(0),
+            }),
+            ("indent", w) => Ok(Self::Indent {
+                width: w.unwrap_or(0),
+            }),
             _ => Err(format!(
-                "invalid wrap-mode kind '{kind}' in '{s}': expected soft, word, or indent"
+                "expected none, soft[:N], word[:N], or indent[:N], got '{s}'"
             )),
         }
     }
@@ -338,7 +336,7 @@ pub enum ObjectJumpAlign {
     Off,
 }
 
-settings_enum!(ObjectJumpAlign, "object-jump-align", [
+settings_enum!(ObjectJumpAlign, [
     Top => "top",
     Center => "center",
     Off => "off",
@@ -366,7 +364,7 @@ pub enum CursorShape {
     Underline,
 }
 
-settings_enum!(CursorShape, "cursor-shape-insert", [
+settings_enum!(CursorShape, [
     Block => "block",
     Bar => "bar",
     Underline => "underline",
@@ -384,7 +382,7 @@ pub enum TablineVisibility {
     Dynamic,
 }
 
-settings_enum!(TablineVisibility, "tabline", [
+settings_enum!(TablineVisibility, [
     Always => "always",
     Never => "never",
     Dynamic => "dynamic",
@@ -401,7 +399,7 @@ pub enum CommandCompletion {
     FirstCandidate,
 }
 
-settings_enum!(CommandCompletion, "command-completion", [
+settings_enum!(CommandCompletion, [
     CommonPrefix => "common-prefix",
     FirstCandidate => "first-candidate",
 ]);
@@ -513,10 +511,10 @@ macro_rules! parse_setting {
         parse_tab_width($value)
     };
     ($value:expr, $key:expr, from_str) => {
-        SettingText::parse($value)
+        SettingText::parse($value).map_err(|e| format!("invalid value for '{}': {e}", $key))
     };
     ($value:expr, $key:expr, enum_str) => {
-        SettingText::parse($value)
+        SettingText::parse($value).map_err(|e| format!("invalid value for '{}': {e}", $key))
     };
     ($value:expr, $key:expr, string) => {
         Ok::<String, String>(($value).to_owned())
@@ -1155,8 +1153,8 @@ pub(crate) fn format_statusline(cfg: &StatusLineConfig) -> String {
 /// The wire-format strings [`parse_show_newline`] accepts: the single
 /// source `:set buffer whitespace-newline=<Tab>` completion mirrors (see
 /// `editor::completion::set::static_value_candidates`), so the two can never
-/// drift out of sync. Mirrors the `WhitespaceRender::VALUES` pattern
-/// (`hume-engine/src/pane.rs`) used by the sibling `space`/`tab` settings.
+/// drift out of sync. The sibling `space`/`tab` settings get the same
+/// guarantee from `WhitespaceRender`'s `settings_enum!`.
 pub(in crate::editor) const SHOW_NEWLINE_VALUES: &[&str] = &["none", "all"];
 
 /// Parse the `whitespace-newline` wire format. Unlike `space`/`tab`, a

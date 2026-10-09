@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::lsp::diagnostics::DiagSeverity;
 
 // ── Default values match previous hardcoded constants ─────────────────────
 
@@ -666,9 +667,8 @@ fn set_global_whitespace_newline_trailing_rejected() {
 
 #[test]
 fn show_newline_values_round_trip_through_parse_show_newline() {
-    // Mirrors `whitespace_render_values_round_trip_through_parse`
-    // (hume-engine/src/pane.rs): every completion-offered value must
-    // actually parse, so `SHOW_NEWLINE_VALUES` can't silently drift from
+    // Mirrors `whitespace_render_values_round_trip_through_parse`: every
+    // completion-offered value must actually parse, so `SHOW_NEWLINE_VALUES` can't drift from
     // `parse_show_newline`.
     for v in SHOW_NEWLINE_VALUES {
         let parsed = parse_show_newline(v);
@@ -1158,11 +1158,32 @@ fn set_buffer_signcolumn() {
 fn settings_enum_parse_error_lists_every_accepted_value() {
     assert_eq!(
         ObjectJumpAlign::parse("bogus").unwrap_err(),
-        "invalid object-jump-align 'bogus': expected top, center, or off"
+        "expected top, center, or off, got 'bogus'"
     );
     assert_eq!(
         CursorShape::parse("bogus").unwrap_err(),
-        "invalid cursor-shape-insert 'bogus': expected block, bar, or underline"
+        "expected block, bar, or underline, got 'bogus'"
+    );
+    assert_eq!(
+        DiagSeverity::parse("bogus").unwrap_err(),
+        "expected error, warning, info, or hint, got 'bogus'"
+    );
+}
+
+#[test]
+fn set_names_the_failing_key_in_enum_errors() {
+    let mut settings = EditorSettings::default();
+    assert_eq!(
+        write_global("whitespace-tab", "bogus", &mut settings).unwrap_err(),
+        "invalid value for 'whitespace-tab': expected none, all, or trailing, got 'bogus'"
+    );
+    assert_eq!(
+        write_global("whitespace-space", "bogus", &mut settings).unwrap_err(),
+        "invalid value for 'whitespace-space': expected none, all, or trailing, got 'bogus'"
+    );
+    assert_eq!(
+        write_global("wrap-mode", "sideways:3", &mut settings).unwrap_err(),
+        "invalid value for 'wrap-mode': expected none, soft[:N], word[:N], or indent[:N], got 'sideways:3'"
     );
 }
 
@@ -1199,7 +1220,7 @@ fn wrap_mode_parse_variants() {
 
 #[test]
 fn wrap_mode_parse_bare_keywords() {
-    // Bare keyword (no colon) → sentinel width 0 (terminal width).
+    // Bare keyword (no colon) → sentinel width 0 (content width).
     assert_eq!(
         WrapMode::parse("soft").unwrap(),
         WrapMode::Soft { width: 0 }
@@ -1260,7 +1281,7 @@ fn wrap_mode_values_round_trip_through_parse() {
 }
 
 #[test]
-fn wrap_mode_display_round_trips_through_parse() {
+fn wrap_mode_to_text_round_trips_through_parse() {
     for mode in [
         WrapMode::None,
         WrapMode::Soft { width: 0 },
@@ -1315,13 +1336,7 @@ fn whitespace_render_parse_error() {
 
 #[test]
 fn whitespace_render_values_round_trip_through_parse() {
-    // Every completion-offered value must
-    // actually parse, so `VALUES` can't silently drift from `parse`.
-    // One-directional: this can't catch a variant added to `parse` but
-    // left out of `VALUES` (it would just silently vanish from
-    // completion). `whitespace_render_parse_all_variants` above is
-    // the closest thing to a reverse check, but it's a second
-    // hand-maintained list, not a derived one.
+    // Every completion-offered value must parse.
     for v in WhitespaceRender::VALUES {
         assert!(
             WhitespaceRender::parse(v).is_ok(),
@@ -1331,10 +1346,10 @@ fn whitespace_render_values_round_trip_through_parse() {
 }
 
 #[test]
-fn whitespace_render_display_round_trips_through_parse() {
-    // `option_value!`'s `from_str` kind (settings.rs) renders this type via
-    // `to_string()` for `(get-option "whitespace-space"|"whitespace-tab")`, so
-    // this must round-trip through the same `parse` that writes it.
+fn whitespace_render_to_text_round_trips_through_parse() {
+    // `option_value!`'s `enum_str` kind (settings.rs) reads this type back as
+    // `Symbol(to_text())` for `(get-option "whitespace-space"|"whitespace-tab")`,
+    // so `to_text` must round-trip through the `parse` that writes it.
     for variant in [
         WhitespaceRender::None,
         WhitespaceRender::All,
@@ -1391,13 +1406,7 @@ fn line_number_style_parse_error() {
 
 #[test]
 fn line_number_style_values_round_trip_through_parse() {
-    // Every completion-offered value must
-    // actually parse, so `VALUES` can't silently drift from `parse`.
-    // One-directional: this can't catch a variant added to `parse` but
-    // left out of `VALUES` (it would just silently vanish from
-    // completion). `line_number_style_parse_all_variants` above is
-    // the closest thing to a reverse check, but it's a second
-    // hand-maintained list, not a derived one.
+    // Every completion-offered value must parse.
     for v in LineNumberStyle::VALUES {
         assert!(
             LineNumberStyle::parse(v).is_ok(),
@@ -1407,7 +1416,7 @@ fn line_number_style_values_round_trip_through_parse() {
 }
 
 #[test]
-fn line_number_style_display_round_trips_through_parse() {
+fn line_number_style_to_text_round_trips_through_parse() {
     for v in LineNumberStyle::VALUES {
         let parsed = LineNumberStyle::parse(v).unwrap();
         assert_eq!(&parsed.to_text(), v);
