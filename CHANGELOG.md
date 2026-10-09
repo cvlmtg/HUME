@@ -2,18 +2,18 @@
 
 ## Unreleased
 
-- `lsp.inlay-hints` is removed. `:toggle-inlay-hints` shows or hides inlay hints in the current buffer, and `(load-plugin! "core:lsp" #:config (hash "inlay-hints" #t))` turns them on for every buffer from the start.
-- `lsp.format-max-ranges` is removed: pass it to `core:lsp` as `#:config (hash "format-max-ranges" 32)`.
-- `lsp.viewport-debounce-ms` is renamed to `viewport-debounce-ms`: it delays every plugin's view of scrolling, not only language-server requests.
-- Scripts can pass a pattern to `search-forward`, `search-backward`, and `sift-within` through `call!`, which runs them as if the pattern were typed at the prompt and confirmed, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add`: `(call! "sift-within" pane "(?m)[ \t]+$")`, `(call! "replace" pane #\x)`. The character or pattern is required; a script reads one the user types with `on-next-char!` or `prompt!`.
-- `bind-key!` binds any command, including one that reads a character from the next key, such as `f` or `r`. `bind-wait-char!`, `request-wait-char!`, and `pending-char` are removed: a command reads the characters it needs with `(on-next-char! callback)`, which calls `callback` with the next key typed, or with `#f` when that key isn't a character. A callback can call `on-next-char!` again to read more. `.` repeats a `#:repeatable` command with the characters it and its callbacks read, without waiting for keys.
-- Pressing `Enter` at the search or sift prompt reports an invalid pattern, and a pattern with no match, the same way a script passing that pattern does. An invalid search pattern is not stored as the current search.
-- After `q`, `Q`, or `"`, a mouse click or a paste cancels the wait for the register name, and scrolling does not. Esc only cancels it: it doesn't clear the search highlight or leave Extend mode, the same as Esc after `f` or `r`.
-- `.` after an Insert-mode key whose command opened a picker and then changed more text repeats that text too.
-- With the kitty keyboard protocol, `Ctrl-?` opens a backward search that extends the selection to the match, as `Ctrl-f` does for a find.
-- `:set buffer line-ending=lf` and `:set buffer line-ending=crlf` change the line ending a buffer is saved with, so a CRLF file can be converted to LF and back. The change marks the buffer modified but is not an undo step. Scripts read and set it with `get-buffer-option`/`set-buffer-option!`.
-- `:e!` after a line-ending change restores the file's line ending even when its text is unchanged.
-- With no `theme` in `init.scm`, HUME loads `sand` from the `themes/` directories instead of always showing the built-in copy, so edits to `sand.toml` take effect. The built-in theme remains as a fallback when no `sand` is found or the configured theme fails to load.
+- `lsp.inlay-hints` is removed: `:toggle-inlay-hints` toggles them per buffer, and `core:lsp`'s `inlay-hints` config turns them on everywhere.
+- `lsp.format-max-ranges` moves to `core:lsp`'s `#:config`.
+- `lsp.viewport-debounce-ms` is renamed to `viewport-debounce-ms`.
+- `call!` can pass a pattern to `search-forward`, `search-backward` and `sift-within`, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add`.
+- `bind-wait-char!`, `request-wait-char!` and `pending-char` are removed. Commands read keys with `on-next-char!`, so `bind-key!` binds any command, and `.` repeats one with the characters it read.
+- The search and sift prompts report an invalid or unmatched pattern the same way scripts do. An invalid search pattern is not stored.
+- After `q`, `Q` or `"`, a click or paste cancels the register wait. Esc cancels only the wait.
+- `.` repeats the text an Insert-mode picker command changed.
+- With the kitty keyboard protocol, `Ctrl-?` searches backward and extends the selection.
+- `:set buffer line-ending=lf|crlf` converts a buffer's line endings.
+- `:e!` restores a file's line ending even when its text is unchanged.
+- With no `theme` set, HUME loads `sand` from `themes/`, so edits to `sand.toml` apply. The built-in copy is the fallback.
 
 ## [0.14.1] - 2026-10-08
 
