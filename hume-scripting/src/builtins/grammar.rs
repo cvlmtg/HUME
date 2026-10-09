@@ -9,9 +9,9 @@
 //! Windows compiler-selection dance (`hume_platform::process::tree_sitter_build`
 //! probes `cl`/`clang`/`gcc`/`zig` and writes `--target`-stripping wrapper
 //! scripts); a Scheme rewrite would only make that logic worse.
-//! `grammar-output-path` (path construction, no filesystem access) moved to
-//! Scheme (`runtime/plugins/core/plum/grammars.scm`) since it isn't
-//! platform-conditional in the same way.
+//! `grammar-output-path` (path construction, no filesystem access) lives in
+//! Scheme (`runtime/scheme/grammars.scm`): it isn't platform-conditional in
+//! the same way.
 
 use std::path::PathBuf;
 

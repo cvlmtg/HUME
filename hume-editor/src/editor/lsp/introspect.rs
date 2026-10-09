@@ -32,8 +32,9 @@ pub(in crate::editor) fn provider_of<'a>(
 }
 
 /// What `(lsp-capability …)` hands to Steel: `server`'s capability for
-/// `feature` or `method`, or `None` when it advertises none or is not
-/// running.
+/// `feature` or `method`, or `None` when it advertises none, has not
+/// finished its handshake, or was stopped. A crashed instance keeps its last
+/// capabilities.
 pub(in crate::editor) fn capability(
     lsp: &LspState,
     server: ServerId,

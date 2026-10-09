@@ -124,6 +124,7 @@ Text objects (use the `m` prefix):
 | `:` | `command-mode` |  | Open command mode prompt |
 | `/` | `search-forward` |  | Search forward |
 | `?` | `search-backward` |  | Search backward |
+| `s` | `sift-within` |  | Sift within (narrow each selection to its regex matches) |
 
 ### Search
 
@@ -131,7 +132,6 @@ Text objects (use the `m` prefix):
 |-----|---------|:-----:|--------|
 | `n` | `search-next` |  | Next match |
 | `N` | `search-prev` |  | Previous match |
-| `s` | `sift-within` |  | Sift within (narrow each selection to its regex matches) |
 | `Ctrl-/` | `search-selection` | ✓ | Use the selected text literally as the search pattern |
 
 ### Macros
@@ -153,6 +153,7 @@ See [Register prefix](copy-and-paste.md#register-prefix) for the full register l
 
 | Key | Action |
 |-----|--------|
+| `Esc` | Cancel a half-typed key sequence, count, or register/macro prompt; clear search highlights; leave Extend mode |
 | `"` + reg | Register prefix (`0`–`9`, `k`, `c`, `b`) |
 | `1`–`9` then `[0-9]*` | Numeric count prefix (`0` is a digit only inside a count; otherwise unbound) |
 
@@ -177,7 +178,11 @@ the structural pairs) the next/previous instance of a kind, selected as a whole:
 
 The structural pairs need a grammar with a `textobjects.scm`. See [Moving Around](moving-around.md#structural-navigation).
 
-## `G` prefix
+`core:lsp` adds `g d`, `g D`, `g y`, and `g i` (definition, declaration, type definition,
+implementation), `g n`/`g p` (next/previous diagnostic), and `K` (hover) outside the prefix.
+See [Language Servers](lsp.md#commands-and-keys).
+
+## Edit prefix (`G`)
 
 Press `G` then a second key. Not a "case prefix": `G` holds the commands Vim files under
 `g` that aren't gotos (`G L`/`G U`/`G C` are Vim's `gu`/`gU`/`g~`):
@@ -233,12 +238,21 @@ Press `Ctrl-p` then a second key:
 | `Tab` | — |  | Insert tab (literal `\t`, or spaces to the next tab stop when `tab-style = soft`) |
 | `Backspace` | — |  | Delete character before cursor; snaps to previous tab stop when in leading whitespace (auto-pairs aware) |
 | `Delete` | — |  | Delete character under cursor |
-| `Enter` | — |  | Insert newline, copying leading whitespace from current line (auto-pairs aware) |
+| `Enter` | — |  | Insert newline, copying leading whitespace from current line |
 | `Ctrl-w` | `delete-word-backward` |  | Delete word before cursor |
 | `Ctrl-Space` | `completion-trigger` |  | Show completions at the cursor, from every registered completion source (a language server's, say; see [Language servers](lsp.md)) |
 | Any other character | — |  | Insert character (auto-pairs aware) |
 
 Insert mode handles auto-pair insertion: typing `(`, `[`, `{`, `"`, `'`, or `` ` `` inserts the matching close character. Backspace inside an empty pair deletes both characters. A quote typed right after the same quote is inserted on its own, so ```` ``` ```` and `"""` come out as typed.
+
+While a completion menu is open, typing narrows it and these keys drive it; any other key closes it:
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `↓` | Highlight the next entry |
+| `Shift-Tab` / `↑` | Highlight the previous entry |
+| `Enter` | Accept the highlighted entry |
+| `Esc` | Close the menu, stay in Insert mode |
 
 Rebinding one of these keys replaces its behaviour outright. A plugin command can fall back to it with `insert-key!` (see [Editing & navigation](plugin-api.md#editing-navigation)), letting a binding decide per keypress whether to override the key or leave it as-is.
 
@@ -246,6 +260,7 @@ Rebinding one of these keys replaces its behaviour outright. A plugin command ca
 
 | Key | Action |
 |-----|--------|
+| `e` / `Esc` | Return to Normal mode |
 | All other keys | Same as Normal mode, but motions extend or shrink the selection |
 
 The status bar shows `EXT` in Extend mode.
@@ -254,10 +269,11 @@ The status bar shows `EXT` in Extend mode.
 
 | Key | Action |
 |-----|--------|
-| `Enter` | Execute command |
+| `Enter` (empty input) | Close the command mode prompt |
+| `Enter` (non-empty) | Execute command |
 | `Esc` / `Ctrl-c` | Cancel |
-| `Tab` | Complete |
-| `Shift-Tab` | Complete (previous) |
+| `Tab` | Complete; once the candidate list is open, pick the next candidate |
+| `Shift-Tab` | Once the candidate list is open, pick the previous candidate (no-op otherwise) |
 | `Up` / `Down` | Recall previous / next command starting with the typed prefix |
 | `Left` / `Right` | Move the cursor |
 | `Backspace` | Delete character before cursor; on empty input, dismiss the command mode prompt |
