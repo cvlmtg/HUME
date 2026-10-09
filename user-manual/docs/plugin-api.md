@@ -319,7 +319,3 @@ Use `(cwd)` and `(set-cwd! path)` to read and change the working directory, not 
 | Call | Effect |
 |------|--------|
 | `(compile-grammar! src out)` | Compile the tree-sitter grammar source at `src` to `out`. Raises on failure, except while `init.scm` loads, where it logs a warning instead |
-
-## Standard Library
-
-`core:stdlib` is a bundled plugin of helpers for plugin authors: filesystem, subprocess, selection, and config-validation commands, all reached through `call!`. Its full reference lives on the [Standard Library](standard-library.md) page.

@@ -303,4 +303,4 @@ A toolkit of small helpers that other plugins build on, rather than something yo
 Don't declare custom `#:commands`/`#:events`/`#:languages` for `core:stdlib`; load it as shown above. Every plugin that depends on `core:stdlib` relies on the triggers its manifest lists; a custom list can leave out a helper a dependent plugin needs, and that dependent plugin will then misbehave instead of failing with a clear error.
 :::
 
-If you're writing a plugin yourself, see [Plugin API → Standard Library](plugin-api.md#standard-library) for every command it offers.
+If you're writing a plugin yourself, see [Standard Library](standard-library.md) for every command it offers.

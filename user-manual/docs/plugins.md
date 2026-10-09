@@ -437,7 +437,7 @@ Document the keys your plugin understands so users know what to pass.
 
 Plugins are trusted code: they can read and write any file, and spawn any process, just like any other Scheme program. There's no separate sandboxed subset of the filesystem. Use Scheme's own functions directly (`open-input-file`, `create-directory!`, `delete-file!`, `read-dir`, `path-exists?`, and so on) for file access, and `command`/`spawn-process`/`wait` for running external tools.
 
-Before hand-rolling one of these, check [Plugin API → Standard Library](plugin-api.md#standard-library): its filesystem, subprocess, and git commands cover the shapes plugins need most often (idempotent delete, sorted subdirectory listing, a blocking subprocess run with a uniform success/failure return shape, git work-tree detection and repo-root resolution).
+Before hand-rolling one of these, check [Standard Library](standard-library.md): its filesystem, subprocess, and git commands cover the shapes plugins need most often (idempotent delete, sorted subdirectory listing, a blocking subprocess run with a uniform success/failure return shape, git work-tree detection and repo-root resolution).
 
 A few extra functions cover things Scheme has no way to know on its own:
 
