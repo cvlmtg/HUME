@@ -66,8 +66,6 @@ fn star_on_cursor_expands_to_word() {
     assert_eq!(state(&ed), "-[hello]> world\n");
     // Pattern in search register is the word with whole-word boundaries.
     assert_eq!(reg(&ed, 's'), vec![r"\bhello\b"]);
-    // Search direction set to forward.
-    assert_eq!(ed.state.search.direction, SearchDirection::Forward);
     assert!(ed.search_pattern().is_some());
 }
 

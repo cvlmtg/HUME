@@ -158,7 +158,7 @@ Press `z` followed by a second key to reposition the view (the cursor itself sta
 - **Other inline flags**: `(?m)` multiline `^`/`$`, `(?s)` dot-matches-newline, `(?x)` extended (whitespace ignored), `(?U)` swap greedy/non-greedy.
 - **`.` does not match newlines** by default; use `(?s)` if you need it to.
 - **No backreferences, no lookaround, no possessive quantifiers.** No Vim-style `\c` / `\C` case toggles either; they'd match the literal letters `c` / `C`.
-- **Invalid patterns** do nothing during live preview: the cursor stays put. Pressing `Enter` on one still stores it, so `n` and `N` will do nothing until you search for something valid again.
+- **Invalid patterns** do nothing during live preview: the cursor stays put. Pressing `Enter` on one reports it and leaves your last search as it was. Pressing `Enter` on a pattern that matches nothing shows "no match"; the pattern still becomes the current search.
 
 ### Flags
 

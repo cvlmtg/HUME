@@ -137,4 +137,4 @@ Press `s` to enter Sift mode. Type a regex pattern and press `Enter`. Each exist
 2. Press `s` and type `\w+` to select each word individually
 3. Press `d` to delete all words at once
 
-`s` requires at least one selection wider than a single character. On a bare single-character cursor it does nothing. See [Regex syntax](moving-around.md#regex-syntax) for the pattern flavor and case-sensitivity rules.
+`s` requires at least one selection wider than a single character. On a bare single-character cursor it does nothing. Pressing `Enter` on an invalid pattern, or one with no match, reports it and leaves the selections as they were. See [Regex syntax](moving-around.md#regex-syntax) for the pattern flavor and case-sensitivity rules.

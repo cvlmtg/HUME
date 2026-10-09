@@ -20,7 +20,6 @@ use hume_editing::text::BufferText;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId};
 use hume_engine::types::ScopeId;
-use hume_ops::search::SearchDirection;
 use hume_treesitter::parse_worker::InlineParseBackend;
 use hume_treesitter::registry::{GrammarBundle, QueryPaths};
 use slotmap::SecondaryMap;

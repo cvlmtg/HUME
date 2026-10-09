@@ -7,9 +7,10 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::search::compile_search_input;
 use hume_ops::selection_cmd::sift_matches_within;
+use hume_scripting::host::CommandArg;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
-use super::super::{Editor, EditorState};
+use super::super::{Editor, EditorState, commands};
 use super::snapshot::PaneSnapshot;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
@@ -21,6 +22,9 @@ pub(in crate::editor) struct SiftLayer {
     /// stays open. See [`PaneSnapshot`]'s own doc for the capture/restore
     /// rules.
     pub(in crate::editor) snap: PaneSnapshot,
+    /// The `sift-within` this prompt reads the pattern for, run with it on
+    /// Enter.
+    pub(in crate::editor) then: commands::PendingDispatch,
 }
 
 impl Layer for SiftLayer {
@@ -68,19 +72,14 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => {
             ed.state.truncate_layers(&ed.view, r);
         }
-        MiniBufferEvent::Confirm(_) => {
-            // Keep the selections that live preview already set. This
-            // `Confirm` arm clears its own stash before truncating, so
-            // teardown's `Sift` arm (which would otherwise restore it)
-            // finds nothing to do.
-            if let Some(sift) = ed.state.input.at_mut::<SiftLayer>(r) {
-                sift.snap.take_selections();
-            }
-            // Do NOT write to the search register or clear search state:
-            // sift-within is a selection op, not a search. The previous
-            // search pattern and its highlights should be preserved so that
-            // n/N continues to navigate the original search.
+        MiniBufferEvent::Confirm(pattern) => {
+            let Some(then) = ed.state.input.at::<SiftLayer>(r).map(|s| s.then.clone()) else {
+                return;
+            };
+            // Teardown restores the pre-sift selections, so the command sifts
+            // the ones the prompt opened over, as a `call!` would.
             ed.state.truncate_layers(&ed.view, r);
+            commands::run_collected(&mut ed.state, &mut ed.view, then, CommandArg::Text(pattern));
         }
         MiniBufferEvent::EmptiedByBackspace | MiniBufferEvent::BackspaceOnEmpty => {
             // Restore original selections when pattern is fully erased.

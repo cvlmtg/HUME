@@ -4,28 +4,20 @@
 //! Enter and Tab read as `'\n'` and `'\t'`. Any other key or event ends the
 //! read and is swallowed.
 
-use std::borrow::Cow;
-
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
-use hume_scripting::PaneHandle;
 use hume_scripting::host::CommandArg;
 use steel::rvals::SteelVal;
 use termina::event::KeyCode;
 
-use super::super::dispatch::CmdCtx;
-use super::super::{Editor, EditorState, commands};
+use super::super::commands::{self, PendingDispatch};
+use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal};
 
 /// What the character read is for.
 pub(in crate::editor) enum CharThen {
-    /// Run native command `name` on `pane` with the character, as dispatched
-    /// with `ctx`.
-    Dispatch {
-        name: Cow<'static, str>,
-        pane: PaneHandle,
-        ctx: CmdCtx,
-    },
+    /// Run a native command dispatched without its character.
+    Dispatch(PendingDispatch),
     /// Call a Steel `(on-next-char! …)` callback with the character, or with
     /// `#f` when none is read.
     Steel(SteelVal),
@@ -80,14 +72,9 @@ fn char_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     };
     let layer = ed.state.take_layer::<CharLayer>(&ed.view, r);
     match layer.then {
-        CharThen::Dispatch { name, pane, ctx } => commands::run_collected(
-            &mut ed.state,
-            &mut ed.view,
-            &name,
-            pane,
-            ctx,
-            CommandArg::Char(ch),
-        ),
+        CharThen::Dispatch(pending) => {
+            commands::run_collected(&mut ed.state, &mut ed.view, pending, CommandArg::Char(ch));
+        }
         CharThen::Steel(callback) => ed
             .state
             .queue_steel_call(callback, vec![SteelVal::CharV(ch)]),

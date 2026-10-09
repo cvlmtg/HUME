@@ -1353,9 +1353,6 @@ fn closing_a_buffer_retires_its_open_reload_confirm() {
 /// and restoring the pre-search selection the user is still editing.
 #[test]
 fn enter_buffer_disk_check_leaves_a_layer_stacked_above_the_confirm_untouched() {
-    use crate::editor::commands::{FocusedPane, cmd_search_forward};
-    use hume_ops::MotionMode;
-
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello world\n", "hello world\n");
     let bid_a = ed.focused_buffer_id();
     let (tmp_b, _tmp_b_guard) = temp_file("other\n");
@@ -1374,8 +1371,7 @@ fn enter_buffer_disk_check_leaves_a_layer_stacked_above_the_confirm_untouched() 
 
     // Lands above the confirm the same ungated way a timer's `prompt!`
     // would (`push_mode_layer` never gates on what's already open).
-    let fp = FocusedPane::current(&ed.state);
-    cmd_search_forward(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move, None).unwrap();
+    ed.execute_keymap_command("search-forward".into(), Some(1), false);
     for ch in "world".chars() {
         ed.handle_key(key(ch));
     }

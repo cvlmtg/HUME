@@ -17,8 +17,8 @@ use crate::editor::pane_state::PaneBufferState;
 use crate::editor::dispatch::CmdCtx;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::registry::{
-    CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, FocusedTextCmdFn, MappableCommand, PaneCharCmdFn,
-    PaneCmdFn, SelectionBody, SelectionTracking,
+    CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, MappableCommand, PaneCharCmdFn, PaneCmdFn,
+    PaneTextCmdFn, PatternPrompt, SelectionBody, SelectionTracking,
 };
 use crate::editor::replay::{RepeatableAction, SelectionStep};
 use crate::editor::settings::ObjectJumpAlign;
@@ -321,8 +321,8 @@ enum Bound {
     FocusedCmd(FocusedCmdFn, FocusedPane),
     /// `EditorCmdBody::PaneChar`, with the character its operand named.
     PaneChar(PaneCharCmdFn, Target, char),
-    /// `EditorCmdBody::FocusedText`, with the text its operand named, if any.
-    FocusedText(FocusedTextCmdFn, FocusedPane, Option<String>),
+    /// `EditorCmdBody::PaneText`, with the pattern its operand named.
+    PaneText(PaneTextCmdFn, Target, String),
 }
 
 impl Bound {
@@ -332,8 +332,9 @@ impl Bound {
             Self::Selection(_, t)
             | Self::Edit(_, t)
             | Self::Pane(_, t)
-            | Self::PaneChar(_, t, _) => t.pane(),
-            Self::FocusedCmd(_, fp) | Self::FocusedText(_, fp, _) => fp.pane(),
+            | Self::PaneChar(_, t, _)
+            | Self::PaneText(_, t, _) => t.pane(),
+            Self::FocusedCmd(_, fp) => fp.pane(),
         }
     }
 
@@ -344,8 +345,9 @@ impl Bound {
             Self::Selection(_, t)
             | Self::Edit(_, t)
             | Self::Pane(_, t)
-            | Self::PaneChar(_, t, _) => t.focused(),
-            Self::FocusedCmd(_, fp) | Self::FocusedText(_, fp, _) => Some(*fp),
+            | Self::PaneChar(_, t, _)
+            | Self::PaneText(_, t, _) => t.focused(),
+            Self::FocusedCmd(_, fp) => Some(*fp),
         }
     }
 
@@ -353,7 +355,7 @@ impl Bound {
     fn arg(&self) -> Option<CommandArg> {
         match self {
             Self::PaneChar(_, _, ch) => Some(CommandArg::Char(*ch)),
-            Self::FocusedText(_, _, text) => text.clone().map(CommandArg::Text),
+            Self::PaneText(_, _, text) => Some(CommandArg::Text(text.clone())),
             Self::Selection(..) | Self::Edit(..) | Self::Pane(..) | Self::FocusedCmd(..) => None,
         }
     }
@@ -391,13 +393,52 @@ fn char_operand(arg: CommandArg) -> Result<char, ArgError> {
     }
 }
 
-/// The operand of a text command, `None` when it is to prompt for one.
-fn text_operand(arg: Option<CommandArg>) -> Result<Option<String>, ArgError> {
+/// The operand of a text command.
+fn text_operand(arg: CommandArg) -> Result<String, ArgError> {
     match arg {
-        None => Ok(None),
-        Some(CommandArg::Text(s)) => Ok(Some(s)),
-        Some(other @ CommandArg::Char(_)) => Err(ArgError::WrongKind(other)),
+        CommandArg::Text(s) => Ok(s),
+        ch @ CommandArg::Char(_) => Err(ArgError::WrongKind(ch)),
     }
+}
+
+/// The operand a native command was dispatched without, to read from the
+/// user before it runs.
+pub(in crate::editor) enum Missing {
+    /// The next key's character.
+    Char(Cow<'static, str>),
+    /// A pattern typed at `prompt`, opened in the focused pane `fp`.
+    Pattern {
+        name: Cow<'static, str>,
+        prompt: PatternPrompt,
+        fp: FocusedPane,
+    },
+}
+
+impl Missing {
+    /// The command waiting for the operand.
+    pub(in crate::editor) fn name(&self) -> &Cow<'static, str> {
+        match self {
+            Self::Char(name) | Self::Pattern { name, .. } => name,
+        }
+    }
+}
+
+impl std::fmt::Display for Missing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Char(_) => write!(f, "needs a character"),
+            Self::Pattern { .. } => write!(f, "needs a pattern"),
+        }
+    }
+}
+
+/// A native command waiting for its operand, run on `pane` as dispatched
+/// with `ctx` once the user supplies it ([`run_collected`]).
+#[derive(Clone)]
+pub(in crate::editor) struct PendingDispatch {
+    pub(in crate::editor) name: Cow<'static, str>,
+    pub(in crate::editor) pane: PaneHandle,
+    pub(in crate::editor) ctx: CmdCtx,
 }
 
 /// Refuses an operand handed to a command that takes none.
@@ -412,13 +453,12 @@ fn no_operand(arg: Option<CommandArg>) -> Result<(), ArgError> {
 /// handle itself didn't resolve ([`TargetError`]), `cmd` isn't a native
 /// command at all (`(call! "cmd" pane)` on a Steel-backed/Lazy command must
 /// use `call!`, not `call-native!`), the operand doesn't fit `cmd`
-/// ([`ArgError`]), or `cmd` takes a character it wasn't given.
+/// ([`ArgError`]), or `cmd` was given no operand and is to read one.
 pub(in crate::editor) enum BindError {
     Target(TargetError),
     NotNative,
     Arg(ArgError),
-    /// `cmd` takes a character and was given none: read one from the user.
-    NeedsChar(MappableCommand),
+    NeedsOperand(Missing),
 }
 
 impl std::fmt::Display for BindError {
@@ -427,7 +467,7 @@ impl std::fmt::Display for BindError {
             Self::Target(e) => e.fmt(f),
             Self::NotNative => write!(f, "not a native command"),
             Self::Arg(e) => e.fmt(f),
-            Self::NeedsChar(_) => write!(f, "needs a character"),
+            Self::NeedsOperand(missing) => missing.fmt(f),
         }
     }
 }
@@ -446,11 +486,11 @@ impl From<ArgError> for BindError {
 
 /// Why [`BoundCommand::focused`] could not bind `cmd`: it is a
 /// `SteelBacked`/`Lazy` command, handed back unbound for the caller's own
-/// Steel dispatch path, it takes a character it wasn't given, or its operand
-/// doesn't fit it.
+/// Steel dispatch path, it was given no operand and is to read one, or its
+/// operand doesn't fit it.
 pub(in crate::editor) enum FocusedBindError {
     NotNative(MappableCommand),
-    NeedsChar(MappableCommand),
+    NeedsOperand(Missing),
     Arg {
         name: Cow<'static, str>,
         error: ArgError,
@@ -461,8 +501,8 @@ pub(in crate::editor) enum FocusedBindError {
 enum Unbound {
     /// A `SteelBacked`/`Lazy` command, which has no body to bind.
     NotNative(MappableCommand),
-    /// A character command given no character, once its target resolved.
-    NeedsChar(MappableCommand),
+    /// An operand command given no operand, once its target resolved.
+    NeedsOperand(Missing),
 }
 
 /// Bind native `cmd`'s body to its target, then to its operand `arg`:
@@ -496,13 +536,24 @@ fn bind_body<E: From<ArgError>>(
             EditorCmdBody::PaneChar(f) => match arg {
                 Some(arg) => any().and_then(|t| Ok(Bound::PaneChar(f, t, char_operand(arg)?))),
                 None => match any() {
-                    Ok(_) => return Err(Unbound::NeedsChar(cmd)),
+                    Ok(_) => return Err(Unbound::NeedsOperand(Missing::Char(cmd.name().clone()))),
                     Err(e) => Err(e),
                 },
             },
-            EditorCmdBody::FocusedText(f) => {
-                focused().and_then(|fp| Ok(Bound::FocusedText(f, fp, text_operand(arg)?)))
-            }
+            EditorCmdBody::PaneText(f, prompt) => match arg {
+                Some(arg) => any().and_then(|t| Ok(Bound::PaneText(f, t, text_operand(arg)?))),
+                // The prompt opens in the focused pane.
+                None => match focused() {
+                    Ok(fp) => {
+                        return Err(Unbound::NeedsOperand(Missing::Pattern {
+                            name: cmd.name().clone(),
+                            prompt,
+                            fp,
+                        }));
+                    }
+                    Err(e) => Err(e),
+                },
+            },
         },
         MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
             return Err(Unbound::NotNative(cmd));
@@ -515,29 +566,6 @@ fn bind_body<E: From<ArgError>>(
 /// script caller to raise to (a keypress, a dot-repeat replay).
 pub(in crate::editor) fn report_arg_error(state: &mut EditorState, name: &str, error: &ArgError) {
     state.report(Severity::Error, format!("'{name}': {error}"));
-}
-
-/// Run command `name` on `pane` with the operand the user supplied for it
-/// after it was dispatched without one, reporting any refusal: by then no
-/// script caller is waiting to raise to.
-pub(in crate::editor) fn run_collected(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    name: &str,
-    pane: PaneHandle,
-    ctx: CmdCtx,
-    arg: CommandArg,
-) {
-    let Some(cmd) = state.config.registry.get_mappable(name).cloned() else {
-        state.report(Severity::Error, format!("unknown command: {name}"));
-        return;
-    };
-    match BoundCommand::resolve(state, view, cmd, pane, Some(arg)) {
-        Ok(bound) => {
-            run(state, view, bound, ctx);
-        }
-        Err(e) => state.report(Severity::Error, format!("'{name}': {e}")),
-    }
 }
 
 /// A native command resolved against its target: the single value
@@ -569,7 +597,7 @@ impl BoundCommand {
             Ok(Ok(body)) => Ok(Self { name, meta, body }),
             Ok(Err(error)) => Err(FocusedBindError::Arg { name, error }),
             Err(Unbound::NotNative(cmd)) => Err(FocusedBindError::NotNative(cmd)),
-            Err(Unbound::NeedsChar(cmd)) => Err(FocusedBindError::NeedsChar(cmd)),
+            Err(Unbound::NeedsOperand(missing)) => Err(FocusedBindError::NeedsOperand(missing)),
         }
     }
 
@@ -595,7 +623,7 @@ impl BoundCommand {
         )
         .map_err(|unbound| match unbound {
             Unbound::NotNative(_) => BindError::NotNative,
-            Unbound::NeedsChar(cmd) => BindError::NeedsChar(cmd),
+            Unbound::NeedsOperand(missing) => BindError::NeedsOperand(missing),
         })??;
         Ok(Self { name, meta, body })
     }
@@ -737,8 +765,8 @@ pub(in crate::editor) fn run_body(
                 report_refusal(state, e);
             }
         }
-        Bound::FocusedText(f, fp, text) => {
-            if let Err(e) = f(state, view, fp, count, motion_mode, text.as_deref()) {
+        Bound::PaneText(f, target, text) => {
+            if let Err(e) = f(state, view, target.pane(), count, motion_mode, &text) {
                 report_refusal(state, e);
             }
         }

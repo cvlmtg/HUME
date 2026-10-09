@@ -368,6 +368,7 @@ pub(super) fn set_primary_selection(
     pbs.store(replaced);
 }
 
+mod collect;
 mod edit;
 mod find;
 mod insert_keys;
@@ -423,11 +424,12 @@ pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 // (which reaches it directly too). Only `editor::tests` calls it through
 // this path, so the re-export is test-only to avoid an "unused import"
 // warning on every non-test build.
+pub(in crate::editor) use collect::{collect_operand, run_collected};
 #[cfg(test)]
 pub(in crate::editor) use pane::open_pane_in_layout;
 pub(in crate::editor) use pipeline::{
-    ArgError, BindError, BoundCommand, CommandPane, FocusedBindError, FocusedPane, NativeBody,
-    TargetError, repeat_slot_owned, report_arg_error, run, run_body, run_collected,
+    ArgError, BindError, BoundCommand, CommandPane, FocusedBindError, FocusedPane, Missing,
+    NativeBody, PendingDispatch, TargetError, repeat_slot_owned, report_arg_error, run, run_body,
     step_paste_commit, step_stamp_repeatable,
 };
 

@@ -59,9 +59,6 @@ fn search_esc_restores_position() {
 /// pre-search position.
 #[test]
 fn search_backward_reentry_while_forward_search_open_replaces_and_restashes() {
-    use crate::editor::commands::{FocusedPane, cmd_search_backward};
-    use hume_ops::MotionMode;
-
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key('/'));
     for ch in "world".chars() {
@@ -73,8 +70,7 @@ fn search_backward_reentry_while_forward_search_open_replaces_and_restashes() {
         "sanity: live `/` search moved the selection"
     );
 
-    let fp = FocusedPane::current(&ed.state);
-    cmd_search_backward(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move, None).unwrap();
+    ed.execute_keymap_command("search-backward".into(), Some(1), false);
     assert_eq!(
         ed.state.minibuf().unwrap().prompt,
         "?",

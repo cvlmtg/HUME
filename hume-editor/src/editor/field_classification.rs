@@ -68,7 +68,6 @@ fn editor_state_fields_are_classified() {
             // theme, which empties this
             shown_theme: _,
             last_find: _,                       // preserved
-            search: _,                          // preserved
             focus: _,                           // preserved
             tabs: _,                            // preserved
             panes: _,                           // preserved

@@ -27,9 +27,8 @@ use super::super::pane_state::PaneBufferState;
 /// falls through under these layers, so focus can change while the session
 /// stays open). The buffer is recorded rather than re-read from the pane,
 /// because the pane may show another buffer by the time the snapshot is
-/// used. `None` once a `Confirm` arm has taken it, so `Layer::tear_down`'s
-/// own restore becomes a no-op instead of double-firing on top of whatever
-/// the confirm already did. A text change to the buffer carries the
+/// used. `None` once restored by `take_restore`, so a second restore is a
+/// no-op. A text change to the buffer carries the
 /// selections (see `PositionStores::carry`).
 pub(in crate::editor) struct PaneSnapshot {
     pane: PaneId,
@@ -69,15 +68,6 @@ impl PaneSnapshot {
     /// (`update_live_search`, `update_live_sift`).
     pub(in crate::editor) fn selections(&self) -> Option<(BufferId, &SelectionSet)> {
         self.captured.as_ref().map(|(bid, sels)| (*bid, sels))
-    }
-
-    /// Takes the captured buffer and selections without writing them
-    /// anywhere, for a `Confirm` arm that keeps the session's live-preview
-    /// result instead of restoring the pre-session state, but must still
-    /// empty the snapshot so the coming `tear_down` finds nothing left to
-    /// restore.
-    pub(in crate::editor) fn take_selections(&mut self) -> Option<(BufferId, SelectionSet)> {
-        self.captured.take()
     }
 
     /// Writes the captured selections back into `pane`'s state for the

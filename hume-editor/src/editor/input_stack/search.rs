@@ -6,6 +6,7 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
 use hume_ops::search::{MatchScan, MatchSeed, SearchDirection};
+use hume_scripting::host::CommandArg;
 
 use super::super::jump_list::JumpEntry;
 use super::super::minibuf::history::{HistoryDir, HistoryKind, HistoryStore};
@@ -25,10 +26,12 @@ pub(in crate::editor) struct SearchLayer {
     /// stays open. See [`PaneSnapshot`]'s own doc for the capture/restore
     /// rules.
     pub(in crate::editor) snap: PaneSnapshot,
-    /// Whether Extend mode was active when this session opened. Captured so
-    /// live-search can extend from the pre-search anchor even though `mode`
-    /// is `Search` during the live preview.
-    pub(in crate::editor) extend: bool,
+    /// Which way the live preview searches.
+    pub(in crate::editor) direction: SearchDirection,
+    /// The search command this prompt reads the pattern for, run with it on
+    /// Enter. Its `ctx.extend` also drives the live preview, which extends
+    /// from the pre-search anchor although `mode` is `Search` meanwhile.
+    pub(in crate::editor) then: commands::PendingDispatch,
 }
 
 impl Layer for SearchLayer {
@@ -80,25 +83,13 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             ed.state.truncate_layers(&ed.view, r);
         }
         MiniBufferEvent::Confirm(pattern) => {
-            // The `Confirm` arm does its own accept work (taking the stash)
-            // before truncating; teardown's `Search` arm restores it on
-            // every *other* removal, so it's already gone here and would be
-            // a no-op if left to teardown.
-            let pre = ed.state.input.at_mut::<SearchLayer>(r).and_then(|s| {
-                let (bid, sels) = s.snap.take_selections()?;
-                Some(SearchOrigin {
-                    pane: s.snap.pane(),
-                    bid,
-                    sels,
-                })
-            });
-            let direction = ed.state.search.direction;
-            commit_search(&mut ed.state, &ed.view, pattern, direction, pre);
-            // search_pattern stays alive on the buffer for immediate n/N
-            // without recompile. The stash is already taken above, so
-            // teardown's `Search` arm (gated on the same stash) won't
-            // clear it.
+            let Some(then) = ed.state.input.at::<SearchLayer>(r).map(|s| s.then.clone()) else {
+                return;
+            };
+            // Teardown restores the pre-search selections, so the command
+            // searches from where the prompt opened, as a `call!` would.
             ed.state.truncate_layers(&ed.view, r);
+            commands::run_collected(&mut ed.state, &mut ed.view, then, CommandArg::Text(pattern));
         }
         MiniBufferEvent::EmptiedByBackspace => {
             // First Backspace cleared the last character: restore position but
@@ -162,11 +153,11 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
         Some(mb) if !mb.input.is_empty() => mb.input.clone(),
         _ => return,
     };
-    let direction = ed.state.search.direction;
     let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
         return;
     };
-    let mode = if search.extend {
+    let direction = search.direction;
+    let mode = if search.then.ctx.extend {
         MotionMode::Extend
     } else {
         MotionMode::Move

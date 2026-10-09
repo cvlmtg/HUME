@@ -2,8 +2,8 @@ use std::borrow::Cow;
 
 use crate::editor::commands::NativeBody;
 use crate::editor::registry::{
-    CommandRegistry, EditorCmdBody, FocusedCmdFn, FocusedTextCmdFn, MappableCommand, PaneCharCmdFn,
-    PaneCmdFn, SelectionTracking,
+    CommandRegistry, EditorCmdBody, FocusedCmdFn, MappableCommand, PaneCharCmdFn, PaneCmdFn,
+    PaneTextCmdFn, PatternPrompt, SelectionTracking,
 };
 
 // Builder for EditorCmd registration. Each method sets one field (a bool,
@@ -151,12 +151,14 @@ pub(super) fn ecmd_pane_char(
     ecmd_builder(name, doc, EditorCmdBody::PaneChar(fun))
 }
 
-/// An [`ecmd_focused`] command that takes an optional text operand in place
-/// of its prompt. See [`crate::editor::registry::EditorCmdBody::FocusedText`].
-pub(super) fn ecmd_focused_text(
+/// An [`ecmd_pane`] command that takes a pattern, read at `prompt` when
+/// dispatched without one. See
+/// [`crate::editor::registry::EditorCmdBody::PaneText`].
+pub(super) fn ecmd_pane_text(
     name: &'static str,
     doc: &'static str,
-    fun: FocusedTextCmdFn,
+    fun: PaneTextCmdFn,
+    prompt: PatternPrompt,
 ) -> EditorCmdBuilder {
-    ecmd_builder(name, doc, EditorCmdBody::FocusedText(fun))
+    ecmd_builder(name, doc, EditorCmdBody::PaneText(fun, prompt))
 }

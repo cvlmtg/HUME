@@ -374,12 +374,9 @@ impl Editor {
                     commands::report_arg_error(&mut self.state, &name, &error);
                     false
                 }
-                Err(commands::FocusedBindError::NeedsChar(cmd)) => {
-                    let name = cmd.name();
-                    self.report(
-                        super::Severity::Error,
-                        format!("'{name}': needs a character"),
-                    );
+                Err(commands::FocusedBindError::NeedsOperand(missing)) => {
+                    let name = missing.name();
+                    self.report(super::Severity::Error, format!("'{name}': {missing}"));
                     false
                 }
                 Err(commands::FocusedBindError::NotNative(_)) => {

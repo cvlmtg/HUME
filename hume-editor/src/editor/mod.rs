@@ -71,8 +71,6 @@ mod tracked_positions;
 mod triggers;
 mod visual_move;
 
-pub(in crate::editor) use search::SearchState;
-
 // Re-export module-level helpers so sibling submodules can call `super::foo()`.
 pub(in crate::editor) use scripting_setup::ConfigPath;
 use scripting_setup::theme_search_paths;
@@ -306,7 +304,6 @@ pub(crate) struct EditorState {
     pub(in crate::editor) shown_theme: String,
     /// The character and kind from the last find/till motion.
     pub(super) last_find: Option<commands::FindChar>,
-    pub(super) search: SearchState,
     /// The single pane focused in the current editing session, i.e. the
     /// *active tab's* focused pane. Every other open tab's own focused pane
     /// is stashed on `tabs` instead (see its module doc). `pub(in
@@ -515,7 +512,6 @@ impl Default for EditorState {
             settings,
             shown_theme: String::new(),
             last_find: None,
-            search: SearchState::default(),
             focus: focus::Focus::default(),
             // Placeholder, like `focus` above: every real caller
             // (`Editor::open`, `for_testing`) overrides both together with a

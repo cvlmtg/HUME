@@ -448,6 +448,44 @@ fn call_sift_within_on_bare_cursors_returns_false() {
     assert_eq!(text(&ed), "xello\n");
 }
 
+// ── Enter at a prompt runs the command with the typed pattern ──────────────
+
+fn type_keys(ed: &mut Editor, keys: &str) {
+    for ch in keys.chars() {
+        ed.feed_key(key(ch));
+    }
+}
+
+#[test]
+fn enter_on_an_invalid_search_pattern_reports_and_records_nothing() {
+    let mut ed = editor_from("-[h]>ello\n");
+    type_keys(&mut ed, "/(");
+    ed.feed_key(key_enter());
+    assert_eq!(state(&ed), "-[h]>ello\n");
+    assert!(has_error(&ed, "invalid pattern"));
+    assert!(reg(&ed, 's').is_empty());
+    assert!(search_history(&ed, HistoryKind::SearchForward).is_empty());
+}
+
+#[test]
+fn enter_on_a_search_with_no_match_reports_it() {
+    let mut ed = editor_from("-[h]>ello\n");
+    type_keys(&mut ed, "/xyz");
+    ed.feed_key(key_enter());
+    assert_eq!(state(&ed), "-[h]>ello\n");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("no match"));
+    assert_eq!(reg(&ed, 's'), vec!["xyz"]);
+}
+
+#[test]
+fn enter_on_an_invalid_sift_pattern_reports_and_keeps_the_selection() {
+    let mut ed = editor_from("-[ab cd]>\n");
+    type_keys(&mut ed, "s(");
+    ed.feed_key(key_enter());
+    assert_eq!(state(&ed), "-[ab cd]>\n");
+    assert!(has_error(&ed, "invalid pattern"));
+}
+
 // ── core:helix-surround, which reads its delimiters with on-next-char! ──────
 
 const HELIX_SURROUND: &str =

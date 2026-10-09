@@ -1,7 +1,9 @@
 use crate::editor::commands::*;
 use crate::editor::registry::CommandRegistry;
 
-use super::builder::{ecmd_focused, ecmd_focused_text, ecmd_pane, ecmd_pane_char};
+use super::builder::{ecmd_focused, ecmd_pane, ecmd_pane_char, ecmd_pane_text};
+use crate::editor::registry::PatternPrompt;
+use hume_ops::search::SearchDirection;
 
 impl CommandRegistry {
     pub(super) fn register_editor_cmds(&mut self) {
@@ -349,16 +351,18 @@ impl CommandRegistry {
         .reg(self);
 
         // ── Editor commands — search ──────────────────────────────────────────
-        ecmd_focused_text(
+        ecmd_pane_text(
             "search-forward",
             "Enter search mode (forward). From `call!`, pass a pattern to search without opening the prompt.",
             cmd_search_forward,
+            PatternPrompt::Search(SearchDirection::Forward),
         )
         .reg(self);
-        ecmd_focused_text(
+        ecmd_pane_text(
             "search-backward",
             "Enter search mode (backward). From `call!`, pass a pattern to search without opening the prompt.",
             cmd_search_backward,
+            PatternPrompt::Search(SearchDirection::Backward),
         )
         .reg(self);
         ecmd_pane(
@@ -385,10 +389,11 @@ impl CommandRegistry {
         .reg(self);
 
         // ── Editor commands — sift ────────────────────────────────────────────
-        ecmd_focused_text(
+        ecmd_pane_text(
             "sift-within",
             "Narrow each selection down to its regex matches. From `call!`, pass a pattern to sift without opening the prompt.",
             cmd_sift_within,
+            PatternPrompt::Sift,
         )
         .reg(self);
         // `EditorCmd`, not `selection!`: the body needs `EditorState` to read

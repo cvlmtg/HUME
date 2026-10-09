@@ -195,13 +195,8 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                     "{name} is not a native command; use call! instead of call-native!"
                 ));
             }
-            Err(crate::editor::commands::BindError::NeedsChar(cmd)) => {
-                let then = crate::editor::input_stack::CharThen::Dispatch {
-                    name: cmd.name().clone(),
-                    pane,
-                    ctx,
-                };
-                crate::editor::input_stack::read_char(self.state, self.view, then);
+            Err(crate::editor::commands::BindError::NeedsOperand(missing)) => {
+                crate::editor::commands::collect_operand(self.state, self.view, missing, pane, ctx);
                 return Ok(true);
             }
             Err(e) => return Err(format!("'{name}': {e}")),

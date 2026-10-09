@@ -16,53 +16,52 @@ use super::super::input_stack::{
     InvalidPattern, PaneSnapshot, SearchLayer, SearchOrigin, SiftFailure, SiftLayer, commit_search,
     preview_search, sift_within,
 };
+use super::super::registry::PatternPrompt;
 use super::super::{EditorState, MiniBuffer};
 use super::{
-    CommandPane, FocusedPane, doc, effective_word_chars, pane_selections, pane_view,
-    search_pattern, set_pane_selections, set_primary_selection,
+    CommandPane, FocusedPane, PendingDispatch, doc, effective_word_chars, pane_selections,
+    pane_view, search_pattern, set_pane_selections, set_primary_selection,
 };
 use crate::editor::error::CommandError;
 
 // ── Search ────────────────────────────────────────────────────────────────────
 
-/// Shared body of `cmd_search_forward`/`cmd_search_backward`: opens the
-/// mini-buffer with `prompt` (`/` or `?`); `SearchLayer::setup` snapshots
-/// the current selections for cancel-restore once the layer lands (see its
-/// own doc for why that capture happens there rather than here).
+/// Open the search prompt in `fp` for `then`, a `search-forward`/`-backward`
+/// dispatched without its pattern: `prompt` is `/` or `?`.
+/// `SearchLayer::setup` snapshots the current selections for cancel-restore
+/// once the layer lands (see its own doc for why that capture happens there
+/// rather than here).
 fn begin_search(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
     direction: SearchDirection,
     prompt: &str,
+    then: PendingDispatch,
 ) {
-    let extend = state.mode() == hume_engine::types::EditorMode::Extend;
-    state.search.direction = direction;
     state.history.begin_session_all();
     state.push_mode_layer(
         view,
         SearchLayer {
             minibuf: MiniBuffer::new(prompt),
             snap: PaneSnapshot::new(fp.pid()),
-            extend,
+            direction,
+            then,
         },
     );
 }
 
-/// Search with `raw` as if it were typed at the search prompt and
-/// confirmed: the same preview and the same confirm the prompt runs, from
-/// the pane's current selections. An invalid pattern touches nothing; a
-/// pattern with no match is still recorded, as Enter records it, and
-/// reported as "no match".
+/// Search `t` for `raw` from its current selections: the preview the prompt
+/// runs per keystroke, then the commit. An invalid pattern touches nothing;
+/// a pattern with no match is still recorded and reported as "no match".
 fn search_with_pattern(
     state: &mut EditorState,
     view: &EngineView,
-    fp: FocusedPane,
+    t: CommandPane,
     direction: SearchDirection,
     mode: MotionMode,
     raw: &str,
 ) -> Result<(), CommandError> {
-    let t = fp.pane();
     let bid = t.bid(view);
     let sels = pane_selections(state, view, t).clone();
     let origin = |sels| SearchOrigin {
@@ -86,63 +85,65 @@ fn invalid_pattern(raw: &str) -> CommandError {
     CommandError::new(format!("invalid pattern: {raw}"))
 }
 
-/// Enter search mode with `prompt`, or search for `pattern` when given.
-fn search_or_prompt(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    fp: FocusedPane,
-    mode: MotionMode,
-    pattern: Option<&str>,
-    direction: SearchDirection,
-    prompt: &str,
-) -> Result<(), CommandError> {
-    match pattern {
-        None => {
-            begin_search(state, view, fp, direction, prompt);
-            Ok(())
-        }
-        Some(raw) => search_with_pattern(state, view, fp, direction, mode, raw),
-    }
-}
-
-/// Enter forward search mode, or search forward for `pattern` when given.
+/// Search forward for `pattern`.
 pub(in crate::editor) fn cmd_search_forward(
     state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
+    t: CommandPane,
     _count: usize,
     mode: MotionMode,
-    pattern: Option<&str>,
+    pattern: &str,
 ) -> Result<(), CommandError> {
-    search_or_prompt(
-        state,
-        view,
-        fp,
-        mode,
-        pattern,
-        SearchDirection::Forward,
-        "/",
-    )
+    search_with_pattern(state, view, t, SearchDirection::Forward, mode, pattern)
 }
 
-/// Enter backward search mode, or search backward for `pattern` when given.
+/// Search backward for `pattern`.
 pub(in crate::editor) fn cmd_search_backward(
     state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
+    t: CommandPane,
     _count: usize,
     mode: MotionMode,
-    pattern: Option<&str>,
+    pattern: &str,
 ) -> Result<(), CommandError> {
-    search_or_prompt(
-        state,
-        view,
-        fp,
-        mode,
-        pattern,
-        SearchDirection::Backward,
-        "?",
-    )
+    search_with_pattern(state, view, t, SearchDirection::Backward, mode, pattern)
+}
+
+/// Open `prompt` in `fp` to read the pattern `then` was dispatched without.
+/// Selections that are all bare cursors have nothing to sift, so the sift
+/// prompt doesn't open over them.
+pub(in crate::editor) fn open_pattern_prompt(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    fp: FocusedPane,
+    prompt: PatternPrompt,
+    then: PendingDispatch,
+) {
+    match prompt {
+        PatternPrompt::Search(direction) => {
+            let label = match direction {
+                SearchDirection::Forward => "/",
+                SearchDirection::Backward => "?",
+            };
+            begin_search(state, view, fp, direction, label, then);
+        }
+        PatternPrompt::Sift => {
+            if all_cursors(state, view, fp.pane()) {
+                return;
+            }
+            // `SiftLayer::setup` snapshots the current selections once the
+            // layer lands; see `SearchLayer::setup`'s doc for why the capture
+            // happens there rather than here.
+            state.push_mode_layer(
+                view,
+                SiftLayer {
+                    minibuf: MiniBuffer::new("⫽"),
+                    snap: PaneSnapshot::new(fp.pid()),
+                    then,
+                },
+            );
+        }
+    }
 }
 
 /// Ensure `t`'s buffer has an active search pattern.
@@ -294,49 +295,33 @@ pub(in crate::editor) fn cmd_select_all_matches(
 
 // ── Sift within (s) ──────────────────────────────────────────────────────────
 
-/// Open the sift prompt, or sift each selection down to `pattern`'s matches
-/// when given. Selections that are all bare cursors have nothing to sift: the
-/// prompt doesn't open, and a given pattern is refused.
+/// Sift each selection in `t` down to `pattern`'s matches. Selections that
+/// are all bare cursors have nothing to sift, and are refused.
 pub(in crate::editor) fn cmd_sift_within(
     state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
-    pattern: Option<&str>,
+    pattern: &str,
 ) -> Result<(), CommandError> {
-    let all_cursors = pane_view(state, view, fp.pane())
-        .iter()
-        .all(|sel| sel.is_cursor());
-    if all_cursors {
-        return match pattern {
-            Some(_) => Err(CommandError::transient(
-                "sift-within needs a selection wider than one character",
-            )),
-            None => Ok(()),
-        };
+    if all_cursors(state, view, t) {
+        return Err(CommandError::transient(
+            "sift-within needs a selection wider than one character",
+        ));
     }
-    if let Some(raw) = pattern {
-        let t = fp.pane();
-        let sels = pane_selections(state, view, t).clone();
-        let sifted = sift_within(doc(state, view, t).text(), sels, raw).map_err(|e| match e {
-            SiftFailure::Invalid => invalid_pattern(raw),
-            SiftFailure::NoMatch => CommandError::transient("no match"),
-        })?;
-        set_pane_selections(state, view, t, sifted.into_selections());
-        return Ok(());
-    }
-    // `SiftLayer::setup` snapshots the current selections once the layer
-    // lands; see `SearchLayer::setup`'s doc for why the capture happens
-    // there rather than here.
-    state.push_mode_layer(
-        view,
-        SiftLayer {
-            minibuf: MiniBuffer::new("⫽"),
-            snap: PaneSnapshot::new(fp.pid()),
-        },
-    );
+    let sels = pane_selections(state, view, t).clone();
+    let sifted = sift_within(doc(state, view, t).text(), sels, pattern).map_err(|e| match e {
+        SiftFailure::Invalid => invalid_pattern(pattern),
+        SiftFailure::NoMatch => CommandError::transient("no match"),
+    })?;
+    set_pane_selections(state, view, t, sifted.into_selections());
     Ok(())
+}
+
+/// Whether every selection in `t` is a bare cursor.
+fn all_cursors(state: &EditorState, view: &EngineView, t: CommandPane) -> bool {
+    pane_view(state, view, t).iter().all(|sel| sel.is_cursor())
 }
 
 // ── Search word under cursor (*) ─────────────────────────────────────────────
@@ -411,9 +396,9 @@ pub(in crate::editor) fn cmd_search_selection(
 }
 
 /// Compile `pattern` under `flags`, write the rendered flagged form to the
-/// search register, and set it as `t`'s buffer's active search pattern
-/// (forward direction). Shared tail of `*` and Ctrl-/. Both set the same
-/// (register, direction, pattern) triple that live search sets on confirm;
+/// search register, and set it as `t`'s buffer's active search pattern.
+/// Shared tail of `*` and Ctrl-/. Both set the same (register, pattern) pair
+/// that live search sets on confirm;
 /// the match-cache/highlights are rebuilt lazily per-frame regardless of
 /// which path set the pattern.
 ///
@@ -433,7 +418,6 @@ fn set_search_pattern(
         return Ok(());
     };
     state.registers.set_search_register(raw);
-    state.search.direction = SearchDirection::Forward;
     let bid = t.bid(view);
     state.buffers.get_mut(bid).search_pattern = Some(sp);
     Ok(())

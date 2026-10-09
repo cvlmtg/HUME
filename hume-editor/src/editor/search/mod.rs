@@ -6,10 +6,6 @@
 //! - The last search pattern string also lives in the `'s'` register
 //!   (`RegisterSet::search_register`), independent of any buffer. It seeds
 //!   a fresh buffer's compiled pattern the first time `n`/`N` runs there.
-//!
-//! [`SearchState`] retains only the session-level interaction field that is
-//! not tied to a buffer: the current direction. Everything else (regex,
-//! matches, match count) lives in the per-buffer / per-pane tier above.
 
 pub(in crate::editor) mod ops;
 
@@ -17,7 +13,7 @@ use std::sync::Arc;
 
 use hume_editing::text::BufferText;
 use hume_editing::tracked::Tracked;
-use hume_ops::search::{SearchDirection, compile_search_input};
+use hume_ops::search::compile_search_input;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 
 // ── Per-buffer types ──────────────────────────────────────────────────────────
@@ -109,24 +105,4 @@ pub(crate) struct SearchCursor {
     /// The pattern and primary head `match_count` was computed for, in the
     /// text it was computed against. `None` = never computed.
     pub computed_for: Option<Tracked<(String, ClusterStart)>>,
-}
-
-// ── Session-level interaction state ──────────────────────────────────────────
-
-/// Session-level search state: direction only.
-///
-/// All other search state (regex, matches, match count) lives in the
-/// per-buffer / per-pane tier: `Buffer.search_pattern`, `Buffer.search_matches`,
-/// and `PaneBufferState.search_cursor`.
-pub(crate) struct SearchState {
-    /// Direction of the current or last search.
-    pub direction: SearchDirection,
-}
-
-impl Default for SearchState {
-    fn default() -> Self {
-        Self {
-            direction: SearchDirection::Forward,
-        }
-    }
 }

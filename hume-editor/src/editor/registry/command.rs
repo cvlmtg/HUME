@@ -5,6 +5,7 @@ use crate::editor::error::CommandError;
 use hume_editing::edit::Edited;
 use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
+use hume_ops::search::SearchDirection;
 use hume_ops::{MotionMode, WordCtx};
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 
@@ -45,18 +46,26 @@ pub(in crate::editor) type PaneCharCmdFn = fn(
     char,
 ) -> Result<(), CommandError>;
 
-/// Function pointer for an [`EditorCmdBody::FocusedText`] handler: a
-/// [`FocusedCmdFn`] that also takes an optional text operand. `None` means
-/// the user is to type it (the handler opens its prompt); `Some` is the text
-/// a script passed in its place.
-pub(in crate::editor) type FocusedTextCmdFn = fn(
+/// Function pointer for an [`EditorCmdBody::PaneText`] handler: a
+/// [`PaneCmdFn`] that also takes the pattern its operand names (typed at the
+/// command's prompt, or a `call!` argument). The pattern is required:
+/// dispatch without one opens the prompt first.
+pub(in crate::editor) type PaneTextCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
-    FocusedPane,
+    CommandPane,
     usize,
     MotionMode,
-    Option<&str>,
+    &str,
 ) -> Result<(), CommandError>;
+
+/// The prompt a [`EditorCmdBody::PaneText`] command opens to read its
+/// pattern when dispatched without one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) enum PatternPrompt {
+    Search(SearchDirection),
+    Sift,
+}
 
 /// Body shape for [`MappableCommand::EditorCmd`]'s `fun` field: decides at
 /// compile time whether `(call! "cmd" pane)` may act on a non-focused pane,
@@ -78,7 +87,7 @@ pub(in crate::editor) enum EditorCmdBody {
     Pane(PaneCmdFn),
     FocusedPane(FocusedCmdFn),
     PaneChar(PaneCharCmdFn),
-    FocusedText(FocusedTextCmdFn),
+    PaneText(PaneTextCmdFn, PatternPrompt),
 }
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────

@@ -6,8 +6,6 @@
 //! path, which additionally needs `self.scripting` and the
 //! timer bridge: fields only reachable through `&mut Editor`.
 
-use super::input_stack::{CharThen, read_char};
-
 use super::event::EditorEvent;
 use super::registry::MappableCommand;
 use super::{Editor, Severity, commands};
@@ -45,8 +43,8 @@ impl Editor {
     /// calls [`commands::run_body`] or `run_steel_command` directly, though
     /// a replayed Steel body's own `call!`s still reach [`commands::run`].
     ///
-    /// A native command that takes a character reads it from the next key
-    /// and runs then.
+    /// A native command dispatched without the operand it takes reads it
+    /// from the user first: the next key's character, or its prompt.
     pub(in crate::editor) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) {
         // Native path: a keypress always acts at the focused pane.
         // `NotNative` hands `cmd` back unbound for a Steel-backed/Lazy
@@ -57,13 +55,9 @@ impl Editor {
                 commands::run(&mut self.state, &mut self.view, bound, ctx);
                 return;
             }
-            Err(commands::FocusedBindError::NeedsChar(cmd)) => {
-                let then = CharThen::Dispatch {
-                    name: cmd.name().clone(),
-                    pane: fp.handle(&self.view),
-                    ctx,
-                };
-                read_char(&mut self.state, &self.view, then);
+            Err(commands::FocusedBindError::NeedsOperand(missing)) => {
+                let pane = fp.handle(&self.view);
+                commands::collect_operand(&mut self.state, &mut self.view, missing, pane, ctx);
                 return;
             }
             Err(commands::FocusedBindError::Arg { name, error }) => {
