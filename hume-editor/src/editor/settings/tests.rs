@@ -1187,6 +1187,65 @@ fn set_names_the_failing_key_in_enum_errors() {
 }
 
 #[test]
+fn every_parser_kind_names_the_key_once() {
+    let cases = [
+        (
+            "mouse",
+            "maybe",
+            "invalid value for 'mouse': expected true/false, got 'maybe'",
+        ),
+        (
+            "scroll-margin",
+            "x",
+            "invalid value for 'scroll-margin': expected a non-negative integer, got 'x'",
+        ),
+        (
+            "jump-list-capacity",
+            "0",
+            "invalid value for 'jump-list-capacity': must be at least 1",
+        ),
+        (
+            "tab-width",
+            "0",
+            "invalid value for 'tab-width': must be at least 1",
+        ),
+        (
+            "tab-width",
+            "x",
+            "invalid value for 'tab-width': expected 1–255, got 'x'",
+        ),
+        (
+            "whitespace-newline",
+            "trailing",
+            "invalid value for 'whitespace-newline': expected none or all, got 'trailing'",
+        ),
+        (
+            "word-chars",
+            "- ",
+            "invalid value for 'word-chars': cannot contain whitespace or newline: ' '",
+        ),
+        (
+            "statusline",
+            "Mode",
+            "invalid value for 'statusline': expected three sections separated by '|' (e.g. 'Mode,FileName||Position'), got 'Mode'",
+        ),
+        (
+            "statusline",
+            "Mode,,x||",
+            "invalid value for 'statusline': section 'Mode,,x' has an empty element name",
+        ),
+    ];
+    for (key, value, expected) in cases {
+        let mut settings = EditorSettings::default();
+        assert_eq!(
+            write_global(key, value, &mut settings).unwrap_err(),
+            expected,
+            "{key}={value}"
+        );
+    }
+}
+
+#[test]
 fn or_list_joins_one_two_and_many() {
     assert_eq!(super::or_list(&["a"]), "a");
     assert_eq!(super::or_list(&["a", "b"]), "a or b");
