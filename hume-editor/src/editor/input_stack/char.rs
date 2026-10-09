@@ -1,17 +1,21 @@
 //! The `Char` layer: the next key typed is read as a character for whatever
 //! asked for one: a native command dispatched without its character (`f`,
 //! `r`, `(call! "replace" pane)`), a Steel `(on-next-char! …)` callback, or
-//! the register name after `q`, `Q` or `"`. Enter and Tab read as `'\n'` and
-//! `'\t'`. A register name must also be held with no modifier but Shift and
-//! name a valid register. Any other key or event ends the read and is
-//! swallowed.
+//! the register name after `q`, `Q` or `"`. Reads made while one is pending
+//! take the following keys in the order they were made. Enter and Tab read
+//! as `'\n'` and `'\t'`. A register name must also be held with no modifier
+//! but Shift and name a valid register. The scroll wheel passes through and
+//! leaves the read pending. Any other key, a click or a paste ends the read
+//! and is swallowed.
+
+use std::collections::VecDeque;
 
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
 use hume_scripting::host::CommandArg;
 use steel::rvals::SteelVal;
-use termina::event::{KeyCode, Modifiers};
+use termina::event::{KeyCode, Modifiers, MouseEventKind};
 
 use super::super::commands::{self, PendingDispatch};
 use super::super::{Editor, EditorState};
@@ -39,8 +43,10 @@ pub(in crate::editor) enum MacroRead {
     },
 }
 
+/// The pending reads, oldest first: the next key goes to the front one.
+/// Never empty while the layer is on the stack.
 pub(in crate::editor) struct CharLayer {
-    pub(in crate::editor) then: CharThen,
+    reads: VecDeque<CharThen>,
 }
 
 impl Layer for CharLayer {
@@ -58,22 +64,31 @@ impl Layer for CharLayer {
     fn popup_eviction(&self) -> PopupEviction {
         PopupEviction::LayerOnly
     }
-    /// Runs only when the read ends without a character; the accept path
-    /// takes the layer instead. A Steel callback hears `#f`. A count typed
-    /// before `"` stays for the next command.
+    /// Ends every read still pending without a character. A Steel callback
+    /// hears `#f`. A count typed before `"` stays for the next command.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        match &self.then {
-            CharThen::Steel(callback) => {
-                state.queue_steel_call(callback.clone(), vec![SteelVal::BoolV(false)]);
+        for then in self.reads.drain(..) {
+            match then {
+                CharThen::Steel(callback) => {
+                    state.queue_steel_call(callback, vec![SteelVal::BoolV(false)]);
+                }
+                CharThen::Register | CharThen::Dispatch(_) | CharThen::Macro(_) => {}
             }
-            CharThen::Register | CharThen::Dispatch(_) | CharThen::Macro(_) => {}
         }
     }
 }
 
-/// Wait for the next key to supply `then`'s character.
+/// Wait for a key to supply `then`'s character: the next one, or the one
+/// after those the reads already pending take, wherever their layer sits
+/// in the stack.
 pub(in crate::editor) fn read_char(state: &mut EditorState, view: &EngineView, then: CharThen) {
-    state.push_layer(view, CharLayer { then });
+    match state.input.find_mut::<CharLayer>() {
+        Some(layer) => layer.reads.push_back(then),
+        None => {
+            let reads = VecDeque::from([then]);
+            state.push_layer(view, CharLayer { reads });
+        }
+    }
 }
 
 fn char_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
@@ -88,20 +103,40 @@ fn char_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
                 _ => None,
             }
         }
+        InputEvent::Mouse(mouse)
+            if matches!(
+                mouse.kind,
+                MouseEventKind::ScrollUp
+                    | MouseEventKind::ScrollDown
+                    | MouseEventKind::ScrollLeft
+                    | MouseEventKind::ScrollRight
+            ) =>
+        {
+            ed.fall_through(r, InputEvent::Mouse(mouse));
+            return;
+        }
         InputEvent::Paste(_) | InputEvent::Mouse(_) => None,
     };
-    let Some((ch, _)) = read.filter(|&(ch, plain)| fits(ed, r, ch, plain)) else {
+    let layer = ed
+        .state
+        .input
+        .at_mut::<CharLayer>(r)
+        .expect("char_input runs for its own CharLayer");
+    let front = layer.reads.front().expect("a CharLayer holds a read");
+    let Some((ch, _)) = read.filter(|&(ch, plain)| fits(front, ch, plain)) else {
         // Esc resets a count typed before `"`, as it does in Normal mode.
-        let register = ed.state.input.at::<CharLayer>(r);
-        if escape && register.is_some_and(|l| matches!(l.then, CharThen::Register)) {
+        if escape && matches!(front, CharThen::Register) {
             ed.state.count = None;
         }
         ed.state.truncate_layers(&ed.view, r);
         return;
     };
-    let layer = ed.state.take_layer::<CharLayer>(&ed.view, r);
+    let then = layer.reads.pop_front().expect("a CharLayer holds a read");
+    if layer.reads.is_empty() {
+        ed.state.truncate_layers(&ed.view, r);
+    }
     let state = &mut ed.state;
-    match layer.then {
+    match then {
         CharThen::Dispatch(pending) => {
             commands::run_collected(state, &mut ed.view, pending, CommandArg::Char(ch));
         }
@@ -119,13 +154,11 @@ fn char_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
 /// Whether `ch` completes the read at `r`: any character for a command or a
 /// callback, a plain register name for `q`, `Q` and `"`. `QQ` records into
 /// the default macro register.
-fn fits(ed: &Editor, r: LayerRef, ch: char, plain: bool) -> bool {
-    match ed.state.input.at::<CharLayer>(r).map(|l| &l.then) {
-        Some(CharThen::Macro(MacroRead::Record)) => {
-            plain && (ch == 'Q' || is_valid_macro_register(ch))
-        }
-        Some(CharThen::Macro(MacroRead::Replay { .. })) => plain && is_valid_macro_register(ch),
-        Some(CharThen::Register) => plain && is_valid_register_name(ch),
-        Some(CharThen::Dispatch(_) | CharThen::Steel(_)) | None => true,
+fn fits(then: &CharThen, ch: char, plain: bool) -> bool {
+    match then {
+        CharThen::Macro(MacroRead::Record) => plain && (ch == 'Q' || is_valid_macro_register(ch)),
+        CharThen::Macro(MacroRead::Replay { .. }) => plain && is_valid_macro_register(ch),
+        CharThen::Register => plain && is_valid_register_name(ch),
+        CharThen::Dispatch(_) | CharThen::Steel(_) => true,
     }
 }

@@ -252,7 +252,7 @@ The check fails loudly at load time (startup or `:reload-config`), naming what's
 
 ### Reading characters
 
-A command that needs characters from the user (a surround operation, say) reads them with `(on-next-char! callback)`. The next key typed calls `callback` with its character; Enter and Tab count as `#\newline` and `#\tab`. Any other key, such as Esc, or a mouse click, calls it with `#f` instead and does nothing else. To read another character, call `on-next-char!` again from the callback:
+A command that needs characters from the user (a surround operation, say) reads them with `(on-next-char! callback)`. The next key typed calls `callback` with its character; Enter and Tab count as `#\newline` and `#\tab`. Any other key, such as Esc, a mouse click, or a paste calls it with `#f` instead and does nothing else. Scrolling the mouse wheel scrolls as usual and keeps waiting. To read another character, call `on-next-char!` again from the callback:
 
 ```scheme
 (define-command! "my-surround"
@@ -267,7 +267,7 @@ A command that needs characters from the user (a surround operation, say) reads 
               (when new (call! "replace" pane new)))))))))
 ```
 
-Calling `replace` without a character reads it the same way, so the inner `on-next-char!` could be `(call! "replace" pane)` instead. HUME shows nothing while it waits, so make it obvious from context that a character is expected.
+Calling `replace` without a character reads it the same way, so the inner `on-next-char!` could be `(call! "replace" pane)` instead. Several reads started before a key arrives take the following keys in the order they were started. HUME shows nothing while it waits, so make it obvious from context that a character is expected.
 
 ### Register prefix
 

@@ -118,6 +118,50 @@ fn a_key_other_than_a_char_cancels_the_read() {
     assert_eq!(state(&ed), "h-[e]>llo\n");
 }
 
+#[test]
+fn till_key_moves_to_the_char_read_in_normal_mode() {
+    let mut ed = editor_from("-[ab]>cdexf\n");
+    ed.feed_key(key('t'));
+    ed.feed_key(key('x'));
+    assert_eq!(state(&ed), "abcd-[e]>xf\n");
+}
+
+#[test]
+fn till_key_extends_to_the_char_read_in_extend_mode() {
+    let mut ed = editor_from("-[ab]>cdexf\n");
+    ed.feed_key(key('e'));
+    ed.feed_key(key('t'));
+    ed.feed_key(key('x'));
+    assert_eq!(state(&ed), "-[abcde]>xf\n");
+    assert_eq!(ed.state.mode(), Mode::Extend);
+}
+
+#[test]
+fn scrolling_leaves_the_read_pending() {
+    let mut lines = String::from("-[l]>ine0\n");
+    for i in 1..30 {
+        lines.push_str(&format!("line{i}\n"));
+    }
+    let mut ed = editor_from(&lines);
+    ed.feed_key(key('f'));
+    ed.handle_input(mouse_wheel(true));
+    let pid = ed.state.focus.id();
+    assert!(ed.view.panes[pid].viewport.top().line > hume_rope::line::ContentLine::new(0));
+    assert!(reading_char(&ed));
+    ed.feed_key(key('e'));
+    let head = ed.current_view().primary().head().offset().index();
+    assert_eq!(text(&ed).chars().nth(head), Some('e'));
+}
+
+#[test]
+fn a_paste_cancels_the_read_and_is_dropped() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.feed_key(key('r'));
+    ed.handle_input(TerminalEvent::Paste("x".to_string()));
+    assert!(!reading_char(&ed));
+    assert_eq!(text(&ed), "hello\n");
+}
+
 // ── on-next-char! ───────────────────────────────────────────────────────────
 
 #[test]
@@ -166,6 +210,53 @@ fn on_next_char_chains_for_several_chars() {
              (lambda (a)
                (call! "replace" (focused-pane) a)
                (on-next-char! (lambda (b) (call! "surround-add" (focused-pane) b)))))"#,
+    );
+    run_probe(&mut ed);
+    ed.feed_key(key('x'));
+    ed.settle();
+    ed.feed_key(key('('));
+    ed.settle();
+    assert_eq!(text(&ed), "(x)ello\n");
+}
+
+#[test]
+fn reads_queued_by_one_body_take_keys_in_the_order_made() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(
+        &mut ed,
+        r#"(on-next-char! (lambda (a) (call! "replace" (focused-pane) a)))
+           (on-next-char! (lambda (b) (call! "surround-add" (focused-pane) b)))"#,
+    );
+    run_probe(&mut ed);
+    ed.feed_key(key('x'));
+    ed.settle();
+    ed.feed_key(key('('));
+    ed.settle();
+    assert_eq!(text(&ed), "(x)ello\n");
+}
+
+#[test]
+fn char_commands_called_without_chars_take_keys_in_call_order() {
+    let mut ed = editor_from("-[h]>ello a\n");
+    with_probe(
+        &mut ed,
+        r#"(call! "replace" (focused-pane))
+           (call! "find-forward" (focused-pane))"#,
+    );
+    run_probe(&mut ed);
+    ed.feed_key(key('x'));
+    ed.feed_key(key('a'));
+    assert_eq!(state(&ed), "xello -[a]>\n");
+}
+
+#[test]
+fn a_read_made_under_a_popup_queues_behind_the_pending_one() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(
+        &mut ed,
+        r#"(on-next-char! (lambda (a) (call! "replace" (focused-pane) a)))
+           (show-popup! (focused-pane) "type a delimiter" #:kind 'scrollable)
+           (on-next-char! (lambda (b) (call! "surround-add" (focused-pane) b)))"#,
     );
     run_probe(&mut ed);
     ed.feed_key(key('x'));
