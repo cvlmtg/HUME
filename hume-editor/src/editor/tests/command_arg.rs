@@ -18,6 +18,18 @@ fn run_probe(ed: &mut Editor) {
     ed.execute_keymap_command("probe".into(), Some(1), false);
 }
 
+fn probe(ed: &mut Editor, body: &str) {
+    with_probe(ed, body);
+    run_probe(ed);
+}
+
+fn feed_settled(ed: &mut Editor, keys: &str) {
+    for ch in keys.chars() {
+        ed.feed_key(key(ch));
+        ed.settle();
+    }
+}
+
 fn text(ed: &Editor) -> String {
     ed.state
         .buffers
@@ -38,24 +50,21 @@ fn has_error(ed: &Editor, needle: &str) -> bool {
 #[test]
 fn call_find_forward_with_a_char_moves_to_it() {
     let mut ed = editor_from("-[h]>ello a world\n");
-    with_probe(&mut ed, r#"(call! "find-forward" (focused-pane) #\a)"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "find-forward" (focused-pane) #\a)"#);
     assert_eq!(state(&ed), "hello -[a]> world\n");
 }
 
 #[test]
 fn call_replace_with_a_steel_char_replaces_the_selection() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "replace" (focused-pane) #\x)"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "replace" (focused-pane) #\x)"#);
     assert_eq!(text(&ed), "xello\n");
 }
 
 #[test]
 fn call_surround_add_wraps_the_selection() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "surround-add" (focused-pane) #\()"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "surround-add" (focused-pane) #\()"#);
     assert_eq!(text(&ed), "(h)ello\n");
 }
 
@@ -64,8 +73,7 @@ fn call_surround_add_wraps_the_selection() {
 #[test]
 fn call_replace_with_a_string_raises() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "replace" (focused-pane) "x")"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "replace" (focused-pane) "x")"#);
     assert_eq!(text(&ed), "hello\n");
     assert!(has_error(&ed, "'replace': needs a character, got a string"));
 }
@@ -73,8 +81,7 @@ fn call_replace_with_a_string_raises() {
 #[test]
 fn call_with_an_operand_to_a_command_taking_none_raises() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "move-right" (focused-pane) "x")"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "move-right" (focused-pane) "x")"#);
     assert_eq!(state(&ed), "-[h]>ello\n");
     assert!(has_error(&ed, "'move-right': takes no argument"));
 }
@@ -82,8 +89,7 @@ fn call_with_an_operand_to_a_command_taking_none_raises() {
 #[test]
 fn call_replace_without_a_char_raises() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "replace" (focused-pane))"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "replace" (focused-pane))"#);
     assert!(has_error(&ed, "'replace': needs a character"));
     assert!(!reading_char(&ed));
     ed.feed_key(key('x'));
@@ -168,13 +174,11 @@ fn a_paste_cancels_the_read_and_is_dropped() {
 #[test]
 fn on_next_char_hands_the_next_key_to_the_callback() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(
+    probe(
         &mut ed,
         r#"(on-next-char! (lambda (ch) (call! "replace" (focused-pane) ch)))"#,
     );
-    run_probe(&mut ed);
-    ed.feed_key(key('x'));
-    ed.settle();
+    feed_settled(&mut ed, "x");
     assert_eq!(text(&ed), "xello\n");
 }
 
@@ -185,8 +189,7 @@ const REPLACE_Z_ON_CANCEL: &str =
 #[test]
 fn on_next_char_hands_false_to_the_callback_on_escape() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, REPLACE_Z_ON_CANCEL);
-    run_probe(&mut ed);
+    probe(&mut ed, REPLACE_Z_ON_CANCEL);
     ed.feed_key(key_esc());
     ed.settle();
     assert_eq!(text(&ed), "zello\n");
@@ -195,8 +198,7 @@ fn on_next_char_hands_false_to_the_callback_on_escape() {
 #[test]
 fn on_next_char_hands_false_to_the_callback_on_a_mouse_click() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, REPLACE_Z_ON_CANCEL);
-    run_probe(&mut ed);
+    probe(&mut ed, REPLACE_Z_ON_CANCEL);
     ed.handle_input(mouse_left_down(0, 0));
     ed.settle();
     assert_eq!(text(&ed), "zello\n");
@@ -205,51 +207,39 @@ fn on_next_char_hands_false_to_the_callback_on_a_mouse_click() {
 #[test]
 fn on_next_char_chains_for_several_chars() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(
+    probe(
         &mut ed,
         r#"(on-next-char!
              (lambda (a)
                (call! "replace" (focused-pane) a)
                (on-next-char! (lambda (b) (call! "surround-add" (focused-pane) b)))))"#,
     );
-    run_probe(&mut ed);
-    ed.feed_key(key('x'));
-    ed.settle();
-    ed.feed_key(key('('));
-    ed.settle();
+    feed_settled(&mut ed, "x(");
     assert_eq!(text(&ed), "(x)ello\n");
 }
 
 #[test]
 fn reads_queued_by_one_body_take_keys_in_the_order_made() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(
+    probe(
         &mut ed,
         r#"(on-next-char! (lambda (a) (call! "replace" (focused-pane) a)))
            (on-next-char! (lambda (b) (call! "surround-add" (focused-pane) b)))"#,
     );
-    run_probe(&mut ed);
-    ed.feed_key(key('x'));
-    ed.settle();
-    ed.feed_key(key('('));
-    ed.settle();
+    feed_settled(&mut ed, "x(");
     assert_eq!(text(&ed), "(x)ello\n");
 }
 
 #[test]
 fn a_read_made_under_a_popup_queues_behind_the_pending_one() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(
+    probe(
         &mut ed,
         r#"(on-next-char! (lambda (a) (call! "replace" (focused-pane) a)))
            (show-popup! (focused-pane) "type a delimiter" #:kind 'scrollable)
            (on-next-char! (lambda (b) (call! "surround-add" (focused-pane) b)))"#,
     );
-    run_probe(&mut ed);
-    ed.feed_key(key('x'));
-    ed.settle();
-    ed.feed_key(key('('));
-    ed.settle();
+    feed_settled(&mut ed, "x(");
     assert_eq!(text(&ed), "(x)ello\n");
 }
 
@@ -273,11 +263,10 @@ fn jump_count(ed: &Editor) -> usize {
 fn call_search_forward_with_a_pattern_acts_as_typed_and_confirmed() {
     let mut ed = editor_from("-[h]>ello world\n");
     let jumps_before = jump_count(&ed);
-    with_probe(
+    probe(
         &mut ed,
         r#"(call! "search-forward" (focused-pane) "world")"#,
     );
-    run_probe(&mut ed);
     assert_eq!(state(&ed), "hello -[world]>\n");
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(reg(&ed, 's'), vec!["world"]);
@@ -296,8 +285,7 @@ fn call_search_forward_with_a_pattern_acts_as_typed_and_confirmed() {
 #[test]
 fn call_search_backward_with_a_pattern_selects_the_previous_match() {
     let mut ed = editor_from("hello -[w]>orld\n");
-    with_probe(&mut ed, r#"(call! "search-backward" (focused-pane) "hel")"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "search-backward" (focused-pane) "hel")"#);
     assert_eq!(state(&ed), "-[hel]>lo world\n");
     assert_eq!(
         search_history(&ed, HistoryKind::SearchBackward),
@@ -308,8 +296,7 @@ fn call_search_backward_with_a_pattern_selects_the_previous_match() {
 #[test]
 fn search_next_after_a_script_search_jumps_to_the_next_match() {
     let mut ed = editor_from("-[x]> abc abc\n");
-    with_probe(&mut ed, r#"(call! "search-forward" (focused-pane) "abc")"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "search-forward" (focused-pane) "abc")"#);
     assert_eq!(state(&ed), "x -[abc]> abc\n");
     ed.handle_key(key('n'));
     assert_eq!(state(&ed), "x abc -[abc]>\n");
@@ -318,11 +305,10 @@ fn search_next_after_a_script_search_jumps_to_the_next_match() {
 #[test]
 fn call_search_forward_with_extend_extends_from_the_anchor() {
     let mut ed = editor_from("-[h]>ello world\n");
-    with_probe(
+    probe(
         &mut ed,
         r#"(call! "search-forward" (focused-pane) 1 #t "world")"#,
     );
-    run_probe(&mut ed);
     assert_eq!(state(&ed), "-[hello world]>\n");
 }
 
@@ -350,8 +336,7 @@ fn call_search_forward_without_extend_in_extend_mode_moves() {
 #[test]
 fn call_search_forward_without_a_pattern_raises() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "search-forward" (focused-pane))"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "search-forward" (focused-pane))"#);
     assert!(has_error(&ed, "'search-forward': needs a pattern"));
     assert_eq!(ed.state.mode(), Mode::Normal);
 }
@@ -377,8 +362,7 @@ fn a_pattern_read_with_prompt_runs_the_search() {
 #[test]
 fn call_sift_within_without_a_pattern_raises() {
     let mut ed = editor_from("-[hello]>\n");
-    with_probe(&mut ed, r#"(call! "sift-within" (focused-pane))"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "sift-within" (focused-pane))"#);
     assert!(has_error(&ed, "'sift-within': needs a pattern"));
     assert_eq!(ed.state.mode(), Mode::Normal);
 }
@@ -386,8 +370,7 @@ fn call_sift_within_without_a_pattern_raises() {
 #[test]
 fn call_search_forward_with_a_char_raises() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "search-forward" (focused-pane) #\l)"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "search-forward" (focused-pane) #\l)"#);
     assert_eq!(state(&ed), "-[h]>ello\n");
     assert!(has_error(
         &ed,
@@ -398,8 +381,7 @@ fn call_search_forward_with_a_char_raises() {
 #[test]
 fn call_search_forward_with_an_invalid_pattern_writes_nothing() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "search-forward" (focused-pane) "(")"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "search-forward" (focused-pane) "(")"#);
     assert_eq!(state(&ed), "-[h]>ello\n");
     assert!(has_error(&ed, "invalid pattern"));
     assert!(reg(&ed, 's').is_empty());
@@ -419,14 +401,13 @@ fn call_search_forward_with_an_invalid_pattern_writes_nothing() {
 fn call_search_forward_with_an_empty_pattern_keeps_the_last_search() {
     for empty in ["", "m/", "v/"] {
         let mut ed = editor_from("-[h]>ello\n");
-        with_probe(
+        probe(
             &mut ed,
             &format!(
                 r#"(call! "search-forward" (focused-pane) "lo")
                    (if (call! "search-forward" (focused-pane) "{empty}") (+ 1 0) {REPLACE_ON_FALSE})"#
             ),
         );
-        run_probe(&mut ed);
         assert_eq!(text(&ed), "helxx\n", "pattern {empty:?}");
         assert!(has_error(&ed, "invalid pattern"), "pattern {empty:?}");
         assert_eq!(reg(&ed, 's'), vec!["lo"], "pattern {empty:?}");
@@ -454,13 +435,12 @@ fn call_search_forward_with_an_empty_pattern_keeps_the_last_search() {
 #[test]
 fn call_search_forward_with_no_match_records_it_and_returns_false() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(
+    probe(
         &mut ed,
         r#"(if (call! "search-forward" (focused-pane) "zzz")
                (+ 1 0)
                (call! "move-right" (focused-pane)))"#,
     );
-    run_probe(&mut ed);
     assert_eq!(state(&ed), "h-[e]>llo\n", "call! must return #f");
     assert_eq!(reg(&ed, 's'), vec!["zzz"]);
     assert_eq!(search_history(&ed, HistoryKind::SearchForward), vec!["zzz"]);
@@ -478,8 +458,7 @@ fn call_search_forward_with_no_match_records_it_and_returns_false() {
 #[test]
 fn call_sift_within_with_a_pattern_keeps_each_match() {
     let mut ed = editor_from("-[ab cd ab]>\n");
-    with_probe(&mut ed, r#"(call! "sift-within" (focused-pane) "ab")"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "sift-within" (focused-pane) "ab")"#);
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(ed.current_view().len(), 2);
     assert_eq!(ed.current_view().primary().anchor().offset(), co(0));
@@ -495,8 +474,7 @@ fn enter_on_a_sift_reuses_the_selections_the_preview_found() {
     ed.feed_key(key_enter());
     assert_eq!(ed.state.sift_scans, scans);
     let mut called = editor_from("-[ab cd ab]>\n");
-    with_probe(&mut called, r#"(call! "sift-within" (focused-pane) "ab")"#);
-    run_probe(&mut called);
+    probe(&mut called, r#"(call! "sift-within" (focused-pane) "ab")"#);
     assert_eq!(state(&ed), state(&called));
 }
 
@@ -505,8 +483,7 @@ fn a_sift_after_a_cancelled_prompt_scans_its_own_pattern() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     type_keys(&mut ed, "sab");
     ed.feed_key(key_esc());
-    with_probe(&mut ed, r#"(call! "sift-within" (focused-pane) "cd")"#);
-    run_probe(&mut ed);
+    probe(&mut ed, r#"(call! "sift-within" (focused-pane) "cd")"#);
     assert_eq!(state(&ed), "ab -[cd]> ab\n");
 }
 
@@ -559,11 +536,10 @@ const REPLACE_ON_FALSE: &str = r#"(call! "replace" (focused-pane) #\x)"#;
 #[test]
 fn call_sift_within_with_an_invalid_pattern_reports_and_keeps_the_selection() {
     let mut ed = editor_from("-[ab]> cd\n");
-    with_probe(
+    probe(
         &mut ed,
         &format!(r#"(if (call! "sift-within" (focused-pane) "(") (+ 1 0) {REPLACE_ON_FALSE})"#),
     );
-    run_probe(&mut ed);
     assert_eq!(text(&ed), "xx cd\n");
     assert!(has_error(&ed, "invalid pattern"));
 }
@@ -571,11 +547,10 @@ fn call_sift_within_with_an_invalid_pattern_reports_and_keeps_the_selection() {
 #[test]
 fn call_sift_within_with_no_match_returns_false_and_keeps_the_selection() {
     let mut ed = editor_from("-[ab]> cd\n");
-    with_probe(
+    probe(
         &mut ed,
         &format!(r#"(if (call! "sift-within" (focused-pane) "zz") (+ 1 0) {REPLACE_ON_FALSE})"#),
     );
-    run_probe(&mut ed);
     assert_eq!(text(&ed), "xx cd\n");
 }
 
@@ -583,13 +558,12 @@ fn call_sift_within_with_no_match_returns_false_and_keeps_the_selection() {
 fn call_sift_within_with_an_empty_pattern_reports_and_keeps_the_selection() {
     for empty in ["", "m/"] {
         let mut ed = editor_from("-[ab]> cd\n");
-        with_probe(
+        probe(
             &mut ed,
             &format!(
                 r#"(if (call! "sift-within" (focused-pane) "{empty}") (+ 1 0) {REPLACE_ON_FALSE})"#
             ),
         );
-        run_probe(&mut ed);
         assert_eq!(text(&ed), "xx cd\n", "pattern {empty:?}");
         assert!(has_error(&ed, "invalid pattern"), "pattern {empty:?}");
     }
@@ -598,11 +572,10 @@ fn call_sift_within_with_an_empty_pattern_reports_and_keeps_the_selection() {
 #[test]
 fn call_sift_within_on_bare_cursors_returns_false() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(
+    probe(
         &mut ed,
         &format!(r#"(if (call! "sift-within" (focused-pane) "h") (+ 1 0) {REPLACE_ON_FALSE})"#),
     );
-    run_probe(&mut ed);
     assert_eq!(text(&ed), "xello\n");
 }
 
@@ -675,13 +648,6 @@ fn enter_on_an_invalid_sift_pattern_reports_and_keeps_the_selection() {
 const HELIX_SURROUND: &str =
     include_str!("../../../../runtime/plugins/core/helix-surround/plugin.scm");
 
-fn feed_settled(ed: &mut Editor, keys: &str) {
-    for ch in keys.chars() {
-        ed.feed_key(key(ch));
-        ed.settle();
-    }
-}
-
 #[test]
 fn helix_surround_md_deletes_the_pair_it_reads() {
     let tmp = tempfile::tempdir().unwrap();
@@ -689,6 +655,20 @@ fn helix_surround_md_deletes_the_pair_it_reads() {
     run(&mut ed, tmp.path(), HELIX_SURROUND);
     feed_settled(&mut ed, "md(");
     assert_eq!(text(&ed), "hello\n");
+}
+
+/// `md` is not repeatable itself: `.` repeats the delete its callback
+/// ran, on the pair the recorded selection steps find.
+#[test]
+fn dot_after_helix_md_deletes_the_next_pair() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("(h-[e]>llo) (world)\n");
+    run(&mut ed, tmp.path(), HELIX_SURROUND);
+    feed_settled(&mut ed, "md(");
+    assert_eq!(text(&ed), "hello (world)\n");
+    select_marked(&mut ed, "hello (w-[o]>rld)\n");
+    feed_settled(&mut ed, ".");
+    assert_eq!(text(&ed), "hello world\n");
 }
 
 #[test]

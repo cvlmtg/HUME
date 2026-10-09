@@ -20,7 +20,7 @@ use crate::editor::registry::{
     CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, MappableCommand, PaneCharCmdFn, PaneCmdFn,
     PaneTextCmdFn, PatternPrompt, SelectionBody, SelectionTracking,
 };
-use crate::editor::replay::{RepeatableAction, SelectionStep};
+use crate::editor::replay::{ReadLog, RepeatableAction, SelectionStep};
 use crate::editor::settings::ObjectJumpAlign;
 use crate::editor::{EditorState, Mode, Severity};
 use hume_ops::{MotionMode, WordCtx};
@@ -571,9 +571,13 @@ fn missing(cmd: &MappableCommand, focused: bool, operand: MissingOperand) -> Unb
     })
 }
 
-/// Report an operand that doesn't fit command `name`, for a dispatch with no
-/// script caller to raise to (a keypress, a dot-repeat replay).
-pub(in crate::editor) fn report_arg_error(state: &mut EditorState, name: &str, error: &ArgError) {
+/// Report why command `name` refused to bind, for a dispatch with no script
+/// caller to raise to (a keypress, a dot-repeat replay, a collected operand).
+pub(in crate::editor) fn report_arg_error(
+    state: &mut EditorState,
+    name: &str,
+    error: &impl std::fmt::Display,
+) {
     state.report(Severity::Error, format!("'{name}': {error}"));
 }
 
@@ -841,7 +845,7 @@ pub(in crate::editor::commands::pipeline) fn step_align_view(
 
 /// Whether `last_repeatable_action` already belongs to something a command
 /// dispatched now must not replace. Shared by [`run`] (the native path,
-/// above) and `Editor::dispatch`'s Steel path. Three owners:
+/// above) and `Editor::dispatch`'s Steel path. Four owners:
 ///
 /// - The live Insert session's own entry command: its inputs are being
 ///   appended to that action (`EditorState::record_insert_input`), so
@@ -853,16 +857,22 @@ pub(in crate::editor::commands::pipeline) fn step_align_view(
 ///   Insert keeps recording into the same action.
 /// - `replay_dot`, which holds the action for its whole extent and restores
 ///   it afterwards: a stamp in between would only be overwritten.
+/// - A callback of a character read the recorded Steel command made: its
+///   edits are that command's, replayed when `.` answers the read
+///   (`EditorState::in_recorded_callback`).
 ///
 /// Read *before* the body on both paths: `i`/`c`/`o` open the session inside
 /// their own body, and a `#:repeatable` Steel wrapper whose `call!` opens it
 /// must still stamp over that inner entry (outer name wins). Both need the
 /// mode they were dispatched in, not the one they leave behind.
 pub(in crate::editor) fn repeat_slot_owned(state: &EditorState) -> bool {
-    // Both flags are plain field reads; `mode()` walks the layer stack, so
+    // The first three are field reads; `mode()` walks the layer stack, so
     // it goes last, short-circuited away on the overwhelming majority of
-    // dispatches, which are neither.
-    state.in_insert_key_dispatch || state.dot_replay || state.mode() == Mode::Insert
+    // dispatches, which are none of these.
+    state.in_insert_key_dispatch
+        || state.dot_replay.is_some()
+        || state.in_recorded_callback()
+        || state.mode() == Mode::Insert
 }
 
 /// Record last_repeatable_action for dot-repeat from the pre-body
@@ -876,6 +886,7 @@ pub(in crate::editor) fn step_stamp_repeatable(
     count: usize,
     arg: Option<CommandArg>,
     pre_recipe: Option<Vec<SelectionStep>>,
+    reads: Option<ReadLog>,
 ) {
     if let Some(recipe) = pre_recipe {
         state.last_repeatable_action = Some(RepeatableAction {
@@ -884,6 +895,7 @@ pub(in crate::editor) fn step_stamp_repeatable(
             arg,
             insert_inputs: Vec::new(),
             selection_recipe: recipe,
+            reads,
         });
     }
 }
@@ -1052,7 +1064,7 @@ pub(in crate::editor) fn run(
         // so `step_update_recipe` below clears it unconditionally regardless of
         // this branch. Restoring it first would be immediately undone.
         if !state.command_refused && !slot_owned {
-            step_stamp_repeatable(state, &name, ctx.count.unwrap_or(1), arg, pre_recipe);
+            step_stamp_repeatable(state, &name, ctx.count.unwrap_or(1), arg, pre_recipe, None);
         }
         // A command whose own snapshot is `None` never reaches the `!selection_changed`
         // early return in step_update_recipe, so `true` here is inert filler.

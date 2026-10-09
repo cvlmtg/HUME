@@ -27,7 +27,7 @@ use crate::editor::error::CommandError;
 // ── Search ────────────────────────────────────────────────────────────────────
 
 /// Open the search prompt in `fp` for `then`, a `search-forward`/`-backward`
-/// dispatched without its pattern: `prompt` is `/` or `?`.
+/// dispatched without its pattern, labelled `/` or `?` by `direction`.
 /// `SearchLayer::setup` snapshots the current selections for cancel-restore
 /// once the layer lands (see its own doc for why that capture happens there
 /// rather than here).
@@ -36,9 +36,12 @@ fn begin_search(
     view: &mut EngineView,
     fp: FocusedPane,
     direction: SearchDirection,
-    prompt: &str,
     then: PendingDispatch,
 ) {
+    let prompt = match direction {
+        SearchDirection::Forward => "/",
+        SearchDirection::Backward => "?",
+    };
     state.history.begin_session_all();
     state.push_mode_layer(
         view,
@@ -71,7 +74,7 @@ fn search_with_pattern(
     };
     let matched = preview_search(state, origin(sels.clone()), direction, mode, raw)
         .map_err(|InvalidPattern| invalid_pattern(raw))?;
-    commit_search(state, view, raw.to_string(), direction, Some(origin(sels)));
+    commit_search(state, view, raw.to_string(), direction, origin(sels));
     state.history.begin_session_all();
     if matched {
         Ok(())
@@ -121,11 +124,7 @@ pub(in crate::editor) fn open_pattern_prompt(
 ) {
     match prompt {
         PatternPrompt::Search(direction) => {
-            let label = match direction {
-                SearchDirection::Forward => "/",
-                SearchDirection::Backward => "?",
-            };
-            begin_search(state, view, fp, direction, label, then);
+            begin_search(state, view, fp, direction, then);
         }
         PatternPrompt::Sift => {
             if all_cursors(state, view, fp.pane()) {
@@ -408,9 +407,8 @@ pub(in crate::editor) fn cmd_search_selection(
 /// Compile `pattern` under `flags`, write the rendered flagged form to the
 /// search register, and set it as `t`'s buffer's active search pattern.
 /// Shared tail of `*` and Ctrl-/. Both set the same (register, pattern) pair
-/// that live search sets on confirm;
-/// the match-cache/highlights are rebuilt lazily per-frame regardless of
-/// which path set the pattern.
+/// that live search sets on confirm; the match-cache/highlights are rebuilt
+/// lazily per-frame regardless of which path set the pattern.
 ///
 /// Renders through `render_search_input` rather than compiling `pattern`
 /// directly, so `SearchPattern::compile` stays the crate's one compilation

@@ -2789,17 +2789,17 @@ fn dot_repeat_capture_is_dropped_when_a_picks_on_select_is_lost_to_the_drain_cap
     );
 }
 
-/// `PickerLayer::tear_down`'s own capture hand-off, reached when a picker
-/// is removed by something other than `close_picker`/`close_picker_with`
+/// `PickerLayer::tear_down`'s own hand-off, reached when a picker is
+/// removed by something other than `close_picker`/`close_picker_with`
 /// (every other picker test in this file closes through Enter or Esc,
 /// which route through those). `end_insert_session` (what a reload or a
 /// focus/buffer switch runs) truncates the Insert layer top-first, tearing
 /// down the Picker on top of it via `tear_down` (not `close_picker`) and
-/// then Insert itself. `on_select` must still fire, and firing it after the
-/// session it would have recorded into is already gone must drop the
-/// pending capture silently rather than panicking.
+/// then Insert itself. `on_select` must still fire, after the session it
+/// would have recorded into is gone, and the session's teardown records
+/// what the binding captured before the picker opened.
 #[test]
-fn picker_torn_down_by_a_reload_fires_on_select_and_drops_its_capture() {
+fn picker_torn_down_by_a_reload_fires_on_select_and_keeps_what_was_captured() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
     run(
@@ -2844,9 +2844,9 @@ fn picker_torn_down_by_a_reload_fires_on_select_and_drops_its_capture() {
         .expect("`i` must have stamped a repeatable action")
         .insert_inputs;
     assert!(
-        inputs.is_empty(),
-        "the pending capture resolved against a session that no longer exists; nothing \
-         can be recorded for it: {inputs:?}"
+        matches!(inputs.as_slice(), [InsertInput::Result(r)]
+            if r.back == 0 && r.forward == 0 && r.text == "x"),
+        "the binding's `x` must be recorded, the dismissed pick adds nothing: {inputs:?}"
     );
 }
 
@@ -2888,4 +2888,370 @@ fn mii_refuses_once_the_insertion_is_deleted() {
     ed.feed_key(key('i'));
     ed.feed_key(key('i'));
     assert_eq!(state(&ed), before, "no insertion is left to select");
+}
+
+/// An Insert binding to a command that reads its character from the next
+/// key repeats the edit it made, not the binding: `.` reads no key.
+#[test]
+fn dot_repeats_an_insert_binding_that_read_a_character() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(bind-key! 'insert "ctrl-x" "replace")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key_ctrl('x'));
+    ed.feed_key(key('z'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "azello\nworld\n");
+    ed.feed_key(key('j'));
+    ed.feed_key(key('g'));
+    ed.feed_key(key('h'));
+
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "azello\nazorld\n");
+    assert!(!reading_char(&ed));
+    assert_eq!(ed.state.mode(), Mode::Normal);
+}
+
+/// Defines the repeatable `rd` from `body`, runs it on line 1 of
+/// `hello\nworld`, feeds `keys` one at a time, then moves to line 2.
+fn record_rd(body: &str, keys: &[KeyEvent]) -> Editor {
+    let mut ed = editor_with_steel(
+        "-[h]>ello\nworld\n",
+        &format!(r#"(define-command! "rd" "" (lambda (pane) {body}) #:repeatable #t)"#),
+    );
+    ed.execute_keymap_command("rd".into(), Some(1), false);
+    ed.settle();
+    for &k in keys {
+        ed.feed_key(k);
+        ed.settle();
+    }
+    assert_eq!(
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| a.command.as_ref()),
+        Some("rd")
+    );
+    ed.feed_key(key('j'));
+    ed.feed_key(key('g'));
+    ed.feed_key(key('h'));
+    ed
+}
+
+/// A cancelled read is answered with `#f` on replay too, without waiting
+/// for a key.
+#[test]
+fn dot_answers_a_cancelled_read_with_false() {
+    let mut ed = record_rd(
+        r#"(on-next-char! (lambda (c) (if c (+ 1 0) (call! "replace" (focused-pane) #\z))))"#,
+        &[key_esc()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "zello\nworld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "zello\nzorld\n");
+    assert!(!reading_char(&ed));
+    assert!(
+        !status(&ed).contains("reached during"),
+        "got: {}",
+        status(&ed)
+    );
+}
+
+/// `.` repeats the command with the character it read, and the edits its
+/// callback made are the command's: none of them takes `.`'s slot. No
+/// settle after `.`: the callback ran during it.
+#[test]
+fn dot_repeats_a_repeatable_command_with_the_character_it_read() {
+    let mut ed = record_rd(
+        r#"(on-next-char!
+             (lambda (c)
+               (when c (call! "replace" pane c) (call! "surround-add" pane #\())))"#,
+        &[key('z')],
+    );
+    assert_eq!(ed.doc().text().to_string(), "(z)ello\nworld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "(z)ello\n(z)orld\n");
+    assert!(!reading_char(&ed));
+}
+
+#[test]
+fn dot_repeats_characters_read_by_a_chained_callback() {
+    let mut ed = record_rd(
+        r#"(on-next-char!
+             (lambda (a)
+               (when a
+                 (call! "replace" pane a)
+                 (on-next-char! (lambda (b) (when b (call! "surround-add" pane b)))))))"#,
+        &[key('z'), key('[')],
+    );
+    assert_eq!(ed.doc().text().to_string(), "[z]ello\nworld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "[z]ello\n[z]orld\n");
+    assert!(!reading_char(&ed));
+}
+
+/// A read the body ends itself (here, by leaving Insert mode above it)
+/// hears `#f` before the command is recorded, and `.` answers it the same.
+#[test]
+fn dot_answers_a_read_the_body_itself_ended() {
+    let mut ed = record_rd(
+        r#"(call! "insert-before" pane)
+           (on-next-char! (lambda (c) (unless c (call! "replace" pane #\z))))
+           (call! "exit-insert" pane)"#,
+        &[],
+    );
+    assert_eq!(ed.doc().text().to_string(), "zello\nworld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "zello\nzorld\n");
+    assert!(
+        !status(&ed).contains("reached during"),
+        "got: {}",
+        status(&ed)
+    );
+}
+
+/// Replay reading more characters than the original run did refuses the
+/// extra read, keeping what the answered ones did.
+#[test]
+fn dot_refuses_a_read_the_recording_has_no_answer_for() {
+    let mut ed = editor_with_steel(
+        "-[h]>ello\nworld\n",
+        r#"(define runs 0)
+           (define-command! "rd" ""
+             (lambda (pane)
+               (set! runs (+ runs 1))
+               (on-next-char!
+                 (lambda (c)
+                   (call! "replace" pane c)
+                   (when (> runs 1) (on-next-char! (lambda (d) (+ 1 0)))))))
+             #:repeatable #t)"#,
+    );
+    ed.execute_keymap_command("rd".into(), Some(1), false);
+    ed.feed_key(key('z'));
+    ed.settle();
+    select_marked(&mut ed, "zello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "zello\nzorld\n");
+    assert!(!reading_char(&ed));
+    assert!(
+        status(&ed).contains("on-next-char!: reached during `.`"),
+        "got: {}",
+        status(&ed)
+    );
+}
+
+// ── Several inputs waiting at once from one Insert-key binding ───────────────
+
+#[test]
+fn dot_repeats_both_edits_of_two_queued_character_reads() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "two-reads" ""
+             (lambda (pane)
+               (on-next-char! (lambda (a) (when a (call! "replace" pane a))))
+               (on-next-char! (lambda (b) (when b (call! "surround-add" pane b))))))
+           (bind-key! 'insert "ctrl-x" "two-reads")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('x'));
+    ed.feed_key(key('z'));
+    ed.settle();
+    ed.feed_key(key('('));
+    ed.settle();
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "(z)ello\nworld\n");
+
+    select_marked(&mut ed, "(z)ello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "(z)ello\n(z)orld\n");
+    assert!(!reading_char(&ed));
+}
+
+/// The picker opens above the pending read, so it resolves first; `.`
+/// replays both edits in the order they happened.
+#[test]
+fn dot_repeats_a_pick_and_a_character_read_from_one_binding() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "read-and-pick" ""
+             (lambda (pane)
+               (on-next-char! (lambda (c) (when c (call! "replace" pane c))))
+               (picker! pane (list (cons "alpha" "ALPHA"))
+                 (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
+           (bind-key! 'insert "ctrl-y" "read-and-pick")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('y'));
+    ed.feed_key(key_enter());
+    ed.settle();
+    ed.feed_key(key('z'));
+    ed.settle();
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "zef\nuvw xyz\n");
+
+    select_marked(&mut ed, "zef\nuvw -[x]>yz\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "zef\nzyz\n");
+    assert!(ed.state.input.picker().is_none());
+    assert!(!reading_char(&ed));
+}
+
+#[test]
+fn dot_repeats_an_edit_a_binding_makes_after_starting_a_character_read() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "read-then-type" ""
+             (lambda (pane)
+               (on-next-char! (lambda (c) (when c (call! "replace" pane c))))
+               (insert-key! pane "x")))
+           (bind-key! 'insert "ctrl-x" "read-then-type")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('x'));
+    ed.feed_key(key('z'));
+    ed.settle();
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "xzello\nworld\n");
+
+    select_marked(&mut ed, "xzello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "xzello\nxzorld\n");
+    assert!(!reading_char(&ed));
+}
+
+#[test]
+fn dot_repeats_an_edit_a_binding_makes_after_opening_a_picker() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "pick-then-type" ""
+             (lambda (pane)
+               (picker! pane (list (cons "alpha" "ALPHA"))
+                 (lambda (payload) (when payload (call! "replace" pane #\z))))
+               (insert-key! pane "x")))
+           (bind-key! 'insert "ctrl-y" "pick-then-type")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('y'));
+    ed.feed_key(key_enter());
+    ed.settle();
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "xzello\nworld\n");
+
+    select_marked(&mut ed, "xzello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "xzello\nxzorld\n");
+    assert!(ed.state.input.picker().is_none());
+}
+
+/// A read for a command bound directly to the key, cancelled with Esc,
+/// leaves nothing for `.` to replay from the binding.
+#[test]
+fn dot_skips_a_binding_whose_character_read_was_cancelled() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(bind-key! 'insert "ctrl-x" "replace")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key_ctrl('x'));
+    ed.feed_key(key_esc());
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "ahello\nworld\n");
+
+    select_marked(&mut ed, "ahello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "ahello\naworld\n");
+    assert!(!reading_char(&ed));
+    assert_eq!(ed.state.mode(), Mode::Normal);
+}
+
+/// Opening a prompt from an Insert binding makes the binding interactive:
+/// `.` writes the edit it made and never opens the prompt again.
+#[test]
+fn dot_does_not_rerun_an_insert_binding_that_opened_a_prompt() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "type-then-ask" ""
+             (lambda (pane)
+               (insert-key! pane "x")
+               (prompt! pane "x:" (lambda (t) (+ 1 0)))))
+           (bind-key! 'insert "ctrl-x" "type-then-ask")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('x'));
+    ed.feed_key(key_esc());
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "xhello\nworld\n");
+
+    select_marked(&mut ed, "xhello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "xhello\nxworld\n");
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(
+        !status(&ed).contains("reached during"),
+        "got: {}",
+        status(&ed)
+    );
+}
+
+#[test]
+fn dot_refuses_a_menu_in_a_replayed_steel_command() {
+    let mut ed = editor_with_steel(
+        "-[h]>ello\nworld\n",
+        r#"(define-command! "ask" ""
+             (lambda (pane) (show-menu! pane (list "one") (lambda (i) (+ 1 0))))
+             #:repeatable #t)"#,
+    );
+    ed.execute_keymap_command("ask".into(), Some(1), false);
+    ed.feed_key(key_esc());
+    ed.settle();
+    assert!(ed.state.input.menu().is_none());
+
+    ed.feed_key(key('.'));
+    assert!(ed.state.input.menu().is_none());
+    assert!(
+        status(&ed).contains("show-menu!: reached during `.`"),
+        "got: {}",
+        status(&ed)
+    );
+}
+
+#[test]
+fn dot_refuses_prompt_in_a_replayed_steel_command() {
+    let mut ed = record_rd(
+        r#"(prompt! (focused-pane) "x:"
+             (lambda (t) (when t (call! "replace" (focused-pane) (string-ref t 0)))))"#,
+        &[key_esc()],
+    );
+    ed.feed_key(key('.'));
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(
+        status(&ed).contains("prompt!: reached during `.`"),
+        "got: {}",
+        status(&ed)
+    );
 }

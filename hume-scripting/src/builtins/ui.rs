@@ -205,7 +205,9 @@ pub(crate) fn prompt(
 /// character (Enter and Tab as `#\newline` and `#\tab`), or with `#f` when
 /// that key isn't a character or the wait ends any other way. Queued, never
 /// inline, like every other Rust→Steel call. A callback that calls
-/// `on-next-char!` again reads one more character.
+/// `on-next-char!` again reads one more character. During `.` the callback
+/// gets the character the repeated command read, at once, and the call
+/// raises when the repeated command read fewer.
 pub(crate) fn on_next_char(ctx: &mut SteelCtx, callback: SteelVal) -> SteelResult {
     let callback = callable_arg(callback, "on-next-char!")?;
     require_cap(ctx.host.ui(), "on-next-char!")?

@@ -80,10 +80,10 @@ impl EditSession {
 
     /// Arms `cap`. Never nests: an Insert-key binding
     /// that itself calls `completion-accept!` shares the *outer* capture
-    /// instead (see `EditorState::mark_dot_interactive`'s own doc), so a
-    /// capture is always taken back out (by `Editor::run_dot_captured`
-    /// (finalizing it, or handing it to a picker that opened mid-dispatch),
-    /// or by `tear_down_insert`'s backstop) before the next arm.
+    /// instead (see `EditorState::interactive_input`'s own doc), so a
+    /// capture is always taken back out (by `Editor::run_dot_captured`,
+    /// finalizing or parking it, or by `tear_down_insert`'s backstop) before
+    /// the next arm.
     pub(in crate::editor) fn arm_dot_capture(&mut self, cap: DotCapture) {
         debug_assert!(
             self.dot_capture.is_none(),
@@ -264,24 +264,23 @@ pub(in crate::editor) enum EditSessionKind {
 /// user gave while it ran, such as accepting a completion or picking a
 /// picker item.
 ///
-/// Owned by whatever is currently responsible for resolving it, never
-/// polled: armed on the `EditSession` it belongs to by `Editor::
-/// with_dot_capture`; if the dispatch it wraps opens a picker,
-/// `picker::open_picker` takes it off the session and attaches it to the
-/// `PickerSession` instead (so an edit made elsewhere while the picker is
-/// open, such as a timer or an LSP response, does not land in `chain`, since
-/// nothing is armed on the `EditSession` to feed); when the picker resolves,
-/// `close_picker_with`/`PickerLayer::tear_down` hand it to the queued
-/// `PendingWork::Call` that will run its `on_select`; `Editor::
-/// run_pending_batch` re-arms it on the (now current) session for just that
-/// call. A picker chain (`on_select` itself opening another picker) simply
-/// repeats the hand-off. Whichever holder currently owns it takes it back
-/// out via `Editor::run_dot_captured` once the operation it wraps returns,
-/// or, if the `EditSession` it was armed on ends first (an accept
-/// immediately followed by `exit-insert` in the same dispatch),
-/// `tear_down_insert`'s own backstop takes it before the session is
-/// dropped. `edit_session::EditSession::into_group`'s `debug_assert` is the
-/// enforcement: nothing may reach it with a capture still attached.
+/// Never polled: armed on the `EditSession` it belongs to by `Editor::
+/// with_dot_capture` for the dispatch it wraps. If that dispatch opens an
+/// input that waits for the user (a picker, a character read), the input
+/// joins a [`DotPark`] and holds a [`DotWaiter`] (`EditorState::
+/// waiting_input`); when the dispatch ends, `Editor::run_dot_captured`
+/// moves the capture into that park, so an edit made elsewhere while the
+/// input waits (a timer, an LSP response) does not land in `chain`. When
+/// the input resolves, `Editor::resolve_dot_waiter` re-arms it on the
+/// session for just the work that resolution runs (a native command, or the
+/// queued `PendingWork::Call` of a callback). Every
+/// captured run ends in `Editor::run_dot_captured`, which takes it back and
+/// returns it to the park while other inputs still wait, or finalizes it.
+/// If the `EditSession` ends first (an accept immediately followed by
+/// `exit-insert` in the same dispatch), `tear_down_insert`'s backstop
+/// finalizes it, armed or parked. `EditSession::into_group`'s
+/// `debug_assert` is the enforcement: nothing may reach it with a capture
+/// still attached.
 #[derive(Debug)]
 pub(in crate::editor) struct DotCapture {
     /// The `(pane, buffer)` this capture was armed on: the target `Editor::
@@ -294,7 +293,7 @@ pub(in crate::editor) struct DotCapture {
     /// are measured from. `Editor::run_dot_captured` rearms it on every
     /// hand-back and drops the capture when the chain cannot continue.
     pub(in crate::editor) chain: DotChain,
-    /// Set by `EditorState::mark_dot_interactive`.
+    /// Set by `EditorState::interactive_input`.
     pub(in crate::editor) interactive: bool,
     /// What to record if this capture turns out non-interactive: the
     /// `Binding` entry `handle_insert`'s Leaf branch would otherwise have
@@ -302,6 +301,69 @@ pub(in crate::editor) struct DotCapture {
     /// (`accept_completion_selection`), which has no binding of its own to
     /// fall back to.
     pub(in crate::editor) fallback: Option<super::replay::InsertInput>,
+}
+
+/// The [`DotCapture`] of an Insert-key binding while inputs it opened (a
+/// picker, a character read) wait for the user, shared by all of them: each
+/// records its edit into it when it resolves, in the order they resolve,
+/// and the last one to resolve finalizes it. Lives on `EditorState::dot_park`, at most one at a time:
+/// a waiting input takes every key, so no other binding runs meanwhile.
+#[derive(Debug)]
+pub(in crate::editor) struct DotPark {
+    id: u64,
+    /// `None` while the run that holds it armed on the session is in
+    /// progress.
+    cap: Option<DotCapture>,
+    waiting: usize,
+}
+
+/// One waiting input's claim on the [`DotPark`] it joined: minted only by
+/// [`DotPark::join`] and ended by [`DotPark::leave`]. A claim on a park
+/// that is gone (its session ended) is stale and ends nothing.
+#[derive(Debug)]
+pub(in crate::editor) struct DotWaiter {
+    park: u64,
+}
+
+impl DotPark {
+    pub(in crate::editor) fn new() -> Self {
+        Self {
+            id: super::host_token::next(),
+            cap: None,
+            waiting: 0,
+        }
+    }
+
+    pub(in crate::editor) fn join(&mut self) -> DotWaiter {
+        self.waiting += 1;
+        DotWaiter { park: self.id }
+    }
+
+    /// Ends `waiter`'s claim. `false` for a claim on another park, which
+    /// changes nothing.
+    pub(in crate::editor) fn leave(&mut self, waiter: DotWaiter) -> bool {
+        if waiter.park != self.id {
+            return false;
+        }
+        self.waiting -= 1;
+        true
+    }
+
+    pub(in crate::editor) fn is_waited_on(&self) -> bool {
+        self.waiting > 0
+    }
+
+    pub(in crate::editor) fn take_cap(&mut self) -> Option<DotCapture> {
+        self.cap.take()
+    }
+
+    pub(in crate::editor) fn put_cap(&mut self, cap: DotCapture) {
+        debug_assert!(
+            self.cap.is_none(),
+            "put_cap: the park already holds a capture"
+        );
+        self.cap = Some(cap);
+    }
 }
 
 /// Accumulated state for an in-progress insert or paste session.

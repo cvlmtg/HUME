@@ -27,7 +27,11 @@ fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: 
         })
         .collect();
     session.push(picker_items);
-    picker::open_picker(&mut ed.state, &ed.view, session);
+    let input = ed
+        .state
+        .waiting_input("picker!")
+        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, session, input);
 }
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {
@@ -563,7 +567,7 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
     let mut ed = editor_from("-[a]>bc\n");
     ed.state.push_layer(
         &ed.view,
-        crate::editor::input_stack::MenuLayer::new(
+        crate::editor::input_stack::MenuLayer::for_test(
             vec!["m0".into(), "m1".into()],
             marker("menu-cb"),
         ),
@@ -574,7 +578,11 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
         display: "a".to_string(),
         payload: SteelVal::StringV("a".into()),
     }]);
-    picker::open_picker(&mut ed.state, &ed.view, session);
+    let input = ed
+        .state
+        .waiting_input("picker!")
+        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, session, input);
 
     assert!(ed.state.input.picker().is_some(), "the picker opened");
     assert!(

@@ -271,12 +271,17 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     // not: `finalize_dot_capture` records the right thing either way, and
     // with no placeholder pre-pushed before dispatch, this is the only
     // place a non-interactive binding's own entry gets recorded at all when
-    // it tears its own session down mid-body.
+    // it tears its own session down mid-body. A capture parked for inputs
+    // still waiting is finalized with what it recorded so far; those inputs
+    // then resolve unrecorded.
     if let Some(cap) = state
         .active_session
         .as_mut()
         .and_then(|s| s.take_dot_capture())
     {
+        state.finalize_dot_capture(cap);
+    }
+    if let Some(cap) = state.dot_park.take().and_then(|mut park| park.take_cap()) {
         state.finalize_dot_capture(cap);
     }
     // An open completion session lives in its own `Completion` layer, pushed

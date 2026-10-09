@@ -8,6 +8,7 @@
 
 use super::event::EditorEvent;
 use super::registry::MappableCommand;
+use super::replay::{DispatchId, ReadLog, ReadScope};
 use super::{Editor, Severity, commands};
 
 // ── Command dispatch context ──────────────────────────────────────────────────
@@ -85,8 +86,16 @@ impl Editor {
         // Before the body; see `commands::repeat_slot_owned`'s own doc.
         let slot_owned = commands::repeat_slot_owned(&self.state);
 
-        // BODY
-        if !self.run_steel_command(name.as_ref(), &ctx) {
+        // BODY, under its own read scope, so the answers its character
+        // reads receive are recorded with it.
+        let read_scope = ReadScope::Body(ReadLog::new(DispatchId::mint()));
+        let outer = self.state.read_scope.replace(read_scope);
+        let ran = self.run_steel_command(name.as_ref(), &ctx);
+        let reads = match std::mem::replace(&mut self.state.read_scope, outer) {
+            Some(ReadScope::Body(log)) => log,
+            _ => unreachable!("the body's read scope is restored only here"),
+        };
+        if !ran {
             // Failed command: undo whatever a partial inner dispatch wrote,
             // so the failure has no residual effect on the recipe.
             self.state.selection_recipe = pre_recipe;
@@ -110,6 +119,7 @@ impl Editor {
                 ctx.count.unwrap_or(1),
                 None,
                 Some(pre_recipe),
+                Some(reads),
             );
         }
         // Clear only when this outer command owns the decision: a repeatable

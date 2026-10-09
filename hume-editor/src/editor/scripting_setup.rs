@@ -9,6 +9,7 @@ use super::buffer::DiskCheckTrigger;
 use super::commands::CommandPane;
 use super::event::{EditorEvent, PendingWork};
 use super::reload::ReloadSnapshot;
+use super::replay::ReadScope;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
 use crate::cli::ConfigSource;
 
@@ -158,10 +159,9 @@ impl Editor {
     ) {
         // Every Steel entry point but `call_steel_command_body` (which
         // hand-rolls its own close for its `bool` return) returns through
-        // here, the one funnel that closes the
-        // `#:inline-output` bracket, for a hook, a queued-call batch,
-        // `init.scm`, and a runtime plugin activation alike, so no caller has
-        // to remember to.
+        // here, the one funnel that closes the `#:inline-output` bracket,
+        // for a hook, a queued-call batch, `init.scm`, and a runtime plugin
+        // activation alike, so no caller has to remember to.
         self.close_inline_output_bracket();
         match result {
             Ok(effects) => self.apply_script_effects(effects),
@@ -448,7 +448,9 @@ impl Editor {
     /// batch). An anchored `Call` (an `lsp-request!` callback) always runs
     /// alone in its own session, its anchor re-checked immediately first;
     /// see the `Call` match arm's own comment for why it can't be batched.
-    fn run_pending_batch(&mut self, mut items: std::collections::VecDeque<PendingWork>) {
+    /// `.` also runs a read's callback through here, at once
+    /// (`Editor::resolve_replayed_reads`).
+    pub(super) fn run_pending_batch(&mut self, mut items: std::collections::VecDeque<PendingWork>) {
         while let Some(item) = items.pop_front() {
             match item {
                 PendingWork::Event(event) => {
@@ -497,7 +499,8 @@ impl Editor {
                     proc,
                     args,
                     anchor,
-                    dot_capture,
+                    dot_waiter,
+                    read_owner,
                 } => {
                     if let Some(anchor) = anchor {
                         // Never grouped into a multi-item batch with a
@@ -517,11 +520,16 @@ impl Editor {
                         self.state.release_request_position(anchor.tracked);
                         continue;
                     }
-                    if let Some(cap) = dot_capture {
-                        // Also never batched with a sibling call: re-arming
-                        // `cap` covers only this one call; see
-                        // `PendingWork::Call::dot_capture`'s own doc.
-                        self.run_dot_captured(cap, |ed| ed.run_call_batch(vec![(proc, args)]));
+                    if dot_waiter.is_some() || read_owner.is_some() {
+                        // Also never batched with a sibling call; see
+                        // `PendingWork::Call`'s `dot_waiter` and
+                        // `read_owner` docs.
+                        let scope = read_owner.map(ReadScope::Callback);
+                        let outer = std::mem::replace(&mut self.state.read_scope, scope);
+                        self.resolve_dot_waiter(dot_waiter, |ed| {
+                            ed.run_call_batch(vec![(proc, args)]);
+                        });
+                        self.state.read_scope = outer;
                         continue;
                     }
                     let mut calls = vec![(proc, args)];
@@ -529,13 +537,14 @@ impl Editor {
                         items.front(),
                         Some(PendingWork::Call {
                             anchor: None,
-                            dot_capture: None,
+                            dot_waiter: None,
+                            read_owner: None,
                             ..
                         })
                     ) {
                         let Some(PendingWork::Call { proc, args, .. }) = items.pop_front() else {
                             unreachable!(
-                                "front() just confirmed an unanchored, capture-free Call variant"
+                                "front() just confirmed an unanchored, unclaimed Call variant"
                             )
                         };
                         calls.push((proc, args));

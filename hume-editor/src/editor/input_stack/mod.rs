@@ -35,7 +35,7 @@ pub(in crate::editor) mod sift;
 pub(in crate::editor) use stack::{InputEvent, InputStack, Layer, LayerRef};
 
 pub(in crate::editor) use base::BaseLayer;
-pub(in crate::editor) use char::{CharLayer, CharThen, read_char};
+pub(in crate::editor) use char::{CharLayer, read_command_char, read_steel_char};
 pub(in crate::editor) use command::CommandLayer;
 pub(in crate::editor) use completion::{BufferCompletionLayer, MinibufCompletionLayer};
 pub(in crate::editor) use confirm::{ConfirmAction, ConfirmLayer, ConfirmPermit};
@@ -50,6 +50,7 @@ pub(in crate::editor) use picker::{PickerItem, PickerSession};
 #[cfg(test)]
 pub(in crate::editor) use picker::PickerLayer;
 pub(in crate::editor) use popup::PopupLayer;
+#[cfg(test)]
 pub(in crate::editor) use prompt::PromptLayer;
 pub(in crate::editor) use search::{
     InvalidPattern, SearchLayer, SearchOrigin, commit_search, preview_search,

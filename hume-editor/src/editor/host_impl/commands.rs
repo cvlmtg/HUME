@@ -177,15 +177,15 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         let Some(cmd) = self.state.config.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
         };
-        // Resolve `cmd` against `pane`, per `cmd`'s own body; see
-        // `commands::BoundCommand::resolve`. Resolved *before* arming the
-        // register prefix, so a refusal here leaves no prefix armed behind
-        // it.
         // `count` came from `parse_native_args`, which decodes a Steel-side
         // count of 0 to `None`, the script's way of asking for "as if no
         // count was typed" (move-down/move-up read this as visual-line
         // movement instead of buffer-line movement).
         let ctx = crate::editor::dispatch::CmdCtx { count, extend };
+        // Resolve `cmd` against `pane`, per `cmd`'s own body; see
+        // `commands::BoundCommand::resolve`. Resolved *before* arming the
+        // register prefix, so a refusal here leaves no prefix armed behind
+        // it.
         let bound = match crate::editor::commands::BoundCommand::resolve(
             self.state, self.view, cmd, pane, arg,
         ) {
@@ -195,12 +195,10 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                     "{name} is not a native command; use call! instead of call-native!"
                 ));
             }
-            // A script passes the operand it got from `on-next-char!` or
-            // `prompt!`: reading it here would return before the command
-            // ran, so the script's next call would run first.
-            Err(crate::editor::commands::BindError::NeedsOperand(missing)) => {
-                return Err(format!("'{name}': {missing}"));
-            }
+            // A missing operand is refused too: a script passes the operand
+            // it got from `on-next-char!` or `prompt!`, as reading it here
+            // would return before the command ran, so the script's next call
+            // would run first.
             Err(e) => return Err(format!("'{name}': {e}")),
         };
         // Arm the register prefix so register-aware commands (yank, delete,

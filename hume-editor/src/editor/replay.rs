@@ -1,7 +1,8 @@
 //! Dot-repeat (`.`) and macro-replay state and execution.
 //!
 //! Dot-repeat records a [`RepeatableAction`] recipe (command name + count +
-//! char arg + selection-building steps + Insert-session inputs) rather than
+//! operand or the answers its character reads received + selection-building
+//! steps + Insert-session inputs) rather than
 //! a raw changeset, since changesets are position-dependent and can't be
 //! replayed at a different cursor. Macro replay drains a queue of recorded
 //! keys through the normal event path.
@@ -9,11 +10,13 @@
 use hume_engine::pipeline::EngineView;
 use hume_scripting::host::CommandArg;
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::dispatch::CmdCtx;
 use super::dot_chain::{ChainBroken, DotChain};
-use super::edit_session::{self, DotCapture, EditSessionKind};
+use super::edit_session::{self, DotCapture, DotPark, DotWaiter, EditSessionKind};
+use super::input_stack::char::{self as char_read, CharRead};
 use super::registry::MappableCommand;
 use super::{Editor, EditorState, Mode, commands, doc_ops};
 
@@ -120,6 +123,88 @@ pub(crate) struct RepeatableAction {
     /// `EditorState::selection_recipe` each time a repeatable command is
     /// recorded.
     pub selection_recipe: Vec<SelectionStep>,
+    /// The answers the character reads a Steel command made received, the
+    /// reads its callbacks made included. `None` for a native command,
+    /// which records its character in `arg`.
+    pub reads: Option<ReadLog>,
+}
+
+/// Names one Steel command dispatch, so a character read it made, directly
+/// or from a callback of one of its reads, can be told apart from any
+/// other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DispatchId(u64);
+
+impl DispatchId {
+    pub(in crate::editor) fn mint() -> Self {
+        Self(super::host_token::next())
+    }
+}
+
+/// The answers `owner`'s character reads received, in the order the reads
+/// were made, `None` for one that ended without a character. Reads take
+/// keys in the order they were made, so the order they were answered in is
+/// the same.
+#[derive(Debug, Clone)]
+pub(crate) struct ReadLog {
+    owner: DispatchId,
+    answers: Vec<Option<char>>,
+}
+
+impl ReadLog {
+    pub(in crate::editor) fn new(owner: DispatchId) -> Self {
+        Self {
+            owner,
+            answers: Vec::new(),
+        }
+    }
+}
+
+/// Whose character reads the Steel code running now makes: held on
+/// `EditorState::read_scope`.
+pub(in crate::editor) enum ReadScope {
+    /// A Steel command's body, with the answers its reads received before
+    /// it returns (a read the body itself ended) and the command is
+    /// recorded.
+    Body(ReadLog),
+    /// The callback of a read the dispatch `DispatchId` made.
+    Callback(DispatchId),
+}
+
+impl ReadScope {
+    pub(in crate::editor) fn owner(&self) -> DispatchId {
+        match self {
+            Self::Body(log) => log.owner,
+            Self::Callback(owner) => *owner,
+        }
+    }
+}
+
+/// `replay_dot`'s state while `.` runs. A character read made during `.`
+/// never waits for a key: it takes the next of `answers` and waits in
+/// `answered` for replay to resolve it.
+pub(in crate::editor) struct DotReplay {
+    pub(in crate::editor) answers: VecDeque<Option<char>>,
+    pub(in crate::editor) answered: VecDeque<(CharRead, Option<char>)>,
+}
+
+/// Proof that an input passed [`EditorState::interactive_input`], which is
+/// the only way to get one.
+#[must_use]
+pub(in crate::editor) struct Interactive(());
+
+/// [`Interactive`] for an input that waits for a later key, with its claim
+/// on the capture of the Insert-key binding that opened it, if any. Minted
+/// only by [`EditorState::waiting_input`].
+#[must_use]
+pub(in crate::editor) struct WaitingInput {
+    waiter: Option<DotWaiter>,
+}
+
+impl WaitingInput {
+    pub(in crate::editor) fn into_waiter(self) -> Option<DotWaiter> {
+        self.waiter
+    }
 }
 
 // ── Deferred dot-repeat ───────────────────────────────────────────────────────
@@ -171,15 +256,28 @@ impl EditorState {
         }
     }
 
-    /// Marks the Insert-key dispatch or completion-accept currently in
-    /// progress as interactive. Called by `completion-accept!`/
-    /// `completion-trigger` directly, `picker!`/`live-picker!` indirectly
-    /// via `picker::open_picker`, whichever fires first, so a binding
-    /// becomes interactive by calling one of them rather than by declaring
-    /// it (see `InsertInput::Result`'s own doc). No-op if no capture is
-    /// armed: a stray call from outside an armed dispatch (a hook, a
-    /// timer) is harmless, since nothing else reads it.
-    pub(in crate::editor) fn mark_dot_interactive(&mut self) {
+    /// The check every interactive input passes before it opens: one
+    /// whose outcome depends on input the user gives while it runs (a
+    /// prompt, a menu, a completion trigger or accept, and through
+    /// [`Self::waiting_input`] a picker or a character read). Each kind's
+    /// funnel takes the [`Interactive`] this returns, so none opens without
+    /// it.
+    ///
+    /// Refuses during `.`: an interactive input is never re-run, since its
+    /// net edit was recorded as an `InsertInput::Result` and is replayed
+    /// directly. Reaching one during replay means the replayed code decided
+    /// differently than it did live, and an error beats opening a widget
+    /// mid-repeat. Otherwise marks the capture armed for the Insert-key
+    /// binding running now, if any, interactive, so the binding becomes
+    /// interactive by opening the input rather than by declaring it (see
+    /// `InsertInput::Result`'s own doc).
+    pub(in crate::editor) fn interactive_input(
+        &mut self,
+        what: &str,
+    ) -> Result<Interactive, String> {
+        if self.dot_replay.is_some() {
+            return Err(dot_refusal(what));
+        }
         if let Some(cap) = self
             .active_session
             .as_mut()
@@ -187,25 +285,75 @@ impl EditorState {
         {
             cap.interactive = true;
         }
+        Ok(Interactive(()))
     }
 
-    /// The one refusal every interactive builtin (`completion-accept!`,
-    /// `picker!`/`live-picker!`, `on-next-char!`, `completion-trigger`)
-    /// opens with: reached
-    /// during `.`, an interactive input is never re-run: its net edit was
-    /// already recorded as an `InsertInput::Result` and replayed directly
-    /// (see that variant's own doc). Reaching this call during replay means
-    /// the binding decided differently than it did live, and erroring loudly
-    /// beats silently re-opening a popup/picker, or accepting against a
-    /// session that was never opened this time.
-    pub(in crate::editor) fn refuse_during_dot(&self, what: &str) -> Result<(), String> {
-        if self.dot_replay {
-            return Err(format!(
-                "{what}: reached during `.`, but the recorded input took a different branch \
-                 this time"
-            ));
+    /// [`Self::interactive_input`] for an input that resolves on a later
+    /// key (a picker, a character read), which also takes a claim on the
+    /// armed capture: it joins the [`DotPark`] every input of that binding
+    /// shares. The capture stays armed until the run ends, so the rest of
+    /// the binding's body is recorded too; `Editor::run_dot_captured` then
+    /// parks it. No claim when no capture is armed: one is armed only for
+    /// the extent of a captured run.
+    pub(in crate::editor) fn waiting_input(&mut self, what: &str) -> Result<WaitingInput, String> {
+        let Interactive(()) = self.interactive_input(what)?;
+        let armed = self
+            .active_session
+            .as_mut()
+            .and_then(|s| s.dot_capture_mut())
+            .is_some();
+        let waiter = armed.then(|| self.dot_park.get_or_insert_with(DotPark::new).join());
+        Ok(WaitingInput { waiter })
+    }
+
+    /// Records `answer` for a read `owner` made: into the log of the body
+    /// running now when it is `owner`'s, otherwise into the recorded action
+    /// when `owner` is its dispatch. Dropped for a dispatch that was not
+    /// recorded.
+    pub(in crate::editor) fn record_read_answer(
+        &mut self,
+        owner: DispatchId,
+        answer: Option<char>,
+    ) {
+        let log = match &mut self.read_scope {
+            Some(ReadScope::Body(log)) if log.owner == owner => Some(log),
+            _ => self
+                .last_repeatable_action
+                .as_mut()
+                .and_then(|a| a.reads.as_mut())
+                .filter(|log| log.owner == owner),
+        };
+        if let Some(log) = log {
+            log.answers.push(answer);
         }
-        Ok(())
+    }
+
+    /// Whether the code running now is a callback of a read the recorded
+    /// action's dispatch made, so its edits belong to that action.
+    pub(in crate::editor) fn in_recorded_callback(&self) -> bool {
+        let Some(ReadScope::Callback(owner)) = &self.read_scope else {
+            return false;
+        };
+        self.last_repeatable_action
+            .as_ref()
+            .and_then(|a| a.reads.as_ref())
+            .is_some_and(|log| log.owner == *owner)
+    }
+
+    /// Ends `waiter`'s claim for an input that ended without running
+    /// anything. The last claim to end finalizes the park's capture, unless
+    /// a resolution has it armed, which finalizes it itself.
+    pub(in crate::editor) fn release_dot_waiter(&mut self, waiter: DotWaiter) {
+        let Some(park) = self.dot_park.as_mut() else {
+            return;
+        };
+        if !park.leave(waiter) || park.is_waited_on() {
+            return;
+        }
+        if let Some(cap) = park.take_cap() {
+            self.dot_park = None;
+            self.finalize_dot_capture(cap);
+        }
     }
 
     /// Applies a recorded interactive result `r` at `fp`'s cursors, as one
@@ -379,8 +527,7 @@ impl Editor {
                     false
                 }
                 Err(commands::FocusedBindError::NeedsOperand(missing)) => {
-                    let name = &missing.name;
-                    self.report(super::Severity::Error, format!("'{name}': {missing}"));
+                    commands::report_arg_error(&mut self.state, &missing.name, &missing);
                     false
                 }
                 Err(commands::FocusedBindError::NotNative(_)) => {
@@ -401,7 +548,16 @@ impl Editor {
         let Some(action) = self.state.last_repeatable_action.take() else {
             return;
         };
-        let prev = std::mem::replace(&mut self.state.dot_replay, true);
+        let answers = action
+            .reads
+            .as_ref()
+            .map(|log| log.answers.iter().copied().collect())
+            .unwrap_or_default();
+        let replay = DotReplay {
+            answers,
+            answered: VecDeque::new(),
+        };
+        let prev = self.state.dot_replay.replace(replay);
         self.replay_action(&action, count);
         self.state.dot_replay = prev;
         self.state.last_repeatable_action = Some(action);
@@ -524,7 +680,18 @@ impl Editor {
             count: Some(count),
             extend: false,
         };
-        if !self.replay_command(edit_cmd, fp, &ctx, action.arg.clone()) {
+        let ran = self.replay_command(edit_cmd, fp, &ctx, action.arg.clone());
+        // The answered reads resolve after the body, as live; the recorded
+        // Insert inputs after them. Those inputs replay with no answers: a
+        // binding that read a character live is recorded as its edit.
+        if ran {
+            self.resolve_replayed_reads();
+        }
+        if let Some(replay) = self.state.dot_replay.as_mut() {
+            replay.answers.clear();
+            replay.answered.clear();
+        }
+        if !ran {
             // Close whatever the group opened above became so it can't
             // leak, the same decision the success path below makes (see
             // `finish_replay_session`'s own doc). commit drops an empty
@@ -595,6 +762,23 @@ impl Editor {
         self.finish_replay_session();
     }
 
+    /// Resolves each read made during `.` with the answer it took, in the
+    /// order they were made, running a callback at once: a read a callback
+    /// makes is resolved by this same loop.
+    fn resolve_replayed_reads(&mut self) {
+        while let Some((read, answer)) = self
+            .state
+            .dot_replay
+            .as_mut()
+            .and_then(|replay| replay.answered.pop_front())
+        {
+            let resolved = char_read::resolve(&mut self.state, read, answer);
+            if let Some(call) = char_read::run_resolved(self, resolved) {
+                self.run_pending_batch(VecDeque::from([call]));
+            }
+        }
+    }
+
     /// Builds a fresh [`edit_session::DotCapture`] at the focused cursor and
     /// runs `f` with it armed, wrapping only the one operation that might go
     /// interactive. `fallback` is what to record
@@ -623,17 +807,41 @@ impl Editor {
         self.run_dot_captured(cap, f);
     }
 
+    /// Runs `f` as the resolution of a waiting input that holds `waiter`,
+    /// with the park's capture armed so `f`'s edits are recorded into it.
+    /// With no waiter, the park gone (its session ended) or no capture in
+    /// it, `f` runs unrecorded.
+    pub(in crate::editor) fn resolve_dot_waiter(
+        &mut self,
+        waiter: Option<DotWaiter>,
+        f: impl FnOnce(&mut Self),
+    ) {
+        let Some(waiter) = waiter else {
+            return f(self);
+        };
+        let Some(park) = self.state.dot_park.as_mut() else {
+            return f(self);
+        };
+        if !park.leave(waiter) {
+            return f(self);
+        }
+        match park.take_cap() {
+            Some(cap) => self.run_dot_captured(cap, f),
+            None => {
+                if !park.is_waited_on() {
+                    self.state.dot_park = None;
+                }
+                f(self);
+            }
+        }
+    }
+
     /// Arms `cap` on its own `(pane, buffer)`'s Insert session, runs `f`,
-    /// then takes the capture back and finalizes it, unless `f` itself
-    /// already took it (`picker::open_picker`, called from inside `f` when
-    /// the dispatch it wraps opens a picker), in which case it's now the new
-    /// `PickerSession`'s to resolve later, and there is nothing left here to
-    /// finalize. No-op arming if the target session is already gone by the
-    /// time this runs. The one caller that can reach that is
-    /// `Editor::run_pending_batch`, replaying a picker's `on_select` against
-    /// whatever session is current now, which may have since closed; `f`
-    /// (the callback itself) still runs regardless, just with nothing
-    /// recording it for `.`.
+    /// then takes the capture back: into the park while inputs still wait
+    /// on it, including inputs `f` opened ([`EditorState::waiting_input`]),
+    /// otherwise finalized. No-op arming if the target session is already gone
+    /// by the time this runs, which a resolution queued as a callback can
+    /// reach: `f` still runs, with nothing recording it for `.`.
     pub(in crate::editor) fn run_dot_captured(
         &mut self,
         mut cap: DotCapture,
@@ -665,21 +873,28 @@ impl Editor {
                     // or not.
                     self.report(
                         super::Severity::Warning,
-                        "`.` won't repeat this pick: the buffer changed while it was open"
+                        "`.` won't repeat this key: the buffer changed while it waited for input"
                             .to_string(),
                     );
                 }
             }
         }
         f(self);
-        if let Some(cap) = self
+        let Some(cap) = self
             .state
             .active_session
             .as_mut()
             .filter(|s| s.is_insert_at(pane, buffer))
             .and_then(|s| s.take_dot_capture())
-        {
-            self.state.finalize_dot_capture(cap);
+        else {
+            return;
+        };
+        match self.state.dot_park.as_mut() {
+            Some(park) if park.is_waited_on() => park.put_cap(cap),
+            _ => {
+                self.state.dot_park = None;
+                self.state.finalize_dot_capture(cap);
+            }
         }
     }
 
@@ -742,4 +957,9 @@ impl Editor {
             self.state.last_repeatable_action = saved_action;
         }
     }
+}
+
+/// The error an interactive input reached during `.` raises.
+pub(in crate::editor) fn dot_refusal(what: &str) -> String {
+    format!("{what}: reached during `.`, but the recorded input took a different branch this time")
 }

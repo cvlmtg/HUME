@@ -195,7 +195,7 @@ To set several bindings at once, use the plural forms:
 
 Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [Plugin API](plugin-api.md#editing-navigation), which also has a worked example) lets a command decide, per keypress, whether to override the key or fall back to what it would otherwise do.
 
-`.` repeats an Insert-mode key's binding by re-running it, not by replaying a fixed effect, so a binding decides again at the new cursor, taking whichever branch fits there. The one exception is a branch that asks you for input while it runs: opening the completion popup, accepting a completion, or opening a picker are never re-run: `.` writes what they produced instead, and reports an error for that keypress if the binding would take that branch again on replay. A branch with no such step, like one that saves the file, runs again in full, including that side effect.
+`.` repeats an Insert-mode key's binding by re-running it, not by replaying a fixed effect, so a binding decides again at the new cursor, taking whichever branch fits there. The one exception is a branch that asks you for input while it runs: opening the completion popup, accepting a completion, opening a picker or a `prompt!`, or reading a character from the next key. Such a branch is never re-run: `.` writes the text it changed instead, and reports an error for that keypress if the binding would take that branch only on replay. Opening a `prompt!` leaves Insert mode, so whatever its callback then changes counts as a separate change for `.`. A branch with no such step, like one that saves the file, runs again in full, including that side effect.
 
 ### Binding a command that reads a character
 

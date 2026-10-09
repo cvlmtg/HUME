@@ -165,7 +165,9 @@ pub trait UiHost {
 
     /// `(on-next-char! callback)` hands the next key typed to `callback`: its
     /// character, or `#f` when it isn't one or the wait ends any other way.
-    /// Fires once, queued like [`Self::prompt`]'s callback.
+    /// Fires once, queued like [`Self::prompt`]'s callback. During `.` it
+    /// answers with the next character the repeated command read, and errs
+    /// when none is left.
     fn on_next_char(&mut self, callback: steel::rvals::SteelVal) -> Result<(), String>;
 
     /// `(show-popup! text #:anchor 'cursor #:kind 'sticky #:lang #f)` shows

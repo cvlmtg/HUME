@@ -209,11 +209,9 @@ pub(in crate::editor) fn cmd_exit_insert(
 /// than a plugin's, since the orchestration is the editor's own; the
 /// sources it invokes are whatever plugins registered.
 ///
-/// Marks the dispatch interactive (see `EditorState::mark_dot_interactive`'s
-/// own doc): opening the popup writes nothing itself, so a `.` that reached
-/// this point would just reopen it, so it is dropped instead, same discipline
-/// `completion-accept!`/`picker!` follow for the edit that eventually
-/// resolves it. Refuses loudly under `.`, same as those two, rather than
+/// An interactive input (see `EditorState::interactive_input`'s own doc):
+/// opening the popup writes nothing itself, and `.` replays the edit that
+/// eventually resolves it, so `.` reaching this point refuses rather than
 /// firing a fresh completion request on every repeat.
 pub(in crate::editor) fn cmd_completion_trigger(
     state: &mut EditorState,
@@ -222,11 +220,10 @@ pub(in crate::editor) fn cmd_completion_trigger(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    state
-        .refuse_during_dot("completion-trigger")
+    let input = state
+        .interactive_input("completion-trigger")
         .map_err(CommandError::new)?;
-    state.mark_dot_interactive();
-    state.trigger_buffer_completion(view, super::super::completion::Trigger::Explicit);
+    state.trigger_buffer_completion(view, super::super::completion::Trigger::Explicit(input));
     Ok(())
 }
 

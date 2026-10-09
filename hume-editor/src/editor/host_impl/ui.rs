@@ -3,10 +3,10 @@
 
 use super::EditorHostImpl;
 use crate::editor::Severity;
-use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{
-    BaseLayer, DrawerLayer, DrawerSelect, MenuLayer, PickerSession, PopupLayer, PromptLayer,
+    BaseLayer, DrawerLayer, DrawerSelect, MenuLayer, PickerSession, PopupLayer,
 };
+use crate::editor::input_stack::{menu, picker, prompt};
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{
     BufferHost, DrawerItems, HostToken, LivePickerOpts, PickerFeedMode, PickerOpts,
@@ -37,9 +37,7 @@ impl<'a> EditorHostImpl<'a> {
 impl<'a> UiHost for EditorHostImpl<'a> {
     // ── Minibuffer prompt ────────────────────────────────────────────────
     fn on_next_char(&mut self, callback: steel::rvals::SteelVal) -> Result<(), String> {
-        let then = crate::editor::input_stack::CharThen::Steel(callback);
-        crate::editor::input_stack::read_char(self.state, self.view, then);
-        Ok(())
+        crate::editor::input_stack::read_steel_char(self.state, self.view, callback)
     }
 
     fn prompt(
@@ -49,29 +47,9 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         prefill: String,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
+        let input = self.state.interactive_input("prompt!")?;
         self.require_focused_pane(pane)?;
-        // Not "a Command-mode minibuffer is open": a `prompt!` called from
-        // a `:command`'s body runs while that command line's own `Command`
-        // layer is still on the stack (it's truncated only after the
-        // command returns, per truncate-before-execute). Only a `Prompt`
-        // layer already on top means a *prior* `prompt!` call has taken
-        // over the session.
-        if self
-            .state
-            .input
-            .is::<PromptLayer>(self.state.input.mode_layer())
-        {
-            return Err("prompt!: a minibuffer session is already open".to_string());
-        }
-        self.state.history.begin_session_all();
-        self.state.push_mode_layer(
-            self.view,
-            PromptLayer {
-                minibuf: crate::editor::MiniBuffer::with_prefill(label, prefill),
-                callback,
-            },
-        );
-        Ok(())
+        prompt::open_prompt(self.state, self.view, label, prefill, callback, input)
     }
 
     // ── Cursor-anchored / docked popup ───────────────────────────────────
@@ -167,29 +145,11 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<Option<HostToken>, String> {
+        let input = self.state.interactive_input("show-menu!")?;
         self.require_focused_pane(pane)?;
-        // Async staleness; see `EditorState::async_opener_stale`'s own doc.
-        // `top` `Menu` is the self-replace exception below: a second
-        // `lsp-code-action` response while the first menu is still open
-        // replaces it rather than being read as stale.
-        if self
-            .state
-            .async_opener_stale::<BaseLayer, MenuLayer>("show-menu!")
-        {
-            return Ok(None);
-        }
-        // Retires a prior `Menu` on the self-replace path, firing its
-        // callback with `#f` explicitly (`take_firing_false`, shared with
-        // the drawer): only *this* path, a genuine refresh, should fire
-        // one. Any open popup is `MenuLayer::setup`'s concern, run by
-        // `push_layer` below.
-        if let Some(r) = self.state.input.ref_of::<MenuLayer>() {
-            self.state.take_firing_false::<MenuLayer>(self.view, r);
-        }
-        let menu = MenuLayer::new(items, callback);
-        let token = menu.token();
-        self.state.push_layer(self.view, menu);
-        Ok(Some(token))
+        Ok(menu::open_menu(
+            self.state, self.view, items, callback, input,
+        ))
     }
 
     /// Idempotent: a no-op if no menu is open, or if `token` doesn't match
@@ -290,12 +250,12 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         on_select: steel::rvals::SteelVal,
         opts: PickerOpts,
     ) -> Result<HostToken, String> {
-        self.state.refuse_during_dot("picker!")?;
+        let input = self.state.waiting_input("picker!")?;
         self.require_focused_pane(pane)?;
         let mut session = PickerSession::new(on_select, opts);
         let token = session.token();
         session.seed(picker::picker_items(items));
-        picker::open_picker(self.state, self.view, session);
+        picker::open_picker(self.state, self.view, session, input);
         Ok(token)
     }
 
@@ -305,11 +265,11 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         on_select: steel::rvals::SteelVal,
         opts: LivePickerOpts,
     ) -> Result<HostToken, String> {
-        self.state.refuse_during_dot("live-picker!")?;
+        let input = self.state.waiting_input("live-picker!")?;
         self.require_focused_pane(pane)?;
         let session = PickerSession::new_live(on_select, opts);
         let token = session.token();
-        picker::open_picker(self.state, self.view, session);
+        picker::open_picker(self.state, self.view, session, input);
         Ok(token)
     }
 

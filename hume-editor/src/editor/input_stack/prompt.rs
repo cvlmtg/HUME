@@ -7,12 +7,44 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
+use super::super::replay::Interactive;
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
+/// Built only by [`open_prompt`].
 pub(in crate::editor) struct PromptLayer {
-    pub(in crate::editor) minibuf: MiniBuffer,
-    pub(in crate::editor) callback: steel::rvals::SteelVal,
+    minibuf: MiniBuffer,
+    callback: steel::rvals::SteelVal,
+}
+
+/// `prompt!`'s funnel: opens a prompt labelled `label` over `prefill`,
+/// whose `callback` gets the text confirmed, or `#f`. Takes the
+/// [`Interactive`] that proves it may open now.
+pub(in crate::editor) fn open_prompt(
+    state: &mut EditorState,
+    view: &EngineView,
+    label: String,
+    prefill: String,
+    callback: steel::rvals::SteelVal,
+    _input: Interactive,
+) -> Result<(), String> {
+    // Not "a Command-mode minibuffer is open": a `prompt!` called from a
+    // `:command`'s body runs while that command line's own `Command` layer
+    // is still on the stack (it's truncated only after the command
+    // returns). Only a `Prompt` layer already on top means a prior
+    // `prompt!` call has taken over the session.
+    if state.input.is::<PromptLayer>(state.input.mode_layer()) {
+        return Err("prompt!: a minibuffer session is already open".to_string());
+    }
+    state.history.begin_session_all();
+    state.push_mode_layer(
+        view,
+        PromptLayer {
+            minibuf: MiniBuffer::with_prefill(label, prefill),
+            callback,
+        },
+    );
+    Ok(())
 }
 
 impl Layer for PromptLayer {

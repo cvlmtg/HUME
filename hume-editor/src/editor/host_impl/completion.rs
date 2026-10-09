@@ -137,7 +137,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
     }
 
     fn completion_accept(&mut self, idx: usize) -> Result<(), String> {
-        self.state.refuse_during_dot("completion-accept!")?;
+        let input = self.state.interactive_input("completion-accept!")?;
         // Checked *before* `take_buffer_completion`: that call is
         // destructive (truncates the layer off the stack, per its own doc),
         // so erroring here first leaves a `Minibuf` session (and its own
@@ -150,7 +150,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         let Some(session) = self.state.take_buffer_completion(self.view) else {
             return Err("completion-accept!: no active completion session".to_string());
         };
-        session.accept(self.state, self.view, idx)
+        session.accept(self.state, self.view, idx, input)
     }
 
     fn completion_dismiss(&mut self) -> Result<(), String> {

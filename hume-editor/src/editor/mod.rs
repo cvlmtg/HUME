@@ -390,16 +390,14 @@ pub(crate) struct EditorState {
     /// preview and `sift-within` alike.
     #[cfg(test)]
     pub(in crate::editor) sift_scans: usize,
-    /// `true` for `replay_dot`'s whole extent, `false` otherwise. Read by
-    /// [`EditorState::refuse_during_dot`], which every interactive
-    /// builtin (`completion-accept!`/`picker!`/`live-picker!`/
-    /// `on-next-char!`/`completion-trigger`) opens with, to refuse loudly if a replayed
-    /// binding reaches one of them: reaching an interactive builtin during
-    /// `.` means the binding decided differently than it did live (it was
-    /// non-interactive then, or `.` wouldn't be re-running it at all; see
-    /// [`replay::InsertInput::Result`]'s own doc), and there is no recorded
-    /// pick to hand back.
-    pub(super) dot_replay: bool,
+    /// `Some` for `replay_dot`'s whole extent. Read by
+    /// [`EditorState::interactive_input`], which every interactive input
+    /// passes before it opens, to refuse one reached during `.`, and by a
+    /// character read, which takes its answer from it.
+    pub(in crate::editor) dot_replay: Option<replay::DotReplay>,
+    /// Whose character reads the Steel code running now makes; see
+    /// [`replay::ReadScope`].
+    pub(in crate::editor) read_scope: Option<replay::ReadScope>,
     /// `true` from the moment `handle_insert` matches a trie leaf until
     /// that dispatch returns. Dispatch never yields before then, all the
     /// way through a Steel `call!` (`Editor::dispatch` → `run_steel_command`
@@ -413,6 +411,10 @@ pub(crate) struct EditorState {
     /// [`edit_session::EditSession`]'s own doc, including its own
     /// `dot_capture` field.
     pub(in crate::editor) active_session: Option<edit_session::EditSession>,
+    /// The capture shared by the inputs an Insert-key binding opened while
+    /// they wait; see [`edit_session::DotPark`]. Cleared with the Insert
+    /// session by `tear_down_insert`.
+    pub(in crate::editor) dot_park: Option<edit_session::DotPark>,
     /// Whether the user explicitly typed a count prefix before the current command.
     pub(super) explicit_count: bool,
     /// `true` when the current multi-key sequence began with a kitty one-shot
@@ -536,9 +538,11 @@ impl Default for EditorState {
             sift_reuse: None,
             #[cfg(test)]
             sift_scans: 0,
-            dot_replay: false,
+            dot_replay: None,
+            read_scope: None,
             in_insert_key_dispatch: false,
             active_session: None,
+            dot_park: None,
             explicit_count: false,
             pending_ctrl_extend: false,
             macro_recording: None,
@@ -808,17 +812,17 @@ impl EditorState {
         proc: steel::rvals::SteelVal,
         args: Vec<steel::rvals::SteelVal>,
     ) {
-        self.queue_steel_call_with_capture(proc, args, None);
+        self.queue_steel_call_with_waiter(proc, args, None);
     }
 
-    /// [`Self::queue_steel_call`]'s counterpart for a call carrying a
-    /// dot-capture handed off from a picker (see
-    /// [`edit_session::DotCapture`]'s own doc).
-    pub(in crate::editor) fn queue_steel_call_with_capture(
+    /// [`Self::queue_steel_call`]'s counterpart for the callback that
+    /// resolves a waiting input holding `dot_waiter` (see
+    /// [`edit_session::DotPark`]).
+    pub(in crate::editor) fn queue_steel_call_with_waiter(
         &mut self,
         proc: steel::rvals::SteelVal,
         args: Vec<steel::rvals::SteelVal>,
-        dot_capture: Option<edit_session::DotCapture>,
+        dot_waiter: Option<edit_session::DotWaiter>,
     ) {
         self.config
             .pending_work
@@ -826,7 +830,8 @@ impl EditorState {
                 proc,
                 args,
                 anchor: None,
-                dot_capture,
+                dot_waiter,
+                read_owner: None,
             });
     }
 
@@ -834,8 +839,8 @@ impl EditorState {
     /// callback: carries the `ResponseAnchor` already checked once at LSP
     /// drain time, so `Editor::run_pending_batch` can re-check it at
     /// dequeue. See `PendingWork::Call`'s own doc for why the drain-time
-    /// check alone isn't enough. Never carries a dot-capture: an LSP
-    /// response is never a picker's own resolution.
+    /// check alone isn't enough. Never carries a waiter's claim: an LSP
+    /// response resolves no waiting input.
     pub(in crate::editor) fn queue_steel_call_anchored(
         &mut self,
         proc: steel::rvals::SteelVal,
@@ -848,7 +853,8 @@ impl EditorState {
                 proc,
                 args,
                 anchor: Some(anchor),
-                dot_capture: None,
+                dot_waiter: None,
+                read_owner: None,
             });
     }
 }

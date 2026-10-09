@@ -351,10 +351,8 @@ fn move_minibuf_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool
 /// Wrapped in the same [`Editor::with_dot_capture`] `handle_insert` uses
 /// around a bound key's own dispatch: this Enter keypress is outside any
 /// Insert-key binding, so there's no `Binding` entry to fall back to
-/// (`fallback: None`); `accept` itself always calls `EditorState::
-/// mark_dot_interactive` once it gets far enough to commit, so a completion
-/// accept is either interactive (recorded as its own net edit) or nothing
-/// (an early `Err`, reported below, records no entry at all).
+/// (`fallback: None`), and an accept is an interactive input, so it is
+/// recorded as its own net edit, or as nothing when it changed no text.
 fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
     let selected = ed
         .state
@@ -366,7 +364,11 @@ fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
     };
 
     ed.with_dot_capture(None, |ed| {
-        if let Err(msg) = session.accept(&mut ed.state, &ed.view, selected) {
+        let accepted = ed
+            .state
+            .interactive_input("completion accept")
+            .and_then(|input| session.accept(&mut ed.state, &ed.view, selected, input));
+        if let Err(msg) = accepted {
             ed.report(Severity::Error, msg);
         }
     });

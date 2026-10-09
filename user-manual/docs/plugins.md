@@ -280,6 +280,8 @@ A command that needs characters from the user (a surround operation, say) reads 
 
 Several reads started before a key arrives take the following keys in the order they were started. HUME shows nothing while it waits, so make it obvious from context that a character is expected.
 
+`.` repeats a `#:repeatable` command with the characters it read, including those its callbacks read, without waiting for keys: each `on-next-char!` gets the character, or `#f`, its read got the first time. When the repeat reads more characters than the first run did, the extra `on-next-char!` raises an error.
+
 ### Register prefix
 
 To make subsequent `(call! …)` invocations in a command body target a specific register, call `set-register-prefix!` with a single-character register name (`0`–`9`, `k`, `c`, `b`; see [Register prefix](copy-and-paste.md#register-prefix) for what each one holds):

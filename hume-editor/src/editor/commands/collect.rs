@@ -7,9 +7,12 @@ use hume_scripting::PaneHandle;
 use hume_scripting::host::CommandArg;
 
 use super::super::dispatch::CmdCtx;
-use super::super::input_stack::{CharThen, read_char};
+use super::super::input_stack::read_command_char;
 use super::super::{EditorState, Severity};
-use super::{BoundCommand, Missing, MissingOperand, PendingDispatch, open_pattern_prompt, run};
+use super::{
+    BoundCommand, Missing, MissingOperand, PendingDispatch, open_pattern_prompt, report_arg_error,
+    run,
+};
 
 /// Read `missing` from the user, then run its command on `pane` as
 /// dispatched with `ctx`. Starting the read commits the open paste session
@@ -31,8 +34,9 @@ pub(in crate::editor) fn collect_operand(
     }
     match operand {
         MissingOperand::Char => {
-            let then = CharThen::Dispatch(PendingDispatch { name, pane, ctx });
-            read_char(state, view, then);
+            if let Err(msg) = read_command_char(state, view, PendingDispatch { name, pane, ctx }) {
+                state.report(Severity::Error, msg);
+            }
         }
         MissingOperand::Pattern { prompt, fp } => {
             open_pattern_prompt(state, view, fp, prompt, PendingDispatch { name, pane, ctx });
@@ -57,6 +61,6 @@ pub(in crate::editor) fn run_collected(
         Ok(bound) => {
             run(state, view, bound, ctx);
         }
-        Err(e) => state.report(Severity::Error, format!("'{name}': {e}")),
+        Err(e) => report_arg_error(state, &name, &e),
     }
 }

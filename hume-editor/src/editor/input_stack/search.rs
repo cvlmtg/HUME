@@ -215,6 +215,9 @@ pub(in crate::editor) struct SearchOrigin {
 /// `Ok(false)` when nothing matched: the pattern is stored but the
 /// selections are left as they were. `Err` touches nothing.
 ///
+/// Compiles `raw` only when the buffer's pattern isn't already it, so Enter
+/// reuses the regex the live preview compiled.
+///
 /// Warms the match cache ([`search::ops::update_buffer_matches`]) before
 /// scanning so every selection's hop binary-searches it instead of running
 /// its own full-buffer regex scan. The per-frame highlight rebuild would
@@ -228,9 +231,11 @@ pub(in crate::editor) fn preview_search(
     raw: &str,
 ) -> Result<bool, InvalidPattern> {
     let SearchOrigin { pane, bid, sels } = origin;
-    let sp = SearchPattern::compile(raw).ok_or(InvalidPattern)?;
-    let multi = sp.multi();
-    state.buffers.get_mut(bid).search_pattern = Some(sp);
+    let pattern = &mut state.buffers.get_mut(bid).search_pattern;
+    if pattern.as_ref().is_none_or(|sp| sp.pattern_str != raw) {
+        *pattern = Some(SearchPattern::compile(raw).ok_or(InvalidPattern)?);
+    }
+    let multi = pattern.as_ref().expect("set above").multi();
     search::ops::update_buffer_matches(&mut state.buffers, bid);
 
     let buf = state.buffers.get(bid);
@@ -269,7 +274,7 @@ pub(in crate::editor) fn commit_search(
     view: &EngineView,
     raw: String,
     direction: SearchDirection,
-    pre: Option<SearchOrigin>,
+    pre: SearchOrigin,
 ) {
     let kind = match direction {
         SearchDirection::Forward => HistoryKind::SearchForward,
@@ -277,9 +282,8 @@ pub(in crate::editor) fn commit_search(
     };
     state.history.get_mut(kind).push(raw.clone());
     state.registers.set_search_register(raw);
-    if let Some(SearchOrigin { pane, bid, sels }) = pre
-        && let Some(t) = commands::CommandPane::existing(view, pane)
-    {
+    let SearchOrigin { pane, bid, sels } = pre;
+    if let Some(t) = commands::CommandPane::existing(view, pane) {
         let entry = JumpEntry::new(sels, state.buffers.get(bid).text(), bid);
         crate::editor::jump_list::record_if_moved(state, view, t, entry);
     }

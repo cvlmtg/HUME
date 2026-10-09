@@ -936,7 +936,7 @@ mod tests {
     use steel::rvals::SteelVal;
 
     fn menu(label: &str) -> MenuLayer {
-        MenuLayer::new(vec![label.to_string()], SteelVal::BoolV(false))
+        MenuLayer::for_test(vec![label.to_string()], SteelVal::BoolV(false))
     }
 
     fn confirm() -> ConfirmLayer {

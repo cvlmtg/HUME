@@ -16,6 +16,7 @@ use steel::rvals::SteelVal;
 
 use super::super::commands::half_page;
 use super::super::minibuf::flatten_single_line;
+use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
@@ -23,7 +24,7 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 pub(in crate::editor) use session::item;
 pub(in crate::editor) use session::{PickerItem, PickerSession, picker_items};
 
-pub(in crate::editor) struct PickerLayer(pub(in crate::editor) PickerSession);
+pub(in crate::editor) struct PickerLayer(PickerSession);
 
 impl Layer for PickerLayer {
     fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
@@ -83,11 +84,11 @@ impl Layer for PickerLayer {
     /// the one exit that still drops the callback: `EditorState::truncate_layers`
     /// (this method's only caller) never runs during a reload.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        let cap = self.0.take_dot_capture();
-        state.queue_steel_call_with_capture(
+        let waiter = self.0.take_dot_waiter();
+        state.queue_steel_call_with_waiter(
             self.0.on_select().clone(),
             vec![SteelVal::BoolV(false)],
-            cap,
+            waiter,
         );
     }
 }
@@ -167,42 +168,23 @@ pub(in crate::editor) fn session_for_token(
         .filter(|session| session.token() == token)
 }
 
-/// Single open chokepoint for the picker. Entry policy (dismiss-completion, replace-a-live-
-/// picker, clear-popups) lives on [`PickerLayer::setup`], run by
-/// [`EditorState::push_layer`]. This function is the named door to it, plus
-/// the one place a dot-capture armed on the focused pane's Insert session
-/// (see `DotCapture`'s own doc for the full hand-off chain) moves onto the
-/// new picker instead: opening a picker is itself what makes the dispatch
-/// that called it interactive, so this is where that capture is marked
-/// (`EditorState::mark_dot_interactive`) before it's handed off; neither
-/// builtin needs to call that itself. Takes `state`/`view` rather than
-/// `&mut Editor` because its production caller,
-/// `EditorHostImpl::open_picker`, holds those as disjoint borrows, not a
-/// whole `Editor`: it can never reach an `&mut Editor`.
+/// Single open chokepoint for the picker. Entry policy (dismiss-completion,
+/// replace-a-live-picker, clear-popups) lives on [`PickerLayer::setup`],
+/// run by [`EditorState::push_layer`]. This function is the named door to
+/// it, plus the one place the picker takes its claim on the capture of the
+/// Insert-key binding that opened it (see `DotCapture`'s doc for the full
+/// hand-off chain), from the [`WaitingInput`] that proves it may open.
+/// Takes `state`/`view` rather than `&mut Editor` because its production
+/// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
+/// not a whole `Editor`: it can never reach an `&mut Editor`.
 pub(in crate::editor) fn open_picker(
     state: &mut super::super::EditorState,
     view: &EngineView,
     mut session: PickerSession,
+    input: WaitingInput,
 ) {
-    let pane = state.focus.id();
-    let buffer = view.panes[pane].buffer_id;
-    // Marked while still armed on the session, via the same
-    // `EditorState::mark_dot_interactive` every other interactive builtin
-    // uses, rather than setting `DotCapture::interactive` inline here too.
-    if state
-        .active_session
-        .as_ref()
-        .is_some_and(|s| s.is_insert_at(pane, buffer))
-    {
-        state.mark_dot_interactive();
-    }
-    if let Some(cap) = state
-        .active_session
-        .as_mut()
-        .filter(|s| s.is_insert_at(pane, buffer))
-        .and_then(|s| s.take_dot_capture())
-    {
-        session.attach_dot_capture(cap);
+    if let Some(waiter) = input.into_waiter() {
+        session.attach_dot_waiter(waiter);
     }
     state.push_layer(view, PickerLayer(session));
 }
@@ -233,10 +215,9 @@ pub(in crate::editor) fn close_picker_with(
     };
     let mut session = state.take_layer::<PickerLayer>(view, r).0;
     let callback = callback.unwrap_or_else(|| session.on_select().clone());
-    // Hands the picker's own dot-capture (if any; see `DotCapture`'s own
-    // doc) to the queued call: `Editor::run_pending_batch` re-arms it on
-    // whatever session is current by the time this actually runs.
-    state.queue_steel_call_with_capture(callback, vec![payload], session.take_dot_capture());
+    // Hands the picker's claim (if any; see `DotPark`'s own doc) to the
+    // queued call, which `Editor::run_pending_batch` resolves.
+    state.queue_steel_call_with_waiter(callback, vec![payload], session.take_dot_waiter());
 }
 
 /// `close_picker_with`'s common case: fire `on_select` itself.

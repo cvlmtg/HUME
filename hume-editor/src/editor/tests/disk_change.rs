@@ -767,7 +767,11 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
+    let input = ed
+        .state
+        .waiting_input("picker!")
+        .expect("no `.` is in progress");
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, input);
 
     let (_, warnings_before) = ed.state.message_log.totals();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
@@ -917,7 +921,11 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
+    let input = ed
+        .state
+        .waiting_input("picker!")
+        .expect("no `.` is in progress");
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, input);
 
     assert!(ed.state.input.picker().is_some(), "the picker opened");
     assert!(
@@ -979,7 +987,11 @@ fn picker_above_a_retired_confirm_survives_untouched() {
         steel::rvals::SteelVal::StringV("cb".into()),
         hume_scripting::host::PickerOpts::default(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
+    let input = ed
+        .state
+        .waiting_input("picker!")
+        .expect("no `.` is in progress");
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, input);
     assert!(
         ed.state
             .input

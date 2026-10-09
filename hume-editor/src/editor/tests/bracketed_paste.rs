@@ -201,7 +201,11 @@ fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
             })
             .collect(),
     );
-    picker::open_picker(&mut ed.state, &ed.view, session);
+    let input = ed
+        .state
+        .waiting_input("picker!")
+        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, session, input);
 }
 
 fn open_live_test_picker(ed: &mut Editor) {
@@ -215,7 +219,11 @@ fn open_live_test_picker(ed: &mut Editor) {
             actions: Vec::new(),
         },
     );
-    picker::open_picker(&mut ed.state, &ed.view, session);
+    let input = ed
+        .state
+        .waiting_input("picker!")
+        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, session, input);
 }
 
 #[test]
@@ -268,7 +276,7 @@ fn menu_paste_is_swallowed_but_clears_the_status_message() {
     ed.state.status_msg = Some("previous message".to_string());
     ed.state.push_layer(
         &ed.view,
-        MenuLayer::new(vec!["m0".into()], marker("menu-cb")),
+        MenuLayer::for_test(vec!["m0".into()], marker("menu-cb")),
     );
 
     ed.feed_paste("xyz");

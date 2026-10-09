@@ -11,7 +11,7 @@ use hume_scripting::host::MAX_COUNT;
 use super::super::Editor;
 use super::super::commands::cmd_clear_search;
 use super::super::keymap::WalkResult;
-use super::char::{CharThen, MacroRead, read_char};
+use super::char::{CharRead, MacroRead, read_char};
 use super::popup::PopupLayer;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
@@ -169,7 +169,11 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                     // A count before `Q<reg>` has no meaning for recording,
                     // and would otherwise reach the first recorded key.
                     ed.state.count = None;
-                    read_char(&mut ed.state, &ed.view, CharThen::Macro(MacroRead::Record));
+                    read_char(
+                        &mut ed.state,
+                        &ed.view,
+                        CharRead::macro_register(MacroRead::Record),
+                    );
                 }
                 // During replay, or on a read-only buffer: silently ignore.
                 return;
@@ -183,7 +187,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                     read_char(
                         &mut ed.state,
                         &ed.view,
-                        CharThen::Macro(MacroRead::Replay { count }),
+                        CharRead::macro_register(MacroRead::Replay { count }),
                     );
                 }
                 // During recording, replay, or on a read-only buffer: silently ignore.
@@ -193,7 +197,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                 // Register prefix: `"<reg>` selects the named register for the
                 // upcoming yank/delete/change/paste. A count typed before it
                 // is kept for that command.
-                read_char(&mut ed.state, &ed.view, CharThen::Register);
+                read_char(&mut ed.state, &ed.view, CharRead::register());
                 return;
             }
             _ => {}

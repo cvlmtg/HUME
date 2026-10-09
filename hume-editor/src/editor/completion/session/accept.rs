@@ -13,6 +13,7 @@ use super::buffer::{BufferSession, BufferSpan};
 use super::contains_cursor;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{RustResponder, edits, wire_range_to_chars};
+use crate::editor::replay::Interactive;
 use crate::editor::{EditorState, Severity};
 use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors};
 
@@ -57,6 +58,7 @@ impl BufferSession {
         state: &mut EditorState,
         view: &EngineView,
         idx: usize,
+        _input: Interactive,
     ) -> Result<(), String> {
         let (source, invocation, item) = self
             .ranked(idx)
@@ -387,13 +389,6 @@ impl BufferSession {
                 },
             ),
         };
-        // Marks this dispatch (or completion accept; see `accept_completion_
-        // selection`'s own doc) interactive: whatever it and the rest of the
-        // Insert-key binding that called this do from here collapses into
-        // one net edit, replayed directly, never by re-running any of it
-        // (see `InsertInput::Result`'s own doc, and `DotCapture`'s).
-        state.mark_dot_interactive();
-
         if opened_group {
             crate::editor::doc_ops::commit_edit_group(
                 &mut state.buffers,

@@ -84,10 +84,14 @@ fn editor_state_fields_are_classified() {
             sift_scans: _,                      // preserved: a test-only count
             // preserved: owned by `replay_dot`, which restores it on exit
             dot_replay: _,
+            // preserved: owned by `Editor::dispatch` and `run_pending_batch`,
+            // which restore it on exit
+            read_scope: _,
             // preserved: never live across a reload (a keymap dispatch
             // never re-enters `init.scm`)
             in_insert_key_dispatch: _,
             active_session: _, // preserved: end_focus_sessions already emptied it
+            dot_park: _,       // preserved: end_focus_sessions' tear_down_insert already cleared it
             explicit_count: _, // preserved
             pending_ctrl_extend: _, // preserved
             macro_recording: _, // preserved

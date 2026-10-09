@@ -44,7 +44,11 @@ fn open_test_picker(ed: &mut Editor, items: &[&str]) {
             })
             .collect(),
     );
-    picker::open_picker(&mut ed.state, &ed.view, session);
+    let input = ed
+        .state
+        .waiting_input("picker!")
+        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, session, input);
 }
 
 /// `tab`'s start column in the synced tabline view, computed the same way
@@ -937,7 +941,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
     ed.state.push_layer(
         &ed.view,
-        MenuLayer::new(vec!["m0".into()], marker("menu-cb")),
+        MenuLayer::for_test(vec!["m0".into()], marker("menu-cb")),
     );
 
     ed.handle_input(mouse_left_down(3, 0));

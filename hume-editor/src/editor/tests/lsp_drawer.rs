@@ -139,7 +139,11 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
         steel::rvals::SteelVal::BoolV(false),
         PickerOpts::default(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
+    let input = ed
+        .state
+        .waiting_input("picker!")
+        .expect("no `.` is in progress");
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, input);
 
     let traces_before = ed
         .state

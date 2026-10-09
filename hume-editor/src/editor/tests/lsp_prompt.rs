@@ -172,7 +172,11 @@ fn minibuf_does_not_resolve_a_prompt_buried_under_a_picker() {
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
+    let input = ed
+        .state
+        .waiting_input("picker!")
+        .expect("no `.` is in progress");
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, input);
 
     assert!(
         ed.state.minibuf().is_none(),

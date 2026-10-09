@@ -7,7 +7,9 @@ use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
 
 use super::super::mouse::is_fresh_gesture;
+use super::super::replay::Interactive;
 use super::super::{Editor, EditorState, host_token};
+use super::base::BaseLayer;
 use super::placement::{focused_cursor, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalScope};
 
@@ -31,11 +33,41 @@ pub(in crate::editor) struct MenuLayer {
     token: HostToken,
 }
 
+/// `show-menu!`'s funnel: opens a menu over `items` whose `callback` gets
+/// the chosen index, or `#f`, and returns its token. `None` when the
+/// request is stale (see `EditorState::async_opener_stale`). Takes the
+/// [`Interactive`] that proves it may open now.
+pub(in crate::editor) fn open_menu(
+    state: &mut EditorState,
+    view: &EngineView,
+    items: Vec<String>,
+    callback: steel::rvals::SteelVal,
+    _input: Interactive,
+) -> Option<HostToken> {
+    // A `Menu` on top is the self-replace exception: a second
+    // `lsp-code-action` response while the first menu is still open
+    // replaces it rather than being read as stale.
+    if state.async_opener_stale::<BaseLayer, MenuLayer>("show-menu!") {
+        return None;
+    }
+    // Retires a prior `Menu` on the self-replace path, firing its callback
+    // with `#f` explicitly (`take_firing_false`, shared with the drawer):
+    // only this path, a genuine refresh, should fire one. Any open popup is
+    // `MenuLayer::setup`'s concern, run by `push_layer` below.
+    if let Some(r) = state.input.ref_of::<MenuLayer>() {
+        state.take_firing_false::<MenuLayer>(view, r);
+    }
+    let menu = MenuLayer::new(items, callback);
+    let token = menu.token();
+    state.push_layer(view, menu);
+    Some(token)
+}
+
 impl MenuLayer {
     /// A fresh menu over single-column `items`, selection at row 0, with a
     /// freshly minted token (the only minting site, same as
     /// `DrawerLayer::new`).
-    pub(in crate::editor) fn new(items: Vec<String>, callback: steel::rvals::SteelVal) -> Self {
+    fn new(items: Vec<String>, callback: steel::rvals::SteelVal) -> Self {
         Self {
             rows: items
                 .into_iter()
@@ -45,6 +77,15 @@ impl MenuLayer {
             callback,
             token: host_token::mint(),
         }
+    }
+
+    /// A menu pushed directly, for a test of the stack's own behavior.
+    #[cfg(test)]
+    pub(in crate::editor) fn for_test(
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+    ) -> Self {
+        Self::new(items, callback)
     }
 
     /// `show-menu!`'s return value, checked by `close-menu!` so a caller

@@ -26,6 +26,7 @@ use crate::editor::input_stack::{
     BufferCompletionLayer, InsertLayer, LayerRef, MinibufCompletionLayer,
 };
 use crate::editor::registry::CommandRegistry;
+use crate::editor::replay::Interactive;
 use crate::editor::settings::{CommandCompletion, EditorSettings};
 use crate::editor::{EditorState, Severity};
 
@@ -33,7 +34,8 @@ use crate::editor::{EditorState, Severity};
 /// invokes.
 pub(in crate::editor) enum Trigger {
     /// Ctrl-Space / the `completion-trigger` command: every `Buffer` source.
-    Explicit,
+    /// An interactive input, so it carries the proof it may open now.
+    Explicit(Interactive),
     /// A char landed in Insert mode: these `Buffer` sources
     /// `(set-completion-triggers! …)` registered it for
     /// (`EditorState::triggered_by`). Separate from `set-hook-triggers!`'s
@@ -68,7 +70,7 @@ impl EditorState {
             return;
         }
         let (ids, explicit) = match trigger {
-            Trigger::Explicit => (self.config.completion_sources.buffer_sources(), true),
+            Trigger::Explicit(_) => (self.config.completion_sources.buffer_sources(), true),
             Trigger::Sources(ids) => (ids, false),
         };
         if ids.is_empty() {
