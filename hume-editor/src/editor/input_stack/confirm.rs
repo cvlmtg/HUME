@@ -147,8 +147,8 @@ impl Editor {
     ///   buffer focus left, so this only guards against a different buffer's
     ///   check. A `Scrollable` popup does not block: it is evicted on landing.
     /// - Not headless: scripted keys would be taken as the answer.
-    /// - No pending keys or `wait_char`: the next keystroke is already spoken
-    ///   for.
+    /// - No pending keys or character read: the next keystroke is already
+    ///   spoken for.
     /// - Not replaying a macro: replayed keys can't answer a prompt, so those
     ///   checks warn and the prompt waits for the next real buffer-enter.
     /// - For `BufferEnter` only, no warning or error logged by this input
@@ -173,7 +173,7 @@ impl Editor {
             && self.state.input.menu().is_none()
             && self.state.input.drawer().is_none()
             && self.state.pending_keys.is_empty()
-            && self.state.wait_char.is_none()
+            && self.state.input.find::<super::CharLayer>().is_none()
             && !self.state.is_replaying
             && (trigger != DiskCheckTrigger::BufferEnter || !self.state.message_logged_this_input);
         open.then_some(ConfirmPermit(()))

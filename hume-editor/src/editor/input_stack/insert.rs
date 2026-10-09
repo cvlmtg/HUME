@@ -101,14 +101,13 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             // a repeatable command from stamping over the session's owner.
             let fallback = InsertInput::Binding { name: cmd.name };
             ed.with_dot_capture(Some(fallback), |ed| {
-                ed.with_insert_key_dispatch(|ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX, None));
+                ed.with_insert_key_dispatch(|ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
             });
             return;
         }
         WalkResult::NoMatch => {}
-        // Interior / WaitChar can't arise in the insert trie (no multi-key
-        // sequences, no wait-char bindings).
-        WalkResult::Interior | WalkResult::WaitChar(_) => {}
+        // Interior can't arise in the insert trie (no multi-key sequences).
+        WalkResult::Interior => {}
     }
 
     // Recorded only when the key has default behaviour: an unbound key with

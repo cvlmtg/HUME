@@ -1085,7 +1085,6 @@ fn select_word_nearest_scopes_to_visual_display_line() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        None,
     );
 
     let sel = ed.current_view().primary();
@@ -1120,7 +1119,6 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
             std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
             Some(1),
             false,
-            None,
         )
     };
 
@@ -1160,7 +1158,6 @@ fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        None,
     );
 
     let sel = ed.current_view().primary();
@@ -1194,7 +1191,6 @@ fn select_word_nearest_does_not_absorb_previous_display_line_whitespace() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        None,
     );
 
     let sel = ed.current_view().primary();
@@ -1232,12 +1228,7 @@ fn select_word_absorbs_previous_display_line_whitespace_unlike_nearest_on_line()
         saved: None,
     });
 
-    ed.execute_keymap_command(
-        std::borrow::Cow::Borrowed("select-word"),
-        Some(1),
-        false,
-        None,
-    );
+    ed.execute_keymap_command(std::borrow::Cow::Borrowed("select-word"), Some(1), false);
 
     let sel = ed.current_view().primary();
     assert_eq!(
@@ -1260,7 +1251,6 @@ fn select_word_nearest_respects_word_selects_whitespace_off() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        None,
     );
 
     let sel = ed.current_view().primary();
@@ -1276,7 +1266,7 @@ fn select_word_nearest_respects_word_selects_whitespace_off() {
 //
 // `move-down`/`move-up`'s buffer-line-vs-visual-display-line choice comes from
 // `CmdCtx.count: Option<usize>`, where `None` means "as if no count was typed".
-// The keymap trie leaves / WaitChar arm produce `None` for a bare keypress.
+// The keymap trie leaves produce `None` for a bare keypress.
 // Steel can produce the same `None` explicitly: a script passes a count of
 // `0` (the Scheme spelling of "no count"), which `parse_native_args` decodes
 // to `None` before it ever reaches `CmdCtx`. A no-arg `call!`/typed `:move-down`
@@ -1350,7 +1340,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
     ed.scripting = Some(host);
     // Simulates `5<key>` bound to "steel-move-down": the outer count (5) must
     // have no bearing on the inner call's buffer-line-vs-visual-display-line choice.
-    ed.execute_keymap_command("steel-move-down".into(), Some(5), false, None);
+    ed.execute_keymap_command("steel-move-down".into(), Some(5), false);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1391,7 +1381,7 @@ fn steel_wrapper_bare_dispatch_moves_visual_display_line() {
 
     ed.scripting = Some(host);
     // Simulates a bare `<key>` bound to "steel-jk": no count was typed.
-    ed.execute_keymap_command("steel-jk".into(), None, false, None);
+    ed.execute_keymap_command("steel-jk".into(), None, false);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1435,7 +1425,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
     .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    ed.execute_keymap_command("steel-jk".into(), Some(3), false, None);
+    ed.execute_keymap_command("steel-jk".into(), Some(3), false);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1467,7 +1457,7 @@ fn steel_call_move_down_zero_count_moves_visual_display_line() {
 
     ed.scripting = Some(host);
     // Outer count is Some(1), irrelevant since the body hardcodes 0.
-    ed.execute_keymap_command("steel-vis".into(), Some(1), false, None);
+    ed.execute_keymap_command("steel-vis".into(), Some(1), false);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1513,7 +1503,7 @@ fn generated_bare_name_wrapper_accepts_zero_count() {
     .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    ed.execute_keymap_command("steel-vis-direct".into(), Some(1), false, None);
+    ed.execute_keymap_command("steel-vis-direct".into(), Some(1), false);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),

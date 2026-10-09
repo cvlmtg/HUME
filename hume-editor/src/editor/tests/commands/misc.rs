@@ -481,27 +481,24 @@ fn typed_arity_rule_errors_on_arity_4() {
     );
 }
 
-// ── Extend-trie WaitChar sequence cleanup ─────────────────────────────────────
+// ── Extend-trie character-command sequence cleanup ───────────────────────────
 
-/// A multi-key wait-char sequence bound in sticky-Extend mode must clear
-/// `pending_keys` (and `pending_ctrl_extend`) once the sequence resolves,
-/// mirroring what the normal-trie `WaitChar` arm already does. A prefix key
-/// (`g`) left in `pending_keys` would make the next ordinary keystroke walk
-/// the trie as `[g, <key>]`, silently swallowing it.
+/// A multi-key sequence bound in sticky-Extend mode to a command that reads
+/// a character must clear `pending_keys` (and `pending_ctrl_extend`) once the
+/// sequence resolves. A prefix key (`g`) left in `pending_keys` would make
+/// the next ordinary keystroke walk the trie as `[g, <key>]`, swallowing it.
 #[test]
-fn extend_trie_wait_char_sequence_clears_pending_keys() {
-    use crate::editor::keymap::{BindMode, WaitCharPending};
+fn extend_trie_character_command_sequence_clears_pending_keys() {
+    use crate::editor::keymap::BindMode;
 
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.input.set_extend(true);
 
-    // Two-key wait-char sequence: `g` (prefix) then `r` (wait-char leaf).
-    ed.state.config.keymap.extend.bind_wait_char_sequence(
+    ed.state.config.keymap.bind_user_with_extend(
+        BindMode::Extend,
         &[key('g'), key('r')],
-        WaitCharPending {
-            cmd_name: "find-forward".into(),
-            ctrl_extend: false,
-        },
+        "find-forward".into(),
+        false,
     );
     // A plain leaf on `x`, distinct from the `g`-prefixed sequence, so a
     // leftover `g` prefix would make this unreachable (NoMatch) instead of
@@ -523,16 +520,16 @@ fn extend_trie_wait_char_sequence_clears_pending_keys() {
     ed.handle_key(key('r'));
     assert!(
         ed.state.pending_keys.is_empty(),
-        "the completed wait-char sequence must clear pending_keys"
+        "the completed sequence must clear pending_keys"
     );
     assert!(
-        ed.state.wait_char.is_some(),
-        "sanity: the sequence armed wait_char"
+        reading_char(&ed),
+        "sanity: find-forward waits for its character"
     );
 
-    // Consume the wait-char argument (any key), which dispatches "find-forward".
+    // Any character completes it.
     ed.handle_key(key('z'));
-    assert!(ed.state.wait_char.is_none());
+    assert!(!reading_char(&ed));
 
     // With pending_keys correctly cleared, this reaches the `x` leaf and
     // deletes the char under the cursor.

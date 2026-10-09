@@ -35,10 +35,9 @@ See [Reading options from Scheme](plugins.md#reading-options-from-scheme) for `g
 
 | Call | Effect |
 |------|--------|
-| `(bind-key! mode key-string cmd-name)` | Bind a key in `'normal`, `'insert`, or `'extend` mode. A built-in command that needs a character is refused; bind it with `bind-wait-char!` |
+| `(bind-key! mode key-string cmd-name)` | Bind a key in `'normal`, `'insert`, or `'extend` mode |
 | `(bind-key-extend! mode key-string cmd-name)` | Same, but the binding always extends the selection |
 | `(unbind-key! mode key-string)` | Remove a binding |
-| `(bind-wait-char! mode key-string cmd-name)` | Bind a key sequence that captures the *next* keypress instead of looking it up; read it back with `(pending-char)`. A built-in command that takes no character is refused |
 | `(bind-keys! mode (key cmd) ...)`, `(bind-keys-extend! mode (key cmd) ...)`, `(unbind-keys! mode key ...)` | Batched forms of the three above |
 | `(set-register-prefix! name)` | Target a specific register (`0`–`9`, `k`, `c`, `b`) for the rest of the current command body's `call!`s |
 
@@ -51,13 +50,12 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 | `(define-command! name doc proc #:repeatable #:inline-output)` | Register `name` as an editor command |
 | `(define-typed-command! name doc proc #:inline-output #:complete)` | Register `name` as a typed command, reachable as `:name` |
 | `(call! name args ...)` | Dispatch any editor command (built-in or Scheme-defined), activating its plugin on demand. A built-in takes `pane`, an optional count and extend flag, then the character or pattern the few that need one act with; see [Calling other commands](plugins.md#calling-other-commands) |
-| `(request-wait-char! cmd-name)` | From inside a running command, dispatch `cmd-name` once the user types a character |
-| `(pending-char)` | Read the character captured by a `bind-wait-char!` binding or `request-wait-char!`, or `#f` outside that context |
+| `(on-next-char! callback)` | Call `callback` with the next key typed as a character, or with `#f` when that key isn't one |
 | `(command-plugin name)` | The id string of the plugin that registered command `name`: `"user"` for a top-level `init.scm` definition, `"hume"` for a built-in or a name that isn't a command |
 | `(command-exists? name)` | `#t` if `name` is something your plugin can use: a command reachable with `call!` (built-in, Scheme-defined, or a not-yet-loaded plugin's), or any procedure bound at the top level (a builtin, a Steel library function, or your own `define`). `#f` otherwise, including for macros such as `call!` |
 | `(hume/yield!)` | Check the interrupt/step-budget flag inside a long loop, aborting the script if it's set |
 
-`define-command!`, `define-typed-command!`, `call!`, `request-wait-char!`, and `pending-char` are covered with examples in [Defining commands](plugins.md#defining-commands), [Calling other commands](plugins.md#calling-other-commands), and [Pending character input](plugins.md#pending-character-input). `hume/yield!` only matters for a script doing real work in a loop. Without it, a script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](configuration.md#global-options)) still runs to completion; interruption is cooperative, not preemptive.
+`define-command!`, `define-typed-command!`, `call!`, and `on-next-char!` are covered with examples in [Defining commands](plugins.md#defining-commands), [Calling other commands](plugins.md#calling-other-commands), and [Reading characters](plugins.md#reading-characters). `hume/yield!` only matters for a script doing real work in a loop. Without it, a script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](configuration.md#global-options)) still runs to completion; interruption is cooperative, not preemptive.
 
 ## Supporting several HUME versions
 

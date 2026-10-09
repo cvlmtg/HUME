@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Scripts can pass a pattern to `search-forward`, `search-backward`, and `sift-within` through `call!`, which runs them as if the pattern were typed at the prompt and confirmed, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add`: `(call! "sift-within" pane "(?m)[ \t]+$")`, `(call! "replace" pane "x")`.
-- Binding one of those character commands to a key that does not wait for a character, or a key that waits for a character to a built-in command that takes none, is refused with an error when the configuration loads.
+- Scripts can pass a pattern to `search-forward`, `search-backward`, and `sift-within` through `call!`, which runs them as if the pattern were typed at the prompt and confirmed, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add`: `(call! "sift-within" pane "(?m)[ \t]+$")`, `(call! "replace" pane #\x)`. Called without its character, one of those commands reads it from the next key you type, the same as when you press its key.
+- `bind-key!` binds any command, including one that reads a character from the next key, such as `f` or `r`. `bind-wait-char!`, `request-wait-char!`, and `pending-char` are removed: a command reads the characters it needs with `(on-next-char! callback)`, which calls `callback` with the next key typed, or with `#f` when that key isn't a character. A callback can call `on-next-char!` again to read more.
 - `:set buffer line-ending=lf` and `:set buffer line-ending=crlf` change the line ending a buffer is saved with, so a CRLF file can be converted to LF and back. The change marks the buffer modified but is not an undo step. Scripts read and set it with `get-buffer-option`/`set-buffer-option!`.
 - `:e!` after a line-ending change restores the file's line ending even when its text is unchanged.
 - With no `theme` in `init.scm`, HUME loads `sand` from the `themes/` directories instead of always showing the built-in copy, so edits to `sand.toml` take effect. The built-in theme remains as a fallback when no `sand` is found or the configured theme fails to load.

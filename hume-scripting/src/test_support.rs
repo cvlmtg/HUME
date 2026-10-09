@@ -191,7 +191,6 @@ impl SteelCtxTestHarness {
                 dirs,
                 interrupt_flag,
             ),
-            None,
         )
     }
 
@@ -221,7 +220,6 @@ impl SteelCtxTestHarness {
                 dirs,
                 interrupt_flag,
             ),
-            None,
         )
     }
 }

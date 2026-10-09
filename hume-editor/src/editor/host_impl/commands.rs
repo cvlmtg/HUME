@@ -181,6 +181,11 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         // `commands::BoundCommand::resolve`. Resolved *before* arming the
         // register prefix, so a refusal here leaves no prefix armed behind
         // it.
+        // `count` came from `parse_native_args`, which decodes a Steel-side
+        // count of 0 to `None`, the script's way of asking for "as if no
+        // count was typed" (move-down/move-up read this as visual-line
+        // movement instead of buffer-line movement).
+        let ctx = crate::editor::dispatch::CmdCtx { count, extend };
         let bound = match crate::editor::commands::BoundCommand::resolve(
             self.state, self.view, cmd, pane, arg,
         ) {
@@ -190,12 +195,16 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                     "{name} is not a native command; use call! instead of call-native!"
                 ));
             }
-            Err(crate::editor::commands::BindError::Target(e)) => {
-                return Err(format!("'{name}': {e}"));
+            Err(crate::editor::commands::BindError::NeedsChar(cmd)) => {
+                let then = crate::editor::input_stack::CharThen::Dispatch {
+                    name: cmd.name().clone(),
+                    pane,
+                    ctx,
+                };
+                crate::editor::input_stack::read_char(self.state, self.view, then);
+                return Ok(true);
             }
-            Err(crate::editor::commands::BindError::Arg(e)) => {
-                return Err(format!("'{name}': {e}"));
-            }
+            Err(e) => return Err(format!("'{name}': {e}")),
         };
         // Arm the register prefix so register-aware commands (yank, delete,
         // paste-after, …) route to the right destination.
@@ -207,19 +216,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         // list, dot-repeat) lives there so the sync path is identical to the
         // keypress path, except that a target other than the focused pane
         // skips the focus-bound steps.
-        let ran = crate::editor::commands::run(
-            self.state,
-            self.view,
-            bound,
-            crate::editor::dispatch::CmdCtx {
-                // `count` came from `parse_native_args`, which decodes a
-                // Steel-side count of 0 to `None`, the script's way of asking
-                // for "as if no count was typed" (move-down/move-up read this
-                // as visual-line movement instead of buffer-line movement).
-                count,
-                extend,
-            },
-        );
+        let ran = crate::editor::commands::run(self.state, self.view, bound, ctx);
         // Clear the prefix when we armed it, so it does not bleed into the
         // next interactive command.
         if register.is_some() {

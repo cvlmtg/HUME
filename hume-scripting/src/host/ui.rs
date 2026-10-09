@@ -163,6 +163,11 @@ pub trait UiHost {
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String>;
 
+    /// `(on-next-char! callback)` hands the next key typed to `callback`: its
+    /// character, or `#f` when it isn't one or the wait ends any other way.
+    /// Fires once, queued like [`Self::prompt`]'s callback.
+    fn on_next_char(&mut self, callback: steel::rvals::SteelVal) -> Result<(), String>;
+
     /// `(show-popup! text #:anchor 'cursor #:kind 'sticky #:lang #f)` shows
     /// `text` in a popup panel. Geometry (wrap width, flip/clamp position, or
     /// the docked band's size) is resolved fresh every frame by the host, not

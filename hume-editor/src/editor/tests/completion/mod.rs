@@ -87,6 +87,6 @@ fn raw_insert_with_source(ed: &mut Editor, tmp: &std::path::Path, items: &str, s
     );
     ed.state
         .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
-    ed.execute_keymap_command("completion-trigger".into(), None, false, None);
+    ed.execute_keymap_command("completion-trigger".into(), None, false);
     ed.settle();
 }

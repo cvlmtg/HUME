@@ -8,7 +8,6 @@ use steel::rvals::SteelVal;
 use super::buffer::DiskCheckTrigger;
 use super::commands::CommandPane;
 use super::event::{EditorEvent, PendingWork};
-use super::registry::MappableCommand;
 use super::reload::ReloadSnapshot;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
 use crate::cli::ConfigSource;
@@ -113,25 +112,12 @@ impl Editor {
                     keys,
                     cmd,
                     force_extend,
-                } => {
-                    if self.binding_fits(&cmd, false) {
-                        self.state.config.keymap.bind_user_with_extend(
-                            to_editor_bind_mode(mode),
-                            &keys,
-                            std::borrow::Cow::Owned(cmd),
-                            force_extend,
-                        )
-                    }
-                }
-                Effect::BindWaitChar { mode, keys, cmd } => {
-                    if self.binding_fits(&cmd, true) {
-                        self.state.config.keymap.bind_wait_char_user(
-                            to_editor_bind_mode(mode),
-                            &keys,
-                            std::borrow::Cow::Owned(cmd),
-                        )
-                    }
-                }
+                } => self.state.config.keymap.bind_user_with_extend(
+                    to_editor_bind_mode(mode),
+                    &keys,
+                    std::borrow::Cow::Owned(cmd),
+                    force_extend,
+                ),
                 Effect::UnbindKey { mode, keys } => self
                     .state
                     .config
@@ -158,32 +144,6 @@ impl Editor {
         self.detect_pending_languages();
     }
 
-    /// Whether a key binding can dispatch `cmd`, reporting the binding when
-    /// not. Only a native command is checked: a Steel command reads an
-    /// optional character itself, and a name not registered yet may be
-    /// defined after the binding.
-    fn binding_fits(&mut self, cmd: &str, waits_for_char: bool) -> bool {
-        let Some(operand) = self
-            .state
-            .config
-            .registry
-            .get_mappable(cmd)
-            .and_then(MappableCommand::operand)
-        else {
-            return true;
-        };
-        if operand.fits_binding(waits_for_char) {
-            return true;
-        }
-        let reason = if waits_for_char {
-            "takes no character: bind it with bind-key!"
-        } else {
-            "needs a character: bind it with bind-wait-char!"
-        };
-        self.report(Severity::Error, format!("'{cmd}' {reason}"));
-        false
-    }
-
     /// Shared `Ok`/`Err` handling for every scripting eval that returns
     /// `Result<Vec<Effect>, EvalError>`: apply the effects either way (an
     /// `EvalError` still carries whatever committed before the error), and
@@ -197,8 +157,8 @@ impl Editor {
         err_prefix: &str,
     ) {
         // Every Steel entry point but `call_steel_command_body` (which
-        // hand-rolls its own close for its `bool` return + `wait_char`
-        // handling) returns through here, the one funnel that closes the
+        // hand-rolls its own close for its `bool` return) returns through
+        // here, the one funnel that closes the
         // `#:inline-output` bracket, for a hook, a queued-call batch,
         // `init.scm`, and a runtime plugin activation alike, so no caller has
         // to remember to.

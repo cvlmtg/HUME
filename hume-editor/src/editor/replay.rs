@@ -336,7 +336,8 @@ impl Editor {
     /// as `run_steel_command` (a Steel body can fail on replay even though
     /// the original run didn't: different buffer state, no match at the
     /// new cursor), and when `arg` doesn't fit `cmd`, which is reported. A
-    /// native command that binds runs and returns `true`.
+    /// native command that binds runs and returns `true`. A Steel command
+    /// takes no operand.
     fn replay_command(
         &mut self,
         cmd: MappableCommand,
@@ -346,14 +347,15 @@ impl Editor {
     ) -> bool {
         match &cmd {
             MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
-                let char_arg = match commands::steel_char_operand(arg) {
-                    Ok(ch) => ch,
-                    Err(error) => {
-                        commands::report_arg_error(&mut self.state, cmd.name(), &error);
-                        return false;
-                    }
-                };
-                if !self.run_steel_command(cmd.name(), ctx, char_arg) {
+                if arg.is_some() {
+                    commands::report_arg_error(
+                        &mut self.state,
+                        cmd.name(),
+                        &commands::ArgError::Unexpected,
+                    );
+                    return false;
+                }
+                if !self.run_steel_command(cmd.name(), ctx) {
                     return false;
                 }
                 // Inner call! dispatches inside the Steel body run through
@@ -370,6 +372,14 @@ impl Editor {
                 }
                 Err(commands::FocusedBindError::Arg { name, error }) => {
                     commands::report_arg_error(&mut self.state, &name, &error);
+                    false
+                }
+                Err(commands::FocusedBindError::NeedsChar(cmd)) => {
+                    let name = cmd.name();
+                    self.report(
+                        super::Severity::Error,
+                        format!("'{name}': needs a character"),
+                    );
                     false
                 }
                 Err(commands::FocusedBindError::NotNative(_)) => {
@@ -474,9 +484,9 @@ impl Editor {
         }
 
         // Rebuild the selection extent the edit originally acted on. No
-        // recipe-step command takes an operand: every `wait_char!`-bound
-        // command is `Untracked` and so can never reach the recipe. So
-        // unlike the edit body below, every step binds with `None`.
+        // recipe-step command takes an operand: every character command is
+        // `Untracked` and so can never reach the recipe. So unlike the edit
+        // body below, every step binds with `None`.
         for step in &action.selection_recipe {
             // A recipe step is only ever pushed for a `selection_tracking !=
             // Untracked` command, and `SteelBacked`/`Lazy` are always

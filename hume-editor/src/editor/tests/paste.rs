@@ -1299,7 +1299,7 @@ fn consecutive_paste_repeats_last_not_ring_head() {
 // unrelated command in between two calls).
 
 fn dispatch_command(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false, None);
+    ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
 /// Bare plain paste reads the kill-ring head, not the clipboard. Unlike

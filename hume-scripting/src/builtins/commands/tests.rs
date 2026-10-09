@@ -72,43 +72,6 @@ fn call_bang_multiple_unknown_commands_each_log_error() {
     );
 }
 
-#[test]
-fn request_wait_char_outside_invocation_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    ctx.session = crate::context::EvalSession::Init;
-    let err = super::super::errors::require_cmd(&ctx, "request-wait-char!").unwrap_err();
-    assert!(
-        err.to_string().contains("not available during init"),
-        "got: {err}"
-    );
-}
-
-#[test]
-fn request_wait_char_stores_cmd() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    request_wait_char(&mut ctx, "replace".to_string()).unwrap();
-    assert_eq!(ctx.wait_char_request, Some("replace".to_string()));
-}
-
-#[test]
-fn pending_char_returns_false_when_none() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = pending_char(&mut ctx).unwrap();
-    assert_eq!(result, SteelVal::BoolV(false));
-}
-
-#[test]
-fn pending_char_returns_string_when_set() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    ctx.pending_char = Some('(');
-    let result = pending_char(&mut ctx).unwrap();
-    assert_eq!(result, SteelVal::StringV("(".into()));
-}
-
 // ── parse_native_args direct tests ───────────────────────────────────────
 
 #[test]

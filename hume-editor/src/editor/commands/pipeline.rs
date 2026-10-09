@@ -294,39 +294,6 @@ impl<F> NativeBody<F> {
     }
 }
 
-impl NativeBody<EditorCmdBody> {
-    /// The operand this body takes, without exposing the body itself.
-    pub(in crate::editor) fn operand(&self) -> Operand {
-        match self.0 {
-            EditorCmdBody::Pane(_) | EditorCmdBody::FocusedPane(_) => Operand::Nothing,
-            EditorCmdBody::PaneChar(_) => Operand::Char,
-            EditorCmdBody::FocusedText(_) => Operand::Pattern,
-        }
-    }
-}
-
-/// The operand a native command takes, as its body declares it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) enum Operand {
-    Nothing,
-    /// A required character.
-    Char,
-    /// An optional pattern; without one the command opens its prompt.
-    Pattern,
-}
-
-impl Operand {
-    /// Whether a key binding can dispatch a command taking this operand. A
-    /// wait-char binding hands the command the next character typed, any
-    /// other binding hands it nothing.
-    pub(in crate::editor) fn fits_binding(self, waits_for_char: bool) -> bool {
-        match self {
-            Self::Char => waits_for_char,
-            Self::Nothing | Self::Pattern => !waits_for_char,
-        }
-    }
-}
-
 // ── Body bound to its target ────────────────────────────────────────────────
 
 /// A native command's fn-pointer body, paired with the target it will act
@@ -397,25 +364,18 @@ impl Bound {
 /// and an operand is never dropped unread.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::editor) enum ArgError {
-    /// A character command was given no character.
-    Missing,
     /// A command that takes no operand was given one.
     Unexpected,
-    /// The operand is the wrong kind for the body: a string that isn't one
-    /// character for a character command, or a character for a text command.
+    /// The operand is the wrong kind for the body: a string for a character
+    /// command, or a character for a text command.
     WrongKind(CommandArg),
 }
 
 impl std::fmt::Display for ArgError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Missing => write!(f, "needs a character argument"),
             Self::Unexpected => write!(f, "takes no argument"),
-            Self::WrongKind(CommandArg::Text(s)) => write!(
-                f,
-                "needs a single character, got a {}-character string",
-                s.chars().count()
-            ),
+            Self::WrongKind(CommandArg::Text(_)) => write!(f, "needs a character, got a string"),
             Self::WrongKind(CommandArg::Char(_)) => {
                 write!(f, "takes a text argument, got a character")
             }
@@ -423,28 +383,12 @@ impl std::fmt::Display for ArgError {
     }
 }
 
-/// The operand of a character command: a character, or a string holding
-/// one character (the form `(pending-char)` hands a script).
-fn char_operand(arg: Option<CommandArg>) -> Result<char, ArgError> {
+/// The operand of a character command.
+fn char_operand(arg: CommandArg) -> Result<char, ArgError> {
     match arg {
-        None => Err(ArgError::Missing),
-        Some(CommandArg::Char(ch)) => Ok(ch),
-        Some(CommandArg::Text(s)) => {
-            let mut chars = s.chars();
-            match (chars.next(), chars.next()) {
-                (Some(ch), None) => Ok(ch),
-                _ => Err(ArgError::WrongKind(CommandArg::Text(s))),
-            }
-        }
+        CommandArg::Char(ch) => Ok(ch),
+        text @ CommandArg::Text(_) => Err(ArgError::WrongKind(text)),
     }
-}
-
-/// The operand of a Steel-backed command, which reads it with
-/// `(pending-char)`: a character like [`char_operand`]'s, or none (`#f`).
-pub(in crate::editor) fn steel_char_operand(
-    arg: Option<CommandArg>,
-) -> Result<Option<char>, ArgError> {
-    arg.map(|a| char_operand(Some(a))).transpose()
 }
 
 /// The operand of a text command, `None` when it is to prompt for one.
@@ -467,13 +411,25 @@ fn no_operand(arg: Option<CommandArg>) -> Result<(), ArgError> {
 /// Why [`BoundCommand::resolve`] could not bind `cmd` to a `handle`: the
 /// handle itself didn't resolve ([`TargetError`]), `cmd` isn't a native
 /// command at all (`(call! "cmd" pane)` on a Steel-backed/Lazy command must
-/// use `call!`, not `call-native!`), or the operand doesn't fit `cmd`
-/// ([`ArgError`]).
-#[derive(Debug, Clone)]
+/// use `call!`, not `call-native!`), the operand doesn't fit `cmd`
+/// ([`ArgError`]), or `cmd` takes a character it wasn't given.
 pub(in crate::editor) enum BindError {
     Target(TargetError),
     NotNative,
     Arg(ArgError),
+    /// `cmd` takes a character and was given none: read one from the user.
+    NeedsChar(MappableCommand),
+}
+
+impl std::fmt::Display for BindError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Target(e) => e.fmt(f),
+            Self::NotNative => write!(f, "not a native command"),
+            Self::Arg(e) => e.fmt(f),
+            Self::NeedsChar(_) => write!(f, "needs a character"),
+        }
+    }
 }
 
 impl From<TargetError> for BindError {
@@ -490,25 +446,34 @@ impl From<ArgError> for BindError {
 
 /// Why [`BoundCommand::focused`] could not bind `cmd`: it is a
 /// `SteelBacked`/`Lazy` command, handed back unbound for the caller's own
-/// Steel dispatch path, or its operand doesn't fit it.
+/// Steel dispatch path, it takes a character it wasn't given, or its operand
+/// doesn't fit it.
 pub(in crate::editor) enum FocusedBindError {
     NotNative(MappableCommand),
+    NeedsChar(MappableCommand),
     Arg {
         name: Cow<'static, str>,
         error: ArgError,
     },
 }
 
+/// Why [`bind_body`] handed `cmd` back unbound.
+enum Unbound {
+    /// A `SteelBacked`/`Lazy` command, which has no body to bind.
+    NotNative(MappableCommand),
+    /// A character command given no character, once its target resolved.
+    NeedsChar(MappableCommand),
+}
+
 /// Bind native `cmd`'s body to its target, then to its operand `arg`:
 /// `any` resolves the target of a body that runs on any pane, `focused` that
-/// of a body bound to the focused pane. `Err` hands a `SteelBacked`/`Lazy`
-/// command back unbound.
+/// of a body bound to the focused pane.
 fn bind_body<E: From<ArgError>>(
     cmd: MappableCommand,
     arg: Option<CommandArg>,
     any: impl FnOnce() -> Result<Target, E>,
     focused: impl FnOnce() -> Result<FocusedPane, E>,
-) -> Result<Result<Bound, E>, MappableCommand> {
+) -> Result<Result<Bound, E>, Unbound> {
     let body = match cmd {
         MappableCommand::Motion { fun, .. } | MappableCommand::Selection { fun, .. } => any()
             .and_then(|t| {
@@ -528,14 +493,20 @@ fn bind_body<E: From<ArgError>>(
                 no_operand(arg)?;
                 Ok(Bound::FocusedCmd(f, fp))
             }),
-            EditorCmdBody::PaneChar(f) => {
-                any().and_then(|t| Ok(Bound::PaneChar(f, t, char_operand(arg)?)))
-            }
+            EditorCmdBody::PaneChar(f) => match arg {
+                Some(arg) => any().and_then(|t| Ok(Bound::PaneChar(f, t, char_operand(arg)?))),
+                None => match any() {
+                    Ok(_) => return Err(Unbound::NeedsChar(cmd)),
+                    Err(e) => Err(e),
+                },
+            },
             EditorCmdBody::FocusedText(f) => {
                 focused().and_then(|fp| Ok(Bound::FocusedText(f, fp, text_operand(arg)?)))
             }
         },
-        MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => return Err(cmd),
+        MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
+            return Err(Unbound::NotNative(cmd));
+        }
     };
     Ok(body)
 }
@@ -544,6 +515,29 @@ fn bind_body<E: From<ArgError>>(
 /// script caller to raise to (a keypress, a dot-repeat replay).
 pub(in crate::editor) fn report_arg_error(state: &mut EditorState, name: &str, error: &ArgError) {
     state.report(Severity::Error, format!("'{name}': {error}"));
+}
+
+/// Run command `name` on `pane` with the operand the user supplied for it
+/// after it was dispatched without one, reporting any refusal: by then no
+/// script caller is waiting to raise to.
+pub(in crate::editor) fn run_collected(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    name: &str,
+    pane: PaneHandle,
+    ctx: CmdCtx,
+    arg: CommandArg,
+) {
+    let Some(cmd) = state.config.registry.get_mappable(name).cloned() else {
+        state.report(Severity::Error, format!("unknown command: {name}"));
+        return;
+    };
+    match BoundCommand::resolve(state, view, cmd, pane, Some(arg)) {
+        Ok(bound) => {
+            run(state, view, bound, ctx);
+        }
+        Err(e) => state.report(Severity::Error, format!("'{name}': {e}")),
+    }
 }
 
 /// A native command resolved against its target: the single value
@@ -574,7 +568,8 @@ impl BoundCommand {
         match bind_body(cmd, arg, || Ok(Target::Focused(fp)), || Ok(fp)) {
             Ok(Ok(body)) => Ok(Self { name, meta, body }),
             Ok(Err(error)) => Err(FocusedBindError::Arg { name, error }),
-            Err(cmd) => Err(FocusedBindError::NotNative(cmd)),
+            Err(Unbound::NotNative(cmd)) => Err(FocusedBindError::NotNative(cmd)),
+            Err(Unbound::NeedsChar(cmd)) => Err(FocusedBindError::NeedsChar(cmd)),
         }
     }
 
@@ -598,7 +593,10 @@ impl BoundCommand {
             || Target::resolve(state, view, handle).map_err(BindError::from),
             || FocusedPane::resolve(state, view, handle).map_err(BindError::from),
         )
-        .map_err(|_| BindError::NotNative)??;
+        .map_err(|unbound| match unbound {
+            Unbound::NotNative(_) => BindError::NotNative,
+            Unbound::NeedsChar(cmd) => BindError::NeedsChar(cmd),
+        })??;
         Ok(Self { name, meta, body })
     }
 

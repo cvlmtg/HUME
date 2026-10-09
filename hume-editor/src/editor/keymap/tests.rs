@@ -138,10 +138,10 @@ fn unbind_user_normal_mode() {
     assert!(matches!(km.normal.walk(&[key!('z')]), WalkResult::NoMatch));
 }
 
-// ── collect_bindings ──────────────────────────────────────────────────────
+// ── collect_command_names ─────────────────────────────────────────────────
 
 #[test]
-fn collect_bindings_includes_leaves_and_waitchars() {
+fn collect_command_names_includes_nested_leaves() {
     let mut trie = KeyTrie::new();
     trie.bind_sequence(
         &[key!('x')],
@@ -157,26 +157,12 @@ fn collect_bindings_includes_leaves_and_waitchars() {
             force_extend: false,
         },
     );
-    trie.bind_wait_char_sequence(
-        &[key!('f')],
-        WaitCharPending {
-            cmd_name: Cow::Borrowed("find-char"),
-            ctrl_extend: false,
-        },
-    );
 
-    let mut bindings = Vec::new();
-    trie.collect_bindings(&mut bindings);
-    bindings.sort();
+    let mut names = Vec::new();
+    trie.collect_command_names(&mut names);
+    names.sort();
 
-    assert_eq!(
-        bindings,
-        vec![
-            ("delete-char-forward".to_string(), false),
-            ("find-char".to_string(), true),
-            ("goto-first-line".to_string(), false),
-        ]
-    );
+    assert_eq!(names, vec!["delete-char-forward", "goto-first-line"]);
 }
 
 #[test]

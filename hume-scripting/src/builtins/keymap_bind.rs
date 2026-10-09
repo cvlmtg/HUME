@@ -1,5 +1,5 @@
-//! `(bind-key! mode key-sequence command-name)`, `(bind-key-extend! …)`,
-//! `(unbind-key! mode key-sequence)`, and `(bind-wait-char! …)` builtins.
+//! `(bind-key! mode key-sequence command-name)`, `(bind-key-extend! …)`, and
+//! `(unbind-key! mode key-sequence)` builtins.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -31,21 +31,13 @@ fn mode_from_symbol(mode: &SteelVal, fn_name: &str) -> Result<BindMode, SteelErr
     )
 }
 
-/// A WaitChar bind has no `force_extend` notion (see `Effect::BindWaitChar`'s
-/// doc), so it is carried on the variant, not as a sibling parameter, so the illegal
-/// combination can't be constructed.
-enum BindKind {
-    Normal { force_extend: bool },
-    WaitChar,
-}
-
 fn bind_inner(
     ctx: &mut SteelCtx,
     fn_name: &str,
     mode: SteelVal,
     key_str: String,
     cmd_name: String,
-    kind: BindKind,
+    force_extend: bool,
 ) -> SteelResult {
     let mode = mode_from_symbol(&mode, fn_name)?;
     let keys = parse_key_sequence(&key_str).map_err(generic_err)?;
@@ -53,18 +45,11 @@ fn bind_inner(
     // `pop_effect_marks(false)` before the editor ever sees them. Validation
     // above still fails synchronously: a bad mode or key sequence is the
     // script's bug, not a side effect to defer.
-    ctx.push_effect(match kind {
-        BindKind::Normal { force_extend } => Effect::BindKey {
-            mode,
-            keys,
-            cmd: cmd_name,
-            force_extend,
-        },
-        BindKind::WaitChar => Effect::BindWaitChar {
-            mode,
-            keys,
-            cmd: cmd_name,
-        },
+    ctx.push_effect(Effect::BindKey {
+        mode,
+        keys,
+        cmd: cmd_name,
+        force_extend,
     });
     Ok(SteelVal::Void)
 }
@@ -80,9 +65,6 @@ fn bind_inner(
 /// - `command-name`: the canonical command name (must be registered in
 ///   the editor's `CommandRegistry` at dispatch time; not validated here).
 ///
-/// The editor refuses the binding when it is applied if `command-name` is a
-/// native command that needs a character.
-///
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_key(
     ctx: &mut SteelCtx,
@@ -90,16 +72,7 @@ pub(crate) fn bind_key(
     key_str: String,
     cmd_name: String,
 ) -> SteelResult {
-    bind_inner(
-        ctx,
-        "bind-key!",
-        mode,
-        key_str,
-        cmd_name,
-        BindKind::Normal {
-            force_extend: false,
-        },
-    )
+    bind_inner(ctx, "bind-key!", mode, key_str, cmd_name, false)
 }
 
 /// `(bind-key-extend! 'mode key-sequence command-name)`
@@ -115,14 +88,7 @@ pub(crate) fn bind_key_extend(
     key_str: String,
     cmd_name: String,
 ) -> SteelResult {
-    bind_inner(
-        ctx,
-        "bind-key-extend!",
-        mode,
-        key_str,
-        cmd_name,
-        BindKind::Normal { force_extend: true },
-    )
+    bind_inner(ctx, "bind-key-extend!", mode, key_str, cmd_name, true)
 }
 
 /// `(unbind-key! 'mode key-sequence)`
@@ -134,31 +100,6 @@ pub(crate) fn unbind_key(ctx: &mut SteelCtx, mode: SteelVal, key_str: String) ->
     let keys = parse_key_sequence(&key_str).map_err(generic_err)?;
     ctx.push_effect(Effect::UnbindKey { mode, keys });
     Ok(SteelVal::Void)
-}
-
-/// `(bind-wait-char! 'mode key-sequence command-name)`
-///
-/// Binds a key sequence to a WaitChar node so that after the user completes
-/// the sequence, `command-name` is dispatched with the next character as its
-/// operand, which a Steel command reads with `(pending-char)`.
-/// The editor refuses the binding when it is applied if `command-name` is a
-/// native command that takes no character.
-///
-/// Only valid during `init.scm` or plugin load.
-pub(crate) fn bind_wait_char(
-    ctx: &mut SteelCtx,
-    mode: SteelVal,
-    key_str: String,
-    cmd_name: String,
-) -> SteelResult {
-    bind_inner(
-        ctx,
-        "bind-wait-char!",
-        mode,
-        key_str,
-        cmd_name,
-        BindKind::WaitChar,
-    )
 }
 
 #[cfg(test)]

@@ -23,7 +23,7 @@ use hume_scripting::ScriptingHost;
 
 use super::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec};
 use crate::editor::commands::open_pane_in_layout;
-use crate::editor::keymap::{BindMode, Keymap, WalkResult};
+use crate::editor::keymap::{BindMode, Keymap};
 use crate::editor::reload::ReloadSnapshot;
 use crate::statusline::StatusElement;
 use hume_lsp::test_util::RecordingLspBackend;
@@ -101,51 +101,6 @@ fn reset_reverts_unbind_key_to_default() {
             .lookup_command(BindMode::Normal, &[key('x')]),
         Some(("select-line".to_string(), false)),
         "must revert to the compiled-in default binding for 'x'"
-    );
-}
-
-/// `bind-wait-char!` writes into the same trie `bind-key!` does, so the same
-/// wholesale-rebuild reset must undo it too.
-#[test]
-fn reset_reverts_bind_wait_char_to_default() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[a]>b\n");
-
-    // Sanity: 'g' 'W' is not a WaitChar node in the compiled-in default;
-    // otherwise the final assertion below would pass even if reset did nothing.
-    assert!(
-        !matches!(
-            Keymap::default().normal.walk(&[key('g'), key('W')]),
-            WalkResult::WaitChar(_)
-        ),
-        "test setup invalid: 'gW' must not default to a wait-char binding"
-    );
-
-    let mut host = ScriptingHost::new(&Dirs::none());
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(bind-wait-char! 'normal "g W" "some-cmd")"#,
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
-
-    assert!(
-        matches!(
-            ed.state.config.keymap.normal.walk(&[key('g'), key('W')]),
-            WalkResult::WaitChar(_)
-        ),
-        "sanity: the wait-char binding must be live before reset"
-    );
-
-    ed.reset_config_state();
-
-    assert!(
-        !matches!(
-            ed.state.config.keymap.normal.walk(&[key('g'), key('W')]),
-            WalkResult::WaitChar(_)
-        ),
-        "wait-char binding must not survive the reset"
     );
 }
 

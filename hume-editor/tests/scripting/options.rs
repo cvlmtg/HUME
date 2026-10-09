@@ -77,7 +77,7 @@ fn get_option_reads_back_tab_width_as_int() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd("check", None, vec![], &mut mock)
+    h.call_steel_cmd("check", vec![], &mut mock)
         .expect("get-option must read back the default tab-width as an int");
 }
 
@@ -93,7 +93,7 @@ fn get_option_reads_back_tab_style_as_symbol() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd("check", None, vec![], &mut mock)
+    h.call_steel_cmd("check", vec![], &mut mock)
         .expect("get-option must read back the default tab-style as a symbol");
 }
 
@@ -114,7 +114,7 @@ fn get_option_reads_back_whitespace_newline_as_symbol_and_round_trips() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd("check", None, vec![], &mut mock).expect(
+    h.call_steel_cmd("check", vec![], &mut mock).expect(
         "get-option must read back whitespace-newline as a symbol that set-option! accepts",
     );
 }
@@ -131,7 +131,7 @@ fn get_option_reads_back_lsp_inlay_hints_as_bool() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd("check", None, vec![], &mut mock)
+    h.call_steel_cmd("check", vec![], &mut mock)
         .expect("get-option must read back the default lsp.inlay-hints (false) as a bool");
 }
 
@@ -147,7 +147,7 @@ fn get_option_reads_back_statusline_mode_colors_as_bool() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd("check", None, vec![], &mut mock)
+    h.call_steel_cmd("check", vec![], &mut mock)
         .expect("get-option must read back the default statusline.mode-colors (true) as a bool");
 }
 
@@ -161,9 +161,7 @@ fn get_option_unknown_key_errors() {
         &mut mock,
     )
     .unwrap();
-    let err = h
-        .call_steel_cmd("check", None, vec![], &mut mock)
-        .unwrap_err();
+    let err = h.call_steel_cmd("check", vec![], &mut mock).unwrap_err();
     assert!(err.message.contains("unknown setting"), "got: {err:?}");
 }
 
@@ -191,6 +189,6 @@ fn get_buffer_option_reads_back_a_value() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd("check", None, vec![bid], &mut mock)
+    h.call_steel_cmd("check", vec![bid], &mut mock)
         .expect("get-buffer-option must accept (bid key) and read back tab-width");
 }

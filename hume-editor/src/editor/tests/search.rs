@@ -256,7 +256,7 @@ fn clear_search_command_clears_search() {
         "pre-condition: search pattern is set"
     );
 
-    ed.execute_keymap_command("clear-search".into(), Some(1), false, None);
+    ed.execute_keymap_command("clear-search".into(), Some(1), false);
     ed.sync_search_cache();
 
     assert_eq!(ed.state.mode(), Mode::Normal);

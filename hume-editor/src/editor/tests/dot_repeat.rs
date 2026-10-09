@@ -241,7 +241,7 @@ fn dot_repeats_replace() {
     // Use a space between words so `w` can navigate to the second word.
     let mut ed = editor_from("-[ab]> cd\n");
 
-    ed.feed_key(key('r')); // wait-char
+    ed.feed_key(key('r')); // reads the next key
     ed.feed_key(key('x')); // replace "ab" → "xx cd\n"
 
     assert_eq!(ed.doc().text().to_string(), "xx cd\n");
@@ -376,7 +376,7 @@ fn dot_repeats_plain_paste_after() {
     let mut ed = editor_from("-[ab]>cd\n");
 
     ed.state.kill_ring.push(vec!["ab".to_string()]);
-    ed.execute_keymap_command("paste-after".into(), Some(1), false, None);
+    ed.execute_keymap_command("paste-after".into(), Some(1), false);
     // Plain paste never collapses on repeat. Move off the pasted text so
     // the replayed paste lands next to it instead of replacing it.
     ed.feed_key(key('l'));
@@ -1100,7 +1100,6 @@ fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        None,
     );
     ed.feed_key(key('d'));
     assert_eq!(ed.doc().text().to_string(), "bar\n");
@@ -1281,7 +1280,7 @@ fn steel_dot_repeatable_round_trip() {
     );
 
     // Run the repeatable Steel command.
-    ed.execute_keymap_command("del-sel".into(), Some(1), false, None);
+    ed.execute_keymap_command("del-sel".into(), Some(1), false);
     // "foo" deleted; buffer is " bar\n".
     assert_eq!(ed.doc().text().to_string(), " bar\n", "first run");
 
@@ -1331,7 +1330,7 @@ fn steel_command_is_not_repeatable() {
     );
 
     // Run the Steel command: it calls (call! "delete" (focused-pane)) internally.
-    ed.execute_keymap_command("del-sel".into(), Some(1), false, None);
+    ed.execute_keymap_command("del-sel".into(), Some(1), false);
 
     // last_repeatable_action must still be "delete", not "del-sel".
     assert_eq!(
@@ -1370,7 +1369,7 @@ fn non_repeatable_steel_does_not_hijack_dot() {
     );
 
     // Run the non-repeatable Steel command.
-    ed.execute_keymap_command("noop-move".into(), Some(1), false, None);
+    ed.execute_keymap_command("noop-move".into(), Some(1), false);
 
     // last_repeatable_action must still be "delete".
     assert_eq!(

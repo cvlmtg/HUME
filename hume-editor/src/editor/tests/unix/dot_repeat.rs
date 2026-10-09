@@ -45,7 +45,7 @@ fn lazy_repeatable_round_trip() {
     ed.scripting = Some(host);
 
     // First dispatch: Lazy miss → plugin activates → SteelBacked runs.
-    ed.execute_keymap_command("tp-del".into(), Some(1), false, None);
+    ed.execute_keymap_command("tp-del".into(), Some(1), false);
     assert_eq!(ed.doc().text().to_string(), " bar\n");
 
     // The re-query must see the now-activated SteelBacked repeatable entry.

@@ -111,7 +111,7 @@ fn ctrl_space_outside_insert_mode_only_reports() {
         tmp.path(),
         &completion_source("test", &completion_labels(&["x"]), ""),
     );
-    ed.execute_keymap_command("completion-trigger".into(), None, false, None);
+    ed.execute_keymap_command("completion-trigger".into(), None, false);
     ed.settle();
     assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(status(&ed), "completion-trigger: only in Insert mode");
@@ -181,7 +181,7 @@ fn the_session_is_open_but_empty_until_the_source_answers() {
         .expect("open while pending");
     assert!(session.is_pending());
     assert!(session.is_empty());
-    ed.execute_keymap_command("answer".into(), None, false, None);
+    ed.execute_keymap_command("answer".into(), None, false);
     assert_eq!(labels(&ed), vec!["late"]);
 }
 
@@ -206,10 +206,10 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
              (completion-emit! (car calls) (list (hash "label" "fresh")))))"#,
     );
     trigger(&mut ed);
-    ed.execute_keymap_command("answer-first".into(), None, false, None);
+    ed.execute_keymap_command("answer-first".into(), None, false);
     assert_eq!(status(&ed), "dropped");
     assert!(labels(&ed).is_empty(), "the stale answer must not land");
-    ed.execute_keymap_command("answer-second".into(), None, false, None);
+    ed.execute_keymap_command("answer-second".into(), None, false);
     assert_eq!(labels(&ed), vec!["fresh"]);
 }
 
@@ -253,7 +253,7 @@ fn a_dropped_stale_answer_does_not_reset_the_selection() {
     assert_eq!(selected_row(&ed), 1, "sanity");
 
     // The stale first invocation's answer lands late.
-    ed.execute_keymap_command("answer-stale".into(), None, false, None);
+    ed.execute_keymap_command("answer-stale".into(), None, false);
     assert_eq!(status(&ed), "dropped");
     assert_eq!(
         selected_row(&ed),
@@ -295,7 +295,7 @@ fn a_landing_answer_resets_the_selection_to_row_zero() {
     assert_eq!(selected_row(&ed), 1, "sanity: moved off row 0");
 
     // b's answer is a fresh, still-latest contribution, not stale.
-    ed.execute_keymap_command("answer-b".into(), None, false, None);
+    ed.execute_keymap_command("answer-b".into(), None, false);
     assert_eq!(
         labels(&ed),
         vec!["zzz", "aaa", "abc"],
@@ -326,7 +326,7 @@ fn a_repeated_answer_for_a_live_invocation_replaces_the_first() {
            (define-command! "again" "" (lambda ()
              (completion-emit! saved (list (hash "label" "x") (hash "label" "z")))))"#,
     );
-    ed.execute_keymap_command("again".into(), None, false, None);
+    ed.execute_keymap_command("again".into(), None, false);
     assert_eq!(labels(&ed), vec!["x", "z"], "replaced, not appended");
 }
 
@@ -350,7 +350,7 @@ fn an_answer_after_the_session_closed_is_dropped() {
         Mode::Normal,
         "sanity: Insert ended, session gone"
     );
-    ed.execute_keymap_command("late".into(), None, false, None);
+    ed.execute_keymap_command("late".into(), None, false);
     assert_eq!(status(&ed), "dropped");
     assert!(ed.state.input.buffer_completion().is_none());
 }
@@ -417,7 +417,7 @@ fn an_incomplete_source_is_reinvoked_on_each_keystroke() {
     ed.settle();
     ed.feed_key(key('o'));
     ed.settle();
-    ed.execute_keymap_command("report".into(), None, false, None);
+    ed.execute_keymap_command("report".into(), None, false);
     assert_eq!(status(&ed), "3", "one trigger call plus one per keystroke");
 }
 
@@ -429,7 +429,7 @@ fn a_complete_source_is_not_reinvoked_on_typing() {
     insert_with_script(&mut ed, tmp.path(), &counting_source("#f"));
     ed.feed_key(key('f'));
     ed.settle();
-    ed.execute_keymap_command("report".into(), None, false, None);
+    ed.execute_keymap_command("report".into(), None, false);
     assert_eq!(status(&ed), "1");
     assert_eq!(
         labels(&ed),
@@ -511,7 +511,7 @@ fn calls_after_typing(ed: &mut Editor) -> String {
     ed.settle();
     ed.feed_key(key('o'));
     ed.settle();
-    ed.execute_keymap_command("report".into(), None, false, None);
+    ed.execute_keymap_command("report".into(), None, false);
     status(ed).to_string()
 }
 
@@ -664,9 +664,9 @@ fn a_pending_source_is_reinvoked_after_an_edit_and_its_old_call_goes_stale() {
     );
     ed.feed_key(key('f'));
     ed.settle();
-    ed.execute_keymap_command("prefixes".into(), None, false, None);
+    ed.execute_keymap_command("prefixes".into(), None, false);
     assert_eq!(status(&ed), ",f", "the second call saw the typed \"f\"");
-    ed.execute_keymap_command("answer-old".into(), None, false, None);
+    ed.execute_keymap_command("answer-old".into(), None, false);
     assert_eq!(status(&ed), "dropped");
 }
 
@@ -733,7 +733,7 @@ fn top_carries_the_contributing_source_name() {
                  (log! 'info (hash-ref (car (completion-top 1)) "source"))))"#
         ),
     );
-    ed.execute_keymap_command("src".into(), None, false, None);
+    ed.execute_keymap_command("src".into(), None, false);
     assert_eq!(status(&ed), "test-source");
 }
 
@@ -814,7 +814,7 @@ fn ctrl_space_with_the_menu_up_reinvokes_and_keeps_the_session() {
     ed.feed_key(key_tab());
     trigger(&mut ed);
     assert_eq!(labels(&ed), vec!["foobar"]);
-    ed.execute_keymap_command("report".into(), None, false, None);
+    ed.execute_keymap_command("report".into(), None, false);
     assert_eq!(status(&ed), "2");
     assert_eq!(selected_row(&ed), 0, "a fresh layer starts at row 0");
 }

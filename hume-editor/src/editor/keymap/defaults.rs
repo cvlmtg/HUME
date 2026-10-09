@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use super::{KeyTrie, KeyTrieNode, Keymap, KeymapCommand, WaitCharPending};
+use super::{KeyTrie, KeyTrieNode, Keymap, KeymapCommand};
 use crate::editor::registry::STRUCTURAL_OBJECTS;
 
 // ── Macros ────────────────────────────────────────────────────────────────────
@@ -29,16 +29,6 @@ macro_rules! cmd_extend {
             name: Cow::Borrowed($name),
             force_extend: true,
         }
-    };
-}
-
-/// Construct a wait-char trie node from a command name string literal.
-macro_rules! wait_char {
-    ($cmd_name:expr) => {
-        KeyTrieNode::WaitChar(WaitCharPending {
-            cmd_name: Cow::Borrowed($cmd_name),
-            ctrl_extend: false,
-        })
     };
 }
 
@@ -165,7 +155,7 @@ fn build_text_object_trie() -> KeyTrie {
     match_trie.bind(key!('i'), KeyTrieNode::Node(inner_trie));
     match_trie.bind(key!('a'), KeyTrieNode::Node(around_trie));
     match_trie.bind(key!('s'), KeyTrieNode::Node(surround_trie));
-    match_trie.bind(key!('w'), wait_char!("surround-add"));
+    match_trie.bind_leaf(key!('w'), cmd!("surround-add"));
     match_trie.bind_leaf(key!('/'), cmd!("select-all-matches"));
     // `mm`: select the word under the cursor. Follows
     // `word-selects-whitespace` (see `cmd_select_word`'s `ctx.around`
@@ -396,17 +386,14 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!(']'), cmd!("paste-ring-newer"));
     t.bind_leaf(key!('u'), cmd!("undo"));
     t.bind_leaf(key!('U'), cmd!("redo"));
-    // `r` (no Ctrl) → wait for replacement char; `Ctrl-r` → redo.
-    t.bind(key!('r'), wait_char!("replace"));
+    t.bind_leaf(key!('r'), cmd!("replace"));
     t.bind_leaf(key!(Ctrl + 'r'), cmd!("redo"));
 
     // ── Find / till character ─────────────────────────────────────────────────
-    // Each key waits for the next character, then dispatches the named command.
-    // Extend duality is resolved at char-consumption time.
-    t.bind(key!('f'), wait_char!("find-forward"));
-    t.bind(key!('F'), wait_char!("find-backward"));
-    t.bind(key!('t'), wait_char!("till-forward"));
-    t.bind(key!('T'), wait_char!("till-backward"));
+    t.bind_leaf(key!('f'), cmd!("find-forward"));
+    t.bind_leaf(key!('F'), cmd!("find-backward"));
+    t.bind_leaf(key!('t'), cmd!("till-forward"));
+    t.bind_leaf(key!('T'), cmd!("till-backward"));
 
     // Repeat last find in absolute direction.
     t.bind_leaf(key!('='), cmd!("repeat-find-forward"));

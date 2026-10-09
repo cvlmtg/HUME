@@ -2,10 +2,8 @@
 //! `call!` and from a key binding, and being refused when it doesn't fit.
 
 use super::*;
-use crate::editor::keymap::{BindMode, WalkResult};
 use crate::editor::message_log::Severity;
 use crate::editor::minibuf::history::HistoryKind;
-use crate::editor::registry::MappableCommand;
 
 /// Attach a scripting host defining `probe`, a no-parameter command whose
 /// body is `body`, run on the focused pane.
@@ -17,7 +15,7 @@ fn with_probe(ed: &mut Editor, body: &str) {
 }
 
 fn run_probe(ed: &mut Editor) {
-    ed.execute_keymap_command("probe".into(), Some(1), false, None);
+    ed.execute_keymap_command("probe".into(), Some(1), false);
 }
 
 fn text(ed: &Editor) -> String {
@@ -38,19 +36,11 @@ fn has_error(ed: &Editor, needle: &str) -> bool {
 // ── Character commands from a script ────────────────────────────────────────
 
 #[test]
-fn call_find_forward_with_a_one_char_string_moves_to_it() {
+fn call_find_forward_with_a_char_moves_to_it() {
     let mut ed = editor_from("-[h]>ello a world\n");
-    with_probe(&mut ed, r#"(call! "find-forward" (focused-pane) "a")"#);
+    with_probe(&mut ed, r#"(call! "find-forward" (focused-pane) #\a)"#);
     run_probe(&mut ed);
     assert_eq!(state(&ed), "hello -[a]> world\n");
-}
-
-#[test]
-fn call_replace_with_a_one_char_string_replaces_the_selection() {
-    let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "replace" (focused-pane) "x")"#);
-    run_probe(&mut ed);
-    assert_eq!(text(&ed), "xello\n");
 }
 
 #[test]
@@ -64,7 +54,7 @@ fn call_replace_with_a_steel_char_replaces_the_selection() {
 #[test]
 fn call_surround_add_wraps_the_selection() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "surround-add" (focused-pane) "(")"#);
+    with_probe(&mut ed, r#"(call! "surround-add" (focused-pane) #\()"#);
     run_probe(&mut ed);
     assert_eq!(text(&ed), "(h)ello\n");
 }
@@ -72,24 +62,12 @@ fn call_surround_add_wraps_the_selection() {
 // ── Operands that don't fit ─────────────────────────────────────────────────
 
 #[test]
-fn call_replace_without_a_char_raises_and_leaves_the_buffer() {
+fn call_replace_with_a_string_raises() {
     let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "replace" (focused-pane))"#);
+    with_probe(&mut ed, r#"(call! "replace" (focused-pane) "x")"#);
     run_probe(&mut ed);
     assert_eq!(text(&ed), "hello\n");
-    assert!(has_error(&ed, "'replace': needs a character argument"));
-}
-
-#[test]
-fn call_replace_with_a_longer_string_raises() {
-    let mut ed = editor_from("-[h]>ello\n");
-    with_probe(&mut ed, r#"(call! "replace" (focused-pane) "xy")"#);
-    run_probe(&mut ed);
-    assert_eq!(text(&ed), "hello\n");
-    assert!(has_error(
-        &ed,
-        "'replace': needs a single character, got a 2-character string"
-    ));
+    assert!(has_error(&ed, "'replace': needs a character, got a string"));
 }
 
 #[test]
@@ -101,99 +79,100 @@ fn call_with_an_operand_to_a_command_taking_none_raises() {
     assert!(has_error(&ed, "'move-right': takes no argument"));
 }
 
-// ── Character commands from a key binding ───────────────────────────────────
+// ── A missing character is read from the next key ───────────────────────────
 
-/// `replace` dispatched from a key with no character reports and runs
-/// nothing.
 #[test]
-fn key_bound_to_replace_without_wait_char_reports_and_leaves_the_buffer() {
+fn call_replace_without_a_char_reads_the_next_key() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.execute_keymap_command("replace".into(), Some(1), false, None);
+    with_probe(&mut ed, r#"(call! "replace" (focused-pane))"#);
+    run_probe(&mut ed);
     assert_eq!(text(&ed), "hello\n");
-    assert!(has_error(&ed, "'replace': needs a character argument"));
+    ed.feed_key(key('x'));
+    assert_eq!(text(&ed), "xello\n");
 }
 
-// ── Bindings that don't fit their command ───────────────────────────────────
+#[test]
+fn replace_dispatched_without_a_char_reads_the_next_key() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_keymap_command("replace".into(), Some(1), false);
+    ed.feed_key(key('x'));
+    assert_eq!(text(&ed), "xello\n");
+}
 
 #[test]
-fn bind_key_to_a_character_command_is_refused_when_bound() {
+fn bind_key_to_a_character_command_reads_the_next_key() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(&mut ed, tmp.path(), r#"(bind-key! 'normal "Z" "replace")"#);
-    assert!(has_error(&ed, "'replace' needs a character"));
-    assert_eq!(
-        ed.state
-            .config
-            .keymap
-            .lookup_command(BindMode::Normal, &[key('Z')]),
-        None
-    );
-}
-
-#[test]
-fn bind_wait_char_to_a_command_taking_no_character_is_refused_when_bound() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[h]>ello\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(bind-wait-char! 'normal "Z" "move-right")"#,
-    );
-    assert!(has_error(&ed, "'move-right' takes no character"));
-    assert!(matches!(
-        ed.state.config.keymap.normal.walk(&[key('Z')]),
-        WalkResult::NoMatch
-    ));
-}
-
-#[test]
-fn bind_wait_char_to_a_pattern_command_is_refused_when_bound() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[h]>ello\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(bind-wait-char! 'normal "Z" "search-forward")"#,
-    );
-    assert!(has_error(&ed, "'search-forward' takes no character"));
-    assert!(matches!(
-        ed.state.config.keymap.normal.walk(&[key('Z')]),
-        WalkResult::NoMatch
-    ));
-}
-
-#[test]
-fn bind_wait_char_to_a_character_command_binds() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[h]>ello\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(bind-wait-char! 'normal "Z" "replace")"#,
-    );
     ed.feed_key(key('Z'));
     ed.feed_key(key('x'));
     assert_eq!(text(&ed), "xello\n");
 }
 
 #[test]
-fn every_default_binding_fits_its_command() {
-    let ed = editor_from("-[h]>ello\n");
-    let registry = &ed.state.config.registry;
-    let misfits: Vec<(String, bool)> = ed
-        .state
-        .config
-        .keymap
-        .all_bindings()
-        .into_iter()
-        .filter(|(name, waits_for_char)| {
-            registry
-                .get_mappable(name)
-                .and_then(MappableCommand::operand)
-                .is_some_and(|operand| !operand.fits_binding(*waits_for_char))
-        })
-        .collect();
-    assert_eq!(misfits, Vec::new());
+fn a_key_other_than_a_char_cancels_the_read() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.feed_key(key('r'));
+    ed.feed_key(key_esc());
+    ed.feed_key(key('l'));
+    assert_eq!(state(&ed), "h-[e]>llo\n");
+}
+
+// ── on-next-char! ───────────────────────────────────────────────────────────
+
+#[test]
+fn on_next_char_hands_the_next_key_to_the_callback() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(
+        &mut ed,
+        r#"(on-next-char! (lambda (ch) (call! "replace" (focused-pane) ch)))"#,
+    );
+    run_probe(&mut ed);
+    ed.feed_key(key('x'));
+    ed.settle();
+    assert_eq!(text(&ed), "xello\n");
+}
+
+/// The probe replaces the selection with `z` when the callback gets `#f`.
+const REPLACE_Z_ON_CANCEL: &str =
+    r#"(on-next-char! (lambda (ch) (if ch (+ 1 0) (call! "replace" (focused-pane) #\z))))"#;
+
+#[test]
+fn on_next_char_hands_false_to_the_callback_on_escape() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(&mut ed, REPLACE_Z_ON_CANCEL);
+    run_probe(&mut ed);
+    ed.feed_key(key_esc());
+    ed.settle();
+    assert_eq!(text(&ed), "zello\n");
+}
+
+#[test]
+fn on_next_char_hands_false_to_the_callback_on_a_mouse_click() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(&mut ed, REPLACE_Z_ON_CANCEL);
+    run_probe(&mut ed);
+    ed.handle_input(mouse_left_down(0, 0));
+    ed.settle();
+    assert_eq!(text(&ed), "zello\n");
+}
+
+#[test]
+fn on_next_char_chains_for_several_chars() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(
+        &mut ed,
+        r#"(on-next-char!
+             (lambda (a)
+               (call! "replace" (focused-pane) a)
+               (on-next-char! (lambda (b) (call! "surround-add" (focused-pane) b)))))"#,
+    );
+    run_probe(&mut ed);
+    ed.feed_key(key('x'));
+    ed.settle();
+    ed.feed_key(key('('));
+    ed.settle();
+    assert_eq!(text(&ed), "(x)ello\n");
 }
 
 // ── Search with a pattern from a script ─────────────────────────────────────
@@ -417,7 +396,7 @@ fn trim_trailing_on_selected_lines_without_trailing_blanks_changes_nothing() {
 
 /// The probe replaces the selection with `x` when `call!` answers `#f`, so
 /// the text shows both the `#f` and that the selection was left as it was.
-const REPLACE_ON_FALSE: &str = r#"(call! "replace" (focused-pane) "x")"#;
+const REPLACE_ON_FALSE: &str = r#"(call! "replace" (focused-pane) #\x)"#;
 
 #[test]
 fn call_sift_within_with_an_invalid_pattern_reports_and_keeps_the_selection() {
@@ -467,4 +446,34 @@ fn call_sift_within_on_bare_cursors_returns_false() {
     );
     run_probe(&mut ed);
     assert_eq!(text(&ed), "xello\n");
+}
+
+// ── core:helix-surround, which reads its delimiters with on-next-char! ──────
+
+const HELIX_SURROUND: &str =
+    include_str!("../../../../runtime/plugins/core/helix-surround/plugin.scm");
+
+fn feed_settled(ed: &mut Editor, keys: &str) {
+    for ch in keys.chars() {
+        ed.feed_key(key(ch));
+        ed.settle();
+    }
+}
+
+#[test]
+fn helix_surround_md_deletes_the_pair_it_reads() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("(h-[e]>llo)\n");
+    run(&mut ed, tmp.path(), HELIX_SURROUND);
+    feed_settled(&mut ed, "md(");
+    assert_eq!(text(&ed), "hello\n");
+}
+
+#[test]
+fn helix_surround_mr_replaces_the_pair_with_the_second_char() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("(h-[e]>llo)\n");
+    run(&mut ed, tmp.path(), HELIX_SURROUND);
+    feed_settled(&mut ed, "mr([");
+    assert_eq!(text(&ed), "[hello]\n");
 }

@@ -25,7 +25,7 @@ use hume_engine::types::TruncateEnd;
 use steel::rvals::SteelVal;
 
 fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false, None);
+    ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
 fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {

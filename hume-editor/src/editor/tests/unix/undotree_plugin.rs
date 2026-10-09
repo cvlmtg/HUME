@@ -85,7 +85,7 @@ fn rendered_rows_after(earlier: &[&[Node]], nodes: &[Node]) -> String {
         tmp.path(),
         "(load-plugin! \"core:undotree-probe\")",
     );
-    ed.execute_keymap_command("undotree-probe".to_string().into(), None, false, None);
+    ed.execute_keymap_command("undotree-probe".to_string().into(), None, false);
     frame(&mut ed, 80, 40);
     drawer_rows(&ed).join("\n")
 }
@@ -210,7 +210,7 @@ fn next_change_secs(ages: &[u64]) -> String {
         tmp.path(),
         "(load-plugin! \"core:undotree-probe\")",
     );
-    ed.execute_keymap_command("undotree-probe".to_string().into(), None, false, None);
+    ed.execute_keymap_command("undotree-probe".to_string().into(), None, false);
     ed.settle();
     ed.state
         .message_log
@@ -312,7 +312,7 @@ fn setup(tmp: &Path) -> (Editor, RealRuntimeDirs) {
 }
 
 fn toggle(ed: &mut Editor) {
-    ed.execute_keymap_command("toggle-undotree".to_string().into(), None, false, None);
+    ed.execute_keymap_command("toggle-undotree".to_string().into(), None, false);
     render(ed);
 }
 
@@ -758,7 +758,7 @@ fn undotree_redraws_the_diff_only_when_the_revision_changes() {
     toggle(&mut ed);
     assert!(!diff_vlines(&ed, bid).is_empty(), "setup: a diff is drawn");
 
-    ed.execute_keymap_command("clear-diff-probe".to_string().into(), None, false, None);
+    ed.execute_keymap_command("clear-diff-probe".to_string().into(), None, false);
     ed.settle();
     assert!(
         diff_vlines(&ed, bid).is_empty(),
@@ -1004,8 +1004,8 @@ fn undotree_enter_jumps_after_the_session_pane_closes() {
     two_branches(&mut ed);
     toggle(&mut ed);
     ed.execute_typed("split", None).unwrap();
-    ed.execute_keymap_command("pane-focus-next".to_string().into(), None, false, None);
-    ed.execute_keymap_command("pane-close".to_string().into(), None, false, None);
+    ed.execute_keymap_command("pane-focus-next".to_string().into(), None, false);
+    ed.execute_keymap_command("pane-close".to_string().into(), None, false);
     ed.settle();
     assert!(drawer_open(&ed), "setup: the drawer survives the close");
 
@@ -1045,7 +1045,7 @@ fn setup_with_foreign_drawer(tmp: &Path) -> (Editor, RealRuntimeDirs) {
 }
 
 fn open_foreign_drawer(ed: &mut Editor) {
-    ed.execute_keymap_command("foreign-drawer".to_string().into(), None, false, None);
+    ed.execute_keymap_command("foreign-drawer".to_string().into(), None, false);
 }
 
 /// Another feature's drawer replaces the tree's; the history change that

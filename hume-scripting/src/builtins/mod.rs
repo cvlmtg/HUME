@@ -255,7 +255,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         config "bind-key!" keymap_bind::bind_key(mode: SteelVal, key_str: String, cmd_name: String);
         config "bind-key-extend!" keymap_bind::bind_key_extend(mode: SteelVal, key_str: String, cmd_name: String);
         config "unbind-key!" keymap_bind::unbind_key(mode: SteelVal, key_str: String);
-        config "bind-wait-char!" keymap_bind::bind_wait_char(mode: SteelVal, key_str: String, cmd_name: String);
         cmd    "set-register-prefix!" commands::set_register_prefix(name: String);
 
         // Registers: direct read/write, independent of set-register-prefix!'s
@@ -307,8 +306,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // in-VM apply. See the BOOTSTRAP comment block above for the full picture.
         open "%arm-inline-output!" commands::arm_inline_output(name: String);
         open "%restore-inline-output!" commands::restore_inline_output(depth: SteelVal);
-        cmd  "request-wait-char!" commands::request_wait_char(cmd: String);
-        open "pending-char" commands::pending_char();
         open "command-plugin" commands::command_plugin(name: String);
         open "%command-callable?" commands::command_callable(name: String);
 
@@ -436,6 +433,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Minibuffer prompt.
         cmd "%prompt!" ui::prompt(pane: args::LivePane, label: SteelVal, prefill: SteelVal, on_confirm: SteelVal);
+        cmd "on-next-char!" ui::on_next_char(callback: SteelVal);
         cmd "symbol-under-cursor" buffers::symbol_under_cursor(pane: args::LivePane);
 
         // Completion: sources register at config time; answers, the ranked

@@ -52,17 +52,6 @@ fn unbind_key_blocked_in_command_mode() {
     );
 }
 
-/// `bind-wait-char!` is blocked in plain command mode.
-#[test]
-fn bind_wait_char_blocked_in_command_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_config(&h.ctx(), "bind-wait-char!");
-    assert!(
-        result.is_err(),
-        "bind-wait-char! must error in command mode"
-    );
-}
-
 // ── Mode validation ───────────────────────────────────────────────────────
 
 /// `bind-key!` rejects an unknown mode name.
@@ -229,33 +218,7 @@ fn bind_key_extend_queues_force_extend_effect() {
     );
 }
 
-/// `bind-wait-char!` queues `Effect::BindWaitChar`, not `Effect::BindKey`:
-/// a WaitChar node consumes the next keypress as an argument, so routing it
-/// to a plain leaf would silently break `pending-char`.
-#[test]
-fn bind_wait_char_queues_wait_char_effect() {
-    let mut h = SteelCtxTestHarness::new();
-    {
-        let mut ctx = h.ctx_init();
-        bind_wait_char(
-            &mut ctx,
-            SteelVal::SymbolV("normal".into()),
-            "f".into(),
-            "find-char".into(),
-        )
-        .expect("bind-wait-char! must succeed");
-    }
-    assert!(
-        matches!(
-            effects(&h).as_slice(),
-            [Effect::BindWaitChar { mode: BindMode::Normal, cmd, .. }] if cmd == "find-char"
-        ),
-        "expected Effect::BindWaitChar; got: {:?}",
-        effects(&h)
-    );
-}
-
-/// `unbind-key!` queues `Effect::UnbindKey`, deferred like the three
+/// `unbind-key!` queues `Effect::UnbindKey`, deferred like the two
 /// binders so a same-eval bind-then-unbind on one key applies in Steel's
 /// emission order rather than the unbind racing ahead.
 #[test]

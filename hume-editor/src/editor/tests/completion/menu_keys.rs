@@ -661,9 +661,9 @@ fn an_edit_above_the_token_from_a_script_keeps_the_session_and_shifts_its_token(
     trigger(&mut ed);
     assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
-    ed.execute_keymap_command("corrupt".into(), None, false, None);
+    ed.execute_keymap_command("corrupt".into(), None, false);
     ed.settle();
     assert!(ed.state.input.buffer_completion().is_some());
-    ed.execute_keymap_command("finish".into(), None, false, None);
+    ed.execute_keymap_command("finish".into(), None, false);
     assert_eq!(ed.doc().text().to_string(), "Qa xcdef\n");
 }

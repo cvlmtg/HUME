@@ -1,5 +1,5 @@
 //! Parse human-readable key-sequence strings into `Vec<KeyEvent>`, for
-//! `bind-key!`/`bind-wait-char!` and the `:bind` typed command.
+//! `bind-key!` and the `:bind` typed command.
 //!
 //! A key string is whitespace-separated tokens of the form
 //! `[modifier-]* key_name`:

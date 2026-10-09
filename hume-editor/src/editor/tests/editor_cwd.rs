@@ -6,7 +6,7 @@ use std::path::Path;
 use super::*;
 
 pub(in crate::editor::tests) fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false, None);
+    ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
 pub(in crate::editor::tests) fn canonical(dir: &Path) -> PathBuf {

@@ -19,6 +19,7 @@ mod snapshot;
 mod stack;
 
 pub(in crate::editor) mod base;
+pub(in crate::editor) mod char;
 pub(in crate::editor) mod command;
 pub(in crate::editor) mod completion;
 pub(in crate::editor) mod confirm;
@@ -34,6 +35,7 @@ pub(in crate::editor) mod sift;
 pub(in crate::editor) use stack::{InputEvent, InputStack, Layer, LayerRef};
 
 pub(in crate::editor) use base::BaseLayer;
+pub(in crate::editor) use char::{CharLayer, CharThen, read_char};
 pub(in crate::editor) use command::CommandLayer;
 pub(in crate::editor) use completion::{BufferCompletionLayer, MinibufCompletionLayer};
 pub(in crate::editor) use confirm::{ConfirmAction, ConfirmLayer, ConfirmPermit};

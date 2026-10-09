@@ -2,16 +2,17 @@
 
 ;; ── Delimiter dispatch ────────────────────────────────────────────────────────
 
-;; #f for unrecognised chars so callers can skip gracefully.
+;; #f for unrecognised chars, and for the #f a cancelled read hands back, so
+;; callers can skip gracefully.
 (define (surround-cmd-for ch)
   (cond
-    ((or (equal? ch "(") (equal? ch ")")) "surround-paren")
-    ((or (equal? ch "[") (equal? ch "]")) "surround-bracket")
-    ((or (equal? ch "{") (equal? ch "}")) "surround-brace")
-    ((or (equal? ch "<") (equal? ch ">")) "surround-angle")
-    ((equal? ch "\"")                     "surround-double-quote")
-    ((equal? ch "'")                      "surround-single-quote")
-    ((equal? ch "`")                      "surround-backtick")
+    ((memv ch '(#\( #\))) "surround-paren")
+    ((memv ch '(#\[ #\])) "surround-bracket")
+    ((memv ch '(#\{ #\})) "surround-brace")
+    ((memv ch '(#\< #\>)) "surround-angle")
+    ((eqv? ch #\")         "surround-double-quote")
+    ((eqv? ch #\')         "surround-single-quote")
+    ((eqv? ch #\`)         "surround-backtick")
     (else #f)))
 
 ;; ── delete-surround ───────────────────────────────────────────────────────────
@@ -19,25 +20,29 @@
 (define-command! "helix-delete-surround"
   "Delete the surrounding delimiter pair (md + char)."
   (lambda (pane)
-    (let ((cmd (surround-cmd-for (pending-char))))
-      (when cmd
-        (call! cmd pane)
-        (call! "delete" pane)))))
+    (on-next-char!
+      (lambda (ch)
+        (let ((cmd (surround-cmd-for ch)))
+          (when cmd
+            (call! cmd pane)
+            (call! "delete" pane)))))))
 
 ;; ── replace-surround ─────────────────────────────────────────────────────────
-;; Selects the pair, then hands off to `replace`'s wait-char; see README.
+;; Selects the pair, then lets `replace` read the new char; see README.
 
 (define-command! "helix-replace-surround"
   "Replace the surrounding delimiter pair (mr + old_char + new_char)."
   (lambda (pane)
-    (let ((cmd (surround-cmd-for (pending-char))))
-      (when cmd
-        (call! cmd pane)
-        (request-wait-char! "replace")))))
+    (on-next-char!
+      (lambda (ch)
+        (let ((cmd (surround-cmd-for ch)))
+          (when cmd
+            (call! cmd pane)
+            (call! "replace" pane)))))))
 
 ;; ── keybindings ──────────────────────────────────────────────────────────────
 
-(bind-wait-char! 'normal "m s" "surround-add")
-(bind-wait-char! 'normal "m d" "helix-delete-surround")
-(bind-wait-char! 'normal "m r" "helix-replace-surround")
+(bind-key! 'normal "m s" "surround-add")
+(bind-key! 'normal "m d" "helix-delete-surround")
+(bind-key! 'normal "m r" "helix-replace-surround")
 (unbind-key! 'normal "m w")

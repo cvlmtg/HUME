@@ -61,17 +61,6 @@ fn mode_derives_from_session_and_plugin_stack() {
     assert_eq!(h.ctx_activation().mode(), EvalMode::PluginActivation);
 }
 
-/// `new_command` stores `pending_char` correctly.
-///
-/// The harness passes `None`; test `new_command` directly for the `Some` case.
-#[test]
-fn new_command_stores_pending_char() {
-    // Use ctx() (None) and verify the field is None.
-    let mut h = SteelCtxTestHarness::new();
-    let ctx = h.ctx();
-    assert_eq!(ctx.pending_char, None, "default ctx has no pending_char");
-}
-
 // ── log helper ────────────────────────────────────────────────────────────
 
 /// `ctx.log(…)` appends to `pending_messages`.

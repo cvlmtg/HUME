@@ -5,7 +5,7 @@ use hume_scripting::host::NativeCall;
 use crate::editor::host_impl::EditorHostImpl;
 use crate::testing::MockHost;
 use hume_scripting::ScriptingHost;
-use hume_scripting::host::{CommandArg, CommandHost, CursorHost};
+use hume_scripting::host::{CommandHost, CursorHost};
 
 // ── Unit tests: run_command_sync ──────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ fn run_command_sync_editor_cmd_runs_sync() {
     // Buffer "abc\n", selection on 'a'. Delete it via the normal keymap path to
     // create an undoable revision, then undo via run_command_sync.
     let mut ed = editor_from("-[a]>bc\n");
-    ed.execute_keymap_command("delete".into(), Some(1), false, None);
+    ed.execute_keymap_command("delete".into(), Some(1), false);
     // Buffer is now "bc\n"; cursor should be at 0.
     assert_eq!(
         state(&ed),
@@ -250,7 +250,7 @@ fn call_bang_count_arg_dispatches_synchronously() {
         &mut ed,
         r#"(define-command! "move-right-5" "" (lambda (bid) (call! "move-right" bid 5)))"#,
     );
-    ed.execute_keymap_command("move-right-5".into(), Some(1), false, None);
+    ed.execute_keymap_command("move-right-5".into(), Some(1), false);
 
     let idx = ed
         .state
@@ -288,7 +288,7 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
     // execute_keymap_command reports errors to the status bar rather than panicking;
     // check the cursor did not move (the Steel error aborted the eval).
     let before = state(&ed);
-    ed.execute_keymap_command("move-right-bad".into(), Some(1), false, None);
+    ed.execute_keymap_command("move-right-bad".into(), Some(1), false);
     let after = state(&ed);
     assert_eq!(
         before, after,
@@ -322,7 +322,7 @@ fn case_b_sync_cursor_read_reflects_motion() {
                      (move-down bid))))"#,
     );
 
-    ed.execute_keymap_command("test-case-b".into(), Some(1), false, None);
+    ed.execute_keymap_command("test-case-b".into(), Some(1), false);
 
     let final_state = state(&ed);
     // Both moves ran inside the lambda → cursor on line 3, "a\nb\n-[c]>\n".
@@ -501,7 +501,7 @@ fn steel_call_native_respects_register_prefix() {
                    (set-register-prefix! "0")
                    (call! "yank" bid)))"#,
     );
-    ed.execute_keymap_command("yank-to-0".into(), Some(1), false, None);
+    ed.execute_keymap_command("yank-to-0".into(), Some(1), false);
 
     // Register '0' must hold "hello" (the selection content).
     let contents: Vec<String> = ed
@@ -533,7 +533,7 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
                  (lambda (bid) (call! "delete" bid)))"#,
     );
 
-    ed.execute_keymap_command("steel-delete".into(), Some(1), false, None);
+    ed.execute_keymap_command("steel-delete".into(), Some(1), false);
     // `delete` is repeatable, so last_repeatable_action must be set.
     assert!(
         ed.state.last_repeatable_action.is_some(),
@@ -580,7 +580,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
     let _pane = focused_pane(&ed);
     // Fresh editor: no jump entries yet.
     let had_entries_before = ed.state.panes.jumps[pane_id].entries_for_buffer(bid);
-    ed.execute_keymap_command("steel-goto-end".into(), Some(1), false, None);
+    ed.execute_keymap_command("steel-goto-end".into(), Some(1), false);
     let has_entries_after = ed.state.panes.jumps[pane_id].entries_for_buffer(bid);
     assert!(
         !had_entries_before && has_entries_after,
@@ -608,7 +608,7 @@ fn steel_call_paste_then_motion_commits_paste_session() {
                    (call! "paste-after" bid)
                    (call! "move-down" bid)))"#,
     );
-    ed.execute_keymap_command("paste-and-move".into(), Some(1), false, None);
+    ed.execute_keymap_command("paste-and-move".into(), Some(1), false);
 
     let buf_after_paste = ed.doc().text().to_string();
     assert!(
@@ -646,7 +646,7 @@ fn steel_call_source_order_native_after_steel() {
                    (call! "steel-move-right" bid)
                    (call! "delete" bid)))"#,
     );
-    ed.execute_keymap_command("order-test".into(), Some(1), false, None);
+    ed.execute_keymap_command("order-test".into(), Some(1), false);
 
     // If correct order (move-right then delete): 'b' is deleted → "a\n".
     // If reversed (delete then move-right): 'a' is deleted → "b\n".
@@ -678,7 +678,7 @@ fn steel_native_via_call_preserves_own_count() {
                    (call! "noop-steel")
                    (call! "move-down" bid 3)))"#,
     );
-    ed.execute_keymap_command("count-chain-test".into(), Some(1), false, None);
+    ed.execute_keymap_command("count-chain-test".into(), Some(1), false);
 
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
@@ -710,7 +710,7 @@ fn steel_unknown_cmd_errors_and_continues() {
                    (call! "this-command-does-not-exist")
                    (call! "move-right" bid)))"#,
     );
-    ed.execute_keymap_command("warn-test".into(), Some(1), false, None);
+    ed.execute_keymap_command("warn-test".into(), Some(1), false);
 
     // Both move-rights run inline despite the unknown name, so the cursor ends at 2.
     assert_eq!(
@@ -805,7 +805,7 @@ fn steel_lambda_receives_bid_count_and_extend() {
     );
 
     // Dispatch with count=4: cursor must land at position 4.
-    ed.execute_keymap_command("step-right".into(), Some(4), false, None);
+    ed.execute_keymap_command("step-right".into(), Some(4), false);
     let idx = ed
         .state
         .panes
@@ -827,7 +827,7 @@ fn steel_lambda_receives_bid_count_and_extend() {
 
     // If injection were disabled, the cursor would be at 1 (count defaults to 1).
     // Restate with count=1 to prove the assert is live.
-    ed.execute_keymap_command("step-right".into(), Some(1), false, None);
+    ed.execute_keymap_command("step-right".into(), Some(1), false);
     let idx2 = ed
         .state
         .panes
@@ -879,7 +879,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .primary()
         .head()
         .offset();
-    ed.execute_keymap_command("fixed-right".into(), Some(5), false, None);
+    ed.execute_keymap_command("fixed-right".into(), Some(5), false);
     let after = ed
         .state
         .panes
@@ -941,7 +941,7 @@ fn steel_arity_1_lambda_receives_bid_only() {
         .primary()
         .head()
         .offset();
-    ed.execute_keymap_command("step-bid-only".into(), Some(5), false, None);
+    ed.execute_keymap_command("step-bid-only".into(), Some(5), false);
     let after = ed
         .state
         .panes
@@ -985,7 +985,7 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
     );
 
     // Dispatch with count=3: cursor must land 3 positions to the right.
-    ed.execute_keymap_command("step-count-only".into(), Some(3), false, None);
+    ed.execute_keymap_command("step-count-only".into(), Some(3), false);
     let idx = ed
         .state
         .panes
@@ -1034,7 +1034,7 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
     );
     ed.state.input.set_extend(true);
 
-    ed.execute_keymap_command("wrap-delete".into(), Some(1), false, None);
+    ed.execute_keymap_command("wrap-delete".into(), Some(1), false);
 
     assert_eq!(
         ed.state.mode(),
@@ -1064,7 +1064,7 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
     // Path A: keypress.
     let mut ed_key = editor_from("-[f]>oo\n");
     let before_key = snapshot_bookkeeping(&ed_key);
-    ed_key.execute_keymap_command("delete".into(), Some(1), false, None);
+    ed_key.execute_keymap_command("delete".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
     // Path B: Steel (call! "delete" bid).
@@ -1074,7 +1074,7 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
         r#"(define-command! "steel-delete" "" (lambda (bid) (call! "delete" bid)))"#,
     );
     let before_steel = snapshot_bookkeeping(&ed_steel);
-    ed_steel.execute_keymap_command("steel-delete".into(), Some(1), false, None);
+    ed_steel.execute_keymap_command("steel-delete".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
     // Pre-conditions: both editors start from identical bookkeeping state.
@@ -1098,7 +1098,7 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 
     // Path A: keypress.
     let mut ed_key = editor_from(content);
-    ed_key.execute_keymap_command("goto-last-line".into(), Some(1), false, None);
+    ed_key.execute_keymap_command("goto-last-line".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
     // Path B: Steel (call! "goto-last-line" bid).
@@ -1107,7 +1107,7 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
         &mut ed_steel,
         r#"(define-command! "steel-goto-end" "" (lambda (bid) (call! "goto-last-line" bid)))"#,
     );
-    ed_steel.execute_keymap_command("steel-goto-end".into(), Some(1), false, None);
+    ed_steel.execute_keymap_command("steel-goto-end".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
     assert_eq!(
@@ -1138,7 +1138,7 @@ fn parity_steel_branch_cluster_vs_native() {
     // ── Case 1: repeatable edit — pins the dot-repeat stage ───────────────────
     // Path A: native repeatable edit.
     let mut ed_native = editor_from("-[f]>oo\n");
-    ed_native.execute_keymap_command("delete".into(), Some(1), false, None);
+    ed_native.execute_keymap_command("delete".into(), Some(1), false);
     let snap_native = snapshot_bookkeeping(&ed_native);
 
     // Path B: a `#:repeatable` Steel command whose body calls `delete`.
@@ -1149,7 +1149,7 @@ fn parity_steel_branch_cluster_vs_native() {
         &mut ed_steel,
         r#"(define-command! "steel-del" "" (lambda (bid) (call! "delete" bid)) #:repeatable #t)"#,
     );
-    ed_steel.execute_keymap_command("steel-del".into(), Some(1), false, None);
+    ed_steel.execute_keymap_command("steel-del".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
     // jump_len and paste_session_open must match exactly.
@@ -1209,7 +1209,7 @@ fn parity_steel_branch_cluster_vs_native() {
         &mut ed2,
         r#"(define-command! "pure-noop" "" (lambda () (+ 1 0)))"#,
     );
-    ed2.execute_keymap_command("pure-noop".into(), Some(1), false, None);
+    ed2.execute_keymap_command("pure-noop".into(), Some(1), false);
 
     assert!(
         ed2.state.active_session.is_none(),
@@ -1231,7 +1231,7 @@ fn parity_extend_exit_keypress_vs_steel() {
     // Path A: keypress.
     let mut ed_key = editor_from("-[f]>oo\n");
     ed_key.state.input.set_extend(true);
-    ed_key.execute_keymap_command("delete".into(), Some(1), false, None);
+    ed_key.execute_keymap_command("delete".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
     // Path B: Steel (call! "delete" bid).
@@ -1241,7 +1241,7 @@ fn parity_extend_exit_keypress_vs_steel() {
         &mut ed_steel,
         r#"(define-command! "steel-delete" "" (lambda (bid) (call! "delete" bid)))"#,
     );
-    ed_steel.execute_keymap_command("steel-delete".into(), Some(1), false, None);
+    ed_steel.execute_keymap_command("steel-delete".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
     assert_eq!(
@@ -1263,7 +1263,7 @@ fn parity_typed_run_invalidation_keypress_vs_steel() {
     let mut ed_key = editor_from("-[h]>ello\n");
     ed_key.handle_key(key('i'));
     ed_key.handle_key(key('X')); // pins the typed_run
-    ed_key.execute_keymap_command("move-left".into(), Some(1), false, None);
+    ed_key.execute_keymap_command("move-left".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
     assert!(
         !snap_key.typed_run_open,
@@ -1278,7 +1278,7 @@ fn parity_typed_run_invalidation_keypress_vs_steel() {
         &mut ed_steel,
         r#"(define-command! "steel-move-left" "" (lambda (bid) (call! "move-left" bid)))"#,
     );
-    ed_steel.execute_keymap_command("steel-move-left".into(), Some(1), false, None);
+    ed_steel.execute_keymap_command("steel-move-left".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
     assert_eq!(
@@ -1322,7 +1322,7 @@ fn plugin_calls_plugin_cursor_read_is_live() {
                    (when (> (buffer-cursor-line bid) 0)
                      (call! "move-down" bid))))"#,
     );
-    ed.execute_keymap_command("outer-cmd".into(), Some(1), false, None);
+    ed.execute_keymap_command("outer-cmd".into(), Some(1), false);
 
     // Inline: inner-move ran synchronously (line 2 during eval), branch fired → line 3.
     // Deferred: inner-move queued (line 1 during eval), branch skipped → line 2.
@@ -1795,7 +1795,7 @@ fn keymap_dispatch_arity_over_3_reports_error() {
         r#"(define-command! "four-params" "" (lambda (a b c d) (+ a b c d)))"#,
     );
 
-    ed.execute_keymap_command("four-params".into(), Some(1), false, None);
+    ed.execute_keymap_command("four-params".into(), Some(1), false);
 
     assert!(
         ed.state
@@ -1803,68 +1803,6 @@ fn keymap_dispatch_arity_over_3_reports_error() {
             .entries()
             .any(|e| e.severity == crate::editor::Severity::Error),
         "dispatch of arity-4 command via keymap must report a user-facing error"
-    );
-}
-
-/// A Steel command reached through a wait-char binding reads that key with
-/// `(pending-char)`, from this dispatch's own operand only: a later dispatch
-/// with no operand sees `#f`, and dot-repeat replays the recorded one.
-#[test]
-fn steel_dispatch_hands_its_char_arg_to_pending_char() {
-    let mut ed = editor_from("-[a]>bcdef\n");
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.register_command_names(&name_refs);
-    let mut init_host = live_host!(ed);
-    host.eval_source(
-        // Moves the cursor only when a pending char is visible to the body.
-        // `#:repeatable #t` so the dot-repeat extension below has an action
-        // to replay.
-        r#"(define-command! "probe-char" ""
-             (lambda () (if (pending-char) (call! "move-right" (focused-pane) 1) (+ 1 0)))
-             #:repeatable #t)"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-    ed.scripting = Some(host);
-
-    ed.execute_keymap_command("probe-char".into(), Some(1), false, Some('x'));
-    assert_eq!(
-        state(&ed),
-        "a-[b]>cdef\n",
-        "body must see the char and move right"
-    );
-
-    ed.execute_keymap_command("probe-char".into(), Some(1), false, None);
-    assert_eq!(
-        state(&ed),
-        "a-[b]>cdef\n",
-        "a dispatch with no operand must see #f"
-    );
-
-    ed.execute_keymap_command("probe-char".into(), Some(1), false, Some('y'));
-    assert_eq!(state(&ed), "ab-[c]>def\n");
-    assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .and_then(|a| a.arg.clone()),
-        Some(CommandArg::Char('y')),
-        "the stamped action must carry the char"
-    );
-
-    ed.feed_key(key('.'));
-    assert_eq!(
-        state(&ed),
-        "abc-[d]>ef\n",
-        "dot-repeat must hand the recorded char to the replayed body"
     );
 }
 
@@ -2043,7 +1981,7 @@ fn buffer_selections_steel_roundtrip() {
     .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    ed.execute_keymap_command("probe-selections-roundtrip".into(), Some(1), false, None);
+    ed.execute_keymap_command("probe-selections-roundtrip".into(), Some(1), false);
 
     assert_eq!(
         state(&ed),

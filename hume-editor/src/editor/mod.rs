@@ -18,7 +18,7 @@ use hume_ops::register::{KillRing, RegisterSet};
 use hume_treesitter::parse_worker::ParseBackend;
 use hume_treesitter::registry::LanguageRegistry;
 
-use self::keymap::{Keymap, WaitCharPending};
+use self::keymap::Keymap;
 
 mod async_job;
 mod async_source;
@@ -261,8 +261,6 @@ pub(crate) struct EditorState {
     pub(super) pending_keys: Vec<KeyEvent>,
     /// Accumulated numeric prefix for the next command (e.g. `3` in `3w`).
     pub(super) count: Option<usize>,
-    /// Pending wait-char state for a f/t/F/T/r binding.
-    pub(super) wait_char: Option<WaitCharPending>,
     pub(super) registers: RegisterSet,
     /// Kill ring: bounded history of yanked / deleted text.
     pub(super) kill_ring: KillRing,
@@ -502,7 +500,6 @@ impl Default for EditorState {
             input: input_stack::InputStack::new(),
             pending_keys: Vec::new(),
             count: None,
-            wait_char: None,
             registers: RegisterSet::new(),
             kill_ring: KillRing::new(),
             clipboard: clipboard::SystemClipboard::osc52(),

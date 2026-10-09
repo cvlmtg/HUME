@@ -291,7 +291,7 @@ fn a_later_answer_drops_the_pick_and_proposes_the_common_prefix() {
     ed.handle_key(key_tab());
     ed.settle();
 
-    ed.execute_keymap_command("answer-many".into(), None, false, None);
+    ed.execute_keymap_command("answer-many".into(), None, false);
     assert_eq!(minibuf_input(&ed), "greet ");
     assert_eq!(picked_row(&ed), None);
 
@@ -300,7 +300,7 @@ fn a_later_answer_drops_the_pick_and_proposes_the_common_prefix() {
     assert_eq!(picked_row(&ed), Some(1));
     assert_eq!(minibuf_input(&ed), "greet bob");
 
-    ed.execute_keymap_command("answer-pair".into(), None, false, None);
+    ed.execute_keymap_command("answer-pair".into(), None, false);
     assert_eq!(picked_row(&ed), None, "the new ranking has no pick");
     assert_eq!(candidates(&ed).len(), 2);
     assert_eq!(minibuf_input(&ed), "greet bob");
@@ -618,7 +618,7 @@ fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
         tmp.path(),
         r#"(define-command! "check" "" (lambda () (completion-accept! 0)))"#,
     );
-    ed.execute_keymap_command("check".into(), None, false, None);
+    ed.execute_keymap_command("check".into(), None, false);
     assert!(
         status(&ed).contains("not a buffer-target session"),
         "got {:?}",
@@ -713,7 +713,7 @@ fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
         "sanity: still pending"
     );
 
-    ed.execute_keymap_command("answer-many".into(), None, false, None);
+    ed.execute_keymap_command("answer-many".into(), None, false);
     assert_eq!(candidates(&ed).len(), 3, "sanity: first answer landed");
     assert_eq!(minibuf_input(&ed), "greet alice");
 
@@ -722,7 +722,7 @@ fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
     assert_eq!(selected_row(&ed), 2, "sanity: selection moved off row 0");
     assert_eq!(minibuf_input(&ed), "greet carol");
 
-    ed.execute_keymap_command("answer-one".into(), None, false, None);
+    ed.execute_keymap_command("answer-one".into(), None, false);
     assert_eq!(
         minibuf_input(&ed),
         "greet zzz",

@@ -15,11 +15,10 @@ use crate::types::{PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 /// replay queue by `count × macro length`) run long enough to hang the editor.
 pub const MAX_COUNT: usize = 10_000;
 
-/// The operand a native command acts with: the character a wait-char key
-/// binding reads (`f`, `r`, …) or the pattern a prompt command takes in
-/// place of opening its prompt. A command declares which kind it takes
-/// through its body's signature; the editor checks the two match before the
-/// body runs.
+/// The operand a native command acts with: the character `f`, `r`, … act
+/// on, or the pattern a prompt command searches for. A command declares
+/// which kind it takes through its body's signature; the editor checks the
+/// two match before the body runs, and reads a missing one from the user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandArg {
     Char(char),

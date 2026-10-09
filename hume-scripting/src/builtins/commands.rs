@@ -1,5 +1,4 @@
-//! `(define-command! name doc proc)`, `(call! name args…)`, and
-//! `(request-wait-char! cmd)` builtins.
+//! `(define-command! name doc proc)` and `(call! name args…)` builtins.
 //!
 //! `call!` expands to `%dispatch-command!` (BOOTSTRAP), which routes:
 //! - **Activated plugin commands**: `(apply proc args)` inside the VM; `call!`
@@ -8,14 +7,11 @@
 //! - **Native commands**: `%call-native!` runs `run_command_sync`. A native
 //!   command has no Steel parameter list to receive a pane, so the caller
 //!   passes one as the first argument: `(call! "move-right" pane 5)`. A
-//!   trailing string or char is the command's operand:
-//!   `(call! "find-forward" pane "x")`, `(call! "sift-within" pane "\\w+")`. Returns
+//!   trailing char or string is the command's operand:
+//!   `(call! "find-forward" pane #\x)`, `(call! "sift-within" pane "\\w+")`. Returns
 //!   `#f` if the command refused, `#t` otherwise; in init mode it warns and
 //!   returns `#f`.
 //! - **Unknown**: error logged, `#f` returned.
-//!
-//! `request-wait-char!` makes the editor enter WaitChar mode for the named
-//! command once the current eval finishes.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -381,22 +377,6 @@ fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, SteelErr> {
     }
 }
 
-/// `(request-wait-char! cmd-name)`
-///
-/// Requests that after the current Steel command's queue is fully drained,
-/// the editor enters WaitChar mode for `cmd-name`.  `cmd-name` is then
-/// dispatched with the next character the user types as its operand.
-///
-/// Typical use: composing surround-select with replace.
-///   `(call! "surround-paren" pane) (request-wait-char! "replace")`
-/// selects the surrounding `()` pair, then waits for the replacement char.
-///
-/// Only valid inside a `SteelBacked` command invocation.
-pub(crate) fn request_wait_char(ctx: &mut SteelCtx, cmd: String) -> SteelResult {
-    ctx.wait_char_request = Some(cmd);
-    Ok(SteelVal::Void)
-}
-
 /// `(command-plugin name)`: return the owner of command `name` as a string.
 ///
 /// Returns the plugin id string (e.g. `"core:plum"`, `"user/repo"`) if the
@@ -418,19 +398,6 @@ pub(crate) fn command_callable(ctx: &mut SteelCtx, name: String) -> SteelResult 
     Ok(SteelVal::BoolV(
         ctx.host.commands().command_is_native(&name).is_ok(),
     ))
-}
-
-/// `(pending-char)`: return the pending character as a one-character string,
-/// or `#f` if no character is waiting.
-///
-/// Only meaningful inside a `SteelBacked` command invocation reached via a
-/// WaitChar keymap node (e.g. `bind-wait-char!`).  Returns `#f` at any other
-/// call site (top-level init.scm, commands not triggered via WaitChar, etc.).
-pub(crate) fn pending_char(ctx: &mut SteelCtx) -> SteelResult {
-    match ctx.pending_char {
-        Some(ch) => Ok(SteelVal::StringV(ch.to_string().into())),
-        None => Ok(SteelVal::BoolV(false)),
-    }
 }
 
 /// `(set-register-prefix! name)`: arm a sticky register prefix for the

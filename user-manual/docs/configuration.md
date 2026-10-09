@@ -197,15 +197,15 @@ Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [
 
 `.` repeats an Insert-mode key's binding by re-running it, not by replaying a fixed effect, so a binding decides again at the new cursor, taking whichever branch fits there. The one exception is a branch that asks you for input while it runs: opening the completion popup, accepting a completion, or opening a picker are never re-run: `.` writes what they produced instead, and reports an error for that keypress if the binding would take that branch again on replay. A branch with no such step, like one that saves the file, runs again in full, including that side effect.
 
-### Binding a key that waits for a character
+### Binding a command that reads a character
 
-Some commands need a character typed right after the key (find/till motions, surround). `bind-wait-char!` binds a key sequence so the *next* keypress is captured and passed to the target command instead of being looked up in the keymap:
+A command that needs a character typed after its key (find/till motions, `replace`, `surround-add`) waits for it on its own, so it is bound like any other command:
 
 ```scheme
-(bind-wait-char! 'normal "m s" "surround-add")
+(bind-key! 'normal "m s" "surround-add")
 ```
 
-Inside the target command, read the captured character with `(pending-char)`; see [Plugins](plugins.md) for the full command-writing API, including the related `(request-wait-char! cmd-name)`, which waits for a character from inside an already-running command rather than from a key binding.
+See [Reading characters](plugins.md#reading-characters) for writing a command of your own that reads characters.
 
 ### Key-string grammar
 

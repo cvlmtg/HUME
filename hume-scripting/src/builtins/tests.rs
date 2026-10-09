@@ -40,7 +40,7 @@ fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
     .expect("defining the probe command must not error");
 
     let err = host
-        .call_steel_cmd("probe-bind-key", None, vec![], &mut null_host)
+        .call_steel_cmd("probe-bind-key", vec![], &mut null_host)
         .expect_err("bind-key! must be rejected from a command body");
     assert!(err.message.contains("command body"), "got: {err:?}");
 }
@@ -190,7 +190,7 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
         .unwrap_or_else(|e| panic!("defining the probe for {name} must not error: {e}"));
 
         let err = host
-            .call_steel_cmd(&cmd_name, None, vec![], &mut null_host)
+            .call_steel_cmd(&cmd_name, vec![], &mut null_host)
             .err()
             .unwrap_or_else(|| panic!("{name} must raise on a closed buffer, got Ok"));
         assert!(
@@ -220,7 +220,7 @@ fn lsp_stop_and_restart_reject_false_target_through_real_registration() {
         )
         .unwrap();
         let err = host
-            .call_steel_cmd("probe", None, vec![], &mut null_host)
+            .call_steel_cmd("probe", vec![], &mut null_host)
             .err()
             .unwrap_or_else(|| panic!("{expr} must raise on a #f target, got Ok"));
         assert!(

@@ -6,7 +6,7 @@
 //! path, which additionally needs `self.scripting` and the
 //! timer bridge: fields only reachable through `&mut Editor`.
 
-use hume_scripting::host::CommandArg;
+use super::input_stack::{CharThen, read_char};
 
 use super::event::EditorEvent;
 use super::registry::MappableCommand;
@@ -21,7 +21,7 @@ pub(in crate::editor) struct CmdCtx {
     /// Numeric count prefix. `None` means "no count was typed": a bare
     /// keyboard press, which visual-move commands read as one visual line
     /// (`state.explicit_count`, set from this by `run_body`). Producible
-    /// by the keymap trie leaves / WaitChar arm, and also by Steel: a script
+    /// by the keymap trie leaves, and also by Steel: a script
     /// passes a count of `0` (`parse_native_args` decodes it to `None`) to ask
     /// for the same "as if no count was typed" behavior. `Some(n)` is every
     /// other case: an explicit user count, a script's explicit `n`, or a
@@ -45,21 +45,25 @@ impl Editor {
     /// calls [`commands::run_body`] or `run_steel_command` directly, though
     /// a replayed Steel body's own `call!`s still reach [`commands::run`].
     ///
-    /// `arg` is the character a wait-char binding read, or `None`. A native
-    /// command it doesn't fit is reported and nothing runs.
-    pub(in crate::editor) fn dispatch(
-        &mut self,
-        cmd: MappableCommand,
-        ctx: CmdCtx,
-        arg: Option<char>,
-    ) {
+    /// A native command that takes a character reads it from the next key
+    /// and runs then.
+    pub(in crate::editor) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) {
         // Native path: a keypress always acts at the focused pane.
         // `NotNative` hands `cmd` back unbound for a Steel-backed/Lazy
         // command, which the path below dispatches instead.
         let fp = commands::FocusedPane::current(&self.state);
-        let cmd = match commands::BoundCommand::focused(cmd, fp, arg.map(CommandArg::Char)) {
+        let cmd = match commands::BoundCommand::focused(cmd, fp, None) {
             Ok(bound) => {
                 commands::run(&mut self.state, &mut self.view, bound, ctx);
+                return;
+            }
+            Err(commands::FocusedBindError::NeedsChar(cmd)) => {
+                let then = CharThen::Dispatch {
+                    name: cmd.name().clone(),
+                    pane: fp.handle(&self.view),
+                    ctx,
+                };
+                read_char(&mut self.state, &self.view, then);
                 return;
             }
             Err(commands::FocusedBindError::Arg { name, error }) => {
@@ -88,7 +92,7 @@ impl Editor {
         let slot_owned = commands::repeat_slot_owned(&self.state);
 
         // BODY
-        if !self.run_steel_command(name.as_ref(), &ctx, arg) {
+        if !self.run_steel_command(name.as_ref(), &ctx) {
             // Failed command: undo whatever a partial inner dispatch wrote,
             // so the failure has no residual effect on the recipe.
             self.state.selection_recipe = pre_recipe;
@@ -110,7 +114,7 @@ impl Editor {
                 &mut self.state,
                 name,
                 ctx.count.unwrap_or(1),
-                arg.map(CommandArg::Char),
+                None,
                 Some(pre_recipe),
             );
         }
@@ -194,12 +198,7 @@ impl Editor {
     ///
     /// Returns `false` if the command aborted (lazy activation failure, scripting
     /// error, or `scripting` is `None`). On error, the caller skips AFTER stages.
-    pub(super) fn run_steel_command(
-        &mut self,
-        name: &str,
-        ctx: &CmdCtx,
-        char_arg: Option<char>,
-    ) -> bool {
+    pub(super) fn run_steel_command(&mut self, name: &str, ctx: &CmdCtx) -> bool {
         // Injected into the lambda's `count` param verbatim: `0` is the Scheme
         // spelling of `None` ("no count was typed"), so a wrapper that forwards
         // this value straight into `(call! "move-down" pane count extend)` round-trips
@@ -266,7 +265,7 @@ impl Editor {
             }
         };
 
-        self.call_steel_command_body(name, char_arg, effective_args, inline_output)
+        self.call_steel_command_body(name, effective_args, inline_output)
     }
 
     /// Run the body of a Steel-backed or Lazy *typed* command, dispatched
@@ -345,7 +344,7 @@ impl Editor {
             }
         };
 
-        self.call_steel_command_body(name, None, effective_args, inline_output)
+        self.call_steel_command_body(name, effective_args, inline_output)
     }
 
     /// Invoke a Steel command lambda by name with pre-marshalled positional
@@ -356,7 +355,6 @@ impl Editor {
     fn call_steel_command_body(
         &mut self,
         name: &str,
-        char_arg: Option<char>,
         effective_args: Vec<steel::rvals::SteelVal>,
         inline_output: bool,
     ) -> bool {
@@ -394,7 +392,7 @@ impl Editor {
                 self.tui.clone(),
                 self.kitty_enabled,
             );
-            scripting.call_steel_cmd(name, char_arg, effective_args, &mut impl_host)
+            scripting.call_steel_cmd(name, effective_args, &mut impl_host)
         };
 
         // Close the bracket only if a builtin actually opened it. This runs
@@ -402,8 +400,8 @@ impl Editor {
         // entry still gets the TUI restored first.
         self.close_inline_output_bracket();
 
-        let (wait_char_cmd, effects) = match result {
-            Ok(r) => (r.wait_char_request, r.effects),
+        let effects = match result {
+            Ok(effects) => effects,
             Err(e) => {
                 self.apply_script_effects(e.effects);
                 self.report(Severity::Error, e.message);
@@ -413,13 +411,6 @@ impl Editor {
 
         self.flush_script_messages();
         self.apply_script_effects(effects);
-        if let Some(wc) = wait_char_cmd {
-            self.state.wait_char = Some(crate::editor::keymap::WaitCharPending {
-                cmd_name: wc.into(),
-                ctrl_extend: false,
-            });
-        }
-
         true
     }
 

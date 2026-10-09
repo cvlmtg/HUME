@@ -185,10 +185,10 @@ Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`
 
 A few built-ins take one more argument, after the optional count and extend flag: what the command acts with.
 
-- `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add` need a character, given as a one-character string or a Scheme character: `(call! "find-forward" pane "x")`, `(call! "find-forward" pane 2 #\x)`.
+- `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add` act with a character, given as a Scheme character: `(call! "find-forward" pane #\x)`, `(call! "find-forward" pane 2 #\x)`. Without one, the command reads it from the next key typed, as when you press its key, and `call!` returns `#t` at once. To pass a one-character string, convert it with `(string-ref s 0)`.
 - `search-forward`, `search-backward`, and `sift-within` take a pattern. With one, they work as if you had typed it at their prompt and pressed Enter, without opening the prompt. A search with no match still becomes the current search, as it does after Enter, and `call!` returns `#f`. So does an invalid or empty pattern, which is also reported in `:messages` and leaves the current search as it was, and a `sift-within` that finds no match.
 
-Calling one of the character commands without its character raises an error, and so does passing an argument to a command that takes none, or a character to a command that takes a pattern.
+Passing a string to one of the character commands raises an error, and so does passing an argument to a command that takes none, or a character to a command that takes a pattern.
 
 Together, these make a command that removes trailing spaces and tabs from the selected lines, or from every line when no selection covers whole lines:
 
@@ -250,19 +250,24 @@ The list includes a plugin that is named but not installed; that case is reporte
 
 The check fails loudly at load time (startup or `:reload-config`), naming what's missing, instead of leaving the bug to surface later at whatever moment the dependent command actually runs.
 
-### Pending character input
+### Reading characters
 
-Some commands need a character argument from the user (like surround operations). `(request-wait-char! cmd-name)` dispatches `cmd-name` once the user types a character; `(pending-char)` then reads that char inside the dispatched command:
+A command that needs characters from the user (a surround operation, say) reads them with `(on-next-char! callback)`. The next key typed calls `callback` with its character; Enter and Tab count as `#\newline` and `#\tab`. Any other key, such as Esc, or a mouse click, calls it with `#f` instead and does nothing else. To read another character, call `on-next-char!` again from the callback:
 
 ```scheme
 (define-command! "my-surround"
-  "Select the surrounding pair, then replace it with the next typed char."
+  "Select the pair for the next typed char, then replace it with the one after."
   (lambda (pane)
-    (call! "surround-paren" pane)
-    (request-wait-char! "replace")))
+    (on-next-char!
+      (lambda (ch)
+        (when (eqv? ch #\()
+          (call! "surround-paren" pane)
+          (on-next-char!
+            (lambda (new)
+              (when new (call! "replace" pane new)))))))))
 ```
 
-HUME shows nothing while it waits, so make it obvious from context that a character is expected. When you already have the character, pass it to the built-in directly instead (see [Calling other commands](#calling-other-commands)).
+Calling `replace` without a character reads it the same way, so the inner `on-next-char!` could be `(call! "replace" pane)` instead. HUME shows nothing while it waits, so make it obvious from context that a character is expected.
 
 ### Register prefix
 

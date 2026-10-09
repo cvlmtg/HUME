@@ -63,6 +63,15 @@ fn attach_steel(ed: &mut Editor, src: &str) {
     ed.scripting = Some(host);
 }
 
+/// Whether the next key will be read as a character for a command or a
+/// Steel callback.
+fn reading_char(ed: &Editor) -> bool {
+    ed.state
+        .input
+        .find::<crate::editor::input_stack::CharLayer>()
+        .is_some()
+}
+
 /// The working directory a test editor starts in: the test binary's own.
 pub(crate) fn test_cwd() -> PathBuf {
     std::env::current_dir().expect("current_dir")

@@ -201,6 +201,19 @@ pub(crate) fn prompt(
         .map_err(generic_err)
 }
 
+/// `(on-next-char! callback)`: the next key typed calls `callback` with its
+/// character (Enter and Tab as `#\newline` and `#\tab`), or with `#f` when
+/// that key isn't a character or the wait ends any other way. Queued, never
+/// inline, like every other Rust→Steel call. A callback that calls
+/// `on-next-char!` again reads one more character.
+pub(crate) fn on_next_char(ctx: &mut SteelCtx, callback: SteelVal) -> SteelResult {
+    let callback = callable_arg(callback, "on-next-char!")?;
+    require_cap(ctx.host.ui(), "on-next-char!")?
+        .on_next_char(callback)
+        .map(|()| SteelVal::Void)
+        .map_err(generic_err)
+}
+
 /// Decodes a picker `items` list: each entry must be a `(display . payload)`
 /// dotted pair; a proper list entry is rejected by `pair_fields`.
 /// `payload` stays an opaque `SteelVal`; Rust

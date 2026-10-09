@@ -16,7 +16,7 @@ deletes one, `mr` replaces one.
 
 ## Key bindings
 
-Each key waits for a character before it dispatches.
+Each command reads the characters it needs from the keys typed after it.
 
 | Keys | Command | Effect |
 |---|---|---|
@@ -32,13 +32,14 @@ selection commands stay registered and are reachable from the command line.
 
 ## How it works
 
-`surround-cmd-for` maps a delimiter character, opening or closing, to the name of the
-native `surround-*` command for its pair. It answers `#f` for any other character, and both
-helix commands do nothing in that case.
+Both helix commands read their delimiter with `on-next-char!`. `surround-cmd-for` maps a
+delimiter character, opening or closing, to the name of the native `surround-*` command
+for its pair. It answers `#f` for any other character, and for the `#f` a cancelled read
+hands back, and both helix commands do nothing in that case.
 
 `helix-delete-surround` calls that command to select the pair as two cursor selections,
-then calls `delete`. `helix-replace-surround` calls it, then `request-wait-char! "replace"`,
-so the next key becomes the argument to the built-in `replace`.
+then calls `delete`. `helix-replace-surround` calls it, then `replace` without a
+character, so `replace` reads the next key itself.
 
 ## Design decisions
 

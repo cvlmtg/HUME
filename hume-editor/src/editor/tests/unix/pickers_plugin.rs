@@ -28,7 +28,7 @@ const PICKERS_PLUGIN: &str = include_str!(concat!(
 ));
 
 fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false, None);
+    ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
 /// Load the real `core:pickers` plugin, plus `extra_source` appended to the

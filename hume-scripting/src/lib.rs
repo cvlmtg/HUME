@@ -58,8 +58,8 @@ pub use types::{
     CapabilityQuery, DocSpan, Effect, EvalError, FeatureFilter, GrammarReg, ListEntry, ListLayer,
     LspFeature, LspServerStatusEntry, LspServerTarget, PaneHandle, Params, PendingLanguageReg,
     PendingLspNotify, PendingLspRequest, PendingLspServerOp, PendingLspServerReg, RequestMode,
-    RequestParams, RouteSpec, ServerName, SteelCmdDef, SteelCmdResult, SteelTypedCmdDef,
-    TriggerKind, TriggerScope, VirtualLineSpec, WhenUnavailable,
+    RequestParams, RouteSpec, ServerName, SteelCmdDef, SteelTypedCmdDef, TriggerKind, TriggerScope,
+    VirtualLineSpec, WhenUnavailable,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than
@@ -608,12 +608,8 @@ impl ScriptingHost {
         }
     }
 
-    /// Invoke a Steel proc by its internal name and return the list of
-    /// commands it queued via `(call! …)`, plus an optional WaitChar
-    /// command name requested via `(request-wait-char! …)`.
-    ///
-    /// The caller executes the returned commands and, if a wait-char was
-    /// requested, enters WaitChar mode for that command.
+    /// Invoke a Steel proc by its internal name and return the effects it
+    /// queued, for the caller to apply.
     ///
     /// A watchdog thread enforces `host.steel_command_budget_ms()`.  If the
     /// script runs past the budget, `(hume/yield!)` calls abort it (cooperative
@@ -630,10 +626,9 @@ impl ScriptingHost {
     pub fn call_steel_cmd<'a>(
         &'a mut self,
         name: &str,
-        pending_char: Option<char>,
         args: Vec<SteelVal>,
         host: &'a mut dyn EditorHost,
-    ) -> Result<SteelCmdResult, EvalError> {
+    ) -> Result<Vec<Effect>, EvalError> {
         let budget_ms = host.settings().steel_command_budget_ms();
 
         // The editor already resolved any Lazy stub and activated its owning
@@ -657,23 +652,17 @@ impl ScriptingHost {
             })?;
 
         let effects_start = self.effects.len();
-        let (result, wait_char_request) = {
+        let result = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
-            let mut steel_ctx = SteelCtx::new_command(host, bundle, pending_char);
-
-            let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
+            let mut steel_ctx = SteelCtx::new_command(host, bundle);
+            run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 steel.call_function_with_args(proc, args)?;
                 Ok(())
             })
-            .map_err(|e| e.message);
-            (result, steel_ctx.wait_char_request)
+            .map_err(|e| e.message)
         };
 
-        let effects = self.take_eval_effects(effects_start, result)?;
-        Ok(SteelCmdResult {
-            wait_char_request,
-            effects,
-        })
+        self.take_eval_effects(effects_start, result)
     }
 
     /// Fire every handler for `name` that matches `key`, passing `args` to
@@ -748,7 +737,7 @@ impl ScriptingHost {
 
         for (proc, args) in calls {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
-            let mut steel_ctx = SteelCtx::new_command(host, bundle, None);
+            let mut steel_ctx = SteelCtx::new_command(host, bundle);
             let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 steel.call_function_with_args(proc, args).map(|_| ())
             });
@@ -790,7 +779,7 @@ impl ScriptingHost {
         let mut value = None;
         let result = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
-            let mut steel_ctx = SteelCtx::new_command(&mut read_only, bundle, None);
+            let mut steel_ctx = SteelCtx::new_command(&mut read_only, bundle);
             run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 value = Some(steel.call_function_with_args(proc, args)?);
                 Ok(())

@@ -58,10 +58,6 @@ pub(crate) struct SteelCtx<'a> {
     /// subsequent `(call! …)` calls until changed.  Resets per invocation
     /// (SteelCtx is rebuilt each time).
     pub(crate) current_register_prefix: Option<char>,
-    /// WaitChar command requested by `(request-wait-char! …)`.
-    pub(crate) wait_char_request: Option<String>,
-    /// Pending char from a WaitChar keymap node.
-    pub(crate) pending_char: Option<char>,
     // ── Mode discriminant ────────────────────────────────────────────────────
     /// Which entry point started this eval session. Set once at construction;
     /// see [`EvalMode`] for the effective legality context builtins gate on,
@@ -144,8 +140,6 @@ impl<'a> SteelCtx<'a> {
             builtin_cmd_names,
             interrupt_flag: host_bundle.interrupt_flag,
             current_register_prefix: None,
-            wait_char_request: None,
-            pending_char: None,
             session: EvalSession::Init,
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
@@ -236,11 +230,7 @@ impl<'a> SteelCtx<'a> {
             .extend(tail.into_iter().filter(|e| e.committed));
     }
 
-    pub(crate) fn new_command(
-        host: &'a mut dyn EditorHost,
-        host_bundle: HostBundle<'a>,
-        pending_char: Option<char>,
-    ) -> Self {
+    pub(crate) fn new_command(host: &'a mut dyn EditorHost, host_bundle: HostBundle<'a>) -> Self {
         Self {
             host,
             plugin_stack: host_bundle.plugin_stack,
@@ -251,8 +241,6 @@ impl<'a> SteelCtx<'a> {
             builtin_cmd_names: rustc_hash::FxHashSet::default(),
             interrupt_flag: host_bundle.interrupt_flag,
             current_register_prefix: None,
-            wait_char_request: None,
-            pending_char,
             session: EvalSession::Runtime,
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,

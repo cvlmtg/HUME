@@ -622,13 +622,6 @@ pub struct PendingLspNotify {
     pub route: RouteSpec,
 }
 
-/// Result returned by [`super::ScriptingHost::call_steel_cmd`].
-#[derive(Debug)]
-pub struct SteelCmdResult {
-    pub wait_char_request: Option<String>,
-    pub effects: Vec<Effect>,
-}
-
 /// One side effect queued by a Steel builtin during an eval: a mutation
 /// that needs `&mut Editor` state the Steel-eval-time `EditorHost` doesn't
 /// hold, so it's logged instead of applied inline.
@@ -673,18 +666,8 @@ pub enum Effect {
         cmd: String,
         force_extend: bool,
     },
-    /// `(bind-wait-char! …)`: applied via `Keymap::bind_wait_char_user`.
-    ///
-    /// Separate from [`Effect::BindKey`] rather than a flag on it: a WaitChar
-    /// node has no `force_extend` notion, so merging the two would make an
-    /// illegal state representable.
-    BindWaitChar {
-        mode: crate::host::BindMode,
-        keys: Vec<termina::event::KeyEvent>,
-        cmd: String,
-    },
     /// `(unbind-key! …)`: applied via `Keymap::unbind_user`. Queued like the
-    /// three binders above so a same-eval bind-then-unbind on one key applies
+    /// two binders above so a same-eval bind-then-unbind on one key applies
     /// in Steel's emission order.
     UnbindKey {
         mode: crate::host::BindMode,
@@ -705,7 +688,7 @@ pub enum Effect {
     /// removes it. A `Completion` set must name a registered `Buffer`
     /// source, checked when this applies. Queued alongside
     /// [`Effect::RegisterCompletionSource`] for the same ordering reason
-    /// [`Effect::UnbindKey`] gives for the three binders it follows: a
+    /// [`Effect::UnbindKey`] gives for the two binders it follows: a
     /// source registered earlier in the *same* eval must exist by the time
     /// this applies, and `ScriptingHost`'s effects are one ordered queue
     /// applied in emission order. Checking the registry synchronously

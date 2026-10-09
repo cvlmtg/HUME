@@ -48,8 +48,7 @@ pub use ui::{
 ///
 /// Defined here (scripting layer) so builtins do not depend on the editor's
 /// internal `crate::editor::keymap::BindMode`.  Travels to the editor inside
-/// [`crate::Effect::BindKey`]/[`BindWaitChar`](crate::Effect::BindWaitChar)/
-/// [`UnbindKey`](crate::Effect::UnbindKey), which maps it to the editor's own
+/// [`crate::Effect::BindKey`]/[`UnbindKey`](crate::Effect::UnbindKey), which maps it to the editor's own
 /// `BindMode` as it applies them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindMode {

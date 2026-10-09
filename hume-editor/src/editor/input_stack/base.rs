@@ -141,33 +141,6 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
         key
     };
 
-    // ── Consume WaitChar argument ─────────────────────────────────────────
-    // If a f/t/F/T/r binding fired on the previous keypress, `wait_char`
-    // holds the command name to dispatch. The next character (any key)
-    // becomes the command's operand.
-    // Enter and Tab are accepted as their literal characters ('\n' / '\t'),
-    // for Kakoune parity (e.g. `r<ret>` replaces with a newline, `f<tab>` finds a
-    // tab), since both have an unambiguous char meaning as a target/argument.
-    if let Some(wc) = ed.state.wait_char.take() {
-        let arg = match key.code {
-            KeyCode::Char(ch) => Some(ch),
-            KeyCode::Enter => Some('\n'),
-            KeyCode::Tab => Some('\t'),
-            _ => None,
-        };
-        if let Some(ch) = arg {
-            let count = ed.state.count.take();
-            // Extend resolution: sticky extend (mode == Extend) OR one-shot
-            // ctrl_extend carried into WaitCharPending from the original keypress.
-            let extend = (ed.state.mode() == EditorMode::Extend) || wc.ctrl_extend;
-            ed.execute_keymap_command(wc.cmd_name.clone(), count, extend, Some(ch));
-        }
-        // Non-char/Enter/Tab key (e.g. Esc after pressing `f`): cancel the wait.
-        // Clear count so a prefix like `3f<Esc>` doesn't leak into the next command.
-        ed.state.count = None;
-        return;
-    }
-
     // ── Hard-reset on Esc ─────────────────────────────────────────────────
     if key.code == KeyCode::Escape {
         ed.state.pending_keys.clear();
@@ -325,18 +298,12 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                 ed.state.pending_keys.clear();
                 ed.state.pending_ctrl_extend = false;
                 let count = ed.state.count.take();
-                ed.execute_keymap_command(cmd.name.clone(), count, false, None);
+                ed.execute_keymap_command(cmd.name.clone(), count, false);
                 return;
             }
             WalkResult::Interior => {
                 // Mid-sequence: commit the key and wait for more.
                 ed.state.pending_keys.push(key);
-                return;
-            }
-            WalkResult::WaitChar(wc) => {
-                ed.state.pending_keys.clear();
-                ed.state.pending_ctrl_extend = false;
-                ed.state.wait_char = Some(wc);
                 return;
             }
             WalkResult::NoMatch => {
@@ -393,12 +360,6 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                             .config
                             .registry
                             .get_mappable(c.name.as_ref())
-                            .is_some_and(|r| r.is_extendable()),
-                        WalkResult::WaitChar(wc) => ed
-                            .state
-                            .config
-                            .registry
-                            .get_mappable(wc.cmd_name.as_ref())
                             .is_some_and(|r| r.is_extendable()),
                         WalkResult::NoMatch => false,
                     };
@@ -457,15 +418,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                     .get_mappable(cmd.name.as_ref())
                     .is_some_and(|r| r.is_extendable());
             let count = ed.state.count.take();
-            ed.execute_keymap_command(cmd.name.clone(), count, extend, None);
-        }
-        WalkResult::WaitChar(mut wc) => {
-            ed.state.pending_keys.clear();
-            ed.state.pending_ctrl_extend = false;
-            // Carry ctrl_extend into WaitCharPending so extend resolution
-            // happens at char-consumption time.
-            wc.ctrl_extend = ctrl_extend;
-            ed.state.wait_char = Some(wc);
+            ed.execute_keymap_command(cmd.name.clone(), count, extend);
         }
         WalkResult::Interior => {
             // More keys needed. pending_keys stays populated.

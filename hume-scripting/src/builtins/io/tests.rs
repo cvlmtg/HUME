@@ -92,7 +92,7 @@ fn required_module_displayln_call_reaches_the_gate() {
         .expect("requiring the plugin file must not error");
 
     let mut recording_host = RecordingInlineOutputHost::default();
-    host.call_steel_cmd("probe-print", None, vec![], &mut recording_host)
+    host.call_steel_cmd("probe-print", vec![], &mut recording_host)
         .expect("dispatching the required-module command must not error");
 
     assert_eq!(
@@ -138,7 +138,7 @@ fn required_module_other_print_fns_reach_the_gate() {
         .expect("requiring the plugin file must not error");
 
     let mut recording_host = RecordingInlineOutputHost::default();
-    host.call_steel_cmd("probe-print-multi", None, vec![], &mut recording_host)
+    host.call_steel_cmd("probe-print-multi", vec![], &mut recording_host)
         .expect("dispatching the required-module command must not error");
 
     assert_eq!(
@@ -183,7 +183,7 @@ fn required_module_write_family_reaches_the_gate() {
         .expect("requiring the plugin file must not error");
 
     let mut recording_host = RecordingInlineOutputHost::default();
-    host.call_steel_cmd("probe-write-multi", None, vec![], &mut recording_host)
+    host.call_steel_cmd("probe-write-multi", vec![], &mut recording_host)
         .expect("dispatching the required-module command must not error");
 
     assert_eq!(
@@ -215,7 +215,7 @@ fn top_level_displayln_call_reaches_the_gate() {
     .expect("defining the top-level command must not error");
 
     let mut recording_host = RecordingInlineOutputHost::default();
-    host.call_steel_cmd("probe-print-top", None, vec![], &mut recording_host)
+    host.call_steel_cmd("probe-print-top", vec![], &mut recording_host)
         .expect("dispatching the top-level command must not error");
 
     assert_eq!(recording_host.ensure_calls, 1);
@@ -244,7 +244,7 @@ fn custom_port_write_bypasses_gate_when_closed() {
     .expect("defining the command must not error");
 
     // NullHost defaults is_inline_output_command() to false → gate closed.
-    host.call_steel_cmd("probe-custom-port", None, vec![], &mut null_host)
+    host.call_steel_cmd("probe-custom-port", vec![], &mut null_host)
         .expect("dispatching the command must not error");
 
     let messages = host.take_pending_messages();
@@ -275,7 +275,7 @@ fn explicit_port_form_still_enforces_arity() {
     )
     .expect("defining the command must not error");
 
-    let result = host.call_steel_cmd("probe-bad-arity", None, vec![], &mut null_host);
+    let result = host.call_steel_cmd("probe-bad-arity", vec![], &mut null_host);
     assert!(result.is_err(), "extra positional arg must still error");
 }
 
@@ -304,13 +304,8 @@ fn explicit_stdout_port_call_reaches_the_gate() {
     .expect("defining the command must not error");
 
     let mut recording_host = RecordingInlineOutputHost::default();
-    host.call_steel_cmd(
-        "probe-explicit-stdout-port",
-        None,
-        vec![],
-        &mut recording_host,
-    )
-    .expect("dispatching the command must not error");
+    host.call_steel_cmd("probe-explicit-stdout-port", vec![], &mut recording_host)
+        .expect("dispatching the command must not error");
 
     assert_eq!(
         recording_host.ensure_calls, 1,
@@ -343,7 +338,7 @@ fn write_string_implicit_form_honors_output_redirect() {
 
     // NullHost defaults is_inline_output_command() to false → gate closed;
     // pins that a captured, non-stdout port is never suppressed regardless.
-    host.call_steel_cmd("probe-write-string-redirect", None, vec![], &mut null_host)
+    host.call_steel_cmd("probe-write-string-redirect", vec![], &mut null_host)
         .expect("dispatching the command must not error");
 
     let messages = host.take_pending_messages();

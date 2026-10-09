@@ -36,6 +36,12 @@ impl<'a> EditorHostImpl<'a> {
 
 impl<'a> UiHost for EditorHostImpl<'a> {
     // ── Minibuffer prompt ────────────────────────────────────────────────
+    fn on_next_char(&mut self, callback: steel::rvals::SteelVal) -> Result<(), String> {
+        let then = crate::editor::input_stack::CharThen::Steel(callback);
+        crate::editor::input_stack::read_char(self.state, self.view, then);
+        Ok(())
+    }
+
     fn prompt(
         &mut self,
         pane: PaneHandle,

@@ -51,7 +51,7 @@ fn republish(
 /// not typed) through the keymap pipeline, the way their bound keys
 /// (`g n`/`g p`) would.
 fn run(ed: &mut Editor, cmd: &str) {
-    ed.execute_keymap_command(cmd.to_owned().into(), Some(1), false, None);
+    ed.execute_keymap_command(cmd.to_owned().into(), Some(1), false);
     ed.settle();
 }
 

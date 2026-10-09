@@ -426,8 +426,8 @@ pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 #[cfg(test)]
 pub(in crate::editor) use pane::open_pane_in_layout;
 pub(in crate::editor) use pipeline::{
-    BindError, BoundCommand, CommandPane, FocusedBindError, FocusedPane, NativeBody, Operand,
-    TargetError, repeat_slot_owned, report_arg_error, run, run_body, steel_char_operand,
+    ArgError, BindError, BoundCommand, CommandPane, FocusedBindError, FocusedPane, NativeBody,
+    TargetError, repeat_slot_owned, report_arg_error, run, run_body, run_collected,
     step_paste_commit, step_stamp_repeatable,
 };
 

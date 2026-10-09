@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::editor::commands::{CommandPane, FocusedPane, NativeBody, Operand};
+use crate::editor::commands::{CommandPane, FocusedPane, NativeBody};
 use crate::editor::error::CommandError;
 use hume_editing::edit::Edited;
 use hume_editing::state::EditState;
@@ -33,9 +33,9 @@ pub(in crate::editor) type FocusedCmdFn = fn(
 ) -> Result<(), CommandError>;
 
 /// Function pointer for an [`EditorCmdBody::PaneChar`] handler: a
-/// [`PaneCmdFn`] that also takes the character its operand names (the key a
-/// wait-char binding read, or a `call!` argument). The character is required:
-/// dispatch refuses the command before it runs when none was given.
+/// [`PaneCmdFn`] that also takes the character its operand names (a key read
+/// after the command was dispatched, or a `call!` argument). The character is
+/// required: dispatch without one reads it from the next key first.
 pub(in crate::editor) type PaneCharCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
@@ -578,18 +578,6 @@ impl MappableCommand {
                 aligns_view: false,
                 manages_own_session: false,
             },
-        }
-    }
-
-    /// The operand a native command takes; `None` for a Steel-backed or lazy
-    /// command, which reads an optional character itself.
-    pub(in crate::editor) fn operand(&self) -> Option<Operand> {
-        match self {
-            Self::Motion { .. } | Self::Selection { .. } | Self::Edit { .. } => {
-                Some(Operand::Nothing)
-            }
-            Self::EditorCmd { fun, .. } => Some(fun.operand()),
-            Self::SteelBacked { .. } | Self::Lazy { .. } => None,
         }
     }
 

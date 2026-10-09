@@ -144,7 +144,7 @@ fn y_populates_register_without_changing_buffer() {
 
 // ── `r<char>` pending-key replace sequence ─────────────────────────────────
 
-/// `r` sets a wait-char constructor; the following character replaces every
+/// `r` reads the next key; that character replaces every
 /// grapheme in every selection; and `Esc` after a bare `r` cancels without
 /// side effects.
 #[test]
@@ -152,13 +152,10 @@ fn r_then_char_replaces_every_grapheme_in_selection() {
     let mut ed = editor_from("-[hell]>o\n");
 
     ed.handle_key(key('r'));
-    assert!(ed.state.wait_char.is_some(), "wait_char set after 'r'");
+    assert!(reading_char(&ed), "'r' reads the next key");
 
     ed.handle_key(key('x'));
-    assert!(
-        ed.state.wait_char.is_none(),
-        "wait_char cleared after replacement char"
-    );
+    assert!(!reading_char(&ed), "the replacement char ends the read");
     assert_eq!(state(&ed), "-[xxxx]>o\n");
 }
 
@@ -166,10 +163,10 @@ fn r_then_char_replaces_every_grapheme_in_selection() {
 fn r_then_esc_cancels_without_side_effects() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('r'));
-    // Esc resets wait_char (and all other pending state).
+    // Esc ends the read.
     ed.handle_key(key_esc());
 
-    assert!(ed.state.wait_char.is_none());
+    assert!(!reading_char(&ed));
     assert_eq!(
         state(&ed),
         "-[hell]>o\n",
@@ -183,10 +180,10 @@ fn r_then_esc_cancels_without_side_effects() {
 fn f_then_esc_cancels_without_side_effects() {
     let mut ed = editor_from("-[h]>ello a\n");
     ed.handle_key(key('f'));
-    assert!(ed.state.wait_char.is_some(), "wait_char set after 'f'");
+    assert!(reading_char(&ed), "'f' reads the next key");
     ed.handle_key(key_esc());
 
-    assert!(ed.state.wait_char.is_none(), "wait_char cleared after Esc");
+    assert!(!reading_char(&ed), "Esc ends the read");
     assert!(ed.state.last_find.is_none(), "no find recorded");
     assert_eq!(
         state(&ed),
@@ -195,19 +192,16 @@ fn f_then_esc_cancels_without_side_effects() {
     );
 }
 
-// ── WaitChar accepts Enter and Tab (Kakoune parity) ────────────────────────────
+// ── A character read accepts Enter and Tab (Kakoune parity) ────────────────────
 
-/// `r<ret>` replaces the char under the cursor with a literal newline. The
-/// wait-char consumer translates `KeyCode::Enter` to `'\n'` before dispatch.
+/// `r<ret>` replaces the char under the cursor with a literal newline: the
+/// read translates `KeyCode::Enter` to `'\n'`.
 #[test]
 fn r_then_enter_replaces_with_newline() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('r'));
     ed.handle_key(key_enter());
-    assert!(
-        ed.state.wait_char.is_none(),
-        "wait_char cleared after Enter"
-    );
+    assert!(!reading_char(&ed), "Enter ends the read");
     assert_eq!(state(&ed), "-[\n]>ello\n");
 }
 
@@ -229,11 +223,11 @@ fn r_then_tab_replaces_with_tab() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('r'));
     ed.handle_key(key_tab());
-    assert!(ed.state.wait_char.is_none(), "wait_char cleared after Tab");
+    assert!(!reading_char(&ed), "Tab ends the read");
     assert_eq!(state(&ed), "-[\t]>ello\n");
 }
 
-/// `f<ret>` is accepted as a wait-char argument (the wait clears, unlike Esc)
+/// `f<ret>` is accepted as `f`'s character (the read ends, unlike Esc)
 /// but never matches: the find scan in hume-ops/src/motion/find.rs excludes
 /// '\n' as a structural line boundary, not content. "Accepted argument" and
 /// "found on line" are separate questions, like `fz` on a line with no 'z'.
@@ -242,10 +236,7 @@ fn f_then_enter_is_accepted_but_never_matches() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('f'));
     ed.handle_key(key_enter());
-    assert!(
-        ed.state.wait_char.is_none(),
-        "wait_char cleared after Enter"
-    );
+    assert!(!reading_char(&ed), "Enter ends the read");
     assert_eq!(
         state(&ed),
         "-[h]>ello\n",

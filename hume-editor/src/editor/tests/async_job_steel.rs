@@ -7,7 +7,7 @@
 use super::*;
 
 fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false, None);
+    ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
 #[test]
