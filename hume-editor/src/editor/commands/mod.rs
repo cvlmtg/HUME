@@ -27,7 +27,6 @@ use super::buffer::Buffer;
 use super::doc_ops;
 use super::jump_list::{JumpRule, with_jump};
 use super::register_ops;
-use super::register_ops::RegisterPrefix;
 use super::search::SearchPattern;
 use super::{EditorState, Severity};
 use crate::editor::error::CommandError;
@@ -40,10 +39,7 @@ impl EditorState {
     /// Consume the pending `"<reg>` prefix and return the explicit register name,
     /// or `None` if no prefix was typed (bare default case).
     pub(in crate::editor::commands) fn take_register_prefix(&mut self) -> Option<char> {
-        match self.register_prefix.take() {
-            Some(RegisterPrefix::Selected(c)) => Some(c),
-            _ => None,
-        }
+        self.register_prefix.take()
     }
 
     /// Write `values` into `name`, routing `'c'` through the OS clipboard.

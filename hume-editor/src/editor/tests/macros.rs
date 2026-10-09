@@ -14,10 +14,7 @@ fn macro_qq_records_into_register_q() {
         ed.state.macro_recording.is_none(),
         "recording not started until register name given"
     );
-    assert!(
-        ed.state.macro_pending.is_some(),
-        "pending should be set after Q"
-    );
+    assert!(reading_char(&ed), "pending should be set after Q");
 
     // Second `Q` is consumed as the register name; recording starts now.
     ed.handle_key(key('Q'));
@@ -80,15 +77,9 @@ fn macro_q_digit_records_into_named_register() {
 fn macro_q_esc_cancels() {
     let mut ed = editor_from("-[a]>bcd\n");
     ed.handle_key(key('Q'));
-    assert!(
-        ed.state.macro_pending.is_some(),
-        "pending should be set after Q"
-    );
+    assert!(reading_char(&ed), "pending should be set after Q");
     ed.handle_key(key_esc());
-    assert!(
-        ed.state.macro_pending.is_none(),
-        "pending should be cleared after Esc"
-    );
+    assert!(!reading_char(&ed), "pending should be cleared after Esc");
     assert!(
         ed.state.macro_recording.is_none(),
         "no recording should have started"
@@ -100,9 +91,9 @@ fn macro_q_esc_cancels() {
 fn macro_big_q_esc_cancels() {
     let mut ed = editor_from("-[a]>bcd\n");
     ed.handle_key(key('q'));
-    assert!(ed.state.macro_pending.is_some());
+    assert!(reading_char(&ed));
     ed.handle_key(key_esc());
-    assert!(ed.state.macro_pending.is_none());
+    assert!(!reading_char(&ed));
     assert!(ed.state.replay_queue.is_empty());
 }
 
@@ -159,20 +150,14 @@ fn macro_replay_empty_register_is_noop() {
     let mut ed = editor_from("-[a]>bcd\n");
     let before = state(&ed);
 
-    // `q` must arm macro_pending, proving the dispatch path ran.
+    // `q` must start the register-name read, proving the dispatch path ran.
     ed.handle_key(key('q'));
-    assert!(
-        ed.state.macro_pending.is_some(),
-        "macro_pending should be set after q"
-    );
+    assert!(reading_char(&ed), "q should start the register-name read");
 
-    // Register 'z' has never been written: macro_pending is consumed but
+    // Register 'z' has never been written: the read ends but
     // no keys are queued and state is unchanged.
     ed.handle_key(key('z'));
-    assert!(
-        ed.state.macro_pending.is_none(),
-        "macro_pending should be consumed after register key"
-    );
+    assert!(!reading_char(&ed), "the register key should end the read");
     assert!(
         ed.state.replay_queue.is_empty(),
         "no keys queued for unset register"
@@ -211,16 +196,16 @@ fn macro_no_nested_recording_during_replay() {
         "nested recording must be suppressed"
     );
     assert!(
-        ed.state.macro_pending.is_none(),
-        "macro_pending must not be armed after replay"
+        !reading_char(&ed),
+        "no register-name read may be left after replay"
     );
 }
 
-/// A macro whose last key is `Q` must not arm `macro_pending` after replay.
+/// A macro whose last key is `Q` must not start a register-name read after replay.
 ///
 /// The suppression must key off `is_replaying`, not `replay_queue.is_empty()`:
 /// the queue is empty at the exact moment the last key is processed, which would
-/// let a trailing `Q` slip through and arm `macro_pending`.
+/// let a trailing `Q` slip through and start a register-name read.
 #[test]
 fn macro_trailing_q_does_not_arm_pending() {
     let mut ed = editor_from("-[a]>\nb\nc\n");
@@ -245,8 +230,8 @@ fn macro_trailing_q_does_not_arm_pending() {
         "recording must not have started"
     );
     assert!(
-        ed.state.macro_pending.is_none(),
-        "macro_pending must not be armed by trailing Q"
+        !reading_char(&ed),
+        "a trailing Q must not start a register-name read"
     );
 }
 
@@ -362,9 +347,9 @@ fn macro_replay_of_text_register_is_noop() {
     // Write text (not a macro) directly into register '0', then try to replay.
     ed.state.registers.write_text('0', vec!["some text"]);
     ed.handle_key(key('q'));
-    assert!(ed.state.macro_pending.is_some());
+    assert!(reading_char(&ed));
     ed.handle_key(key('0'));
-    assert!(ed.state.macro_pending.is_none());
+    assert!(!reading_char(&ed));
     assert!(
         ed.state.replay_queue.is_empty(),
         "text register must not enqueue any keys"
@@ -498,7 +483,7 @@ fn macro_replay_preserves_dot_repeat() {
 }
 
 /// Pressing `q` while recording should be silently captured as a recorded key.
-/// It must not arm macro_pending or trigger replay.
+/// It must not start a register-name read or trigger replay.
 #[test]
 fn macro_q_during_recording_is_captured() {
     let mut ed = editor_from("-[a]>bcd\n");
@@ -512,8 +497,8 @@ fn macro_q_during_recording_is_captured() {
 
     // Must not have changed pending or replay state.
     assert!(
-        ed.state.macro_pending.is_none(),
-        "q during recording must not arm macro_pending"
+        !reading_char(&ed),
+        "q during recording must not start a register-name read"
     );
     assert!(
         ed.state.replay_queue.is_empty(),
@@ -566,8 +551,8 @@ fn macro_recursive_replay_suppressed() {
         "nested recording must not start"
     );
     assert!(
-        ed.state.macro_pending.is_none(),
-        "macro_pending must not be armed after replay"
+        !reading_char(&ed),
+        "no register-name read may be left after replay"
     );
     assert!(
         ed.state.replay_queue.is_empty(),
@@ -832,9 +817,9 @@ fn dot_inside_macro_replay_fires_drain() {
 
 // ── Macro guard on read-only buffers ─────────────────────────────────────────
 
-/// `q` on a read-only view buffer must not arm macro_pending.
+/// `q` on a read-only view buffer must not start a register-name read.
 /// Validity: removing the `!self.focused_buffer_read_only()` guard from the `q`
-/// intercept causes this test to fail (macro_pending is Some, key is eaten).
+/// intercept causes this test to fail (the read starts, key is eaten).
 #[test]
 fn macro_q_on_read_only_buffer_does_not_arm_pending() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -847,8 +832,8 @@ fn macro_q_on_read_only_buffer_does_not_arm_pending() {
 
     ed.handle_key(key('q'));
     assert!(
-        ed.state.macro_pending.is_none(),
-        "q on read-only must not arm macro_pending"
+        !reading_char(&ed),
+        "q on read-only must not start a register-name read"
     );
 
     // The key that would have been swallowed as a register name must dispatch
@@ -860,7 +845,7 @@ fn macro_q_on_read_only_buffer_does_not_arm_pending() {
     );
 }
 
-/// `Q` on a read-only view buffer must not arm macro_pending.
+/// `Q` on a read-only view buffer must not start a register-name read.
 #[test]
 fn macro_big_q_on_read_only_buffer_does_not_arm_pending() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -870,8 +855,8 @@ fn macro_big_q_on_read_only_buffer_does_not_arm_pending() {
 
     ed.handle_key(key('Q'));
     assert!(
-        ed.state.macro_pending.is_none(),
-        "Q on read-only must not arm macro_pending"
+        !reading_char(&ed),
+        "Q on read-only must not start a register-name read"
     );
     assert!(
         ed.state.macro_recording.is_none(),
@@ -993,4 +978,17 @@ fn macro_replay_runs_a_replayed_keys_own_hook_before_the_next_replayed_key() {
          <tab> dispatched during replay, got: {:?}",
         recorded.doc().text().to_string()
     );
+}
+
+/// A mouse click ends the wait for `q`'s or `"`'s register name, so the
+/// next key runs its own binding instead of being read as one.
+#[test]
+fn mouse_click_cancels_a_register_name_read() {
+    for prefix in ['q', '"'] {
+        let mut ed = editor_from("-[h]>ello\n");
+        ed.handle_key(key(prefix));
+        ed.handle_input(mouse_left_down(0, 0));
+        ed.handle_key(key('l'));
+        assert_eq!(state(&ed), "h-[e]>llo\n", "after {prefix:?}");
+    }
 }

@@ -100,6 +100,39 @@ fn esc_cancels_register_prefix() {
     assert!(reg(&ed, '5').is_empty(), "register '5' untouched");
 }
 
+/// The state `keys` leave on a line of six words, from its first char.
+fn after_keys(keys: &[KeyEvent]) -> String {
+    let mut ed = editor_from("-[o]>ne two three four five six\n");
+    for &k in keys {
+        ed.handle_key(k);
+    }
+    state(&ed)
+}
+
+/// A count typed before `"` survives a key that names no register: the
+/// prefix is cancelled, the count goes to the next command.
+#[test]
+fn an_invalid_register_name_keeps_the_count() {
+    let counted = after_keys(&[key('3'), key('w')]);
+    assert_eq!(
+        after_keys(&[key('3'), key('"'), key('!'), key('w')]),
+        counted
+    );
+    assert_eq!(
+        after_keys(&[key('3'), key('"'), key_ctrl('a'), key('w')]),
+        counted
+    );
+}
+
+/// Esc after `"` resets the count with the prefix, as Esc does in Normal.
+#[test]
+fn esc_after_register_prefix_clears_the_count() {
+    assert_eq!(
+        after_keys(&[key('3'), key('"'), key_esc(), key('w')]),
+        after_keys(&[key('w')])
+    );
+}
+
 /// `"by` discards the yank: `'"'` must remain empty.
 #[test]
 fn black_hole_register_via_prefix() {

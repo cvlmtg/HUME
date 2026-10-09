@@ -89,7 +89,6 @@ fn editor_state_fields_are_classified() {
             explicit_count: _, // preserved
             pending_ctrl_extend: _, // preserved
             macro_recording: _, // preserved
-            macro_pending: _,  // preserved
             replay_queue: _,   // preserved
             skip_macro_record: _, // preserved
             is_replaying: _,   // preserved

@@ -8,7 +8,7 @@ use termina::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use self::registry::CommandRegistry;
-use self::replay::{MacroPending, PendingRepeat, RepeatableAction, SelectionStep};
+use self::replay::{PendingRepeat, RepeatableAction, SelectionStep};
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneView;
@@ -264,8 +264,9 @@ pub(crate) struct EditorState {
     pub(super) kill_ring: KillRing,
     /// The `c` register's clipboard: native (`arboard`) or terminal OSC 52.
     pub(super) clipboard: clipboard::SystemClipboard,
-    /// State machine for the two-keystroke `"<reg>` register-prefix sequence.
-    pub(super) register_prefix: Option<register_ops::RegisterPrefix>,
+    /// The register a `"<reg>` prefix named, armed for the next
+    /// yank/delete/change/paste.
+    pub(super) register_prefix: Option<char>,
     /// Which source a bare paste reads next, and until when. See
     /// [`commands::PasteStamp`].
     pub(super) paste_stamp: Option<commands::PasteStamp>,
@@ -414,8 +415,6 @@ pub(crate) struct EditorState {
     pub(super) pending_ctrl_extend: bool,
     /// Active macro recording session.
     pub(super) macro_recording: Option<(char, Vec<KeyEvent>)>,
-    /// Pending two-keystroke macro command.
-    pub(super) macro_pending: Option<MacroPending>,
     /// Queue of keys to replay before reading the next terminal event.
     pub(super) replay_queue: VecDeque<KeyEvent>,
     /// Single-frame flag: skip recording the current key.
@@ -533,7 +532,6 @@ impl Default for EditorState {
             explicit_count: false,
             pending_ctrl_extend: false,
             macro_recording: None,
-            macro_pending: None,
             replay_queue: VecDeque::new(),
             skip_macro_record: false,
             is_replaying: false,

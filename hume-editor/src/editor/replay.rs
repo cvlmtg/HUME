@@ -140,19 +140,22 @@ pub(crate) struct PendingRepeat {
 
 // ── Macro recording state ─────────────────────────────────────────────────────
 
-/// Pending state for the two-keystroke `q<reg>` / `Q<reg>` sequences.
-///
-/// Set when the user presses `q` or `Q` in normal mode; cleared when the
-/// next keypress is consumed as the register name (or cancelled on Esc).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MacroPending {
-    /// `Q` was pressed: waiting for a register name to start recording.
-    Record,
-    /// `q` was pressed: waiting for a register name to start replay.
-    Replay,
-}
-
 impl EditorState {
+    /// Queue the keys of the macro in `reg` for replay, `count` times over.
+    /// No-op when the register is empty or holds text rather than a macro.
+    pub(in crate::editor) fn enqueue_macro_replay(&mut self, reg: char, count: usize) {
+        if let Some(keys) = self
+            .registers
+            .read(reg)
+            .and_then(|r| r.as_macro())
+            .map(|k| k.to_vec())
+        {
+            for _ in 0..count {
+                self.replay_queue.extend(keys.iter().copied());
+            }
+        }
+    }
+
     /// Appends `input` to the action whose command opened the live Insert
     /// session. Only the `InsertLayer`'s own handler calls this, so Insert
     /// is always open here. "The last action" is "the session's

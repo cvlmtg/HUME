@@ -203,9 +203,8 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         };
         // Arm the register prefix so register-aware commands (yank, delete,
         // paste-after, …) route to the right destination.
-        if let Some(r) = register {
-            self.state.register_prefix =
-                Some(crate::editor::register_ops::RegisterPrefix::Selected(r));
+        if register.is_some() {
+            self.state.register_prefix = register;
         }
         // Delegate to the shared pipeline: all bookkeeping (paste session, jump
         // list, dot-repeat) lives there so the sync path is identical to the

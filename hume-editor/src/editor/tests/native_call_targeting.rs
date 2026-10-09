@@ -643,7 +643,7 @@ fn a_refused_delete_clears_the_register_prefix_and_writes_nothing() {
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
 
-    ed.state.register_prefix = Some(crate::editor::register_ops::RegisterPrefix::Selected('3'));
+    ed.state.register_prefix = Some('3');
     let ran = live_host!(ed)
         .run_command_sync(
             "delete",

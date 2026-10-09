@@ -6,14 +6,12 @@ use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
-use hume_ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
 use hume_scripting::host::MAX_COUNT;
 
 use super::super::Editor;
 use super::super::commands::cmd_clear_search;
 use super::super::keymap::WalkResult;
-use super::super::register_ops::RegisterPrefix;
-use super::super::replay::MacroPending;
+use super::char::{CharThen, MacroRead, read_char};
 use super::popup::PopupLayer;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
@@ -88,26 +86,6 @@ fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
     }
 }
 
-/// Enqueue the keys stored in `reg` into the editor's replay queue.
-///
-/// The accumulated count (defaulting to 1) determines how many times the macro
-/// is enqueued. Count is consumed and cleared. No-op when the register is empty,
-/// unset, or holds text rather than a macro.
-fn enqueue_macro_replay(ed: &mut Editor, reg: char) {
-    let count = ed.state.count.take().unwrap_or(1);
-    if let Some(keys) = ed
-        .state
-        .registers
-        .read(reg)
-        .and_then(|r| r.as_macro())
-        .map(|k| k.to_vec())
-    {
-        for _ in 0..count {
-            ed.state.replay_queue.extend(keys.iter().copied());
-        }
-    }
-}
-
 // ── Normal mode ───────────────────────────────────────────────────────────
 
 fn handle_normal(ed: &mut Editor, key: KeyEvent) {
@@ -146,8 +124,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
         ed.state.pending_keys.clear();
         ed.state.count = None;
         ed.state.pending_ctrl_extend = false; // cancel any pending extend mode
-        ed.state.macro_pending = None; // cancel any pending q/Q register-name prompt
-        ed.state.register_prefix = None; // cancel any pending "<reg> state
+        ed.state.register_prefix = None; // drop a "<reg> prefix not yet used
         // Esc exits Extend mode; Normal is the reset state.
         ed.state.input.set_extend(false);
         let t = crate::editor::commands::FocusedPane::current(&ed.state).pane();
@@ -156,78 +133,13 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
         return;
     }
 
-    // ── Macro pending: consume register-name key ──────────────────────────
-    // After `Q` or `q`, the next keypress names the register.
-    //
-    // Record (`Q`): next key must be a valid register name (a-z, 0-9).
-    //   Esc cancels; anything else cancels.
-    //
-    // Replay (`q`): next key selects the register.
-    //   `qq` → replay from the default register `q` (mirrors `QQ` for recording).
-    //   `q<reg>` → replay from the named register (e.g. `q3`).
-    //   Any other key → cancel silently (key is swallowed).
-    if let Some(pending) = ed.state.macro_pending.take() {
-        match pending {
-            MacroPending::Record => {
-                // A count prefix before `Q<reg>` has no meaning for recording.
-                // Clear it so it doesn't leak into the first key typed during
-                // the session (which would fire with count N instead of 1).
-                ed.state.count = None;
-                match key.code {
-                    // `QQ`: record into the default register. `Q` is uppercase
-                    // so is_valid_macro_register won't catch it; handle explicitly.
-                    KeyCode::Char('Q') => {
-                        ed.state.macro_recording = Some((MACRO_REGISTER, Vec::new()));
-                        ed.state.skip_macro_record = true;
-                    }
-                    KeyCode::Char(reg) if is_valid_macro_register(reg) => {
-                        ed.state.macro_recording = Some((reg, Vec::new()));
-                        ed.state.skip_macro_record = true;
-                    }
-                    // Esc, Ctrl-c, non-Char, or invalid Char: cancel.
-                    _ => {}
-                }
-                return;
-            }
-            MacroPending::Replay => {
-                match key.code {
-                    // `q<reg>`: replay from named register (includes `qq` since
-                    // `q` is a valid lowercase register name → replays from `q`).
-                    KeyCode::Char(ch) if is_valid_macro_register(ch) => {
-                        enqueue_macro_replay(ed, ch);
-                    }
-                    // Any other key (Esc, non-register, etc.): cancel silently.
-                    _ => {}
-                }
-                return;
-            }
-        }
-    }
-
-    // ── Register prefix: consume register-name key ────────────────────────
-    // After `"`, the next keypress names the register for the upcoming
-    // yank/delete/change/paste. Valid names: '0'–'9', 'b' (black hole), 'c'
-    // (clipboard). Invalid chars or Esc cancel silently.
-    if let Some(RegisterPrefix::Awaiting) = ed.state.register_prefix {
-        ed.state.register_prefix = None;
-        if let KeyCode::Char(ch) = key.code
-            && key.modifiers == Modifiers::NONE
-            && is_valid_register_name(ch)
-        {
-            ed.state.register_prefix = Some(RegisterPrefix::Selected(ch));
-        }
-        // Invalid char, modified key, or non-Char key: cancel silently (key is swallowed).
-        // Count accumulated before `"` is preserved for the next command.
-        return;
-    }
-
     // ── Count prefix accumulation ─────────────────────────────────────────
     // Only accumulate when we're at the trie root (no pending sequence)
     // and no modifiers are held (Ctrl-4 is not a count digit).
     // `0` without an existing count is not a digit: it falls through to the
     // trie (unbound by default; core:vim-keybind binds it to goto-line-start).
-    // NOTE: this runs AFTER macro_pending so that `Q1`/`q1` treat `1` as a
-    // register name, not as a count digit.
+    // `Q1`/`q1` read `1` as a register name: the char layer above this
+    // handler takes the key before it gets here.
     // Clamped to MAX_COUNT; see its doc comment for why.
     if ed.state.pending_keys.is_empty() && key.modifiers == Modifiers::NONE {
         match key.code {
@@ -254,7 +166,10 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                     // the user has navigated to a read-only buffer since starting.
                     ed.state.registers.write_macro(reg, keys);
                 } else if !ed.state.is_replaying && !ed.focused_buffer_read_only() {
-                    ed.state.macro_pending = Some(MacroPending::Record);
+                    // A count before `Q<reg>` has no meaning for recording,
+                    // and would otherwise reach the first recorded key.
+                    ed.state.count = None;
+                    read_char(&mut ed.state, &ed.view, CharThen::Macro(MacroRead::Record));
                 }
                 // During replay, or on a read-only buffer: silently ignore.
                 return;
@@ -264,17 +179,21 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                     && ed.state.macro_recording.is_none()
                     && !ed.focused_buffer_read_only()
                 {
-                    // Replay: wait for the register-name key.
-                    ed.state.macro_pending = Some(MacroPending::Replay);
+                    let count = ed.state.count.take().unwrap_or(1);
+                    read_char(
+                        &mut ed.state,
+                        &ed.view,
+                        CharThen::Macro(MacroRead::Replay { count }),
+                    );
                 }
                 // During recording, replay, or on a read-only buffer: silently ignore.
                 return;
             }
             KeyCode::Char('"') => {
                 // Register prefix: `"<reg>` selects the named register for the
-                // upcoming yank/delete/change/paste. Set pending state; the next
-                // keypress will be consumed as the register name.
-                ed.state.register_prefix = Some(RegisterPrefix::Awaiting);
+                // upcoming yank/delete/change/paste. A count typed before it
+                // is kept for that command.
+                read_char(&mut ed.state, &ed.view, CharThen::Register);
                 return;
             }
             _ => {}
