@@ -353,7 +353,7 @@ impl CommandRegistry {
         // ── Editor commands — search ──────────────────────────────────────────
         ecmd_pane_text(
             "search-forward",
-            "Enter search mode (forward). From `call!`, pass a pattern to search without opening the prompt.",
+            "Enter search mode (forward). From `call!`, the pattern is required.",
             cmd_search_forward,
             PatternPrompt::Search(SearchDirection::Forward),
         )
@@ -361,7 +361,7 @@ impl CommandRegistry {
         .reg(self);
         ecmd_pane_text(
             "search-backward",
-            "Enter search mode (backward). From `call!`, pass a pattern to search without opening the prompt.",
+            "Enter search mode (backward). From `call!`, the pattern is required.",
             cmd_search_backward,
             PatternPrompt::Search(SearchDirection::Backward),
         )
@@ -393,7 +393,7 @@ impl CommandRegistry {
         // ── Editor commands — sift ────────────────────────────────────────────
         ecmd_pane_text(
             "sift-within",
-            "Narrow each selection down to its regex matches. From `call!`, pass a pattern to sift without opening the prompt.",
+            "Narrow each selection down to its regex matches. From `call!`, the pattern is required.",
             cmd_sift_within,
             PatternPrompt::Sift,
         )

@@ -409,11 +409,11 @@ pub(in crate::editor) struct Missing {
     /// Whether starting the read commits the open paste session, as the
     /// command's own run would ([`step_paste_commit`]): it targets the
     /// focused pane and doesn't defer the commit.
-    pub(in crate::editor) commits_paste: bool,
-    pub(in crate::editor) operand: MissingOperand,
+    pub(super) commits_paste: bool,
+    pub(super) operand: MissingOperand,
 }
 
-pub(in crate::editor) enum MissingOperand {
+pub(super) enum MissingOperand {
     /// The next key's character.
     Char,
     /// A pattern typed at `prompt`, opened in the focused pane `fp`.

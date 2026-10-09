@@ -400,11 +400,12 @@ pub(super) use typed_misc::*;
 // ExitCursor, has_blank_line_cursor) are re-exported privately above
 // (visible only within `commands` and its descendants: every other `mod` in
 // this file, and the registry glob) since nothing outside `commands` calls
-// them. pane.rs and pipeline.rs export nothing else siblings need, so both are
-// re-exported explicitly instead of via glob. The items below ARE called
-// directly by `dispatch.rs`, `replay.rs`, `input_stack/insert.rs`, `host_impl.rs`,
-// `editor/mod.rs`, and the `editor::tests` tree; they need `pub(in editor)`
-// breadth.
+// them. collect.rs, pane.rs and pipeline.rs export nothing else siblings
+// need, so all three are re-exported explicitly instead of via glob. The
+// items below ARE called directly by `dispatch.rs`, `replay.rs`,
+// `input_stack/`, `host_impl/`, `editor/mod.rs`, and the `editor::tests`
+// tree; they need `pub(in editor)` breadth.
+pub(in crate::editor) use collect::{collect_operand, run_collected};
 pub(in crate::editor) use insert_session::{
     arm_autoindent, autoindent_owned, end_insert_session, tear_down_insert,
 };
@@ -420,13 +421,13 @@ pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 // (which reaches it directly too). Only `editor::tests` calls it through
 // this path, so the re-export is test-only to avoid an "unused import"
 // warning on every non-test build.
-pub(in crate::editor) use collect::{collect_operand, run_collected};
 #[cfg(test)]
 pub(in crate::editor) use pane::open_pane_in_layout;
+use pipeline::MissingOperand;
 pub(in crate::editor) use pipeline::{
     ArgError, BindError, BoundCommand, CommandPane, FocusedBindError, FocusedPane, Missing,
-    MissingOperand, NativeBody, PendingDispatch, TargetError, repeat_slot_owned, report_arg_error,
-    run, run_body, step_paste_commit, step_stamp_repeatable,
+    NativeBody, PendingDispatch, TargetError, repeat_slot_owned, report_arg_error, run, run_body,
+    step_paste_commit, step_stamp_repeatable,
 };
 
 // DisplayLineMap-dependent commands live in visual_move.rs; re-export for the registry glob.

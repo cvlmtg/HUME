@@ -28,7 +28,7 @@
             (call! "delete" pane)))))))
 
 ;; ── replace-surround ─────────────────────────────────────────────────────────
-;; Selects the pair, then lets `replace` read the new char; see README.
+;; Selects the pair, then reads the new char for `replace`; see README.
 
 (define-command! "helix-replace-surround"
   "Replace the surrounding delimiter pair (mr + old_char + new_char)."
@@ -38,7 +38,9 @@
         (let ((cmd (surround-cmd-for ch)))
           (when cmd
             (call! cmd pane)
-            (call! "replace" pane)))))))
+            (on-next-char!
+              (lambda (new)
+                (when new (call! "replace" pane new))))))))))
 
 ;; ── keybindings ──────────────────────────────────────────────────────────────
 

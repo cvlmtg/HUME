@@ -36,7 +36,8 @@ pub(in crate::editor) type FocusedCmdFn = fn(
 /// Function pointer for an [`EditorCmdBody::PaneChar`] handler: a
 /// [`PaneCmdFn`] that also takes the character its operand names (a key read
 /// after the command was dispatched, or a `call!` argument). The character is
-/// required: dispatch without one reads it from the next key first.
+/// required: a key dispatched without one reads it from the next key first,
+/// and a `call!` without one raises.
 pub(in crate::editor) type PaneCharCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
@@ -48,8 +49,9 @@ pub(in crate::editor) type PaneCharCmdFn = fn(
 
 /// Function pointer for an [`EditorCmdBody::PaneText`] handler: a
 /// [`PaneCmdFn`] that also takes the pattern its operand names (typed at the
-/// command's prompt, or a `call!` argument). The pattern is required:
-/// dispatch without one opens the prompt first.
+/// command's prompt, or a `call!` argument). The pattern is required: a key
+/// dispatched without one opens the prompt first, and a `call!` without one
+/// raises.
 pub(in crate::editor) type PaneTextCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,

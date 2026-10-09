@@ -190,7 +190,8 @@ impl EditorState {
     }
 
     /// The one refusal every interactive builtin (`completion-accept!`,
-    /// `picker!`/`live-picker!`, `completion-trigger`) opens with: reached
+    /// `picker!`/`live-picker!`, `on-next-char!`, `completion-trigger`)
+    /// opens with: reached
     /// during `.`, an interactive input is never re-run: its net edit was
     /// already recorded as an `InsertInput::Result` and replayed directly
     /// (see that variant's own doc). Reaching this call during replay means

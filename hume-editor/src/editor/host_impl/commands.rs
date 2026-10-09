@@ -195,9 +195,11 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                     "{name} is not a native command; use call! instead of call-native!"
                 ));
             }
+            // A script passes the operand it got from `on-next-char!` or
+            // `prompt!`: reading it here would return before the command
+            // ran, so the script's next call would run first.
             Err(crate::editor::commands::BindError::NeedsOperand(missing)) => {
-                crate::editor::commands::collect_operand(self.state, self.view, missing, pane, ctx);
-                return Ok(true);
+                return Err(format!("'{name}': {missing}"));
             }
             Err(e) => return Err(format!("'{name}': {e}")),
         };

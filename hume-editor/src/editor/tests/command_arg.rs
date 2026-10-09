@@ -79,17 +79,18 @@ fn call_with_an_operand_to_a_command_taking_none_raises() {
     assert!(has_error(&ed, "'move-right': takes no argument"));
 }
 
-// ── A missing character is read from the next key ───────────────────────────
-
 #[test]
-fn call_replace_without_a_char_reads_the_next_key() {
+fn call_replace_without_a_char_raises() {
     let mut ed = editor_from("-[h]>ello\n");
     with_probe(&mut ed, r#"(call! "replace" (focused-pane))"#);
     run_probe(&mut ed);
-    assert_eq!(text(&ed), "hello\n");
+    assert!(has_error(&ed, "'replace': needs a character"));
+    assert!(!reading_char(&ed));
     ed.feed_key(key('x'));
-    assert_eq!(text(&ed), "xello\n");
+    assert_eq!(text(&ed), "hello\n");
 }
+
+// ── A key bound to a character command reads the next key ───────────────────
 
 #[test]
 fn replace_dispatched_without_a_char_reads_the_next_key() {
@@ -236,20 +237,6 @@ fn reads_queued_by_one_body_take_keys_in_the_order_made() {
 }
 
 #[test]
-fn char_commands_called_without_chars_take_keys_in_call_order() {
-    let mut ed = editor_from("-[h]>ello a\n");
-    with_probe(
-        &mut ed,
-        r#"(call! "replace" (focused-pane))
-           (call! "find-forward" (focused-pane))"#,
-    );
-    run_probe(&mut ed);
-    ed.feed_key(key('x'));
-    ed.feed_key(key('a'));
-    assert_eq!(state(&ed), "xello -[a]>\n");
-}
-
-#[test]
 fn a_read_made_under_a_popup_queues_behind_the_pending_one() {
     let mut ed = editor_from("-[h]>ello\n");
     with_probe(
@@ -351,12 +338,49 @@ fn search_key_in_extend_mode_extends_from_the_anchor() {
 #[test]
 fn call_search_forward_without_extend_in_extend_mode_moves() {
     let mut ed = editor_from("-[h]>ello world\n");
-    with_probe(&mut ed, r#"(call! "search-forward" (focused-pane) 1 #f)"#);
+    with_probe(
+        &mut ed,
+        r#"(call! "search-forward" (focused-pane) 1 #f "wor")"#,
+    );
     ed.feed_key(key('e'));
     run_probe(&mut ed);
+    assert_eq!(state(&ed), "hello -[wor]>ld\n");
+}
+
+#[test]
+fn call_search_forward_without_a_pattern_raises() {
+    let mut ed = editor_from("-[h]>ello\n");
+    with_probe(&mut ed, r#"(call! "search-forward" (focused-pane))"#);
+    run_probe(&mut ed);
+    assert!(has_error(&ed, "'search-forward': needs a pattern"));
+    assert_eq!(ed.state.mode(), Mode::Normal);
+}
+
+/// The `prompt!` example in the user manual's `call!` section.
+#[test]
+fn a_pattern_read_with_prompt_runs_the_search() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    attach_steel(
+        &mut ed,
+        r#"(define-command! "search-prompt" "Search forward for a pattern you type."
+             (lambda (pane)
+               (prompt! pane "search:"
+                 (lambda (pat) (when pat (call! "search-forward" pane pat))))))"#,
+    );
+    ed.execute_keymap_command("search-prompt".into(), Some(1), false);
     type_keys(&mut ed, "wor");
     ed.feed_key(key_enter());
+    ed.settle();
     assert_eq!(state(&ed), "hello -[wor]>ld\n");
+}
+
+#[test]
+fn call_sift_within_without_a_pattern_raises() {
+    let mut ed = editor_from("-[hello]>\n");
+    with_probe(&mut ed, r#"(call! "sift-within" (focused-pane))"#);
+    run_probe(&mut ed);
+    assert!(has_error(&ed, "'sift-within': needs a pattern"));
+    assert_eq!(ed.state.mode(), Mode::Normal);
 }
 
 #[test]

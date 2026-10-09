@@ -41,10 +41,10 @@ fn search_esc_restores_position() {
     assert_eq!(state(&ed), "-[h]>ello world\n");
 }
 
-/// Re-entering search (`search-backward` reached, e.g. via a hook or timer's
-/// `(call! "search-backward" bid)`, while a `/` session is still open; there's
-/// no key path for this, since `?` typed into an open `/` prompt is just a
-/// literal character) must replace the session rather than no-op, and must
+/// Re-entering search (`search-backward` dispatched while a `/` session is
+/// still open; no key reaches this, since `?` typed into an open `/` prompt
+/// is a literal character, and a script's `call!` needs a pattern so opens
+/// no prompt) must replace the session rather than no-op, and must
 /// stash the *true* pre-search state, not the mid-`/`-session preview
 /// selection: `push_mode_layer`'s truncate runs the outgoing `Search`
 /// layer's own `tear_down` first, restoring `pre_sels` to what it held

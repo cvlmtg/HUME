@@ -1,6 +1,6 @@
 //! The `Char` layer: the next key typed is read as a character for whatever
-//! asked for one: a native command dispatched without its character (`f`,
-//! `r`, `(call! "replace" pane)`), a Steel `(on-next-char! …)` callback, or
+//! asked for one: a native command a key dispatched without its character
+//! (`f`, `r`), a Steel `(on-next-char! …)` callback, or
 //! the register name after `q`, `Q` or `"`. Reads made while one is pending
 //! take the following keys in the order they were made. Enter and Tab read
 //! as `'\n'` and `'\t'`. A register name must also be held with no modifier

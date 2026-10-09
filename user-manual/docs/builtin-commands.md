@@ -74,7 +74,7 @@ Create, refine, or manipulate the selection set.
 | `remove-primary-selection` | `Ctrl-,` | Remove the primary selection, promoting the next. |
 | `select-all` | `%` | Select the entire buffer. |
 | `select-last-insertion` | `m i i` | Select the text typed during the most recently completed insert session. |
-| `sift-within` | `s` | Narrow each selection down to its regex matches. From `call!`, pass a pattern to sift without opening the prompt. |
+| `sift-within` | `s` | Narrow each selection down to its regex matches. From `call!`, the pattern is required. |
 | `split-selection-on-newlines` | `S` | Split each multi-line selection into one per line. |
 | `trim-selection-whitespace` | `_` | Trim leading and trailing whitespace from each selection. |
 
@@ -191,8 +191,8 @@ Find text and act on the matches.
 | Command | Default key | Effect |
 |---------|-------------|--------|
 | `clear-search` | — | Clear search highlights. `Esc` also clears them; bind a key to run this directly. |
-| `search-backward` | `?` | Enter search mode (backward). From `call!`, pass a pattern to search without opening the prompt. |
-| `search-forward` | `/` | Enter search mode (forward). From `call!`, pass a pattern to search without opening the prompt. |
+| `search-backward` | `?` | Enter search mode (backward). From `call!`, the pattern is required. |
+| `search-forward` | `/` | Enter search mode (forward). From `call!`, the pattern is required. |
 | `search-next` | `n` | Jump to the next search match. |
 | `search-prev` | `N` | Jump to the previous search match. |
 | `search-selection` | `Ctrl-/` | Use the primary selection text literally as the search pattern. |

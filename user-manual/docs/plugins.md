@@ -185,8 +185,17 @@ Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`
 
 A few built-ins take one more argument, after the optional count and extend flag: what the command acts with.
 
-- `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add` act with a character, given as a Scheme character: `(call! "find-forward" pane #\x)`, `(call! "find-forward" pane 2 #\x)`. Without one, the command reads it from the next key typed, as when you press its key, and `call!` returns `#t` at once. To pass a one-character string, convert it with `(string-ref s 0)`.
-- `search-forward`, `search-backward`, and `sift-within` take a pattern. With one, they work as if you had typed it at their prompt and pressed Enter, without opening the prompt. A search with no match still becomes the current search, as it does after Enter, and `call!` returns `#f`. So does an invalid or empty pattern, which is also reported in `:messages` and leaves the current search as it was, and a `sift-within` that finds no match.
+- `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add` act with a character, given as a Scheme character: `(call! "find-forward" pane #\x)`, `(call! "find-forward" pane 2 #\x)`. The character is required: to use one the user types, read it with [`on-next-char!`](#reading-characters) and pass it on. To pass a one-character string, convert it with `(string-ref s 0)`.
+- `search-forward`, `search-backward`, and `sift-within` take a pattern. With one, they work as if you had typed it at their prompt and pressed Enter, without opening the prompt. A search with no match still becomes the current search, as it does after Enter, and `call!` returns `#f`. So does an invalid or empty pattern, which is also reported in `:messages` and leaves the current search as it was, and a `sift-within` that finds no match. The pattern is required: to use one the user types, read it with [`prompt!`](plugin-api.md#other-ui-widgets) and pass it on.
+
+`prompt!` calls its callback with the confirmed text, or with `#f` when the user cancels. Unlike the `/` and `s` prompts, it doesn't preview matches as you type or recall earlier patterns:
+
+```scheme
+(define-command! "search-prompt" "Search forward for a pattern you type."
+  (lambda (pane)
+    (prompt! pane "search:"
+      (lambda (pat) (when pat (call! "search-forward" pane pat))))))
+```
 
 Passing a string to one of the character commands raises an error, and so does passing an argument to a command that takes none, or a character to a command that takes a pattern.
 
@@ -267,7 +276,7 @@ A command that needs characters from the user (a surround operation, say) reads 
               (when new (call! "replace" pane new)))))))))
 ```
 
-Calling `replace` without a character reads it the same way, so the inner `on-next-char!` could be `(call! "replace" pane)` instead. Several reads started before a key arrives take the following keys in the order they were started. HUME shows nothing while it waits, so make it obvious from context that a character is expected.
+Several reads started before a key arrives take the following keys in the order they were started. HUME shows nothing while it waits, so make it obvious from context that a character is expected.
 
 ### Register prefix
 

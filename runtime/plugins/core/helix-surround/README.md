@@ -38,8 +38,8 @@ for its pair. It answers `#f` for any other character, and for the `#f` a cancel
 hands back, and both helix commands do nothing in that case.
 
 `helix-delete-surround` calls that command to select the pair as two cursor selections,
-then calls `delete`. `helix-replace-surround` calls it, then `replace` without a
-character, so `replace` reads the next key itself.
+then calls `delete`. `helix-replace-surround` calls it, then reads the next key with
+`on-next-char!` and passes it to `replace`.
 
 ## Design decisions
 

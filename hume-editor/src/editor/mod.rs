@@ -393,7 +393,7 @@ pub(crate) struct EditorState {
     /// `true` for `replay_dot`'s whole extent, `false` otherwise. Read by
     /// [`EditorState::refuse_during_dot`], which every interactive
     /// builtin (`completion-accept!`/`picker!`/`live-picker!`/
-    /// `completion-trigger`) opens with, to refuse loudly if a replayed
+    /// `on-next-char!`/`completion-trigger`) opens with, to refuse loudly if a replayed
     /// binding reaches one of them: reaching an interactive builtin during
     /// `.` means the binding decided differently than it did live (it was
     /// non-interactive then, or `.` wouldn't be re-running it at all; see
