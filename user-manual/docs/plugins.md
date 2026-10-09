@@ -500,6 +500,71 @@ For a finer-grained comparison inside a single changed line, highlighting exactl
 
 Returns `(hash 'hunks hunks 'deadline-hit too-long?)`. `'hunks` is a list of `(hash 'old-start 'old-end 'new-start 'new-end 'old-text 'new-text)`: 0-based character positions into `old-text`/`new-text`, with `'old-text`/`'new-text` on each hunk holding the actual changed words. A pure insertion has an empty `'old-text` and `'old-start` equal to `'old-end`; a pure deletion mirrors that on the new side. `'deadline-hit` is `#t` when the two texts were too large to compare word-by-word in time. Treat that as a signal to fall back to highlighting the whole line instead of individual words.
 
+### Completion sources
+
+A plugin can feed the completion menu by registering a *source*. A source is a procedure the editor calls with a request `id`. It answers by calling `completion-emit!` with that `id` exactly once, either right away or later from a callback. The smallest useful source offers a fixed list of words in Insert mode:
+
+```scheme
+(register-completion-source! "todo-markers"
+  (lambda (id pane prefix)
+    (completion-emit! id '("TODO" "FIXME" "HACK")))
+  #:target 'buffer)
+```
+
+Press `Ctrl-Space` after typing `FI` and `FIXME` is offered alongside every other source's answers. The source can ignore `prefix`, the word being typed: the editor filters and ranks the items against it, and replaces it with the item you accept. An empty list means the source has nothing to offer.
+
+A bare string is shorthand for an item with only a label. For more control, pass a hashmap using the keys of an LSP `CompletionItem`: `label` is required; `detail` is shown next to it in the menu; `insertText` is what accepting it inserts (default: the label); `filterText` and `sortText` change what the typed text is matched and tie-broken against; `kind` is an LSP `CompletionItemKind` number.
+
+```scheme
+(register-completion-source! "todo-markers"
+  (lambda (id pane prefix)
+    (completion-emit! id
+      (list (hash 'label "TODO" 'detail "work left to do" 'insertText "TODO: ")
+            (hash 'label "FIXME" 'detail "known bug" 'insertText "FIXME: "))))
+  #:target 'buffer)
+```
+
+To open the menu without `Ctrl-Space`, give the source trigger characters for a language. This one fires whenever `@` is typed in a Markdown buffer:
+
+```scheme
+(set-completion-triggers! "todo-markers" "markdown" '("@"))
+```
+
+A source can also complete the argument of a `:` command. A `'minibuf` source is called with the whole command line and the cursor position. Here it answers asynchronously, once `git` has listed the branches. `#:complete` connects it to the command:
+
+```scheme
+(register-completion-source! "git-branches"
+  (lambda (id input cursor)
+    (spawn-async! "git" '("branch" "--format=%(refname:short)")
+      (lambda (stdout stderr exit-code)
+        (completion-emit! id
+          (if (= exit-code 0)
+              (filter (lambda (s) (not (equal? s ""))) (split-many stdout "\n"))
+              '())))))
+  #:target 'minibuf #:match 'string)
+
+(define-typed-command! "checkout" "Switch to a git branch: :checkout <branch>."
+  (lambda (pane arg)
+    (when (string? arg)
+      (spawn-async! "git" (list "checkout" arg)
+        (lambda (stdout stderr exit-code)
+          (unless (= exit-code 0) (log! 'error stderr))))))
+  #:complete "git-branches")
+```
+
+If the user keeps typing or closes the menu before `git` answers, the request is out of date. `completion-emit!` then drops the answer and returns `#f`.
+
+#### Source options
+
+- **`#:target`** (required): `'buffer` serves Insert mode and calls `(proc id pane prefix)`. Its token is the run of word characters before the cursor. `'minibuf` serves the `:` line and calls `(proc id input cursor)`, with `input` the whole command line. Its token is the whitespace-delimited argument the cursor is in. Either way, the token is what the items are matched against and what accepting one replaces.
+- **`#:match`**: how items are scored against the token. `'fuzzy` (default) keeps items containing the typed characters in order, not necessarily adjacent. `'string` keeps only items that start with the token, all scored equally, so once something is typed, fuzzy matches from other sources rank above them. `'delegated` treats the answer as already filtered and keeps the source's own order.
+- **`#:priority`** (default `0`): breaks score ties between sources, higher first.
+- **`#:token-chars`** (`'buffer` sources only, default `""`): adds characters to the token on top of the buffer's `word-chars`. With `#:token-chars "-$"`, `foo-ba` is one token: it is what `prefix` holds and what accepting an item replaces, and typing `-` keeps the menu open. It cannot contain whitespace.
+- **`#:resolve #t`** (`'buffer` sources only, default `#f`): this source's items come from the buffer's language server, so accepting one may send `completionItem/resolve` for it. Set it only for a source that forwards that server's items, never for one that builds its own items in a buffer with a server attached.
+- **Names**: `'buffer` and `'minibuf` sources have separate names. Registering `name` again under the same target replaces the earlier source; the same `name` under the other target is a second, independent source.
+- **`#:incomplete #t`** on `completion-emit!` asks for the source to be called again as the user keeps typing, instead of filtering the first answer. A server response marked incomplete does the same.
+- `completion-emit!` also takes a server's whole `textDocument/completion` response, as [`lsp-request!` or `lsp-request-all!`](lsp-api.md#language-servers) delivered it, in its `items` list; its items join the others. Any entry that is not a string, a hashmap with a `label`, or such a response is an error.
+
 ### Custom pickers
 
 The modal fuzzy-finder panel behind [Fuzzy Finder](pickers.md) is a generic widget any

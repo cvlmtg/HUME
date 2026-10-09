@@ -1,8 +1,9 @@
 # Plugin API
 
-Reference for every function a plugin or `init.scm` can call directly, as opposed to a command reached through a key binding or [`call!`](plugins.md#calling-other-commands). Two layers make up this surface:
+Reference for every function a plugin or `init.scm` can call directly, as opposed to a command reached through a key binding or [`call!`](plugins.md#calling-other-commands). Three layers make up this surface:
 
 - **Builtins**: native to the editor, always available, called as plain Scheme: `(buffer-text pane)`, `(bind-key! ...)`. Some are thin Scheme wrappers that add keyword arguments and defaults; the signature documented here is the wrapper's.
+- **[Language Server API](lsp-api.md)**: the builtins for registering, configuring, and requesting from language servers.
 - **[Standard Library](standard-library.md)**: `core:stdlib`, an optional bundled *plugin*. Its commands are reached through `call!`, like any other plugin's: `(call! "stdlib/find" pred? lst)`.
 
 This page is a lookup reference: tables of signatures and one-line effects. For narrative walkthroughs and worked examples, see [Plugins](plugins.md), [Language Servers](lsp.md), [Configuration](configuration.md), and the other pages linked throughout.
@@ -12,7 +13,7 @@ This page is a lookup reference: tables of signatures and one-line effects. For 
 - A function whose call changes something (editor state, a registration, a process, a file) ends in `!`. Reads and functions that only build a value, like `debounce`, don't.
 - Lines, columns, and char offsets are 0-based everywhere. Add 1 only when showing a line number to the user.
 - Optional arguments are keywords with a default, like `#:cwd`, never a positional `#f` placeholder. The exception is `define-language!`, whose extensions, globs, and shebangs are positional lists you can drop from the end.
-- A structured value you pass in or get back (a decoration entry, a diagnostic, a request error) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. Values decoded from server JSON are JSON handles instead (see [JSON handles](#json-handles)). Two kinds of value are hashmaps with string keys, the wire shape: the `lsp-*-params` results (`(hash-ref (lsp-position-params pane) "position")`) and the items `completion-top` returns, whose source is `(hash-ref item "source")`. Picker items `(display . payload)`, picker `#:actions` `(key-spec . proc)`, and `register-lsp-server!`'s `#:env` `("KEY" . "VALUE")` are pairs, not records: the first two are per-row data on a hot path, the last a map.
+- A structured value you pass in or get back (a decoration entry, a diagnostic, a request error) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. Values decoded from server JSON are JSON handles instead (see [JSON handles](lsp-api.md#json-handles)). Two kinds of value are hashmaps with string keys, the wire shape: the `lsp-*-params` results (`(hash-ref (lsp-position-params pane) "position")`) and the items `completion-top` returns, whose source is `(hash-ref item "source")`. Picker items `(display . payload)`, picker `#:actions` `(key-spec . proc)`, and `register-lsp-server!`'s `#:env` `("KEY" . "VALUE")` are pairs, not records: the first two are per-row data on a hot path, the last a map.
 - Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, and every call that closes or changes that widget takes it. A stale token (the widget already closed or was replaced) is a no-op, so a late callback can never touch someone else's widget. `#f` — an opener's own answer when the open was dropped before it could happen — is stale by construction and a no-op the same way.
 - A value from a fixed set of names (a mode, a hook name, a log level, an enum option's value) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
@@ -152,12 +153,11 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | Call | Effect |
 |------|--------|
 | `(apply-text-edits! pane edits #:expect-generation)` | Apply a list of edits to `pane`'s buffer, mapped through `pane`'s own selections, each entry a JSON handle onto a wire `TextEdit` (e.g. a `textDocument/formatting` response element, passed straight through) |
-| `(apply-workspace-edit! pane wsedit)` | Apply an LSP `WorkspaceEdit` (a JSON handle onto one, e.g. straight from an `lsp-request!` response) across every buffer it touches, mapping the hunk for `pane`'s own buffer (if any) through `pane`'s selections; returns the count of buffers modified |
 | `(goto-location! pane loc)` | Move `pane`'s own pane to `loc`: an LSP `Location`/`LocationLink` JSON handle, or `(hash 'target t 'line l 'char-col c)` with `t` a pane value, path, or `file://` URI and `l`/`c` char-indexed |
 | `(goto-revision! pane id)` | Move `pane`'s buffer to revision `id` of its undo history, a number from `buffer-undo-tree`, across branches. Raises when the buffer has no such revision (it was never made, or the `undo-levels` limit dropped it) and when the buffer is read-only. Redo then follows the branch it entered |
 | `(insert-key! pane key)` | Run `key`'s normal Insert-mode behaviour (tab-style-aware Tab, auto-pairs, auto-indented Enter, …) on `pane`, as if it had no Insert-mode binding; `key` is one chord in `bind-key!`'s own syntax |
 
-`#:expect-generation` guards against applying a stale edit: pass a `buffer-generation` snapshot and the call fails if the buffer has mutated since. `apply-text-edits!`/`apply-workspace-edit!`/`goto-location!`'s wire shape each decode their positions with the encoding of the server that sent them. A plain hashmap you build by hand (not pulled from a response via `json-ref`/`json-list`) has no such encoding to decode with, and is rejected.
+`#:expect-generation` guards against applying a stale edit: pass a `buffer-generation` snapshot and the call fails if the buffer has mutated since. `apply-text-edits!`/`goto-location!`'s wire shape, like [`apply-workspace-edit!`](lsp-api.md#language-servers)'s, each decode their positions with the encoding of the server that sent them. A plain hashmap you build by hand (not pulled from a response via `json-ref`/`json-list`) has no such encoding to decode with, and is rejected.
 
 `insert-key!` only works while `pane` is the focused pane and Insert mode is active, from inside a command bound to an Insert-mode key. It exists so a binding can decide, at the moment the key is pressed, whether to override that key's normal behaviour or fall back to it. For example, binding Tab to complete after a letter and insert a tab everywhere else:
 
@@ -191,45 +191,9 @@ Both ends speak the same list shape. A string a script writes pastes as whole li
 
 `define-language!`/`register-grammar!` are covered with examples in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).
 
-## Language servers
-
-These are editor-builtin commands any LSP plugin can drive: an LSP plugin registers and talks to a server through them rather than wiring its own protocol client.
-
-| Call | Effect |
-|------|--------|
-| `(register-lsp-server! name #:command #:args #:init-options #:settings #:env)` | Register (or replace) the server called `name`. A registration only says how to start the server; a language uses it once that language's list names it (`set-language-servers!`). `name` is non-empty with no whitespace |
-| `(unregister-lsp-server! name)` | Queue removing `name`'s registration; its buffers detach and a server left with no buffer stops; idempotent. Registering the same name again right after, in the same call, starts a fresh server |
-| `(set-language-servers! language entries)`, `(set-default-language-servers! language entries)` | Set the ordered server list for `language`: `entries` is a list of server names or `(hash 'name n 'only-features '(...))` / `(hash 'name n 'except-features '(...))`, or `#f` to clear. The first is the user's list and always wins; the second is a plugin's default, used only while there is no user list. Raises on an unknown feature, on both filters in one entry, or on a name listed twice |
-| `(lsp-language-servers language)` | The servers `language` uses, in order: one `(hash 'name n)` each, with `'only-features` or `'except-features` when its entry limits it. A name that is not registered is left out |
-| `(lsp-server-registered? name)` | `#t` if a server is registered under `name` |
-| `(lsp-stop! target)`, `(lsp-restart! target)` | Queue stopping / stopping-then-respawning a server: `target` is a pane value (every server attached to that buffer) or a server-name string (every running copy of it) |
-| `(lsp-show-status! pane)` | Open the `[lsp-status]` read-only view, only while `pane` is still the one you're looking at |
-| `(lsp-request! pane method params callback #:feature #:to #:unavailable #:allow-stale #:supersede #:require-focus #:tracked)` | Send a raw request to one server attached to `pane`'s buffer: the first that is running and that the method (a standard one such as `textDocument/hover` is tied to its feature, as named in `set-language-servers!`), `#:feature` (the feature of any other method; naming one for a standard method is an error) and `#:to` (a server value) allow. The choice is made when the request is sent. `callback` is `(lambda (err result) ...)`. `err` is `#f` or `(hash 'kind k 'message m)`: `k` is `'server` (the server's own error, with its `'code` too), `'timeout`, `'stopped` (the server stopped or crashed before it answered), `'unavailable` (no server could take the request: "hover is not supported by rust-analyzer", "rust-analyzer still starting") or `'unsent` (the params could not be sent). `#:unavailable 'empty` makes a request no server can take call back with no error and a void result instead, for a request the user did not ask for. A real response delivers as a JSON handle; read it with `json-ref`/`json-contains?`/`json-list`, or put it in the list `completion-emit!` takes. `#:supersede key` cancels the request still waiting under the same key, without calling it back. `#:require-focus #t` drops the callback unless `pane` is still the exact pane you were looking at, still showing the same buffer, when the response arrives. It needs `pane` to carry a pane, not just a buffer. `#:tracked token` hands the request a `track-position!` token: it is forgotten once the callback has run, even if it raised, or once the request ends without calling it, unless the callback calls `keep-tracked-position!` |
-| `(lsp-request-all! pane method params callback #:feature #:unavailable #:allow-stale #:supersede #:require-focus #:tracked)` | Send the request to every server the method and `#:feature` allow, and call `callback` once, as `(lambda (err results) ...)`, when all of them have answered: `results` holds one `(hash 'server s 'err e 'result r)` per server, in the buffer's server order. `params` is one hash for all of them, or a non-empty list of `(server . params)` pairs, each server once, giving each named server its own; the method and `#:feature` still decide whether each is sent it, and when none is the request is one no server can take. `#:unavailable 'empty` calls back with an empty `results` when no server can take the request, instead of an error |
-| `(lsp-notify! pane method params #:feature #:to)` | Fire-and-forget notification to every running server attached to `pane`'s buffer that the method (a standard one is tied to its feature), `#:feature` and `#:to` allow, no callback |
-| `(lsp-servers pane #:feature #:method)` | The servers attached to `pane`'s buffer, as server values, in order. With neither keyword, all of them, running or not; with either, the ones a request of that feature or method would reach now |
-| `(lsp-server-name server)` | The name `server` was registered under |
-| `(register-lsp-notification-hook! methods proc)` | Call `proc` as `(lambda (server method params) ...)` only for server notifications whose method is `methods` (a string) or one of `methods` (a list of strings), so one `proc` can serve several methods. Any other method is logged as unhandled, unless a plain `register-hook!` handler takes it. Like `register-hook!`: init or plugin load only, and removed if your plugin fails to load |
-| `(lsp-capabilities server)` | A JSON handle onto `server`'s `ServerCapabilities` (read with `json-ref`/`json-contains?`), or `#f` while it is starting or once it has stopped |
-| `(lsp-capability server #:feature f)`, `(lsp-capability server #:method m)` | What `server` advertises for the feature, or for the capability the method needs: `#t`, a JSON handle onto the provider's options (for example its `"triggerCharacters"`), or `#f` when it advertises none or has stopped. Give exactly one of the two keywords |
-| `(lsp-server-status)` | List of hashmaps with keys `'name`, `'languages`, `'root`, `'state` (`'starting`, `'running`, `'crashed`, or `'dead`), and `'pending`, one per running server |
-| `(lsp-position-params pane)` | `{"textDocument" {"uri"} "position" p}` for the primary cursor in `pane`'s own pane, or `#f` if the buffer has no file. `p` is a position value each server receives in its own column units when the request is sent; pass the hash to `lsp-request!` as is, or with keys added, before the buffer changes: a position taken before an edit is refused with an `'unsent` error |
-| `(track-position! pane)` | Remember the primary cursor in `pane`'s own pane through every edit, and return a token for it |
-| `(tracked-position-params token)` | The `lsp-position-params` shape for where the remembered position is now, or `#f` if it was released, its buffer closed or was replaced, or the buffer has no file. A `#f` or released token answers `#f` |
-| `(untrack-position! token)` | Forget the position; a released token is a no-op |
-| `(keep-tracked-position! token)` | Keep a position handed to `lsp-request!` with `#:tracked` after its callback; forget it later with `untrack-position!`. A released token is a no-op |
-| `(lsp-primary-range-params pane)` | Same shape, a `"range"` value for the primary selection alone |
-| `(lsp-linewise-ranges-params pane)` | `{"textDocument" {"uri"} "ranges" [...]}`: one range value per linewise selection in `pane`'s own pane (a run of touching selections coalesces into one), `"ranges"` empty if none are linewise; `#f` only for the same reasons `lsp-primary-range-params` returns `#f` |
-| `(lsp-position->offset pane position)` | The buffer's char offset for a wire `{"line" "character"}` hashmap, or `#f` |
-| `(lsp-range->offsets pane range)` | `(hash 'start s 'end e)` char offsets for a wire `{"start" ... "end" ...}` range, or `#f` |
-| `(lsp-label-offsets->text label offsets)` | The slice of `label` a `ParameterInformation`-style `(start end)` wire offset pair names; `offsets` decodes with the encoding of the server that sent it |
-| `(lsp-locations->display-parts locs)` | One `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b 'location loc)` per raw `Location`/`LocationLink` in `locs`, each decodes wire positions with the encoding of the server that sent it; `'buffer` is the open buffer the location is in, or `#f` when the file is not open, and `'location` is the location itself, for `goto-location!`. Rows naming the same path, line and column appear once, the first, so several servers' answers merge |
-
-`register-lsp-server!`, `lsp-request!`, `lsp-request-all!` and `lsp-notify!` are covered with examples in [Registering a language server](lsp.md#registering-a-language-server) and [Advanced: custom requests](lsp.md#advanced-custom-requests). `lsp-position->offset`/`lsp-range->offsets`/`lsp-label-offsets->text` convert LSP wire units (UTF-16 or byte offsets, depending on the server's negotiated encoding) to editor-native char offsets. Always go through these rather than assuming a 1:1 mapping. `lsp-locations->display-parts`'s column is an exact grapheme column when the target has an open buffer; otherwise it's the location's own wire `character` verbatim, since refining it would mean reading a file the user may never open.
-
 ## Diagnostics & decorations
 
-Not LSP-specific (any plugin can populate these), but LSP diagnostics and inlay hints are the heaviest client.
+Not LSP-specific (any plugin can populate these), but LSP diagnostics and inlay hints are the heaviest client. The LSP-only calls are on the [Language Server API](lsp-api.md) page.
 
 | Call | Effect |
 |------|--------|
@@ -249,23 +213,23 @@ Not LSP-specific (any plugin can populate these), but LSP diagnostics and inlay 
 
 A plugin registers a completion *source*; the editor drives it. `Ctrl-Space` in Insert mode (the built-in `completion-trigger` command) asks every source registered for the buffer, a registered trigger character asks the source registered under its name, and the first `Tab` on a `:` command line asks the source that command declared. Each answer is ranked with every other source's, in one menu, against that source's own token; no source renders its own UI.
 
+Full walkthrough (a static source, richer items, trigger characters, an asynchronous `:` command argument source) and every option `register-completion-source!` takes are in [Completion sources](plugins.md#completion-sources). `#:complete` on `define-typed-command!` also accepts a built-in source such as `"path"`. The per-server variants of the two trigger calls are on the [Language Server API](lsp-api.md#language-servers) page. See [Hooks](plugins.md#hooks) for the `on-trigger-char` and `on-completion-accept` lambda signatures.
+
 | Call | Effect |
 |------|--------|
-| `(register-completion-source! name proc #:target #:match #:priority #:resolve #:token-chars)` | Register `proc` as the completion source `name`. `#:target 'buffer` serves Insert mode, calling `(proc id pane prefix)`; its token is the run of word characters before the cursor (`prefix` being that text). `#:token-chars` (`'buffer` sources only, default `""`) adds characters to what counts as part of the token for this source, on top of the buffer's `word-chars`: `#:token-chars "-$"` makes `foo-ba` one token, so it is what `prefix` holds and what accepting an item replaces, and typing `-` keeps the menu open instead of leaving the token. It cannot contain whitespace. `#:target 'minibuf` serves the `:` line, calling `(proc id input cursor)`; its token is always the whitespace-delimited argument the cursor is in. Either way, the token is what the source's answers are filtered against and what accepting one replaces. `#:match` (`'fuzzy` default, `'string`, or `'delegated`) picks how items are scored against the token's text; `#:priority` (default `0`) breaks score ties, higher first. `#:resolve #t` (`'buffer` sources only, default `#f`) claims that this source's items are wire completion items from the buffer's attached LSP server, so accepting one may send `completionItem/resolve` for it. Set this only for a source whose items came from that server, never for one that just builds its own items in an LSP-attached buffer. `'buffer` and `'minibuf` names are separate: registering `name` again under the same `#:target` replaces the earlier source; the same `name` under the *other* target is a second, independent source |
-| `(completion-emit! id items #:incomplete)` | `proc`'s answer to the call it received `id` from, sync or from a later callback, exactly once; an empty list means "nothing from me". `items` is a list; each entry is a completion-item hashmap (`label` is the only required key), a bare string (sugar for a hashmap with just that `label`), or a server's whole `textDocument/completion` response as `lsp-request!` or `lsp-request-all!` delivered it, whose items join the others. `#:incomplete #t` asks to be called again as the user keeps typing; a response that says it is incomplete does the same. Any entry of another shape errors. Returns `#f` when `id` is no longer the latest call (a later keystroke re-asked, or the menu closed) and the answer was dropped |
-| `(set-hook-triggers! source language chars)` | Set the 1-char strings `chars` that, typed in Insert mode in a buffer of `language`, fire the `on-trigger-char` hook with `source` as its tag. Replaces that `(source, language)` pair's previous set, and an empty `chars` removes it. For features that aren't completion (signature help uses it); a completion source uses `set-completion-triggers!` instead |
-| `(set-attachment-hook-triggers! source pane server feature chars)` | The same, for `pane`'s buffer attached to `server`, a server value as `on-lsp-attach` passes it, and a feature symbol such as `'signature-help`. Nothing is set unless the language's server list lets `server` handle `feature` for the buffer and `server` supports it, so `on-lsp-attach` can call this for every server. The set goes when the buffer detaches from the server, and when a change to the language's server list alters what `server` handles for the buffer (`on-lsp-attach` then fires again, so register there). Does nothing when the buffer is not attached to `server` |
-| `(set-attachment-completion-triggers! source pane server feature chars)` | As `set-attachment-hook-triggers!`, for a `'buffer` completion source's own trigger characters; see `set-completion-triggers!` |
-| `(set-completion-triggers! source language chars)` | A `'buffer` completion source's own trigger characters for `language`, replacing that `(source, language)` pair's previous set; an empty `chars` removes it. Typing one of `chars` in Insert mode invokes `source` directly, the same as an explicit trigger's own `#:target 'buffer` invocation. A `source` that names no registered `'buffer` source is reported in the message log when the call takes effect, after the current evaluation finishes |
+| `(register-completion-source! name proc #:target #:match #:priority #:resolve #:token-chars)` | Register `proc` as completion source `name` (see [Source options](plugins.md#source-options)) |
+| `(completion-emit! id items #:incomplete)` | Answer request `id` with `items`; `#f` if the answer was dropped as out of date |
+| `(set-completion-triggers! source language chars)` | Characters that invoke `'buffer` source `source` when typed in a `language` buffer; replaces the previous set, and `'()` removes it. An unknown `source` is reported in the message log |
+| `(set-hook-triggers! source language chars)` | Characters that fire the `on-trigger-char` hook, tagged `source`, when typed in a `language` buffer; replaces the previous set, and `'()` removes it. For features other than completion, such as signature help |
 | `(completion-top n)` | The top `n` ranked items of the open menu, each carrying its `source` |
 | `(completion-accept! idx)` | Accept item `idx` from `completion-top`'s (ranked) order; fires the `on-completion-accept` hook |
 | `(completion-dismiss!)` | Close the open menu; a no-op if none is open |
 
-`define-typed-command!` takes `#:complete "name"` to give a `:` command argument completion from source `name`: a source registered with `#:target 'minibuf`, or a built-in one such as `"path"`. See [Hooks](plugins.md#hooks) for `on-trigger-char` and `on-completion-accept`'s lambda signatures.
-
 ## Pickers
 
 These are editor-builtin commands any plugin can drive: a plugin opens a picker and pushes items through them rather than building its own fuzzy-finder.
+
+Full walkthroughs (batch vs. streaming population, truncation direction, exit-code handling, live requery) are in [Custom pickers](plugins.md#custom-pickers) and [Live requery (live grep)](plugins.md#live-requery-live-grep).
 
 | Call | Effect |
 |------|--------|
@@ -276,8 +240,6 @@ These are editor-builtin commands any plugin can drive: a plugin opens a picker 
 | `(picker-source-spawn! token cmd args #:cwd #:nul #:ok-exit-codes)` | Stream a subprocess's stdout lines into an open picker as items |
 | `(picker-source-stop! token)` | Kill a picker's still-running spawned source |
 | `(picker-close! token)` | Close the picker `token` names; a no-op if that picker has already closed or been replaced |
-
-Full walkthroughs (batch vs. streaming population, truncation direction, exit-code handling, live requery) are in [Custom pickers](plugins.md#custom-pickers) and [Live requery (live grep)](plugins.md#live-requery-live-grep).
 
 ## Other UI widgets
 
@@ -346,28 +308,6 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 The pattern for reading a plugin's own files is covered in [Filesystem and processes](plugins.md#filesystem-and-processes).
 
 Use `(cwd)` and `(set-cwd! path)` to read and change the working directory, not Steel's `current-directory` and `change-current-directory!`: HUME's own commands and spawned programs follow its working directory, and a plugin that moves the process directory with Steel's call leaves HUME behind. To pass a relative path to a program or to Steel's file functions, join it onto `(cwd)` first: `(path-join (cwd) "src")`. HUME's own calls (`spawn-async!`, `run-capture!`, `run-inline-output!`, `picker-source-spawn!`, `compile-grammar!`, `register-grammar!`, `open-buffer!`) join a relative path onto the working directory for you.
-
-## JSON handles
-
-An `lsp-request!` response, `lsp-capabilities`, a `diagnostics-for-buffer`
-entry's `'raw` field, the `on-lsp-notification` hook's params, `on-completion-accept`'s
-item, and `json-parse`'s result are all opaque JSON handles rather than
-decoded hashmaps. Read one with these instead of `hash-ref`/`hash?`/`list?`:
-
-Other values stay ordinary hashmaps: `lsp-request!`'s `err`, `lsp-server-status`,
-and a `diagnostics-for-buffer` entry itself (outside its `'raw` field) are
-built by HUME, not decoded from server JSON, and read with `hash-ref` as
-usual; see [Advanced: custom requests](lsp.md#advanced-custom-requests) for
-the `err`/`res` distinction in practice.
-
-| Call | Effect |
-|------|--------|
-| `(json-parse str)` | Decode a JSON string: an object/array becomes a JSON handle (read with `json-ref`/`json-contains?`/`json-list`), a scalar crosses natively, and top-level `null` is void |
-| `(json-ref j seg ...)` | Look up a path of string keys / integer indices inside handle `j`. A nested object or array field comes back as another handle; a scalar field comes back as a native string/number/boolean; a `null` field comes back as void. Errors, naming the full path, on a missing key, an out-of-range index, or indexing into the wrong container kind |
-| `(json-ref-or j default seg ...)` | `json-ref`, but `default` in place of erroring when the path doesn't resolve; a present `null` still comes back as void, not `default` |
-| `(json-contains? j seg ...)` | `#t` iff the path resolves; a `null` value at the end still counts as present |
-| `(json-list j)` | `j`, a JSON array handle, as a Steel list of its elements (each one funneled through the same handle/native-value rule as `json-ref`). Errors if `j` isn't an array |
-| `(json-array? v)`, `(json-object? v)` | `#t` if `v` is a JSON handle onto an array/object, `#f` for anything else (including a non-handle value) |
 
 ## Grammar compilation
 

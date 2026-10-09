@@ -410,7 +410,7 @@ Server output and protocol errors are visible in `:messages`.
 
 ## Advanced: custom requests
 
-`lsp-request!` isn't limited to the built-in commands above: any plugin can call it to reach
+Every signature is on the [Language Server API](lsp-api.md) page. `lsp-request!` isn't limited to the built-in commands above: any plugin can call it to reach
 a server extension the built-in feature set doesn't cover. This is how you'd add a command
 for rust-analyzer's `rust-analyzer/expandMacro`, which expands the macro under the cursor and
 returns its generated code:

@@ -121,6 +121,7 @@ export default defineConfig({
           { text: 'Command mode', link: '/command-mode' },
           { text: 'Default Keys', link: '/default-keys' },
           { text: 'Plugin API', link: '/plugin-api' },
+          { text: 'Language Server API', link: '/lsp-api' },
           { text: 'Builtin Commands', link: '/builtin-commands' },
           { text: 'Standard Library', link: '/standard-library' },
         ],
