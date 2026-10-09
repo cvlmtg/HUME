@@ -562,7 +562,7 @@ fn completion_resolve_goes_to_the_items_origin_server() {
         r#"{}
 (register-lsp-server! "ra-lint" #:command "ra-lint")
 (set-language-servers! "rust" (list (hash 'name "rust-analyzer" 'except-features '(completion)) "ra-lint"))"#,
-        core_lsp_init()
+        core_lsp_init(None)
     );
     let mut rig = LspRig::drained(
         tmp.path(),

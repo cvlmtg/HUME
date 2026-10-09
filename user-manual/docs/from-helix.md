@@ -52,7 +52,7 @@ HUME has no TOML config file. Every setting and keybinding is a call to a Scheme
 | Whitespace indicators | `[editor.whitespace]`<br>`render = "all"` | `(set-option! "whitespace-space" 'all)`<br>`(set-option! "whitespace-tab" 'all)`<br>`(set-option! "whitespace-newline" 'all)` |
 | Insert-mode cursor | `[editor.cursor-shape]`<br>`insert = "bar"` | `(set-option! "cursor-shape-insert" 'bar)` |
 | Auto-pairs | `auto-pairs = false` | `(set-option! "auto-pairs" #f)` |
-| Inlay hints | `[editor.lsp]`<br>`display-inlay-hints = true` | `(set-option! "lsp.inlay-hints" #t)` |
+| Inlay hints | `[editor.lsp]`<br>`display-inlay-hints = true` | `(load-plugin! "core:lsp" #:config (hash "inlay-hints" #t))` |
 | Statusline | `[editor.statusline]`<br>`left = [...]` | `(configure-statusline! '(...) '(...) '(...))`, see [Statusline](#statusline) |
 | Keybinding | `[keys.normal]`<br>`"C-j" = "move_line_down"` | `(bind-key! 'normal "ctrl-j" "move-down")` |
 

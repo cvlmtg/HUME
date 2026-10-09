@@ -235,64 +235,6 @@ fn clearing_the_store_removes_the_hint_next_frame() {
 }
 
 #[test]
-fn setting_off_does_not_clear_an_unrelated_sources_hints() {
-    // The render bridge (`update_inlay_hint_providers`) is not gated on
-    // `lsp.inlay-hints`: that setting belongs to the LSP inlay-hints
-    // plugin, which owns clearing *its own* source
-    // (`"lsp-inlay-hints"`) on toggle-off via the `on-option-change` hook
-    // (see `runtime/plugins/core/lsp/lib/inlay.scm`, and the real-plugin
-    // regression coverage in `tests/unix/lsp_inlay_feature.rs`). This test
-    // has no scripting host attached, so no hook fires. It's checking the
-    // render bridge in isolation: a source with no relation to LSP must
-    // render regardless of that setting, on or off.
-    let mut ed = open_headless(None);
-    type_text(&mut ed, "let x = 5");
-    let bid = ed.focused_buffer_id();
-    ed.state.config.decorations.set_inlay_hints(
-        "some-other-plugin".to_string(),
-        bid,
-        vec![InlayHintEntry {
-            pos: co(4),
-            text: ": i32".to_string(),
-            before: false,
-        }],
-    );
-    let pid = ed.state.focus.id();
-    let has_hint = |ed: &mut Editor, ctx: &mut RenderContext| {
-        ed.sync_viewport_dims(40, 8);
-        ed.settle();
-        ed.prepare_frame(ctx);
-        ed.state
-            .panes
-            .render
-            .get(pid)
-            .unwrap()
-            .inlay_hints()
-            .values()
-            .any(|v| !v.is_empty())
-    };
-
-    let mut ctx = RenderContext::new();
-    assert!(
-        has_hint(&mut ed, &mut ctx),
-        "sanity: an unrelated source's hint renders with the setting at its off default"
-    );
-
-    type_cmd(&mut ed, ":set global lsp.inlay-hints=true");
-    assert!(
-        has_hint(&mut ed, &mut ctx),
-        "unrelated source must still render once the LSP setting turns on"
-    );
-
-    type_cmd(&mut ed, ":set global lsp.inlay-hints=false");
-    assert!(
-        has_hint(&mut ed, &mut ctx),
-        "turning the LSP inlay-hints setting back off must not clear a \
-         source it doesn't own"
-    );
-}
-
-#[test]
 fn deleting_a_line_drops_its_inlay_hint_and_undo_does_not_resurrect_it() {
     // The reported bug: an inlay hint anchored mid-line survived `x`
     // (select-line, `\n` included) + `d` (delete), re-anchored to whatever

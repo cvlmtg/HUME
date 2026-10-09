@@ -1265,14 +1265,14 @@ fn on_option_change_fires_key_and_value_after_a_set_global() {
     ed.scripting = Some(host);
     ed.settle();
 
-    type_cmd(&mut ed, ":set global lsp.inlay-hints=true");
+    type_cmd(&mut ed, ":set global lsp.diagnostics-on-insert-line=true");
     ed.settle();
 
     assert!(
         ed.state
             .message_log
             .entries()
-            .any(|e| e.severity == Severity::Trace && e.text == "lsp.inlay-hints=on"),
+            .any(|e| e.severity == Severity::Trace && e.text == "lsp.diagnostics-on-insert-line=on"),
         "on-option-change must fire with the changed key and its new value \
          after a successful :set global"
     );

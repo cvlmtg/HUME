@@ -131,8 +131,11 @@ come from one server.
 
 Several disjoint ranges go out as one `textDocument/rangesFormatting` request (LSP 3.18)
 when that server advertises `rangesSupport`. Otherwise each range is its own
-`textDocument/rangeFormatting` request, and more than `lsp.format-max-ranges` ranges log a
-message and format nothing, the same refusal a mixed selection gets.
+`textDocument/rangeFormatting` request, and more than the `format-max-ranges` config value
+ranges log a message and format nothing, the same refusal a mixed selection gets. The cap
+keeps a stray select-all-matches with hundreds of cursors from bursting hundreds of
+requests at the server, and refusing beats narrowing to one selection without a word.
+A server with `rangesSupport` takes every range in one request, so the cap doesn't apply.
 
 The per-range fan-out keeps three boxes: requests still in flight, edits collected so far,
 and whether it has aborted. All edits are applied together when the in-flight count

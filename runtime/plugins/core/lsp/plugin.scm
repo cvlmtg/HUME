@@ -12,9 +12,6 @@
 (require "lib/completion.scm")
 (require "lib/inlay.scm")
 
-(unless (member "core:stdlib" (declared-plugins))
-  (error "core:lsp: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:lsp\")"))
-
 ;; ── Default keybindings ───────────────────────────────────────────────────────
 
 (bind-key! 'normal "g d" "lsp-goto-definition")

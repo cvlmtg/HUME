@@ -613,7 +613,7 @@ fn render(ed: &mut Editor) {
 /// a test that seeds baseline state, then registers a real
 /// `on-viewport-change` hook and does something slow (`eval_with_real_host`
 /// builds a whole Steel VM from disk) before observing the *next* viewport
-/// change. Plain `frame` leaves a real timer armed (`lsp_viewport_debounce_ms`,
+/// change. Plain `frame` leaves a real timer armed (`viewport_debounce_ms`,
 /// default 150ms); if enough wall-clock time passes before the next drain, it
 /// fires for real, reading the pane's *current* (by then transitioned)
 /// state per `timer_bridge.rs`'s documented fire-site contract, and
@@ -626,7 +626,7 @@ fn render(ed: &mut Editor) {
 /// The zeroed debounce is a permanent pin, not a save/restore: every caller
 /// wants immediate-fire semantics for the rest of its body too.
 fn seed_frame(ed: &mut Editor, width: u16, height: u16) {
-    ed.state.settings.lsp_viewport_debounce_ms = 0;
+    ed.state.settings.viewport_debounce_ms = 0;
     frame(ed, width, height);
     ed.settle();
 }

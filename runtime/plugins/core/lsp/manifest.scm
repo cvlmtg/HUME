@@ -6,4 +6,5 @@
                "goto-next-diagnostic" "goto-prev-diagnostic"
                "lsp-rename" "lsp-fmt" "lsp-code-actions")
   #:typed-commands '("diagnostics" "format-source"
-                      "lsp-status" "lsp-stop" "lsp-restart"))
+                      "lsp-status" "lsp-stop" "lsp-restart"
+                      "toggle-inlay-hints"))

@@ -462,20 +462,20 @@ fn set_global_tab_width_zero_errors() {
 }
 
 #[test]
-fn set_global_lsp_viewport_debounce_ms() {
+fn set_global_viewport_debounce_ms() {
     assert_eq!(
-        global("lsp.viewport-debounce-ms", "50")
+        global("viewport-debounce-ms", "50")
             .unwrap()
-            .lsp_viewport_debounce_ms,
+            .viewport_debounce_ms,
         50
     );
 }
 
 #[test]
-fn set_global_lsp_viewport_debounce_ms_zero_errors() {
+fn set_global_viewport_debounce_ms_zero_errors() {
     // 0 would fire on every frame during a scroll burst instead of
     // collapsing it into one OnViewportChange, which defeats the setting.
-    assert!(global("lsp.viewport-debounce-ms", "0").is_err());
+    assert!(global("viewport-debounce-ms", "0").is_err());
 }
 
 #[test]
@@ -491,23 +491,6 @@ fn set_global_lsp_diagnostics_pull_debounce_ms() {
 #[test]
 fn set_global_lsp_diagnostics_pull_debounce_ms_zero_errors() {
     assert!(global("lsp.diagnostics-pull-debounce-ms", "0").is_err());
-}
-
-#[test]
-fn set_global_lsp_format_max_ranges() {
-    assert_eq!(
-        global("lsp.format-max-ranges", "32")
-            .unwrap()
-            .lsp_format_max_ranges,
-        32
-    );
-}
-
-#[test]
-fn set_global_lsp_format_max_ranges_zero_errors() {
-    // 0 would make every multi-range :lsp-fmt fall back to the
-    // primary-selection-only path, defeating the setting's purpose.
-    assert!(global("lsp.format-max-ranges", "0").is_err());
 }
 
 #[test]

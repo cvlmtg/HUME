@@ -937,24 +937,15 @@ define_settings! {
         "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576,
             scope: [Scope::Global],
             parser: usize_nonzero;
+        // Scroll bursts (page-down held, mouse wheel) must collapse to one
+        // OnViewportChange fire, not one per frame.
+        "viewport-debounce-ms" => viewport_debounce_ms: usize = 150,
+            scope: [Scope::Global],
+            parser: usize_nonzero;
         // rust-analyzer's first requests during indexing are slow; 10s
         // gives real-world servers room before the request is dropped as
         // TimedOut.
         "lsp.request-timeout-ms" => lsp_request_timeout_ms: usize = 10_000,
-            scope: [Scope::Global],
-            parser: usize_nonzero;
-        // One round trip per range, so a stray select-all-matches leaving
-        // hundreds of cursors would burst hundreds of requests at the
-        // server; past this many `:lsp-fmt` warns and formats nothing,
-        // rather than silently narrowing to one selection. Doesn't bound a
-        // server advertising `rangesSupport`: every range there rides one
-        // `rangesFormatting` request, so there's nothing to burst.
-        "lsp.format-max-ranges" => lsp_format_max_ranges: usize = 16,
-            scope: [Scope::Global],
-            parser: usize_nonzero;
-        // Scroll bursts (page-down held, mouse wheel) must collapse to one
-        // OnViewportChange fire, not one per frame.
-        "lsp.viewport-debounce-ms" => lsp_viewport_debounce_ms: usize = 150,
             scope: [Scope::Global],
             parser: usize_nonzero;
         // A typing burst collapses to one diagnostics pull per buffer.
@@ -966,11 +957,6 @@ define_settings! {
         "lsp.diagnostics-severity-floor" => lsp_diagnostics_severity_floor: crate::editor::lsp::diagnostics::DiagSeverity = crate::editor::lsp::diagnostics::DiagSeverity::Hint,
             scope: [Scope::Global],
             parser: enum_str;
-        // Gates the inlay-hint render write side. Off means the
-        // `inlay_hints` store is untouched but nothing renders.
-        "lsp.inlay-hints" => lsp_inlay_hints: bool = false,
-            scope: [Scope::Global],
-            parser: bool;
         // Off hides the diagnostic underline and end-of-line summary on the
         // primary cursor's line while typing in Insert mode. The summary is
         // hidden by `core:lsp` passing the negation to `set-eol-text!`.

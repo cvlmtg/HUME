@@ -101,8 +101,10 @@ This plugin is the only place a diagnostic becomes a gutter mark.
 
 ## Inlay hints
 
-Hints are requested for the visible lines and are off by default. `:set global
-lsp.inlay-hints=true` turns them on.
+Hints are requested for the visible lines. Each buffer starts with the `inlay-hints`
+config value (default off), and `:toggle-inlay-hints` flips the current buffer. Only
+toggled buffers are recorded, keyed by `buffer-key`, so a buffer open before the plugin
+activated needs no setup; `on-buffer-close` drops the record.
 
 | Trigger | Pane carried | Handling |
 |---|---|---|
@@ -115,7 +117,7 @@ Refreshes are debounced by 200 ms per buffer (keyed, not global), so a diagnosti
 touching two buffers cannot have the second buffer's call cancel the first's pending
 refresh. A refresh whose request is sent while the same buffer's previous one is still
 unanswered cancels it, so a slow server is never left with a queue of stale requests. A refresh asks every server of the buffer that offers inlay hints and merges their
-hints into one set. It sends nothing when the option is off or the request params cannot be
+hints into one set. It sends nothing when the buffer's hints are off or the request params cannot be
 built because the buffer is hidden by the time the debounce fires, and clears the buffer's
 hints when no server offers them.
 
@@ -125,13 +127,14 @@ On the response:
   between request and response) is dropped.
 - The hints shown are those of every server that answered; a null answer contributes
   none, so the hints left from an earlier, larger answer go.
+- A response arriving after the buffer's hints were turned off is dropped.
 - A request no server could take clears the buffer's hints.
 - When every server failed (an error, a timeout, a stop), the existing hints stay and each
   error is reported. A failure says nothing about what the buffer has, where a null answer
   says there are none.
 
-Turning `lsp.inlay-hints` off clears this plugin's hint source for every buffer, and
-turning it on refreshes every buffer. Detaching a server refreshes that buffer, so the
+Toggling a buffer off clears this plugin's hint source for it, and toggling it on
+refreshes it. Other buffers are untouched. Detaching a server refreshes that buffer, so the
 other servers' hints stay; a buffer no pane shows has its hints cleared instead, and they
 return when it is shown again. The hint store is per source, so another plugin's hints are
 unaffected.

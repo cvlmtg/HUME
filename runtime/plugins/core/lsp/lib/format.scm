@@ -3,6 +3,9 @@
 
 (require "helpers.scm")
 
+(define lsp/format-max-ranges
+  (call! "stdlib/config-integer" "core:lsp" (plugin-config) "format-max-ranges" 16 1))
+
 (define (lsp/format-options pane)
   (hash "tabSize" (get-buffer-option pane "tab-width")
         "insertSpaces" (equal? (get-buffer-option pane "tab-style") 'soft)))
@@ -50,8 +53,7 @@
   (lsp/with-servers (lsp-servers pane #:method "textDocument/rangeFormatting") "range formatting"
     (lambda (servers)
       (let ((server (car servers))
-            (n (length ranges))
-            (cap (get-option "lsp.format-max-ranges")))
+            (n (length ranges)))
         (cond
           ((and (> n 1) (lsp/cap-flag? (lsp-capability server #:method "textDocument/rangeFormatting") "rangesSupport"))
            (lsp-request! pane "textDocument/rangesFormatting"
@@ -59,11 +61,11 @@
              (lsp/format-callback pane gen)
              #:to server
              #:allow-stale #t))
-          ((> n cap)
+          ((> n lsp/format-max-ranges)
            (log! 'info
                  (string-append (number->string n)
-                                 " ranges exceeds lsp.format-max-ranges ("
-                                 (number->string cap)
+                                 " ranges exceeds format-max-ranges ("
+                                 (number->string lsp/format-max-ranges)
                                  ") — nothing formatted")))
           (else (lsp/format-fan-out! pane server gen td ranges)))))))
 

@@ -20,11 +20,27 @@ const THREE_LINES: &str = "line1\nline2\nline3\n";
 
 /// Handshake caps advertise `rangeFormatting` without `rangesSupport`: the
 /// common case, and what every fan-out test wants.
+fn range_caps() -> serde_json::Value {
+    serde_json::json!({"capabilities": {
+        "documentFormattingProvider": true,
+        "documentRangeFormattingProvider": true
+    }})
+}
+
 fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeDirs) {
-    setup_with_content(tmp, THREE_LINES, configure)
+    setup_configured(tmp, None, configure)
+}
+
+/// Same as `setup`, with `config` passed to `core:lsp` as its `#:config`.
+fn setup_configured(
+    tmp: &Path,
+    config: Option<&str>,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (Editor, RealRuntimeDirs) {
+    setup_with_caps(tmp, THREE_LINES, range_caps(), config, configure)
 }
 
 /// Same as `setup`, with the file content under caller control, for a test
@@ -34,26 +50,25 @@ fn setup_with_content(
     content: &str,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeDirs) {
-    setup_with_caps(
-        tmp,
-        content,
-        serde_json::json!({"capabilities": {
-            "documentFormattingProvider": true,
-            "documentRangeFormattingProvider": true
-        }}),
-        configure,
-    )
+    setup_with_caps(tmp, content, range_caps(), None, configure)
 }
 
-/// Same as `setup_with_content`, with the handshake's `initialize` result
-/// also under caller control.
+/// Same as `setup_configured`, with the content and the handshake's
+/// `initialize` result also under caller control.
 fn setup_with_caps(
     tmp: &Path,
     content: &str,
     initialize_result: serde_json::Value,
+    config: Option<&str>,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeDirs) {
-    let (rig, guard) = core_lsp_rig(tmp, &marked_at_start(content), initialize_result, configure);
+    let (rig, guard) = core_lsp_rig_configured(
+        tmp,
+        &marked_at_start(content),
+        initialize_result,
+        config,
+        configure,
+    );
     (rig.ed, guard)
 }
 
@@ -264,6 +279,7 @@ fn disjoint_full_line_selections_send_one_ranges_formatting_request_when_support
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": {"rangesSupport": true}
         }}),
+        None,
         |backend, _sid| {
             backend.respond_to(
                 "textDocument/rangesFormatting",
@@ -312,6 +328,7 @@ fn single_full_line_selection_sends_range_formatting_even_when_ranges_supported(
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": {"rangesSupport": true}
         }}),
+        None,
         |backend, _sid| {
             backend.respond_to(
                 "textDocument/rangeFormatting",
@@ -343,7 +360,7 @@ fn single_full_line_selection_sends_range_formatting_even_when_ranges_supported(
 }
 
 /// Same shape as `disjoint_full_line_selections_send_two_range_formatting_requests`,
-/// but past `lsp.format-max-ranges`: a server advertising `rangesSupport` sends every
+/// but past `format-max-ranges`: a server advertising `rangesSupport` sends every
 /// range in one `rangesFormatting` request, so the cap (which bounds one-request-per-
 /// range fan-out) has nothing to bound and never fires.
 #[test]
@@ -356,6 +373,7 @@ fn ranges_formatting_is_not_capped_by_format_max_ranges() {
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": {"rangesSupport": true}
         }}),
+        Some(r#"(hash "format-max-ranges" 1)"#),
         |backend, _sid| {
             backend.respond_to(
                 "textDocument/rangesFormatting",
@@ -366,7 +384,6 @@ fn ranges_formatting_is_not_capped_by_format_max_ranges() {
             );
         },
     );
-    type_cmd(&mut ed, ":set global lsp.format-max-ranges=1");
     select_full_lines_1_and_3(&mut ed);
 
     run_fmt(&mut ed);
@@ -375,7 +392,7 @@ fn ranges_formatting_is_not_capped_by_format_max_ranges() {
         ed.doc().text().to_string(),
         "RANGE1\nline2\nRANGE3\n",
         "a rangesSupport server must format both ranges in one request even when \
-         their count exceeds lsp.format-max-ranges; the cap only bounds the \
+         their count exceeds format-max-ranges; the cap only bounds the \
          one-request-per-range fan-out path"
     );
 }
@@ -504,21 +521,24 @@ fn stray_blank_line_cursor_does_not_trigger_the_mixed_selection_refusal() {
     );
 }
 
-/// Past `lsp.format-max-ranges`, `:lsp-fmt` refuses and warns instead of
+/// Past `format-max-ranges`, `:lsp-fmt` refuses and warns instead of
 /// silently narrowing an N-region request into a 1-region one: the same
 /// contract the mixed-selection case above uses for "can't do this
 /// unambiguously".
 #[test]
 fn fan_out_past_the_cap_warns_and_formats_nothing() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
-        // Decoy proving no request at all is sent past the cap.
-        backend.respond_to(
-            "textDocument/rangeFormatting",
-            serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_PRIMARY_ONLY_PATH\n")]),
-        );
-    });
-    type_cmd(&mut ed, ":set global lsp.format-max-ranges=1");
+    let (mut ed, _guard) = setup_configured(
+        tmp.path(),
+        Some(r#"(hash "format-max-ranges" 1)"#),
+        |backend, _sid| {
+            // Decoy proving no request at all is sent past the cap.
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_PRIMARY_ONLY_PATH\n")]),
+            );
+        },
+    );
     let before = ed.doc().text().to_string();
     select_full_lines_1_and_3(&mut ed);
 
@@ -531,27 +551,30 @@ fn fan_out_past_the_cap_warns_and_formats_nothing() {
     );
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
-        msg.to_lowercase().contains("lsp.format-max-ranges") && msg.contains('1'),
-        "expected a warning naming the setting and its value, got {msg:?}"
+        msg.to_lowercase().contains("format-max-ranges") && msg.contains('1'),
+        "expected a warning naming the config key and its value, got {msg:?}"
     );
 }
 
-/// The cap is exclusive: exactly `lsp.format-max-ranges` ranges still fans
-/// out normally, only `n > cap` refuses.
+/// The cap is exclusive: a range count equal to `format-max-ranges` still
+/// fans out normally, only `n > cap` refuses.
 #[test]
 fn fan_out_at_the_cap_formats_normally() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
-        backend.respond_to(
-            "textDocument/rangeFormatting",
-            serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
-        );
-        backend.respond_to(
-            "textDocument/rangeFormatting",
-            serde_json::json!([text_edit(2, 0, 3, 0, "RANGE3\n")]),
-        );
-    });
-    type_cmd(&mut ed, ":set global lsp.format-max-ranges=2");
+    let (mut ed, _guard) = setup_configured(
+        tmp.path(),
+        Some(r#"(hash "format-max-ranges" 2)"#),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(0, 0, 1, 0, "RANGE1\n")]),
+            );
+            backend.respond_to(
+                "textDocument/rangeFormatting",
+                serde_json::json!([text_edit(2, 0, 3, 0, "RANGE3\n")]),
+            );
+        },
+    );
     select_full_lines_1_and_3(&mut ed);
 
     run_fmt(&mut ed);

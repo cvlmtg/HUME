@@ -391,12 +391,8 @@ impl Editor {
 
     /// Sync per-pane inlay-hint decorations from the
     /// `decorations.inlay_hints` store to each pane's inlay-hint decoration
-    /// handle. Not gated on `lsp.inlay-hints` here: the store is per-source
-    /// (`set-inlay-hints!` takes a `source` arg precisely so unrelated
-    /// plugins can coexist), and `lsp.inlay-hints` is the LSP inlay-hints
-    /// plugin's own setting. It owns clearing *its* source on toggle-off,
-    /// via the `on-option-change` hook (`inlay.scm`), rather than this
-    /// bridge wiping every source wholesale on a setting it doesn't own. An
+    /// handle. Ungated: the store is per source, so a plugin turning its
+    /// hints off clears its own source (`core:lsp`'s `inlay.scm`). An
     /// inlay hint appearing or changing shape can shift a line's wrap
     /// column, moving the cursor's own display line without the selection
     /// itself moving. `EditorState::layout_key`'s `buffer_tag` carries

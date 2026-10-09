@@ -6,6 +6,9 @@
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?
          lsp/with-servers)
 
+(unless (member "core:stdlib" (declared-plugins))
+  (error "core:lsp: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:lsp\")"))
+
 ;; ── Capabilities ────────────────────────────────────────────────────────────
 
 ;; `cap` is a server's `(lsp-capability …)`: `#t`, an options object, or `#f`.

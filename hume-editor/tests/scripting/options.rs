@@ -120,19 +120,20 @@ fn get_option_reads_back_whitespace_newline_as_symbol_and_round_trips() {
 }
 
 #[test]
-fn get_option_reads_back_lsp_inlay_hints_as_bool() {
+fn get_option_reads_back_lsp_diagnostics_on_insert_line_as_bool() {
     let mut h = host();
     let mut mock = MockHost::new();
 
     h.eval_source(
         r#"(define-command! "check" "" (lambda ()
-             (unless (equal? (get-option "lsp.inlay-hints") #f)
-               (error "unexpected lsp.inlay-hints"))))"#,
+             (unless (equal? (get-option "lsp.diagnostics-on-insert-line") #f)
+               (error "unexpected lsp.diagnostics-on-insert-line"))))"#,
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd("check", vec![], &mut mock)
-        .expect("get-option must read back the default lsp.inlay-hints (false) as a bool");
+    h.call_steel_cmd("check", vec![], &mut mock).expect(
+        "get-option must read back the default lsp.diagnostics-on-insert-line (false) as a bool",
+    );
 }
 
 #[test]

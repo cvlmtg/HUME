@@ -52,7 +52,7 @@ Language server support: hover, go-to-definition, references, diagnostics, renam
 (load-plugin! "core:lsp")
 ```
 
-Requires `core:stdlib` loaded first. `core:lsp` loads lazily: it wakes up on the first buffer with a detected language, or the first `:lsp-*` command you type, and its key bindings go live at that same moment, before there's a buffer they'd need to act on.
+Requires `core:stdlib` loaded first. `core:lsp` loads lazily: it wakes up on the first buffer with a detected language, or the first of its commands you type (`:lsp-status`, `:toggle-inlay-hints`, …), and its key bindings go live at that same moment, before there's a buffer they'd need to act on.
 
 See [Language Servers](lsp.md) for setup, the full command and key tables, and settings.
 

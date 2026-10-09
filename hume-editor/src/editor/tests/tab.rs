@@ -780,7 +780,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
     std::fs::write(&other, "hi\n").unwrap();
 
     let mut ed = editor_from("-[a]>bc\ndef\nghi\njkl\nmno\n");
-    ed.state.settings.lsp_viewport_debounce_ms = 0;
+    ed.state.settings.viewport_debounce_ms = 0;
     let bid_a = ed.focused_buffer_id();
     seed_frame(&mut ed, 40, 3); // baseline last_visible_range[pid_a] at top_line 0
 

@@ -178,12 +178,13 @@ use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 use hume_scripting::ScriptingHost;
 
-/// [`RUST_ANALYZER`], then `core:stdlib` and the real `core:lsp` plugin:
-/// the init of every rig driving `core:lsp`.
-fn core_lsp_init() -> String {
+/// [`RUST_ANALYZER`], then `core:stdlib` and the real `core:lsp` plugin
+/// loaded with `config` as its `#:config`: the init of every rig driving
+/// `core:lsp`.
+fn core_lsp_init(config: Option<&str>) -> String {
     format!(
         "{RUST_ANALYZER}\n(load-plugin! \"core:stdlib\")\n{}",
-        hume_scripting::eager_load_scm("core:lsp", None)
+        hume_scripting::eager_load_scm("core:lsp", config)
     )
 }
 
@@ -209,11 +210,22 @@ fn core_lsp_rig(
     initialize_result: serde_json::Value,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (LspRig, RealRuntimeDirs) {
+    core_lsp_rig_configured(tmp, marked, initialize_result, None, configure)
+}
+
+/// [`core_lsp_rig`] with `config` passed to `core:lsp` as its `#:config`.
+fn core_lsp_rig_configured(
+    tmp: &Path,
+    marked: &str,
+    initialize_result: serde_json::Value,
+    config: Option<&str>,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (LspRig, RealRuntimeDirs) {
     let guard = RealRuntimeDirs::new();
     let (mut backend, _notifications, _requests) = RecordingLspBackend::new();
     backend.respond_to("initialize", initialize_result);
     configure(&mut backend, ServerId(0));
-    let init = core_lsp_init();
+    let init = core_lsp_init(config);
     let spec = RigSpec::rust(marked)
         .with_init(&init)
         .with_dirs(guard.dirs());

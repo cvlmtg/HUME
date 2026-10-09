@@ -17,9 +17,11 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 (load-plugin! "core:lsp")
 ```
 
-- **Depends on:** `core:stdlib`: diagnostics navigation, code actions and the other
-  features call `stdlib/cursor-char-index`, `stdlib/primary-selection` and
-  `stdlib/selection-start`/`-end` at runtime.
+- **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean` and
+  `stdlib/config-integer` at load time; diagnostics navigation, code actions and the
+  other features call `stdlib/cursor-char-index`, `stdlib/primary-selection` and
+  `stdlib/selection-start`/`-end` at runtime. `lib/helpers.scm` checks for it, since
+  every `lib/` file's body runs before `plugin.scm`'s own.
 - **Activates on:** the first buffer with a detected language, or the first of its
   commands typed. Its `manifest.scm` declares one entry for `plugin.scm` with
   `#:languages '("*")`, every editor command below in `#:commands` and the typed commands
@@ -32,6 +34,13 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
   walkthrough, commands, keys and settings, and
   [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-lsp) for the quick
   summary.
+
+## Configuration
+
+| Key | Type | Default | Effect |
+|---|---|---|---|
+| `"inlay-hints"` | boolean | `#f` | Whether a buffer shows inlay hints until `:toggle-inlay-hints` flips it |
+| `"format-max-ranges"` | integer ≥ 1 | `16` | Most disjoint ranges `:lsp-fmt` sends one `rangeFormatting` request each for; see [`docs/features.md`](docs/features.md#range-requests) |
 
 ## Commands
 
@@ -49,6 +58,7 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 | `lsp-fmt` | Format the buffer or the linewise selections | none |
 | `:format-source` | `lsp-fmt` from the command line | none |
 | `:diagnostics` | List this buffer's diagnostics in a drawer | none |
+| `:toggle-inlay-hints` | Show or hide inlay hints in the current buffer | none |
 | `:lsp-status` | Show every running server and its state, plus each attached buffer's servers and diagnostic counts, and the servers a stop left stopped | none |
 | `:lsp-stop [name]` | Stop a running server (default: every server on the focused buffer); it stays stopped until restarted, its name is registered again or the config reloads | none |
 | `:lsp-restart [name]` | Stop and respawn a server, or start a stopped one (default: every server on the focused buffer) | none |

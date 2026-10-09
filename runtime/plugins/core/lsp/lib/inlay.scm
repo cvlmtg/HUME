@@ -2,6 +2,19 @@
 
 (require "helpers.scm")
 
+(define lsp/inlay-default
+  (call! "stdlib/config-boolean" "core:lsp" (plugin-config) "inlay-hints" #f))
+
+;;; Buffers toggled away from `lsp/inlay-default`, keyed by `(buffer-key pane)`.
+(define lsp/*inlay-overrides* (box (hash)))
+
+(define (lsp/inlay-on? pane)
+  (let ((overrides (unbox lsp/*inlay-overrides*))
+        (key (buffer-key pane)))
+    (if (hash-contains? overrides key)
+        (hash-ref overrides key)
+        lsp/inlay-default)))
+
 (define (lsp/inlay-hint-text hint)
   (let ((label (json-ref hint "label")))
     (if (string? label)
@@ -30,7 +43,7 @@
   (debounce-by 200
     (lambda (pane)
       (let ((range (viewport-range pane)))
-        (when (get-option "lsp.inlay-hints")
+        (when (lsp/inlay-on? pane)
           (let ((params (lsp/inlay-hint-params pane (hash-ref range 'start) (hash-ref range 'end))))
             (when params
               (lsp-request-all! pane "textDocument/inlayHint" params
@@ -38,7 +51,8 @@
                   (when err (lsp/report-error! "inlay hints" err))
                   (lsp/report-answer-errors! "inlay hints" results)
                   ;; See docs/decorations.md, "Inlay hints", on the response.
-                  (unless (or err (and (pair? results) (lsp/none-answered? results)))
+                  (unless (or err (not (lsp/inlay-on? pane))
+                              (and (pair? results) (lsp/none-answered? results)))
                     (set-inlay-hints! "lsp-inlay-hints" pane
                       (filter (lambda (e) e)
                               (map (lambda (h) (lsp/hint->store-entry pane h))
@@ -65,10 +79,18 @@
         (lsp/refresh-hints-for-buffer pane)
         (set-inlay-hints! "lsp-inlay-hints" pane '()))))
 
-(register-hook! 'on-option-change
-  (lambda (key value)
-    (when (equal? key "lsp.inlay-hints")
-      (if value
-          (for-each lsp/refresh-hints-for-buffer (buffers))
-          (for-each (lambda (pane) (set-inlay-hints! "lsp-inlay-hints" pane '()))
-                    (buffers))))))
+(register-hook! 'on-buffer-close
+  (lambda (pane)
+    (set-box! lsp/*inlay-overrides*
+              (hash-remove (unbox lsp/*inlay-overrides*) (buffer-key pane)))))
+
+(define-typed-command! "toggle-inlay-hints"
+  "Toggle LSP inlay hints for the current buffer."
+  (lambda (pane)
+    (let ((on? (not (lsp/inlay-on? pane))))
+      (set-box! lsp/*inlay-overrides*
+                (hash-insert (unbox lsp/*inlay-overrides*) (buffer-key pane) on?))
+      (if on?
+          (lsp/refresh-hints pane)
+          (set-inlay-hints! "lsp-inlay-hints" pane '()))
+      (log! 'info (if on? "inlay hints on" "inlay hints off")))))

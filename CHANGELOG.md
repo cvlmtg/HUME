@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `lsp.inlay-hints` is removed. `:toggle-inlay-hints` shows or hides inlay hints in the current buffer, and `(load-plugin! "core:lsp" #:config (hash "inlay-hints" #t))` turns them on for every buffer from the start.
+- `lsp.format-max-ranges` is removed: pass it to `core:lsp` as `#:config (hash "format-max-ranges" 32)`.
+- `lsp.viewport-debounce-ms` is renamed to `viewport-debounce-ms`: it delays every plugin's view of scrolling, not only language-server requests.
 - Scripts can pass a pattern to `search-forward`, `search-backward`, and `sift-within` through `call!`, which runs them as if the pattern were typed at the prompt and confirmed, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add`: `(call! "sift-within" pane "(?m)[ \t]+$")`, `(call! "replace" pane #\x)`. The character or pattern is required; a script reads one the user types with `on-next-char!` or `prompt!`.
 - `bind-key!` binds any command, including one that reads a character from the next key, such as `f` or `r`. `bind-wait-char!`, `request-wait-char!`, and `pending-char` are removed: a command reads the characters it needs with `(on-next-char! callback)`, which calls `callback` with the next key typed, or with `#f` when that key isn't a character. A callback can call `on-next-char!` again to read more. `.` repeats a `#:repeatable` command with the characters it and its callbacks read, without waiting for keys.
 - Pressing `Enter` at the search or sift prompt reports an invalid pattern, and a pattern with no match, the same way a script passing that pattern does. An invalid search pattern is not stored as the current search.

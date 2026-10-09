@@ -254,7 +254,7 @@ fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
 fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    ed.state.settings.lsp_viewport_debounce_ms = 0;
+    ed.state.settings.viewport_debounce_ms = 0;
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,

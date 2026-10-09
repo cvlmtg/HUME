@@ -38,7 +38,7 @@ fn two_servers(
     backend.respond_to_server(RA, "initialize", init_result(ra));
     backend.respond_to_server(LINT, "initialize", init_result(lint));
     script(&mut backend);
-    let init = format!("{}\n{RA_LINT}\n{extra}", core_lsp_init());
+    let init = format!("{}\n{RA_LINT}\n{extra}", core_lsp_init(None));
     let mut rig = LspRig::drained(
         tmp,
         RigSpec::rust(&marked_at_start(content))
@@ -543,7 +543,7 @@ fn inlay_merged_from_two_servers() {
         b.respond_to_server(RA, "textDocument/inlayHint", hints(&[(0, 5, ": i32")]));
         b.respond_to_server(LINT, "textDocument/inlayHint", hints(&[(0, 9, " // lint")]));
     });
-    rig.ed.state.settings.lsp_inlay_hints = true;
+    type_cmd(&mut rig.ed, ":toggle-inlay-hints");
 
     refresh_hints(&mut rig.ed);
 
@@ -558,7 +558,7 @@ fn inlay_one_server_failing_still_shows_the_others_hints() {
         b.respond_to_server(RA, "textDocument/inlayHint", hints(&[(0, 5, ": i32")]));
         b.fail_with_server(LINT, "textDocument/inlayHint", -32603, "lint failed");
     });
-    rig.ed.state.settings.lsp_inlay_hints = true;
+    type_cmd(&mut rig.ed, ":toggle-inlay-hints");
 
     refresh_hints(&mut rig.ed);
 
@@ -574,7 +574,7 @@ fn inlay_detach_one_keeps_other_hints() {
         b.respond_to_server(LINT, "textDocument/inlayHint", hints(&[(0, 9, " // lint")]));
         b.respond_to_server(RA, "textDocument/inlayHint", hints(&[(0, 5, ": i32")]));
     });
-    rig.ed.state.settings.lsp_inlay_hints = true;
+    type_cmd(&mut rig.ed, ":toggle-inlay-hints");
     refresh_hints(&mut rig.ed);
 
     rig.stop("ra-lint");

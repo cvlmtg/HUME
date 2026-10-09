@@ -341,6 +341,7 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer, each with the tool that reported it |
 | —     | `:format-source`             | Format the selected lines if every selection spans one or more whole lines, the whole buffer if none do, or (with a warning) nothing if it's a mix of the two |
+| —     | `:toggle-inlay-hints`        | Show or hide inlay hints in the current buffer |
 | `Ctrl-Space` (Insert) | `completion-trigger`        | Show completions at the cursor (an editor key, not this plugin's; the plugin supplies the server's candidates) |
 
 Jumping to a definition, declaration, type, implementation, or reference in another file
@@ -374,13 +375,25 @@ the cursor is on and return when you leave Insert mode or move to another line. 
 
 ## Settings
 
-All `lsp.*` settings are global options, described in full in
+The `lsp.*` options configure HUME's built-in language-server support, shared by every
+plugin that talks to a language server. They are global options, described in full in
 [Global options](configuration.md#global-options). Set them the same way as any other
 global option:
 
 ```scheme
-(set-option! "lsp.inlay-hints" #t)
+(set-option! "lsp.diagnostics-severity-floor" 'warning)
 ```
+
+`core:lsp`'s own options are passed with `#:config` when you load it:
+
+```scheme
+(load-plugin! "core:lsp" #:config (hash "inlay-hints" #t "format-max-ranges" 32))
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `inlay-hints` | bool | `#f` | Show inferred types and parameter names inline, next to the code they describe, in every buffer. `:toggle-inlay-hints` turns them on or off for the current buffer |
+| `format-max-ranges` | integer ≥ 1 | `16` | Above this many disjoint ranges, `:lsp-fmt` warns and formats nothing instead of sending one request per range (a server that batches ranges into a single request isn't capped) |
 
 ### Format on save
 

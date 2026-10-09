@@ -2,14 +2,14 @@
 
 ## File layout
 
-`plugin.scm` checks that `core:stdlib` is declared, requires one file per feature area,
-and binds the default keys. Installing servers is `core:lsp-install`'s job.
+`plugin.scm` requires one file per feature area and binds the default keys.
+`lib/helpers.scm` checks that `core:stdlib` is declared. Installing servers is `core:lsp-install`'s job.
 
 | File | Owns | Doc |
 |---|---|---|
-| `plugin.scm` | Requires, `core:stdlib` check, default key bindings | [README](../README.md#key-layout) |
+| `plugin.scm` | Requires, default key bindings | [README](../README.md#key-layout) |
 | `manifest.scm` | Lazy-activation triggers | [README](../README.md#usage) |
-| `lib/helpers.scm` | Capability guards, error reporting, trigger characters, pane and viewport helpers | this file |
+| `lib/helpers.scm` | `core:stdlib` check, capability guards, error reporting, trigger characters, pane and viewport helpers | this file |
 | `lib/locations.scm` | Locations drawer and its refresh session | this file |
 | `lib/status.scm` | `:lsp-status`, `:lsp-stop`, `:lsp-restart` | this file |
 | `lib/diagnostics.scm` | Diagnostics navigation and drawer, EOL summary, gutter signs | `decorations.md` |

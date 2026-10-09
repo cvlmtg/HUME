@@ -50,8 +50,9 @@ pub(in crate::editor) fn apply_global(
     // to this sees the setting already in its new, live state. The single
     // raise site for every `:set global`/`set-option!`/`:theme` write, since
     // this is the single write path all three funnel through (see the
-    // module doc). A plugin owning one setting's policy (e.g. the LSP
-    // inlay-hints plugin) needs exactly one hook, not one per write path.
+    // module doc). A plugin owning one setting's policy (e.g. `core:lsp`
+    // re-cutting diagnostics on `lsp.diagnostics-severity-floor`) needs
+    // one hook, not one per write path.
     let value = super::setting_value(key, &state.settings, None)
         .expect("write_global only accepts keys setting_value reports");
     state.queue_event(crate::editor::event::EditorEvent::OnOptionChange {

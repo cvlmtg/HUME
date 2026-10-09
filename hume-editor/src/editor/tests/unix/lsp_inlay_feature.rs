@@ -21,15 +21,29 @@ use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 /// The rig's file, "let x = 1;\n", with the cursor at its start.
 const MARKED_FIXTURE: &str = "-[l]>et x = 1;\n";
 
-/// A [`core_lsp_rig`] over [`MARKED_FIXTURE`] with an inlay-hint provider.
+/// `core:lsp`'s `#:config` turning inlay hints on for every buffer.
+const HINTS_ON: Option<&str> = Some(r#"(hash "inlay-hints" #t)"#);
+
+/// A rig with inlay hints on for every buffer.
 fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeDirs, RequestLog) {
-    let (rig, guard) = core_lsp_rig(
+    setup_configured(tmp, HINTS_ON, configure)
+}
+
+/// A [`core_lsp_rig_configured`] over [`MARKED_FIXTURE`] with an
+/// inlay-hint provider, `config` passed to `core:lsp` as its `#:config`.
+fn setup_configured(
+    tmp: &Path,
+    config: Option<&str>,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (Editor, RealRuntimeDirs, RequestLog) {
+    let (rig, guard) = core_lsp_rig_configured(
         tmp,
         MARKED_FIXTURE,
         serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+        config,
         configure,
     );
     (rig.ed, guard, rig.requests)
@@ -67,7 +81,7 @@ fn setup_two_servers(
     }
     let init = format!(
         "{}\n{}",
-        core_lsp_init(),
+        core_lsp_init(HINTS_ON),
         r#"(register-lsp-server! "pylsp" #:command "pylsp")
 (set-language-servers! "python" '("pylsp"))"#
     );
@@ -181,7 +195,6 @@ fn viewport_change_triggers_one_debounced_request() {
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
-    ed.state.settings.lsp_inlay_hints = true;
 
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
@@ -203,7 +216,6 @@ fn inlay_hint_request_range_matches_the_viewport() {
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
-    ed.state.settings.lsp_inlay_hints = true;
 
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
@@ -220,12 +232,11 @@ fn inlay_hint_request_range_matches_the_viewport() {
 }
 
 #[test]
-fn setting_off_sends_no_request() {
+fn hints_off_by_default_send_no_request() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
+    let (mut ed, _guard, requests) = setup_configured(tmp.path(), None, |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
-    // lsp_inlay_hints defaults to false: left untouched.
 
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
@@ -244,7 +255,6 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
             inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
         );
     });
-    ed.state.settings.lsp_inlay_hints = true;
     let bid = ed.focused_buffer_id();
 
     fire_viewport_change(&mut ed);
@@ -262,13 +272,18 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
     assert!(hints[0].before);
 }
 
-/// The render bridge (`decoration_providers.rs`'s
-/// `update_inlay_hint_providers`) does not gate on `lsp.inlay-hints` itself,
-/// so the real shipped plugin must make toggling the setting off clear its
-/// own hints, via the `on-option-change` hook (`inlay.scm`). Goes
-/// through `:set global`, not a direct field write, so the real event fires.
+fn hint_count(ed: &Editor, bid: BufferId) -> usize {
+    ed.state
+        .config
+        .decorations
+        .inlay_hints_for_buffer(bid)
+        .count()
+}
+
+/// The render bridge (`update_inlay_hint_providers`) renders whatever the
+/// store holds, so turning hints off must clear the plugin's own source.
 #[test]
-fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
+fn toggle_off_clears_the_buffers_hints() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to(
@@ -277,133 +292,96 @@ fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
         );
     });
     let bid = ed.focused_buffer_id();
-
-    type_cmd(&mut ed, ":set global lsp.inlay-hints=true");
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
-    assert_eq!(
-        ed.state
-            .config
-            .decorations
-            .inlay_hints_for_buffer(bid)
-            .count(),
-        1,
-        "sanity: the hint lands once the setting is on"
-    );
+    assert_eq!(hint_count(&ed, bid), 1, "sanity: the hint lands while on");
 
-    type_cmd(&mut ed, ":set global lsp.inlay-hints=false");
-    ed.settle();
-    assert_eq!(
-        ed.state
-            .config
-            .decorations
-            .inlay_hints_for_buffer(bid)
-            .count(),
-        0,
-        "the plugin's on-option-change handler must clear its own \
-         (\"lsp-inlay-hints\") source when the setting turns off"
-    );
+    type_cmd(&mut ed, ":toggle-inlay-hints");
+    settle_after_debounce(&mut ed);
+
+    assert_eq!(hint_count(&ed, bid), 0);
 }
 
-/// The `on-option-change` hook (`inlay.scm`) receives the coerced bool, so
-/// any of `parse-bool`'s accepted spellings (`on`/`yes`/`1`) must take the
-/// branch that requests hints rather than the one that clears them.
-///
-/// Writes through `settings::ops::apply_global` directly (the production
-/// path `:set global`/`set-option!`/`:theme` all funnel through, see its
-/// module doc) rather than `type_cmd(":set global …")`: typing and executing
-/// a command line opens and closes the minibuffer, which resizes the pane
-/// and queues its own `on-viewport-change`. That event independently
-/// re-requests hints via its own `get-option` check, which would mask a
-/// wrong hook branch. The hook's own branch, and nothing else, must be what
-/// re-requests them here. No `fire_viewport_change` for the same reason.
+/// A response to a request sent before the toggle lands after it, and must
+/// not bring the hints back.
 #[test]
-fn setting_on_via_a_non_true_spelling_still_requests_hints() {
+fn toggle_off_drops_a_response_already_in_flight() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard, _requests) = setup(tmp.path(), |backend, _sid| {
-        // Three responses queued: the seeding "true" phase below sends two
-        // requests (the direct fire `fire_viewport_change` queues, plus the
-        // second, independent one `prepare_frame`'s scroll step arms via
-        // `debounce_viewport_change`; see the comment below), and the
-        // final "on" toggle sends a third.
-        for _ in 0..3 {
-            backend.respond_to(
-                "textDocument/inlayHint",
-                inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
-            );
-        }
+    let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/inlayHint",
+            inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
+        );
     });
     let bid = ed.focused_buffer_id();
-
-    // Seed a synced viewport and one landed hint. Uses `fire_viewport_change`
-    // (unlike the toggles below) purely to establish the viewport
-    // `lsp/refresh-hints` needs. That event's own hint request is
-    // legitimate here, since the setting is already correctly on.
-    crate::editor::settings::ops::apply_global(
-        &mut ed.state,
-        &mut ed.view,
-        "lsp.inlay-hints",
-        "true",
-    )
-    .unwrap();
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
-    // `fire_viewport_change` -> `prepare_frame` also arms
-    // `debounce_viewport_change`'s own Rust-side timer (`lsp.viewport-debounce-ms`,
-    // 150ms by default) as a side effect of its scroll step seeing the
-    // pane's visible range change for the first time: a *second*,
-    // independent `on-viewport-change` fire, on top of the direct one
-    // `fire_viewport_change` queues itself. One `settle_after_debounce`
-    // round only guarantees the direct fire's request/response round trip
-    // completes; without draining this second one here too, it leaks into
-    // the toggles below and masks their outcome by re-requesting hints on
-    // its own, independent of what `on-option-change`'s branch does.
-    settle_after_debounce(&mut ed);
-    assert_eq!(
-        ed.state
-            .config
-            .decorations
-            .inlay_hints_for_buffer(bid)
-            .count(),
-        1,
-        "sanity: the hint lands once the setting is on"
-    );
-
-    crate::editor::settings::ops::apply_global(
-        &mut ed.state,
-        &mut ed.view,
-        "lsp.inlay-hints",
-        "off",
-    )
-    .unwrap();
+    ed.settle();
+    std::thread::sleep(Duration::from_millis(300));
     ed.settle();
     assert_eq!(
-        ed.state
-            .config
-            .decorations
-            .inlay_hints_for_buffer(bid)
-            .count(),
+        request_count(&requests, "textDocument/inlayHint"),
+        1,
+        "sanity: the request is sent"
+    );
+    assert_eq!(
+        hint_count(&ed, bid),
         0,
-        "sanity: \"off\" clears, same as \"false\""
+        "sanity: its response is not yet delivered"
     );
 
-    crate::editor::settings::ops::apply_global(
-        &mut ed.state,
-        &mut ed.view,
-        "lsp.inlay-hints",
-        "on",
-    )
-    .unwrap();
+    type_cmd(&mut ed, ":toggle-inlay-hints");
     settle_after_debounce(&mut ed);
+
+    assert_eq!(hint_count(&ed, bid), 0);
+}
+
+#[test]
+fn toggle_on_requests_hints_for_the_buffer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, _requests) = setup_configured(tmp.path(), None, |backend, _sid| {
+        backend.respond_to(
+            "textDocument/inlayHint",
+            inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
+        );
+    });
+    let bid = ed.focused_buffer_id();
+    fire_viewport_change(&mut ed);
+    settle_after_debounce(&mut ed);
+    assert_eq!(hint_count(&ed, bid), 0, "sanity: off by default");
+
+    type_cmd(&mut ed, ":toggle-inlay-hints");
+    settle_after_debounce(&mut ed);
+
+    assert_eq!(hint_count(&ed, bid), 1);
+}
+
+/// The toggle is per buffer: turning the focused buffer's hints off leaves
+/// another shown buffer's refreshes alone.
+#[test]
+fn toggle_leaves_other_buffers_alone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let caps = || serde_json::json!({"capabilities": {"inlayHintProvider": true}});
+    let mut t = setup_two_servers(tmp.path(), caps(), caps(), 1);
+    let pane_a = t.ed.state.focus.id();
+
+    type_cmd(&mut t.ed, ":toggle-inlay-hints");
+    settle_after_debounce(&mut t.ed);
+    let baseline = request_count(&t.requests, "textDocument/inlayHint");
+
+    t.ed.queue_viewport_change(pane_a);
+    settle_after_debounce(&mut t.ed);
     assert_eq!(
-        ed.state
-            .config
-            .decorations
-            .inlay_hints_for_buffer(bid)
-            .count(),
-        1,
-        "\"on\" must behave identically to \"true\" and re-request the hint \
-         via the hook's own branch, not silently stay cleared"
+        request_count(&t.requests, "textDocument/inlayHint"),
+        baseline,
+        "the toggled buffer must not refresh"
+    );
+
+    t.ed.queue_viewport_change(t.pane_b);
+    settle_after_debounce(&mut t.ed);
+    assert_eq!(
+        request_count(&t.requests, "textDocument/inlayHint"),
+        baseline + 1,
+        "the other buffer must still refresh"
     );
 }
 
@@ -421,7 +399,6 @@ fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
             }]),
         );
     });
-    ed.state.settings.lsp_inlay_hints = true;
     let bid = ed.focused_buffer_id();
 
     fire_viewport_change(&mut ed);
@@ -447,7 +424,6 @@ fn diagnostics_changed_also_refreshes_hints() {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
-    ed.state.settings.lsp_inlay_hints = true;
     let sid = ed
         .state
         .buffer_positions
@@ -487,7 +463,6 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
     let (mut ed, _guard, requests) = setup(tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
-    ed.state.settings.lsp_inlay_hints = true;
     let sid = ed
         .state
         .buffer_positions
@@ -540,7 +515,6 @@ fn an_empty_response_clears_previously_stored_hints() {
         // result must still clear the hint the first response stored.
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
-    ed.state.settings.lsp_inlay_hints = true;
     let bid = ed.focused_buffer_id();
 
     fire_viewport_change(&mut ed);
@@ -583,7 +557,6 @@ fn stopping_the_only_server_clears_its_hints() {
             inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
         );
     });
-    ed.state.settings.lsp_inlay_hints = true;
     let bid = ed.focused_buffer_id();
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
@@ -620,7 +593,6 @@ fn stopping_the_server_clears_the_hints_of_a_hidden_buffer() {
             inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
         );
     });
-    ed.state.settings.lsp_inlay_hints = true;
     let bid = ed.focused_buffer_id();
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
@@ -664,7 +636,6 @@ fn a_failed_response_keeps_the_stored_hints_and_reports_the_error() {
         );
         backend.fail_with("textDocument/inlayHint", -32603, "hints exploded");
     });
-    ed.state.settings.lsp_inlay_hints = true;
     let bid = ed.focused_buffer_id();
 
     fire_viewport_change(&mut ed);
@@ -709,7 +680,6 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
         serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
         2,
     );
-    ed.state.settings.lsp_inlay_hints = true;
 
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);
@@ -759,7 +729,6 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
         serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
         1,
     );
-    ed.state.settings.lsp_inlay_hints = true;
 
     // Buffer A (focused, server A, no inlayHintProvider) never changes
     // focus. The viewport event below is for the background pane only.
@@ -790,7 +759,6 @@ fn undo_also_refreshes_hints() {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
-    ed.state.settings.lsp_inlay_hints = true;
 
     // Insert a character and settle. Its own on-text-changed fire is the
     // baseline (1). No `fire_viewport_change`/`prepare_frame` call in the
@@ -821,13 +789,13 @@ fn undo_also_refreshes_hints() {
 #[test]
 fn a_new_refresh_cancels_the_buffers_unanswered_request() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut rig, _guard) = core_lsp_rig(
+    let (mut rig, _guard) = core_lsp_rig_configured(
         tmp.path(),
         MARKED_FIXTURE,
         serde_json::json!({"capabilities": {"inlayHintProvider": true}}),
+        HINTS_ON,
         |_, _| {},
     );
-    rig.ed.state.settings.lsp_inlay_hints = true;
     let sid = rig.sid("rust-analyzer");
 
     rig.ed.feed_key(key('i'));
@@ -852,7 +820,6 @@ fn a_refresh_leaves_another_buffers_request_in_flight() {
     let tmp = tempfile::tempdir().unwrap();
     let caps = || serde_json::json!({"capabilities": {"inlayHintProvider": true}});
     let mut t = setup_two_servers(tmp.path(), caps(), caps(), 0);
-    t.ed.state.settings.lsp_inlay_hints = true;
 
     t.ed.feed_key(key('i'));
     t.ed.feed_key(key('a'));
