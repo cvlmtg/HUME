@@ -202,12 +202,14 @@ Passing a string to one of the character commands raises an error, and so does p
 Together, these make a command that removes trailing spaces and tabs from the selected lines, or from every line when no selection covers whole lines:
 
 ```scheme
-(define-typed-command! "trim-trailing" "Remove trailing spaces and tabs."
+(define-typed-command! "trim-trailing"
+  "Remove trailing spaces and tabs."
   (lambda (pane)
     (when (selections-charwise? pane)
-      (call! "select-all" pane))
-    (when (call! "sift-within" pane "(?m)[ \t]+$")
-      (call! "delete-selection" pane))))
+      (select-all pane))
+    (when (sift-within pane "(?m)[ \t]+$")
+      (delete-selection pane)
+      (keep-primary-selection pane))))
 ```
 
 When nothing matches, `sift-within` leaves the selections as they were and returns `#f`, so the `when` is what keeps the command from deleting them.

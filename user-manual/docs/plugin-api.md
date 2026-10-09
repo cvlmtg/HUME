@@ -8,6 +8,10 @@ Reference for every function a plugin or `init.scm` can call directly, as oppose
 
 This page is a lookup reference: tables of signatures and one-line effects. For narrative walkthroughs and worked examples, see [Plugins](plugins.md), [Language Servers](lsp.md), [Configuration](configuration.md), and the other pages linked throughout.
 
+## Commands and builtins
+
+Editor commands and builtins are different things. A command, such as `completion-trigger` or one a plugin defines with `define-command!`, is something a key can run: bind it with `bind-key!`, or run it from Scheme with `call!`. A builtin, such as `insert-key!` or `buffer-text`, is an ordinary Scheme function: call it by name with its arguments, but it can't be bound to a key and `call!` won't find it. Something is a builtin rather than a command when it needs arguments a keypress can't supply, or when it only makes sense as a step inside a command of your own. The [Builtin Commands](builtin-commands.md) page lists every command the editor ships with; this page lists the builtins.
+
 ## Conventions
 
 - A function whose call changes something (editor state, a registration, a process, a file) ends in `!`. Reads and functions that only build a value, like `debounce`, don't.
