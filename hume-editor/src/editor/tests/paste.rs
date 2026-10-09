@@ -1648,3 +1648,21 @@ fn smart_p_after_edit_with_osc52_clipboard_pastes_yank_without_warning() {
         "an OSC 52 clipboard is not a failure"
     );
 }
+
+/// Pressing a key that reads an operand commits the open paste session even
+/// when the read is then cancelled, as the command's own keypress would.
+#[test]
+fn a_cancelled_operand_read_commits_the_paste_session() {
+    for read_key in ['/', 'f'] {
+        let mut ed = editor_from("-[ab]>c\n");
+        ed.feed_key(key('d'));
+        ed.feed_key(key('p'));
+        assert!(ed.state.active_session.is_some(), "p opens a paste session");
+        ed.feed_key(key(read_key));
+        ed.feed_key(key_esc());
+        assert!(
+            ed.state.active_session.is_none(),
+            "{read_key} then Esc left the paste session open"
+        );
+    }
+}

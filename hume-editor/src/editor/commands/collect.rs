@@ -10,11 +10,13 @@ use hume_scripting::host::CommandArg;
 use super::super::dispatch::CmdCtx;
 use super::super::input_stack::{CharThen, read_char};
 use super::super::{EditorState, Severity};
-use super::{BoundCommand, Missing, PendingDispatch, open_pattern_prompt, run};
+use super::{BoundCommand, Missing, MissingOperand, PendingDispatch, open_pattern_prompt, run};
 
 /// Read `missing` from the user, then run its command on `pane` as
-/// dispatched with `ctx`. A prompt also runs it in Extend mode when sticky
-/// Extend is on, as opening the prompt leaves that mode.
+/// dispatched with `ctx`. Starting the read commits the open paste session
+/// as the command's keypress would, even if the read is then cancelled. A
+/// prompt also runs it in Extend mode when sticky Extend is on, as opening
+/// the prompt leaves that mode.
 pub(in crate::editor) fn collect_operand(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -22,12 +24,20 @@ pub(in crate::editor) fn collect_operand(
     pane: PaneHandle,
     ctx: CmdCtx,
 ) {
-    match missing {
-        Missing::Char(name) => {
+    let Missing {
+        name,
+        commits_paste,
+        operand,
+    } = missing;
+    if commits_paste {
+        state.commit_paste_session();
+    }
+    match operand {
+        MissingOperand::Char => {
             let then = CharThen::Dispatch(PendingDispatch { name, pane, ctx });
             read_char(state, view, then);
         }
-        Missing::Pattern { name, prompt, fp } => {
+        MissingOperand::Pattern { prompt, fp } => {
             let ctx = CmdCtx {
                 extend: ctx.extend || state.mode() == EditorMode::Extend,
                 ..ctx

@@ -403,31 +403,31 @@ fn text_operand(arg: CommandArg) -> Result<String, ArgError> {
 
 /// The operand a native command was dispatched without, to read from the
 /// user before it runs.
-pub(in crate::editor) enum Missing {
+pub(in crate::editor) struct Missing {
+    /// The command waiting for the operand.
+    pub(in crate::editor) name: Cow<'static, str>,
+    /// Whether starting the read commits the open paste session, as the
+    /// command's own run would ([`step_paste_commit`]): it targets the
+    /// focused pane and doesn't defer the commit.
+    pub(in crate::editor) commits_paste: bool,
+    pub(in crate::editor) operand: MissingOperand,
+}
+
+pub(in crate::editor) enum MissingOperand {
     /// The next key's character.
-    Char(Cow<'static, str>),
+    Char,
     /// A pattern typed at `prompt`, opened in the focused pane `fp`.
     Pattern {
-        name: Cow<'static, str>,
         prompt: PatternPrompt,
         fp: FocusedPane,
     },
 }
 
-impl Missing {
-    /// The command waiting for the operand.
-    pub(in crate::editor) fn name(&self) -> &Cow<'static, str> {
-        match self {
-            Self::Char(name) | Self::Pattern { name, .. } => name,
-        }
-    }
-}
-
 impl std::fmt::Display for Missing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Char(_) => write!(f, "needs a character"),
-            Self::Pattern { .. } => write!(f, "needs a pattern"),
+        match self.operand {
+            MissingOperand::Char => write!(f, "needs a character"),
+            MissingOperand::Pattern { .. } => write!(f, "needs a pattern"),
         }
     }
 }
@@ -536,7 +536,10 @@ fn bind_body<E: From<ArgError>>(
             EditorCmdBody::PaneChar(f) => match arg {
                 Some(arg) => any().and_then(|t| Ok(Bound::PaneChar(f, t, char_operand(arg)?))),
                 None => match any() {
-                    Ok(_) => return Err(Unbound::NeedsOperand(Missing::Char(cmd.name().clone()))),
+                    Ok(t) => {
+                        let focused = t.focused().is_some();
+                        return Err(missing(&cmd, focused, MissingOperand::Char));
+                    }
                     Err(e) => Err(e),
                 },
             },
@@ -545,11 +548,7 @@ fn bind_body<E: From<ArgError>>(
                 // The prompt opens in the focused pane.
                 None => match focused() {
                     Ok(fp) => {
-                        return Err(Unbound::NeedsOperand(Missing::Pattern {
-                            name: cmd.name().clone(),
-                            prompt,
-                            fp,
-                        }));
+                        return Err(missing(&cmd, true, MissingOperand::Pattern { prompt, fp }));
                     }
                     Err(e) => Err(e),
                 },
@@ -560,6 +559,16 @@ fn bind_body<E: From<ArgError>>(
         }
     };
     Ok(body)
+}
+
+/// `cmd` needs `operand` read before it runs, on the focused pane when
+/// `focused`.
+fn missing(cmd: &MappableCommand, focused: bool, operand: MissingOperand) -> Unbound {
+    Unbound::NeedsOperand(Missing {
+        name: cmd.name().clone(),
+        commits_paste: focused && !cmd.meta().defers_paste_commit,
+        operand,
+    })
 }
 
 /// Report an operand that doesn't fit command `name`, for a dispatch with no

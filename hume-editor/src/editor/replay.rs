@@ -378,7 +378,7 @@ impl Editor {
                     false
                 }
                 Err(commands::FocusedBindError::NeedsOperand(missing)) => {
-                    let name = missing.name();
+                    let name = &missing.name;
                     self.report(super::Severity::Error, format!("'{name}': {missing}"));
                     false
                 }
