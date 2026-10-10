@@ -106,7 +106,7 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             let scope = ed.state.record_binding(cmd.name, reg_cmd.meta().repeatable);
             let binding = scope.as_ref().and_then(RecordingScope::binding);
             ed.with_dot_capture(binding, |ed| {
-                ed.with_insert_key_dispatch(scope, |ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
+                with_insert_key_scope(ed, scope, |ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
             });
             return;
         }
@@ -126,27 +126,6 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
 
 impl Editor {
     // ── Insert mode ───────────────────────────────────────────────────────────
-
-    /// Runs `f` as an Insert key's binding, `scope` (the binding's own, `None`
-    /// when nothing records it) its recording scope, restoring the scope slot
-    /// afterward. Shared by `handle_insert`'s trie-leaf dispatch and
-    /// `replay.rs`'s replay of a recorded `Input::Binding` entry, so a binding
-    /// re-run on `.` sees the same context it saw live. Set for the whole call
-    /// regardless of what `f` does internally (mode switches included:
-    /// dispatch is synchronous all the way through a Steel `call!`, so this
-    /// never outlives the call it wraps). It keeps a repeatable command the
-    /// binding dispatches from starting a change of its own
-    /// (`replay::repeat_slot_owned`) and lets `insert-key!` run. The scope
-    /// holds the recording in flight open for the call, so a binding that
-    /// leaves Insert and re-enters it records what follows into the same
-    /// change.
-    pub(in crate::editor) fn with_insert_key_dispatch<R>(
-        &mut self,
-        scope: Option<RecordingScope>,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        with_insert_key_scope(self, scope, f)
-    }
 
     /// Bulk-insert `text` into the focused buffer as one grouped edit: the
     /// Insert-mode paste path. Also used by dot-repeat replay so a replayed

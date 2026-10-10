@@ -344,7 +344,7 @@ pub(crate) struct EditorState {
     /// (`replay::record_change`) or an input's callback
     /// (`Editor::run_answered`), set through
     /// [`replay::with_recording_scope`], or an Insert key's binding
-    /// (`Editor::with_insert_key_dispatch`), set through
+    /// (`input_stack::insert::handle_insert`), set through
     /// [`replay::with_insert_key_scope`], each for the extent of that call.
     /// See [`replay::ScopeSlot`].
     pub(in crate::editor) recording_scope: replay::ScopeSlot,

@@ -374,6 +374,16 @@ pub(in crate::editor) fn with_recording_scope<H: AsMut<EditorState>, R>(
 
 /// Runs `f` as an Insert key's binding, `scope` its own [`RecordingScope`]
 /// (`None` when nothing records it), restoring what it replaced afterward.
+/// Shared by `handle_insert`'s trie-leaf dispatch and the replay of a
+/// recorded [`Input::Binding`] entry, so a binding re-run on `.` sees the
+/// same context it saw live. Set for the whole call regardless of what `f`
+/// does internally (mode switches included: dispatch is synchronous all the
+/// way through a Steel `call!`, so this never outlives the call it wraps).
+/// It keeps a repeatable command the binding dispatches from starting a
+/// change of its own ([`repeat_slot_owned`]) and lets `insert-key!` run.
+/// The scope holds the recording in flight open for the call, so a binding
+/// that leaves Insert and re-enters it records what follows into the same
+/// change.
 pub(in crate::editor) fn with_insert_key_scope<H: AsMut<EditorState>, R>(
     host: &mut H,
     scope: Option<RecordingScope>,
@@ -1360,7 +1370,7 @@ impl Editor {
                     // replay recreates the same context. An interactive input
                     // the body reaches with no answer for it (it decided
                     // differently than it did live) refuses loudly instead.
-                    let ran = self.with_insert_key_dispatch(None, |ed| {
+                    let ran = with_insert_key_scope(self, None, |ed| {
                         ed.replay_command(cmd, fp, &super::input_stack::insert::INSERT_KEY_CTX)
                     });
                     self.finish_replayed_answers(ran);
