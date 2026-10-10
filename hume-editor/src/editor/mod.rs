@@ -345,7 +345,7 @@ pub(crate) struct EditorState {
     /// (`Editor::run_answered`), set through
     /// [`replay::with_recording_scope`], or an Insert key's binding
     /// (`input_stack::insert::handle_insert`), set through
-    /// [`replay::with_insert_key_scope`], each for the extent of that call.
+    /// [`replay::dispatch_insert_key`], each for the extent of that call.
     /// See [`replay::ScopeSlot`].
     pub(in crate::editor) recording_scope: replay::ScopeSlot,
     /// Accumulating selection-recipe buffer for the *next* edit's dot-repeat.

@@ -205,12 +205,12 @@ impl Editor {
         self.state.trigger_minibuf_completion(&self.view);
     }
 
-    /// Run the body of a Steel-backed or Lazy mappable command (bound to a
-    /// key, or dispatched via `call!`/dot-repeat).
+    /// Run the body of the Steel-backed mappable command [`Self::dispatch`]
+    /// resolved.
     ///
-    /// Returns `false` if the command aborted (lazy activation failure, scripting
-    /// error, or `scripting` is `None`). On error, the caller skips AFTER stages.
-    pub(super) fn run_steel_command(&mut self, name: &str, ctx: &CmdCtx) -> bool {
+    /// Returns `false` if the command aborted (scripting error, or
+    /// `scripting` is `None`). On error, the caller skips AFTER stages.
+    fn run_steel_command(&mut self, name: &str, ctx: &CmdCtx) -> bool {
         // Injected into the lambda's `count` param verbatim: `0` is the Scheme
         // spelling of `None` ("no count was typed"), so a wrapper that forwards
         // this value straight into `(call! "move-down" pane count extend)` round-trips
@@ -219,15 +219,12 @@ impl Editor {
         let count = ctx.count.unwrap_or(0);
         let extend = ctx.extend;
 
-        // Classified by `name` (never a passed-in `MappableCommand`): `name`
-        // is the single source of truth for which command this call runs:
-        // `dispatch` already derives it from its own `cmd`, so re-deriving
-        // the entry from that same `name` rules out ever activating one
-        // command's plugin while running another's body. Pure registry
-        // metadata, resolved (and its arity/arg-count errors reported) before
-        // the `scripting` guard below, so a `:cmd` arity mismatch is reported
-        // even in the (test-only) case where a SteelBacked entry exists in
-        // the registry but no scripting host is installed.
+        // Classified by `name`, the single source of truth for which command
+        // this call runs. Pure registry metadata, resolved (and its
+        // arity/arg-count errors reported) before the `scripting` guard
+        // below, so a `:cmd` arity mismatch is reported even in the
+        // (test-only) case where a SteelBacked entry exists in the registry
+        // but no scripting host is installed.
         let (inline_output, cmd_arity, cmd_is_variadic) =
             match self.state.config.registry.get_mappable(name) {
                 Some(MappableCommand::SteelBacked {
@@ -236,21 +233,6 @@ impl Editor {
                     is_variadic,
                     ..
                 }) => (*inline_output, *arity, *is_variadic),
-                Some(MappableCommand::Lazy { plugin, .. }) => {
-                    // Activate the owning plugin now so we can read
-                    // `inline_output` from the resolved SteelBacked entry before
-                    // dispatch.
-                    let plugin = plugin.clone();
-                    match self.resolve_lazy(&plugin, name) {
-                        Some(MappableCommand::SteelBacked {
-                            inline_output,
-                            arity,
-                            is_variadic,
-                            ..
-                        }) => (inline_output, arity, is_variadic),
-                        _ => return false,
-                    }
-                }
                 _ => return self.report_command_lost(name),
             };
 

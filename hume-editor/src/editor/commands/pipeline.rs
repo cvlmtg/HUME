@@ -405,7 +405,7 @@ fn text_operand(arg: CommandArg) -> Result<String, ArgError> {
 /// user before it runs.
 pub(in crate::editor) struct Missing {
     /// The command waiting for the operand.
-    pub(in crate::editor) name: Cow<'static, str>,
+    pub(super) name: Cow<'static, str>,
     /// Whether starting the read commits the open paste session, as the
     /// command's own run would ([`step_paste_commit`]): it targets the
     /// focused pane and doesn't defer the commit.
@@ -925,8 +925,8 @@ pub(in crate::editor::commands::pipeline) fn step_clear_extend(
 ///
 /// Returns `false` if the body refused outright (see
 /// `EditorState::command_refused`), `true` otherwise. `run_command_sync`
-/// forwards this to Steel's `call!` as the outcome of the dispatch; the
-/// keypress path ignores it, since a refusal already reported itself via
+/// forwards this to Steel's `call!` as the outcome of the dispatch;
+/// `Editor::dispatch` returns it. A refusal already reported itself via
 /// `state.report` inside the body.
 ///
 /// Composed from the step functions above. Every BEFORE/AFTER step that

@@ -13,22 +13,11 @@ use termina::event::KeyEvent;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
-use super::super::dispatch::CmdCtx;
 use super::super::keymap::WalkResult;
-use super::super::replay::{Input, RecordingScope, with_insert_key_scope};
+use super::super::replay::{Input, RecordingScope, dispatch_insert_key};
 use super::super::{Editor, EditorState, commands, doc_ops};
 use super::popup::PopupLayer;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
-
-/// The fixed dispatch context for a key that resolved to an Insert keymap
-/// leaf: always an explicit count of 1, never extending. Shared by
-/// `handle_insert` and `replay.rs`'s replay of a recorded
-/// `Input::Binding` entry, so a binding re-run on `.` sees the context
-/// it ran with the first time.
-pub(in crate::editor) const INSERT_KEY_CTX: CmdCtx = CmdCtx {
-    count: Some(1),
-    extend: false,
-};
 
 pub(in crate::editor) struct InsertLayer {
     pub(in crate::editor) sticky_popup: Option<PopupLayer>,
@@ -106,7 +95,7 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             let scope = ed.state.record_binding(cmd.name, reg_cmd.meta().repeatable);
             let binding = scope.as_ref().and_then(RecordingScope::binding);
             ed.with_dot_capture(binding, |ed| {
-                with_insert_key_scope(ed, scope, |ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
+                dispatch_insert_key(ed, scope, reg_cmd);
             });
             return;
         }

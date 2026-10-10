@@ -725,10 +725,6 @@ fn dot_after_find_is_noop() {
 /// path, which writes the stamp at the replay's own
 /// `BufferStore::edit_seq()` exactly as a live `d` would: nothing treats a
 /// replayed delete differently from a typed one.
-///
-/// If `route_kill`/`capture_to_ring` skipped stamping when called from
-/// `run_body` outside the dispatch pipeline (i.e. during replay), the ring
-/// head would be stale by the time `p` reads it and `p` would paste "CLIP".
 #[test]
 fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
     use hume_ops::register::CLIPBOARD_REGISTER;
@@ -2448,10 +2444,10 @@ fn dot_repeat_binding_taking_the_interactive_branch_only_on_replay_errors_loudly
 
 // ── A replayed macro that leaves Insert open ───────────────────────────────
 
-/// A replayed macro whose own recorded keys leave Insert mode open (its own
-/// Esc rebound to a no-op before replay, so the macro's queue drains while
-/// still in Insert). The session the user finishes by hand belongs to the
-/// macro's own entry command, and `.` repeats all of it.
+/// A replayed macro can leave Insert mode open (its own Esc rebound to a
+/// no-op before replay, so the macro's queue drains while still in Insert).
+/// The session the user finishes by hand belongs to the macro's own entry
+/// command, and `.` repeats all of it.
 #[test]
 fn dot_after_macro_leaves_insert_open_repeats_the_macros_own_session() {
     let tmp = tempfile::tempdir().unwrap();

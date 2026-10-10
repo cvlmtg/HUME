@@ -127,16 +127,13 @@ pub(in crate::editor) fn open_pattern_prompt(
     prompt: PatternPrompt,
     then: PendingDispatch,
 ) -> Result<(), String> {
+    if matches!(prompt, PatternPrompt::Sift) && all_cursors(state, view, fp.pane()) {
+        return Ok(());
+    }
+    drop(state.waiting_input(&then.name, InputOpener::Code)?);
     match prompt {
-        PatternPrompt::Search(direction) => {
-            drop(state.waiting_input(&then.name, InputOpener::Code)?);
-            begin_search(state, view, fp, direction, then);
-        }
+        PatternPrompt::Search(direction) => begin_search(state, view, fp, direction, then),
         PatternPrompt::Sift => {
-            if all_cursors(state, view, fp.pane()) {
-                return Ok(());
-            }
-            drop(state.waiting_input(&then.name, InputOpener::Code)?);
             // `SiftLayer::setup` snapshots the current selections once the
             // layer lands; see `SearchLayer::setup`'s doc for why the capture
             // happens there rather than here.

@@ -34,6 +34,7 @@ use super::dot_chain::{ChainBroken, DotChain};
 use super::edit_session::{self, DotCapture, EditSession, EditSessionKind, InsertState};
 use super::input_stack::char::CharRead;
 use super::keymap::CanonicalKey;
+use super::registry::MappableCommand;
 use super::{Editor, EditorState, Mode, commands, doc_ops};
 
 // ── The recorded change ───────────────────────────────────────────────────────
@@ -303,7 +304,7 @@ enum Running {
 }
 
 /// The code running now, if any: a [`RecordingScope`], or an Insert key's
-/// binding. Only [`with_recording_scope`] and [`with_insert_key_scope`] set
+/// binding. Only [`with_recording_scope`] and [`dispatch_insert_key`] set
 /// it, for the extent of one call, so nothing outlives the code it names.
 #[derive(Debug, Default)]
 pub(in crate::editor) struct ScopeSlot(Option<Running>);
@@ -371,24 +372,32 @@ pub(in crate::editor) fn with_recording_scope<H: AsMut<EditorState>, R>(
     with_running(host, scope.map(Running::Scope), f)
 }
 
-/// Runs `f` as an Insert key's binding, `scope` its own [`RecordingScope`]
-/// (`None` when nothing records it), restoring what it replaced afterward.
+/// Dispatches `cmd` as an Insert key's binding, `scope` its own
+/// [`RecordingScope`] (`None` when nothing records it), restoring what it
+/// replaced afterward. Always an explicit count of 1, never extending.
 /// Shared by `handle_insert`'s trie-leaf dispatch and the replay of a
 /// recorded [`Input::Binding`] entry, so a binding re-run on `.` sees the
-/// same context it saw live. Set for the whole call regardless of what `f`
-/// does internally (mode switches included: dispatch is synchronous all the
-/// way through a Steel `call!`, so this never outlives the call it wraps).
+/// same context it saw live. Set for the whole dispatch regardless of what
+/// the command does internally (mode switches included: dispatch is
+/// synchronous all the way through a Steel `call!`, so this never outlives
+/// the call it wraps).
 /// It keeps a repeatable command the binding dispatches from starting a
 /// change of its own ([`repeat_slot_owned`]) and lets `insert-key!` run.
 /// The scope holds the recording in flight open for the call, so a binding
 /// that leaves Insert and re-enters it records what follows into the same
 /// change.
-pub(in crate::editor) fn with_insert_key_scope<H: AsMut<EditorState>, R>(
-    host: &mut H,
+pub(in crate::editor) fn dispatch_insert_key(
+    ed: &mut Editor,
     scope: Option<RecordingScope>,
-    f: impl FnOnce(&mut H) -> R,
-) -> R {
-    with_running(host, Some(Running::InsertKey(scope)), f)
+    cmd: MappableCommand,
+) -> bool {
+    let ctx = CmdCtx {
+        count: Some(1),
+        extend: false,
+    };
+    with_running(ed, Some(Running::InsertKey(scope)), |ed| {
+        ed.dispatch(cmd, ctx)
+    })
 }
 
 /// A fresh change a repeatable command starts, as [`record_change`] records
@@ -1302,9 +1311,7 @@ impl Editor {
                     // replay recreates the same context. An interactive input
                     // the body reaches with no answer for it (it decided
                     // differently than it did live) refuses loudly instead.
-                    let ran = with_insert_key_scope(self, None, |ed| {
-                        ed.dispatch(cmd, super::input_stack::insert::INSERT_KEY_CTX)
-                    });
+                    let ran = dispatch_insert_key(self, None, cmd);
                     self.finish_replayed_answers(ran);
                     if self.state.mode() != Mode::Insert {
                         break;
