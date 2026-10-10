@@ -7,7 +7,7 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
-use super::super::replay::{Answer, AnswerTicket, DotReplay};
+use super::super::replay::{Answer, AnswerTicket, DotReplay, InputOpener};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
@@ -37,7 +37,7 @@ pub(in crate::editor) fn open_prompt(
     const WHAT: &str = "prompt!";
     if let Some(replay) = state.dot_replay.as_mut() {
         return replay.answer_call(WHAT, DotReplay::next_prompt, |text| {
-            Some((callback, prompt_arg(text)))
+            Ok((callback, prompt_arg(text)))
         });
     }
     // Not "a Command-mode minibuffer is open": a `prompt!` called from a
@@ -48,7 +48,7 @@ pub(in crate::editor) fn open_prompt(
     if state.input.is::<PromptLayer>(state.input.mode_layer()) {
         return Err("prompt!: a minibuffer session is already open".to_string());
     }
-    let answer = state.waiting_input(WHAT)?.ticket();
+    let answer = state.waiting_input(WHAT, InputOpener::Code)?.ticket();
     state.history.begin_session_all();
     state.push_mode_layer(
         view,
@@ -74,13 +74,12 @@ impl PromptLayer {
     /// its answer ticket, if it has one. Every way a prompt closes ends here.
     fn fire(&mut self, state: &mut EditorState, text: Option<String>) {
         let arg = prompt_arg(text.clone());
-        let call = state.answered_call(
+        state.queue_answered_call(
             self.answer.take(),
             Answer::Prompt(text),
             self.callback.clone(),
             arg,
         );
-        state.config.pending_work.push_back(call);
     }
 }
 

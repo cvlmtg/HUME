@@ -75,8 +75,8 @@ fn editor_state_fields_are_classified() {
             force_full_redraw: _,               // preserved
             inline_output: _,                   // preserved
             visual_move_target_display_cols: _, // preserved
-            // preserved: the settled change `.` replays; a keymap dispatch
-            // never re-enters `init.scm`, so a reload never runs mid-change
+            // preserved: the settled change `.` replays; a reload only
+            // forgets its pick payloads (`forget_steel_payloads`)
             recording: _,
             // preserved: restored by the body, binding or callback that set it
             recording_scope: _,

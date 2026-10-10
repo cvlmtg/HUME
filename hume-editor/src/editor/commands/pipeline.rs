@@ -410,6 +410,9 @@ pub(in crate::editor) struct Missing {
     /// command's own run would ([`step_paste_commit`]): it targets the
     /// focused pane and doesn't defer the commit.
     pub(super) commits_paste: bool,
+    /// Whether the command is `#:repeatable`: its operand read then seeds
+    /// its own change rather than ending one in flight.
+    pub(super) repeatable: bool,
     pub(super) operand: MissingOperand,
 }
 
@@ -564,9 +567,11 @@ fn bind_body<E: From<ArgError>>(
 /// `cmd` needs `operand` read before it runs, on the focused pane when
 /// `focused`.
 fn missing(cmd: &MappableCommand, focused: bool, operand: MissingOperand) -> Unbound {
+    let meta = cmd.meta();
     Unbound::NeedsOperand(Missing {
         name: cmd.name().clone(),
-        commits_paste: focused && !cmd.meta().defers_paste_commit,
+        commits_paste: focused && !meta.defers_paste_commit,
+        repeatable: meta.repeatable,
         operand,
     })
 }

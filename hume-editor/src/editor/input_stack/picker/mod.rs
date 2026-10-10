@@ -17,7 +17,9 @@ use steel::rvals::SteelVal;
 use super::super::commands::half_page;
 use super::super::keymap::CanonicalKey;
 use super::super::minibuf::flatten_single_line;
-use super::super::replay::{Answer, Choice, DotReplay, RecordedPick};
+use super::super::replay::{
+    Answer, DotReplay, InputOpener, Pick, Picked, action_unbound, payload_forgotten,
+};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
@@ -172,14 +174,14 @@ pub(in crate::editor) fn session_for_token(
 /// records under (see `EditorState::waiting_input`).
 ///
 /// During `.` the picker never opens: the recorded [`Answer::Pick`] answers
-/// it, its callback queued to run after the replayed body with the payload
-/// of the item its recorded [`Choice`] names when this picker has all its
-/// items as it opens (see [`PickerSession::payload_for`]), or the recorded
-/// payload otherwise. It refuses when the next answer is not a pick, when no
-/// item fits the choice, when the payload is gone (a reload
-/// forgets it), or when the recorded `#:actions` key is not bound here, and
-/// runs nothing for a pick that never resolved live. The returned token
-/// names no open session, so a later feed through it is a no-op.
+/// it, its callback queued to run after the replayed body with what the
+/// recorded [`Picked`] names: the payload of the item with the recorded
+/// text among this picker's items (see [`PickerSession::payload_for`]), or
+/// the recorded payload. It refuses when the next answer is not a pick, when
+/// no item has the recorded text, when a reload forgot the payload, or when
+/// the recorded `#:actions` key is not bound here, and runs nothing for a
+/// pick that never resolved live. The returned token names no open session,
+/// so a later feed through it is a no-op.
 ///
 /// Takes `state`/`view` rather than `&mut Editor` because its production
 /// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
@@ -194,21 +196,28 @@ pub(in crate::editor) fn open_picker(
 ) -> Result<HostToken, String> {
     let token = session.token();
     if let Some(replay) = state.dot_replay.as_mut() {
-        replay.answer_call(what, DotReplay::next_pick, |pick: RecordedPick| {
+        replay.answer_call(what, DotReplay::next_pick, |pick: Pick| {
             let proc = match pick.action {
                 None => session.on_select().clone(),
-                Some(key) => session.action_for(key)?.clone(),
+                Some(key) => session
+                    .action_for(key)
+                    .ok_or_else(|| action_unbound(what))?
+                    .clone(),
             };
-            let arg = match pick.choice {
+            let arg = match pick.picked {
                 None => SteelVal::BoolV(false),
-                Some(choice) if session.has_all_items() => session.payload_for(&choice)?.clone(),
-                Some(_) => pick.payload?,
+                Some(Picked::Choice(choice)) => session
+                    .payload_for(&choice)
+                    .ok_or_else(|| choice.missing(what))?
+                    .clone(),
+                Some(Picked::Payload(payload)) => payload,
+                Some(Picked::PayloadForgotten) => return Err(payload_forgotten(what)),
             };
-            Some((proc, arg))
+            Ok((proc, arg))
         })?;
         return Ok(token);
     }
-    if let Some(ticket) = state.waiting_input(what)?.ticket() {
+    if let Some(ticket) = state.waiting_input(what, InputOpener::Code)?.ticket() {
         session.attach_answer(ticket);
     }
     state.push_layer(view, PickerLayer(session));
@@ -239,20 +248,19 @@ fn fire_callback(
         PickerCallback::OnSelect => (session.on_select().clone(), None),
         PickerCallback::Action { key, proc } => (proc, Some(key)),
     };
-    let (choice, payload): (Option<Choice>, Option<SteelVal>) =
-        choice.map(|i| session.picked(i)).unzip();
-    let arg = payload.clone().unwrap_or(SteelVal::BoolV(false));
-    let call = state.answered_call(
+    let (picked, arg) = match choice {
+        Some(i) => {
+            let (picked, payload) = session.picked(i);
+            (Some(picked), payload)
+        }
+        None => (None, SteelVal::BoolV(false)),
+    };
+    state.queue_answered_call(
         session.take_answer(),
-        Answer::Pick {
-            action,
-            choice,
-            payload,
-        },
+        Answer::Pick(Pick { action, picked }),
         proc,
         arg,
     );
-    state.config.pending_work.push_back(call);
 }
 
 /// Single close chokepoint for the picker: ends the session (if one is

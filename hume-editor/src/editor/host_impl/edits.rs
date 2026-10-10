@@ -149,10 +149,9 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         if self.state.mode() != Mode::Insert {
             return Err("insert-key!: only in Insert mode".to_string());
         }
-        // `insert_key_dispatch` (see its own doc) is "an Insert
-        // key's own keymap binding is dispatching right now", the one
-        // context `.` can replay this call in (by re-running that same
-        // binding, per `handle_insert`'s own doc), so this must refuse
+        // `insert_key_dispatch` is set only while an Insert key's own
+        // keymap binding dispatches, the one context `.` can replay this
+        // call in (by re-running that same binding), so this must refuse
         // anywhere else (a hook, a timer): the buffer edit would otherwise
         // land untracked for dot-repeat.
         if !self.state.insert_key_dispatch {

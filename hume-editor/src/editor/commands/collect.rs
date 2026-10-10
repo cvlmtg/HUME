@@ -27,6 +27,7 @@ pub(in crate::editor) fn collect_operand(
     let Missing {
         name,
         commits_paste,
+        repeatable,
         operand,
     } = missing;
     if commits_paste {
@@ -34,7 +35,8 @@ pub(in crate::editor) fn collect_operand(
     }
     match operand {
         MissingOperand::Char => {
-            if let Err(msg) = read_command_char(state, view, PendingDispatch { name, pane, ctx }) {
+            let pending = PendingDispatch { name, pane, ctx };
+            if let Err(msg) = read_command_char(state, view, pending, repeatable) {
                 state.report(Severity::Error, msg);
             }
         }

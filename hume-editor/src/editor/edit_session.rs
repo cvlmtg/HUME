@@ -40,9 +40,10 @@ pub(in crate::editor) struct EditSession {
     kind: EditSessionKind,
     group: EditGroup,
     /// Armed around an Insert-key binding dispatch or a completion-popup
-    /// Enter; see [`DotCapture`]'s own doc. `None`
-    /// outside such a dispatch, and always on a non-`Insert` session (every
-    /// armer requires an open Insert session first).
+    /// Enter, so a completion accept made there is recorded as its net
+    /// cursor edit ([`DotCapture`]). `None` outside such a dispatch, and
+    /// always on a non-`Insert` session (every armer requires an open Insert
+    /// session first).
     dot_capture: Option<DotCapture>,
     /// The source this Insert session holds on the change whose code opened
     /// it, released by `EditorState::end_insert_recording`. `None` for a
@@ -84,9 +85,9 @@ impl EditSession {
         self.dot_capture.as_mut()
     }
 
-    /// Arms `cap`. Never nests: an Insert-key binding
-    /// that itself calls `completion-accept!` shares the *outer* capture
-    /// instead (see `EditorState::interactive_input`'s own doc), so a
+    /// Arms `cap`. Never nests: an Insert-key binding that itself calls
+    /// `completion-accept!` marks the binding's capture interactive
+    /// (`EditorState::interactive_input`) instead of arming its own, so a
     /// capture is always taken back out (by `Editor::with_dot_capture`, or by
     /// `EditorState::end_insert_recording`) before the next arm.
     pub(in crate::editor) fn arm_dot_capture(&mut self, cap: DotCapture) {
@@ -119,9 +120,9 @@ impl EditSession {
         self.recording.take()
     }
 
-    /// Whether this session feeds a recorded change.
-    pub(in crate::editor) fn holds_recording(&self) -> bool {
-        self.recording.is_some()
+    /// The source this session holds on the change whose code opened it.
+    pub(in crate::editor) fn recording_ticket(&self) -> Option<&SourceTicket> {
+        self.recording.as_ref()
     }
 
     /// Consumes the session, handing its [`EditGroup`] to the caller that's
@@ -303,10 +304,10 @@ pub(in crate::editor) struct DotCapture {
     pub(in crate::editor) chain: DotChain,
     /// Set by `EditorState::interactive_input`.
     pub(in crate::editor) interactive: bool,
-    /// The transcript entry of the Insert-key binding this capture wraps,
-    /// which its net edit takes the place of; `None` for a bare Enter-key accept
+    /// The entry of the Insert-key binding this capture wraps, which its
+    /// net edit takes the place of; `None` for a bare Enter-key accept
     /// (`accept_completion_selection`), which has no entry of its own.
-    pub(in crate::editor) slot: Option<usize>,
+    pub(in crate::editor) slot: Option<super::replay::BindingId>,
 }
 
 /// Accumulated state for an in-progress insert or paste session.

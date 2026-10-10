@@ -73,7 +73,8 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 /// Walks the Insert keymap for `key`: a bound key re-dispatches its
 /// command, an unbound one runs its default behaviour
 /// (`commands::insert_default_key`). Either way, records the key as the
-/// input it was; see `Input`'s own doc.
+/// input it was: a binding by its name, so `.` re-runs the binding, an
+/// unbound key as itself, so `.` re-runs its default behaviour.
 fn handle_insert(ed: &mut Editor, key: KeyEvent) {
     // Only Esc, Ctrl-c, arrows, and user bindings live in the insert trie;
     // plain chars, Tab, Enter, Backspace, and Delete fall through to their
@@ -94,13 +95,13 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             // get have an entry to go to: replay re-runs this binding, so it
             // decides again at the new cursor. Wrapped in a dot-capture, so a
             // completion accept it makes replaces that entry with its own net
-            // edit (see `edit_session::DotCapture`'s own doc).
+            // edit.
             // Through the full pipeline like any keypress: an edit composes
             // into the open insert-session group (`run_body` routes through
             // `apply_doc_edit_grouped`), a motion clears a pinned typed run
             // (`with_jump`), and `repeat_slot_owned` keeps
             // a repeatable command from stamping over the session's owner.
-            let scope = ed.state.record_binding(cmd.name);
+            let scope = ed.state.record_binding(cmd.name, reg_cmd.meta().repeatable);
             let slot = scope.as_ref().and_then(RecordingScope::binding);
             ed.with_dot_capture(slot, |ed| {
                 ed.with_insert_key_dispatch(scope, |ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
@@ -132,8 +133,9 @@ impl Editor {
     /// live. Set for the whole call regardless of what `f` does internally
     /// (mode switches included: dispatch is synchronous all the way
     /// through a Steel `call!`, so this never outlives the call it wraps).
-    /// See `commands::repeat_slot_owned`'s own doc for what the flag
-    /// itself gates. The scope holds the recording in flight open for the
+    /// The flag keeps a repeatable command the binding dispatches from
+    /// starting a change of its own (`commands::repeat_slot_owned`) and lets
+    /// `insert-key!` run. The scope holds the recording in flight open for the
     /// call, so a binding that leaves Insert and re-enters it records what
     /// follows into the same change.
     pub(in crate::editor) fn with_insert_key_dispatch<R>(

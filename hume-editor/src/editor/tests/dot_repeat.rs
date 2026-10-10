@@ -1,5 +1,5 @@
 use super::*;
-use crate::editor::replay::{Answer, Input};
+use crate::editor::replay::{Answer, Input, Pick, Picked};
 use pretty_assertions::assert_eq;
 
 /// `i` is the recorded unbound key `ch`.
@@ -1984,7 +1984,8 @@ fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
                  (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane))))))
+                   (when payload (call! "delete-word-backward" pane)))))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-word")"#,
     );
 
@@ -2007,9 +2008,9 @@ fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
         .transcript;
     assert_eq!(inputs.len(), 2, "got {inputs:?}");
     assert!(
-        matches!(&inputs[0], Input::Binding { name, answers }
+        matches!(&inputs[0], Input::Binding { name, answers, .. }
                 if name == "pick-word"
-                    && matches!(answers.as_slice(), [Answer::Pick { choice: Some(c), .. }] if c.label == "alpha" && c.nth == 0))
+                    && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: Some(Picked::Choice(c)), .. })] if c.label == "alpha" && c.nth == 0))
             && is_binding(&inputs[1], "exit-insert"),
         "got {inputs:?}"
     );
@@ -2040,7 +2041,8 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
                  (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane))))))
+                   (when payload (call! "delete-word-backward" pane)))))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-word")"#,
     );
 
@@ -2083,9 +2085,9 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
         .transcript;
     assert_eq!(inputs.len(), 2, "got {inputs:?}");
     assert!(
-        matches!(&inputs[0], Input::Binding { name, answers }
+        matches!(&inputs[0], Input::Binding { name, answers, .. }
                 if name == "pick-word"
-                    && matches!(answers.as_slice(), [Answer::Pick { choice: Some(c), .. }] if c.label == "alpha" && c.nth == 0))
+                    && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: Some(Picked::Choice(c)), .. })] if c.label == "alpha" && c.nth == 0))
             && is_binding(&inputs[1], "exit-insert"),
         "the binding records its pick, and nothing of the foreign 'Z' insert: {inputs:?}"
     );
@@ -2107,7 +2109,8 @@ fn dot_repeat_keeps_a_pick_when_a_foreign_edit_follows_the_bindings_own_edit() {
                (insert-key! pane "x")
                (picker! pane (list (cons "alpha" "ALPHA"))
                  (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane))))))
+                   (when payload (call! "delete-word-backward" pane)))))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "edit-then-pick")"#,
     );
 
@@ -2157,9 +2160,9 @@ fn dot_repeat_keeps_a_pick_when_a_foreign_edit_follows_the_bindings_own_edit() {
         .expect("`i` must have stamped a repeatable action")
         .transcript;
     assert!(
-        matches!(inputs.first(), Some(Input::Binding { name, answers })
+        matches!(inputs.first(), Some(Input::Binding { name, answers, .. })
             if name == "edit-then-pick"
-                && matches!(answers.as_slice(), [Answer::Pick { choice: Some(c), .. }] if c.label == "alpha" && c.nth == 0)),
+                && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: Some(Picked::Choice(c)), .. })] if c.label == "alpha" && c.nth == 0)),
         "the binding records its pick: {inputs:?}"
     );
 }
@@ -2178,7 +2181,8 @@ fn dot_repeat_replays_a_dismissed_pick_as_a_dismissal() {
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
                  (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane))))))
+                   (when payload (call! "delete-word-backward" pane)))))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-word")"#,
     );
 
@@ -2201,9 +2205,9 @@ fn dot_repeat_replays_a_dismissed_pick_as_a_dismissal() {
     assert!(
         is_key(&inputs[0], 'x')
             && is_key(&inputs[1], 'y')
-            && matches!(&inputs[2], Input::Binding { name, answers }
+            && matches!(&inputs[2], Input::Binding { name, answers, .. }
                 if name == "pick-word"
-                    && matches!(answers.as_slice(), [Answer::Pick { choice: None, payload: None, .. }]))
+                    && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: None, .. })]))
             && is_binding(&inputs[3], "exit-insert"),
         "got {inputs:?}"
     );
@@ -2679,7 +2683,8 @@ fn dot_repeat_keeps_a_pick_whose_on_select_is_lost_to_the_drain_cap() {
         r#"(define-command! "pick-word" ""
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
-                 (lambda (payload) (void)))))
+                 (lambda (payload) (void))))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-word")"#,
     );
 
@@ -2718,9 +2723,9 @@ fn dot_repeat_keeps_a_pick_whose_on_select_is_lost_to_the_drain_cap() {
             ed.state
                 .last_action()
                 .and_then(|a| a.transcript.last()),
-            Some(Input::Binding { name, answers })
+            Some(Input::Binding { name, answers, .. })
                 if name == "pick-word"
-                    && matches!(answers.as_slice(), [Answer::Pick { choice: Some(c), .. }] if c.label == "alpha" && c.nth == 0)
+                    && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: Some(Picked::Choice(c)), .. })] if c.label == "alpha" && c.nth == 0)
         ),
         "the binding records the pick the user made"
     );
@@ -2761,7 +2766,8 @@ fn picker_torn_down_by_a_reload_fires_on_select_and_records_a_dismissal() {
                (insert-key! pane "x")
                (picker! pane (list (cons "alpha" "ALPHA"))
                  (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane))))))
+                   (when payload (call! "delete-word-backward" pane)))))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "edit-then-pick")"#,
     );
 
@@ -2794,9 +2800,9 @@ fn picker_torn_down_by_a_reload_fires_on_select_and_records_a_dismissal() {
         .expect("`i` must have stamped a repeatable action")
         .transcript;
     assert!(
-        matches!(inputs.as_slice(), [Input::Binding { name, answers }]
+        matches!(inputs.as_slice(), [Input::Binding { name, answers, .. }]
             if name == "edit-then-pick"
-                && matches!(answers.as_slice(), [Answer::Pick { choice: None, payload: None, .. }])),
+                && matches!(answers.as_slice(), [Answer::Pick(Pick { picked: None, .. })])),
         "the binding is recorded, its torn-down picker as a dismissal: {inputs:?}"
     );
 }
@@ -3026,7 +3032,8 @@ fn dot_repeats_both_edits_of_two_queued_character_reads() {
         r#"(define-command! "two-reads" ""
              (lambda (pane)
                (on-next-char! (lambda (a) (when a (call! "replace" pane a))))
-               (on-next-char! (lambda (b) (when b (call! "surround-add" pane b))))))
+               (on-next-char! (lambda (b) (when b (call! "surround-add" pane b)))))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-x" "two-reads")"#,
     );
     ed.feed_key(key('i'));
@@ -3058,7 +3065,8 @@ fn dot_repeats_a_pick_and_a_character_read_from_one_binding() {
                (on-next-char! (lambda (c) (when c (call! "replace" pane c))))
                (picker! pane (list (cons "alpha" "ALPHA"))
                  (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane))))))
+                   (when payload (call! "delete-word-backward" pane)))))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "read-and-pick")"#,
     );
     ed.feed_key(key('i'));
@@ -3087,7 +3095,8 @@ fn dot_repeats_an_edit_a_binding_makes_after_starting_a_character_read() {
         r#"(define-command! "read-then-type" ""
              (lambda (pane)
                (on-next-char! (lambda (c) (when c (call! "replace" pane c))))
-               (insert-key! pane "x")))
+               (insert-key! pane "x"))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-x" "read-then-type")"#,
     );
     ed.feed_key(key('i'));
@@ -3114,7 +3123,8 @@ fn dot_repeats_an_edit_a_binding_makes_after_opening_a_picker() {
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
                  (lambda (payload) (when payload (call! "replace" pane #\z))))
-               (insert-key! pane "x")))
+               (insert-key! pane "x"))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-then-type")"#,
     );
     ed.feed_key(key('i'));
@@ -3155,10 +3165,11 @@ fn dot_skips_a_binding_whose_character_read_was_cancelled() {
     assert_eq!(ed.state.mode(), Mode::Normal);
 }
 
-/// Opening a prompt from an Insert binding makes the binding interactive:
-/// `.` writes the edit it made and never opens the prompt again.
+/// A prompt a non-repeatable Insert binding opens ends the change: `.`
+/// repeats neither the binding nor the edit it made before the prompt, and
+/// never opens the prompt.
 #[test]
-fn dot_does_not_rerun_an_insert_binding_that_opened_a_prompt() {
+fn a_non_repeatable_insert_bindings_prompt_ends_the_change() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     run(
@@ -3175,10 +3186,17 @@ fn dot_does_not_rerun_an_insert_binding_that_opened_a_prompt() {
     ed.feed_key(key_esc());
     ed.settle();
     assert_eq!(ed.doc().text().to_string(), "xhello\nworld\n");
+    assert!(
+        ed.state
+            .last_action()
+            .is_some_and(|a| a.transcript.is_empty()),
+        "got {:?}",
+        ed.state.last_action()
+    );
 
     select_marked(&mut ed, "xhello\n-[w]>orld\n");
     ed.feed_key(key('.'));
-    assert_eq!(ed.doc().text().to_string(), "xhello\nxworld\n");
+    assert_eq!(ed.doc().text().to_string(), "xhello\nworld\n");
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert!(
         !status(&ed).contains("reached during"),
@@ -3201,6 +3219,58 @@ fn dot_repeats_a_commands_menu_choice() {
     ed.settle();
     assert!(ed.state.input.menu().is_none(), "`.` must not open a menu");
     assert_eq!(ed.doc().text().to_string(), "tello\ntorld\n");
+}
+
+/// A menu `close-menu!` closed before it was answered: `.` opens nothing
+/// for it and runs no callback, and the rest of the command repeats.
+#[test]
+fn dot_replays_a_menu_closed_unanswered_as_nothing() {
+    let mut ed = record_rd(
+        r#"(let ((tok (show-menu! pane (list "one")
+                        (lambda (i) (call! "replace" pane #\x)))))
+             (close-menu! tok)
+             (call! "delete" pane))"#,
+        &[],
+    );
+    assert_eq!(ed.doc().text().to_string(), "ello\nworld\n");
+    assert!(
+        matches!(
+            ed.state.last_action().map(|a| a.answers.as_slice()),
+            Some([Answer::Unanswered])
+        ),
+        "got: {:?}",
+        ed.state.last_action()
+    );
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(ed.state.input.menu().is_none(), "`.` must not open a menu");
+    assert_eq!(ed.doc().text().to_string(), "ello\norld\n");
+}
+
+/// A drawer is not an input of the command that opened it: picking a row
+/// records no answer, and a repeatable command its `on-select` runs is a
+/// change of its own.
+#[test]
+fn a_drawer_pick_is_no_part_of_the_commands_change() {
+    let mut ed = editor_with_steel(
+        "-[h]>ello\nworld\n",
+        r#"(define-command! "dr" ""
+             (lambda (pane)
+               (call! "replace" pane #\x)
+               (show-drawer-list! pane (list "a" "b")
+                 (lambda (idx tok) (when idx (call! "delete" pane)))))
+             #:repeatable #t)"#,
+    );
+    ed.execute_keymap_command("dr".into(), Some(1), false);
+    ed.settle();
+    assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
+    assert_eq!(ed.doc().text().to_string(), "xello\nworld\n");
+    ed.feed_key(key_enter());
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "ello\nworld\n");
+    let action = ed.state.last_action().expect("a change is recorded");
+    assert_eq!(action.command.as_ref(), "delete");
+    assert!(action.answers.is_empty(), "got: {:?}", action.answers);
 }
 
 /// Of two menu items with the same text, `.` repeats the one picked.
@@ -3249,11 +3319,11 @@ fn dot_repeats_a_commands_prompt_answer() {
 
 // ── Recording source accounting ──────────────────────────────────────────────
 
-/// A character read a hook opens mid-Insert is not the change's own read:
-/// its answer arrives after the session's keys, so `.` must not record it
-/// as an operand. `.` replays the typed text and reports nothing fatal.
+/// A character read opened mid-Insert by code outside every recorded
+/// change (here a hook) ends the change: `.` replays the keys typed before
+/// it, not its answer nor the keys after it.
 #[test]
-fn dot_ignores_a_read_a_hook_opens_during_a_recorded_insert() {
+fn a_read_opened_outside_the_change_mid_insert_ends_the_change() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     run(
@@ -3271,28 +3341,35 @@ fn dot_ignores_a_read_a_hook_opens_during_a_recorded_insert() {
     ed.settle();
     assert!(reading_char(&ed), "setup: the hook's read must be pending");
     ed.feed_key(key('b'));
+    ed.feed_key(key('c'));
     ed.feed_key(key_esc());
-    assert_eq!(ed.doc().text().to_string(), "ahello\nworld\n");
+    assert_eq!(ed.doc().text().to_string(), "achello\nworld\n");
 
-    let answers = &ed
+    let action = ed
         .state
         .last_action()
-        .expect("`i` must have recorded a change")
-        .answers;
+        .expect("`i` must have recorded a change");
     assert!(
-        answers.is_empty(),
-        "a hook's read answer must not join the change: {answers:?}"
+        action.answers.is_empty(),
+        "a hook's read answer must not join the change: {:?}",
+        action.answers
+    );
+    assert!(
+        matches!(action.transcript.as_slice(), [i] if is_key(i, 'a')),
+        "got {:?}",
+        action.transcript
     );
 
-    select_marked(&mut ed, "ahello\n-[w]>orld\n");
+    select_marked(&mut ed, "achello\n-[w]>orld\n");
     ed.feed_key(key('.'));
-    assert_eq!(ed.doc().text().to_string(), "ahello\naworld\n");
+    assert_eq!(ed.doc().text().to_string(), "achello\naworld\n");
 }
 
-/// A character read a hook opens after `c`, before the first typed key, is
-/// not the change's operand: `.` repeats the change with its typed text.
+/// A character read opened by code outside every recorded change (here a
+/// hook) after `c`, before the first typed key, ends the change there: `.`
+/// repeats `c` with no text.
 #[test]
-fn dot_ignores_a_read_a_hook_opens_before_a_changes_first_key() {
+fn a_read_opened_outside_the_change_before_its_first_key_ends_the_change() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     run(
@@ -3325,9 +3402,17 @@ fn dot_ignores_a_read_a_hook_opens_before_a_changes_first_key() {
         "a hook's read answer must not join the change: {answers:?}"
     );
 
+    assert!(
+        ed.state
+            .last_action()
+            .is_some_and(|a| a.transcript.is_empty()),
+        "got {:?}",
+        ed.state.last_action()
+    );
+
     select_marked(&mut ed, "abello\n-[w]>orld\n");
     ed.feed_key(key('.'));
-    assert_eq!(ed.doc().text().to_string(), "abello\naborld\n");
+    assert_eq!(ed.doc().text().to_string(), "abello\norld\n");
 }
 
 /// A callback of an Insert-key binding's read that opens a second read
@@ -3343,7 +3428,8 @@ fn dot_repeats_both_reads_a_binding_and_its_callback_make() {
              (lambda (pane)
                (on-next-char!
                  (lambda (a)
-                   (on-next-char! (lambda (b) (when b (call! "replace" pane b))))))))
+                   (on-next-char! (lambda (b) (when b (call! "replace" pane b)))))))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-x" "read-twice")"#,
     );
     ed.feed_key(key('i'));
@@ -3715,7 +3801,82 @@ fn reload_forgets_a_live_picks_payload() {
     ed.settle();
     assert_eq!(ed.doc().text().to_string(), "(B)ello\nworld\n");
     assert!(
-        status(&ed).contains("reached during"),
+        status(&ed).contains("a config reload forgot the picked value"),
+        "got: {}",
+        status(&ed)
+    );
+}
+
+/// A `picker!` that gets its items after it opens is replayed from the
+/// payload its pick got: the re-run picker holds none of them yet when `.`
+/// answers it.
+#[test]
+fn dot_repeats_a_pick_from_items_pushed_after_the_picker_opened() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        &format!(
+            r#"(let ((tok (picker! pane '() {PK_SELECT})))
+                 (picker-push! tok (list (cons "b" "B"))))"#
+        ),
+        &[key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "(B)ello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(
+        ed.state.input.picker().is_none(),
+        "`.` must not open a picker"
+    );
+    assert_eq!(ed.doc().text().to_string(), "(B)ello\n(B)orld\n");
+}
+
+/// A re-run `picker!` with no item of the picked text: `.` refuses and
+/// names the item it looked for.
+#[test]
+fn dot_refuses_a_pick_whose_text_is_gone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        &format!(
+            r#"(picker! pane
+                 (if (= (buffer-cursor-line pane) 0) (list (cons "b" "B")) (list (cons "c" "C")))
+                 {PK_SELECT})"#
+        ),
+        &[key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "(B)ello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "(B)ello\nworld\n");
+    assert!(
+        status(&ed).contains(r#"no item "b""#),
+        "got: {}",
+        status(&ed)
+    );
+}
+
+/// A pick made through an `#:actions` key the re-run picker does not bind:
+/// `.` refuses and says so.
+#[test]
+fn dot_refuses_a_pick_whose_action_key_is_unbound() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        &format!(
+            r#"(picker! pane (list (cons "a" "A")) {PK_SELECT}
+                 #:actions (if (= (buffer-cursor-line pane) 0)
+                               (list (cons "ctrl-t" {PK_SELECT}))
+                               '()))"#
+        ),
+        &[key_ctrl('t')],
+    );
+    assert_eq!(ed.doc().text().to_string(), "(A)ello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "(A)ello\nworld\n");
+    assert!(
+        status(&ed).contains("not one of this picker's actions"),
         "got: {}",
         status(&ed)
     );
@@ -3759,7 +3920,8 @@ fn dot_reruns_an_insert_binding_answering_its_picker() {
              (lambda (pane)
                (picker! pane (list (cons "alpha" "ALPHA"))
                  (lambda (payload)
-                   (when payload (call! "delete-word-backward" pane))))))
+                   (when payload (call! "delete-word-backward" pane)))))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "pick-word")"#,
     );
     ed.feed_key(key('i'));
@@ -3791,7 +3953,8 @@ fn dot_reruns_an_insert_binding_answering_its_read() {
         r#"(define-command! "read-word" ""
              (lambda (pane)
                (on-next-char!
-                 (lambda (c) (when (eqv? c #\w) (call! "delete-word-backward" pane))))))
+                 (lambda (c) (when (eqv? c #\w) (call! "delete-word-backward" pane)))))
+             #:repeatable #t)
            (bind-key! 'insert "ctrl-y" "read-word")"#,
     );
     ed.feed_key(key('i'));
@@ -3806,6 +3969,129 @@ fn dot_reruns_an_insert_binding_answering_its_read() {
     ed.settle();
     assert!(!reading_char(&ed), "`.` must not wait for a key");
     assert_eq!(ed.doc().text().to_string(), "def\nxyz\n");
+}
+
+/// Keys `i a <ctrl-y> <answer> b <Esc>` on "hello": `ctrl-y` runs a
+/// non-repeatable command whose `open` input, once answered, deletes the word
+/// behind the cursor.
+fn record_insert_with_unrepeatable_input(open: &str, answer: KeyEvent) -> Editor {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "ask" "" (lambda (pane) {open}))
+               (bind-key! 'insert "ctrl-y" "ask")"#
+        ),
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key_ctrl('y'));
+    ed.feed_key(answer);
+    ed.settle();
+    ed.feed_key(key('b'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "bhello\nworld\n");
+    select_marked(&mut ed, "bhello\n-[w]>orld\n");
+    ed
+}
+
+/// A picker a non-repeatable Insert binding opens ends the change: `.`
+/// repeats the keys typed before that binding, not the binding, its pick,
+/// or the keys after it.
+#[test]
+fn a_non_repeatable_insert_bindings_picker_ends_the_change() {
+    let mut ed = record_insert_with_unrepeatable_input(
+        r#"(picker! pane (list (cons "w" "W"))
+             (lambda (p) (when p (call! "delete-word-backward" pane))))"#,
+        key_enter(),
+    );
+    let transcript = &ed.state.last_action().expect("`i` recorded").transcript;
+    assert!(
+        matches!(transcript.as_slice(), [i] if is_key(i, 'a')),
+        "got {transcript:?}"
+    );
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(
+        ed.state.input.picker().is_none(),
+        "`.` must not open a picker"
+    );
+    assert_eq!(ed.doc().text().to_string(), "bhello\naworld\n");
+}
+
+/// A character read a non-repeatable Insert binding opens ends the change,
+/// the same as a picker.
+#[test]
+fn a_non_repeatable_insert_bindings_read_ends_the_change() {
+    let mut ed = record_insert_with_unrepeatable_input(
+        r#"(on-next-char!
+             (lambda (c) (when (eqv? c #\w) (call! "delete-word-backward" pane))))"#,
+        key('w'),
+    );
+    let transcript = &ed.state.last_action().expect("`i` recorded").transcript;
+    assert!(
+        matches!(transcript.as_slice(), [i] if is_key(i, 'a')),
+        "got {transcript:?}"
+    );
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(!reading_char(&ed), "`.` must not wait for a key");
+    assert_eq!(ed.doc().text().to_string(), "bhello\naworld\n");
+}
+
+/// An answer whose binding entry a completion accept removed is dropped: it
+/// never lands in the entry of a binding recorded after it. No key sequence
+/// reaches this, since a waiting input takes every key, so it drives the
+/// recording directly.
+#[test]
+fn a_stale_answer_never_lands_in_a_later_bindings_entry() {
+    use crate::editor::dot_chain::DotChain;
+    use crate::editor::edit_session::DotCapture;
+    use crate::editor::replay::{AnswerTicket, InputOpener, RecordingScope, with_recording_scope};
+
+    fn open_input(ed: &mut Editor, scope: RecordingScope) -> AnswerTicket {
+        with_recording_scope(&mut ed.state, Some(scope), |state| {
+            state
+                .waiting_input("ask", InputOpener::Code)
+                .expect("not during `.`")
+                .ticket()
+        })
+        .expect("a repeatable binding's input records")
+    }
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.feed_key(key('i'));
+
+    let a = ed
+        .state
+        .record_binding("a".into(), true)
+        .expect("`i` is recording");
+    let a_entry = a.binding();
+    let stale = open_input(&mut ed, a);
+
+    let text = ed.doc().text().clone();
+    ed.state.finalize_dot_capture(DotCapture {
+        chain: DotChain::new(test_fixtures::testing::at(&text, 0), &text),
+        interactive: true,
+        slot: a_entry,
+    });
+
+    let b = ed
+        .state
+        .record_binding("b".into(), true)
+        .expect("`i` is still recording");
+    let _b_ticket = open_input(&mut ed, b);
+
+    ed.state.record_answer(&stale, Answer::Char(Some('z')));
+
+    let transcript = &ed.state.last_action().expect("`i` recorded").transcript;
+    assert!(
+        matches!(transcript.as_slice(), [Input::Binding { name, answers, .. }]
+            if name == "b" && matches!(answers.as_slice(), [Answer::Unanswered])),
+        "got {transcript:?}"
+    );
 }
 
 /// A reload while an Insert-key binding's picker is open releases that

@@ -67,17 +67,9 @@ impl Editor {
             Err(commands::FocusedBindError::NotNative(cmd)) => cmd,
         };
 
-        // A Lazy stub carries no metadata of its own: activate its plugin
-        // first, so every decision below reads the real command's.
-        let cmd = match cmd {
-            MappableCommand::Lazy { name, plugin } => {
-                let Some(cmd) = self.resolve_lazy(&plugin, &name) else {
-                    return;
-                };
-                cmd
-            }
-            cmd => cmd,
-        };
+        if let MappableCommand::Lazy { .. } = cmd {
+            unreachable!("resolve_mappable activates a Lazy stub before dispatch");
+        }
 
         // Steel path, composed from shared step functions.
         let meta = cmd.meta();
@@ -510,13 +502,18 @@ impl Editor {
 
     /// Looks up `name` in the command registry, reporting (via
     /// [`Self::report_unknown_command`]) and returning `None` if it isn't
-    /// there.
+    /// there. A `Lazy` stub is activated and its real entry returned, so
+    /// every caller reads the command's own metadata: whether an Insert-key
+    /// binding is `#:repeatable` is read before it dispatches.
     pub(in crate::editor) fn resolve_mappable(&mut self, name: &str) -> Option<MappableCommand> {
-        let cmd = self.state.config.registry.get_mappable(name).cloned();
-        if cmd.is_none() {
-            self.report_unknown_command(name, format!("unknown command: {name}"));
+        match self.state.config.registry.get_mappable(name).cloned() {
+            Some(MappableCommand::Lazy { name, plugin }) => self.resolve_lazy(&plugin, &name),
+            Some(cmd) => Some(cmd),
+            None => {
+                self.report_unknown_command(name, format!("unknown command: {name}"));
+                None
+            }
         }
-        cmd
     }
 }
 

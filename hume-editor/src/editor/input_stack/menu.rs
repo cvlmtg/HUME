@@ -7,7 +7,7 @@ use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
 
 use super::super::mouse::is_fresh_gesture;
-use super::super::replay::{Answer, AnswerTicket, Choice, DotReplay};
+use super::super::replay::{Answer, AnswerTicket, Choice, DotReplay, InputOpener};
 use super::super::{Editor, EditorState, host_token};
 use super::base::BaseLayer;
 use super::placement::{focused_cursor, popup_placement};
@@ -57,11 +57,13 @@ pub(in crate::editor) fn open_menu(
             let arg = match choice {
                 None => steel::rvals::SteelVal::BoolV(false),
                 Some(choice) => {
-                    let i = choice.find(&items, String::as_str)?;
+                    let i = choice
+                        .find(&items, String::as_str)
+                        .ok_or_else(|| choice.missing(WHAT))?;
                     steel::rvals::SteelVal::IntV(i as isize)
                 }
             };
-            Some((callback, arg))
+            Ok((callback, arg))
         })?;
         return Ok(None);
     }
@@ -71,7 +73,7 @@ pub(in crate::editor) fn open_menu(
     if state.async_opener_stale::<BaseLayer, MenuLayer>(WHAT) {
         return Ok(None);
     }
-    let answer = state.waiting_input(WHAT)?.ticket();
+    let answer = state.waiting_input(WHAT, InputOpener::Code)?.ticket();
     // Retires a prior `Menu` on the self-replace path, firing its callback
     // with `#f` explicitly (`take_firing_false`, shared with the drawer):
     // only this path, a genuine refresh, should fire one. Any open popup is
@@ -113,13 +115,12 @@ impl MenuLayer {
             Some(i) => steel::rvals::SteelVal::IntV(i as isize),
             None => steel::rvals::SteelVal::BoolV(false),
         };
-        let call = state.answered_call(
+        state.queue_answered_call(
             self.answer.take(),
             Answer::Menu(picked),
             self.callback.clone(),
             arg,
         );
-        state.config.pending_work.push_back(call);
     }
 
     /// A menu pushed directly, for a test of the stack's own behavior.

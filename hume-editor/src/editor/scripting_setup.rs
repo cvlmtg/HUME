@@ -448,7 +448,7 @@ impl Editor {
     /// alone in its own session, its anchor re-checked immediately first;
     /// see the `Call` match arm's own comment for why it can't be batched.
     /// `.` also runs a read's or pick's callback through here, at once
-    /// (`Editor::resolve_replayed_answers`).
+    /// (`Editor::finish_replayed_answers`).
     pub(super) fn run_pending_batch(&mut self, mut items: std::collections::VecDeque<PendingWork>) {
         while let Some(item) = items.pop_front() {
             match item {

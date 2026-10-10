@@ -23,7 +23,9 @@ use termina::event::{KeyCode, Modifiers, MouseEventKind};
 
 use super::super::commands::{self, PendingDispatch};
 use super::super::event::PendingWork;
-use super::super::replay::{Answer, AnswerTicket, PendingAnswer, Replayed, dot_refusal};
+use super::super::replay::{
+    Answer, AnswerTicket, InputOpener, PendingAnswer, Replayed, dot_refusal,
+};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal};
 
@@ -80,14 +82,16 @@ impl CharRead {
 }
 
 /// Reads the character the native command `pending` was dispatched
-/// without, then runs it.
+/// without, then runs it. `repeatable` is that command's.
 pub(in crate::editor) fn read_command_char(
     state: &mut EditorState,
     view: &EngineView,
     pending: PendingDispatch,
+    repeatable: bool,
 ) -> Result<(), String> {
     let what = pending.name.to_string();
-    read_interactive(state, view, CharThen::Dispatch(pending), &what)
+    let opener = InputOpener::Operand { repeatable };
+    read_interactive(state, view, CharThen::Dispatch(pending), &what, opener)
 }
 
 /// `on-next-char!`: calls `callback` with the next character, or with `#f`.
@@ -96,7 +100,13 @@ pub(in crate::editor) fn read_steel_char(
     view: &EngineView,
     callback: SteelVal,
 ) -> Result<(), String> {
-    read_interactive(state, view, CharThen::Steel(callback), "on-next-char!")
+    read_interactive(
+        state,
+        view,
+        CharThen::Steel(callback),
+        "on-next-char!",
+        InputOpener::Code,
+    )
 }
 
 /// The one funnel a command's or a callback's read starts through. During
@@ -107,6 +117,7 @@ fn read_interactive(
     view: &EngineView,
     then: CharThen,
     what: &str,
+    opener: InputOpener,
 ) -> Result<(), String> {
     if let Some(replay) = state.dot_replay.as_mut() {
         if let Replayed::Answered(answer) = replay.next_char().ok_or_else(|| dot_refusal(what))? {
@@ -114,7 +125,7 @@ fn read_interactive(
         }
         return Ok(());
     }
-    let source = state.waiting_input(what)?.ticket();
+    let source = state.waiting_input(what, opener)?.ticket();
     let read = CharRead { then, source };
     read_char(state, view, read);
     Ok(())

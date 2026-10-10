@@ -17,13 +17,12 @@ use termina::event::KeyEvent;
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use super::super::super::host_token;
 use super::super::super::keymap::CanonicalKey;
-use super::super::super::replay::{AnswerTicket, Choice};
+use super::super::super::replay::{AnswerTicket, Choice, Picked};
 
 /// One row in a picker: a display string shown to the user and an opaque
 /// payload handed back to `on_select` verbatim. Rust never interprets
 /// `payload`, mirroring the drawer's "rows are pre-formatted display
 /// strings" contract.
-#[derive(Clone)]
 pub(in crate::editor) struct PickerItem {
     pub(in crate::editor) display: String,
     pub(in crate::editor) payload: SteelVal,
@@ -167,6 +166,12 @@ pub(in crate::editor) struct PickerSession {
     /// handful of entries at most, so scanning a `Vec` beats hashing into a
     /// map.
     actions: Vec<(CanonicalKey, SteelVal)>,
+    /// Whether every item came from the list `picker!` opened with: no
+    /// `#:pending`, no `live-picker!`, and nothing fed since (`push`,
+    /// `replace`, an attached source). Only then does a re-run `picker!`
+    /// rebuild the same items as it opens, so `.` can replay a pick by its
+    /// text; see [`Self::picked`].
+    items_from_opener: bool,
     /// Where this picker's pick records, when the picker belongs to a
     /// recorded change; see [`AnswerTicket`]. `open_picker` attaches it;
     /// `close_picker_with`/`PickerLayer::tear_down` take it back out to hand
@@ -238,6 +243,7 @@ impl PickerSession {
             prompt,
             truncate,
             token: host_token::mint(),
+            items_from_opener: !mode.is_live() && matches!(population, Population::Complete),
             population,
             mode,
             requery_armed: false,
@@ -282,11 +288,12 @@ impl PickerSession {
 
     /// Seeds the initial item list `picker!` was given. An empty seed is
     /// not a batch arrival: nothing has come back yet, so `#:pending` must
-    /// survive it; a non-empty one goes through `push`, which clears
+    /// survive it; a non-empty one goes through `append`, which clears
     /// `pending` because a populated list needs no "still arriving" marker.
+    /// The one feed that keeps `items_from_opener`.
     pub(in crate::editor) fn seed(&mut self, items: Vec<PickerItem>) {
         if !items.is_empty() {
-            self.push(items);
+            self.append(items);
         }
     }
 
@@ -311,6 +318,12 @@ impl PickerSession {
     /// a hand-rolled clear-then-extend here, so it also gets `replace`'s
     /// row-0 reset.
     pub(in crate::editor) fn push(&mut self, items: Vec<PickerItem>) {
+        self.items_from_opener = false;
+        self.append(items);
+    }
+
+    /// `push`'s body, shared with `seed`.
+    fn append(&mut self, items: Vec<PickerItem>) {
         if self.take_supersede() {
             self.replace(items);
             return;
@@ -342,6 +355,7 @@ impl PickerSession {
     /// `Editor::settle`), and that stale batch must not read as "the
     /// requery landed."
     pub(in crate::editor) fn replace(&mut self, items: Vec<PickerItem>) {
+        self.items_from_opener = false;
         self.take_supersede();
         self.batch_arrived();
         self.requery_armed = false;
@@ -369,6 +383,7 @@ impl PickerSession {
         ok_exit_codes: Vec<i32>,
     ) {
         let supersedes_rows = self.mode.is_live();
+        self.items_from_opener = false;
         self.population = Population::Streaming(AttachedSource {
             source,
             ok_exit_codes,
@@ -581,40 +596,32 @@ impl PickerSession {
             .map(|&idx| self.items[idx as usize].display.as_str())
     }
 
-    /// Payload of the currently selected item, or `None` when nothing
-    /// matches.
-    #[cfg(test)]
-    pub(in crate::editor) fn selected_payload(&self) -> Option<&SteelVal> {
-        self.selected_index().map(|i| &self.items[i].payload)
-    }
-
     /// The index in `items` of the selected item, or `None` when nothing
     /// matches.
     pub(in crate::editor) fn selected_index(&self) -> Option<usize> {
         self.filtered.get(self.selected).map(|&idx| idx as usize)
     }
 
-    /// The [`Choice`] naming the item at `index` in `items`, and its payload.
-    pub(in crate::editor) fn picked(&self, index: usize) -> (Choice, SteelVal) {
-        (
-            Choice::of(&self.items, index, |item| &item.display),
-            self.items[index].payload.clone(),
-        )
+    /// How `.` replays a pick of the item at `index` in `items`, and that
+    /// item's payload: by its text when every item came from the opener's
+    /// list (`items_from_opener`), by its payload otherwise.
+    pub(in crate::editor) fn picked(&self, index: usize) -> (Picked, SteelVal) {
+        let payload = self.items[index].payload.clone();
+        let picked = if self.items_from_opener {
+            Picked::Choice(Choice::of(&self.items, index, |item| &item.display))
+        } else {
+            Picked::Payload(payload.clone())
+        };
+        (picked, payload)
     }
 
     /// The payload of the item `choice` names, `None` with no such item.
-    /// Meaningful only once [`Self::has_all_items`] holds.
+    /// A re-run `picker!` answered by `.` holds only the items it opened
+    /// with, which is what a [`Picked::Choice`] was recorded against.
     pub(in crate::editor) fn payload_for(&self, choice: &Choice) -> Option<&SteelVal> {
         choice
             .find(&self.items, |item| &item.display)
             .map(|i| &self.items[i].payload)
-    }
-
-    /// Whether this session already holds every item it will get: a
-    /// `picker!` whose items were all given as it opened, not a live one nor
-    /// one still awaiting or streaming its items.
-    pub(in crate::editor) fn has_all_items(&self) -> bool {
-        !self.mode.is_live() && !self.is_pending()
     }
 
     /// Cheap `Rc` clone: the accept/dismiss dispatch fires this via

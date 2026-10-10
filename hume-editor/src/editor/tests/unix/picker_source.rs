@@ -98,8 +98,8 @@ fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
         "a NUL in the display must read as ':', the same field separator the tool prints without --null"
     );
     assert_eq!(
-        picker.selected_payload(),
-        Some(&SteelVal::StringV("a\0b".into())),
+        picker.selected_index().map(|i| picker.picked(i).1),
+        Some(SteelVal::StringV("a\0b".into())),
         "the payload must keep the raw NUL so a plugin's own split stays unambiguous"
     );
 }

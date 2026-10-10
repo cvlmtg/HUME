@@ -48,18 +48,8 @@ pub(crate) enum Answer {
     /// A character: a native operand (`r`/`f`/`t`/`surround-add`) or an
     /// `on-next-char!` answer. `None` when the read ended without one.
     Char(Option<char>),
-    /// A picker pick. `choice` names the picked item by its display text
-    /// and `payload` is what the picker handed its callback; both `None` for
-    /// a dismissal (the callback got `#f`). `action` is the `#:actions` key
-    /// that closed the picker, `None` for `on-select`. Replayed by `choice`
-    /// when the re-run picker has all its items as it opens (a `picker!`),
-    /// so the payload is the one built for the new spot; otherwise by
-    /// `payload`, which a reload forgets.
-    Pick {
-        action: Option<CanonicalKey>,
-        choice: Option<Choice>,
-        payload: Option<SteelVal>,
-    },
+    /// A picker pick or dismissal.
+    Pick(Pick),
     /// A prompt's confirmed text, `None` when it was cancelled.
     Prompt(Option<String>),
     /// A menu's chosen item, `None` when it was dismissed.
@@ -68,6 +58,33 @@ pub(crate) enum Answer {
     /// cap dropped, or a menu `close-menu!` closed. Its callback never ran,
     /// so on replay the input opens nothing and runs nothing.
     Unanswered,
+}
+
+/// A picker's answer. `action` is the `#:actions` key that closed the
+/// picker, `None` for `on-select`; `picked` is `None` for a dismissal (the
+/// callback got `#f`).
+#[derive(Debug, Clone)]
+pub(crate) struct Pick {
+    pub(in crate::editor) action: Option<CanonicalKey>,
+    pub(in crate::editor) picked: Option<Picked>,
+}
+
+/// How `.` hands a picked item back to the re-run picker, decided when the
+/// pick is made.
+#[derive(Debug, Clone)]
+pub(crate) enum Picked {
+    /// By its text, when every item came from the list `picker!` opened
+    /// with: the re-run builds that list again, so the payload is the one
+    /// built for the new spot.
+    Choice(Choice),
+    /// By the payload the callback got, when items arrived after the picker
+    /// opened (`#:pending`, `picker-push!`, a spawned source, a
+    /// `live-picker!`): the re-run picker holds none of them yet when `.`
+    /// answers it.
+    Payload(SteelVal),
+    /// A `Payload` a reload forgot: it belonged to the Steel engine the
+    /// reload replaced. `.` refuses it.
+    PayloadForgotten,
 }
 
 /// A picked menu or picker item, named by its text: the `nth` (from 0, in
@@ -107,6 +124,19 @@ impl Choice {
             .nth(self.nth)
             .map(|(i, _)| i)
     }
+
+    /// The refusal `what` raises during `.` when the re-run list has no item
+    /// this choice names.
+    pub(in crate::editor) fn missing(&self, what: &str) -> String {
+        let label = &self.label;
+        match self.nth {
+            0 => format!("{what}: `.` found no item \"{label}\" to pick"),
+            nth => format!(
+                "{what}: `.` found no item \"{label}\" number {} among those with that text",
+                nth + 1
+            ),
+        }
+    }
 }
 
 /// One Insert-session input a change consumed, in arrival order.
@@ -131,6 +161,7 @@ pub(crate) enum Input {
     /// its own `call!`s, register prefix, and `#:extend` included. Its
     /// interactive inputs are answered from `answers`.
     Binding {
+        id: BindingId,
         name: Cow<'static, str>,
         answers: Vec<Answer>,
     },
@@ -212,21 +243,34 @@ pub(in crate::editor) struct SourceTicket {
     sources: Rc<()>,
 }
 
-/// Where an [`AnswerTicket`]'s answer is recorded: the change's command, or
-/// the Insert-key binding entry at this transcript index.
+/// Names one [`Input::Binding`] entry of a recording, for as long as the
+/// entry exists. Never reused within a recording, so a reference to an entry
+/// that was removed finds nothing rather than a later entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor) struct BindingId(u64);
+
+/// Whose code a [`RecordingScope`] runs, and so where the answers of the
+/// inputs it opens are recorded: the change's command, or an Insert-key
+/// binding's entry.
 #[derive(Debug, Clone, Copy)]
 enum AnswerSlot {
     Command,
-    Binding(usize),
+    /// A binding whose command is `#:repeatable`.
+    Binding(BindingId),
+    /// A binding whose command is not `#:repeatable`: `.` re-runs it, but
+    /// an input it opens ends the change ([`EditorState::waiting_input`]),
+    /// so it never takes an answer.
+    UnrecordedBinding(BindingId),
 }
 
 /// The code of a recorded change running now, held in
 /// [`EditorState::recording_scope`]: its command's body, an Insert-key
 /// binding's dispatch, or the callback of one of its inputs. An interactive
-/// input opened inside it records its answer in `slot`, an Insert session it
-/// opens feeds the change, and a repeatable command it dispatches is part of
-/// the change rather than a new one. Code outside every scope (a hook, a
-/// timer, an LSP callback, a key) owns none of this.
+/// input opened inside it records its answer in `slot`, unless the slot is
+/// an [`AnswerSlot::UnrecordedBinding`]'s; an Insert session it opens feeds
+/// the change, and a repeatable command it dispatches is part of the change
+/// rather than a new one. Code outside every scope (a hook, a timer, an LSP
+/// callback, a key) owns none of this.
 #[derive(Debug)]
 pub(in crate::editor) struct RecordingScope {
     source: SourceTicket,
@@ -234,11 +278,11 @@ pub(in crate::editor) struct RecordingScope {
 }
 
 impl RecordingScope {
-    /// The transcript index of the Insert-key binding this scope runs,
-    /// `None` for a command body's.
-    pub(in crate::editor) fn binding(&self) -> Option<usize> {
+    /// The entry of the Insert-key binding this scope runs, `None` for a
+    /// command body's.
+    pub(in crate::editor) fn binding(&self) -> Option<BindingId> {
         match self.slot {
-            AnswerSlot::Binding(i) => Some(i),
+            AnswerSlot::Binding(i) | AnswerSlot::UnrecordedBinding(i) => Some(i),
             AnswerSlot::Command => None,
         }
     }
@@ -341,7 +385,9 @@ pub(in crate::editor) struct AnswerTicket {
 /// The change currently being recorded, and the last one settled.
 ///
 /// A single `Recording` owns the slot. It is *accepting input* while a
-/// [`SourceTicket`] opened on it is alive.
+/// [`SourceTicket`] opened on it is alive, until it is stopped: an input
+/// opened by code outside the change's own ends it there
+/// ([`EditorState::waiting_input`]).
 /// A repeatable command dispatched inside a [`RecordingScope`] or the
 /// change's Insert session is *inside* that change and never replaces it;
 /// one dispatched anywhere else starts a fresh change, superseding one that
@@ -354,6 +400,11 @@ pub(in crate::editor) struct Recording {
     /// Shared with every live [`SourceTicket`]: the strong count beyond this
     /// one is the number of open sources.
     sources: Rc<()>,
+    /// Set by [`EditorState::stop_recording`]: the change takes no further
+    /// input, though sources opened on it are still alive.
+    stopped: bool,
+    /// The id the next recorded binding entry gets.
+    next_binding: u64,
 }
 
 impl Recording {
@@ -361,12 +412,15 @@ impl Recording {
         Self {
             action,
             sources: Rc::new(()),
+            stopped: false,
+            next_binding: 0,
         }
     }
 
-    /// `true` while an input source is still outstanding.
+    /// `true` while an input source is still outstanding and the change was
+    /// not stopped.
     pub(in crate::editor) fn accepting(&self) -> bool {
-        Rc::strong_count(&self.sources) > 1
+        !self.stopped && Rc::strong_count(&self.sources) > 1
     }
 
     fn open_ticket(&self) -> SourceTicket {
@@ -379,15 +433,32 @@ impl Recording {
         Rc::ptr_eq(&self.sources, &ticket.sources)
     }
 
-    /// The answers `slot` names. `None` for a binding entry a completion
-    /// accept replaced.
+    /// The transcript index of binding entry `id`, `None` once it was
+    /// removed.
+    fn binding_index(&self, id: BindingId) -> Option<usize> {
+        self.action
+            .transcript
+            .iter()
+            .position(|input| matches!(input, Input::Binding { id: entry, .. } if *entry == id))
+    }
+
+    /// The answers `slot` names. `None` for a binding entry that was
+    /// removed (a completion accept replaced it).
     fn answers_mut(&mut self, slot: AnswerSlot) -> Option<&mut Vec<Answer>> {
         match slot {
             AnswerSlot::Command => Some(&mut self.action.answers),
-            AnswerSlot::Binding(i) => match self.action.transcript.get_mut(i) {
-                Some(Input::Binding { answers, .. }) => Some(answers),
-                _ => None,
-            },
+            AnswerSlot::Binding(id) => {
+                self.action
+                    .transcript
+                    .iter_mut()
+                    .find_map(|input| match input {
+                        Input::Binding {
+                            id: entry, answers, ..
+                        } if *entry == id => Some(answers),
+                        _ => None,
+                    })
+            }
+            AnswerSlot::UnrecordedBinding(_) => None,
         }
     }
 
@@ -420,13 +491,6 @@ pub(in crate::editor) enum Replayed<T> {
     /// The input never resolved live ([`Answer::Unanswered`]): it opens
     /// nothing and runs nothing.
     Unanswered,
-}
-
-/// An [`Answer::Pick`]'s fields, as a replayed picker takes them.
-pub(in crate::editor) struct RecordedPick {
-    pub(in crate::editor) action: Option<CanonicalKey>,
-    pub(in crate::editor) choice: Option<Choice>,
-    pub(in crate::editor) payload: Option<SteelVal>,
 }
 
 /// A replayed answer waiting to run after the re-run body, as live.
@@ -462,17 +526,9 @@ impl DotReplay {
     }
 
     /// The next answer, if it is a pick.
-    pub(in crate::editor) fn next_pick(&mut self) -> Option<Replayed<RecordedPick>> {
+    pub(in crate::editor) fn next_pick(&mut self) -> Option<Replayed<Pick>> {
         self.next(|a| match a {
-            Answer::Pick {
-                action,
-                choice,
-                payload,
-            } => Some(RecordedPick {
-                action: *action,
-                choice: choice.clone(),
-                payload: payload.clone(),
-            }),
+            Answer::Pick(pick) => Some(pick.clone()),
             _ => None,
         })
     }
@@ -499,19 +555,19 @@ impl DotReplay {
 
     /// Answers a re-run picker, prompt or menu from the recording instead of
     /// opening it: `next` takes its answer, and `call` turns that answer into
-    /// the callback and the argument to queue after the re-run body. Refuses
-    /// when the next answer is of another kind or `call` finds no fit for it
-    /// (a missing item, an unbound action), and queues nothing for an input
-    /// that never resolved live.
+    /// the callback and the argument to queue after the re-run body, or the
+    /// refusal naming why it has no fit (a missing item, an unbound action, a
+    /// forgotten payload). Refuses with [`dot_refusal`] when the next answer
+    /// is of another kind, and queues nothing for an input that never
+    /// resolved live.
     pub(in crate::editor) fn answer_call<T>(
         &mut self,
         what: &str,
         next: impl FnOnce(&mut Self) -> Option<Replayed<T>>,
-        call: impl FnOnce(T) -> Option<(SteelVal, SteelVal)>,
+        call: impl FnOnce(T) -> Result<(SteelVal, SteelVal), String>,
     ) -> Result<(), String> {
-        let refusal = || dot_refusal(what);
-        if let Replayed::Answered(answer) = next(self).ok_or_else(refusal)? {
-            let (proc, arg) = call(answer).ok_or_else(refusal)?;
+        if let Replayed::Answered(answer) = next(self).ok_or_else(|| dot_refusal(what))? {
+            let (proc, arg) = call(answer)?;
             self.pending.push_back(PendingAnswer::Call { proc, arg });
         }
         Ok(())
@@ -530,6 +586,18 @@ pub(in crate::editor) struct Interactive(());
 #[must_use]
 pub(in crate::editor) struct WaitingInput {
     ticket: Option<AnswerTicket>,
+}
+
+/// What opens an interactive input, for [`EditorState::waiting_input`] to
+/// tell whether it belongs to a recorded change.
+#[derive(Clone, Copy)]
+pub(in crate::editor) enum InputOpener {
+    /// The code running now: the running [`RecordingScope`] decides.
+    Code,
+    /// A native command's operand read; `repeatable` is that command's.
+    /// Outside every scope this is a key collecting the operand before its
+    /// command runs; inside one, the scope decides, as for `Code`.
+    Operand { repeatable: bool },
 }
 
 impl WaitingInput {
@@ -563,7 +631,7 @@ impl EditorState {
 
     /// Forget every pick's payload: payloads belong to the Steel engine a
     /// reload is replacing. A pick replayed by its choice is unaffected; one
-    /// that needs its payload refuses on `.`.
+    /// replayed by its payload becomes [`Picked::PayloadForgotten`].
     pub(in crate::editor) fn forget_steel_payloads(&mut self) {
         let Some(rec) = self.recording.as_mut() else {
             return;
@@ -578,8 +646,12 @@ impl EditorState {
             });
         for answers in std::iter::once(&mut rec.action.answers).chain(binding_answers) {
             for answer in answers {
-                if let Answer::Pick { payload, .. } = answer {
-                    *payload = None;
+                if let Answer::Pick(Pick {
+                    picked: Some(picked @ Picked::Payload(_)),
+                    ..
+                }) = answer
+                {
+                    *picked = Picked::PayloadForgotten;
                 }
             }
         }
@@ -660,15 +732,23 @@ impl EditorState {
     pub(in crate::editor) fn record_binding(
         &mut self,
         name: Cow<'static, str>,
+        repeatable: bool,
     ) -> Option<RecordingScope> {
         let rec = self.accepting_recording()?;
+        let id = BindingId(rec.next_binding);
+        rec.next_binding += 1;
         rec.action.transcript.push(Input::Binding {
+            id,
             name,
             answers: Vec::new(),
         });
         Some(RecordingScope {
             source: rec.open_ticket(),
-            slot: AnswerSlot::Binding(rec.action.transcript.len() - 1),
+            slot: if repeatable {
+                AnswerSlot::Binding(id)
+            } else {
+                AnswerSlot::UnrecordedBinding(id)
+            },
         })
     }
 
@@ -680,15 +760,20 @@ impl EditorState {
         let scope = self.recording_scope.running()?;
         self.recording
             .as_ref()
-            .filter(|rec| rec.opened(&scope.source))
+            .filter(|rec| rec.opened(&scope.source) && rec.accepting())
             .map(Recording::open_ticket)
     }
 
-    /// Whether the open Insert session feeds a recorded change.
+    /// Whether the open Insert session feeds the recording in flight.
     pub(in crate::editor) fn insert_session_records(&self) -> bool {
         self.active_session
             .as_ref()
-            .is_some_and(edit_session::EditSession::holds_recording)
+            .and_then(edit_session::EditSession::recording_ticket)
+            .is_some_and(|ticket| {
+                self.recording
+                    .as_ref()
+                    .is_some_and(|rec| rec.opened(ticket) && rec.accepting())
+            })
     }
 
     /// The recording `ticket` was opened on, if it is still current.
@@ -731,6 +816,19 @@ impl EditorState {
         }
     }
 
+    /// [`Self::answered_call`], queued: how a picker, prompt or menu fires
+    /// its callback once it closes.
+    pub(in crate::editor) fn queue_answered_call(
+        &mut self,
+        ticket: Option<AnswerTicket>,
+        answer: Answer,
+        proc: SteelVal,
+        arg: SteelVal,
+    ) {
+        let call = self.answered_call(ticket, answer, proc, arg);
+        self.config.pending_work.push_back(call);
+    }
+
     /// The check a completion trigger or accept passes before it opens.
     ///
     /// Refuses during `.`: a completion accept is replayed from the net edit
@@ -762,27 +860,36 @@ impl EditorState {
     /// during replay refuses.
     ///
     /// Opens the [`AnswerTicket`] its answer records under, in the running
-    /// [`RecordingScope`]'s slot. None outside every scope: an input a hook,
-    /// a timer or a key opens is no change's, and one that opens while an
-    /// Insert session records a change is reported.
-    pub(in crate::editor) fn waiting_input(&mut self, what: &str) -> Result<WaitingInput, String> {
+    /// [`RecordingScope`]'s slot, when that scope is a `#:repeatable`
+    /// command's code. An input any other code opens (a binding whose
+    /// command is not `#:repeatable`, a hook, a timer, a key) records no
+    /// answer, and ends the change in flight, if any
+    /// ([`Self::stop_recording`]): `.` could not answer it. The exception
+    /// is a key collecting a repeatable native command's operand
+    /// ([`InputOpener::Operand`]), which seeds that command's own change.
+    pub(in crate::editor) fn waiting_input(
+        &mut self,
+        what: &str,
+        opener: InputOpener,
+    ) -> Result<WaitingInput, String> {
         if self.dot_replay.is_some() {
             return Err(dot_refusal(what));
         }
         let Some(scope) = self.recording_scope.running() else {
-            if self.insert_session_records() {
-                self.report(
-                    super::Severity::Warning,
-                    format!("`.` won't repeat {what}: it opened outside the change's own code"),
-                );
+            if !matches!(opener, InputOpener::Operand { repeatable: true }) {
+                self.stop_recording(None);
             }
             return Ok(WaitingInput { ticket: None });
         };
         let slot = scope.slot;
+        if let AnswerSlot::UnrecordedBinding(binding) = slot {
+            self.stop_recording(Some(binding));
+            return Ok(WaitingInput { ticket: None });
+        }
         let ticket = self
             .recording
             .as_mut()
-            .filter(|rec| rec.opened(&scope.source))
+            .filter(|rec| rec.opened(&scope.source) && rec.accepting())
             .and_then(|rec| {
                 let source = rec.open_ticket();
                 let answers = rec.answers_mut(slot)?;
@@ -793,6 +900,21 @@ impl EditorState {
                 })
             });
         Ok(WaitingInput { ticket })
+    }
+
+    /// End the change in flight, if any, at an input it cannot answer on
+    /// `.`: it keeps what it recorded before `binding`, the non-repeatable
+    /// Insert-key binding that opened the input, if any, and takes no
+    /// further input. The binding's entry and anything after it are dropped,
+    /// so `.` does not re-run it.
+    fn stop_recording(&mut self, binding: Option<BindingId>) {
+        let Some(rec) = self.accepting_recording() else {
+            return;
+        };
+        if let Some(i) = binding.and_then(|id| rec.binding_index(id)) {
+            rec.action.transcript.truncate(i);
+        }
+        rec.stopped = true;
     }
 
     /// The primary selection's head on `(pane, buffer)`: where a capture's
@@ -842,11 +964,10 @@ impl EditorState {
 
     /// Finalize a capture into the recording. Records nothing unless a
     /// completion trigger or accept made it interactive; then the entry of
-    /// the binding it wrapped is removed, so `.` does not re-run a binding
-    /// whose completion it cannot replay, and its net cursor edit, an
-    /// [`Input::Result`], is appended in its place when it changed text. That
-    /// entry is the transcript's last: nothing else records while the binding
-    /// dispatches.
+    /// the binding it wrapped is replaced, so `.` does not re-run a binding
+    /// whose completion it cannot replay: by its net cursor edit, an
+    /// [`Input::Result`], when it changed text, otherwise by nothing. A bare
+    /// completion-popup Enter, which has no entry, appends its net edit.
     pub(in crate::editor) fn finalize_dot_capture(&mut self, cap: DotCapture) {
         if !cap.interactive {
             return;
@@ -861,18 +982,22 @@ impl EditorState {
                 None
             }
         };
-        if let Some(i) = cap.slot
-            && let Some(rec) = self.accepting_recording()
-        {
-            debug_assert_eq!(
-                rec.action.transcript.len(),
-                i + 1,
-                "a capture's binding entry is the transcript's last"
-            );
-            rec.action.transcript.truncate(i);
-        }
-        if let Some(r) = replacement {
-            self.record_input(Input::Result(r));
+        let Some(binding) = cap.slot else {
+            if let Some(r) = replacement {
+                self.record_input(Input::Result(r));
+            }
+            return;
+        };
+        let Some(rec) = self.accepting_recording() else {
+            return;
+        };
+        if let Some(i) = rec.binding_index(binding) {
+            match replacement {
+                Some(r) => rec.action.transcript[i] = Input::Result(r),
+                None => {
+                    rec.action.transcript.remove(i);
+                }
+            }
         }
     }
 
@@ -1171,7 +1296,7 @@ impl Editor {
                         self.report(super::Severity::Error, msg);
                     }
                 }
-                Input::Binding { name, answers } => {
+                Input::Binding { name, answers, .. } => {
                     // A command name loses its binding only if it was removed
                     // between the original keypress and this replay
                     // (`unbind-key!`, a plugin reload), so a miss reports
@@ -1238,13 +1363,13 @@ impl Editor {
 
     /// Runs `f` with a fresh [`DotCapture`] armed on the focused Insert
     /// session, wrapping an operation that may accept a completion: an
-    /// Insert-key binding's dispatch (`slot` is its transcript entry), or a
-    /// bare completion-popup Enter (`slot` is `None`). Takes the capture back
+    /// Insert-key binding's dispatch (`slot` is its entry), or a bare
+    /// completion-popup Enter (`slot` is `None`). Takes the capture back
     /// and finalizes it once `f` returns. With no Insert session there, `f`
     /// runs with nothing armed.
     pub(in crate::editor) fn with_dot_capture(
         &mut self,
-        slot: Option<usize>,
+        slot: Option<BindingId>,
         f: impl FnOnce(&mut Self),
     ) {
         let fp = commands::FocusedPane::current(&self.state);
@@ -1286,7 +1411,10 @@ impl Editor {
     /// after each one.
     ///
     /// Sets `is_replaying` for the duration so that `Q`/`q` intercepts inside
-    /// replayed keys cannot start nested recording or replay sessions.
+    /// replayed keys cannot start nested recording or replay sessions,
+    /// including when the macro's last key is `Q`, where
+    /// `replay_queue.is_empty()` would already be `true` and would fail to
+    /// suppress it.
     ///
     /// Saves and restores the recording so replay does not corrupt dot-repeat,
     /// unless the macro left its own change accepting input (an Insert
@@ -1294,9 +1422,16 @@ impl Editor {
     /// the saved one, makes a following `.` repeat what the macro started.
     ///
     /// Settling once per replayed key, not once after the whole queue, keeps a
-    /// macro's own hooks in the loop. `message_logged_this_input` is OR'd back
-    /// in every iteration so a stale-buffer warning from a later key's settle
-    /// doesn't lose an earlier message's shadowing guard.
+    /// macro's own hooks in the loop: a plugin that reconfigures the buffer on
+    /// `on-buffer-open` (indent width, a language keymap) has that reaction run
+    /// before the macro's remaining keys type into the buffer, as it would for
+    /// keys typed by hand. `is_replaying` stays `true` across these settles,
+    /// so `confirm_permit` still holds back a confirm no queued key could
+    /// answer; it waits for the next real buffer-enter.
+    ///
+    /// `message_logged_this_input` is OR'd back in every iteration so a
+    /// stale-buffer warning from a later key's settle doesn't lose an earlier
+    /// message's shadowing guard.
     pub(in crate::editor) fn drain_replay_queue(&mut self) {
         if self.state.replay_queue.is_empty() {
             return;
@@ -1322,4 +1457,15 @@ impl Editor {
 /// The error an interactive input reached during `.` raises.
 pub(in crate::editor) fn dot_refusal(what: &str) -> String {
     format!("{what}: reached during `.`, but the recorded input took a different branch this time")
+}
+
+/// The refusal for a [`Picked::PayloadForgotten`] pick.
+pub(in crate::editor) fn payload_forgotten(what: &str) -> String {
+    format!("{what}: `.` can't repeat this pick: a config reload forgot the picked value")
+}
+
+/// The refusal for a pick whose `#:actions` key the re-run picker does not
+/// bind.
+pub(in crate::editor) fn action_unbound(what: &str) -> String {
+    format!("{what}: `.` can't repeat this pick: its key is not one of this picker's actions")
 }

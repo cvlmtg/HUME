@@ -38,6 +38,10 @@ fn open_live() -> PickerSession {
     )
 }
 
+fn selected_payload(s: &PickerSession) -> Option<SteelVal> {
+    s.selected_index().map(|i| s.picked(i).1)
+}
+
 fn payload_str(v: &SteelVal) -> &str {
     match v {
         SteelVal::StringV(s) => s.as_str(),
@@ -334,13 +338,13 @@ fn equal_scores_tie_break_by_insertion_order() {
     s.set_query("fb".to_string());
     assert_eq!(s.matched_len(), (2 * TIER) as usize);
     for i in 0..TIER {
-        let payload = s.selected_payload().expect("has a match");
-        assert_eq!(payload_str(payload), format!("high{i}"));
+        let payload = selected_payload(&s).expect("has a match");
+        assert_eq!(payload_str(&payload), format!("high{i}"));
         s.move_selection(1, (2 * TIER) as usize);
     }
     for i in 0..TIER {
-        let payload = s.selected_payload().expect("has a match");
-        assert_eq!(payload_str(payload), format!("low{i}"));
+        let payload = selected_payload(&s).expect("has a match");
+        assert_eq!(payload_str(&payload), format!("low{i}"));
         s.move_selection(1, (2 * TIER) as usize);
     }
 }
@@ -354,10 +358,13 @@ fn push_keeps_the_selection_on_the_same_item() {
     let mut s = open();
     s.push(items(&["a", "b", "c", "d", "e"]));
     s.move_selection(3, 2);
-    assert_eq!(payload_str(s.selected_payload().expect("has a match")), "d");
+    assert_eq!(
+        payload_str(&selected_payload(&s).expect("has a match")),
+        "d"
+    );
     s.push(items(&["f"]));
     assert_eq!(
-        payload_str(s.selected_payload().expect("has a match")),
+        payload_str(&selected_payload(&s).expect("has a match")),
         "d",
         "a push must not move the selection off the item the user had selected"
     );
@@ -459,7 +466,7 @@ fn empty_filter_result_is_safe() {
     s.move_selection(5, 3); // must not panic
     assert_eq!(s.selected(), 0);
     assert!(window_vec(&s, 10).is_empty());
-    assert!(s.selected_payload().is_none());
+    assert!(selected_payload(&s).is_none());
 }
 
 #[test]
@@ -472,17 +479,17 @@ fn window_respects_scroll_and_rows() {
 }
 
 #[test]
-fn selected_payload_returns_top_ranked_item() {
+fn selection_starts_on_the_top_ranked_item() {
     let mut s = open();
     s.push(items(&["fxxbxx", "foo/bar"]));
     s.set_query("fb".to_string());
     assert_eq!(
-        payload_str(s.selected_payload().expect("has a match")),
+        payload_str(&selected_payload(&s).expect("has a match")),
         "foo/bar"
     );
     s.move_selection(1, 10);
     assert_eq!(
-        payload_str(s.selected_payload().expect("has a match")),
+        payload_str(&selected_payload(&s).expect("has a match")),
         "fxxbxx"
     );
 }
