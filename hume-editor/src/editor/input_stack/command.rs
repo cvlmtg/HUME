@@ -7,11 +7,23 @@ use super::super::error::CommandError;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::registry::TypedBody;
+use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 pub(in crate::editor) struct CommandLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
+    /// The check this line passed as it opened.
+    _input: WaitingInput,
+}
+
+impl CommandLayer {
+    pub(in crate::editor) fn new(input: WaitingInput) -> Self {
+        Self {
+            minibuf: MiniBuffer::new(":"),
+            _input: input,
+        }
+    }
 }
 
 impl Layer for CommandLayer {

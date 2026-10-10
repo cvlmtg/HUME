@@ -7,7 +7,7 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
-use super::super::replay::{Answer, AnswerTicket, DotReplay, InputOpener, PendingAnswer};
+use super::super::replay::{Answer, DotReplay, InputOpener, PendingAnswer, WaitingInput};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
@@ -15,9 +15,9 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 pub(in crate::editor) struct PromptLayer {
     minibuf: MiniBuffer,
     callback: steel::rvals::SteelVal,
-    /// Where this prompt's answer records, when it belongs to a recorded
-    /// change; see [`AnswerTicket`].
-    answer: Option<AnswerTicket>,
+    /// The check this prompt passed as it opened, holding where its answer
+    /// records when it belongs to a recorded change.
+    input: WaitingInput,
 }
 
 /// `prompt!`'s funnel: opens a prompt labelled `label` over `prefill`,
@@ -51,14 +51,14 @@ pub(in crate::editor) fn open_prompt(
     if state.input.is::<PromptLayer>(state.input.mode_layer()) {
         return Err("prompt!: a minibuffer session is already open".to_string());
     }
-    let answer = state.waiting_input(WHAT, InputOpener::Code)?;
+    let input = state.waiting_input(WHAT, InputOpener::Code)?;
     state.history.begin_session_all();
     state.push_mode_layer(
         view,
         PromptLayer {
             minibuf: MiniBuffer::with_prefill(label, prefill),
             callback,
-            answer,
+            input,
         },
     );
     Ok(())
@@ -78,7 +78,7 @@ impl PromptLayer {
     fn fire(&mut self, state: &mut EditorState, text: Option<String>) {
         let arg = prompt_arg(text.clone());
         state.queue_answered_call(
-            self.answer.take(),
+            self.input.take_answer(),
             Answer::Prompt(text),
             self.callback.clone(),
             arg,

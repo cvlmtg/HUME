@@ -127,7 +127,7 @@ fn read_interactive(
             Ok(PendingAnswer::Read(CharRead { then, source: None }, answer))
         });
     }
-    let source = state.waiting_input(what, opener)?;
+    let source = state.waiting_input(what, opener)?.take_answer();
     let read = CharRead { then, source };
     read_char(state, view, read);
     Ok(())

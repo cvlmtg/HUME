@@ -11,6 +11,7 @@ use hume_scripting::host::CommandArg;
 use super::super::jump_list::JumpEntry;
 use super::super::minibuf::history::{HistoryDir, HistoryKind, HistoryStore};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
+use super::super::replay::WaitingInput;
 use super::super::search::SearchPattern;
 use super::super::{Editor, EditorState, commands, search};
 use super::snapshot::PaneSnapshot;
@@ -32,6 +33,26 @@ pub(in crate::editor) struct SearchLayer {
     /// Enter. Its `ctx.extend` also drives the live preview, which extends
     /// from the pre-search anchor although `mode` is `Search` meanwhile.
     pub(in crate::editor) then: commands::PendingDispatch,
+    /// The check this prompt passed as it opened.
+    _input: WaitingInput,
+}
+
+impl SearchLayer {
+    pub(in crate::editor) fn new(
+        input: WaitingInput,
+        minibuf: MiniBuffer,
+        snap: PaneSnapshot,
+        direction: SearchDirection,
+        then: commands::PendingDispatch,
+    ) -> Self {
+        Self {
+            minibuf,
+            snap,
+            direction,
+            then,
+            _input: input,
+        }
+    }
 }
 
 impl Layer for SearchLayer {

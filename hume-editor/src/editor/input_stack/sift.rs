@@ -10,6 +10,7 @@ use hume_ops::selection_cmd::sift_matches_within;
 use hume_scripting::host::CommandArg;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
+use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
 use super::snapshot::PaneSnapshot;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
@@ -27,6 +28,25 @@ pub(in crate::editor) struct SiftLayer {
     pub(in crate::editor) then: commands::PendingDispatch,
     /// The live preview's last sift, `None` while the input sifts nothing.
     pub(in crate::editor) preview: Option<SiftPreview>,
+    /// The check this prompt passed as it opened.
+    _input: WaitingInput,
+}
+
+impl SiftLayer {
+    pub(in crate::editor) fn new(
+        input: WaitingInput,
+        minibuf: MiniBuffer,
+        snap: PaneSnapshot,
+        then: commands::PendingDispatch,
+    ) -> Self {
+        Self {
+            minibuf,
+            snap,
+            then,
+            preview: None,
+            _input: input,
+        }
+    }
 }
 
 /// What the live preview sifted: `from`, the snapshot's selections, by

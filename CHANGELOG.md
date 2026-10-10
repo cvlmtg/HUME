@@ -11,7 +11,7 @@
 - After `q`, `Q` or `"`, a click or paste cancels the register wait. Esc cancels only the wait.
 - `.` reuses your answers to a `#:repeatable` command's character read, picker, prompt or menu instead of asking again.
 - `.` after an Insert session in which you pressed an arrow key leaves a cursor, as Esc did, instead of selecting the typed text.
-- `.` after an Insert session that ended at a key bound to a search or sift prompt repeats the text typed before that key, without an error.
+- `.` after an Insert session that ended at a key bound to a search, sift or `:` prompt repeats the text typed before that key, without an error or a prompt.
 - `.` inside a macro repeats the last change, including one made before the macro ran. After a macro, `.` repeats the last change the macro made.
 - With the kitty keyboard protocol, `Ctrl-?` searches backward and extends the selection.
 - `:set buffer line-ending=lf|crlf` converts a buffer's line endings.

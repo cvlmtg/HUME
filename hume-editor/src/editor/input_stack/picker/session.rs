@@ -17,7 +17,7 @@ use termina::event::KeyEvent;
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use super::super::super::host_token;
 use super::super::super::keymap::CanonicalKey;
-use super::super::super::replay::{AnswerTicket, Choice, Picked};
+use super::super::super::replay::{Choice, Picked};
 
 /// One row in a picker: a display string shown to the user and an opaque
 /// payload handed back to `on_select` verbatim. Rust never interprets
@@ -172,12 +172,6 @@ pub(in crate::editor) struct PickerSession {
     /// rebuild the same items as it opens, so `.` can replay a pick by its
     /// text; see [`Self::picked`].
     items_from_opener: bool,
-    /// Where this picker's pick records, when the picker belongs to a
-    /// recorded change; see [`AnswerTicket`]. `open_picker` attaches it;
-    /// `close_picker_with`/`PickerLayer::tear_down` take it back out to hand
-    /// to the queued callback. `None` for a picker opened outside any
-    /// recorded change.
-    answer: Option<AnswerTicket>,
 }
 
 impl PickerSession {
@@ -261,7 +255,6 @@ impl PickerSession {
                 .into_iter()
                 .map(|(k, p)| (CanonicalKey::from(k), p))
                 .collect(),
-            answer: None,
         }
     }
 
@@ -627,17 +620,6 @@ impl PickerSession {
     /// `queue_steel_call`; the store itself never invokes it.
     pub(in crate::editor) fn on_select(&self) -> &SteelVal {
         &self.on_select
-    }
-
-    /// `open_picker`'s half of the [`AnswerTicket`] hand-off.
-    pub(in crate::editor) fn attach_answer(&mut self, ticket: AnswerTicket) {
-        self.answer = Some(ticket);
-    }
-
-    /// `close_picker_with`'s/`PickerLayer::tear_down`'s half of the
-    /// [`AnswerTicket`] hand-off.
-    pub(in crate::editor) fn take_answer(&mut self) -> Option<AnswerTicket> {
-        self.answer.take()
     }
 
     /// The `#:actions` proc bound to `key`, if any, tried only after every

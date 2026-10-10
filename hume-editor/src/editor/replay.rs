@@ -680,6 +680,27 @@ impl DotReplay {
 #[must_use]
 pub(in crate::editor) struct Interactive(());
 
+/// Proof that an input resolving on a later key passed
+/// [`EditorState::waiting_input`], which is the only way to get one. Every
+/// such input's layer holds it while open, so none can open without the
+/// check. Carries the [`AnswerTicket`] the input's answer records under, if
+/// it has one.
+#[must_use]
+pub(in crate::editor) struct WaitingInput(Option<AnswerTicket>);
+
+impl WaitingInput {
+    /// Takes the ticket the input's answer records under, if it has one.
+    pub(in crate::editor) fn take_answer(&mut self) -> Option<AnswerTicket> {
+        self.0.take()
+    }
+
+    /// An input opened directly, for a test of the layer itself.
+    #[cfg(test)]
+    pub(in crate::editor) fn for_test() -> Self {
+        Self(None)
+    }
+}
+
 /// What opens an interactive input, for [`EditorState::waiting_input`] to
 /// tell whether it belongs to a recorded change.
 #[derive(Clone, Copy)]
@@ -929,9 +950,11 @@ impl EditorState {
     }
 
     /// The check an interactive input that resolves on a later key (a read,
-    /// a picker, a prompt, a menu) passes before it opens. Its caller answers
-    /// it from the recorded change during `.` instead, so reaching this
-    /// during replay refuses.
+    /// a picker, a prompt, a menu, the search, sift and `:` lines) passes
+    /// before it opens, minting the [`WaitingInput`] its layer holds. During
+    /// `.` a read, picker, prompt or menu takes its recorded answer instead,
+    /// and the search, sift and `:` lines are never answered, so reaching
+    /// this during replay refuses.
     ///
     /// Opens the [`AnswerTicket`] its answer records under, in the running
     /// [`RecordingScope`]'s slot, when that scope is a repeatable command's
@@ -946,7 +969,7 @@ impl EditorState {
         &mut self,
         what: &str,
         opener: InputOpener,
-    ) -> Result<Option<AnswerTicket>, String> {
+    ) -> Result<WaitingInput, String> {
         if self.dot_replay.is_some() {
             return Err(dot_refusal(what));
         }
@@ -954,12 +977,12 @@ impl EditorState {
             if !matches!(opener, InputOpener::RepeatableOperand) {
                 self.stop_recording(None);
             }
-            return Ok(None);
+            return Ok(WaitingInput(None));
         };
         let slot = scope.slot;
         if let AnswerSlot::UnrecordedBinding(binding) = slot {
             self.stop_recording(Some(binding));
-            return Ok(None);
+            return Ok(WaitingInput(None));
         }
         let ticket = self
             .recording
@@ -974,7 +997,7 @@ impl EditorState {
                     index: answers.len() - 1,
                 })
             });
-        Ok(ticket)
+        Ok(WaitingInput(ticket))
     }
 
     /// End the change in flight, if any, at an input it cannot answer on

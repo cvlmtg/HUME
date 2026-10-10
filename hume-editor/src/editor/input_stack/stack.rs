@@ -929,6 +929,7 @@ mod tests {
     use crate::editor::input_stack::drawer::{DrawerLayer, DrawerSelect};
     use crate::editor::input_stack::insert::InsertLayer;
     use crate::editor::input_stack::menu::MenuLayer;
+    use crate::editor::replay::WaitingInput;
     use steel::rvals::SteelVal;
 
     fn menu(label: &str) -> MenuLayer {
@@ -1087,9 +1088,7 @@ mod tests {
     #[test]
     fn sticky_popup_slot_mut_is_none_under_a_minibuf_mode_layer() {
         let mut stack = InputStack::new();
-        stack.push(CommandLayer {
-            minibuf: MiniBuffer::new(""),
-        });
+        stack.push(CommandLayer::new(WaitingInput::for_test()));
         assert!(stack.sticky_popup_slot_mut().is_none());
     }
 

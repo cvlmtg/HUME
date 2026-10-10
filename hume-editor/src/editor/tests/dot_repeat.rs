@@ -1854,6 +1854,40 @@ fn dot_stops_before_an_insert_key_that_opened_a_pattern_prompt() {
     assert_eq!(status(&ed), "");
 }
 
+/// The `:` line is an input `.` cannot answer, so an Insert key that opens
+/// it ends the change there: `.` repeats the text typed before it and opens
+/// no `:` line.
+#[test]
+fn dot_stops_before_an_insert_key_that_opened_the_command_line() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(bind-key! 'insert "ctrl-s" "command-mode")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_ctrl('s'));
+    ed.feed_key(key_esc());
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "xhello\nworld\n");
+    assert_eq!(ed.state.mode(), Mode::Normal);
+
+    select_marked(&mut ed, "xhello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "xhello\nxworld\n");
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(
+        ed.state
+            .input
+            .find::<crate::editor::input_stack::command::CommandLayer>()
+            .is_none()
+    );
+    assert_eq!(status(&ed), "");
+}
+
 /// A native command bound directly to an Insert key must not overwrite
 /// the recorded change if it's itself repeatable. That slot belongs to
 /// whichever command opened the Insert session; the key is recorded into
@@ -4101,6 +4135,7 @@ fn a_stale_answer_never_lands_in_a_later_bindings_entry() {
             state
                 .waiting_input("ask", InputOpener::Code)
                 .expect("not during `.`")
+                .take_answer()
         })
         .expect("a repeatable binding's input records")
     }

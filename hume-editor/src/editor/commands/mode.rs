@@ -9,9 +9,9 @@ use hume_ops::motion::{
 };
 use hume_ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
 
+use super::super::EditorState;
 use super::super::input_stack::{BaseLayer, CommandLayer};
-use super::super::replay::PendingRepeat;
-use super::super::{EditorState, MiniBuffer};
+use super::super::replay::{InputOpener, PendingRepeat};
 use super::{
     ExitCursor, FocusedPane, apply_focused_edit_grouped, apply_pane_motion, arm_autoindent,
     begin_insert_session, begin_typed_run, end_insert_session,
@@ -183,13 +183,11 @@ pub(in crate::editor) fn cmd_command_mode(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    let input = state
+        .waiting_input("command-mode", InputOpener::Code)
+        .map_err(CommandError::new)?;
     state.history.begin_session_all();
-    state.push_mode_layer(
-        view,
-        CommandLayer {
-            minibuf: MiniBuffer::new(":"),
-        },
-    );
+    state.push_mode_layer(view, CommandLayer::new(input));
     Ok(())
 }
 

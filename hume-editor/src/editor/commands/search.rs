@@ -17,7 +17,7 @@ use super::super::input_stack::{
     preview_search, sift_within,
 };
 use super::super::registry::PatternPrompt;
-use super::super::replay::InputOpener;
+use super::super::replay::{InputOpener, WaitingInput};
 use super::super::{EditorState, MiniBuffer};
 use super::{
     CommandPane, FocusedPane, PendingDispatch, doc, effective_word_chars, pane_selections,
@@ -38,6 +38,7 @@ fn begin_search(
     fp: FocusedPane,
     direction: SearchDirection,
     then: PendingDispatch,
+    input: WaitingInput,
 ) {
     let prompt = match direction {
         SearchDirection::Forward => "/",
@@ -46,12 +47,13 @@ fn begin_search(
     state.history.begin_session_all();
     state.push_mode_layer(
         view,
-        SearchLayer {
-            minibuf: MiniBuffer::new(prompt),
-            snap: PaneSnapshot::new(fp.pid()),
+        SearchLayer::new(
+            input,
+            MiniBuffer::new(prompt),
+            PaneSnapshot::new(fp.pid()),
             direction,
             then,
-        },
+        ),
     );
 }
 
@@ -117,9 +119,9 @@ pub(in crate::editor) fn cmd_search_backward(
 /// Selections that are all bare cursors have nothing to sift, so the sift
 /// prompt doesn't open over them.
 ///
-/// The prompt is an interactive input `.` never answers: it passes
-/// `EditorState::waiting_input` as it opens, which ends the change in flight
-/// and, during `.`, refuses with the returned message.
+/// The prompt is an interactive input `.` never answers: the
+/// `EditorState::waiting_input` it passes as it opens ends the change in
+/// flight and, during `.`, refuses with the returned message.
 pub(in crate::editor) fn open_pattern_prompt(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -130,21 +132,21 @@ pub(in crate::editor) fn open_pattern_prompt(
     if matches!(prompt, PatternPrompt::Sift) && all_cursors(state, view, fp.pane()) {
         return Ok(());
     }
-    drop(state.waiting_input(&then.name, InputOpener::Code)?);
+    let input = state.waiting_input(&then.name, InputOpener::Code)?;
     match prompt {
-        PatternPrompt::Search(direction) => begin_search(state, view, fp, direction, then),
+        PatternPrompt::Search(direction) => begin_search(state, view, fp, direction, then, input),
         PatternPrompt::Sift => {
             // `SiftLayer::setup` snapshots the current selections once the
             // layer lands; see `SearchLayer::setup`'s doc for why the capture
             // happens there rather than here.
             state.push_mode_layer(
                 view,
-                SiftLayer {
-                    minibuf: MiniBuffer::new("⫽"),
-                    snap: PaneSnapshot::new(fp.pid()),
+                SiftLayer::new(
+                    input,
+                    MiniBuffer::new("⫽"),
+                    PaneSnapshot::new(fp.pid()),
                     then,
-                    preview: None,
-                },
+                ),
             );
         }
     }

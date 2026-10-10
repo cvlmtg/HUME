@@ -17,7 +17,9 @@ use steel::rvals::SteelVal;
 use super::super::commands::half_page;
 use super::super::keymap::CanonicalKey;
 use super::super::minibuf::flatten_single_line;
-use super::super::replay::{Answer, DotReplay, InputOpener, PendingAnswer, Pick, Picked};
+use super::super::replay::{
+    Answer, DotReplay, InputOpener, PendingAnswer, Pick, Picked, WaitingInput,
+};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
@@ -25,7 +27,12 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 pub(in crate::editor) use session::item;
 pub(in crate::editor) use session::{PickerItem, PickerSession, picker_items};
 
-pub(in crate::editor) struct PickerLayer(PickerSession);
+pub(in crate::editor) struct PickerLayer {
+    session: PickerSession,
+    /// The check this picker passed as it opened, holding where its pick
+    /// records when it belongs to a recorded change.
+    input: WaitingInput,
+}
 
 impl Layer for PickerLayer {
     fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
@@ -85,7 +92,7 @@ impl Layer for PickerLayer {
     /// the one exit that still drops the callback: `EditorState::truncate_layers`
     /// (this method's only caller) never runs during a reload.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        fire_callback(state, &mut self.0, PickerCallback::OnSelect, None);
+        fire_callback(state, self, PickerCallback::OnSelect, None);
     }
 }
 
@@ -138,11 +145,11 @@ impl Editor {
 /// Named sugar over the generic lookup; `stack.rs` stays agnostic.
 impl super::stack::InputStack {
     pub(in crate::editor) fn picker(&self) -> Option<&PickerSession> {
-        self.find::<PickerLayer>().map(|l| &l.0)
+        self.find::<PickerLayer>().map(|l| &l.session)
     }
 
     pub(in crate::editor) fn picker_mut(&mut self) -> Option<&mut PickerSession> {
-        self.find_mut::<PickerLayer>().map(|l| &mut l.0)
+        self.find_mut::<PickerLayer>().map(|l| &mut l.session)
     }
 }
 
@@ -168,8 +175,8 @@ pub(in crate::editor) fn session_for_token(
 /// (`what` names the builtin in a refusal). Entry policy (dismiss-completion,
 /// replace-a-live-picker, clear-popups) lives on [`PickerLayer::setup`],
 /// run by [`EditorState::push_layer`]. This function is the named door to
-/// it, plus the one place the picker takes the [`AnswerTicket`] its pick
-/// records under (see `EditorState::waiting_input`).
+/// it, plus the one place the picker passes `EditorState::waiting_input`,
+/// whose [`WaitingInput`] the layer holds.
 ///
 /// During `.` the picker never opens: the recorded [`Answer::Pick`] answers
 /// it, its callback queued to run after the replayed body with what the
@@ -184,12 +191,10 @@ pub(in crate::editor) fn session_for_token(
 /// Takes `state`/`view` rather than `&mut Editor` because its production
 /// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
 /// not a whole `Editor`: it can never reach an `&mut Editor`.
-///
-/// [`AnswerTicket`]: super::super::replay::AnswerTicket
 pub(in crate::editor) fn open_picker(
     state: &mut super::super::EditorState,
     view: &EngineView,
-    mut session: PickerSession,
+    session: PickerSession,
     what: &str,
 ) -> Result<HostToken, String> {
     let token = session.token();
@@ -223,10 +228,8 @@ pub(in crate::editor) fn open_picker(
         })?;
         return Ok(token);
     }
-    if let Some(ticket) = state.waiting_input(what, InputOpener::Code)? {
-        session.attach_answer(ticket);
-    }
-    state.push_layer(view, PickerLayer(session));
+    let input = state.waiting_input(what, InputOpener::Code)?;
+    state.push_layer(view, PickerLayer { session, input });
     Ok(token)
 }
 
@@ -246,7 +249,7 @@ pub(in crate::editor) enum PickerCallback {
 /// one, and hands the ticket to the queued call.
 fn fire_callback(
     state: &mut super::super::EditorState,
-    session: &mut PickerSession,
+    PickerLayer { session, input }: &mut PickerLayer,
     callback: PickerCallback,
     choice: Option<usize>,
 ) {
@@ -262,7 +265,7 @@ fn fire_callback(
         None => (None, SteelVal::BoolV(false)),
     };
     state.queue_answered_call(
-        session.take_answer(),
+        input.take_answer(),
         Answer::Pick(Pick { action, picked }),
         proc,
         arg,
@@ -293,8 +296,8 @@ pub(in crate::editor) fn close_picker_with(
     let Some(r) = state.input.ref_of::<PickerLayer>() else {
         return;
     };
-    let mut session = state.take_layer::<PickerLayer>(view, r).0;
-    fire_callback(state, &mut session, callback, choice);
+    let mut layer = state.take_layer::<PickerLayer>(view, r);
+    fire_callback(state, &mut layer, callback, choice);
 }
 
 /// `close_picker_with`'s dismissal: fire `on_select` with `#f`.
@@ -436,7 +439,7 @@ fn picker_mut(ed: &mut Editor, r: LayerRef) -> &mut PickerSession {
         .input
         .at_mut::<PickerLayer>(r)
         .expect("picker_input is only called while a Picker layer is on top of the stack")
-        .0
+        .session
 }
 
 /// Close the picker, firing `callback` with the selected item (`#f` when
