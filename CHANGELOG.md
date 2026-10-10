@@ -6,10 +6,10 @@
 - `lsp.format-max-ranges` moves to `core:lsp`'s `#:config`.
 - `lsp.viewport-debounce-ms` is renamed to `viewport-debounce-ms`.
 - `call!` can pass a pattern to `search-forward`, `search-backward` and `sift-within`, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add`.
-- `bind-wait-char!`, `request-wait-char!` and `pending-char` are removed. Commands read keys with `on-next-char!`, so `bind-key!` binds any command, and `.` repeats one with the characters it read.
+- `bind-wait-char!`, `request-wait-char!` and `pending-char` are removed: commands read keys with `on-next-char!`, so `bind-key!` binds any command.
 - The search and sift prompts report an invalid or unmatched pattern the same way scripts do. An invalid search pattern is not stored.
 - After `q`, `Q` or `"`, a click or paste cancels the register wait. Esc cancels only the wait.
-- `.` repeats what you answered a command's character read, picker, prompt or menu without asking again, in Normal and Insert mode alike. A pick or menu choice is matched by its text in the list the command builds where `.` runs.
+- `.` reuses your answers to a `#:repeatable` command's character read, picker, prompt or menu instead of asking again.
 - With the kitty keyboard protocol, `Ctrl-?` searches backward and extends the selection.
 - `:set buffer line-ending=lf|crlf` converts a buffer's line endings.
 - `:e!` restores a file's line ending even when its text is unchanged.

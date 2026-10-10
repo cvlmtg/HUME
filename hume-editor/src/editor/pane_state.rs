@@ -32,7 +32,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 /// The span typed since an open insert session's entry command positioned the
 /// cursor: one (anchor, end) pair per selection, index-paired and always the
 /// same length (both `Vec`s are seeded together by `begin_typed_run` and
-/// carried together by [`PaneBufferState::carry`], the only writer after
+/// carried together by [`PaneBufferState::carry_selections`], the only writer after
 /// seeding).
 pub(crate) struct TypedRun {
     /// Start of each selection's typed span, kept in post-edit coordinates
@@ -55,13 +55,13 @@ pub(crate) struct TypedRun {
 pub(crate) struct PaneBufferState {
     /// This pane's selections for this buffer. Private: every write goes
     /// through [`PaneBufferState::set_selections`], [`PaneBufferState::store`]
-    /// or [`PaneBufferState::carry`]; the first two raise
+    /// or [`PaneBufferState::carry_selections`]; the first two raise
     /// [`PaneBufferState::reveal_pending`] (see that field's own doc).
     selections: SelectionSet,
     /// Per-pane cursor through the buffer's shared match list.
     pub search_cursor: SearchCursor,
     /// The open insert session's typed span, carried through every text
-    /// change by [`PaneBufferState::carry`]. `Some` from the moment the session's entry
+    /// change by [`PaneBufferState::carry_selections`]. `Some` from the moment the session's entry
     /// command positions the cursor (`begin_typed_run`) until
     /// `tear_down_insert` consumes it on exit, for every insert entry
     /// (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…).
@@ -109,7 +109,7 @@ pub(crate) struct PaneBufferState {
     /// that write), and `doc_ops::finish_edit`, set for every real edit this
     /// pane makes regardless of whether it moved the head (`r` replacing the
     /// character under an unmoved cursor still deserves a reveal). A sibling
-    /// pane's edit does *not* raise this: [`PaneBufferState::carry`]
+    /// pane's edit does *not* raise this: [`PaneBufferState::carry_selections`]
     /// only remaps the position, leaving the reveal decision for such
     /// external changes to `frame.rs`'s [`PaneBufferState::last_layout_key`]/
     /// [`PaneBufferState::parked`] comparison instead, which is gated on this

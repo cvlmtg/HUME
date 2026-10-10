@@ -18,7 +18,7 @@ use signal_hook::low_level::pipe::register;
 ///
 /// Opens `/dev/tty` directly on its own side channel (independent of the
 /// [`SharedTerm`](crate::terminal::SharedTerm) event reader, so probe replies
-/// can never race or interleave with it), builds a [`super::TtyChannel`]
+/// can never race or interleave with it), builds a [`TtyChannel`]
 /// over it, and delegates the query/response loop to [`super::run_probe`].
 ///
 /// Must be called after `enable_raw_mode()`.

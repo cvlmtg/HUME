@@ -1,7 +1,7 @@
 //! The one Insert, Paste, or dot-repeat-replay session live in the editor,
 //! if any.
 //!
-//! [`EditorState::active_session`] relies on the invariant that at most one
+//! [`EditorState::active_session`](crate::editor::EditorState::active_session) relies on the invariant that at most one
 //! pane is ever mid-Insert, has a paste session open, or holds a dot-repeat
 //! replay's own placeholder. Every session records its own owner `(pane,
 //! buffer)`, so `focus::end_focus_sessions` (run by

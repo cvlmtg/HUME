@@ -57,9 +57,10 @@ pub(in crate::editor) struct CharRead {
     then: CharThen,
     /// Where this read's answer records, if it belongs to a recorded change:
     /// see `EditorState::waiting_input`. `None` for a register/macro-name
-    /// read (edits no text), a read opened outside a recorded change's code
-    /// (a native operand a key collects, which seeds its own change), or a
-    /// read made during `.` replay.
+    /// read (edits no text), a read made during `.` replay, or a read opened
+    /// outside a repeatable change's code. Such a read ends the change
+    /// in flight, unless it is a repeatable native command's operand a key
+    /// collects, which seeds that command's own change.
     source: Option<AnswerTicket>,
 }
 

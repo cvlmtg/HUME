@@ -5,9 +5,10 @@
 //! builtins (`set-option!`, which receives individual `&mut` references via
 //! `SteelCtx`/`EditorHostImpl` rather than a whole `&mut Editor`).
 //!
-//! [`apply_global`]/[`apply_buffer`] are the only places production code
-//! should write a setting: they write the raw value via
-//! [`super::write_global`]/[`super::write_buffer`] and then resync whatever
+//! [`apply_global`](crate::editor::settings::ops::apply_global)/
+//! [`apply_buffer`](crate::editor::settings::ops::apply_buffer) are the only
+//! places production code should write a setting: they write the raw value via
+//! [`write_global`]/[`write_buffer`] and then resync whatever
 //! derived state depends on it (the undo-tree cap on every open buffer, the
 //! minibuffer prompt-history capacity, every open pane's jump-list capacity,
 //! the loaded theme). Calling `write_global`/`write_buffer` alone would

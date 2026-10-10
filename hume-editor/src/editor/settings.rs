@@ -35,7 +35,7 @@ use hume_ops::auto_pairs::Pair;
 
 // ── settings_enum! ────────────────────────────────────────────────────────────
 
-/// `"a"`, `"a or b"`, `"a, b, or c"`: how [`settings_enum`]'s parse error
+/// `"a"`, `"a or b"`, `"a, b, or c"`: how `settings_enum!`'s parse error
 /// lists the values it would have accepted.
 fn or_list(values: &[&str]) -> String {
     match values {

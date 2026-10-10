@@ -7,7 +7,8 @@ use hume_rope::cluster::ClusterStart;
 use super::super::Editor;
 
 /// The focused pane's primary cursor: the anchor
-/// [`super::popup::sync_popup_view`] and [`super::menu::sync_menu_view`]
+/// [`Editor::sync_popup_view`](crate::editor::Editor::sync_popup_view) and
+/// [`Editor::sync_menu_view`](crate::editor::Editor::sync_menu_view)
 /// pass to [`popup_placement`] (unlike the LSP completion menu, which
 /// anchors at the session's token start instead).
 pub(in crate::editor) fn focused_cursor(ed: &Editor) -> ClusterStart {

@@ -67,10 +67,10 @@ numbers directly.
   also be true of the real thing.
 - **L23** — A recorder that infers, after a dispatch, what the dispatch did
   (a counter diff, a length snapshot, a flag) grows one signal per bug.
-  Record the input where it arrives; let the one piece of state that isn't
-  re-derivable — input the user gave mid-command — be recorded by the code
-  that consumes it, not declared by command authors. Who owns an input is
-  who is running when it opens, an explicit scope, never the recorder's state.
+  Record the input where it arrives and the user's choice where it
+  resolves, never a derived effect. Who owns an input is who is running
+  when it opens, an explicit scope; whether it records is the opener's
+  repeatable flag, never what its callback did.
 - **L24** — End-user docs state a missing feature plainly, never as permanent.
   "Not yet" only for a gap the user has confirmed is planned.
 - **L25** — "No in-tree callers" doesn't make a user-facing API dead. Read why it
@@ -1125,208 +1125,68 @@ nothing it describes has ever been in a user's hands.
 
 ---
 
-## L23 — Dot-repeat inferred a dispatch's effect from side signals, and replayed an interactive one by re-running it (2026-09-26)
+## L23 — Dot-repeat inferred what a dispatch did, and whose input was whose (2026-09-26)
 
-**Root cause:** Dot-repeat recorded an Insert session by watching each
-keymap-bound dispatch and inferring, afterward, what it had done: a
-`text_gen` diff decided "did the binding edit?", `in_insert_key_dispatch`
-decided "is a binding in flight?", a branch in `handle_insert` decided "did
-the binding close the session?", `tear_down_insert` moved keystrokes into
-the action with `extend` so a re-entering binding kept them, and the
-`Replay` edit-session kind doubled as "suppress recording" — each signal
-patched over a bug the previous one couldn't see. An accepted completion
-was still never recorded this way, and arrow keys were dropped from replay
-because a pure motion doesn't move `text_gen`. Recording every input at the
-seam it arrives (`Key`, `Paste`, `Binding`, unconditionally before its
-dispatch) fixed that half, but replay still re-ran every `Binding`,
-including one that had gone *interactive* — whose outcome depends on input
-the user gave while it ran (accepting a completion, picking a picker item).
-Only the one value a re-run couldn't re-derive (a completion's pick) had
-anywhere to go, handed back through a per-binding answer slot for
-`completion-accept!` alone to consume. Every other question the binding
-could ask about that session (`completion-top`) saw nothing on replay and
-could take a different branch than it did live; a binding that opened a
-picker had no slot to record a pick into at all, so `.` reopened the picker
-instead of applying it; and a failed or unregistered binding stopped the
-whole replay, dropping everything typed after it.
+**Root cause:** Dot-repeat recorded a change by inferring, after each
+dispatch, what it had done: a `text_gen` diff decided whether a binding
+edited, flags decided whether a binding was in flight or had closed the
+session, and a before/after diff of the session's composed `ChangeSet`
+stood in for "what did this capture do". Each signal patched over a bug the
+previous one couldn't see: arrow keys dropped from replay because a motion
+doesn't move `text_gen`, an accepted completion never recorded, earlier
+typing conflated with the capture's own edit, a capture whose checkpoint
+never ran because its session was torn down first. The same inference then
+moved to ownership: whether an input belonged to the change was guessed
+from the recording's state (open, transcript empty), so a hook's read right
+after `c` became `change`'s operand, and a key that dismissed a recorded
+menu was absorbed into the menu's command.
 
-**Concrete instance:** a code review surfaced the completion-top and
-picker-reopening gaps. The user's own framing named the actual fix: a
-picker is an interactive command like autocomplete, so it must not be run
-again — dot-repeat inserts its result.
-
-**Resolution:** Record the input at the seam it arrives, never a conclusion
-drawn from side effects afterward. An interactive input is never re-run:
-`completion-accept!`/`picker!`/`live-picker!` mark the dispatch that called
-them (`EditorState::mark_dot_interactive`); a checkpoint right after it
-returns (`Editor::resolve_or_arm_dot_capture`) either finalizes on the spot
-or, for a picker whose pick resolves later via a queued `on_select`, arms
-`EditorState::dot_capture` for `resolve_dot_capture_if_ready` to finalize
-once it closes. Finalizing diffs the Insert session's own composed
-`ChangeSet` (before vs. after, via `ChangeSet::invert`/`compose`) into an
-`InsertInput::Result` — the whole dispatch's net edit, replayed by applying
-it directly rather than asking any one builtin to describe its own effect.
-A `Binding` that fails or is unregistered on replay is reported and
-skipped, not fatal to the rest — the live session kept going past it too.
-
-`invert(X).compose(X)` does not reduce to `is_identity()` even when
-nothing happened between two snapshots of the same `ChangeSet`:
-`compose`'s own doc says a *self*-Insert consumed by an *other*-Delete
-cancels, but a *self*-Delete followed by an *other*-Insert of the same
-text — exactly what an inverted `before` composed with an equal `after`
-produces — does not; both are emitted verbatim. A structural
-`is_identity()` check isn't enough; the diff is confirmed against the
-actual text instead.
+Interactive inputs were replayed the wrong way three times. Re-running a
+binding that opened a picker opened the picker again. Replaying the net
+edit instead lost what the choice did away from the cursor (an import at
+the top of the file) and froze context-bound results (a code action's
+range for line 1 replayed on line 2). Recording the answers of every
+Insert-key binding, repeatable or not, made `.` switch buffer after a
+non-repeatable file picker bound in Insert mode.
 
 **Prevention rules:**
 
 1. Record the input at the seam where it arrives, never a conclusion drawn
-   from side effects after the fact. A counter diff or a length snapshot
-   answers "did something change?", which is never quite the question, and
-   it breaks the first time two things change or the thing it measures is
-   replaced mid-dispatch.
-2. When a replay mechanism re-executes commands, find the inputs a re-run
-   can't re-derive (a user's pick, a prompt answer). If any part of an
-   input's outcome can't be re-derived, don't re-run any of it: record its
-   whole net effect and replay that instead. Handing back just the one
-   un-derivable value to an otherwise-live re-run still leaves every other
-   side of that command's behavior — a session query, a further edit —
-   exposed to running against a different world than it did live.
-3. The Nth signal added to disambiguate the (N-1)th is L9's smell applied
+   from side effects. A counter diff, a length snapshot or a before/after
+   diff of an accumulator answers "did something change since?", not "what
+   did this operation do", and breaks the first time two things change.
+   Record each contributing edit at the one funnel it already passes
+   through.
+2. An interactive input (a character read, a picker, a prompt, a menu)
+   records the user's choice where it resolves, in the order the inputs
+   opened, and `.` hands it back to the same input when the code that
+   opened it re-runs. Never replay a derived effect of a choice in place of
+   the choice. A completion accept, which has no callback to take a choice
+   back, is the one exception: its cursor edit is recorded, and its edits
+   elsewhere are never repeated.
+3. Ownership is who is running when an input opens or a command
+   dispatches, held as an explicit scope that the command body, an
+   Insert-key binding and an input's callback each set and restore. Never
+   derive it from the recording's state: being open only says the change is
+   still waiting.
+4. Whether an input records is the opener's declaration, never what its
+   callback did: only repeatable code records (a repeatable command's body,
+   its inputs' callbacks, an Insert-key binding whose command is
+   repeatable), built-in or `#:repeatable` Steel alike. Any
+   other input opened while a change records ends the change there. The
+   editor cannot tell a pick that edited from one that navigated, and must
+   not try.
+5. The Nth signal added to disambiguate the (N-1)th is L9's smell applied
    to state instead of call sites. At the third, redesign.
 
-**Addendum (2026-09-26):** the resolution above still inferred, one level
-up: it diffed the Insert session's whole composed `ChangeSet` before vs.
-after the capture window (`invert`/`compose` against the session-open
-snapshot) to recover what happened *during* the window, rather than
-recording what happened as it happened. That diff conflated any edit typed
-earlier in the session with the capture's own edit — `compose`'s own doc
-warns a self-Delete/other-Insert pair of the same text doesn't collapse
-back to identity — so a session with more than one typed run before the
-capture, or a multi-cursor accept, produced a delta with more than one
-edited region and had nowhere to put the extra one but an error. A code
-review surfaced this, plus a completion accept immediately followed by
-`exit-insert` in the same dispatch: the checkpoint that would have
-finalized the capture never ran, because the session it belonged to had
-already been torn down by the time control returned to it.
-
-**Rule 4 (addendum):** diffing a *before* and *after* snapshot of an
-accumulator to recover what happened in between is the same inference L23's
-main text warns about, one layer removed — it answers "what changed since
-the snapshot," not "what did the operation I'm capturing actually do."
-Record each contributing edit directly, at the one funnel it must already
-pass through (here, `doc_ops::apply_doc_edit_grouped`), and compose just
-those. This also fixes the "session torn down before the checkpoint" case
-for free: tying the capture's lifetime to the session that owns the funnel
-(rather than to a separate global flag) means the session's own teardown
-can resolve a still-armed capture as its last act, instead of leaving it to
-a checkpoint that may never run.
-
-**Files:** `hume-editor/src/editor/edit_session.rs` (`DotCapture`, now a
-field on `EditSession`, and its `arm_dot_capture`/`dot_capture_mut`/
-`take_dot_capture`), `hume-editor/src/editor/doc_ops.rs`
-(`apply_doc_edit_grouped`'s own funnel push),
-`hume-editor/src/editor/replay.rs` (`InsertInput`, `CursorReplacement`,
-`record_insert_input`, `mark_dot_interactive`, `arm_dot_capture`,
-`resolve_dot_capture`, `finalize_dot_capture`, `cursor_replacement_at`),
-`hume-editor/src/editor/input_stack/insert.rs` (`handle_insert`),
-`hume-editor/src/editor/input_stack/completion.rs`
-(`accept_completion_selection`),
-`hume-editor/src/editor/commands/insert_session.rs` (`tear_down_insert`'s
-own backstop),
-`hume-editor/src/editor/completion/session/accept.rs`,
-`hume-editor/src/editor/commands/mode.rs` (`cmd_completion_trigger`),
-`hume-editor/src/editor/host_impl/ui.rs`,
+**Files:** `hume-editor/src/editor/replay.rs` (`Recording`,
+`RecordingScope`, `Answer`, `waiting_input`, `record_answer`,
+`finish_replayed_answers`), `hume-editor/src/editor/edit_session.rs`
+(`DotCapture`), `hume-editor/src/editor/dot_chain.rs`,
+`hume-editor/src/editor/input_stack/{char,prompt,menu,insert}.rs`,
+`hume-editor/src/editor/input_stack/picker/{mod,session}.rs`,
 `hume-editor/src/editor/commands/pipeline.rs` (`repeat_slot_owned`),
-`hume-editor/src/editor/scripting_setup.rs` (`drain_pending_work`).
-
-**Addendum 2 (2026-09-26):** `resolve_dot_capture` finalized a still-armed
-capture whenever `input.picker().is_some()` came back false — a third
-signal, checked from three separate call sites in `drain_pending_work`,
-standing in for "has the thing this capture was waiting on resolved yet?"
-Rule 3 above already named the fix at N=3: stop inferring readiness from an
-unrelated poll and give the capture to whatever is actually responsible for
-resolving it. `DotCapture` now moves with the cause: `picker::open_picker`
-takes it off the `EditSession` and attaches it to the `PickerSession`;
-closing the picker hands it to the queued `on_select` call
-(`PendingWork::Call::dot_capture`); `Editor::run_pending_batch` re-arms it
-on whatever session is current only for that one call. A capture with
-nothing armed on it (dropped by a cascade cap, or a picker torn down by
-`reset_config_state`) is simply never finalized — the same outcome the poll
-produced, without a poll. This also closed two bugs the poll's own blind
-spot let through: an edit landing on the same buffer through a foreign
-`Call` while a picker sat open used to feed the still-armed-but-parked
-capture (nothing detached it), corrupting the composed result;
-`accept_completion_selection`'s own early `Err` return skipped
-`resolve_dot_capture` entirely, leaking the capture until the next
-drain-empty poll happened to catch it — both closed by wrapping the
-operation in a closure (`Editor::with_dot_capture`) that always finalizes
-once the closure returns, success or error alike.
-
-**Files (addendum 2):** `hume-editor/src/editor/edit_session.rs`
-(`DotCapture::pane`/`buffer`, `fallback` replacing `has_placeholder`),
-`hume-editor/src/editor/replay.rs` (`with_dot_capture`/`run_dot_captured`
-replacing `arm_dot_capture`/`resolve_dot_capture`),
-`hume-editor/src/editor/input_stack/picker/{mod,session}.rs`
-(`PickerSession::dot_capture`, `open_picker`'s hand-off),
-`hume-editor/src/editor/event.rs` (`PendingWork::Call::dot_capture`),
-`hume-editor/src/editor/mod.rs` (`queue_steel_call_with_capture`),
-`hume-editor/src/editor/scripting_setup.rs` (`run_pending_batch`, the three
-removed poll sites).
-
-**Addendum 3 (2026-10-10):** rule 2 above was wrong, and the user replaced
-it. Its own framing, "a picker must not be run again, dot-repeat inserts its
-result", carried two claims, and only the first holds: an interactive input
-must never ask the user again, but replaying its *net edit* instead of the
-*choice* loses whatever the choice did away from the cursor (an import added
-at the top of the file) and freezes context-bound results (a code action's
-range for line 1 replayed on line 2). The user's model, with no exceptions:
-a non-interactive command replays as a command; an interactive one (a
-character read, a picker, a prompt, a menu) records the user's choice and
-replays that choice into its re-run command, Normal or Insert mode alike.
-`tx` replays `x` without waiting; picking `foo` replays `foo`. A pick is
-matched by its label in the list the re-run builds, falling back to the
-recorded payload only where the items cannot be there yet (`live-picker!`).
-A net edit survives only for a completion accept, the one choice with no
-callback to hand it back to. Its edits away from the cursor (an LSP item's
-`additionalTextEdits`, such as an added import) are never repeated, by the
-user's decision: keep it simple.
-
-**Rule 2 (replacement):** an interactive input records the user's choice,
-at the seam where it resolves, in the order the inputs opened, and `.` hands
-it back to the same input when the command or binding that opened it
-re-runs. Never replay a derived effect of a choice in place of the choice.
-
-**Files (addendum 3):** `hume-editor/src/editor/replay.rs` (`Answer`,
-`AnswerTicket`, `Replayed`, `waiting_input`, `record_answer`,
-`finish_replayed_answers`, `end_insert_recording`),
-`hume-editor/src/editor/input_stack/{char,prompt,menu}.rs` and
-`input_stack/picker/{mod,session}.rs` (each input's replay branch and its one
-fire funnel), `hume-editor/src/editor/input_stack/insert.rs`
-(`handle_insert` recording the binding before it runs).
-
-**Addendum 4 (2026-10-10):** addendum 3's redesign still answered "whose
-input is this?" by inference. `waiting_input` credited an input to the
-change's command while the recording was accepting and its transcript was
-empty, and `repeat_slot_owned` treated every dispatch as part of the change
-while any of its sources was open. A code review found three bugs from
-those two guesses. A hook's read right after `c` became `change`'s operand.
-A binding callback's second read went unrecorded, so `.` failed halfway. A
-key that dismissed a recorded menu was absorbed into the menu's command,
-because the queued callback kept the recording open.
-
-**Rule 5 (addendum 4):** ownership is who is running when an input opens or
-a command dispatches, held as an explicit scope (`RecordingScope`) that the
-command body, an Insert-key binding and an input's callback each set and
-restore. Never derive it from the recording's state (its open-source count,
-its transcript length). Being open only says the change is still waiting,
-not that the code running now is its own.
-
-**Files (addendum 4):** `hume-editor/src/editor/replay.rs`
-(`RecordingScope`, `waiting_input`, `begin_change`/`end_change`,
-`run_answered`), `hume-editor/src/editor/commands/pipeline.rs`
-(`repeat_slot_owned`), `hume-editor/src/editor/input_stack/{insert,char}.rs`,
-`hume-editor/src/editor/scripting_setup.rs` (`run_pending_batch`).
+`hume-editor/src/editor/dispatch.rs` (`resolve_mappable`).
 
 ---
 

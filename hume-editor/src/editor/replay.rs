@@ -1,21 +1,25 @@
 //! Dot-repeat (`.`) and macro-replay state and execution.
 //!
-//! Dot-repeat records a [`RepeatableAction`]: the command that began a change,
-//! its count, the selection recipe that built the extent it acted on, the
-//! [answers](Answer) its interactive inputs got, and an ordered
+//! Dot-repeat records a [`RepeatableAction`]: the repeatable command that
+//! began a change, its count, the selection recipe that built the extent it
+//! acted on, the [answers](Answer) its interactive inputs got, and an ordered
 //! [transcript](Input) of every Insert-session input the change consumed. It
-//! records
-//! a recipe rather than a raw changeset, since changesets are
+//! records a recipe rather than a raw changeset, since changesets are
 //! position-dependent and can't be replayed at a different cursor. Macro
 //! replay drains a queue of recorded keys through the normal event path.
 //!
 //! A change is owned, while it is in flight, by a single [`Recording`]. It
 //! stays open while it has an outstanding input source (see [`Recording`])
-//! and settles into the replayable slot once the last source closes. Whether
-//! an interactive input or a dispatched command belongs to it is decided by
-//! who is running when it happens (see [`RecordingScope`]). Every input
-//! funnel appends to its transcript at the seam the input arrives, never by
-//! inferring afterward what a dispatch did.
+//! and settles into the replayable slot once the last source closes, or
+//! earlier, when an input it could not answer on `.` opens. Whether an
+//! interactive input or a dispatched command belongs to it is decided by who
+//! is running when it happens (see [`RecordingScope`]): an input is recorded
+//! only when repeatable code opens it, and one any other code opens ends the
+//! change ([`EditorState::waiting_input`]). A command is repeatable when its
+//! `CmdMeta::repeatable` is set: at registration for a native command, by
+//! `#:repeatable` for a Steel one. Every input funnel appends to its
+//! transcript at the seam the input arrives, never by inferring afterward
+//! what a dispatch did.
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::cluster::ClusterStart;
@@ -159,7 +163,9 @@ pub(crate) enum Input {
     /// A key bound in the Insert keymap, re-run on replay via
     /// [`Editor::replay_command`], so it decides again at the new cursor,
     /// its own `call!`s, register prefix, and `#:extend` included. Its
-    /// interactive inputs are answered from `answers`.
+    /// interactive inputs are answered from `answers`. A binding whose
+    /// command is not repeatable has none: an input it opens ends the
+    /// change and drops this entry.
     Binding {
         id: BindingId,
         name: Cow<'static, str>,
@@ -255,9 +261,9 @@ pub(in crate::editor) struct BindingId(u64);
 #[derive(Debug, Clone, Copy)]
 enum AnswerSlot {
     Command,
-    /// A binding whose command is `#:repeatable`.
+    /// A binding whose command is repeatable.
     Binding(BindingId),
-    /// A binding whose command is not `#:repeatable`: `.` re-runs it, but
+    /// A binding whose command is not repeatable: `.` re-runs it, but
     /// an input it opens ends the change ([`EditorState::waiting_input`]),
     /// so it never takes an answer.
     UnrecordedBinding(BindingId),
@@ -860,9 +866,9 @@ impl EditorState {
     /// during replay refuses.
     ///
     /// Opens the [`AnswerTicket`] its answer records under, in the running
-    /// [`RecordingScope`]'s slot, when that scope is a `#:repeatable`
-    /// command's code. An input any other code opens (a binding whose
-    /// command is not `#:repeatable`, a hook, a timer, a key) records no
+    /// [`RecordingScope`]'s slot, when that scope is a repeatable command's
+    /// code. An input any other code opens (a binding whose command is not
+    /// repeatable, a hook, a timer, a key) records no
     /// answer, and ends the change in flight, if any
     /// ([`Self::stop_recording`]): `.` could not answer it. The exception
     /// is a key collecting a repeatable native command's operand

@@ -130,7 +130,7 @@ fn force_exit(term: &terminal::SharedTerm, code: i32) -> ! {
 /// `unix::CONVENTIONAL_EXIT_CODE`), but a hangup is not a signal and has no
 /// `signo` of its own to derive one from. Kept as its own constant rather
 /// than reused across modules, following this file's existing convention
-/// (see [`WINDOWS_SIGNAL_EXIT_CODE`]) that an incidentally-equal exit code
+/// (see `WINDOWS_SIGNAL_EXIT_CODE`) that an incidentally-equal exit code
 /// with a different rationale is not the same constant.
 const HANGUP_EXIT_CODE: i32 = 130;
 
@@ -232,7 +232,7 @@ pub fn spawn_terminator(
 ///
 /// On Windows, writes the same kitty query (plus a DA1 fence) through `term`
 /// and waits for termina's event reader to decode a reply; see
-/// [`probe_via_events`]. This is the same decode path real input goes
+/// `probe_via_events`. This is the same decode path real input goes
 /// through, so a `true` here means kitty-encoded keys will actually work,
 /// unlike asking the terminal in the abstract (ConPTY from Windows Terminal
 /// ≥ 1.25 answers the query even when nothing downstream could decode the
@@ -320,7 +320,7 @@ fn classify_probe_event(ev: &termina::Event) -> Option<bool> {
 /// [`run_probe`] is platform-agnostic and unit-testable via a mock channel.
 ///
 /// Only `unix::probe_kitty_support` implements it in production; on Windows
-/// (kitty probing goes through [`probe_via_events`] instead) it exists only
+/// (kitty probing goes through `probe_via_events` instead) it exists only
 /// for its unit tests, which is also why the whole family stays testable
 /// cross-platform rather than being gated to `#[cfg(unix)]` outright.
 #[cfg_attr(not(any(unix, test)), allow(dead_code))]

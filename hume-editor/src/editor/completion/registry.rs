@@ -13,7 +13,7 @@
 //! A source's *static* facts live here (its name, how its items are scored,
 //! its priority); everything about one particular invocation of it (the
 //! document it saw, the span it answered for, the items) is `session.rs`'s
-//! [`super::Invocation`]. A session refers back here by id rather than
+//! [`Invocation`](crate::editor::completion::session::Invocation). A session refers back here by id rather than
 //! copying any of this, so a name/priority/match kind has exactly one home.
 //!
 //! Every `Buffer` source is Steel. There is no native one, by design: a

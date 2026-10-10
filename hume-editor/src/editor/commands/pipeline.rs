@@ -269,7 +269,7 @@ impl std::fmt::Display for TargetError {
 
 /// Wraps a native `MappableCommand` variant's body (`SelectionBody`, the
 /// `Edit` fn pointer, or an
-/// [`EditorCmdBody`](crate::editor::registry::EditorCmdBody))
+/// [`EditorCmdBody`])
 /// so that destructuring `MappableCommand::Motion { fun, .. }` (or any of its
 /// three siblings) anywhere outside this file yields an opaque value with no
 /// way to call it. `.0` is readable only here, where it's defined: the one
@@ -410,7 +410,7 @@ pub(in crate::editor) struct Missing {
     /// command's own run would ([`step_paste_commit`]): it targets the
     /// focused pane and doesn't defer the commit.
     pub(super) commits_paste: bool,
-    /// Whether the command is `#:repeatable`: its operand read then seeds
+    /// Whether the command is repeatable: its operand read then seeds
     /// its own change rather than ending one in flight.
     pub(super) repeatable: bool,
     pub(super) operand: MissingOperand,
@@ -436,7 +436,7 @@ impl std::fmt::Display for Missing {
 }
 
 /// A native command waiting for its operand, run on `pane` as dispatched
-/// with `ctx` once the user supplies it ([`run_collected`]).
+/// with `ctx` once the user supplies it ([`run_collected`](super::run_collected)).
 #[derive(Clone)]
 pub(in crate::editor) struct PendingDispatch {
     pub(in crate::editor) name: Cow<'static, str>,

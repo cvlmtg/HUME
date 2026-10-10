@@ -189,7 +189,7 @@ fn skip_over_close(state: &mut EditorState, view: &EngineView, fp: FocusedPane) 
 /// space or tab, so a cursor on the first content char (right after the
 /// indent) also qualifies, matching the dedent-to-prev-tab-stop behaviour of
 /// modern editors. The boundary itself comes from the shared
-/// [`leading_whitespace_end`] primitive.
+/// [`hume_rope::lines::leading_whitespace_end`] primitive.
 fn should_dedent_backspace(state: &EditorState, view: &EngineView, fp: FocusedPane) -> bool {
     let text = doc(state, view, fp.pane()).text();
     pane_view(state, view, fp.pane()).iter().all(|sel| {

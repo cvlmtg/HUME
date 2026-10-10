@@ -91,16 +91,18 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             let Some(reg_cmd) = ed.resolve_mappable(cmd.name.as_ref()) else {
                 return;
             };
-            // Recorded before it runs, so the answers its interactive inputs
-            // get have an entry to go to: replay re-runs this binding, so it
-            // decides again at the new cursor. Wrapped in a dot-capture, so a
+            // Recorded before it runs: replay re-runs this binding, so it
+            // decides again at the new cursor. A repeatable command's inputs
+            // record their answers in that entry; an input a
+            // non-repeatable one opens ends the change and drops the entry
+            // (`EditorState::waiting_input`). Wrapped in a dot-capture, so a
             // completion accept it makes replaces that entry with its own net
             // edit.
             // Through the full pipeline like any keypress: an edit composes
             // into the open insert-session group (`run_body` routes through
             // `apply_doc_edit_grouped`), a motion clears a pinned typed run
-            // (`with_jump`), and `repeat_slot_owned` keeps
-            // a repeatable command from stamping over the session's owner.
+            // (`with_jump`), and `repeat_slot_owned` keeps a repeatable
+            // command it dispatches from starting a change of its own.
             let scope = ed.state.record_binding(cmd.name, reg_cmd.meta().repeatable);
             let slot = scope.as_ref().and_then(RecordingScope::binding);
             ed.with_dot_capture(slot, |ed| {

@@ -106,7 +106,7 @@ impl Editor {
     /// `(id, true)` if newly opened (including `OnBufferOpen` hook fire).
     ///
     /// `resolved` is canonical when the file exists, or the best-effort form
-    /// [`resolve_buffer_path`] produces when it doesn't (parent canonicalized,
+    /// [`Self::resolve_buffer_path`] produces when it doesn't (parent canonicalized,
     /// basename appended lexically). `find_by_path` compares whichever form
     /// was stored, so dedup still works once the file is later created and
     /// reopened via its now-canonicalizable path.

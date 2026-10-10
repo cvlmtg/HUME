@@ -665,7 +665,7 @@ struct ScrollOutcome {
     /// terminal caret is simply hidden until an ordinary cursor motion
     /// resyncs the view.
     cursor_screen: Option<(u16, u16)>,
-    /// See [`PaneBufferState::parked`]'s own doc.
+    /// See [`PaneBufferState::parked`](crate::editor::pane_state::PaneBufferState::parked)'s own doc.
     parked: bool,
 }
 

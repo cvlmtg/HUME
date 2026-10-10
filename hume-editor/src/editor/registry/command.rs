@@ -185,7 +185,9 @@ pub(in crate::editor) struct CmdMeta {
     /// `Selection` carries and clears itself regardless of this
     /// flag (see `Selection::sticky_display_col`).
     pub is_visual_move: bool,
-    /// Whether `.` should replay this command.
+    /// Whether `.` should replay this command, and so whether the
+    /// interactive inputs its code opens are recorded rather than ending the
+    /// change in flight (`EditorState::waiting_input`).
     ///
     /// Orthogonal to all other aspects: `paste-after` is paste + repeatable,
     /// `surround-add` is an editor action + repeatable, `delete` is an edit +
@@ -315,7 +317,7 @@ pub(in crate::editor) enum StructuralBody {
 /// from destructuring a native variant's `fun` and calling it directly,
 /// skipping `commands::run`'s bookkeeping (jump list, dot-repeat,
 /// paste session). Every native variant's `fun` is wrapped in
-/// [`NativeBody`](crate::editor::commands::NativeBody) instead: its private
+/// [`NativeBody`] instead: its private
 /// field, readable only from `commands::pipeline::run_body`, is what
 /// actually closes that off.
 #[derive(Clone)]
@@ -323,7 +325,7 @@ pub(in crate::editor) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
     /// `fun` is a [`SelectionBody`] wrapped in
-    /// [`NativeBody`](crate::editor::commands::NativeBody): `Plain(fn(EditState,
+    /// [`NativeBody`]: `Plain(fn(EditState,
     /// usize, MotionMode) -> EditState)` for almost every
     /// motion, `Word` for the word family.
     ///

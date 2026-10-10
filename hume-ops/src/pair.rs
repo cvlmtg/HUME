@@ -150,7 +150,7 @@ const BRACKET_ROLE_TABLE: [Option<(u8, bool)>; 128] = {
 /// side (`true`) or the close side (`false`). `None` for any other char.
 ///
 /// `pub(crate)`, not just the tables it's built from, so a caller that needs
-/// "is this char a bracket, and which side" (currently [`super::text_object::argument`]'s
+/// "is this char a bracket, and which side" (currently `text_object::argument`'s
 /// comma-depth counter) can ask the crate's one answer
 /// instead of hardcoding its own copy of `BRACKET_PAIRS`'s contents.
 pub(crate) fn bracket_role(ch: char) -> Option<(usize, bool)> {

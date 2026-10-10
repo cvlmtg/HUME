@@ -32,8 +32,9 @@ cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods -D clipp
 
 # Every crate root denies `rustdoc::broken_intra_doc_links` — this is what
 # actually evaluates those links, since the attribute alone is inert without
-# a `cargo doc` run to check it against.
-cargo doc --workspace --no-deps
+# a `cargo doc` run to check it against. Private items too: most of the
+# workspace's docs sit on crate-private items.
+cargo doc --workspace --no-deps --document-private-items
 
 cargo test --all-targets
 # --all-targets excludes doctests — run them separately so a broken example

@@ -716,7 +716,7 @@ fn visible_line_anchored<'a, K, E: 'a>(
 }
 
 /// Push one `(line, byte_start, byte_end, scope)` quadruple per line `range`
-/// touches, all sharing `scope`. See [`line_segments`].
+/// touches, all sharing `scope`. See [`ColumnView::segments`](hume_editing::text::ColumnView::segments).
 fn push_match_highlight_lines(
     text: &hume_editing::text::BufferText,
     range: ExclusiveRange<CharOffset>,
@@ -739,7 +739,7 @@ fn push_match_highlight_lines(
 }
 
 /// Push one `(line, byte_start, byte_end, priority, scope)` quintuple per
-/// line `range` touches. See [`line_segments`]; `priority` and `scope` are
+/// line `range` touches. See [`ColumnView::segments`](hume_editing::text::ColumnView::segments); `priority` and `scope` are
 /// carried through unchanged for [`flatten_priority_overlaps`] to resolve
 /// same-line overlaps from (lower `priority` wins; see that function).
 fn push_priority_highlight_lines(

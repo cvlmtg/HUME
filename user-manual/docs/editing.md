@@ -84,7 +84,7 @@ Undo history is a tree rather than a straight line. Redo follows the branch you 
 |-----|--------|
 | `.` | Repeat the last editing command |
 
-Dot-repeat replays the most recent insert session or editing command: delete, change, paste and so on, but not `y`. Inside a replayed insert session, each keystroke re-runs at the new cursor. The one exception is anything where you made a choice while it ran (accepting a completion, picking from a picker), which isn't asked again; `.` just writes the same text it produced last time. See [Falling back to a key's normal Insert-mode behaviour](configuration.md#falling-back-to-a-keys-normal-insert-mode-behaviour) for how this plays out with custom Insert-mode bindings.
+`.` repeats the last editing command or insert session: delete, change, paste and so on, but not `y`. Typed keys re-run at the new cursor. A choice you made (the character after `r`, a picker or menu item, a prompt answer) is reused, not asked again. An accepted completion writes the same text at the cursor, without its edits elsewhere, such as an added import. A pick in a drawer (references, the undo tree) is never repeated. For custom Insert-mode bindings, see [Falling back to a key's normal Insert-mode behaviour](configuration.md#falling-back-to-a-keys-normal-insert-mode-behaviour).
 
 ## Macros
 

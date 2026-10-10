@@ -1,7 +1,7 @@
 //! Shared subprocess transport: spawning with piped stdio under a fixed
 //! process-group/reap discipline, plus the wake-on-completion primitives
-//! both consumption shapes build on: [`super::line_source`]'s line-batch
-//! streaming and [`super::job`]'s whole-output capture. Extracted so the
+//! both consumption shapes build on: [`crate::process::line_source`]'s line-batch
+//! streaming and [`crate::process::job`]'s whole-output capture. Extracted so the
 //! two never duplicate the spawn/wake/reap machinery between them.
 
 use std::io::{self, Read};
@@ -12,8 +12,8 @@ use std::sync::Arc;
 use crate::process::{ReapOnDrop, base_command, spawn_in_own_group};
 
 /// Called by a background thread the moment it has something to hand off
-/// (a line batch from [`super::line_source`], or a finished capture from
-/// [`super::job`]), so the editor's main loop wakes and drains it instead
+/// (a line batch from [`crate::process::line_source`], or a finished capture from
+/// [`crate::process::job`]), so the editor's main loop wakes and drains it instead
 /// of rechecking on a poll cadence. Type-erased so this crate stays free of
 /// a `hume-lsp`/`termina` dependency; production wraps
 /// `termina::PlatformWaker::wake`.
@@ -36,7 +36,7 @@ impl Drop for WakeOnDrop {
 /// blocks writing to it) but discarded.
 pub(crate) const STDERR_CAPTURE_CAP: usize = 8 * 1024;
 
-/// Cap on captured job stdout ([`super::job`]): large enough for any
+/// Cap on captured job stdout ([`crate::process::job`]): large enough for any
 /// realistic command's legitimate output, small enough that a runaway
 /// child (`cat /dev/zero`, a multi-GB blob) can't grow the editor's memory
 /// without bound. Unlike [`STDERR_CAPTURE_CAP`], exceeding this fails the

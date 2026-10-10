@@ -62,7 +62,8 @@ jobs:
   # Platform-independent, so it runs once.
   # Every crate root denies `rustdoc::broken_intra_doc_links` — this is what
   # actually evaluates those links, since the attribute alone is inert
-  # without a `cargo doc` run to check it against.
+  # without a `cargo doc` run to check it against. Private items too: most
+  # of the workspace's docs sit on crate-private items.
   doc:
     name: Doc
     runs-on: ubuntu-latest
@@ -71,7 +72,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - run: cargo doc --workspace --no-deps
+      - run: cargo doc --workspace --no-deps --document-private-items
 
   # The committed tools/theme-editor/index.html is generated from src/ by
   # vite and shipped as a direct download (the user manual links to it), so a

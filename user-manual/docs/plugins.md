@@ -163,12 +163,13 @@ For editor commands that should support dot-repeat (`.`), add `#:repeatable #t`.
 
 ### Dot-repeat
 
-`.` repeats a `#:repeatable` command. When the command asked the user for something (a character with `on-next-char!`, a pick from `picker!` or `live-picker!`, text from `prompt!`, an item from `show-menu!`), `.` gives it the same answer without asking again, and the command decides again what to do with it where `.` runs. The same holds for the callbacks of those inputs, and for a command bound to an Insert-mode key with `bind-key! 'insert`.
+`.` repeats a `#:repeatable` command. When it asks the user for something (`on-next-char!`, `picker!`, `live-picker!`, `prompt!`, `show-menu!`), `.` hands it the same answer instead of asking, and the command decides again what to do with it. This includes questions its callbacks ask, and a `#:repeatable` command bound to an Insert-mode key.
 
-- A `picker!` pick and a `show-menu!` choice are repeated by the item's text: `.` looks for an item with the same text in the list the command builds this time, so the payload is the one built for the new spot. When several items have the same text, `.` picks the one in the same place among them: the second of two "foo" items stays the second. A `live-picker!` pick, or a pick from a `picker!` whose items are still arriving when it opens, is repeated with the payload it got the first time.
-- A dismissed picker, prompt or menu is repeated as dismissed: its callback gets `#f`.
-- `.` raises an error when the command asks for something the first run didn't (a picker where it read a character, say), asks for more than the first run did, or can't find the picked item by its text.
-- Reloading your configuration forgets payloads: afterward, a pick `.` would repeat by its payload raises an error, while one it repeats by text still works.
+- Anything else that asks the user while a change is recorded (a non-repeatable command bound in Insert mode, a hook, a timer) ends the change there: `.` repeats only what came before.
+- A `picker!` pick or `show-menu!` choice is matched by its text in the list the command builds this time, so the second of two "foo" items stays the second. A `live-picker!` pick, or one from a `picker!` that got items after it opened (`#:pending`, `picker-push!`, `picker-source-spawn!`), reuses its original payload, which a configuration reload forgets.
+- A dismissal is repeated as a dismissal: the callback gets `#f`.
+- A `show-drawer-list!` pick is never recorded, and its `on-select` is not part of the change.
+- `.` raises an error when the re-run asks for something different or more than the first run did, can't find the picked item or a forgotten payload, or doesn't bind the `#:actions` key the first run used.
 
 ### Calling other commands
 

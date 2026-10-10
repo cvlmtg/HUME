@@ -104,7 +104,7 @@ fn already_declared(ctx: &mut SteelCtx, entry: &EntryId, name: &str) -> bool {
 /// are invalid Steel escapes), or `None` if `path` contains `"`, which no
 /// amount of escaping can embed in a Scheme string literal.
 ///
-/// Also exposed as [`crate::steel_path_literal`] for test call sites (any
+/// Also exposed as `crate::steel_path_literal` in test builds, for call sites (any
 /// `.scm` source built by string interpolation from a real filesystem path:
 /// `open-buffer!`, `picker!`, `require`, …) that would otherwise hand-roll
 /// this same escaping per site.

@@ -504,7 +504,7 @@ impl Editor {
     /// [`Self::report_unknown_command`]) and returning `None` if it isn't
     /// there. A `Lazy` stub is activated and its real entry returned, so
     /// every caller reads the command's own metadata: whether an Insert-key
-    /// binding is `#:repeatable` is read before it dispatches.
+    /// binding is repeatable is read before it dispatches.
     pub(in crate::editor) fn resolve_mappable(&mut self, name: &str) -> Option<MappableCommand> {
         match self.state.config.registry.get_mappable(name).cloned() {
             Some(MappableCommand::Lazy { name, plugin }) => self.resolve_lazy(&plugin, &name),
