@@ -32,7 +32,7 @@ use termina::event::{Event as TerminalEvent, KeyEvent};
 use super::dispatch::CmdCtx;
 use super::dot_chain::{ChainBroken, DotChain};
 use super::edit_session::{self, DotCapture, EditSession, EditSessionKind, InsertState};
-use super::input_stack::char::CharRead;
+use super::input_stack::char::{AfterRead, CharRead};
 use super::keymap::CanonicalKey;
 use super::registry::MappableCommand;
 use super::{Editor, EditorState, Mode, commands, doc_ops};
@@ -1286,14 +1286,14 @@ impl Editor {
             );
         }
 
-        let ran = self.dispatch(
+        let dispatched = self.dispatch(
             edit_cmd,
             CmdCtx {
                 count: Some(count),
                 extend: false,
             },
         );
-        self.finish_replayed_answers(ran);
+        let ran = self.finish_replayed_answers(dispatched);
         if !ran {
             // Close whatever the group opened above became so it can't leak,
             // the same decision the success path makes. commit drops an empty
@@ -1350,7 +1350,11 @@ impl Editor {
     /// each callback at once (an input a callback reaches is resolved by this
     /// same loop). Either way, drop the answers it did not reach (it took a
     /// shorter branch this time) so the next body starts from its own.
-    fn finish_replayed_answers(&mut self, ran: bool) {
+    ///
+    /// Returns whether the body ran: `ran`, and the native command a read
+    /// collected the operand for, if any, ran too. A failed one drops the
+    /// answers after it.
+    fn finish_replayed_answers(&mut self, mut ran: bool) -> bool {
         while ran
             && let Some(answer) = self
                 .state
@@ -1361,7 +1365,13 @@ impl Editor {
             let call = match answer {
                 PendingAnswer::Read(read, answer) => {
                     let resolved = super::input_stack::char::resolve(&mut self.state, read, answer);
-                    super::input_stack::char::run_resolved(self, resolved)
+                    match super::input_stack::char::run_resolved(self, resolved) {
+                        AfterRead::Done(done) => {
+                            ran = done;
+                            None
+                        }
+                        AfterRead::Call(call) => Some(call),
+                    }
                 }
                 PendingAnswer::Call { proc, arg } => Some(super::event::PendingWork::Call {
                     proc,
@@ -1378,6 +1388,7 @@ impl Editor {
             replay.answers.clear();
             replay.pending.clear();
         }
+        ran
     }
 
     // ── Dot capture (completion accepts) ──────────────────────────────────────

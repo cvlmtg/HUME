@@ -51,22 +51,25 @@ pub(in crate::editor) fn collect_operand(
 }
 
 /// Run `pending` with the operand the user supplied for it, reporting any
-/// refusal: by then no script caller is waiting to raise to.
+/// refusal: by then no script caller is waiting to raise to. Returns
+/// `false` when the command is gone, the operand does not fit, or the
+/// command refused.
 pub(in crate::editor) fn run_collected(
     state: &mut EditorState,
     view: &mut EngineView,
     pending: PendingDispatch,
     arg: CommandArg,
-) {
+) -> bool {
     let PendingDispatch { name, pane, ctx } = pending;
     let Some(cmd) = state.config.registry.get_mappable(&name).cloned() else {
         state.report(Severity::Error, format!("unknown command: {name}"));
-        return;
+        return false;
     };
     match BoundCommand::resolve(state, view, cmd, pane, Some(arg)) {
-        Ok(bound) => {
-            run(state, view, bound, ctx);
+        Ok(bound) => run(state, view, bound, ctx),
+        Err(e) => {
+            report_arg_error(state, &name, &e);
+            false
         }
-        Err(e) => report_arg_error(state, &name, &e),
     }
 }

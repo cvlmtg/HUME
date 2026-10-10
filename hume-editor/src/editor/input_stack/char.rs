@@ -193,22 +193,27 @@ pub(in crate::editor) fn resolve(
     }
 }
 
-/// Runs a resolved command read, handing back a callback call for the
-/// caller to queue (a key) or run at once (`.`).
-pub(in crate::editor) fn run_resolved(ed: &mut Editor, resolved: Resolved) -> Option<PendingWork> {
+/// What running a resolved read left to do.
+pub(in crate::editor) enum AfterRead {
+    /// Its native command ran (`true`), or failed or refused (`false`).
+    /// `true` when the read had nothing to run.
+    Done(bool),
+    /// A callback call for the caller to queue (a key) or run at once (`.`).
+    Call(PendingWork),
+}
+
+/// Runs a resolved command read.
+pub(in crate::editor) fn run_resolved(ed: &mut Editor, resolved: Resolved) -> AfterRead {
     match resolved {
-        Resolved::Nothing => None,
+        Resolved::Nothing => AfterRead::Done(true),
         Resolved::Command {
             pending,
             ch,
             source,
-        } => {
-            ed.run_answered(source, |ed| {
-                commands::run_collected(&mut ed.state, &mut ed.view, pending, CommandArg::Char(ch));
-            });
-            None
-        }
-        Resolved::Call(call) => Some(call),
+        } => AfterRead::Done(ed.run_answered(source, |ed| {
+            commands::run_collected(&mut ed.state, &mut ed.view, pending, CommandArg::Char(ch))
+        })),
+        Resolved::Call(call) => AfterRead::Call(call),
     }
 }
 
@@ -302,7 +307,7 @@ fn char_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
         ed.state.truncate_layers(&ed.view, r);
     }
     let resolved = resolve(&mut ed.state, read, Some(ch));
-    if let Some(call) = run_resolved(ed, resolved) {
+    if let AfterRead::Call(call) = run_resolved(ed, resolved) {
         ed.state.config.pending_work.push_back(call);
     }
 }

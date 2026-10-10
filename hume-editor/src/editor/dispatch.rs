@@ -45,7 +45,9 @@ impl Editor {
     ///
     /// Returns `false` when the command refused or failed, or its operand
     /// read was refused; `true` otherwise, including while it waits on its
-    /// operand.
+    /// operand. During `.` the recorded operand is applied once this
+    /// returns, by `Editor::finish_replayed_answers`, which reports whether
+    /// the command then ran.
     pub(in crate::editor) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) -> bool {
         // Native path: a keypress always acts at the focused pane.
         // `NotNative` hands `cmd` back unbound for a Steel-backed/Lazy
