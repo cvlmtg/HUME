@@ -9,7 +9,6 @@ use super::buffer::DiskCheckTrigger;
 use super::commands::CommandPane;
 use super::event::{EditorEvent, PendingWork};
 use super::reload::ReloadSnapshot;
-use super::replay::ReadScope;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
 use crate::cli::ConfigSource;
 
@@ -357,11 +356,11 @@ impl Editor {
                 {
                     self.state.last_entered_buffer = None;
                 }
-                // A dot-capture inside the dropped batch (a picker's own
-                // queued `on_select`; see `DotCapture`'s own doc) is simply
-                // dropped along with the rest of it: nothing records a
-                // partial result for `.`, the same outcome as an `on_select`
-                // that never fires at all.
+                // A callback answering an interactive input inside the
+                // dropped batch (a picker's own queued `on_select`) is
+                // dropped along with the rest of it. Its answer was recorded
+                // when the input resolved, and its ticket closes as it
+                // drops.
                 return false;
             }
             self.run_pending_batch(batch);
@@ -448,8 +447,8 @@ impl Editor {
     /// batch). An anchored `Call` (an `lsp-request!` callback) always runs
     /// alone in its own session, its anchor re-checked immediately first;
     /// see the `Call` match arm's own comment for why it can't be batched.
-    /// `.` also runs a read's callback through here, at once
-    /// (`Editor::resolve_replayed_reads`).
+    /// `.` also runs a read's or pick's callback through here, at once
+    /// (`Editor::resolve_replayed_answers`).
     pub(super) fn run_pending_batch(&mut self, mut items: std::collections::VecDeque<PendingWork>) {
         while let Some(item) = items.pop_front() {
             match item {
@@ -499,8 +498,7 @@ impl Editor {
                     proc,
                     args,
                     anchor,
-                    dot_waiter,
-                    read_owner,
+                    answer,
                 } => {
                     if let Some(anchor) = anchor {
                         // Never grouped into a multi-item batch with a
@@ -520,16 +518,13 @@ impl Editor {
                         self.state.release_request_position(anchor.tracked);
                         continue;
                     }
-                    if dot_waiter.is_some() || read_owner.is_some() {
-                        // Also never batched with a sibling call; see
-                        // `PendingWork::Call`'s `dot_waiter` and
-                        // `read_owner` docs.
-                        let scope = read_owner.map(ReadScope::Callback);
-                        let outer = std::mem::replace(&mut self.state.read_scope, scope);
-                        self.resolve_dot_waiter(dot_waiter, |ed| {
+                    if let Some(ticket) = answer {
+                        // Runs alone (never batched with a sibling call), in
+                        // the scope of the input it answers; see
+                        // `PendingWork::Call`'s `answer` doc.
+                        self.run_answered(Some(ticket), |ed| {
                             ed.run_call_batch(vec![(proc, args)]);
                         });
-                        self.state.read_scope = outer;
                         continue;
                     }
                     let mut calls = vec![(proc, args)];
@@ -537,8 +532,7 @@ impl Editor {
                         items.front(),
                         Some(PendingWork::Call {
                             anchor: None,
-                            dot_waiter: None,
-                            read_owner: None,
+                            answer: None,
                             ..
                         })
                     ) {

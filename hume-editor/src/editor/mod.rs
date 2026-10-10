@@ -8,7 +8,7 @@ use termina::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use self::registry::CommandRegistry;
-use self::replay::{PendingRepeat, RepeatableAction, SelectionStep};
+use self::replay::{PendingRepeat, SelectionStep};
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneView;
@@ -337,8 +337,16 @@ pub(crate) struct EditorState {
     /// instead: a view command, not a motion, so it does not go through
     /// `apply_visual_vertical` at all (see `move_vertical`'s doc).
     pub(super) visual_move_target_display_cols: Vec<hume_editing::selection::StickyDisplayCol>,
-    /// The last repeatable editing action, available for replay via `.`.
-    pub(super) last_repeatable_action: Option<RepeatableAction>,
+    /// The change currently being recorded, and the last one settled; `.`
+    /// replays the settled one. See [`replay::Recording`].
+    pub(in crate::editor) recording: Option<replay::Recording>,
+    /// The recorded change's code running now, if any: a command body
+    /// (`replay::record_change`), an Insert-key binding
+    /// (`Editor::with_insert_key_dispatch`) or an input's callback
+    /// (`Editor::run_answered`), each set through
+    /// [`replay::with_recording_scope`] for the extent of that call. See
+    /// [`replay::RecordingScope`].
+    pub(in crate::editor) recording_scope: replay::ScopeSlot,
     /// Accumulating selection-recipe buffer for the *next* edit's dot-repeat.
     ///
     /// Tracks how the current selection was built: Motion/Selection commands
@@ -350,27 +358,28 @@ pub(crate) struct EditorState {
     /// onto. Non-selection commands clear it. See
     /// `RepeatableAction::selection_recipe` for the invariant.
     pub(super) selection_recipe: Vec<SelectionStep>,
-    /// Incremented once by every native dispatch's `step_update_recipe`
-    /// (`commands/pipeline.rs`), regardless of what it did to the recipe.
+    /// Set by every native dispatch's `step_update_recipe`
+    /// (`commands/pipeline.rs`), regardless of what it did to the recipe, and
+    /// reset before a Steel command body runs.
     ///
-    /// `Editor::dispatch`'s Steel branch reads this before and after running
-    /// a command's body: unchanged means the body dispatched no native
-    /// command at all (a pure-Steel body), so `selection_recipe` (left
-    /// untouched from before the body ran) must still be cleared, the same
-    /// as any other non-selection command would. Changed means an inner
-    /// `call!` already ran `step_update_recipe` with its own correct
-    /// decision, which the Steel branch must not override. A plain
-    /// `selection_recipe == pre_recipe` snapshot comparison can't stand in
-    /// for this: it would misfire when a body re-establishes the identical
-    /// step it started with.
-    pub(super) selection_recipe_writes: u64,
+    /// `Editor::dispatch`'s Steel branch reads it after the body: `false`
+    /// means the body dispatched no native command at all (a pure-Steel body),
+    /// so `selection_recipe` (left untouched from before the body ran) must
+    /// still be cleared, the same as any other non-selection command would.
+    /// `true` means an inner `call!` already ran `step_update_recipe` with its
+    /// own correct decision, which the Steel branch must not override. A plain
+    /// `selection_recipe == pre_recipe` snapshot comparison can't stand in for
+    /// this: it would misfire when a body re-establishes the identical step it
+    /// started with.
+    pub(super) selection_recipe_touched: bool,
     /// Set by `refuse_if_read_only` (and by a native `EditorCmd` body
     /// returning `Err`) to tell `commands::run`'s AFTER stage the
     /// command's body did not do its job: a read-only refusal, or an error
-    /// mid-body. A repeatable command in that state must not stamp
-    /// `last_repeatable_action`: there is nothing new to repeat, and doing so
-    /// would silently discard whatever real action was recorded before (see
-    /// `commands/pipeline.rs`'s `step_stamp_repeatable` call site).
+    /// mid-body. A fresh repeatable change in that state is discarded rather
+    /// than kept: there is nothing new to repeat, and keeping it would drop
+    /// whatever change was recorded before (see `commands/pipeline.rs`'s
+    /// `record_change` call, whose body reports `!command_refused` as its
+    /// success).
     /// `commands::run` resets this to `false` at its own BEFORE stage
     /// and is the only reader, immediately after BODY in that same call. The
     /// Steel dispatch path (`Editor::dispatch`) never reads or resets it
@@ -395,9 +404,6 @@ pub(crate) struct EditorState {
     /// passes before it opens, to refuse one reached during `.`, and by a
     /// character read, which takes its answer from it.
     pub(in crate::editor) dot_replay: Option<replay::DotReplay>,
-    /// Whose character reads the Steel code running now makes; see
-    /// [`replay::ReadScope`].
-    pub(in crate::editor) read_scope: Option<replay::ReadScope>,
     /// `true` from the moment `handle_insert` matches a trie leaf until
     /// that dispatch returns. Dispatch never yields before then, all the
     /// way through a Steel `call!` (`Editor::dispatch` → `run_steel_command`
@@ -406,15 +412,11 @@ pub(crate) struct EditorState {
     /// during the same keypress drains later in `settle`. Set via
     /// `Editor::with_insert_key_dispatch`. Read by `commands::
     /// repeat_slot_owned` and `insert-key!`; see each one's own doc for why.
-    pub(super) in_insert_key_dispatch: bool,
+    pub(in crate::editor) insert_key_dispatch: bool,
     /// The editor's one live Insert or paste undo group, if any. See
     /// [`edit_session::EditSession`]'s own doc, including its own
     /// `dot_capture` field.
     pub(in crate::editor) active_session: Option<edit_session::EditSession>,
-    /// The capture shared by the inputs an Insert-key binding opened while
-    /// they wait; see [`edit_session::DotPark`]. Cleared with the Insert
-    /// session by `tear_down_insert`.
-    pub(in crate::editor) dot_park: Option<edit_session::DotPark>,
     /// Whether the user explicitly typed a count prefix before the current command.
     pub(super) explicit_count: bool,
     /// `true` when the current multi-key sequence began with a kitty one-shot
@@ -530,19 +532,18 @@ impl Default for EditorState {
             force_full_redraw: false,
             inline_output: InlineOutput::default(),
             visual_move_target_display_cols: Vec::new(),
-            last_repeatable_action: None,
+            recording: None,
+            recording_scope: replay::ScopeSlot::default(),
             selection_recipe: Vec::new(),
-            selection_recipe_writes: 0,
+            selection_recipe_touched: false,
             command_refused: false,
             pending_repeat: None,
             sift_reuse: None,
             #[cfg(test)]
             sift_scans: 0,
             dot_replay: None,
-            read_scope: None,
-            in_insert_key_dispatch: false,
+            insert_key_dispatch: false,
             active_session: None,
-            dot_park: None,
             explicit_count: false,
             pending_ctrl_extend: false,
             macro_recording: None,
@@ -802,8 +803,9 @@ impl EditorState {
     /// never called inline (LSP dispatch, timer fire, and minibuffer key
     /// handling all detect their completion from inside a borrow that can't
     /// re-enter Steel). Shared delivery mechanism for the `lsp-request!`
-    /// callback, timer thunks, and the prompt/menu/drawer/picker callbacks.
-    /// Lives on `EditorState` (not `Editor`) so `picker::close_picker` and
+    /// callback, timer thunks, and drawer and live-picker query callbacks; an
+    /// interactive input's callback is built by `EditorState::answered_call`
+    /// instead. Lives on `EditorState` (not `Editor`) so a drawer layer and
     /// `EditorHostImpl`'s spawn-failure arm (which only hold `&mut
     /// EditorState`) can reach it too, the same reason `queue_event` lives
     /// here.
@@ -812,26 +814,13 @@ impl EditorState {
         proc: steel::rvals::SteelVal,
         args: Vec<steel::rvals::SteelVal>,
     ) {
-        self.queue_steel_call_with_waiter(proc, args, None);
-    }
-
-    /// [`Self::queue_steel_call`]'s counterpart for the callback that
-    /// resolves a waiting input holding `dot_waiter` (see
-    /// [`edit_session::DotPark`]).
-    pub(in crate::editor) fn queue_steel_call_with_waiter(
-        &mut self,
-        proc: steel::rvals::SteelVal,
-        args: Vec<steel::rvals::SteelVal>,
-        dot_waiter: Option<edit_session::DotWaiter>,
-    ) {
         self.config
             .pending_work
             .push_back(event::PendingWork::Call {
                 proc,
                 args,
                 anchor: None,
-                dot_waiter,
-                read_owner: None,
+                answer: None,
             });
     }
 
@@ -839,8 +828,8 @@ impl EditorState {
     /// callback: carries the `ResponseAnchor` already checked once at LSP
     /// drain time, so `Editor::run_pending_batch` can re-check it at
     /// dequeue. See `PendingWork::Call`'s own doc for why the drain-time
-    /// check alone isn't enough. Never carries a waiter's claim: an LSP
-    /// response resolves no waiting input.
+    /// check alone isn't enough. Never carries a dot source: an LSP response
+    /// resolves no waiting input.
     pub(in crate::editor) fn queue_steel_call_anchored(
         &mut self,
         proc: steel::rvals::SteelVal,
@@ -853,8 +842,7 @@ impl EditorState {
                 proc,
                 args,
                 anchor: Some(anchor),
-                dot_waiter: None,
-                read_owner: None,
+                answer: None,
             });
     }
 }

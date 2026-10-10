@@ -619,11 +619,8 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
         display: "one".to_string(),
         payload: steel::rvals::SteelVal::StringV("one".into()),
     }]);
-    let input = ed
-        .state
-        .waiting_input("picker!")
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, input);
     assert!(
         ed.state.input.picker().is_some(),
         "sanity: the picker must be open"

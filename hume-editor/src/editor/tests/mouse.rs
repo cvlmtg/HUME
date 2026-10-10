@@ -44,11 +44,8 @@ fn open_test_picker(ed: &mut Editor, items: &[&str]) {
             })
             .collect(),
     );
-    let input = ed
-        .state
-        .waiting_input("picker!")
+    picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
-    picker::open_picker(&mut ed.state, &ed.view, session, input);
 }
 
 /// `tab`'s start column in the synced tabline view, computed the same way

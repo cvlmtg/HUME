@@ -333,15 +333,9 @@ impl EditorState {
 }
 
 impl super::stack::FiresFalseOnReplace for DrawerLayer {
-    fn into_close_call(
-        self: Box<Self>,
-    ) -> Option<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)> {
-        match &self.select {
-            DrawerSelect::Steel(callback) => {
-                let call = (callback.clone(), self.call_args(SteelVal::BoolV(false)));
-                Some(call)
-            }
-            DrawerSelect::Buffers(_) => None,
+    fn close_firing_false(self: Box<Self>, state: &mut EditorState) {
+        if let DrawerSelect::Steel(callback) = &self.select {
+            state.queue_steel_call(callback.clone(), self.call_args(SteelVal::BoolV(false)));
         }
     }
 }

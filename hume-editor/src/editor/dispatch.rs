@@ -8,8 +8,7 @@
 
 use super::event::EditorEvent;
 use super::registry::MappableCommand;
-use super::replay::{DispatchId, ReadLog, ReadScope};
-use super::{Editor, Severity, commands};
+use super::{Editor, Severity, commands, replay};
 
 // ── Command dispatch context ──────────────────────────────────────────────────
 
@@ -68,6 +67,18 @@ impl Editor {
             Err(commands::FocusedBindError::NotNative(cmd)) => cmd,
         };
 
+        // A Lazy stub carries no metadata of its own: activate its plugin
+        // first, so every decision below reads the real command's.
+        let cmd = match cmd {
+            MappableCommand::Lazy { name, plugin } => {
+                let Some(cmd) = self.resolve_lazy(&plugin, &name) else {
+                    return;
+                };
+                cmd
+            }
+            cmd => cmd,
+        };
+
         // Steel path, composed from shared step functions.
         let meta = cmd.meta();
         let name = cmd.name();
@@ -75,63 +86,50 @@ impl Editor {
         commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
         // Snapshot the recipe before the body by cloning, not `mem::take`: an
         // inner `call!` dispatch (e.g. vim-keybind's `C` wrapper calling
-        // `copy-selection-on-next-line`) must see and compose onto whatever
-        // the user already staged, the same as if that inner command were
-        // dispatched directly from the keymap. `step_stamp_repeatable` below
-        // still reads this snapshot, not the (possibly further-mutated) live
-        // value, so a repeatable outer command's stamped recipe reflects
-        // state as of entry, not whatever an inner dispatch built on top of it.
+        // `copy-selection-on-next-line`) must see and compose onto whatever the
+        // user already staged. The settled recording is filled from this
+        // snapshot, not the (possibly further-mutated) live value.
         let pre_recipe = self.state.selection_recipe.clone();
-        let pre_writes = self.state.selection_recipe_writes;
-        // Before the body; see `commands::repeat_slot_owned`'s own doc.
-        let slot_owned = commands::repeat_slot_owned(&self.state);
+        // Begin recording before the body so an `on-next-char!` the body makes
+        // attaches to this change and an inner `call!` can't start its own
+        // (outer name wins). A failed body discards the fresh recording,
+        // unless it opened a session or read that outlives it and still feeds
+        // this change.
+        let fresh = meta.repeatable && !commands::repeat_slot_owned(&self.state);
+        let change = fresh.then(|| replay::NewChange {
+            command: name.clone(),
+            count: ctx.count.unwrap_or(1),
+            seed: None,
+            recipe: pre_recipe.clone(),
+        });
+        // Reset the recipe-touched flag so the AFTER clear decision reflects
+        // only what this body dispatched natively; restore it afterward for
+        // any outer context.
+        let pre_touched = std::mem::replace(&mut self.state.selection_recipe_touched, false);
 
-        // BODY, under its own read scope, so the answers its character
-        // reads receive are recorded with it.
-        let read_scope = ReadScope::Body(ReadLog::new(DispatchId::mint()));
-        let outer = self.state.read_scope.replace(read_scope);
-        let ran = self.run_steel_command(name.as_ref(), &ctx);
-        let reads = match std::mem::replace(&mut self.state.read_scope, outer) {
-            Some(ReadScope::Body(log)) => log,
-            _ => unreachable!("the body's read scope is restored only here"),
-        };
+        // BODY.
+        let ran = replay::record_change(self, change, |ed| {
+            let ran = ed.run_steel_command(name.as_ref(), &ctx);
+            (ran, ran)
+        });
+
+        let touched = std::mem::replace(&mut self.state.selection_recipe_touched, pre_touched);
+
         if !ran {
-            // Failed command: undo whatever a partial inner dispatch wrote,
-            // so the failure has no residual effect on the recipe.
+            // Failed command: undo whatever a partial inner dispatch wrote to
+            // the recipe.
             self.state.selection_recipe = pre_recipe;
             return;
         }
 
-        // AFTER: re-query to get the resolved command's repeatable flag.
-        // A Lazy stub becomes SteelBacked after activation; re-query reflects that.
-        let repeatable = self
-            .state
-            .config
-            .registry
-            .get_mappable(name.as_ref())
-            .is_some_and(|c| c.meta().repeatable);
-        if repeatable && !slot_owned {
-            // Outer-name-wins: stamp the outer command so `.` replays it, not
-            // any inner native command the body dispatched via `call!`.
-            commands::step_stamp_repeatable(
-                &mut self.state,
-                name,
-                ctx.count.unwrap_or(1),
-                None,
-                Some(pre_recipe),
-                Some(reads),
-            );
-        }
-        // Clear only when this outer command owns the decision: a repeatable
-        // command's recipe was just consumed by the stamp above (matching
-        // the native `Edit` variant (always `Untracked`, so `step_update_recipe`
-        // clears it too), and a body that dispatched nothing natively never
-        // ran `step_update_recipe` to decide for itself, so this non-selection
-        // outer command must clear it exactly as any other `Untracked`
-        // command would. A body that DID dispatch natively already got the
-        // correct decision from that inner call's own `step_update_recipe`,
-        // which must not be overridden.
-        if repeatable || self.state.selection_recipe_writes == pre_writes {
+        // AFTER
+        // Clear the live recipe when this outer command owns the decision: a
+        // repeatable command's recipe was just consumed, and a body that
+        // dispatched nothing natively is a non-selection command that clears
+        // it like any `Untracked` one. A body that DID dispatch natively
+        // already got the correct decision from that inner call, which must
+        // not be overridden.
+        if meta.repeatable || !touched {
             self.state.selection_recipe.clear();
         }
         // Outer Steel commands skip with_jump, step_clear_extend, and
@@ -152,6 +150,26 @@ impl Editor {
         } else {
             self.report(Severity::Info, format!("unknown command: {name}"));
             false
+        }
+    }
+
+    /// Activate a `Lazy` stub's `plugin` and return the `SteelBacked` entry
+    /// that replaced it. `None`, reported, when activation fails or leaves no
+    /// such entry.
+    fn resolve_lazy(
+        &mut self,
+        plugin: &hume_scripting::attribution::EntryId,
+        name: &str,
+    ) -> Option<MappableCommand> {
+        if !self.activate_lazy_and_report(plugin, name) {
+            return None;
+        }
+        match self.state.config.registry.get_mappable(name) {
+            Some(cmd @ MappableCommand::SteelBacked { .. }) => Some(cmd.clone()),
+            _ => {
+                self.report_command_lost(name);
+                None
+            }
         }
     }
 
@@ -234,19 +252,14 @@ impl Editor {
                     // `inline_output` from the resolved SteelBacked entry before
                     // dispatch.
                     let plugin = plugin.clone();
-                    if !self.activate_lazy_and_report(&plugin, name) {
-                        return false;
-                    }
-                    // Re-query: activation replaced the stub with a SteelBacked
-                    // entry.
-                    match self.state.config.registry.get_mappable(name) {
+                    match self.resolve_lazy(&plugin, name) {
                         Some(MappableCommand::SteelBacked {
                             inline_output,
                             arity,
                             is_variadic,
                             ..
-                        }) => (*inline_output, *arity, *is_variadic),
-                        _ => return self.report_command_lost(name),
+                        }) => (inline_output, arity, is_variadic),
+                        _ => return false,
                     }
                 }
                 _ => return self.report_command_lost(name),

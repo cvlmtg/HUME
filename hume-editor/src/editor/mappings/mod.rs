@@ -11,6 +11,10 @@ impl Editor {
     // ── Input dispatch ────────────────────────────────────────────────────────
 
     pub(in crate::editor) fn handle_key(&mut self, key: KeyEvent) {
+        debug_assert!(
+            self.state.recording_scope.running().is_none(),
+            "no recording scope outlives the call that set it"
+        );
         // How many keystrokes the message-log summary stays visible after
         // `status_msg` clears. Chosen for UX, not technical constraint.
         const SUMMARY_TTL: u8 = 3;
@@ -54,6 +58,10 @@ impl Editor {
         if let Some(pending) = self.state.pending_repeat.take() {
             self.replay_dot(pending.count);
         }
+        debug_assert!(
+            self.state.recording_scope.running().is_none(),
+            "no recording scope outlives the call that set it"
+        );
     }
 
     /// Bare stack walk, no cross-cutting bookkeeping: the single entry

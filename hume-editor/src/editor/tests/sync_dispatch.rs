@@ -370,7 +370,7 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
         false,
     );
 
-    // Establish last_repeatable_action="delete" via a real keypress.
+    // Establish the recorded change "delete" via a real keypress.
     ed.feed_key(key('d')); // delete "foo"; buffer = " bar\n"
     assert_eq!(
         ed.doc().text().to_string(),
@@ -378,8 +378,8 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
         "setup: 'foo' must be deleted"
     );
     assert!(
-        ed.state.last_repeatable_action.is_some(),
-        "setup: last_repeatable_action must be set"
+        ed.state.last_action().is_some(),
+        "setup: the recorded change must be set"
     );
 
     // Move to "bar" and press F2: the Steel command fires `(call! "repeat-last-action" bid)`,
@@ -519,10 +519,10 @@ fn steel_call_native_respects_register_prefix() {
 }
 
 /// **Dot-repeat**: a repeatable native command invoked via Steel must
-/// set `last_repeatable_action` so `.` can replay it.
+/// set the recorded change so `.` can replay it.
 ///
-/// `commands::run` stamps it through `step_stamp_repeatable`; skipping that
-/// step would leave `last_repeatable_action` as `None`.
+/// `commands::run` begins the change through `replay::record_change`;
+/// skipping that step would leave the recorded change as `None`.
 #[test]
 fn steel_call_repeatable_cmd_sets_dot_repeat() {
     let mut ed = editor_from("-[foo]> bar\n");
@@ -534,16 +534,13 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
     );
 
     ed.execute_keymap_command("steel-delete".into(), Some(1), false);
-    // `delete` is repeatable, so last_repeatable_action must be set.
+    // `delete` is repeatable, so the recorded change must be set.
     assert!(
-        ed.state.last_repeatable_action.is_some(),
-        "last_repeatable_action must be set after Steel (call! \"delete\" bid)"
+        ed.state.last_action().is_some(),
+        "the recorded change must be set after Steel (call! \"delete\" bid)"
     );
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.as_ref()),
+        ed.state.last_action().map(|a| a.command.as_ref()),
         Some("delete"),
     );
 
@@ -1130,8 +1127,8 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 /// one pipeline and forgotten in the other. Pinning the full cluster here
 /// means any such omission causes a divergence.
 ///
-/// On the Steel path, `last_repeatable` is stamped by the `step_stamp_repeatable`
-/// call in the AFTER block of `Editor::dispatch`. A pre-armed paste session is
+/// On the Steel path, `last_repeatable` comes from the `replay::record_change`
+/// call around the body of `Editor::dispatch`. A pre-armed paste session is
 /// closed by the `step_paste_commit` call in its BEFORE block.
 #[test]
 fn parity_steel_branch_cluster_vs_native() {
@@ -1143,7 +1140,7 @@ fn parity_steel_branch_cluster_vs_native() {
 
     // Path B: a `#:repeatable` Steel command whose body calls `delete`.
     // Goes through the Steel branch of `Editor::dispatch` (outer), which
-    // must run `step_stamp_repeatable` in AFTER just as the native path does.
+    // must record the change just as the native path does.
     let mut ed_steel = editor_from("-[f]>oo\n");
     attach_steel(
         &mut ed_steel,
@@ -1455,10 +1452,10 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) -> termina::ev
 }
 
 /// A Steel `#:repeatable` command that calls `(call! "insert-before" bid)` must
-/// record typed text in `insert_inputs` and replay it on `.`.
+/// record typed text in the transcript and replay it on `.`.
 ///
 /// If the typed inputs landed anywhere but the outer Steel action,
-/// `insert_inputs` would be empty and `.` would insert nothing. Without the
+/// the transcript would be empty and `.` would insert nothing. Without the
 /// pre-body recipe snapshot, `.` would still insert, but at the raw cursor
 /// position instead of the recipe-established one.
 #[test]
@@ -1487,14 +1484,13 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
     {
         let action = ed
             .state
-            .last_repeatable_action
-            .as_ref()
-            .expect("last_repeatable_action must be set after steel-ins");
+            .last_action()
+            .expect("the recorded change must be set after steel-ins");
         assert_eq!(action.command.as_ref(), "steel-ins");
         assert_eq!(
-            action.insert_inputs.len(),
+            action.transcript.len(),
             3,
-            "insert_inputs must hold both typed chars and the Esc binding"
+            "transcript must hold both typed chars and the Esc binding"
         );
     }
 
@@ -1512,7 +1508,7 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
 /// clobbered by an inner `(call! "insert-before" bid)` dispatch.
 ///
 /// The Steel `dispatch` path clones the recipe before the body runs. Without
-/// that snapshot, `step_stamp_repeatable` would read whatever `insert-before`'s
+/// that snapshot, the kept change would take whatever `insert-before`'s
 /// inner dispatch left `selection_recipe` as via `commands::run`'s own
 /// `step_update_recipe` (an `EditorCmd` that is `Untracked`, so it clears).
 #[test]
@@ -1547,9 +1543,8 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
     // White-box: the pre-body snapshot must survive the inner insert-before dispatch.
     let action = ed
         .state
-        .last_repeatable_action
-        .as_ref()
-        .expect("last_repeatable_action must be set after steel-ins");
+        .last_action()
+        .expect("the recorded change must be set after steel-ins");
     assert_eq!(
         action.selection_recipe.len(),
         1,
@@ -1607,7 +1602,7 @@ fn steel_wrapper_of_copy_selection_composes_onto_prior_recipe() {
 /// command would), so a prior `x` doesn't leak into a later, unrelated edit.
 ///
 /// A pure-Steel body makes no `step_update_recipe` call, so the
-/// `selection_recipe_writes` guard in `Editor::dispatch`'s Steel branch is
+/// `selection_recipe_touched` guard in `Editor::dispatch`'s Steel branch is
 /// what clears the recipe here.
 #[test]
 fn steel_body_with_no_native_dispatch_clears_the_recipe() {
@@ -1712,9 +1707,8 @@ fn steel_repeatable_paste_dot_repeat_replays_command() {
     {
         let action = ed
             .state
-            .last_repeatable_action
-            .as_ref()
-            .expect("last_repeatable_action must be set after steel-paste");
+            .last_action()
+            .expect("the recorded change must be set after steel-paste");
         assert_eq!(action.command.as_ref(), "steel-paste");
     }
 
@@ -1730,11 +1724,11 @@ fn steel_repeatable_paste_dot_repeat_replays_command() {
 
 /// The `change` command opens its undo group through `begin_insert_session` (the
 /// only path that opens a group). A Steel `#:repeatable` command wrapping `change`
-/// must record `insert_inputs` onto the outer action correctly.
+/// must record the transcript onto the outer action correctly.
 ///
 /// This guards that the edit-then-insert undo-group path remains safe.
 #[test]
-fn steel_repeatable_change_via_call_records_insert_inputs() {
+fn steel_repeatable_change_via_call_records_its_transcript() {
     let mut ed = editor_from("-[foo]> bar\n");
     let f2 = setup_steel_f2(
         &mut ed,
@@ -1755,14 +1749,13 @@ fn steel_repeatable_change_via_call_records_insert_inputs() {
     {
         let action = ed
             .state
-            .last_repeatable_action
-            .as_ref()
-            .expect("last_repeatable_action must be set after steel-chg");
+            .last_action()
+            .expect("the recorded change must be set after steel-chg");
         assert_eq!(action.command.as_ref(), "steel-chg");
         assert_eq!(
-            action.insert_inputs.len(),
+            action.transcript.len(),
             3,
-            "insert_inputs must have 'h', 'i', and the Esc binding"
+            "transcript must have 'h', 'i', and the Esc binding"
         );
     }
 

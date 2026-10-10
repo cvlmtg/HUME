@@ -289,11 +289,7 @@ fn remote_call_leaves_focused_panes_dot_repeat_recipe_untouched() {
     // Stage A's own dot-repeat action via a real keypress dispatch.
     ed.feed_key(key('d'));
     assert_eq!(ed.state.buffers.get(bid_a).text().to_string(), "aa\n");
-    let recipe_before = ed
-        .state
-        .last_repeatable_action
-        .as_ref()
-        .map(|a| a.command.to_string());
+    let recipe_before = ed.state.last_action().map(|a| a.command.to_string());
     assert_eq!(
         recipe_before.as_deref(),
         Some("delete"),
@@ -310,10 +306,7 @@ fn remote_call_leaves_focused_panes_dot_repeat_recipe_untouched() {
         .expect("move-down on B must not error");
 
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.to_string()),
+        ed.state.last_action().map(|a| a.command.to_string()),
         recipe_before,
         "A's dot-repeat target must survive a remote dispatch on B"
     );

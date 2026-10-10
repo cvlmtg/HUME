@@ -328,8 +328,8 @@ pub(in crate::editor) fn cmd_repeat(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     // Peek without taking: replay_dot owns the take so it can
-    // restore the action after replay.
-    let Some(orig_count) = state.last_repeatable_action.as_ref().map(|a| a.count) else {
+    // restore the recording after replay.
+    let Some(orig_count) = state.recording.as_ref().map(|r| r.count()) else {
         return Ok(());
     };
     // Prefer an explicit user count; fall back to the count from the original action.

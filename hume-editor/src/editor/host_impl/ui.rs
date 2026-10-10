@@ -47,9 +47,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         prefill: String,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        let input = self.state.interactive_input("prompt!")?;
         self.require_focused_pane(pane)?;
-        prompt::open_prompt(self.state, self.view, label, prefill, callback, input)
+        prompt::open_prompt(self.state, self.view, label, prefill, callback)
     }
 
     // ── Cursor-anchored / docked popup ───────────────────────────────────
@@ -145,11 +144,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<Option<HostToken>, String> {
-        let input = self.state.interactive_input("show-menu!")?;
         self.require_focused_pane(pane)?;
-        Ok(menu::open_menu(
-            self.state, self.view, items, callback, input,
-        ))
+        menu::open_menu(self.state, self.view, items, callback)
     }
 
     /// Idempotent: a no-op if no menu is open, or if `token` doesn't match
@@ -250,13 +246,10 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         on_select: steel::rvals::SteelVal,
         opts: PickerOpts,
     ) -> Result<HostToken, String> {
-        let input = self.state.waiting_input("picker!")?;
         self.require_focused_pane(pane)?;
         let mut session = PickerSession::new(on_select, opts);
-        let token = session.token();
         session.seed(picker::picker_items(items));
-        picker::open_picker(self.state, self.view, session, input);
-        Ok(token)
+        picker::open_picker(self.state, self.view, session, "picker!")
     }
 
     fn open_live_picker(
@@ -265,12 +258,9 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         on_select: steel::rvals::SteelVal,
         opts: LivePickerOpts,
     ) -> Result<HostToken, String> {
-        let input = self.state.waiting_input("live-picker!")?;
         self.require_focused_pane(pane)?;
         let session = PickerSession::new_live(on_select, opts);
-        let token = session.token();
-        picker::open_picker(self.state, self.view, session, input);
-        Ok(token)
+        picker::open_picker(self.state, self.view, session, "live-picker!")
     }
 
     fn picker_feed(
@@ -308,6 +298,6 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         if picker::session_for_token(self.state, token).is_none() {
             return;
         }
-        picker::close_picker(self.state, self.view, steel::rvals::SteelVal::BoolV(false));
+        picker::close_picker(self.state, self.view);
     }
 }

@@ -7,7 +7,7 @@ use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
 
 use super::super::mouse::is_fresh_gesture;
-use super::super::replay::Interactive;
+use super::super::replay::{Answer, AnswerTicket, Choice, DotReplay};
 use super::super::{Editor, EditorState, host_token};
 use super::base::BaseLayer;
 use super::placement::{focused_cursor, popup_placement};
@@ -31,25 +31,47 @@ pub(in crate::editor) struct MenuLayer {
     /// Identifies which `show-menu!` call opened this menu; see
     /// [`Self::token`]'s doc.
     token: HostToken,
+    /// Where this menu's choice records, when it belongs to a recorded
+    /// change; see [`AnswerTicket`].
+    answer: Option<AnswerTicket>,
 }
 
 /// `show-menu!`'s funnel: opens a menu over `items` whose `callback` gets
-/// the chosen index, or `#f`, and returns its token. `None` when the
-/// request is stale (see `EditorState::async_opener_stale`). Takes the
-/// [`Interactive`] that proves it may open now.
+/// the chosen index, or `#f`, and returns its token. `Ok(None)` when the
+/// request is stale (see `EditorState::async_opener_stale`).
+///
+/// During `.` the menu never opens: the recorded [`Answer::Menu`] answers
+/// it, its callback queued to run after the replayed body with the index of
+/// the item its [`Choice`] names, refusing when the next answer is not a
+/// menu's or no item fits the choice, and running nothing for a menu that
+/// never resolved live. Returns `Ok(None)` then, naming no open menu.
 pub(in crate::editor) fn open_menu(
     state: &mut EditorState,
     view: &EngineView,
     items: Vec<String>,
     callback: steel::rvals::SteelVal,
-    _input: Interactive,
-) -> Option<HostToken> {
+) -> Result<Option<HostToken>, String> {
+    const WHAT: &str = "show-menu!";
+    if let Some(replay) = state.dot_replay.as_mut() {
+        replay.answer_call(WHAT, DotReplay::next_menu, |choice| {
+            let arg = match choice {
+                None => steel::rvals::SteelVal::BoolV(false),
+                Some(choice) => {
+                    let i = choice.find(&items, String::as_str)?;
+                    steel::rvals::SteelVal::IntV(i as isize)
+                }
+            };
+            Some((callback, arg))
+        })?;
+        return Ok(None);
+    }
     // A `Menu` on top is the self-replace exception: a second
     // `lsp-code-action` response while the first menu is still open
     // replaces it rather than being read as stale.
-    if state.async_opener_stale::<BaseLayer, MenuLayer>("show-menu!") {
-        return None;
+    if state.async_opener_stale::<BaseLayer, MenuLayer>(WHAT) {
+        return Ok(None);
     }
+    let answer = state.waiting_input(WHAT)?.ticket();
     // Retires a prior `Menu` on the self-replace path, firing its callback
     // with `#f` explicitly (`take_firing_false`, shared with the drawer):
     // only this path, a genuine refresh, should fire one. Any open popup is
@@ -57,10 +79,11 @@ pub(in crate::editor) fn open_menu(
     if let Some(r) = state.input.ref_of::<MenuLayer>() {
         state.take_firing_false::<MenuLayer>(view, r);
     }
-    let menu = MenuLayer::new(items, callback);
+    let mut menu = MenuLayer::new(items, callback);
+    menu.answer = answer;
     let token = menu.token();
     state.push_layer(view, menu);
-    Some(token)
+    Ok(Some(token))
 }
 
 impl MenuLayer {
@@ -76,7 +99,27 @@ impl MenuLayer {
             selected: 0,
             callback,
             token: host_token::mint(),
+            answer: None,
         }
+    }
+
+    /// Queue this menu's callback with the chosen row's index, or `#f` when
+    /// it was dismissed, recording the chosen row's [`Choice`] under its
+    /// answer ticket, if it has one. Every way a menu closes with a callback ends
+    /// here.
+    fn fire(&mut self, state: &mut EditorState, choice: Option<usize>) {
+        let picked = choice.map(|i| Choice::of(&self.rows, i, |row| &row.main));
+        let arg = match choice {
+            Some(i) => steel::rvals::SteelVal::IntV(i as isize),
+            None => steel::rvals::SteelVal::BoolV(false),
+        };
+        let call = state.answered_call(
+            self.answer.take(),
+            Answer::Menu(picked),
+            self.callback.clone(),
+            arg,
+        );
+        state.config.pending_work.push_back(call);
     }
 
     /// A menu pushed directly, for a test of the stack's own behavior.
@@ -136,10 +179,7 @@ impl Layer for MenuLayer {
     /// explicitly, so neither ever reaches this at all.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, why: Removal) {
         if let Removal::Incidental = why {
-            state.queue_steel_call(
-                self.callback.clone(),
-                vec![steel::rvals::SteelVal::BoolV(false)],
-            );
+            self.fire(state, None);
         }
     }
     /// A non-modal `Popup` can land directly above a `Menu` by design:
@@ -150,10 +190,8 @@ impl Layer for MenuLayer {
 }
 
 impl super::stack::FiresFalseOnReplace for MenuLayer {
-    fn into_close_call(
-        self: Box<Self>,
-    ) -> Option<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)> {
-        Some((self.callback, vec![steel::rvals::SteelVal::BoolV(false)]))
+    fn close_firing_false(mut self: Box<Self>, state: &mut EditorState) {
+        self.fire(state, None);
     }
 }
 
@@ -242,9 +280,7 @@ pub(in crate::editor) fn menu_input(ed: &mut Editor, r: LayerRef, ev: InputEvent
                 ed.fall_through(r, InputEvent::Mouse(mouse));
                 return;
             }
-            let menu = take_menu(ed, r);
-            ed.state
-                .queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+            take_menu(ed, r).fire(&mut ed.state, None);
             ed.fall_through(r, InputEvent::Mouse(mouse));
             return;
         }
@@ -269,19 +305,13 @@ pub(in crate::editor) fn menu_input(ed: &mut Editor, r: LayerRef, ev: InputEvent
             menu.selected = menu.selected.saturating_sub(1);
         }
         KeyCode::Enter => {
-            let menu = take_menu(ed, r);
-            let idx = steel::rvals::SteelVal::IntV(menu.selected as isize);
-            ed.state.queue_steel_call(menu.callback, vec![idx]);
+            let mut menu = take_menu(ed, r);
+            let selected = menu.selected;
+            menu.fire(&mut ed.state, Some(selected));
         }
-        KeyCode::Escape => {
-            let menu = take_menu(ed, r);
-            ed.state
-                .queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
-        }
+        KeyCode::Escape => take_menu(ed, r).fire(&mut ed.state, None),
         _ => {
-            let menu = take_menu(ed, r);
-            ed.state
-                .queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+            take_menu(ed, r).fire(&mut ed.state, None);
             ed.fall_through(r, InputEvent::Key(key));
         }
     }

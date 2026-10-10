@@ -15,7 +15,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::dispatch::CmdCtx;
 use super::super::keymap::WalkResult;
-use super::super::replay::InsertInput;
+use super::super::replay::{Input, RecordingScope, with_recording_scope};
 use super::super::{Editor, EditorState, commands, doc_ops};
 use super::popup::PopupLayer;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
@@ -23,8 +23,8 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 /// The fixed dispatch context for a key that resolved to an Insert keymap
 /// leaf: always an explicit count of 1, never extending. Shared by
 /// `handle_insert` and `replay.rs`'s replay of a recorded
-/// `InsertInput::Binding` entry, so a binding re-run on `.` sees exactly
-/// the context it ran with the first time.
+/// `Input::Binding` entry, so a binding re-run on `.` sees the context
+/// it ran with the first time.
 pub(in crate::editor) const INSERT_KEY_CTX: CmdCtx = CmdCtx {
     count: Some(1),
     extend: false,
@@ -61,7 +61,7 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         InputEvent::Key(key) => handle_insert(ed, key),
         InputEvent::Paste(text) => {
             ed.apply_insert_mode_paste(&text);
-            ed.state.record_insert_input(InsertInput::Paste(text));
+            ed.state.record_input(Input::Paste(text));
         }
         // A click or a wheel notch is Base's own action to run. Most
         // visibly, a click's `focus_pane` ends this very Insert session
@@ -73,7 +73,7 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 /// Walks the Insert keymap for `key`: a bound key re-dispatches its
 /// command, an unbound one runs its default behaviour
 /// (`commands::insert_default_key`). Either way, records the key as the
-/// input it was; see `InsertInput`'s own doc.
+/// input it was; see `Input`'s own doc.
 fn handle_insert(ed: &mut Editor, key: KeyEvent) {
     // Only Esc, Ctrl-c, arrows, and user bindings live in the insert trie;
     // plain chars, Tab, Enter, Backspace, and Delete fall through to their
@@ -90,18 +90,20 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             let Some(reg_cmd) = ed.resolve_mappable(cmd.name.as_ref()) else {
                 return;
             };
-            // Wrapped in a dot-capture: replay re-runs this binding, so it
-            // decides again at the new cursor, unless it turns out
-            // interactive, in which case the capture's own net edit is
-            // recorded instead (see `edit_session::DotCapture`'s own doc).
+            // Recorded before it runs, so the answers its interactive inputs
+            // get have an entry to go to: replay re-runs this binding, so it
+            // decides again at the new cursor. Wrapped in a dot-capture, so a
+            // completion accept it makes replaces that entry with its own net
+            // edit (see `edit_session::DotCapture`'s own doc).
             // Through the full pipeline like any keypress: an edit composes
             // into the open insert-session group (`run_body` routes through
             // `apply_doc_edit_grouped`), a motion clears a pinned typed run
             // (`with_jump`), and `repeat_slot_owned` keeps
             // a repeatable command from stamping over the session's owner.
-            let fallback = InsertInput::Binding { name: cmd.name };
-            ed.with_dot_capture(Some(fallback), |ed| {
-                ed.with_insert_key_dispatch(|ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
+            let scope = ed.state.record_binding(cmd.name);
+            let slot = scope.as_ref().and_then(RecordingScope::binding);
+            ed.with_dot_capture(slot, |ed| {
+                ed.with_insert_key_dispatch(scope, |ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
             });
             return;
         }
@@ -115,29 +117,33 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
     // would be a silent no-op entry.
     let fp = commands::FocusedPane::current(&ed.state);
     if commands::insert_default_key(&mut ed.state, &ed.view, fp, key) {
-        ed.state.record_insert_input(InsertInput::Key(key));
+        ed.state.record_input(Input::Key(key));
     }
 }
 
 impl Editor {
     // ── Insert mode ───────────────────────────────────────────────────────────
 
-    /// Runs `f` with `EditorState::in_insert_key_dispatch` set, restoring
-    /// its prior value afterward. Shared by `handle_insert`'s trie-leaf
-    /// dispatch and `replay.rs`'s replay of a recorded `InsertInput::
-    /// Binding` entry, so a binding re-run on `.` sees the same flag it saw
+    /// Runs `f` with `EditorState::insert_key_dispatch` set and `scope` (the
+    /// binding's own, `None` when nothing records it) as the running
+    /// recording scope, restoring both afterward. Shared by `handle_insert`'s
+    /// trie-leaf dispatch and `replay.rs`'s replay of a recorded `Input::
+    /// Binding` entry, so a binding re-run on `.` sees the same context it saw
     /// live. Set for the whole call regardless of what `f` does internally
     /// (mode switches included: dispatch is synchronous all the way
     /// through a Steel `call!`, so this never outlives the call it wraps).
     /// See `commands::repeat_slot_owned`'s own doc for what the flag
-    /// itself gates.
+    /// itself gates. The scope holds the recording in flight open for the
+    /// call, so a binding that leaves Insert and re-enters it records what
+    /// follows into the same change.
     pub(in crate::editor) fn with_insert_key_dispatch<R>(
         &mut self,
+        scope: Option<RecordingScope>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let prev = std::mem::replace(&mut self.state.in_insert_key_dispatch, true);
-        let r = f(self);
-        self.state.in_insert_key_dispatch = prev;
+        let prev = std::mem::replace(&mut self.state.insert_key_dispatch, true);
+        let r = with_recording_scope(self, scope, f);
+        self.state.insert_key_dispatch = prev;
         r
     }
 

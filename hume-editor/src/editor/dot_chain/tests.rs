@@ -58,41 +58,6 @@ fn an_edit_the_chain_did_not_record_breaks_it() {
 }
 
 #[test]
-fn rearm_moves_an_empty_chain_to_the_current_head() {
-    let text = BufferText::from("abcd\n");
-    let chain = DotChain::new(at(&text, 1), &text);
-    let (moved, _) = insert(&text, 0, "Z");
-    let mut chain = chain
-        .rearm(at(&moved, 3), &moved)
-        .expect("an empty chain always rearms");
-    let (after, cs) = insert(&moved, 3, "X");
-    chain.push(&TextChange::new(&moved, &after, &cs));
-    assert_eq!(replacement(chain), Some((0, 0, "X".to_string())));
-}
-
-#[test]
-fn rearm_keeps_a_chain_whose_text_is_unchanged() {
-    let text = BufferText::from("abcd\n");
-    let mut chain = DotChain::new(at(&text, 2), &text);
-    let (after, cs) = insert(&text, 2, "X");
-    chain.push(&TextChange::new(&text, &after, &cs));
-    let chain = chain
-        .rearm(at(&after, 0), &after)
-        .expect("nothing moved the text since the last push");
-    assert_eq!(replacement(chain), Some((0, 0, "X".to_string())));
-}
-
-#[test]
-fn rearm_drops_a_chain_whose_text_moved_after_a_push() {
-    let text = BufferText::from("abcd\n");
-    let mut chain = DotChain::new(at(&text, 2), &text);
-    let (after, cs) = insert(&text, 2, "X");
-    chain.push(&TextChange::new(&text, &after, &cs));
-    let (foreign, _) = insert(&after, 0, "Z");
-    assert!(chain.rearm(at(&foreign, 0), &foreign).is_none());
-}
-
-#[test]
 fn identity_has_no_replacement() {
     let b = ChangeSetBuilder::new(co(6));
     assert!(cursor_replacement_at(&b.finish(), co(3)).is_none());

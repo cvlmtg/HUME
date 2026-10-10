@@ -15,8 +15,9 @@ use hume_scripting::host::HostToken;
 use steel::rvals::SteelVal;
 
 use super::super::commands::half_page;
+use super::super::keymap::CanonicalKey;
 use super::super::minibuf::flatten_single_line;
-use super::super::replay::WaitingInput;
+use super::super::replay::{Answer, Choice, DotReplay, RecordedPick};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
@@ -61,7 +62,7 @@ impl Layer for PickerLayer {
     ///   off itself.
     fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
         state.dismiss_completion(view);
-        close_picker(state, view, SteelVal::BoolV(false));
+        close_picker(state, view);
     }
     /// Fires `on_select` with `#f` unconditionally, ignoring `why`, unlike
     /// every other layer's `tear_down`, which never fires a Steel callback
@@ -84,12 +85,7 @@ impl Layer for PickerLayer {
     /// the one exit that still drops the callback: `EditorState::truncate_layers`
     /// (this method's only caller) never runs during a reload.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        let waiter = self.0.take_dot_waiter();
-        state.queue_steel_call_with_waiter(
-            self.0.on_select().clone(),
-            vec![SteelVal::BoolV(false)],
-            waiter,
-        );
+        fire_callback(state, &mut self.0, PickerCallback::OnSelect, None);
     }
 }
 
@@ -168,30 +164,100 @@ pub(in crate::editor) fn session_for_token(
         .filter(|session| session.token() == token)
 }
 
-/// Single open chokepoint for the picker. Entry policy (dismiss-completion,
+/// Single open chokepoint for the picker, `picker!` and `live-picker!` alike
+/// (`what` names the builtin in a refusal). Entry policy (dismiss-completion,
 /// replace-a-live-picker, clear-popups) lives on [`PickerLayer::setup`],
 /// run by [`EditorState::push_layer`]. This function is the named door to
-/// it, plus the one place the picker takes its claim on the capture of the
-/// Insert-key binding that opened it (see `DotCapture`'s doc for the full
-/// hand-off chain), from the [`WaitingInput`] that proves it may open.
+/// it, plus the one place the picker takes the [`AnswerTicket`] its pick
+/// records under (see `EditorState::waiting_input`).
+///
+/// During `.` the picker never opens: the recorded [`Answer::Pick`] answers
+/// it, its callback queued to run after the replayed body with the payload
+/// of the item its recorded [`Choice`] names when this picker has all its
+/// items as it opens (see [`PickerSession::payload_for`]), or the recorded
+/// payload otherwise. It refuses when the next answer is not a pick, when no
+/// item fits the choice, when the payload is gone (a reload
+/// forgets it), or when the recorded `#:actions` key is not bound here, and
+/// runs nothing for a pick that never resolved live. The returned token
+/// names no open session, so a later feed through it is a no-op.
+///
 /// Takes `state`/`view` rather than `&mut Editor` because its production
 /// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
 /// not a whole `Editor`: it can never reach an `&mut Editor`.
+///
+/// [`AnswerTicket`]: super::super::replay::AnswerTicket
 pub(in crate::editor) fn open_picker(
     state: &mut super::super::EditorState,
     view: &EngineView,
     mut session: PickerSession,
-    input: WaitingInput,
-) {
-    if let Some(waiter) = input.into_waiter() {
-        session.attach_dot_waiter(waiter);
+    what: &str,
+) -> Result<HostToken, String> {
+    let token = session.token();
+    if let Some(replay) = state.dot_replay.as_mut() {
+        replay.answer_call(what, DotReplay::next_pick, |pick: RecordedPick| {
+            let proc = match pick.action {
+                None => session.on_select().clone(),
+                Some(key) => session.action_for(key)?.clone(),
+            };
+            let arg = match pick.choice {
+                None => SteelVal::BoolV(false),
+                Some(choice) if session.has_all_items() => session.payload_for(&choice)?.clone(),
+                Some(_) => pick.payload?,
+            };
+            Some((proc, arg))
+        })?;
+        return Ok(token);
+    }
+    if let Some(ticket) = state.waiting_input(what)?.ticket() {
+        session.attach_answer(ticket);
     }
     state.push_layer(view, PickerLayer(session));
+    Ok(token)
+}
+
+/// Which of a picker's callbacks a close fires.
+pub(in crate::editor) enum PickerCallback {
+    OnSelect,
+    /// The `#:actions` `proc` bound to `key`.
+    Action {
+        key: CanonicalKey,
+        proc: SteelVal,
+    },
+}
+
+/// Fire `callback` for a picker that just closed, with the payload of the
+/// item at `choice` (an index into the session's items) or `#f` when nothing
+/// was chosen: records the pick under the picker's answer ticket, if it has
+/// one, and hands the ticket to the queued call.
+fn fire_callback(
+    state: &mut super::super::EditorState,
+    session: &mut PickerSession,
+    callback: PickerCallback,
+    choice: Option<usize>,
+) {
+    let (proc, action) = match callback {
+        PickerCallback::OnSelect => (session.on_select().clone(), None),
+        PickerCallback::Action { key, proc } => (proc, Some(key)),
+    };
+    let (choice, payload): (Option<Choice>, Option<SteelVal>) =
+        choice.map(|i| session.picked(i)).unzip();
+    let arg = payload.clone().unwrap_or(SteelVal::BoolV(false));
+    let call = state.answered_call(
+        session.take_answer(),
+        Answer::Pick {
+            action,
+            choice,
+            payload,
+        },
+        proc,
+        arg,
+    );
+    state.config.pending_work.push_back(call);
 }
 
 /// Single close chokepoint for the picker: ends the session (if one is
-/// open) and fires exactly one callback with `payload`: `on_select` unless
-/// `callback` overrides it. Takes
+/// open) and fires one callback, `callback`, with `choice` (see
+/// [`fire_callback`]). Takes
 /// the layer *by value* via `EditorState::take_layer` (tearing down
 /// whatever was pushed above it, but not the picker itself) rather than
 /// `truncate_layers`, since `PickerLayer::tear_down` would otherwise fire
@@ -207,26 +273,19 @@ pub(in crate::editor) fn open_picker(
 pub(in crate::editor) fn close_picker_with(
     state: &mut super::super::EditorState,
     view: &EngineView,
-    callback: Option<SteelVal>,
-    payload: SteelVal,
+    callback: PickerCallback,
+    choice: Option<usize>,
 ) {
     let Some(r) = state.input.ref_of::<PickerLayer>() else {
         return;
     };
     let mut session = state.take_layer::<PickerLayer>(view, r).0;
-    let callback = callback.unwrap_or_else(|| session.on_select().clone());
-    // Hands the picker's claim (if any; see `DotPark`'s own doc) to the
-    // queued call, which `Editor::run_pending_batch` resolves.
-    state.queue_steel_call_with_waiter(callback, vec![payload], session.take_dot_waiter());
+    fire_callback(state, &mut session, callback, choice);
 }
 
-/// `close_picker_with`'s common case: fire `on_select` itself.
-pub(in crate::editor) fn close_picker(
-    state: &mut super::super::EditorState,
-    view: &EngineView,
-    payload: SteelVal,
-) {
-    close_picker_with(state, view, None, payload);
+/// `close_picker_with`'s dismissal: fire `on_select` with `#f`.
+pub(in crate::editor) fn close_picker(state: &mut super::super::EditorState, view: &EngineView) {
+    close_picker_with(state, view, PickerCallback::OnSelect, None);
 }
 
 /// Handles one key while the picker is open. Always fully consumes,
@@ -298,10 +357,10 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         KeyCode::Enter => {
             // No match (or nothing pushed yet) behaves like Esc: Enter
             // is always a terminal action, never a silent no-op.
-            close_picker_with_selection(ed, r, None);
+            close_picker_with_selection(ed, r, PickerCallback::OnSelect);
         }
         KeyCode::Escape => {
-            close_picker(&mut ed.state, &ed.view, SteelVal::BoolV(false));
+            close_picker(&mut ed.state, &ed.view);
         }
         KeyCode::Char(ch)
             if !key
@@ -316,8 +375,9 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
             // above has already had first refusal, so a declared action
             // can never override movement/Backspace/Enter/Escape/query
             // input (see `PickerSession::action_for`'s doc).
+            let key = CanonicalKey::from(key);
             if let Some(proc) = picker_mut(ed, r).action_for(key).cloned() {
-                close_picker_with_selection(ed, r, Some(proc));
+                close_picker_with_selection(ed, r, PickerCallback::Action { key, proc });
             }
         }
     }
@@ -365,13 +425,10 @@ fn picker_mut(ed: &mut Editor, r: LayerRef) -> &mut PickerSession {
         .0
 }
 
-/// Close the picker, firing `callback` (or `on_select` when `None`) with
-/// the selected payload (`#f` when nothing matches), so accepting is
-/// always a terminal action rather than a silent no-op.
-fn close_picker_with_selection(ed: &mut Editor, r: LayerRef, callback: Option<SteelVal>) {
-    let payload = picker_mut(ed, r)
-        .selected_payload()
-        .cloned()
-        .unwrap_or(SteelVal::BoolV(false));
-    close_picker_with(&mut ed.state, &ed.view, callback, payload);
+/// Close the picker, firing `callback` with the selected item (`#f` when
+/// nothing matches), so accepting is always a terminal action rather than a
+/// silent no-op.
+fn close_picker_with_selection(ed: &mut Editor, r: LayerRef, callback: PickerCallback) {
+    let choice = picker_mut(ed, r).selected_index();
+    close_picker_with(&mut ed.state, &ed.view, callback, choice);
 }

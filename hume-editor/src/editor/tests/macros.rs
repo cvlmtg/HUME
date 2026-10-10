@@ -439,25 +439,21 @@ fn macro_insert_mode_round_trip() {
 }
 
 /// After replaying a macro, `.` must repeat the last *editing* action, not
-/// the macro itself. `last_repeatable_action` is saved/restored around the replay drain.
+/// the macro itself. The recorded change is saved/restored around the replay drain.
 #[test]
 fn macro_replay_preserves_dot_repeat() {
     let mut ed = editor_from("-[a]>bc\nxyz\n");
 
-    // Perform a `d` (delete) to establish last_repeatable_action = "delete".
+    // Perform a `d` (delete) to establish the recorded change "delete".
     ed.handle_key(key('d'));
-    let action_after_delete = ed
-        .state
-        .last_repeatable_action
-        .as_ref()
-        .map(|a| a.command.as_ref());
+    let action_after_delete = ed.state.last_action().map(|a| a.command.as_ref());
     assert_eq!(
         action_after_delete,
         Some("delete"),
-        "last_repeatable_action should be 'delete'"
+        "the recorded change should be 'delete'"
     );
 
-    // Record a `j` motion macro (not repeatable, should not overwrite last_repeatable_action).
+    // Record a `j` motion macro (not repeatable, should not overwrite the recorded change).
     ed.handle_key(key('Q'));
     ed.handle_key(key('Q'));
     ed.handle_key(key('j'));
@@ -468,12 +464,8 @@ fn macro_replay_preserves_dot_repeat() {
     ed.handle_key(key('q'));
     ed.drain_replay_queue();
 
-    // last_repeatable_action must still be "delete", not whatever the macro did.
-    let action_after_replay = ed
-        .state
-        .last_repeatable_action
-        .as_ref()
-        .map(|a| a.command.as_ref());
+    // the recorded change must still be "delete", not whatever the macro did.
+    let action_after_replay = ed.state.last_action().map(|a| a.command.as_ref());
     assert_eq!(
         action_after_replay,
         Some("delete"),
@@ -772,12 +764,12 @@ fn macro_with_two_pastes_does_not_panic() {
 
 /// `.` inside a macro replay fires `replay_dot` within the replay loop.
 ///
-/// `drain_replay_queue` clears `last_repeatable_action` before the loop (to prevent
+/// `drain_replay_queue` clears the recorded change before the loop (to prevent
 /// the macro's edits from corrupting the user's stored dot-repeat). This means `.`
 /// inside a macro can only repeat an edit that occurred earlier in the SAME macro,
 /// not any pre-macro action.
 ///
-/// Macro `['d', '.']` reproduces this: the inner `d` stamps `last_repeatable_action`
+/// Macro `['d', '.']` reproduces this: the inner `d` stamps the recorded change
 /// inside the loop, then `.` reads it and fires `replay_dot` at the tail
 /// of the inner `handle_key` call, within `drain_replay_queue`'s loop, not after.
 ///
@@ -808,10 +800,10 @@ fn dot_inside_macro_replay_fires_drain() {
         "dot inside macro replay must fire drain within loop; got: {buf:?}"
     );
 
-    // drain_replay_queue restores the pre-replay last_repeatable_action (None here).
+    // drain_replay_queue restores the recorded change from before the replay (None here).
     assert!(
-        ed.state.last_repeatable_action.is_none(),
-        "last_repeatable_action must be restored to pre-replay value after drain"
+        ed.state.last_action().is_none(),
+        "the recorded change must be restored to pre-replay value after drain"
     );
 }
 
@@ -991,4 +983,35 @@ fn mouse_click_cancels_a_register_name_read() {
         ed.handle_key(key('l'));
         assert_eq!(state(&ed), "h-[e]>llo\n", "after {prefix:?}");
     }
+}
+
+/// A macro that ends with its command's read still pending keeps that
+/// command's change: the read's answer and the callback's edits belong to
+/// it, so `.` repeats the whole command.
+#[test]
+fn macro_ending_mid_read_keeps_its_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "rd" ""
+             (lambda (pane)
+               (on-next-char!
+                 (lambda (c)
+                   (when c (call! "replace" pane c) (call! "surround-add" pane #\()))))
+             #:repeatable #t)
+           (bind-key! 'normal "ctrl-x" "rd")"#,
+    );
+    ed.state.replay_queue.push_back(key_ctrl('x'));
+    ed.drain_replay_queue();
+    assert!(reading_char(&ed));
+    ed.feed_key(key('z'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "(z)ello\nworld\n");
+    ed.feed_key(key('j'));
+    ed.feed_key(key('g'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "(z)ello\n(z)orld\n");
 }

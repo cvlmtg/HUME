@@ -162,11 +162,8 @@ fn show_popup_scrollable_does_not_land_above_an_open_picker() {
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
     );
-    let input = ed
-        .state
-        .waiting_input("picker!")
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, input);
 
     // Direct host call, not a real `:` keystroke: the picker is
     // full-modal and would swallow it before it ever reached Command mode.

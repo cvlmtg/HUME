@@ -141,6 +141,7 @@ impl Editor {
         // plain Rust enum, not a rooted `SteelVal`), so it needs even less
         // than the others: dropping it is the entire teardown. `PopupLayer`
         // likewise carries no Steel callback.
+        self.state.forget_steel_payloads();
         self.state.lsp.reset_config();
         self.state.buffer_positions.lsp.clear_all_triggers();
         // Only the Steel `after!` thunks. Native debounce timers keep their

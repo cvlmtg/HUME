@@ -27,11 +27,8 @@ fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: 
         })
         .collect();
     session.push(picker_items);
-    let input = ed
-        .state
-        .waiting_input("picker!")
+    picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
-    picker::open_picker(&mut ed.state, &ed.view, session, input);
 }
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {
@@ -422,11 +419,7 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
     ed.handle_key(key('X'));
     assert_eq!(ed.doc().text().to_string(), "Xabc\n");
 
-    crate::editor::input_stack::picker::close_picker(
-        &mut ed.state,
-        &ed.view,
-        SteelVal::BoolV(false),
-    );
+    crate::editor::input_stack::picker::close_picker(&mut ed.state, &ed.view);
 
     assert!(ed.state.input.picker().is_none(), "the picker must be gone");
     assert!(
@@ -578,11 +571,8 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
         display: "a".to_string(),
         payload: SteelVal::StringV("a".into()),
     }]);
-    let input = ed
-        .state
-        .waiting_input("picker!")
+    picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
-    picker::open_picker(&mut ed.state, &ed.view, session, input);
 
     assert!(ed.state.input.picker().is_some(), "the picker opened");
     assert!(

@@ -251,11 +251,8 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
         steel::rvals::SteelVal::BoolV(false),
         PickerOpts::default(),
     );
-    let input = ed
-        .state
-        .waiting_input("picker!")
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, input);
 
     let traces_before = ed
         .state

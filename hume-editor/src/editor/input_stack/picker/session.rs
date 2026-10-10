@@ -14,15 +14,16 @@ use hume_scripting::host::{HostToken, LivePickerOpts, PickerOpts};
 use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
-use super::super::super::edit_session::DotWaiter;
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use super::super::super::host_token;
 use super::super::super::keymap::CanonicalKey;
+use super::super::super::replay::{AnswerTicket, Choice};
 
 /// One row in a picker: a display string shown to the user and an opaque
 /// payload handed back to `on_select` verbatim. Rust never interprets
 /// `payload`, mirroring the drawer's "rows are pre-formatted display
 /// strings" contract.
+#[derive(Clone)]
 pub(in crate::editor) struct PickerItem {
     pub(in crate::editor) display: String,
     pub(in crate::editor) payload: SteelVal,
@@ -166,12 +167,12 @@ pub(in crate::editor) struct PickerSession {
     /// handful of entries at most, so scanning a `Vec` beats hashing into a
     /// map.
     actions: Vec<(CanonicalKey, SteelVal)>,
-    /// This picker's claim on the capture of the Insert-key binding that
-    /// opened it; see [`crate::editor::edit_session::DotPark`].
-    /// `open_picker` attaches it; `close_picker_with`/
-    /// `PickerLayer::tear_down` take it back out to hand to the queued
-    /// `on_select` call. `None` for a picker opened outside any capture.
-    dot_waiter: Option<DotWaiter>,
+    /// Where this picker's pick records, when the picker belongs to a
+    /// recorded change; see [`AnswerTicket`]. `open_picker` attaches it;
+    /// `close_picker_with`/`PickerLayer::tear_down` take it back out to hand
+    /// to the queued callback. `None` for a picker opened outside any
+    /// recorded change.
+    answer: Option<AnswerTicket>,
 }
 
 impl PickerSession {
@@ -244,7 +245,7 @@ impl PickerSession {
                 .into_iter()
                 .map(|(k, p)| (CanonicalKey::from(k), p))
                 .collect(),
-            dot_waiter: None,
+            answer: None,
         }
     }
 
@@ -582,10 +583,38 @@ impl PickerSession {
 
     /// Payload of the currently selected item, or `None` when nothing
     /// matches.
+    #[cfg(test)]
     pub(in crate::editor) fn selected_payload(&self) -> Option<&SteelVal> {
-        self.filtered
-            .get(self.selected)
-            .map(|&idx| &self.items[idx as usize].payload)
+        self.selected_index().map(|i| &self.items[i].payload)
+    }
+
+    /// The index in `items` of the selected item, or `None` when nothing
+    /// matches.
+    pub(in crate::editor) fn selected_index(&self) -> Option<usize> {
+        self.filtered.get(self.selected).map(|&idx| idx as usize)
+    }
+
+    /// The [`Choice`] naming the item at `index` in `items`, and its payload.
+    pub(in crate::editor) fn picked(&self, index: usize) -> (Choice, SteelVal) {
+        (
+            Choice::of(&self.items, index, |item| &item.display),
+            self.items[index].payload.clone(),
+        )
+    }
+
+    /// The payload of the item `choice` names, `None` with no such item.
+    /// Meaningful only once [`Self::has_all_items`] holds.
+    pub(in crate::editor) fn payload_for(&self, choice: &Choice) -> Option<&SteelVal> {
+        choice
+            .find(&self.items, |item| &item.display)
+            .map(|i| &self.items[i].payload)
+    }
+
+    /// Whether this session already holds every item it will get: a
+    /// `picker!` whose items were all given as it opened, not a live one nor
+    /// one still awaiting or streaming its items.
+    pub(in crate::editor) fn has_all_items(&self) -> bool {
+        !self.mode.is_live() && !self.is_pending()
     }
 
     /// Cheap `Rc` clone: the accept/dismiss dispatch fires this via
@@ -594,23 +623,22 @@ impl PickerSession {
         &self.on_select
     }
 
-    /// `open_picker`'s half of the [`DotWaiter`] hand-off.
-    pub(in crate::editor) fn attach_dot_waiter(&mut self, waiter: DotWaiter) {
-        self.dot_waiter = Some(waiter);
+    /// `open_picker`'s half of the [`AnswerTicket`] hand-off.
+    pub(in crate::editor) fn attach_answer(&mut self, ticket: AnswerTicket) {
+        self.answer = Some(ticket);
     }
 
     /// `close_picker_with`'s/`PickerLayer::tear_down`'s half of the
-    /// [`DotWaiter`] hand-off.
-    pub(in crate::editor) fn take_dot_waiter(&mut self) -> Option<DotWaiter> {
-        self.dot_waiter.take()
+    /// [`AnswerTicket`] hand-off.
+    pub(in crate::editor) fn take_answer(&mut self) -> Option<AnswerTicket> {
+        self.answer.take()
     }
 
     /// The `#:actions` proc bound to `key`, if any, tried only after every
     /// built-in picker key, so an entry for a key `picker_input`
     /// (`input_stack/picker/mod.rs`) already matches (movement, `Backspace`,
     /// `Enter`, `Escape`, query input) can never be reached from here.
-    pub(in crate::editor) fn action_for(&self, key: KeyEvent) -> Option<&SteelVal> {
-        let key = CanonicalKey::from(key);
+    pub(in crate::editor) fn action_for(&self, key: CanonicalKey) -> Option<&SteelVal> {
         self.actions
             .iter()
             .find_map(|(bound, proc)| (*bound == key).then_some(proc))

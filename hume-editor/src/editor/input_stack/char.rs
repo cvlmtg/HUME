@@ -22,9 +22,8 @@ use steel::rvals::SteelVal;
 use termina::event::{KeyCode, Modifiers, MouseEventKind};
 
 use super::super::commands::{self, PendingDispatch};
-use super::super::edit_session::DotWaiter;
 use super::super::event::PendingWork;
-use super::super::replay::{DispatchId, ReadScope, dot_refusal};
+use super::super::replay::{Answer, AnswerTicket, PendingAnswer, Replayed, dot_refusal};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal};
 
@@ -54,12 +53,12 @@ pub(in crate::editor) enum MacroRead {
 /// input: only [`read_command_char`] and [`read_steel_char`] make one.
 pub(in crate::editor) struct CharRead {
     then: CharThen,
-    /// The read's claim on the capture of the Insert-key binding that made
-    /// it. Only a command or a callback read holds one: a register or macro
-    /// name edits no text.
-    dot_waiter: Option<DotWaiter>,
-    /// The Steel command dispatch whose recording the answer goes into.
-    owner: Option<DispatchId>,
+    /// Where this read's answer records, if it belongs to a recorded change:
+    /// see `EditorState::waiting_input`. `None` for a register/macro-name
+    /// read (edits no text), a read opened outside a recorded change's code
+    /// (a native operand a key collects, which seeds its own change), or a
+    /// read made during `.` replay.
+    source: Option<AnswerTicket>,
 }
 
 impl CharRead {
@@ -67,8 +66,7 @@ impl CharRead {
     pub(in crate::editor) fn register() -> Self {
         Self {
             then: CharThen::Register,
-            dot_waiter: None,
-            owner: None,
+            source: None,
         }
     }
 
@@ -76,8 +74,7 @@ impl CharRead {
     pub(in crate::editor) fn macro_register(read: MacroRead) -> Self {
         Self {
             then: CharThen::Macro(read),
-            dot_waiter: None,
-            owner: None,
+            source: None,
         }
     }
 }
@@ -111,26 +108,14 @@ fn read_interactive(
     then: CharThen,
     what: &str,
 ) -> Result<(), String> {
-    let owner = state.read_scope.as_ref().map(ReadScope::owner);
     if let Some(replay) = state.dot_replay.as_mut() {
-        let answer = replay
-            .answers
-            .pop_front()
-            .ok_or_else(|| dot_refusal(what))?;
-        let read = CharRead {
-            then,
-            dot_waiter: None,
-            owner,
-        };
-        replay.answered.push_back((read, answer));
+        if let Replayed::Answered(answer) = replay.next_char().ok_or_else(|| dot_refusal(what))? {
+            replay.push_pending(PendingAnswer::Read(CharRead { then, source: None }, answer));
+        }
         return Ok(());
     }
-    let input = state.waiting_input(what)?;
-    let read = CharRead {
-        then,
-        dot_waiter: input.into_waiter(),
-        owner,
-    };
+    let source = state.waiting_input(what)?.ticket();
+    let read = CharRead { then, source };
     read_char(state, view, read);
     Ok(())
 }
@@ -138,14 +123,13 @@ fn read_interactive(
 /// What a read leaves to run once it has its answer.
 pub(in crate::editor) enum Resolved {
     Nothing,
-    /// Run the native command with the character, under the read's claim.
+    /// Run the native command with the character, in the read's scope.
     Command {
         pending: PendingDispatch,
         ch: char,
-        waiter: Option<DotWaiter>,
+        source: Option<AnswerTicket>,
     },
-    /// Call the callback: a `PendingWork::Call` carrying the read's claim
-    /// and owner.
+    /// Call the callback: a `PendingWork::Call` carrying the read's dot source.
     Call(PendingWork),
 }
 
@@ -158,35 +142,24 @@ pub(in crate::editor) fn resolve(
     read: CharRead,
     answer: Option<char>,
 ) -> Resolved {
-    let CharRead {
-        then,
-        dot_waiter,
-        owner,
-    } = read;
-    if let Some(owner) = owner {
-        state.record_read_answer(owner, answer);
-    }
+    let CharRead { then, source } = read;
     match (then, answer) {
-        (CharThen::Dispatch(pending), Some(ch)) => Resolved::Command {
-            pending,
-            ch,
-            waiter: dot_waiter,
-        },
-        (CharThen::Dispatch(_), None) => {
-            if let Some(waiter) = dot_waiter {
-                state.release_dot_waiter(waiter);
-            }
-            Resolved::Nothing
-        }
         (CharThen::Steel(callback), answer) => {
             let arg = answer.map_or(SteelVal::BoolV(false), SteelVal::CharV);
-            Resolved::Call(PendingWork::Call {
-                proc: callback,
-                args: vec![arg],
-                anchor: None,
-                dot_waiter,
-                read_owner: owner,
-            })
+            Resolved::Call(state.answered_call(source, Answer::Char(answer), callback, arg))
+        }
+        (CharThen::Dispatch(pending), answer) => {
+            if let Some(ticket) = &source {
+                state.record_answer(ticket, Answer::Char(answer));
+            }
+            match answer {
+                Some(ch) => Resolved::Command {
+                    pending,
+                    ch,
+                    source,
+                },
+                None => Resolved::Nothing,
+            }
         }
         (CharThen::Macro(MacroRead::Record), Some(ch)) => {
             let reg = if ch == 'Q' { MACRO_REGISTER } else { ch };
@@ -214,12 +187,11 @@ pub(in crate::editor) fn run_resolved(ed: &mut Editor, resolved: Resolved) -> Op
         Resolved::Command {
             pending,
             ch,
-            waiter,
+            source,
         } => {
-            let run = |ed: &mut Editor| {
+            ed.run_answered(source, |ed| {
                 commands::run_collected(&mut ed.state, &mut ed.view, pending, CommandArg::Char(ch));
-            };
-            ed.resolve_dot_waiter(waiter, run);
+            });
             None
         }
         Resolved::Call(call) => Some(call),

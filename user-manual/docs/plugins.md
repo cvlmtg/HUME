@@ -161,6 +161,15 @@ For editor commands that should support dot-repeat (`.`), add `#:repeatable #t`.
   #:repeatable #t)
 ```
 
+### Dot-repeat
+
+`.` repeats a `#:repeatable` command. When the command asked the user for something (a character with `on-next-char!`, a pick from `picker!` or `live-picker!`, text from `prompt!`, an item from `show-menu!`), `.` gives it the same answer without asking again, and the command decides again what to do with it where `.` runs. The same holds for the callbacks of those inputs, and for a command bound to an Insert-mode key with `bind-key! 'insert`.
+
+- A `picker!` pick and a `show-menu!` choice are repeated by the item's text: `.` looks for an item with the same text in the list the command builds this time, so the payload is the one built for the new spot. When several items have the same text, `.` picks the one in the same place among them: the second of two "foo" items stays the second. A `live-picker!` pick, or a pick from a `picker!` whose items are still arriving when it opens, is repeated with the payload it got the first time.
+- A dismissed picker, prompt or menu is repeated as dismissed: its callback gets `#f`.
+- `.` raises an error when the command asks for something the first run didn't (a picker where it read a character, say), asks for more than the first run did, or can't find the picked item by its text.
+- Reloading your configuration forgets payloads: afterward, a pick `.` would repeat by its payload raises an error, while one it repeats by text still works.
+
 ### Calling other commands
 
 Use `(call! ...)` to dispatch other commands from within a plugin:
@@ -280,7 +289,7 @@ A command that needs characters from the user (a surround operation, say) reads 
 
 Several reads started before a key arrives take the following keys in the order they were started. HUME shows nothing while it waits, so make it obvious from context that a character is expected.
 
-`.` repeats a `#:repeatable` command with the characters it read, including those its callbacks read, without waiting for keys: each `on-next-char!` gets the character, or `#f`, its read got the first time. When the repeat reads more characters than the first run did, the extra `on-next-char!` raises an error.
+`.` repeats a `#:repeatable` command with the characters it read, without waiting for keys; see [Dot-repeat](#dot-repeat).
 
 ### Register prefix
 
@@ -696,6 +705,9 @@ nothing:
 ```scheme
 (picker-source-spawn! token "rg" (list "--vimgrep" "--" pattern ".") #:ok-exit-codes '(0 1))
 ```
+
+`.` repeats a `#:repeatable` command's pick without opening the picker again, through the
+same `on-select` or `#:actions` proc; see [Dot-repeat](#dot-repeat).
 
 A picker whose query should drive the *source* itself, instead of just filtering an
 already-fetched list, uses a different constructor; see [Live requery](#live-requery-live-grep)

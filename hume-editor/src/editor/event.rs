@@ -468,20 +468,14 @@ pub(in crate::editor) enum PendingWork {
         proc: SteelVal,
         args: Vec<SteelVal>,
         anchor: Option<super::lsp::ResponseAnchor>,
-        /// The claim of the waiting input this call resolves (a picker's
-        /// `on_select`/dismiss, an `on-next-char!` callback; see
-        /// [`super::edit_session::DotPark`]), when the dispatch that opened
-        /// it was under a capture. `Editor::run_pending_batch` resolves it
-        /// through `Editor::resolve_dot_waiter`, which arms the capture for
-        /// this call alone, so this call never runs batched with a sibling
-        /// `Call`.
-        dot_waiter: Option<super::edit_session::DotWaiter>,
-        /// The Steel command dispatch whose character read this call
-        /// answers (see `replay::ReadLog`). `Editor::run_pending_batch` runs
-        /// it alone under that dispatch's read scope, so a read it makes
-        /// records into the same log and its edits belong to the same
-        /// action.
-        read_owner: Option<super::replay::DispatchId>,
+        /// The ticket of the interactive input this call answers (a read,
+        /// picker, prompt or menu callback), when that input belongs to a
+        /// recorded change; see [`super::replay::AnswerTicket`]. Keeps the
+        /// change open until the call has run. `Editor::run_pending_batch`
+        /// runs such a call alone (never batched with a sibling `Call`),
+        /// inside the input's scope (`Editor::run_answered`), so only this
+        /// call's own work belongs to the change.
+        answer: Option<super::replay::AnswerTicket>,
     },
     /// An editor event to fire by name at drain time. Args are built by
     /// `into_steel_args()` only if a handler is actually registered.

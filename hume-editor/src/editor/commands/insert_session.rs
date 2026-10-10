@@ -213,6 +213,17 @@ pub(super) fn begin_insert_session_preserving_register(
             pid,
             bid,
         )?;
+        // Keep the change whose code opened this session alive for the
+        // whole session, so its keystrokes record and a repeatable command
+        // mid-session can't replace it. No-op outside a recorded change's
+        // code (during `.`, or a session a hook opens).
+        if let Some(ticket) = state.open_scope_source() {
+            state
+                .active_session
+                .as_mut()
+                .expect("begin_edit_group just opened the session")
+                .hold_recording(ticket);
+        }
     }
     state.push_mode_layer(
         view,
@@ -259,31 +270,10 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
         .as_ref()
         .map(|s| (s.pane(), s.buffer()))
         .expect("an Insert layer on the stack always has its session open");
-    // Backstop for a capture whose dispatch never reached its own
-    // checkpoint (`Editor::run_dot_captured`) before the session ended: an
-    // Insert-key binding that calls `completion-accept!` and then
-    // `exit-insert` in the same body tears the session down from inside
-    // that same dispatch, before `with_dot_capture`'s own post-dispatch
-    // checkpoint gets a chance to run. Taken before the autoindent-trim
-    // edit below, which must not itself be swept into a capture's own net
-    // edit: it's session-teardown bookkeeping, not part of whatever the
-    // capture was recorded for. Finalized unconditionally, interactive or
-    // not: `finalize_dot_capture` records the right thing either way, and
-    // with no placeholder pre-pushed before dispatch, this is the only
-    // place a non-interactive binding's own entry gets recorded at all when
-    // it tears its own session down mid-body. A capture parked for inputs
-    // still waiting is finalized with what it recorded so far; those inputs
-    // then resolve unrecorded.
-    if let Some(cap) = state
-        .active_session
-        .as_mut()
-        .and_then(|s| s.take_dot_capture())
-    {
-        state.finalize_dot_capture(cap);
-    }
-    if let Some(cap) = state.dot_park.take().and_then(|mut park| park.take_cap()) {
-        state.finalize_dot_capture(cap);
-    }
+    // Before the autoindent-trim edit below, which must not itself be swept
+    // into a capture's net edit: it's session-teardown bookkeeping, not part
+    // of whatever the capture was recorded for.
+    state.end_insert_recording();
     // An open completion session lives in its own `Completion` layer, pushed
     // above `Insert`: the top-first `truncate_layers` call that reaches
     // this function always removes `Completion` (running its own `tear_down`

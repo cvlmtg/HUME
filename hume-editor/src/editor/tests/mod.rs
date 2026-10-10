@@ -1374,10 +1374,10 @@ impl Editor {
 /// snapshot has no viewport field to compare it against.
 #[derive(Debug, PartialEq)]
 pub(super) struct BookkeepingSnapshot {
-    /// `ed.state.last_repeatable_action`: (command, count, arg) if set.
-    /// `insert_inputs` is excluded: it is always empty at dispatch time and
-    /// only filled by the Insert session's own later inputs.
-    pub last_repeatable: Option<(String, usize, Option<hume_scripting::host::CommandArg>)>,
+    /// The settled change's (command, count, operand char) if set. The
+    /// operand is the change's first answer, when it is a character (what
+    /// `r`/`replace` read).
+    pub last_repeatable: Option<(String, usize, Option<char>)>,
     /// Total jump entries in the focused pane (not filtered by buffer) after dispatch.
     pub jump_len: usize,
     /// Whether `EditorState::active_session` is open with a Paste kind.
@@ -1410,11 +1410,13 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
             .any(|(_, pbs)| pred(pbs))
     };
     BookkeepingSnapshot {
-        last_repeatable: ed
-            .state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| (a.command.to_string(), a.count, a.arg.clone())),
+        last_repeatable: ed.state.last_action().map(|a| {
+            let operand = a.answers.first().and_then(|answer| match answer {
+                crate::editor::replay::Answer::Char(c) => *c,
+                _ => None,
+            });
+            (a.command.to_string(), a.count, operand)
+        }),
         // JumpList::len() is cfg(test)-only; safe to call here.
         jump_len: ed.state.panes.jumps[pane_id].len(),
         paste_session_open: ed.state.active_session.as_ref().is_some_and(|s| {

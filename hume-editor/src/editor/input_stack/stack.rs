@@ -205,11 +205,9 @@ pub(in crate::editor) trait Layer: Any {
 /// `MenuLayer`/`DrawerLayer` (the two self-replacing widgets); read by
 /// [`EditorState::take_firing_false`](super::super::EditorState::take_firing_false).
 pub(in crate::editor) trait FiresFalseOnReplace: Layer {
-    /// The callback and the arguments of its closing call, or `None` for a
-    /// layer with no Steel owner to tell.
-    fn into_close_call(
-        self: Box<Self>,
-    ) -> Option<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)>;
+    /// Queue the layer's closing call with `#f`, if it has a Steel owner to
+    /// tell.
+    fn close_firing_false(self: Box<Self>, state: &mut EditorState);
 }
 
 /// What a `close-*!`/Rust-internal retirement of this layer does to whatever
@@ -810,9 +808,7 @@ impl EditorState {
         r: LayerRef,
     ) {
         let old: Box<L> = self.take_layer(view, r);
-        if let Some((callback, args)) = old.into_close_call() {
-            self.queue_steel_call(callback, args);
-        }
+        old.close_firing_false(self);
     }
 
     /// Removes exactly `r` via [`InputStack::excise`], running its own

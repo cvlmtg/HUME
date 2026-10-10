@@ -69,7 +69,8 @@ numbers directly.
   (a counter diff, a length snapshot, a flag) grows one signal per bug.
   Record the input where it arrives; let the one piece of state that isn't
   re-derivable — input the user gave mid-command — be recorded by the code
-  that consumes it, not declared by command authors.
+  that consumes it, not declared by command authors. Who owns an input is
+  who is running when it opens, an explicit scope, never the recorder's state.
 - **L24** — End-user docs state a missing feature plainly, never as permanent.
   "Not yet" only for a gap the user has confirmed is planned.
 - **L25** — "No in-tree callers" doesn't make a user-facing API dead. Read why it
@@ -1272,6 +1273,60 @@ replacing `arm_dot_capture`/`resolve_dot_capture`),
 `hume-editor/src/editor/mod.rs` (`queue_steel_call_with_capture`),
 `hume-editor/src/editor/scripting_setup.rs` (`run_pending_batch`, the three
 removed poll sites).
+
+**Addendum 3 (2026-10-10):** rule 2 above was wrong, and the user replaced
+it. Its own framing, "a picker must not be run again, dot-repeat inserts its
+result", carried two claims, and only the first holds: an interactive input
+must never ask the user again, but replaying its *net edit* instead of the
+*choice* loses whatever the choice did away from the cursor (an import added
+at the top of the file) and freezes context-bound results (a code action's
+range for line 1 replayed on line 2). The user's model, with no exceptions:
+a non-interactive command replays as a command; an interactive one (a
+character read, a picker, a prompt, a menu) records the user's choice and
+replays that choice into its re-run command, Normal or Insert mode alike.
+`tx` replays `x` without waiting; picking `foo` replays `foo`. A pick is
+matched by its label in the list the re-run builds, falling back to the
+recorded payload only where the items cannot be there yet (`live-picker!`).
+A net edit survives only for a completion accept, the one choice with no
+callback to hand it back to. Its edits away from the cursor (an LSP item's
+`additionalTextEdits`, such as an added import) are never repeated, by the
+user's decision: keep it simple.
+
+**Rule 2 (replacement):** an interactive input records the user's choice,
+at the seam where it resolves, in the order the inputs opened, and `.` hands
+it back to the same input when the command or binding that opened it
+re-runs. Never replay a derived effect of a choice in place of the choice.
+
+**Files (addendum 3):** `hume-editor/src/editor/replay.rs` (`Answer`,
+`AnswerTicket`, `Replayed`, `waiting_input`, `record_answer`,
+`finish_replayed_answers`, `end_insert_recording`),
+`hume-editor/src/editor/input_stack/{char,prompt,menu}.rs` and
+`input_stack/picker/{mod,session}.rs` (each input's replay branch and its one
+fire funnel), `hume-editor/src/editor/input_stack/insert.rs`
+(`handle_insert` recording the binding before it runs).
+
+**Addendum 4 (2026-10-10):** addendum 3's redesign still answered "whose
+input is this?" by inference. `waiting_input` credited an input to the
+change's command while the recording was accepting and its transcript was
+empty, and `repeat_slot_owned` treated every dispatch as part of the change
+while any of its sources was open. A code review found three bugs from
+those two guesses. A hook's read right after `c` became `change`'s operand.
+A binding callback's second read went unrecorded, so `.` failed halfway. A
+key that dismissed a recorded menu was absorbed into the menu's command,
+because the queued callback kept the recording open.
+
+**Rule 5 (addendum 4):** ownership is who is running when an input opens or
+a command dispatches, held as an explicit scope (`RecordingScope`) that the
+command body, an Insert-key binding and an input's callback each set and
+restore. Never derive it from the recording's state (its open-source count,
+its transcript length). Being open only says the change is still waiting,
+not that the code running now is its own.
+
+**Files (addendum 4):** `hume-editor/src/editor/replay.rs`
+(`RecordingScope`, `waiting_input`, `begin_change`/`end_change`,
+`run_answered`), `hume-editor/src/editor/commands/pipeline.rs`
+(`repeat_slot_owned`), `hume-editor/src/editor/input_stack/{insert,char}.rs`,
+`hume-editor/src/editor/scripting_setup.rs` (`run_pending_batch`).
 
 ---
 

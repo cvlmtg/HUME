@@ -1,15 +1,15 @@
 use super::*;
-use crate::editor::replay::InsertInput;
+use crate::editor::replay::{Answer, Input};
 use pretty_assertions::assert_eq;
 
 /// `i` is the recorded unbound key `ch`.
-fn is_key(i: &InsertInput, ch: char) -> bool {
-    matches!(i, InsertInput::Key(k) if k.code == KeyCode::Char(ch))
+fn is_key(i: &Input, ch: char) -> bool {
+    matches!(i, Input::Key(k) if k.code == KeyCode::Char(ch))
 }
 
-/// `i` is the recorded (non-interactive) binding of `name`.
-fn is_binding(i: &InsertInput, name: &str) -> bool {
-    matches!(i, InsertInput::Binding { name: n } if n == name)
+/// `i` is the recorded binding of `name`.
+fn is_binding(i: &Input, name: &str) -> bool {
+    matches!(i, Input::Binding { name: n, .. } if n == name)
 }
 
 // ── Dot-repeat tests ──────────────────────────────────────────────────────────
@@ -53,13 +53,13 @@ fn dot_repeats_change_with_insert() {
 }
 
 /// A repeatable command refused by `refuse_if_read_only` must not clobber
-/// `last_repeatable_action`: it changed nothing, so there is nothing new to
+/// the recorded change: it changed nothing, so there is nothing new to
 /// repeat.
 ///
 /// `cmd_delete` refuses via `refuse_if_read_only` and returns `Ok(())`
 /// without touching the buffer. `refuse_if_read_only` sets
-/// `command_refused`, and the pipeline skips `step_stamp_repeatable` for a
-/// refused dispatch, so the user's earlier `change` stays in the slot.
+/// `command_refused`, and the pipeline discards a refused dispatch's fresh
+/// recording (`EditorState::end_change`), so the user's earlier `change` stays in the slot.
 /// Without that gate, the final assert would see `command == "delete"`.
 #[test]
 fn read_only_refusal_does_not_clobber_dot_repeat() {
@@ -71,12 +71,7 @@ fn read_only_refusal_does_not_clobber_dot_repeat() {
     ed.feed_key(key('i'));
     ed.feed_key(key_esc());
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .unwrap()
-            .command
-            .as_ref(),
+        ed.state.last_action().unwrap().command.as_ref(),
         "change",
         "setup: change must be the stored action"
     );
@@ -95,14 +90,45 @@ fn read_only_refusal_does_not_clobber_dot_repeat() {
     ed.feed_key(key('d')); // delete, refused by refuse_if_read_only
 
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .unwrap()
-            .command
-            .as_ref(),
+        ed.state.last_action().unwrap().command.as_ref(),
         "change",
         "a refused delete on a read-only buffer must not overwrite the prior change action"
+    );
+}
+
+/// A repeatable command refused before it changes anything runs no
+/// recording scope once it returns.
+#[test]
+fn a_refused_repeatable_command_leaves_no_recording_scope() {
+    let mut ed = editor_from("-[foo]> bar\n");
+    ed.report(Severity::Warning, "msg".to_string());
+    ed.execute_typed("messages", None).unwrap();
+    assert!(
+        ed.doc().is_read_only(),
+        "setup: focused buffer must be read-only"
+    );
+
+    ed.feed_key(key('x'));
+    ed.feed_key(key('d'));
+
+    assert!(ed.state.recording_scope.running().is_none());
+}
+
+/// A repeatable Steel command whose body fails runs no recording scope once
+/// it returns, so the next repeatable command records its own change.
+#[test]
+fn a_failed_steel_body_leaves_the_next_change_recordable() {
+    let mut ed = editor_with_steel(
+        "-[f]>oo bar\n",
+        r#"(define-command! "boom" "" (lambda (pane) (error "boom")) #:repeatable #t)"#,
+    );
+    ed.execute_keymap_command("boom".into(), Some(1), false);
+    assert!(ed.state.recording_scope.running().is_none());
+
+    ed.feed_key(key('d'));
+    assert_eq!(
+        ed.state.last_action().map(|a| a.command.as_ref()),
+        Some("delete")
     );
 }
 
@@ -256,7 +282,7 @@ fn dot_repeats_replace() {
     assert_eq!(ed.doc().text().to_string(), "xxxxx\n");
 }
 
-/// When `.` is given an explicit count, the stored `last_repeatable_action.count`
+/// When `.` is given an explicit count, the recorded change's stored count
 /// must not be corrupted: the explicit count is used for the replay but is NOT
 /// written back into the stored action.
 ///
@@ -268,14 +294,14 @@ fn explicit_count_on_dot_does_not_corrupt_stored_count() {
 
     ed.feed_key(key('d')); // delete "foo"; stored count=1
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().unwrap().count,
+        ed.state.last_action().unwrap().count,
         1,
         "setup: stored count must be 1"
     );
 
     ed.feed_key(key('w')); // move to "bar"
     // Press `3.`: explicit count 3 is used for the replay but must NOT be
-    // written back into last_repeatable_action (drain restores the original action).
+    // written back into the recorded change (drain restores the original action).
     ed.feed_key(key('3'));
     ed.feed_key(key('.'));
 
@@ -286,7 +312,7 @@ fn explicit_count_on_dot_does_not_corrupt_stored_count() {
     );
     // Stored count must still be 1: the explicit-count replay must not corrupt it.
     assert_eq!(
-        ed.state.last_repeatable_action.as_ref().unwrap().count,
+        ed.state.last_action().unwrap().count,
         1,
         "stored count must survive explicit-count replay unchanged"
     );
@@ -411,12 +437,7 @@ fn dot_repeats_select_line_delete() {
 
     // The recipe must be [select-line] (not empty).
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .unwrap()
-            .selection_recipe
-            .len(),
+        ed.state.last_action().unwrap().selection_recipe.len(),
         1,
         "recipe must contain select-line step"
     );
@@ -446,12 +467,7 @@ fn dot_repeats_extend_select_delete() {
     assert_eq!(ed.doc().text().to_string(), "ccc\nddd\n");
 
     // Recipe must be [select-line F, select-line T] (establish + one extend).
-    let recipe = &ed
-        .state
-        .last_repeatable_action
-        .as_ref()
-        .unwrap()
-        .selection_recipe;
+    let recipe = &ed.state.last_action().unwrap().selection_recipe;
     assert_eq!(recipe.len(), 2, "recipe must have 2 steps");
     assert!(!recipe[0].extend, "first step must be Move (establish)");
     assert!(recipe[1].extend, "second step must be Extend");
@@ -488,12 +504,7 @@ fn dot_repeat_navigation_not_in_recipe() {
 
     // Recipe must have exactly one step (x only; j must have been cleared).
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .unwrap()
-            .selection_recipe
-            .len(),
+        ed.state.last_action().unwrap().selection_recipe.len(),
         1,
         "navigation (j) must not appear in the selection recipe"
     );
@@ -521,12 +532,7 @@ fn dot_repeat_collapsed_cursor_empty_recipe() {
 
     // Recipe must be empty.
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .unwrap()
-            .selection_recipe
-            .len(),
+        ed.state.last_action().unwrap().selection_recipe.len(),
         0,
         "empty recipe for plain single-char delete"
     );
@@ -540,7 +546,7 @@ fn dot_repeat_collapsed_cursor_empty_recipe() {
     );
 }
 
-/// `x c <text> Esc` records recipe=[select-line F] + insert_inputs=[...]. `.` on
+/// `x c <text> Esc` records recipe=[select-line F] + transcript=[...]. `.` on
 /// another line re-selects the full line, runs change, and retypes the text.
 ///
 /// Three-line buffer; `x c z Esc` on line 0 replaces "aaa" with 'z' and keeps
@@ -558,18 +564,18 @@ fn dot_repeats_change_reselects_line() {
     ed.feed_key(key_esc()); // back to Normal, cursor on 'z'
     assert_eq!(ed.doc().text().to_string(), "z\nbbb\nccc\n");
 
-    // Recipe must be [select-line]; insert_inputs must be ['z', Esc].
+    // Recipe must be [select-line]; transcript must be ['z', Esc].
     {
-        let action = ed.state.last_repeatable_action.as_ref().unwrap();
+        let action = ed.state.last_action().unwrap();
         assert_eq!(
             action.selection_recipe.len(),
             1,
             "recipe must have select-line step"
         );
         assert_eq!(
-            action.insert_inputs.len(),
+            action.transcript.len(),
             2,
-            "insert_inputs must capture the typed char and the Esc binding"
+            "transcript must capture the typed char and the Esc binding"
         );
     }
 
@@ -582,7 +588,7 @@ fn dot_repeats_change_reselects_line() {
     assert_eq!(
         ed.doc().text().to_string(),
         "z\nz\nccc\n",
-        "`.` must re-select the full line, change it, and replay insert_inputs"
+        "`.` must re-select the full line, change it, and replay transcript"
     );
 }
 
@@ -705,7 +711,7 @@ fn dot_after_find_is_noop() {
     let state_after_find = state(&ed);
 
     // `.` should have nothing recorded and leave state unchanged.
-    assert!(ed.state.last_repeatable_action.is_none());
+    assert!(ed.state.last_action().is_none());
     ed.feed_key(key('.'));
     assert_eq!(state(&ed), state_after_find);
 }
@@ -779,12 +785,7 @@ fn dot_repeat_word_motion_acts_on_current_selection() {
 
     // Recipe must be empty: Move-mode `w` must not create an establish step.
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .unwrap()
-            .selection_recipe
-            .len(),
+        ed.state.last_action().unwrap().selection_recipe.len(),
         0,
         "Move-mode select-next-word must not push an establish step"
     );
@@ -1035,7 +1036,7 @@ fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
 /// the dot-repeat recipe via `.establishes_selection()` (unlike
 /// `select-all-matches`; see `editor_cmds.rs`), so unlike `ms(`/`mm` it can never push itself onto
 /// `state.selection_recipe`, and (being non-repeatable) it can never overwrite
-/// `last_repeatable_action` either. Running it between an insert and `.` must
+/// the recorded change either. Running it between an insert and `.` must
 /// therefore be inert: `.` still replays the original insert verbatim, not
 /// some "reselect + act" recipe.
 ///
@@ -1045,7 +1046,7 @@ fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
 /// "ababx". The buffer only grows (no delete ever happens), which is the
 /// signal that `.` ran the insert and nothing resembling "mii + d".
 ///
-/// If `mii` corrupted `last_repeatable_action` (e.g. by being
+/// If `mii` corrupted the recorded change (e.g. by being
 /// misclassified as repeatable) or leaked into its frozen recipe, `.` would
 /// replay some other action (or reselect "ab" again as an operator target)
 /// instead of inserting, and the buffer would not end up "ababx".
@@ -1254,7 +1255,7 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
 }
 
 /// A Steel command registered with `#:repeatable #t` must overwrite
-/// `last_repeatable_action` with its own name so `.` replays the outer
+/// the recorded change with its own name so `.` replays the outer
 /// Steel body, not the inner native command.
 ///
 /// Buffer is "foo bar\n", initial selection is "foo".
@@ -1266,10 +1267,10 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
 /// `del-sel` on that selection, leaving " \n".
 ///
 /// If `meta().repeatable` returned `false` for `SteelBacked`,
-/// `last_repeatable_action` would be `None` (no prior recording), so `.` would
+/// the recorded change would be `None` (no prior recording), so `.` would
 /// be a no-op and "bar" would survive. The name assertion covers the other
 /// case: if the outer name didn't win the slot, the buffer result would be
-/// the same but `last_repeatable_action` would name the inner `"delete"`.
+/// the same but the recorded change would name the inner `"delete"`.
 #[test]
 fn steel_dot_repeatable_round_trip() {
     let mut ed = editor_with_steel(
@@ -1284,12 +1285,9 @@ fn steel_dot_repeatable_round_trip() {
     // "foo" deleted; buffer is " bar\n".
     assert_eq!(ed.doc().text().to_string(), " bar\n", "first run");
 
-    // last_repeatable_action must name the outer Steel command, not inner "delete".
+    // the recorded change must name the outer Steel command, not inner "delete".
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.as_ref()),
+        ed.state.last_action().map(|a| a.command.as_ref()),
         Some("del-sel"),
         "outer Steel command must win the repeat slot over the inner 'delete'"
     );
@@ -1305,10 +1303,10 @@ fn steel_dot_repeatable_round_trip() {
 }
 
 /// A plain `define-command!` (non-repeatable) must not overwrite
-/// `last_repeatable_action` set by a prior native edit.
+/// the recorded change set by a prior native edit.
 ///
 /// If `meta().repeatable` returned `true` for `SteelBacked`, running the
-/// Steel command would stamp `last_repeatable_action` with its name; the
+/// Steel command would stamp the recorded change with its name; the
 /// subsequent `.` would replay the Steel command instead of the native delete.
 #[test]
 fn steel_command_is_not_repeatable() {
@@ -1321,33 +1319,27 @@ fn steel_command_is_not_repeatable() {
     ed.feed_key(key('d')); // delete "foo" → " bar\n"
     assert_eq!(ed.doc().text().to_string(), " bar\n");
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.as_ref()),
+        ed.state.last_action().map(|a| a.command.as_ref()),
         Some("delete"),
-        "setup: last_repeatable_action must be 'delete' after d"
+        "setup: the recorded change must be 'delete' after d"
     );
 
     // Run the Steel command: it calls (call! "delete" (focused-pane)) internally.
     ed.execute_keymap_command("del-sel".into(), Some(1), false);
 
-    // last_repeatable_action must still be "delete", not "del-sel".
+    // the recorded change must still be "delete", not "del-sel".
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.as_ref()),
+        ed.state.last_action().map(|a| a.command.as_ref()),
         Some("delete"),
-        "Steel command must not overwrite last_repeatable_action"
+        "Steel command must not overwrite the recorded change"
     );
 }
 
 /// A plain `define-command!` (non-repeatable) must NOT overwrite
-/// `last_repeatable_action` set by a prior native edit.
+/// the recorded change set by a prior native edit.
 ///
 /// If `meta().repeatable` were `true` for every `SteelBacked` command, the
-/// non-repeatable Steel command would overwrite `last_repeatable_action` and
+/// non-repeatable Steel command would overwrite the recorded change and
 /// the subsequent `.` would replay it.
 #[test]
 fn non_repeatable_steel_does_not_hijack_dot() {
@@ -1360,25 +1352,19 @@ fn non_repeatable_steel_does_not_hijack_dot() {
     ed.feed_key(key('d')); // delete "foo" → " bar\n"
     assert_eq!(ed.doc().text().to_string(), " bar\n");
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.as_ref()),
+        ed.state.last_action().map(|a| a.command.as_ref()),
         Some("delete"),
-        "setup: last_repeatable_action must be 'delete' after d"
+        "setup: the recorded change must be 'delete' after d"
     );
 
     // Run the non-repeatable Steel command.
     ed.execute_keymap_command("noop-move".into(), Some(1), false);
 
-    // last_repeatable_action must still be "delete".
+    // the recorded change must still be "delete".
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.as_ref()),
+        ed.state.last_action().map(|a| a.command.as_ref()),
         Some("delete"),
-        "non-repeatable Steel command must not overwrite last_repeatable_action"
+        "non-repeatable Steel command must not overwrite the recorded change"
     );
 
     // `.` must still delete "bar".
@@ -1472,7 +1458,7 @@ fn steel_insert_binding_calling_native_command_is_recorded_for_dot_repeat() {
 /// `.` after a Tab binding took its "insert a tab" branch (via
 /// `insert-key!`) repeats exactly one tab, proving the binding itself is
 /// recorded as a `Command`, re-run once on replay (not the `insert-key!`
-/// fallback's raw key; see `InsertInput`'s own doc for why the binding is
+/// fallback's raw key; see `Input`'s own doc for why the binding is
 /// what's recorded), and recorded only once.
 ///
 /// Identical setup and expected result to `tabs.rs`'s
@@ -1501,10 +1487,9 @@ fn dot_repeat_replays_tab_via_insert_key_once() {
 
     let action = ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`i` must have stamped a repeatable action");
-    let inputs = &action.insert_inputs;
+    let inputs = &action.transcript;
     assert_eq!(
         inputs.len(),
         2,
@@ -1544,10 +1529,9 @@ fn insert_key_binding_reentering_insert_keeps_earlier_keys() {
 
     let action = ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`i` must have stamped a repeatable action");
-    let keys = &action.insert_inputs;
+    let keys = &action.transcript;
     assert_eq!(keys.len(), 6, "got {keys:?}");
     assert!(
         is_key(&keys[0], 'a') && is_key(&keys[1], 'b'),
@@ -1612,10 +1596,7 @@ fn dot_repeat_reports_an_unregistered_insert_key_binding_and_skips_it() {
     );
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.as_ref()),
+        ed.state.last_action().map(|a| a.command.as_ref()),
         Some("insert-at-selection-start")
     );
 }
@@ -1636,10 +1617,7 @@ fn dot_repeat_skips_an_insert_key_binding_that_fails_on_replay() {
     assert!(status(&ed).contains("boom"), "got: {}", status(&ed));
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.as_ref()),
+        ed.state.last_action().map(|a| a.command.as_ref()),
         Some("insert-at-selection-start")
     );
 }
@@ -1659,10 +1637,9 @@ fn unbound_insert_key_with_no_default_behaviour_is_not_recorded() {
 
     let action = ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`i` must have stamped a repeatable action");
-    let inputs = &action.insert_inputs;
+    let inputs = &action.transcript;
     assert_eq!(inputs.len(), 2, "got {inputs:?}");
     assert!(
         is_key(&inputs[0], 'z') && is_binding(&inputs[1], "exit-insert"),
@@ -1693,10 +1670,9 @@ fn tab_or_complete_completion_branch_leaves_no_popup_after_dot_repeat() {
 
     let inputs = &ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`i` must have stamped a repeatable action")
-        .insert_inputs;
+        .transcript;
     assert_eq!(inputs.len(), 1, "got {inputs:?}");
     assert!(is_binding(&inputs[0], "exit-insert"), "got {inputs:?}");
 
@@ -1711,7 +1687,7 @@ fn tab_or_complete_completion_branch_leaves_no_popup_after_dot_repeat() {
 /// must accept "hello", optionally followed by `then`, and leaves Insert.
 /// Whether `accept` is the popup's own Enter or an Insert-key binding
 /// calling `completion-accept!`, the result is recorded the same way: one
-/// `InsertInput::Result` covering the whole accept, and, for a binding that
+/// `Input::Result` covering the whole accept, and, for a binding that
 /// edits further after accepting, that follow-up edit too. The two can't
 /// be split, since neither is safe to re-derive once either has gone
 /// interactive (see `DotCapture`'s own doc). The `completion-trigger`
@@ -1745,16 +1721,15 @@ fn assert_accepted_completion_is_dot_repeated(extra_script: &str, accept: KeyEve
 
     let inputs = &ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`c` must have stamped a repeatable action")
-        .insert_inputs;
+        .transcript;
     assert_eq!(inputs.len(), 4, "got {inputs:?}");
     let expect_text = format!("hello{then}");
     assert!(
         is_key(&inputs[0], 'h')
             && is_key(&inputs[1], 'e')
-            && matches!(&inputs[2], InsertInput::Result(r)
+            && matches!(&inputs[2], Input::Result(r)
                 if r.back == 2 && r.forward == 0 && r.text == expect_text)
             && is_binding(&inputs[3], "exit-insert"),
         "got {inputs:?}"
@@ -1780,7 +1755,7 @@ fn dot_repeats_a_completion_accepted_with_enter() {
 }
 
 /// An Insert-key binding calling `completion-accept!` is never re-run by
-/// `.`: its net edit is recorded as an `InsertInput::Result` and replayed
+/// `.`: its net edit is recorded as an `Input::Result` and replayed
 /// directly, with no completion session to pick from (see that variant's
 /// own doc).
 #[test]
@@ -1833,17 +1808,17 @@ fn dot_repeats_an_arrow_key_inside_insert() {
 }
 
 /// A native command bound directly to an Insert key must not overwrite
-/// `last_repeatable_action` if it's itself repeatable. That slot belongs to
+/// the recorded change if it's itself repeatable. That slot belongs to
 /// whichever command opened the Insert session; the key is recorded into
-/// that action's `insert_inputs` instead (proven by
+/// that change's transcript instead (proven by
 /// `dot_repeats_ctrl_w_inside_insert`'s same mechanism).
 ///
-/// Without the `repeat_slot_owned` gate on `step_stamp_repeatable`,
-/// `last_repeatable_action.command` would read `"delete"` (stamped by
+/// Without the `repeat_slot_owned` gate on beginning a fresh change,
+/// the recorded change's command would read `"delete"` (stamped by
 /// `Ctrl-x`'s own dispatch through `commands::run`) instead of the command
 /// that opened the session.
 #[test]
-fn native_command_bound_mid_insert_does_not_hijack_last_repeatable_action() {
+fn native_command_bound_mid_insert_does_not_hijack_the_recorded_change() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[foo]> bar\n");
     run(
@@ -1857,10 +1832,7 @@ fn native_command_bound_mid_insert_does_not_hijack_last_repeatable_action() {
     ed.feed_key(key_esc());
 
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.as_ref()),
+        ed.state.last_action().map(|a| a.command.as_ref()),
         Some("insert-at-selection-end"),
         "the command that opened the Insert session must keep the slot"
     );
@@ -1906,7 +1878,7 @@ fn insert_key_binding_register_prefix_reruns_on_replay() {
 }
 
 /// A binding that itself leaves Insert mid-body (`exit-insert`) and then
-/// runs a repeatable native command must still leave `last_repeatable_action`
+/// runs a repeatable native command must still leave the recorded change
 /// naming the command that *opened* the session, and `.` must reproduce
 /// both the typed text and the binding's own edit at the new site.
 ///
@@ -1932,10 +1904,7 @@ fn insert_key_binding_exiting_insert_mid_body_stays_off_the_repeat_slot() {
 
     assert_eq!(ed.doc().text().to_string(), "yz abc\n");
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.as_ref()),
+        ed.state.last_action().map(|a| a.command.as_ref()),
         Some("change"),
         "the command that opened the Insert session must keep the slot, \
          not the inner `delete` dispatched after exit-insert"
@@ -1997,11 +1966,8 @@ fn insert_key_binding_motion_via_call_is_replayed_before_the_fallback() {
 
 // ── Interactive Insert-key bindings: picker ─────────────────────────────────
 
-/// An Insert-key binding that opens a picker is interactive, the same as
-/// one that calls `completion-accept!`: `.` never reopens the picker:
-/// the pick's own net edit (whatever its `on_select` did, here a native
-/// `delete-word-backward` chosen once a real item is picked) is recorded
-/// as an `InsertInput::Result` and replayed directly.
+/// An Insert-key binding that opens a picker records its pick: `.` re-runs
+/// the binding with the picker answered by that pick, never reopening it.
 ///
 /// A live `i <ctrl-y> <enter>` deletes the word behind
 /// the cursor ("abc ") with nothing typed in between, so `.` at the front
@@ -2036,14 +2002,14 @@ fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
 
     let inputs = &ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`i` must have stamped a repeatable action")
-        .insert_inputs;
+        .transcript;
     assert_eq!(inputs.len(), 2, "got {inputs:?}");
     assert!(
-        matches!(&inputs[0], InsertInput::Result(r)
-            if r.back == 4 && r.forward == 0 && r.text.is_empty())
+        matches!(&inputs[0], Input::Binding { name, answers }
+                if name == "pick-word"
+                    && matches!(answers.as_slice(), [Answer::Pick { choice: Some(c), .. }] if c.label == "alpha" && c.nth == 0))
             && is_binding(&inputs[1], "exit-insert"),
         "got {inputs:?}"
     );
@@ -2058,13 +2024,11 @@ fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
     assert!(ed.state.input.picker().is_none());
 }
 
-/// While a picker sits open, its own dot-capture has moved off the
-/// `EditSession` onto the `PickerSession` (see `edit_session::DotCapture`'s
-/// own doc). An edit landing through the shared funnel from anywhere else
-/// (a timer, an LSP response) has nothing armed on the session to feed into
-/// anymore, so it must not end up folded into the eventual pick's own
-/// recorded result. Simulates that "anywhere else" edit directly through
-/// `apply_doc_edit_grouped`, the one funnel a real one would also use.
+/// An edit landing through the shared funnel from anywhere else (a timer,
+/// an LSP response) while a binding's picker sits open is not part of the
+/// change: the binding records only its pick. Simulates that "anywhere
+/// else" edit directly through `apply_doc_edit_grouped`, the one funnel a
+/// real one would also use.
 #[test]
 fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
     let tmp = tempfile::tempdir().unwrap();
@@ -2114,34 +2078,25 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
 
     let inputs = &ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`i` must have stamped a repeatable action")
-        .insert_inputs;
+        .transcript;
     assert_eq!(inputs.len(), 2, "got {inputs:?}");
-    // The foreign `Z` insert shifted the cursor to sit right after it (index
-    // 5); delete-word-backward from there treats `Z` as its own word
-    // (distinct from "abc"), so a correctly *excluded* foreign edit deletes
-    // just that one char (`back: 1`): the real word-backward result at the
-    // buffer's actual current state, not some composition with the insert.
     assert!(
-        matches!(&inputs[0], InsertInput::Result(r)
-            if r.back == 1 && r.forward == 0 && r.text.is_empty())
+        matches!(&inputs[0], Input::Binding { name, answers }
+                if name == "pick-word"
+                    && matches!(answers.as_slice(), [Answer::Pick { choice: Some(c), .. }] if c.label == "alpha" && c.nth == 0))
             && is_binding(&inputs[1], "exit-insert"),
-        "the recorded result must be the pick's own delete-word-backward alone, \
-         with no foreign 'Z' insert folded into the composition: {inputs:?}"
+        "the binding records its pick, and nothing of the foreign 'Z' insert: {inputs:?}"
     );
 }
 
 /// A binding that edits the buffer *before* opening a picker, with a foreign
-/// edit landing on the same buffer while that picker sits open: the
-/// capture's chain already holds the binding's own edit (computed against
-/// the pre-foreign-edit document) by the time the pick's own edit arrives
-/// (computed against the post-foreign-edit document). A non-empty chain
-/// cannot start over at the current head, so composing the two must not
-/// panic on the length mismatch; the pick is reported and dropped instead.
+/// edit landing on the same buffer while that picker sits open: the binding
+/// is re-run on `.`, so what it edits is decided again there and the
+/// foreign edit has nothing to break. Its pick is recorded with no warning.
 #[test]
-fn dot_repeat_drops_a_pick_whose_capture_already_held_an_edit_when_a_foreign_edit_intervened() {
+fn dot_repeat_keeps_a_pick_when_a_foreign_edit_follows_the_bindings_own_edit() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
     run(
@@ -2188,32 +2143,32 @@ fn dot_repeat_drops_a_pick_whose_capture_already_held_an_edit_when_a_foreign_edi
     ed.feed_key(key_esc());
 
     assert!(
-        ed.state
+        !ed.state
             .message_log
             .entries()
             .any(|e| e.severity == Severity::Warning && e.text.contains("won't repeat")),
-        "must warn that the pick can't be replayed: {:?}",
+        "nothing to warn about: {:?}",
         ed.state.message_log.entries().collect::<Vec<_>>()
     );
 
     let inputs = &ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`i` must have stamped a repeatable action")
-        .insert_inputs;
+        .transcript;
     assert!(
-        !inputs.iter().any(|i| matches!(i, InsertInput::Result(_))),
-        "the unreplayable pick must record no InsertInput::Result: {inputs:?}"
+        matches!(inputs.first(), Some(Input::Binding { name, answers })
+            if name == "edit-then-pick"
+                && matches!(answers.as_slice(), [Answer::Pick { choice: Some(c), .. }] if c.label == "alpha" && c.nth == 0)),
+        "the binding records its pick: {inputs:?}"
     );
 }
 
-/// A picker dismissed with Esc records nothing: `on_select` receives `#f`
-/// and does nothing, so the capture's diff is identity and the `Binding`
-/// entry it armed is dropped outright: `.` replays only the keys typed
-/// around it.
+/// A picker dismissed with Esc is recorded as a dismissal: `.` re-runs the
+/// binding with its picker answered `#f`, which does nothing here, between
+/// the keys typed around it.
 #[test]
-fn dot_repeat_drops_a_dismissed_pickers_binding_entry() {
+fn dot_repeat_replays_a_dismissed_pick_as_a_dismissal() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\nworld\n");
     run(
@@ -2239,17 +2194,17 @@ fn dot_repeat_drops_a_dismissed_pickers_binding_entry() {
 
     let inputs = &ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`i` must have stamped a repeatable action")
-        .insert_inputs;
-    assert_eq!(
-        inputs.len(),
-        3,
-        "the dismissed picker's entry is dropped: {inputs:?}"
-    );
+        .transcript;
+    assert_eq!(inputs.len(), 4, "got {inputs:?}");
     assert!(
-        is_key(&inputs[0], 'x') && is_key(&inputs[1], 'y') && is_binding(&inputs[2], "exit-insert"),
+        is_key(&inputs[0], 'x')
+            && is_key(&inputs[1], 'y')
+            && matches!(&inputs[2], Input::Binding { name, answers }
+                if name == "pick-word"
+                    && matches!(answers.as_slice(), [Answer::Pick { choice: None, payload: None, .. }]))
+            && is_binding(&inputs[3], "exit-insert"),
         "got {inputs:?}"
     );
 
@@ -2288,10 +2243,9 @@ fn dot_repeat_smart_accept_binding_fallback_branch() {
 
     let inputs = &ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`i` must have stamped a repeatable action")
-        .insert_inputs;
+        .transcript;
     assert_eq!(inputs.len(), 2, "got {inputs:?}");
     assert!(
         is_binding(&inputs[0], "smart-accept") && is_binding(&inputs[1], "exit-insert"),
@@ -2309,7 +2263,7 @@ fn dot_repeat_smart_accept_binding_fallback_branch() {
 
 /// The same `smart-accept` binding's *accept* branch: live, with a
 /// completion open, `completion-top` is non-empty and it accepts instead,
-/// recorded as an `InsertInput::Result`, not a `Binding`, so `.` applies
+/// recorded as an `Input::Result`, not a `Binding`, so `.` applies
 /// the accepted text directly rather than re-checking `completion-top`
 /// (which would find no session during replay and wrongly fall back to a
 /// literal tab).
@@ -2340,13 +2294,12 @@ fn dot_repeat_smart_accept_binding_accept_branch() {
 
     let inputs = &ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`c` must have stamped a repeatable action")
-        .insert_inputs;
+        .transcript;
     assert_eq!(inputs.len(), 4, "got {inputs:?}");
     assert!(
-        matches!(&inputs[2], InsertInput::Result(r)
+        matches!(&inputs[2], Input::Result(r)
             if r.back == 2 && r.forward == 0 && r.text == "hello"),
         "got {inputs:?}"
     );
@@ -2714,12 +2667,10 @@ fn dot_repeat_of_a_binding_that_accepts_then_exits_insert_in_one_body() {
 }
 
 /// A `MAX_EVENT_DRAIN` cascade drop that catches the batch holding a
-/// picker's own `on_select`: the capture armed for that picker's Insert-key
-/// binding never gets the edit its pick would have produced. It must be
-/// dropped, not left armed forever, so later typing in a fresh session
-/// records normally instead of finalizing against stale state.
+/// picker's own `on_select`: the pick the user made is still the binding's
+/// answer, and the session keeps recording what is typed after it.
 #[test]
-fn dot_repeat_capture_is_dropped_when_a_picks_on_select_is_lost_to_the_drain_cap() {
+fn dot_repeat_keeps_a_pick_whose_on_select_is_lost_to_the_drain_cap() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
@@ -2763,14 +2714,15 @@ fn dot_repeat_capture_is_dropped_when_a_picks_on_select_is_lost_to_the_drain_cap
     );
 
     assert!(
-        !matches!(
+        matches!(
             ed.state
-                .last_repeatable_action
-                .as_ref()
-                .and_then(|a| a.insert_inputs.last()),
-            Some(InsertInput::Binding { name }) if name == "pick-word"
+                .last_action()
+                .and_then(|a| a.transcript.last()),
+            Some(Input::Binding { name, answers })
+                if name == "pick-word"
+                    && matches!(answers.as_slice(), [Answer::Pick { choice: Some(c), .. }] if c.label == "alpha" && c.nth == 0)
         ),
-        "the dropped capture must not leave `pick-word`'s placeholder behind"
+        "the binding records the pick the user made"
     );
 
     // The session must still be usable: later typing records normally.
@@ -2779,13 +2731,12 @@ fn dot_repeat_capture_is_dropped_when_a_picks_on_select_is_lost_to_the_drain_cap
     assert_eq!(ed.doc().text().to_string(), "zhello\n");
     let inputs = &ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`i` must have stamped a repeatable action")
-        .insert_inputs;
+        .transcript;
     assert!(
         inputs.iter().any(|i| is_key(i, 'z')),
-        "typing after the dropped capture must still be recorded: {inputs:?}"
+        "typing after the dropped callback must still be recorded: {inputs:?}"
     );
 }
 
@@ -2795,11 +2746,11 @@ fn dot_repeat_capture_is_dropped_when_a_picks_on_select_is_lost_to_the_drain_cap
 /// which route through those). `end_insert_session` (what a reload or a
 /// focus/buffer switch runs) truncates the Insert layer top-first, tearing
 /// down the Picker on top of it via `tear_down` (not `close_picker`) and
-/// then Insert itself. `on_select` must still fire, after the session it
-/// would have recorded into is gone, and the session's teardown records
-/// what the binding captured before the picker opened.
+/// then Insert itself. `on_select` must still fire, after the session is
+/// gone, and the binding stays recorded with its picker answered as a
+/// dismissal.
 #[test]
-fn picker_torn_down_by_a_reload_fires_on_select_and_keeps_what_was_captured() {
+fn picker_torn_down_by_a_reload_fires_on_select_and_records_a_dismissal() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
     run(
@@ -2839,14 +2790,14 @@ fn picker_torn_down_by_a_reload_fires_on_select_and_keeps_what_was_captured() {
 
     let inputs = &ed
         .state
-        .last_repeatable_action
-        .as_ref()
+        .last_action()
         .expect("`i` must have stamped a repeatable action")
-        .insert_inputs;
+        .transcript;
     assert!(
-        matches!(inputs.as_slice(), [InsertInput::Result(r)]
-            if r.back == 0 && r.forward == 0 && r.text == "x"),
-        "the binding's `x` must be recorded, the dismissed pick adds nothing: {inputs:?}"
+        matches!(inputs.as_slice(), [Input::Binding { name, answers }]
+            if name == "edit-then-pick"
+                && matches!(answers.as_slice(), [Answer::Pick { choice: None, payload: None, .. }])),
+        "the binding is recorded, its torn-down picker as a dismissal: {inputs:?}"
     );
 }
 
@@ -2931,10 +2882,7 @@ fn record_rd(body: &str, keys: &[KeyEvent]) -> Editor {
         ed.settle();
     }
     assert_eq!(
-        ed.state
-            .last_repeatable_action
-            .as_ref()
-            .map(|a| a.command.as_ref()),
+        ed.state.last_action().map(|a| a.command.as_ref()),
         Some("rd")
     );
     ed.feed_key(key('j'));
@@ -2960,6 +2908,27 @@ fn dot_answers_a_cancelled_read_with_false() {
         "got: {}",
         status(&ed)
     );
+}
+
+/// A reload drops a read still pending from a repeatable command. The change
+/// that read belonged to stops accepting input with it, so the next
+/// repeatable command starts a change of its own.
+#[test]
+fn reload_drops_a_pending_reads_hold_on_the_change() {
+    let mut ed = editor_with_steel(
+        "-[h]>ello\nworld\n",
+        r#"(define-command! "rd" "" (lambda (pane) (on-next-char! (lambda (c) (+ 1 0)))) #:repeatable #t)"#,
+    );
+    ed.execute_keymap_command("rd".into(), Some(1), false);
+    ed.settle();
+    assert!(reading_char(&ed));
+    ed.reset_config_state();
+    ed.feed_key(key('d'));
+    ed.feed_key(key('j'));
+    ed.feed_key(key('g'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "ello\norld\n");
 }
 
 /// `.` repeats the command with the character it read, and the edits its
@@ -3218,40 +3187,648 @@ fn dot_does_not_rerun_an_insert_binding_that_opened_a_prompt() {
     );
 }
 
+/// `.` repeats the menu item a command's menu was answered with, matched by
+/// its label, without opening the menu.
 #[test]
-fn dot_refuses_a_menu_in_a_replayed_steel_command() {
-    let mut ed = editor_with_steel(
-        "-[h]>ello\nworld\n",
-        r#"(define-command! "ask" ""
-             (lambda (pane) (show-menu! pane (list "one") (lambda (i) (+ 1 0))))
-             #:repeatable #t)"#,
+fn dot_repeats_a_commands_menu_choice() {
+    let mut ed = record_rd(
+        r#"(show-menu! pane (list "one" "two")
+             (lambda (i) (when i (call! "replace" pane (if (= i 1) #\t #\o)))))"#,
+        &[key('j'), key_enter()],
     );
-    ed.execute_keymap_command("ask".into(), Some(1), false);
-    ed.feed_key(key_esc());
-    ed.settle();
-    assert!(ed.state.input.menu().is_none());
-
+    assert_eq!(ed.doc().text().to_string(), "tello\nworld\n");
     ed.feed_key(key('.'));
-    assert!(ed.state.input.menu().is_none());
+    ed.settle();
+    assert!(ed.state.input.menu().is_none(), "`.` must not open a menu");
+    assert_eq!(ed.doc().text().to_string(), "tello\ntorld\n");
+}
+
+/// Of two menu items with the same text, `.` repeats the one picked.
+#[test]
+fn dot_repeats_the_second_of_two_menu_items_with_the_same_text() {
+    let mut ed = record_rd(
+        r#"(show-menu! pane (list "dup" "dup")
+             (lambda (i) (when i (call! "replace" pane (if (= i 1) #\b #\a)))))"#,
+        &[key('j'), key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "bello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "bello\nborld\n");
+}
+
+/// Of two `picker!` items with the same text, `.` repeats the one picked.
+#[test]
+fn dot_repeats_the_second_of_two_picker_items_with_the_same_text() {
+    let mut ed = record_rd(
+        r#"(picker! pane (list (cons "dup" #\a) (cons "dup" #\b))
+             (lambda (c) (when c (call! "replace" pane c))))"#,
+        &[key_down(), key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "bello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "bello\nborld\n");
+}
+
+/// `.` repeats the text a command's prompt was answered with, without
+/// opening the prompt.
+#[test]
+fn dot_repeats_a_commands_prompt_answer() {
+    let mut ed = record_rd(
+        r#"(prompt! pane "x:"
+             (lambda (t) (when t (call! "replace" pane (string-ref t 0)))))"#,
+        &[key('z'), key('q'), key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "zello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert_eq!(ed.doc().text().to_string(), "zello\nzorld\n");
+}
+
+// ── Recording source accounting ──────────────────────────────────────────────
+
+/// A character read a hook opens mid-Insert is not the change's own read:
+/// its answer arrives after the session's keys, so `.` must not record it
+/// as an operand. `.` replays the typed text and reports nothing fatal.
+#[test]
+fn dot_ignores_a_read_a_hook_opens_during_a_recorded_insert() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define armed #t)
+           (register-hook! 'on-text-changed
+             (lambda (bid)
+               (when armed
+                 (set! armed #f)
+                 (on-next-char! (lambda (c) (+ 1 0))))))"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.settle();
+    assert!(reading_char(&ed), "setup: the hook's read must be pending");
+    ed.feed_key(key('b'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "ahello\nworld\n");
+
+    let answers = &ed
+        .state
+        .last_action()
+        .expect("`i` must have recorded a change")
+        .answers;
     assert!(
-        status(&ed).contains("show-menu!: reached during `.`"),
+        answers.is_empty(),
+        "a hook's read answer must not join the change: {answers:?}"
+    );
+
+    select_marked(&mut ed, "ahello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "ahello\naworld\n");
+}
+
+/// A character read a hook opens after `c`, before the first typed key, is
+/// not the change's operand: `.` repeats the change with its typed text.
+#[test]
+fn dot_ignores_a_read_a_hook_opens_before_a_changes_first_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define armed #t)
+           (register-hook! 'on-mode-change
+             (lambda (old new)
+               (when armed
+                 (set! armed #f)
+                 (on-next-char! (lambda (c) (+ 1 0))))))"#,
+    );
+    ed.feed_key(key('c'));
+    ed.settle();
+    assert!(reading_char(&ed), "setup: the hook's read must be pending");
+    ed.feed_key(key('q'));
+    ed.settle();
+    ed.feed_key(key('a'));
+    ed.feed_key(key('b'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "abello\nworld\n");
+
+    let answers = &ed
+        .state
+        .last_action()
+        .expect("`c` must have recorded a change")
+        .answers;
+    assert!(
+        answers.is_empty(),
+        "a hook's read answer must not join the change: {answers:?}"
+    );
+
+    select_marked(&mut ed, "abello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "abello\naborld\n");
+}
+
+/// A callback of an Insert-key binding's read that opens a second read
+/// records that answer under the binding too.
+#[test]
+fn dot_repeats_both_reads_a_binding_and_its_callback_make() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "read-twice" ""
+             (lambda (pane)
+               (on-next-char!
+                 (lambda (a)
+                   (on-next-char! (lambda (b) (when b (call! "replace" pane b))))))))
+           (bind-key! 'insert "ctrl-x" "read-twice")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('x'));
+    ed.settle();
+    ed.feed_key(key('a'));
+    ed.settle();
+    ed.feed_key(key('z'));
+    ed.settle();
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "zello\nworld\n");
+
+    select_marked(&mut ed, "zello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "zello\nzorld\n");
+    assert!(
+        !status(&ed).contains("reached during"),
         "got: {}",
         status(&ed)
     );
 }
 
-#[test]
-fn dot_refuses_prompt_in_a_replayed_steel_command() {
-    let mut ed = record_rd(
-        r#"(prompt! (focused-pane) "x:"
-             (lambda (t) (when t (call! "replace" (focused-pane) (string-ref t 0)))))"#,
-        &[key_esc()],
+/// A repeatable command that opened a menu, then `key`, which dismisses
+/// the menu and runs as a key of its own.
+fn dismiss_a_recorded_menu_with(key: KeyEvent) -> Editor {
+    let mut ed = editor_with_steel(
+        "-[h]>ello\nworld\n",
+        r#"(define-command! "menu" ""
+             (lambda (pane)
+               (show-menu! pane (list "one")
+                 (lambda (i) (when i (call! "replace" pane #\o)))))
+             #:repeatable #t)"#,
     );
-    ed.feed_key(key('.'));
-    assert_eq!(ed.state.mode(), Mode::Normal);
+    ed.execute_keymap_command("menu".into(), Some(1), false);
+    ed.settle();
     assert!(
-        status(&ed).contains("prompt!: reached during `.`"),
+        ed.state.input.menu().is_some(),
+        "setup: the menu must be open"
+    );
+    ed.feed_key(key);
+    ed.settle();
+    assert!(
+        ed.state.input.menu().is_none(),
+        "setup: the key closes the menu"
+    );
+    ed
+}
+
+/// The key that dismissed a recorded command's menu is a change of its
+/// own: `.` repeats it, not the menu's command.
+#[test]
+fn dot_repeats_the_edit_key_that_dismissed_a_recorded_menu() {
+    let mut ed = dismiss_a_recorded_menu_with(key('d'));
+    assert_eq!(ed.doc().text().to_string(), "ello\nworld\n");
+
+    select_marked(&mut ed, "ello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "ello\norld\n");
+}
+
+/// An Insert session entered by the key that dismissed a recorded
+/// command's menu records its own change.
+#[test]
+fn dot_repeats_the_insert_entered_by_the_key_that_dismissed_a_recorded_menu() {
+    let mut ed = dismiss_a_recorded_menu_with(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "xhello\nworld\n");
+
+    select_marked(&mut ed, "xhello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "xhello\nxworld\n");
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert_ne!(
+        ed.state.last_action().map(|a| a.command.as_ref()),
+        Some("menu")
+    );
+}
+
+/// A native command that dismissed a recorded command's menu and then read
+/// its operand records that operand as its own.
+#[test]
+fn dot_repeats_the_operand_key_that_dismissed_a_recorded_menu() {
+    let mut ed = dismiss_a_recorded_menu_with(key('r'));
+    assert!(reading_char(&ed), "setup: `r` must be reading its operand");
+    ed.feed_key(key('q'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "qello\nworld\n");
+
+    select_marked(&mut ed, "qello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "qello\nqorld\n");
+}
+
+/// An Insert-key binding whose `picker!` is refused (here: aimed at a pane
+/// that isn't focused) leaves nothing open on the recording, so the next
+/// change records normally.
+#[test]
+fn a_refused_picker_in_an_insert_binding_leaves_the_next_change_recordable() {
+    use crate::editor::commands::open_pane_in_layout;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc def\n");
+    let first = ed.state.focus.id();
+    let bid = ed.focused_buffer_id();
+    open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        first,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "pick-other" ""
+             (lambda (pane)
+               (define other
+                 (car (filter (lambda (p) (not (equal? p (focused-pane)))) (panes))))
+               (picker! other (list (cons "alpha" "ALPHA")) (lambda (payload) (+ 1 0)))))
+           (bind-key! 'insert "ctrl-y" "pick-other")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('y'));
+    ed.settle();
+    assert!(
+        ed.state.input.picker().is_none(),
+        "setup: the picker must have been refused"
+    );
+    ed.feed_key(key_esc());
+
+    ed.feed_key(key('d'));
+    assert_eq!(
+        ed.state.last_action().map(|a| a.command.as_ref()),
+        Some("delete"),
+        "the delete after the refused picker must be the recorded change"
+    );
+}
+
+/// A repeatable Steel command that opens an Insert session and then fails
+/// still owns that session: its keys record into its own change, never into
+/// the change recorded before it.
+#[test]
+fn a_failed_steel_body_that_opened_insert_keeps_its_session_keys() {
+    let mut ed = editor_with_steel(
+        "-[f]>oo bar\n",
+        r#"(define-command! "ins-boom" ""
+             (lambda (pane) (call! "insert-before" pane) (error "boom"))
+             #:repeatable #t)"#,
+    );
+    ed.feed_key(key('d'));
+    assert_eq!(
+        ed.state.last_action().map(|a| a.command.as_ref()),
+        Some("delete")
+    );
+
+    ed.execute_keymap_command("ins-boom".into(), Some(1), false);
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Insert,
+        "setup: the body entered Insert"
+    );
+    ed.feed_key(key('x'));
+    ed.feed_key(key_esc());
+
+    let action = ed.state.last_action().expect("a change must be recorded");
+    assert_eq!(action.command.as_ref(), "ins-boom");
+    assert!(
+        action.transcript.first().is_some_and(|i| is_key(i, 'x')),
+        "got {:?}",
+        action.transcript
+    );
+}
+
+// ── Top-level command: picker ───────────────────────────────────────────────
+
+/// Defines the repeatable `pk` from `body` (with `pane` in scope), runs it
+/// on line 1 of `hello\nworld`, feeds `keys` one at a time, then moves to
+/// line 2.
+fn record_pk(tmp: &std::path::Path, body: &str, keys: &[KeyEvent]) -> Editor {
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp,
+        &format!(r#"(define-command! "pk" "" (lambda (pane) {body}) #:repeatable #t)"#),
+    );
+    ed.execute_keymap_command("pk".into(), Some(1), false);
+    ed.settle();
+    assert!(ed.state.input.picker().is_some(), "sanity: picker open");
+    for &k in keys {
+        ed.feed_key(k);
+        ed.settle();
+    }
+    assert!(ed.state.input.picker().is_none(), "sanity: picker closed");
+    ed.feed_key(key('j'));
+    ed.feed_key(key('g'));
+    ed.feed_key(key('h'));
+    ed
+}
+
+/// `on_select` for the picker tests: replaces with the payload's first
+/// character and wraps it in parentheses, so a repeat of only its last
+/// `call!` is visible.
+const PK_SELECT: &str = r#"(lambda (p)
+                 (when p (call! "replace" pane (string-ref p 0)) (call! "surround-add" pane #\()))"#;
+
+/// `.` repeats the item the user picked, without opening the picker: the
+/// pick and every edit its `on_select` made belong to the command's change.
+#[test]
+fn dot_repeats_a_commands_picker_selection() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        &format!(r#"(picker! pane (list (cons "a" "A") (cons "b" "B")) {PK_SELECT})"#),
+        &[key_down(), key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "(B)ello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(
+        ed.state.input.picker().is_none(),
+        "`.` must not open a picker"
+    );
+    assert_eq!(ed.doc().text().to_string(), "(B)ello\n(B)orld\n");
+    assert!(
+        !status(&ed).contains("reached during"),
         "got: {}",
         status(&ed)
     );
+}
+
+/// A pick made through an `#:actions` key is repeated through that action.
+#[test]
+fn dot_repeats_a_commands_picker_action() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        &format!(
+            r#"(picker! pane (list (cons "a" "A")) {PK_SELECT}
+                 #:actions (list (cons "ctrl-t"
+                   (lambda (p) (call! "replace" pane (string-ref p 0)) (call! "surround-add" pane #\[)))))"#
+        ),
+        &[key_ctrl('t')],
+    );
+    assert_eq!(ed.doc().text().to_string(), "[A]ello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "[A]ello\n[A]orld\n");
+}
+
+/// A dismissed picker is repeated as a dismissal: `on_select` gets `#f`.
+#[test]
+fn dot_repeats_a_commands_dismissed_picker() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        r#"(picker! pane (list (cons "a" "A"))
+             (lambda (p)
+               (unless p (call! "replace" pane #\z) (call! "surround-add" pane #\())))"#,
+        &[key_esc()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "(z)ello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "(z)ello\n(z)orld\n");
+}
+
+/// A live picker's pick is repeated without feeding it any item.
+#[test]
+fn dot_repeats_a_commands_live_picker_selection() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        &format!(
+            r#"(let ((tok (live-picker! pane {PK_SELECT} #:command (lambda (q) #f))))
+                 (picker-push! tok (list (cons "b" "B"))))"#
+        ),
+        &[key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "(B)ello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(
+        ed.state.input.picker().is_none(),
+        "`.` must not open a picker"
+    );
+    assert_eq!(ed.doc().text().to_string(), "(B)ello\n(B)orld\n");
+}
+
+/// A re-run command that opens a picker where the change recorded a
+/// character read took a different branch: `.` refuses rather than open it.
+#[test]
+fn dot_refuses_a_picker_where_a_read_was_recorded() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define runs 0)
+           (define-command! "br" ""
+             (lambda (pane)
+               (set! runs (+ runs 1))
+               (if (= runs 1)
+                   (on-next-char! (lambda (c) (when c (call! "replace" pane c))))
+                   (picker! pane (list (cons "a" "A")) (lambda (p) (+ 1 0)))))
+             #:repeatable #t)"#,
+    );
+    ed.execute_keymap_command("br".into(), Some(1), false);
+    ed.settle();
+    ed.feed_key(key('z'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "zello\nworld\n");
+    ed.feed_key(key('j'));
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(
+        ed.state.input.picker().is_none(),
+        "`.` must not open a picker"
+    );
+    assert!(
+        status(&ed).contains("reached during"),
+        "got: {}",
+        status(&ed)
+    );
+}
+
+/// A reload keeps a change holding a `picker!` pick: `.` finds the picked
+/// label among the items the reloaded command builds.
+#[test]
+fn reload_keeps_a_label_pick() {
+    let tmp = tempfile::tempdir().unwrap();
+    let body = format!(r#"(picker! pane (list (cons "a" "A")) {PK_SELECT})"#);
+    let mut ed = record_pk(tmp.path(), &body, &[key_enter()]);
+    assert_eq!(ed.doc().text().to_string(), "(A)ello\nworld\n");
+    ed.reset_config_state();
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(r#"(define-command! "pk" "" (lambda (pane) {body}) #:repeatable #t)"#),
+    );
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "(A)ello\n(A)orld\n");
+}
+
+/// A `live-picker!` pick is replayed from its payload, which a reload
+/// forgets: `.` then refuses rather than guess.
+#[test]
+fn reload_forgets_a_live_picks_payload() {
+    let tmp = tempfile::tempdir().unwrap();
+    let body = format!(
+        r#"(let ((tok (live-picker! pane {PK_SELECT} #:command (lambda (q) #f))))
+             (picker-push! tok (list (cons "b" "B"))))"#
+    );
+    let mut ed = record_pk(tmp.path(), &body, &[key_enter()]);
+    assert_eq!(ed.doc().text().to_string(), "(B)ello\nworld\n");
+    ed.reset_config_state();
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(r#"(define-command! "pk" "" (lambda (pane) {body}) #:repeatable #t)"#),
+    );
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "(B)ello\nworld\n");
+    assert!(
+        status(&ed).contains("reached during"),
+        "got: {}",
+        status(&ed)
+    );
+}
+
+/// `.` matches a `picker!` pick by its label among the items the re-run
+/// builds, so a payload that depends on where the command runs is the one
+/// for the new spot.
+#[test]
+fn dot_matches_a_pick_by_label_at_the_new_spot() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        &format!(
+            r#"(picker! pane
+                 (list (cons "same" (if (= (buffer-cursor-line pane) 0) "A" "B")))
+                 {PK_SELECT})"#
+        ),
+        &[key_enter()],
+    );
+    assert_eq!(ed.doc().text().to_string(), "(A)ello\nworld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "(A)ello\n(B)orld\n");
+}
+
+// ── Insert-key binding: reads and picks ─────────────────────────────────────
+
+/// An Insert-key binding that opens a picker is re-run by `.`, its picker
+/// answered with the recorded pick: what the pick's callback does is decided
+/// again at the new cursor. Here it deletes the word behind the cursor,
+/// which is longer on line 2 than on line 1.
+#[test]
+fn dot_reruns_an_insert_binding_answering_its_picker() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("abc -[d]>ef\nlonger xyz\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "pick-word" ""
+             (lambda (pane)
+               (picker! pane (list (cons "alpha" "ALPHA"))
+                 (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
+           (bind-key! 'insert "ctrl-y" "pick-word")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('y'));
+    ed.feed_key(key_enter());
+    ed.settle();
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "def\nlonger xyz\n");
+
+    select_marked(&mut ed, "def\nlonger -[x]>yz\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(
+        ed.state.input.picker().is_none(),
+        "`.` must not open a picker"
+    );
+    assert_eq!(ed.doc().text().to_string(), "def\nxyz\n");
+}
+
+/// An Insert-key binding that reads a character is re-run by `.` with the
+/// recorded character.
+#[test]
+fn dot_reruns_an_insert_binding_answering_its_read() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("abc -[d]>ef\nlonger xyz\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "read-word" ""
+             (lambda (pane)
+               (on-next-char!
+                 (lambda (c) (when (eqv? c #\w) (call! "delete-word-backward" pane))))))
+           (bind-key! 'insert "ctrl-y" "read-word")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('y'));
+    ed.feed_key(key('w'));
+    ed.settle();
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "def\nlonger xyz\n");
+
+    select_marked(&mut ed, "def\nlonger -[x]>yz\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(!reading_char(&ed), "`.` must not wait for a key");
+    assert_eq!(ed.doc().text().to_string(), "def\nxyz\n");
+}
+
+/// A reload while an Insert-key binding's picker is open releases that
+/// change: a later repeatable command starts its own.
+#[test]
+fn reload_with_a_bindings_picker_open_releases_the_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "pick" ""
+             (lambda (pane) (picker! pane (list (cons "a" "A")) (lambda (p) (+ 1 0)))))
+           (bind-key! 'insert "ctrl-y" "pick")"#,
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('y'));
+    assert!(ed.state.input.picker().is_some(), "sanity: picker open");
+    ed.reset_config_state();
+    ed.feed_key(key('d'));
+    ed.feed_key(key('j'));
+    ed.feed_key(key('g'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "ello\norld\n");
 }

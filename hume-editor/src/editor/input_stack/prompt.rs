@@ -7,7 +7,7 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
-use super::super::replay::Interactive;
+use super::super::replay::{Answer, AnswerTicket, DotReplay};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
@@ -15,19 +15,31 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 pub(in crate::editor) struct PromptLayer {
     minibuf: MiniBuffer,
     callback: steel::rvals::SteelVal,
+    /// Where this prompt's answer records, when it belongs to a recorded
+    /// change; see [`AnswerTicket`].
+    answer: Option<AnswerTicket>,
 }
 
 /// `prompt!`'s funnel: opens a prompt labelled `label` over `prefill`,
-/// whose `callback` gets the text confirmed, or `#f`. Takes the
-/// [`Interactive`] that proves it may open now.
+/// whose `callback` gets the text confirmed, or `#f`.
+///
+/// During `.` the prompt never opens: the recorded [`Answer::Prompt`]
+/// answers it, its callback queued to run after the replayed body, refusing
+/// when the next answer is not a prompt's, and running nothing for a prompt
+/// that never resolved live.
 pub(in crate::editor) fn open_prompt(
     state: &mut EditorState,
     view: &EngineView,
     label: String,
     prefill: String,
     callback: steel::rvals::SteelVal,
-    _input: Interactive,
 ) -> Result<(), String> {
+    const WHAT: &str = "prompt!";
+    if let Some(replay) = state.dot_replay.as_mut() {
+        return replay.answer_call(WHAT, DotReplay::next_prompt, |text| {
+            Some((callback, prompt_arg(text)))
+        });
+    }
     // Not "a Command-mode minibuffer is open": a `prompt!` called from a
     // `:command`'s body runs while that command line's own `Command` layer
     // is still on the stack (it's truncated only after the command
@@ -36,15 +48,40 @@ pub(in crate::editor) fn open_prompt(
     if state.input.is::<PromptLayer>(state.input.mode_layer()) {
         return Err("prompt!: a minibuffer session is already open".to_string());
     }
+    let answer = state.waiting_input(WHAT)?.ticket();
     state.history.begin_session_all();
     state.push_mode_layer(
         view,
         PromptLayer {
             minibuf: MiniBuffer::with_prefill(label, prefill),
             callback,
+            answer,
         },
     );
     Ok(())
+}
+
+/// The argument a prompt's callback gets: the confirmed text, or `#f`.
+fn prompt_arg(text: Option<String>) -> steel::rvals::SteelVal {
+    match text {
+        Some(s) => steel::rvals::SteelVal::StringV(s.into()),
+        None => steel::rvals::SteelVal::BoolV(false),
+    }
+}
+
+impl PromptLayer {
+    /// Queue this prompt's callback with `text`, or `#f`, recording it under
+    /// its answer ticket, if it has one. Every way a prompt closes ends here.
+    fn fire(&mut self, state: &mut EditorState, text: Option<String>) {
+        let arg = prompt_arg(text.clone());
+        let call = state.answered_call(
+            self.answer.take(),
+            Answer::Prompt(text),
+            self.callback.clone(),
+            arg,
+        );
+        state.config.pending_work.push_back(call);
+    }
 }
 
 impl Layer for PromptLayer {
@@ -79,10 +116,7 @@ impl Layer for PromptLayer {
     /// callback explicitly instead.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         state.history.begin_session_all();
-        state.queue_steel_call(
-            self.callback.clone(),
-            vec![steel::rvals::SteelVal::BoolV(false)],
-        );
+        self.fire(state, None);
     }
     fn minibuf(&self) -> Option<&MiniBuffer> {
         Some(&self.minibuf)
@@ -129,11 +163,7 @@ fn handle_steel_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
 /// case. Keeps its own `history.begin_session_all()` call so this
 /// explicit path's behavior is unchanged by that split.
 fn finish_steel_prompt(ed: &mut Editor, r: LayerRef, text: Option<String>) {
-    let prompt = ed.state.take_layer::<PromptLayer>(&ed.view, r);
+    let mut prompt = ed.state.take_layer::<PromptLayer>(&ed.view, r);
     ed.state.history.begin_session_all();
-    let arg = match text {
-        Some(s) => steel::rvals::SteelVal::StringV(s.into()),
-        None => steel::rvals::SteelVal::BoolV(false),
-    };
-    ed.state.queue_steel_call(prompt.callback, vec![arg]);
+    prompt.fire(&mut ed.state, text);
 }

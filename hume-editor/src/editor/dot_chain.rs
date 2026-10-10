@@ -58,20 +58,6 @@ impl DotChain {
         });
     }
 
-    /// The chain to continue recording on `text`, whose primary head is
-    /// `head`. An empty chain starts over from `head`, whatever happened to
-    /// the text since it was armed. A non-empty one continues only if
-    /// `text` is the one its last edit produced; `None` otherwise, or if it
-    /// is broken.
-    pub(in crate::editor) fn rearm(self, head: ClusterStart, text: &BufferText) -> Option<Self> {
-        let links = self.links?;
-        if links.edits.is_empty() {
-            Some(Self::new(head, text))
-        } else {
-            (links.version == text.version()).then_some(Self { links: Some(links) })
-        }
-    }
-
     /// The composed edit's replacement at `origin`, or `None` when it did
     /// not touch it.
     pub(in crate::editor) fn finish(self) -> Result<Option<CursorReplacement>, ChainBroken> {

@@ -15,11 +15,8 @@ use steel::rvals::SteelVal;
 
 fn open_bare_picker(ed: &mut Editor) {
     let session = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default());
-    let input = ed
-        .state
-        .waiting_input("picker!")
+    picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
-    picker::open_picker(&mut ed.state, &ed.view, session, input);
 }
 
 fn open_live_picker(ed: &mut Editor) {
@@ -33,11 +30,8 @@ fn open_live_picker(ed: &mut Editor) {
             actions: Vec::new(),
         },
     );
-    let input = ed
-        .state
-        .waiting_input("picker!")
+    picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
-    picker::open_picker(&mut ed.state, &ed.view, session, input);
 }
 
 fn no_op_wake() -> Arc<dyn Fn() + Send + Sync> {
@@ -243,7 +237,7 @@ fn close_picker_kills_the_source_child() {
         .unwrap()
         .attach_source(source, vec![0]);
 
-    picker::close_picker(&mut ed.state, &ed.view, SteelVal::BoolV(false));
+    picker::close_picker(&mut ed.state, &ed.view);
 
     assert!(
         !process_is_alive(pid),
@@ -277,11 +271,8 @@ fn replacing_the_session_kills_the_previous_source_child() {
     // A fresh `open_picker` call replaces (and, via `close_picker`, drops)
     // whatever session was open, same as a second `picker!` from Steel.
     let replacement = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default());
-    let input = ed
-        .state
-        .waiting_input("picker!")
+    picker::open_picker(&mut ed.state, &ed.view, replacement, "picker!")
         .expect("no `.` is in progress");
-    picker::open_picker(&mut ed.state, &ed.view, replacement, input);
 
     assert!(
         !process_is_alive(pid),

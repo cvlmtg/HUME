@@ -9,8 +9,7 @@
 //! than reaching the wrong instance. A single global counter is a superset of several private
 //! ones: it still guarantees uniqueness (no two tokens minted anywhere, of
 //! any kind, are ever equal), so a value one widget mints can never alias
-//! another kind's live token either. IDs Steel never sees (a `DotPark`, a
-//! `DispatchId`) draw from it for the same uniqueness.
+//! another kind's live token either.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -19,9 +18,9 @@ use hume_scripting::host::HostToken;
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 /// Mints a fresh token. Starts at `1`, never `0`, so no live instance holds
-/// [`HostToken::NONE`]. Every widget's, tracked position's, invocation's,
-/// park's and dispatch's own constructor calls this once, at construction,
-/// as its token field's only initializer.
+/// [`HostToken::NONE`]. Every widget's, tracked position's, and invocation's
+/// own constructor calls this once, at construction, as its token field's only
+/// initializer.
 pub(in crate::editor) fn next() -> u64 {
     NEXT_TOKEN.fetch_add(1, Ordering::Relaxed)
 }

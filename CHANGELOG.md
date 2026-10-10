@@ -9,7 +9,7 @@
 - `bind-wait-char!`, `request-wait-char!` and `pending-char` are removed. Commands read keys with `on-next-char!`, so `bind-key!` binds any command, and `.` repeats one with the characters it read.
 - The search and sift prompts report an invalid or unmatched pattern the same way scripts do. An invalid search pattern is not stored.
 - After `q`, `Q` or `"`, a click or paste cancels the register wait. Esc cancels only the wait.
-- `.` repeats the text an Insert-mode picker command changed.
+- `.` repeats what you answered a command's character read, picker, prompt or menu without asking again, in Normal and Insert mode alike. A pick or menu choice is matched by its text in the list the command builds where `.` runs.
 - With the kitty keyboard protocol, `Ctrl-?` searches backward and extends the selection.
 - `:set buffer line-ending=lf|crlf` converts a buffer's line endings.
 - `:e!` restores a file's line ending even when its text is unchanged.
