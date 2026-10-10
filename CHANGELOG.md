@@ -2,25 +2,34 @@
 
 ## Unreleased
 
+### Breaking changes
 - `lsp.inlay-hints` is removed: `:toggle-inlay-hints` toggles them per buffer, and `core:lsp`'s `inlay-hints` config turns them on everywhere.
 - `lsp.format-max-ranges` moves to `core:lsp`'s `#:config`.
 - `lsp.viewport-debounce-ms` is renamed to `viewport-debounce-ms`.
-- `call!` can pass a pattern to `search-forward`, `search-backward` and `sift-within`, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add`.
 - `bind-wait-char!`, `request-wait-char!` and `pending-char` are removed: commands read keys with `on-next-char!`, so `bind-key!` binds any command.
+
+### Editing
+- `.` reuses your answers to a `#:repeatable` command's character read, picker, prompt or menu instead of asking again.
+- With the kitty keyboard protocol, `Ctrl-?` searches backward and extends the selection.
+- `:set buffer line-ending=lf|crlf` converts a buffer's line endings.
+
+### Theming
+- With no `theme` set, HUME loads `sand` from `themes/`, so edits to `sand.toml` apply. The built-in copy is the fallback.
+
+### Plugins & scripting
+- `call!` can pass a pattern to `search-forward`, `search-backward` and `sift-within`, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add`.
+
+### Fixes
 - The search and sift prompts report an invalid or unmatched pattern the same way scripts do. An invalid search pattern is not stored.
 - After `q`, `Q` or `"`, a click or paste cancels the register wait. Esc cancels only the wait.
-- `.` reuses your answers to a `#:repeatable` command's character read, picker, prompt or menu instead of asking again.
 - `.` after an Insert session in which you pressed an arrow key leaves a cursor, as Esc did, instead of selecting the typed text.
 - `.` after an Insert session that ended at a key bound to a search, sift or `:` prompt repeats the text typed before that key, without an error or a prompt.
 - `.` inside a macro repeats the last change, including one made before the macro ran. After a macro, `.` repeats the last change the macro made.
-- With the kitty keyboard protocol, `Ctrl-?` searches backward and extends the selection.
-- `:set buffer line-ending=lf|crlf` converts a buffer's line endings.
 - `:e!` restores a file's line ending even when its text is unchanged.
-- With no `theme` set, HUME loads `sand` from `themes/`, so edits to `sand.toml` apply. The built-in copy is the fallback.
 
 ## [0.14.1] - 2026-10-08
 
-### Fixed
+### Fixes
 - A server that is slow to start no longer gets one inlay-hint request per refresh. A new request cancels the buffer's pending one, so the burst of `lsp inlay hints: timed out` messages is gone.
 - On Windows, `buffer-path` and the `'root` of a `lsp-server-status` entry no longer start with `\\?\`.
 - HUME reports its working directory to the terminal (OSC 7). A new WezTerm split or tab opens in HUME's directory, including after `:cd`, instead of in the directory of a program HUME started. Quitting HUME hands the terminal back the directory it was started in.
@@ -85,9 +94,8 @@
 - `show-drawer-list!` takes `#:selected` to open on a given row. The drawer scrolls to keep the selected row visible, including after `update-drawer-list!`.
 - `show-drawer-list!` and `update-drawer-list!` take `#:render`: the items can be any values, and the drawer asks the render function for the text of only the rows it shows. `core:undotree` uses it, so stepping through a long undo history stays quick.
 
-### Commands
+### Editing
 - Tab on the `:` line completes the text all candidates share and picks none; the next Tab picks the first. `:set global command-completion=first-candidate` restores filling in the first candidate at once.
-- `:e path:line[:col]` jumps to a position on open.
 - Selections never split a character: text objects, motions, edits, search, `:sort`, join, paste and undo keep a letter with its combining marks, emoji sequences and flags whole.
 - `f`/`t`/`F`/`T` match composed and decomposed forms alike, and `:sort` treats them as equal.
 - `G C` capitalizes with title case.
@@ -108,13 +116,16 @@
 - Cancelling a search after a language server edited the buffer restores the original selection.
 - A selection ending on a line break no longer covers virtual text at the end of that line.
 - An inline diff's deleted lines wrap like the buffer line, so a word removed past the pane edge is visible.
-
-### Editing
-- If HUME panics, is stopped by a signal, or loses its terminal, unsaved changes are written to `<file>.dump` (or the `dumps` folder of HUME's data directory), and opening such a file asks whether to restore, discard or keep it. See "Crash recovery" in the manual.
-- A crash in a background thread leaves the terminal intact. It shows in `:messages` and is printed after you quit.
-- Text typed in Insert mode counts as unsaved at once: `[+]`, the tab marker, `:ls` and `buffer-dirty?` show it, and `:q`, `:qa`, `:bd` and `:e` refuse to drop it.
-- Yanks reach the clipboard over SSH through OSC 52 when the terminal allows it.
 - Typing a quote right after the same quote no longer opens a pair, so ```` ``` ```` and `"""` come out as typed.
+
+### Files & buffers
+- `:e path:line[:col]` jumps to a position on open.
+- If HUME panics, is stopped by a signal, or loses its terminal, unsaved changes are written to `<file>.dump` (or the `dumps` folder of HUME's data directory), and opening such a file asks whether to restore, discard or keep it. See "Crash recovery" in the manual.
+- Text typed in Insert mode counts as unsaved at once: `[+]`, the tab marker, `:ls` and `buffer-dirty?` show it, and `:q`, `:qa`, `:bd` and `:e` refuse to drop it.
+
+### Terminal & compatibility
+- A crash in a background thread leaves the terminal intact. It shows in `:messages` and is printed after you quit.
+- Yanks reach the clipboard over SSH through OSC 52 when the terminal allows it.
 
 ### Language servers
 - A buffer uses every server in its language's list at once. Diagnostics from all of them show together, completion, code actions, goto, references and inlay hints combine their answers, and hover, signature help, rename and formatting use the first server that supports the feature. New `set-language-servers!` chooses a language's servers and their order, such as ESLint beside typescript-language-server, with `only-features` and `except-features` to limit an entry. `set-default-language-servers!` gives a plugin's list, and `lsp-language-servers` reads the result.
