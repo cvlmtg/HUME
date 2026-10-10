@@ -13,10 +13,11 @@ use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{Buffer, HistoryWalkResult};
-use crate::editor::edit_session::{self, EditSession, EditSessionKind};
+use crate::editor::edit_session::{self, EditSession, EditSessionKind, InsertState};
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneBufferState;
 use crate::editor::position_stores::PositionStores;
+use crate::editor::replay::SourceTicket;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::edit::{Edited, TextChange};
 use hume_editing::selection::SelectionSet;
@@ -203,7 +204,7 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     // This is the one funnel every grouped edit goes through, so it's the
     // one place `DotCapture::chain` (`edit_session.rs`) can be fed without
     // every caller remembering to do it itself; see that type's own doc.
-    if let Some(cap) = session.dot_capture_mut() {
+    if let Some(cap) = session.insert_mut().and_then(InsertState::dot_capture_mut) {
         cap.chain
             .push(&TextChange::new(&text_pre, buffers.get(buf_id).text(), &cs));
     }
@@ -297,7 +298,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
         Some(EditSessionKind::Paste { .. }) => {
             commit_paste_group(buffers, stores.panes, active_session);
         }
-        Some(EditSessionKind::Insert | EditSessionKind::Replay) => {
+        Some(EditSessionKind::Insert(_) | EditSessionKind::Replay) => {
             return Err(CommandError::transient(
                 "cannot move through undo history while an edit session is open",
             ));
@@ -340,7 +341,8 @@ pub(in crate::editor) fn apply_doc_motion(
 /// dedicated paste-session opener (`commands::paste`'s `do_paste`) builds
 /// its own `EditSession` directly instead of calling this: a paste session
 /// stores `before` in its `EditSessionKind::Paste`, which this function has
-/// no parameter for.
+/// no parameter for. The session holds `recording`, its source on the
+/// change whose code opens it, if any, until it ends.
 ///
 /// Snapshots the current selections as the session's `undo_sels`, what undo
 /// restores: cloned, not taken, since the pane keeps editing with them.
@@ -357,12 +359,13 @@ pub(in crate::editor) fn begin_edit_group(
     active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
+    recording: Option<SourceTicket>,
 ) -> Result<(), CommandError> {
     edit_session::open_or_retarget(
         active_session,
         pane_id,
         buf_id,
-        EditSessionKind::Insert,
+        EditSessionKind::Insert(InsertState::new(recording)),
         // Cloned only here, inside the closure `open_or_retarget` calls
         // solely for a fresh open. A refusal or a placeholder retarget
         // never needs it.
@@ -448,7 +451,7 @@ pub(in crate::editor) fn commit_edit_group(
     match active_session.as_ref() {
         None => panic!("commit_edit_group called without an open session"),
         Some(s) => assert!(
-            matches!(s.kind(), EditSessionKind::Insert),
+            matches!(s.kind(), EditSessionKind::Insert(_)),
             "commit_edit_group called on a non-Insert session"
         ),
     }

@@ -447,7 +447,7 @@ fn do_paste_cycle(
     older: bool,
 ) -> Result<(), CommandError> {
     let (focused, buf) = (fp.pid(), fp.bid(view));
-    let Some(EditSessionKind::Paste { before }) = state
+    let Some(&EditSessionKind::Paste { before }) = state
         .active_session
         .as_ref()
         .filter(|s| s.owned_by(focused, buf))

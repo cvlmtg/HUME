@@ -31,7 +31,7 @@ use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::dispatch::CmdCtx;
 use super::dot_chain::{ChainBroken, DotChain};
-use super::edit_session::{self, DotCapture, EditSessionKind};
+use super::edit_session::{self, DotCapture, EditSession, EditSessionKind, InsertState};
 use super::input_stack::char::CharRead;
 use super::keymap::CanonicalKey;
 use super::registry::MappableCommand;
@@ -784,7 +784,7 @@ impl EditorState {
     /// accepts input: the one change every Insert-session input records
     /// into, whatever else is accepting.
     fn session_recording(&mut self) -> Option<&mut Recording> {
-        let ticket = self.active_session.as_ref()?.recording_ticket()?;
+        let ticket = self.active_session.as_ref()?.insert()?.recording()?;
         self.recording.as_mut().filter(|rec| rec.feeds(ticket))
     }
 
@@ -907,7 +907,8 @@ impl EditorState {
         if let Some(cap) = self
             .active_session
             .as_mut()
-            .and_then(|s| s.dot_capture_mut())
+            .and_then(EditSession::insert_mut)
+            .and_then(InsertState::dot_capture_mut)
         {
             cap.interactive = true;
         }
@@ -1065,14 +1066,16 @@ impl EditorState {
         if let Some(cap) = self
             .active_session
             .as_mut()
-            .and_then(|s| s.take_dot_capture())
+            .and_then(EditSession::insert_mut)
+            .and_then(InsertState::take_dot_capture)
         {
             self.finalize_dot_capture(cap);
         }
         drop(
             self.active_session
                 .as_mut()
-                .and_then(|s| s.release_recording()),
+                .and_then(EditSession::insert_mut)
+                .and_then(InsertState::release_recording),
         );
     }
 }
@@ -1433,6 +1436,7 @@ impl Editor {
             self.state
                 .active_session
                 .as_mut()
+                .and_then(EditSession::insert_mut)
                 .expect("an Insert session was just confirmed open here")
                 .arm_dot_capture(DotCapture {
                     chain,
@@ -1449,7 +1453,8 @@ impl Editor {
             .active_session
             .as_mut()
             .filter(|s| s.is_insert_at(pane, buffer))
-            .and_then(|s| s.take_dot_capture())
+            .and_then(EditSession::insert_mut)
+            .and_then(InsertState::take_dot_capture)
         {
             self.state.finalize_dot_capture(cap);
         }

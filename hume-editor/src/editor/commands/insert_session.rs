@@ -206,24 +206,19 @@ pub(super) fn begin_insert_session_preserving_register(
         .as_ref()
         .is_some_and(|s| s.is_insert_at(pid, bid));
     if !already_insert {
+        // Keep the change whose code opened this session alive for the
+        // whole session, so its keystrokes record and a repeatable command
+        // mid-session can't replace it. `None` outside a recorded change's
+        // code (during `.`, or a session a hook opens).
+        let recording = state.open_scope_source();
         doc_ops::begin_edit_group(
             &state.buffers,
             &mut state.panes.state,
             &mut state.active_session,
             pid,
             bid,
+            recording,
         )?;
-        // Keep the change whose code opened this session alive for the
-        // whole session, so its keystrokes record and a repeatable command
-        // mid-session can't replace it. No-op outside a recorded change's
-        // code (during `.`, or a session a hook opens).
-        if let Some(ticket) = state.open_scope_source() {
-            state
-                .active_session
-                .as_mut()
-                .expect("begin_edit_group just opened the session")
-                .hold_recording(ticket);
-        }
     }
     state.push_mode_layer(
         view,

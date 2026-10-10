@@ -39,17 +39,6 @@ pub(in crate::editor) struct EditSession {
     buffer: BufferId,
     kind: EditSessionKind,
     group: EditGroup,
-    /// Armed around an Insert-key binding dispatch or a completion-popup
-    /// Enter, so a completion accept made there is recorded as its net
-    /// cursor edit ([`DotCapture`]). `None` outside such a dispatch, and
-    /// always on a non-`Insert` session (every armer requires an open Insert
-    /// session first).
-    dot_capture: Option<DotCapture>,
-    /// The source this Insert session holds on the change whose code opened
-    /// it, released by `EditorState::end_insert_recording`. `None` for a
-    /// session opened outside a recorded change's code, and always on a
-    /// non-`Insert` session.
-    recording: Option<SourceTicket>,
 }
 
 impl EditSession {
@@ -61,8 +50,24 @@ impl EditSession {
         self.buffer
     }
 
-    pub(in crate::editor) fn kind(&self) -> EditSessionKind {
-        self.kind
+    pub(in crate::editor) fn kind(&self) -> &EditSessionKind {
+        &self.kind
+    }
+
+    /// The Insert-only state, `None` on a Paste or Replay session.
+    pub(in crate::editor) fn insert(&self) -> Option<&InsertState> {
+        match &self.kind {
+            EditSessionKind::Insert(insert) => Some(insert),
+            EditSessionKind::Paste { .. } | EditSessionKind::Replay => None,
+        }
+    }
+
+    /// [`Self::insert`], mutably.
+    pub(in crate::editor) fn insert_mut(&mut self) -> Option<&mut InsertState> {
+        match &mut self.kind {
+            EditSessionKind::Insert(insert) => Some(insert),
+            EditSessionKind::Paste { .. } | EditSessionKind::Replay => None,
+        }
     }
 
     /// `true` when committing this session now would record a revision.
@@ -81,50 +86,6 @@ impl EditSession {
         &mut self.group
     }
 
-    pub(in crate::editor) fn dot_capture_mut(&mut self) -> Option<&mut DotCapture> {
-        self.dot_capture.as_mut()
-    }
-
-    /// Arms `cap`. Never nests: an Insert-key binding that itself calls
-    /// `completion-accept!` marks the binding's capture interactive
-    /// (`EditorState::interactive_input`) instead of arming its own, so a
-    /// capture is always taken back out (by `Editor::with_dot_capture`, or by
-    /// `EditorState::end_insert_recording`) before the next arm.
-    pub(in crate::editor) fn arm_dot_capture(&mut self, cap: DotCapture) {
-        debug_assert!(
-            self.dot_capture.is_none(),
-            "arm_dot_capture: a capture was already armed and never resolved"
-        );
-        self.dot_capture = Some(cap);
-    }
-
-    /// Takes the armed capture, if any: `Editor::with_dot_capture` once its
-    /// dispatch returns, and `EditorState::end_insert_recording` when the
-    /// session ends first.
-    pub(in crate::editor) fn take_dot_capture(&mut self) -> Option<DotCapture> {
-        self.dot_capture.take()
-    }
-
-    /// `begin_insert_session`'s half of the recording-source hand-off.
-    pub(in crate::editor) fn hold_recording(&mut self, ticket: SourceTicket) {
-        debug_assert!(
-            self.recording.is_none(),
-            "hold_recording: the session already holds a recording source"
-        );
-        self.recording = Some(ticket);
-    }
-
-    /// `EditorState::end_insert_recording`'s half of the recording-source
-    /// hand-off.
-    pub(in crate::editor) fn release_recording(&mut self) -> Option<SourceTicket> {
-        self.recording.take()
-    }
-
-    /// The source this session holds on the change whose code opened it.
-    pub(in crate::editor) fn recording_ticket(&self) -> Option<&SourceTicket> {
-        self.recording.as_ref()
-    }
-
     /// Consumes the session, handing its [`EditGroup`] to the caller that's
     /// about to commit it (`doc_ops::commit_open_session`), the one place
     /// that needs the group by value rather than by reference.
@@ -135,7 +96,8 @@ impl EditSession {
     /// ordering, not a normal exit.
     pub(in crate::editor) fn into_group(self) -> EditGroup {
         debug_assert!(
-            self.dot_capture.is_none(),
+            self.insert()
+                .is_none_or(|insert| insert.dot_capture.is_none()),
             "into_group: a capture was still armed; end_insert_recording should have taken it \
              first"
         );
@@ -151,7 +113,7 @@ impl EditSession {
     /// panicking on the mismatch. This is the one place that three-way
     /// check is spelled out, so it can't be forgotten at a new call site.
     pub(in crate::editor) fn is_insert_at(&self, pane: PaneId, buffer: BufferId) -> bool {
-        self.owned_by(pane, buffer) && matches!(self.kind, EditSessionKind::Insert)
+        self.owned_by(pane, buffer) && matches!(self.kind, EditSessionKind::Insert(_))
     }
 
     /// `true` if this is a Paste-kind session on `(pane, buffer)`: the
@@ -245,8 +207,6 @@ pub(in crate::editor) fn open_or_retarget(
                 buffer,
                 kind,
                 group: mint_group(),
-                dot_capture: None,
-                recording: None,
             });
         }
     }
@@ -255,12 +215,11 @@ pub(in crate::editor) fn open_or_retarget(
 
 /// Which kind of session [`EditSession`] is: the three shapes HUME's one
 /// session slot can hold.
-#[derive(Clone, Copy)]
 pub(in crate::editor) enum EditSessionKind {
     /// An Insert-mode session: every keystroke since entry composes into
     /// [`EditSession::group`] until Esc/Ctrl-c/a mode change commits it as
     /// one undo step.
-    Insert,
+    Insert(InsertState),
     /// An open `p`/`P` + `[`/`]` ring-cycle session. `before` is the
     /// direction the session was opened with (`true` = `P`/paste-before),
     /// meaningful only while the session is open; read by `[`/`]` so
@@ -284,6 +243,63 @@ pub(in crate::editor) enum EditSessionKind {
     /// between entry and its first typed character, matched that test just
     /// as well.
     Replay,
+}
+
+/// The state only an Insert session has.
+pub(in crate::editor) struct InsertState {
+    /// Armed around an Insert-key binding dispatch or a completion-popup
+    /// Enter, so a completion accept made there is recorded as its net
+    /// cursor edit ([`DotCapture`]). `None` outside such a dispatch.
+    dot_capture: Option<DotCapture>,
+    /// The source this session holds on the change whose code opened it,
+    /// released by `EditorState::end_insert_recording`. `None` for a session
+    /// opened outside a recorded change's code.
+    recording: Option<SourceTicket>,
+}
+
+impl InsertState {
+    /// A session holding `recording` on the change whose code opens it.
+    pub(in crate::editor) fn new(recording: Option<SourceTicket>) -> Self {
+        Self {
+            dot_capture: None,
+            recording,
+        }
+    }
+
+    pub(in crate::editor) fn dot_capture_mut(&mut self) -> Option<&mut DotCapture> {
+        self.dot_capture.as_mut()
+    }
+
+    /// Arms `cap`. Never nests: an Insert-key binding that itself calls
+    /// `completion-accept!` marks the binding's capture interactive
+    /// (`EditorState::interactive_input`) instead of arming its own, so a
+    /// capture is always taken back out (by `Editor::with_dot_capture`, or by
+    /// `EditorState::end_insert_recording`) before the next arm.
+    pub(in crate::editor) fn arm_dot_capture(&mut self, cap: DotCapture) {
+        debug_assert!(
+            self.dot_capture.is_none(),
+            "arm_dot_capture: a capture was already armed and never resolved"
+        );
+        self.dot_capture = Some(cap);
+    }
+
+    /// Takes the armed capture, if any: `Editor::with_dot_capture` once its
+    /// dispatch returns, and `EditorState::end_insert_recording` when the
+    /// session ends first.
+    pub(in crate::editor) fn take_dot_capture(&mut self) -> Option<DotCapture> {
+        self.dot_capture.take()
+    }
+
+    /// The source this session holds on the change whose code opened it.
+    pub(in crate::editor) fn recording(&self) -> Option<&SourceTicket> {
+        self.recording.as_ref()
+    }
+
+    /// Closes the session's source on its change:
+    /// `EditorState::end_insert_recording`, as the session ends.
+    pub(in crate::editor) fn release_recording(&mut self) -> Option<SourceTicket> {
+        self.recording.take()
+    }
 }
 
 /// Armed around an Insert-key binding dispatch, or a completion-popup Enter,

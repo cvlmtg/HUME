@@ -296,6 +296,7 @@ impl BufferSession {
                 &mut state.active_session,
                 pid,
                 bid,
+                None,
             )
             .map_err(|e| e.message().to_owned())?;
         }
