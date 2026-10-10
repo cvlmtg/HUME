@@ -555,6 +555,41 @@ impl Sandbox {
     }
 }
 
+/// Create a user plugin at `plugins/user/tp/plugin.scm`, write `init.scm`,
+/// evaluate it and apply its effects, as startup does, and wire the host
+/// into an editor over `text`. The caller keeps the `TempDir` alive.
+fn setup_lazy_editor_on(
+    text: &str,
+    init_body: &str,
+    plugin_body: &str,
+) -> (Editor, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), plugin_body).unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(&init_path, init_body).unwrap();
+
+    let mut ed = editor_from(text);
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
+    let effects = {
+        let mut ih = init_host!(ed);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed in setup_lazy_editor_on");
+    ed.apply_script_effects(effects);
+    ed.scripting = Some(host);
+    (ed, dir)
+}
+
+/// [`setup_lazy_editor_on`] over `-[a]>b`.
+fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::TempDir) {
+    setup_lazy_editor_on("-[a]>b\n", init_body, plugin_body)
+}
+
 mod alternate;
 mod async_job;
 mod async_job_steel;

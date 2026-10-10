@@ -9,32 +9,6 @@ mod lazy_activation;
 mod manifest_e2e;
 mod stdlib_plugin;
 
-/// Helper: create a user plugin at `plugins/user/tp/plugin.scm`, write
-/// `init.scm`, evaluate it, set up the lazy stubs, and wire the host into
-/// `ed`.  Caller must keep `TempDir` alive.
-fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::TempDir) {
-    let dir = tempfile::tempdir().unwrap();
-    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.scm"), plugin_body).unwrap();
-    let init_path = dir.path().join("init.scm");
-    std::fs::write(&init_path, init_body).unwrap();
-
-    let mut ed = editor_from("-[a]>b\n");
-    let mut host = ScriptingHost::new(&Dirs {
-        data: Some(dir.path().to_path_buf()),
-        ..Dirs::none()
-    });
-    {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("eval_init must succeed in setup_lazy_editor");
-
-    ed.scripting = Some(host);
-    (ed, dir)
-}
-
 /// Helper: write `init_scm` to a temporary config dir, point a fresh Editor's
 /// config, data and runtime directories at it and fresh tempdirs, and call
 /// `init_scripting`.  Caller must keep the returned `Vec<TempDir>` alive.

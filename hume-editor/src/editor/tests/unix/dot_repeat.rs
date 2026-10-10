@@ -1,5 +1,4 @@
 use super::*;
-use hume_platform::dirs::Dirs;
 
 /// A `#:repeatable` command inside a lazy plugin must be the recorded change
 /// on its FIRST dispatch. `Editor::resolve_mappable` activates the plugin
@@ -11,34 +10,11 @@ use hume_platform::dirs::Dirs;
 /// Not on Windows: Scheme `require` strings embed OS paths with forward slashes.
 #[test]
 fn lazy_repeatable_round_trip() {
-    use hume_scripting::ScriptingHost;
-
-    let dir = tempfile::tempdir().unwrap();
-    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(
-        plugin_dir.join("plugin.scm"),
-        r#"(define-command! "tp-del" "" (lambda () (call! "delete" (focused-pane))) #:repeatable #t)"#,
-    )
-    .unwrap();
-    let init_path = dir.path().join("init.scm");
-    std::fs::write(
-        &init_path,
+    let (mut ed, _dir) = setup_lazy_editor_on(
+        "-[foo]> bar\n",
         r#"(declare-plugin! "user/tp" #:commands '("tp-del"))"#,
-    )
-    .unwrap();
-
-    let mut ed = editor_from("-[foo]> bar\n");
-    let mut host = ScriptingHost::new(&Dirs {
-        data: Some(dir.path().to_path_buf()),
-        ..Dirs::none()
-    });
-    {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("eval_init must succeed");
-    ed.scripting = Some(host);
+        r#"(define-command! "tp-del" "" (lambda () (call! "delete" (focused-pane))) #:repeatable #t)"#,
+    );
 
     // First dispatch: Lazy miss → plugin activates → SteelBacked runs.
     ed.execute_keymap_command("tp-del".into(), Some(1), false);
@@ -65,34 +41,11 @@ fn lazy_repeatable_round_trip() {
 /// command it calls is the recorded change.
 #[test]
 fn lazy_non_repeatable_wrapper_records_its_inner_change_on_first_dispatch() {
-    use hume_scripting::ScriptingHost;
-
-    let dir = tempfile::tempdir().unwrap();
-    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(
-        plugin_dir.join("plugin.scm"),
-        r#"(define-command! "tp-plain" "" (lambda () (call! "delete" (focused-pane))))"#,
-    )
-    .unwrap();
-    let init_path = dir.path().join("init.scm");
-    std::fs::write(
-        &init_path,
+    let (mut ed, _dir) = setup_lazy_editor_on(
+        "-[foo]> bar\n",
         r#"(declare-plugin! "user/tp" #:commands '("tp-plain"))"#,
-    )
-    .unwrap();
-
-    let mut ed = editor_from("-[foo]> bar\n");
-    let mut host = ScriptingHost::new(&Dirs {
-        data: Some(dir.path().to_path_buf()),
-        ..Dirs::none()
-    });
-    {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("eval_init must succeed");
-    ed.scripting = Some(host);
+        r#"(define-command! "tp-plain" "" (lambda () (call! "delete" (focused-pane))))"#,
+    );
 
     ed.execute_keymap_command("tp-plain".into(), Some(1), false);
     assert_eq!(ed.doc().text().to_string(), " bar\n");
@@ -108,39 +61,16 @@ fn lazy_non_repeatable_wrapper_records_its_inner_change_on_first_dispatch() {
 #[test]
 fn lazy_repeatable_insert_bindings_pick_is_recorded_on_first_press() {
     use crate::editor::replay::Input;
-    use hume_scripting::ScriptingHost;
 
-    let dir = tempfile::tempdir().unwrap();
-    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(
-        plugin_dir.join("plugin.scm"),
+    let (mut ed, _dir) = setup_lazy_editor_on(
+        "-[h]>ello\n",
+        r#"(declare-plugin! "user/tp" #:commands '("tp-pick"))
+           (bind-key! 'insert "ctrl-y" "tp-pick")"#,
         r#"(define-command! "tp-pick" ""
              (lambda (pane)
                (picker! pane (list (cons "a" "A")) (lambda (p) (+ 1 0))))
              #:repeatable #t)"#,
-    )
-    .unwrap();
-    let init_path = dir.path().join("init.scm");
-    std::fs::write(
-        &init_path,
-        r#"(declare-plugin! "user/tp" #:commands '("tp-pick"))
-           (bind-key! 'insert "ctrl-y" "tp-pick")"#,
-    )
-    .unwrap();
-
-    let mut ed = editor_from("-[h]>ello\n");
-    let mut host = ScriptingHost::new(&Dirs {
-        data: Some(dir.path().to_path_buf()),
-        ..Dirs::none()
-    });
-    let effects = {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("eval_init must succeed");
-    ed.apply_script_effects(effects);
-    ed.scripting = Some(host);
+    );
 
     ed.feed_key(key('i'));
     ed.feed_key(key_ctrl('y'));
