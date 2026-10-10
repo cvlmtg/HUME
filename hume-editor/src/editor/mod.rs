@@ -340,12 +340,13 @@ pub(crate) struct EditorState {
     /// The change currently being recorded, and the last one settled; `.`
     /// replays the settled one. See [`replay::Recording`].
     pub(in crate::editor) recording: Option<replay::Recording>,
-    /// The recorded change's code running now, if any: a command body
-    /// (`replay::record_change`), an Insert-key binding
-    /// (`Editor::with_insert_key_dispatch`) or an input's callback
-    /// (`Editor::run_answered`), each set through
-    /// [`replay::with_recording_scope`] for the extent of that call. See
-    /// [`replay::RecordingScope`].
+    /// The code running now, if any: a recorded change's command body
+    /// (`replay::record_change`) or an input's callback
+    /// (`Editor::run_answered`), set through
+    /// [`replay::with_recording_scope`], or an Insert key's binding
+    /// (`Editor::with_insert_key_dispatch`), set through
+    /// [`replay::with_insert_key_scope`], each for the extent of that call.
+    /// See [`replay::ScopeSlot`].
     pub(in crate::editor) recording_scope: replay::ScopeSlot,
     /// Accumulating selection-recipe buffer for the *next* edit's dot-repeat.
     ///
@@ -404,15 +405,6 @@ pub(crate) struct EditorState {
     /// passes before it opens, to refuse one reached during `.`, and by a
     /// character read, which takes its answer from it.
     pub(in crate::editor) dot_replay: Option<replay::DotReplay>,
-    /// `true` from the moment `handle_insert` matches a trie leaf until
-    /// that dispatch returns. Dispatch never yields before then, all the
-    /// way through a Steel `call!` (`Editor::dispatch` → `run_steel_command`
-    /// → `%call-native!` → `run_command_sync`), so this is never observed
-    /// stale. `false` outside that window, including while a hook queued
-    /// during the same keypress drains later in `settle`. Set via
-    /// `Editor::with_insert_key_dispatch`. Read by `commands::
-    /// repeat_slot_owned` and `insert-key!`; see each one's own doc for why.
-    pub(in crate::editor) insert_key_dispatch: bool,
     /// The editor's one live Insert or paste undo group, if any. See
     /// [`edit_session::EditSession`]'s own doc, including its own
     /// `dot_capture` field.
@@ -542,7 +534,6 @@ impl Default for EditorState {
             #[cfg(test)]
             sift_scans: 0,
             dot_replay: None,
-            insert_key_dispatch: false,
             active_session: None,
             explicit_count: false,
             pending_ctrl_extend: false,

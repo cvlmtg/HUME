@@ -12,8 +12,8 @@ impl Editor {
 
     pub(in crate::editor) fn handle_key(&mut self, key: KeyEvent) {
         debug_assert!(
-            self.state.recording_scope.running().is_none(),
-            "no recording scope outlives the call that set it"
+            !self.state.recording_scope.is_set(),
+            "nothing in the scope slot outlives the call that set it"
         );
         // How many keystrokes the message-log summary stays visible after
         // `status_msg` clears. Chosen for UX, not technical constraint.
@@ -59,8 +59,8 @@ impl Editor {
             self.replay_dot(pending.count);
         }
         debug_assert!(
-            self.state.recording_scope.running().is_none(),
-            "no recording scope outlives the call that set it"
+            !self.state.recording_scope.is_set(),
+            "nothing in the scope slot outlives the call that set it"
         );
     }
 

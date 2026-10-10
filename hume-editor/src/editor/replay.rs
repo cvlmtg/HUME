@@ -293,15 +293,43 @@ impl RecordingScope {
     }
 }
 
-/// The [`RecordingScope`] running now, if any. Only [`with_recording_scope`]
-/// sets it, for the extent of one call, so no scope outlives the code it
-/// names.
+/// What runs now in [`ScopeSlot`].
+#[derive(Debug)]
+enum Running {
+    /// A recorded change's code.
+    Scope(RecordingScope),
+    /// An Insert key's binding, for its whole dispatch, with its own scope
+    /// when the session records a change.
+    InsertKey(Option<RecordingScope>),
+}
+
+/// The code running now, if any: a [`RecordingScope`], or an Insert key's
+/// binding. Only [`with_recording_scope`] and [`with_insert_key_scope`] set
+/// it, for the extent of one call, so nothing outlives the code it names.
 #[derive(Debug, Default)]
-pub(in crate::editor) struct ScopeSlot(Option<RecordingScope>);
+pub(in crate::editor) struct ScopeSlot(Option<Running>);
 
 impl ScopeSlot {
+    /// The [`RecordingScope`] running now, if any.
     pub(in crate::editor) fn running(&self) -> Option<&RecordingScope> {
-        self.0.as_ref()
+        match &self.0 {
+            Some(Running::Scope(scope) | Running::InsertKey(Some(scope))) => Some(scope),
+            Some(Running::InsertKey(None)) | None => None,
+        }
+    }
+
+    /// Whether an Insert key's binding is dispatching. Dispatch never yields
+    /// before it returns, all the way through a Steel `call!`, so a hook
+    /// queued during the same keypress drains later, in `settle`, with this
+    /// `false`.
+    pub(in crate::editor) fn insert_key(&self) -> bool {
+        matches!(self.0, Some(Running::InsertKey(_)))
+    }
+
+    /// Whether anything runs: a recorded change's code or an Insert key's
+    /// binding.
+    pub(in crate::editor) fn is_set(&self) -> bool {
+        self.0.is_some()
     }
 }
 
@@ -317,21 +345,41 @@ impl AsMut<EditorState> for Editor {
     }
 }
 
-/// Runs `f` with `scope` as the running [`RecordingScope`], restoring the one
-/// it replaced afterward. `scope` drops once `f` returns, closing its source
-/// on the change.
-pub(in crate::editor) fn with_recording_scope<H: AsMut<EditorState>, R>(
+/// Runs `f` with `running` in the [`ScopeSlot`], restoring what it replaced
+/// afterward. A scope in `running` drops once `f` returns, closing its
+/// source on the change.
+fn with_running<H: AsMut<EditorState>, R>(
     host: &mut H,
-    scope: Option<RecordingScope>,
+    running: Option<Running>,
     f: impl FnOnce(&mut H) -> R,
 ) -> R {
-    let prev = std::mem::replace(&mut host.as_mut().recording_scope.0, scope);
+    let prev = std::mem::replace(&mut host.as_mut().recording_scope.0, running);
     let r = f(host);
     drop(std::mem::replace(
         &mut host.as_mut().recording_scope.0,
         prev,
     ));
     r
+}
+
+/// Runs `f` with `scope` as the running [`RecordingScope`], restoring the one
+/// it replaced afterward.
+pub(in crate::editor) fn with_recording_scope<H: AsMut<EditorState>, R>(
+    host: &mut H,
+    scope: Option<RecordingScope>,
+    f: impl FnOnce(&mut H) -> R,
+) -> R {
+    with_running(host, scope.map(Running::Scope), f)
+}
+
+/// Runs `f` as an Insert key's binding, `scope` its own [`RecordingScope`]
+/// (`None` when nothing records it), restoring what it replaced afterward.
+pub(in crate::editor) fn with_insert_key_scope<H: AsMut<EditorState>, R>(
+    host: &mut H,
+    scope: Option<RecordingScope>,
+    f: impl FnOnce(&mut H) -> R,
+) -> R {
+    with_running(host, Some(Running::InsertKey(scope)), f)
 }
 
 /// A fresh change a repeatable command starts, as [`record_change`] records
@@ -379,18 +427,17 @@ pub(in crate::editor) fn record_change<H: AsMut<EditorState>, R>(
 
 /// Whether a repeatable command dispatched now belongs to something already
 /// running rather than starting a change of its own, in which case
-/// [`record_change`] starts none. Four owners:
+/// [`record_change`] starts none. Three owners:
 ///
-/// - A recorded change's own code ([`RecordingScope`]): its command body, an
-///   Insert-key binding, or a callback of one of its inputs. A nested
-///   `call!` there is part of that change.
+/// - The code running in the [`ScopeSlot`]: a recorded change's own code
+///   ([`RecordingScope`]), its command body, an Insert-key binding, or a
+///   callback of one of its inputs, where a nested `call!` is part of that
+///   change; or an Insert key's binding with no scope of its own, in a
+///   session no change records, where a repeatable command the binding
+///   dispatches is that session's input, not a change of its own.
 /// - An Insert session that feeds a recorded change, for its whole extent:
 ///   a hook or timer dispatching mid-session must not replace the change
 ///   the session's keys record into.
-/// - An Insert key's binding, for its whole dispatch
-///   (`insert_key_dispatch`), even in a session no change records: a
-///   repeatable command the binding dispatches is that session's input, not
-///   a change of its own.
 /// - `replay_dot`, which holds the change for its whole extent (`dot_replay`):
 ///   a fresh recording in between would only be discarded.
 ///
@@ -401,9 +448,8 @@ pub(in crate::editor) fn record_change<H: AsMut<EditorState>, R>(
 /// body, so a fresh change created before the body keeps ownership of the
 /// inner entry (outer name wins).
 fn repeat_slot_owned(state: &mut EditorState) -> bool {
-    state.recording_scope.running().is_some()
+    state.recording_scope.is_set()
         || state.session_recording().is_some()
-        || state.insert_key_dispatch
         || state.dot_replay.is_some()
 }
 
