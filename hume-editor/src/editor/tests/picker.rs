@@ -18,7 +18,7 @@ fn marker(name: &str) -> SteelVal {
 }
 
 fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: PickerOpts) {
-    let mut session = PickerSession::new(callback, opts);
+    let mut session = PickerSession::new(callback, opts, Vec::new());
     let picker_items: Vec<PickerItem> = items
         .iter()
         .map(|s| PickerItem {
@@ -566,7 +566,7 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
         ),
     );
 
-    let mut session = PickerSession::new(marker("cb"), PickerOpts::default());
+    let mut session = PickerSession::new(marker("cb"), PickerOpts::default(), Vec::new());
     session.push(vec![PickerItem {
         display: "a".to_string(),
         payload: SteelVal::StringV("a".into()),

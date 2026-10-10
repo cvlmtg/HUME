@@ -647,7 +647,6 @@ impl Editor {
             // populates the queue (e.g. the register name after `Q`) causes
             // replay to run immediately: the results are visible on the very
             // next frame rather than requiring an additional keypress.
-            // The recording is saved/restored so replay does not corrupt dot-repeat.
             self.drain_replay_queue();
             // One cache update covers the entire replay batch. The search
             // cache only changes when the buffer revision changes, so calling

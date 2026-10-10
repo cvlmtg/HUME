@@ -104,8 +104,8 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             // (`with_jump`), and `repeat_slot_owned` keeps a repeatable
             // command it dispatches from starting a change of its own.
             let scope = ed.state.record_binding(cmd.name, reg_cmd.meta().repeatable);
-            let slot = scope.as_ref().and_then(RecordingScope::binding);
-            ed.with_dot_capture(slot, |ed| {
+            let binding = scope.as_ref().and_then(RecordingScope::binding);
+            ed.with_dot_capture(binding, |ed| {
                 ed.with_insert_key_dispatch(scope, |ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
             });
             return;

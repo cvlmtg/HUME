@@ -110,7 +110,7 @@ enum Population {
 /// `picker-close!`;
 /// this module has no Steel-facing surface of its own.
 pub(in crate::editor) struct PickerSession {
-    /// Append-only via `push`/`seed`, the common case, and what lets
+    /// Append-only via `push`/`new`, the common case, and what lets
     /// `push` preserve a selection by index (see `rerank_keeping_selection`).
     /// `replace` is the one mutator that breaks this: it clears the vec
     /// wholesale before re-extending it, for a live requery that must drop
@@ -181,16 +181,22 @@ pub(in crate::editor) struct PickerSession {
 }
 
 impl PickerSession {
-    /// Opens empty: the caller's initial item list (from `picker!`) arrives
-    /// through the same `push` path as any later batch: open empty, then
-    /// attach a source.
-    pub(in crate::editor) fn new(on_select: SteelVal, opts: PickerOpts) -> Self {
+    /// `picker!`: opens with `items`, the list it was given. An empty list
+    /// is not a batch arrival: nothing has come back yet, so `#:pending`
+    /// survives it; a non-empty one goes through `append`, which clears
+    /// `pending` because a populated list needs no "still arriving" marker.
+    /// Every later feed clears `items_from_opener`.
+    pub(in crate::editor) fn new(
+        on_select: SteelVal,
+        opts: PickerOpts,
+        items: Vec<PickerItem>,
+    ) -> Self {
         let population = if opts.pending {
             Population::Awaiting
         } else {
             Population::Complete
         };
-        Self::build(
+        let mut session = Self::build(
             on_select,
             opts.prompt,
             opts.query,
@@ -198,7 +204,11 @@ impl PickerSession {
             opts.actions,
             population,
             PickerMode::Filter,
-        )
+        );
+        if !items.is_empty() {
+            session.append(items);
+        }
+        session
     }
 
     /// `live-picker!`: always live from construction, and always opens
@@ -286,21 +296,10 @@ impl PickerSession {
         }
     }
 
-    /// Seeds the initial item list `picker!` was given. An empty seed is
-    /// not a batch arrival: nothing has come back yet, so `#:pending` must
-    /// survive it; a non-empty one goes through `append`, which clears
-    /// `pending` because a populated list needs no "still arriving" marker.
-    /// The one feed that keeps `items_from_opener`.
-    pub(in crate::editor) fn seed(&mut self, items: Vec<PickerItem>) {
-        if !items.is_empty() {
-            self.append(items);
-        }
-    }
-
     /// Appends `items` and reranks. No token guard here: every
     /// *token-scoped* caller (`picker-push!`, via `EditorHostImpl::picker_feed`)
     /// has already gone through [`super::session_for_token`] before reaching
-    /// this; the other two callers, [`seed`](Self::seed) and
+    /// this; the other two callers, [`new`](Self::new) and
     /// `Editor::drain_picker_source`, hold the session directly (at
     /// construction, and via the frame's own `&mut EditorState`, respectively)
     /// and so have no token to check in the first place.
@@ -322,7 +321,7 @@ impl PickerSession {
         self.append(items);
     }
 
-    /// `push`'s body, shared with `seed`.
+    /// `push`'s body, shared with `new`.
     fn append(&mut self, items: Vec<PickerItem>) {
         if self.take_supersede() {
             self.replace(items);

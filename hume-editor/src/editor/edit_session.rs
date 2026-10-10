@@ -307,7 +307,7 @@ pub(in crate::editor) struct DotCapture {
     /// The entry of the Insert-key binding this capture wraps, which its
     /// net edit takes the place of; `None` for a bare Enter-key accept
     /// (`accept_completion_selection`), which has no entry of its own.
-    pub(in crate::editor) slot: Option<super::replay::BindingId>,
+    pub(in crate::editor) binding: Option<super::replay::BindingId>,
 }
 
 /// Accumulated state for an in-progress insert or paste session.

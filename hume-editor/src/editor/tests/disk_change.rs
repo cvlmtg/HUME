@@ -766,6 +766,7 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
     let session = crate::editor::input_stack::picker::PickerSession::new(
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
+        Vec::new(),
     );
     crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
@@ -917,6 +918,7 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
     let session = crate::editor::input_stack::picker::PickerSession::new(
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
+        Vec::new(),
     );
     crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
@@ -980,6 +982,7 @@ fn picker_above_a_retired_confirm_survives_untouched() {
     let session = crate::editor::input_stack::picker::PickerSession::new(
         steel::rvals::SteelVal::StringV("cb".into()),
         hume_scripting::host::PickerOpts::default(),
+        Vec::new(),
     );
     crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");

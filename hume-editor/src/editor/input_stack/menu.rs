@@ -7,7 +7,7 @@ use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
 
 use super::super::mouse::is_fresh_gesture;
-use super::super::replay::{Answer, AnswerTicket, Choice, DotReplay, InputOpener};
+use super::super::replay::{Answer, AnswerTicket, Choice, DotReplay, InputOpener, PendingAnswer};
 use super::super::{Editor, EditorState, host_token};
 use super::base::BaseLayer;
 use super::placement::{focused_cursor, popup_placement};
@@ -54,16 +54,17 @@ pub(in crate::editor) fn open_menu(
     const WHAT: &str = "show-menu!";
     if let Some(replay) = state.dot_replay.as_mut() {
         replay.answer_call(WHAT, DotReplay::next_menu, |choice| {
-            let arg = match choice {
-                None => steel::rvals::SteelVal::BoolV(false),
-                Some(choice) => {
-                    let i = choice
+            let index = choice
+                .map(|choice| {
+                    choice
                         .find(&items, String::as_str)
-                        .ok_or_else(|| choice.missing(WHAT))?;
-                    steel::rvals::SteelVal::IntV(i as isize)
-                }
-            };
-            Ok((callback, arg))
+                        .ok_or_else(|| choice.missing(WHAT))
+                })
+                .transpose()?;
+            Ok(PendingAnswer::Call {
+                proc: callback,
+                arg: menu_arg(index),
+            })
         })?;
         return Ok(None);
     }
@@ -86,6 +87,14 @@ pub(in crate::editor) fn open_menu(
     let token = menu.token();
     state.push_layer(view, menu);
     Ok(Some(token))
+}
+
+/// The argument a menu's callback gets: the chosen row's index, or `#f`.
+fn menu_arg(index: Option<usize>) -> steel::rvals::SteelVal {
+    match index {
+        Some(i) => steel::rvals::SteelVal::IntV(i as isize),
+        None => steel::rvals::SteelVal::BoolV(false),
+    }
 }
 
 impl MenuLayer {
@@ -111,15 +120,11 @@ impl MenuLayer {
     /// here.
     fn fire(&mut self, state: &mut EditorState, choice: Option<usize>) {
         let picked = choice.map(|i| Choice::of(&self.rows, i, |row| &row.main));
-        let arg = match choice {
-            Some(i) => steel::rvals::SteelVal::IntV(i as isize),
-            None => steel::rvals::SteelVal::BoolV(false),
-        };
         state.queue_answered_call(
             self.answer.take(),
             Answer::Menu(picked),
             self.callback.clone(),
-            arg,
+            menu_arg(choice),
         );
     }
 

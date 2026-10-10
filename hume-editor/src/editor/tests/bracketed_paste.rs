@@ -191,7 +191,7 @@ fn marker(name: &str) -> SteelVal {
 }
 
 fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
-    let mut session = PickerSession::new(marker("on-select"), PickerOpts::default());
+    let mut session = PickerSession::new(marker("on-select"), PickerOpts::default(), Vec::new());
     session.push(
         items
             .iter()

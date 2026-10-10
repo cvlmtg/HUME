@@ -17,9 +17,7 @@ use steel::rvals::SteelVal;
 use super::super::commands::half_page;
 use super::super::keymap::CanonicalKey;
 use super::super::minibuf::flatten_single_line;
-use super::super::replay::{
-    Answer, DotReplay, InputOpener, Pick, Picked, action_unbound, payload_forgotten,
-};
+use super::super::replay::{Answer, DotReplay, InputOpener, PendingAnswer, Pick, Picked};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
@@ -201,7 +199,11 @@ pub(in crate::editor) fn open_picker(
                 None => session.on_select().clone(),
                 Some(key) => session
                     .action_for(key)
-                    .ok_or_else(|| action_unbound(what))?
+                    .ok_or_else(|| {
+                        format!(
+                            "{what}: `.` can't repeat this pick: its key is not one of this picker's actions"
+                        )
+                    })?
                     .clone(),
             };
             let arg = match pick.picked {
@@ -211,9 +213,13 @@ pub(in crate::editor) fn open_picker(
                     .ok_or_else(|| choice.missing(what))?
                     .clone(),
                 Some(Picked::Payload(payload)) => payload,
-                Some(Picked::PayloadForgotten) => return Err(payload_forgotten(what)),
+                Some(Picked::PayloadForgotten) => {
+                    return Err(format!(
+                        "{what}: `.` can't repeat this pick: a config reload forgot the picked value"
+                    ));
+                }
             };
-            Ok((proc, arg))
+            Ok(PendingAnswer::Call { proc, arg })
         })?;
         return Ok(token);
     }

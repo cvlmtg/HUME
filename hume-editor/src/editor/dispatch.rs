@@ -82,13 +82,7 @@ impl Editor {
         // user already staged. The settled recording is filled from this
         // snapshot, not the (possibly further-mutated) live value.
         let pre_recipe = self.state.selection_recipe.clone();
-        // Begin recording before the body so an `on-next-char!` the body makes
-        // attaches to this change and an inner `call!` can't start its own
-        // (outer name wins). A failed body discards the fresh recording,
-        // unless it opened a session or read that outlives it and still feeds
-        // this change.
-        let fresh = meta.repeatable && !commands::repeat_slot_owned(&self.state);
-        let change = fresh.then(|| replay::NewChange {
+        let change = meta.repeatable.then(|| replay::NewChange {
             command: name.clone(),
             count: ctx.count.unwrap_or(1),
             seed: None,

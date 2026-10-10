@@ -614,6 +614,7 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
     let mut session = crate::editor::input_stack::picker::PickerSession::new(
         steel::rvals::SteelVal::StringV("cb".into()),
         hume_scripting::host::PickerOpts::default(),
+        Vec::new(),
     );
     session.push(vec![crate::editor::input_stack::picker::PickerItem {
         display: "one".to_string(),

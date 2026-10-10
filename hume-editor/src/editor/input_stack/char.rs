@@ -23,9 +23,7 @@ use termina::event::{KeyCode, Modifiers, MouseEventKind};
 
 use super::super::commands::{self, PendingDispatch};
 use super::super::event::PendingWork;
-use super::super::replay::{
-    Answer, AnswerTicket, InputOpener, PendingAnswer, Replayed, dot_refusal,
-};
+use super::super::replay::{Answer, AnswerTicket, DotReplay, InputOpener, PendingAnswer};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal};
 
@@ -91,7 +89,11 @@ pub(in crate::editor) fn read_command_char(
     repeatable: bool,
 ) -> Result<(), String> {
     let what = pending.name.to_string();
-    let opener = InputOpener::Operand { repeatable };
+    let opener = if repeatable {
+        InputOpener::RepeatableOperand
+    } else {
+        InputOpener::Code
+    };
     read_interactive(state, view, CharThen::Dispatch(pending), &what, opener)
 }
 
@@ -121,10 +123,9 @@ fn read_interactive(
     opener: InputOpener,
 ) -> Result<(), String> {
     if let Some(replay) = state.dot_replay.as_mut() {
-        if let Replayed::Answered(answer) = replay.next_char().ok_or_else(|| dot_refusal(what))? {
-            replay.push_pending(PendingAnswer::Read(CharRead { then, source: None }, answer));
-        }
-        return Ok(());
+        return replay.answer_call(what, DotReplay::next_char, |answer| {
+            Ok(PendingAnswer::Read(CharRead { then, source: None }, answer))
+        });
     }
     let source = state.waiting_input(what, opener)?.ticket();
     let read = CharRead { then, source };
@@ -141,7 +142,8 @@ pub(in crate::editor) enum Resolved {
         ch: char,
         source: Option<AnswerTicket>,
     },
-    /// Call the callback: a `PendingWork::Call` carrying the read's dot source.
+    /// Call the callback: a `PendingWork::Call` carrying the read's answer
+    /// ticket.
     Call(PendingWork),
 }
 

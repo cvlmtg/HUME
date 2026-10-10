@@ -14,7 +14,7 @@ use std::sync::Arc;
 use steel::rvals::SteelVal;
 
 fn open_bare_picker(ed: &mut Editor) {
-    let session = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default());
+    let session = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default(), Vec::new());
     picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
 }
@@ -270,7 +270,7 @@ fn replacing_the_session_kills_the_previous_source_child() {
 
     // A fresh `open_picker` call replaces (and, via `close_picker`, drops)
     // whatever session was open, same as a second `picker!` from Steel.
-    let replacement = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default());
+    let replacement = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default(), Vec::new());
     picker::open_picker(&mut ed.state, &ed.view, replacement, "picker!")
         .expect("no `.` is in progress");
 

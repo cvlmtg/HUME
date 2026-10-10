@@ -247,8 +247,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         opts: PickerOpts,
     ) -> Result<HostToken, String> {
         self.require_focused_pane(pane)?;
-        let mut session = PickerSession::new(on_select, opts);
-        session.seed(picker::picker_items(items));
+        let session = PickerSession::new(on_select, opts, picker::picker_items(items));
         picker::open_picker(self.state, self.view, session, "picker!")
     }
 

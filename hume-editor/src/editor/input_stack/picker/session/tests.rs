@@ -12,16 +12,21 @@ fn dummy_on_select() -> SteelVal {
 }
 
 fn open() -> PickerSession {
-    PickerSession::new(dummy_on_select(), PickerOpts::default())
+    PickerSession::new(dummy_on_select(), PickerOpts::default(), Vec::new())
 }
 
 fn open_pending() -> PickerSession {
+    open_pending_with(Vec::new())
+}
+
+fn open_pending_with(items: Vec<PickerItem>) -> PickerSession {
     PickerSession::new(
         dummy_on_select(),
         PickerOpts {
             pending: true,
             ..Default::default()
         },
+        items,
     )
 }
 
@@ -70,6 +75,7 @@ fn prompt_is_stored_verbatim() {
             prompt: "files: ".to_string(),
             ..Default::default()
         },
+        Vec::new(),
     );
     assert_eq!(s.prompt(), "files: ");
 }
@@ -97,23 +103,21 @@ fn pending_flag_cleared_by_a_matching_push_even_with_an_empty_batch() {
 }
 
 #[test]
-fn seed_with_items_clears_pending() {
-    let mut s = open_pending();
-    s.seed(items(&["a"]));
+fn opening_with_items_clears_pending() {
+    let s = open_pending_with(items(&["a"]));
     assert!(
         !s.is_pending(),
-        "seeding real items means the list is already populated, no \"still arriving\" marker needed"
+        "opening with real items means the list is already populated, no \"still arriving\" marker needed"
     );
     assert_eq!(window_vec(&s, 10), vec!["a"]);
 }
 
 #[test]
-fn empty_seed_leaves_pending_intact() {
-    let mut s = open_pending();
-    s.seed(items(&[]));
+fn opening_empty_leaves_pending_intact() {
+    let s = open_pending_with(items(&[]));
     assert!(
         s.is_pending(),
-        "an empty seed is not a batch arrival: `#:pending`'s caller intent must survive it"
+        "an empty opening list is not a batch arrival: `#:pending`'s caller intent must survive it"
     );
 }
 
@@ -169,6 +173,7 @@ fn query_prefill_is_visible_and_applied_at_construction() {
             query: "f".to_string(),
             ..Default::default()
         },
+        Vec::new(),
     );
     assert_eq!(s.query(), "f");
     // Applied through the same `rerank` a later push would use: a

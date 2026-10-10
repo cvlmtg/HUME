@@ -4075,7 +4075,7 @@ fn a_stale_answer_never_lands_in_a_later_bindings_entry() {
     ed.state.finalize_dot_capture(DotCapture {
         chain: DotChain::new(test_fixtures::testing::at(&text, 0), &text),
         interactive: true,
-        slot: a_entry,
+        binding: a_entry,
     });
 
     let b = ed

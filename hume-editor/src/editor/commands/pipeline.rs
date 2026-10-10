@@ -848,38 +848,6 @@ pub(in crate::editor::commands::pipeline) fn step_align_view(
     }
 }
 
-/// Whether a repeatable command dispatched now belongs to something already
-/// running rather than starting a change of its own. Shared by [`run`] (the
-/// native path, above) and `Editor::dispatch`'s Steel path. Four owners:
-///
-/// - A recorded change's own code ([`RecordingScope`]): its command body, an
-///   Insert-key binding, or a callback of one of its inputs. A nested
-///   `call!` there is part of that change.
-/// - An Insert session that feeds a recorded change, for its whole extent:
-///   a hook or timer dispatching mid-session must not replace the change
-///   the session's keys record into.
-/// - An Insert key's binding, for its whole dispatch
-///   (`insert_key_dispatch`), even in a session no change records: a
-///   repeatable command the binding dispatches is that session's input, not
-///   a change of its own.
-/// - `replay_dot`, which holds the change for its whole extent (`dot_replay`):
-///   a fresh recording in between would only be discarded.
-///
-/// A change only waiting on an input (a pending read, an open menu, a queued
-/// callback) owns nothing: a key that dismisses its menu starts its own.
-///
-/// Read *before* the body on both paths: `i`/`c`/`o` open the session inside
-/// their own body, so a fresh change created before the body keeps ownership
-/// of the inner entry (outer name wins).
-///
-/// [`RecordingScope`]: crate::editor::replay::RecordingScope
-pub(in crate::editor) fn repeat_slot_owned(state: &EditorState) -> bool {
-    state.recording_scope.running().is_some()
-        || state.insert_session_records()
-        || state.insert_key_dispatch
-        || state.dot_replay.is_some()
-}
-
 /// Update the selection recipe buffer after a command dispatch.
 ///
 /// Accumulation rule:
@@ -986,33 +954,22 @@ pub(in crate::editor) fn run(
     // rather than re-probed here on every dispatch.
     let pane = bound.pane();
     let focused = bound.target_focused();
-    // A fresh repeatable change begins recording *before* the body, so a read
-    // the body makes (a Steel `on-next-char!` reached through `call!`) attaches
-    // to it. Only when this dispatch owns the slot: one already inside a
-    // recorded change (an Insert session, a read callback) or a `.` replay does
-    // not start a new change.
-    let fresh = meta.repeatable && focused.is_some() && !repeat_slot_owned(state);
-
     // BEFORE
     state.command_refused = false;
     if focused.is_some() {
         step_paste_commit(state, meta.defers_paste_commit);
     }
     let pre_recipe = focused.and_then(|_| step_snapshot_recipe(state, meta.repeatable));
-    // A body that refused or errored did not succeed: unless something it
-    // opened still holds the change, the change recorded before it is
-    // restored, so a no-op does not clobber the slot (see
-    // `EditorState::command_refused`). `pre_recipe` is the kept change's
-    // selection recipe, and is dropped rather than restored into
-    // `state.selection_recipe`: every repeatable command is
-    // `SelectionTracking::Untracked` (enforced by
+    // `pre_recipe` is the new change's selection recipe, and is dropped
+    // rather than restored into `state.selection_recipe`: every repeatable
+    // command is `SelectionTracking::Untracked` (enforced by
     // `registry::tests::no_command_is_both_repeatable_and_selection_tracking`),
     // so `step_update_recipe` below clears it unconditionally.
-    let change = fresh.then(|| NewChange {
+    let change = pre_recipe.map(|recipe| NewChange {
         command: name.clone(),
         count: ctx.count.unwrap_or(1),
         seed: bound.arg(),
-        recipe: pre_recipe.unwrap_or_default(),
+        recipe,
     });
     // Only snapshot the selection when step_update_recipe could push a step:
     // a Move-mode Motion (the overwhelming majority of keypresses) always

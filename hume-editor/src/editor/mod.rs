@@ -828,8 +828,8 @@ impl EditorState {
     /// callback: carries the `ResponseAnchor` already checked once at LSP
     /// drain time, so `Editor::run_pending_batch` can re-check it at
     /// dequeue. See `PendingWork::Call`'s own doc for why the drain-time
-    /// check alone isn't enough. Never carries a dot source: an LSP response
-    /// resolves no waiting input.
+    /// check alone isn't enough. Never carries an answer ticket: an LSP
+    /// response resolves no waiting input.
     pub(in crate::editor) fn queue_steel_call_anchored(
         &mut self,
         proc: steel::rvals::SteelVal,
