@@ -1807,6 +1807,57 @@ fn dot_repeats_an_arrow_key_inside_insert() {
     assert_eq!(ed.doc().text().to_string(), "acbhello\nacbworld\n");
 }
 
+/// An arrow key inside the session ends the typed run, so Esc leaves a
+/// cursor instead of selecting what was typed. `.` leaves the same cursor.
+#[test]
+fn dot_after_an_arrow_key_inside_insert_leaves_the_cursor_it_left_live() {
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key('b'));
+    ed.feed_key(key_left());
+    ed.feed_key(key('c'));
+    ed.feed_key(key_esc());
+    assert_eq!(state(&ed), "ac-[b]>hello\nworld\n");
+
+    select_marked(&mut ed, "acbhello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(state(&ed), "acbhello\nac-[b]>world\n");
+}
+
+/// A pattern command bound to an Insert key opens a prompt `.` cannot
+/// answer, so the change ends before that key: `.` repeats the text typed
+/// before it and opens no prompt.
+#[test]
+fn dot_stops_before_an_insert_key_that_opened_a_pattern_prompt() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(bind-key! 'insert "ctrl-s" "search-forward")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_ctrl('s'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "xhello\nworld\n");
+
+    select_marked(&mut ed, "xhello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "xhello\nxworld\n");
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(
+        ed.state
+            .input
+            .find::<crate::editor::input_stack::SearchLayer>()
+            .is_none()
+    );
+    assert_eq!(status(&ed), "");
+}
+
 /// A native command bound directly to an Insert key must not overwrite
 /// the recorded change if it's itself repeatable. That slot belongs to
 /// whichever command opened the Insert session; the key is recorded into
@@ -2399,10 +2450,8 @@ fn dot_repeat_binding_taking_the_interactive_branch_only_on_replay_errors_loudly
 
 /// A replayed macro whose own recorded keys leave Insert mode open (its own
 /// Esc rebound to a no-op before replay, so the macro's queue drains while
-/// still in Insert) must not discard the macro's own in-progress action for
-/// the one that was live before `q<reg>` ran. The session the user finishes
-/// by hand belongs to the macro's own entry command, and `.` must repeat all
-/// of it, not the pre-macro action.
+/// still in Insert). The session the user finishes by hand belongs to the
+/// macro's own entry command, and `.` repeats all of it.
 #[test]
 fn dot_after_macro_leaves_insert_open_repeats_the_macros_own_session() {
     let tmp = tempfile::tempdir().unwrap();

@@ -678,11 +678,11 @@ fn report_refusal(state: &mut EditorState, e: CommandError) {
     state.command_refused = true;
 }
 
-/// Run a bound native command's body with no dispatch bookkeeping: the
-/// shape dot-repeat replay ([`crate::editor::Editor::replay_dot`]) needs
-/// directly; [`run`] wraps
-/// it with the bookkeeping every other dispatch also needs. Infallible:
-/// EditorCmd errors are reported but never propagated.
+/// Run a bound native command's body with no dispatch bookkeeping: [`run`]
+/// wraps it with the bookkeeping every dispatch needs, and dot-repeat replay
+/// ([`crate::editor::Editor::replay_dot`]) runs its selection-recipe steps
+/// through it directly. Infallible: EditorCmd errors are reported but never
+/// propagated.
 ///
 /// The single writer of `state.explicit_count`: `ctx.count` is `None` for a
 /// bare keyboard press (no count typed) or for a Steel `call!` that explicitly

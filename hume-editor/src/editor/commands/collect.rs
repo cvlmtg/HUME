@@ -17,13 +17,14 @@ use super::{
 /// Read `missing` from the user, then run its command on `pane` as
 /// dispatched with `ctx`. Starting the read commits the open paste session
 /// as the command's keypress would, even if the read is then cancelled.
+/// Returns `false` when the read was refused, which is reported.
 pub(in crate::editor) fn collect_operand(
     state: &mut EditorState,
     view: &mut EngineView,
     missing: Missing,
     pane: PaneHandle,
     ctx: CmdCtx,
-) {
+) -> bool {
     let Missing {
         name,
         commits_paste,
@@ -33,15 +34,18 @@ pub(in crate::editor) fn collect_operand(
     if commits_paste {
         state.commit_paste_session();
     }
-    match operand {
-        MissingOperand::Char => {
-            let pending = PendingDispatch { name, pane, ctx };
-            if let Err(msg) = read_command_char(state, view, pending, repeatable) {
-                state.report(Severity::Error, msg);
-            }
-        }
+    let pending = PendingDispatch { name, pane, ctx };
+    let opened = match operand {
+        MissingOperand::Char => read_command_char(state, view, pending, repeatable),
         MissingOperand::Pattern { prompt, fp } => {
-            open_pattern_prompt(state, view, fp, prompt, PendingDispatch { name, pane, ctx });
+            open_pattern_prompt(state, view, fp, prompt, pending)
+        }
+    };
+    match opened {
+        Ok(()) => true,
+        Err(msg) => {
+            state.report(Severity::Error, msg);
+            false
         }
     }
 }

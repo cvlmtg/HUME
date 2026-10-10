@@ -34,7 +34,6 @@ use super::dot_chain::{ChainBroken, DotChain};
 use super::edit_session::{self, DotCapture, EditSession, EditSessionKind, InsertState};
 use super::input_stack::char::CharRead;
 use super::keymap::CanonicalKey;
-use super::registry::MappableCommand;
 use super::{Editor, EditorState, Mode, commands, doc_ops};
 
 // ── The recorded change ───────────────────────────────────────────────────────
@@ -159,10 +158,10 @@ pub(crate) enum Input {
     /// per-char keys: a synthesized `Enter` would auto-indent, which a real
     /// paste never does.
     Paste(String),
-    /// A key bound in the Insert keymap, re-run on replay via
-    /// [`Editor::replay_command`], so it decides again at the new cursor,
-    /// its own `call!`s, register prefix, and `#:extend` included. Its
-    /// interactive inputs are answered from `answers`. A binding whose
+    /// A key bound in the Insert keymap, re-run on replay through
+    /// [`Editor::dispatch`] as the live key was, so it decides again at the
+    /// new cursor, its own `call!`s, register prefix, and `#:extend`
+    /// included. Its interactive inputs are answered from `answers`. A binding whose
     /// command is not repeatable has none: an input it opens ends the
     /// change and drops this entry.
     Binding {
@@ -512,7 +511,7 @@ impl Recording {
 
     /// `true` while an input source is still outstanding and the change was
     /// not stopped.
-    pub(in crate::editor) fn accepting(&self) -> bool {
+    fn accepting(&self) -> bool {
         !self.stopped && Rc::strong_count(&self.sources) > 1
     }
 
@@ -703,11 +702,6 @@ pub(crate) struct PendingRepeat {
 // ── Recording lifecycle (EditorState) ─────────────────────────────────────────
 
 impl EditorState {
-    /// `true` while a recording is accepting input.
-    pub(in crate::editor) fn recording_accepting(&self) -> bool {
-        self.recording.as_ref().is_some_and(Recording::accepting)
-    }
-
     /// Forget every pick's payload: payloads belong to the Steel engine a
     /// reload is replacing. A pick replayed by its choice is unaffected; one
     /// replayed by its payload becomes [`Picked::PayloadForgotten`].
@@ -1159,66 +1153,7 @@ impl Editor {
         }
     }
 
-    /// Run `cmd` (already resolved from the registry) as one replayed step,
-    /// native or Steel/Lazy alike. The main command and each `Input::Binding`
-    /// share this. A native command's operand is its first answer, as live
-    /// (dispatched with one, or reading it); a Steel command's interactive
-    /// inputs take their answers during the body. Returns `false` on the same
-    /// failure classes as `run_steel_command` (a Steel body can fail on
-    /// replay even though the original run didn't), and when a native
-    /// command's operand is missing or doesn't fit, which is reported. A
-    /// native command whose operand read was cancelled or never resolved did
-    /// nothing live, and does nothing here.
-    fn replay_command(
-        &mut self,
-        cmd: MappableCommand,
-        fp: commands::FocusedPane,
-        ctx: &CmdCtx,
-    ) -> bool {
-        match &cmd {
-            MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
-                if !self.run_steel_command(cmd.name(), ctx) {
-                    return false;
-                }
-                // Inner call! dispatches inside the Steel body run through
-                // `commands::run` → step_update_recipe. Clear it so stale steps
-                // don't contaminate the next command's recipe accumulation.
-                self.state.selection_recipe.clear();
-                true
-            }
-            _ => {
-                let arg = match self
-                    .state
-                    .dot_replay
-                    .as_mut()
-                    .and_then(DotReplay::next_char)
-                {
-                    Some(Replayed::Answered(Some(ch))) => Some(CommandArg::Char(ch)),
-                    Some(Replayed::Answered(None) | Replayed::Unanswered) => return true,
-                    None => None,
-                };
-                match commands::BoundCommand::focused(cmd, fp, arg) {
-                    Ok(bound) => {
-                        commands::run_body(&mut self.state, &mut self.view, bound, ctx);
-                        true
-                    }
-                    Err(commands::FocusedBindError::Arg { name, error }) => {
-                        commands::report_arg_error(&mut self.state, &name, &error);
-                        false
-                    }
-                    Err(commands::FocusedBindError::NeedsOperand(missing)) => {
-                        commands::report_arg_error(&mut self.state, &missing.name, &missing);
-                        false
-                    }
-                    Err(commands::FocusedBindError::NotNative(_)) => {
-                        unreachable!("this arm already excluded SteelBacked/Lazy above")
-                    }
-                }
-            }
-        }
-    }
-
-    /// Replay a dot-repeat change directly, bypassing dispatch bookkeeping.
+    /// Replay a dot-repeat change.
     ///
     /// Takes the recording out for the whole replay and restores it afterward
     /// so `.` chains, which is also what keeps the replay from recording into
@@ -1240,20 +1175,15 @@ impl Editor {
     /// `replay_dot`'s body: replays the selection recipe, re-runs the command
     /// (its interactive inputs answered from its recorded answers), then walks
     /// the transcript, feeding each input into the path it names (see
-    /// [`Input`]).
+    /// [`Input`]). The command and each [`Input::Binding`] run through
+    /// [`Editor::dispatch`], the funnel their live keypress went through.
     fn replay_action(&mut self, action: &RepeatableAction, count: usize) {
         // Read once, at entry: recipe steps never move focus.
         let fp = commands::FocusedPane::current(&self.state);
 
         // Resolve the command before opening the edit group: a missing command
         // must return while there is still no cleanup obligation.
-        let Some(edit_cmd) = self
-            .state
-            .config
-            .registry
-            .get_mappable(action.command.as_ref())
-            .cloned()
-        else {
+        let Some(edit_cmd) = self.resolve_mappable(action.command.as_ref()) else {
             return;
         };
 
@@ -1324,11 +1254,13 @@ impl Editor {
             );
         }
 
-        let ctx = CmdCtx {
-            count: Some(count),
-            extend: false,
-        };
-        let ran = self.replay_command(edit_cmd, fp, &ctx);
+        let ran = self.dispatch(
+            edit_cmd,
+            CmdCtx {
+                count: Some(count),
+                extend: false,
+            },
+        );
         self.finish_replayed_answers(ran);
         if !ran {
             // Close whatever the group opened above became so it can't leak,
@@ -1371,7 +1303,7 @@ impl Editor {
                     // the body reaches with no answer for it (it decided
                     // differently than it did live) refuses loudly instead.
                     let ran = with_insert_key_scope(self, None, |ed| {
-                        ed.replay_command(cmd, fp, &super::input_stack::insert::INSERT_KEY_CTX)
+                        ed.dispatch(cmd, super::input_stack::insert::INSERT_KEY_CTX)
                     });
                     self.finish_replayed_answers(ran);
                     if self.state.mode() != Mode::Insert {
@@ -1479,10 +1411,9 @@ impl Editor {
     /// `replay_queue.is_empty()` would already be `true` and would fail to
     /// suppress it.
     ///
-    /// Saves and restores the recording so replay does not corrupt dot-repeat,
-    /// unless the macro left its own change accepting input (an Insert
-    /// session, a pending read or pick): keeping it, rather than restoring
-    /// the saved one, makes a following `.` repeat what the macro started.
+    /// Replayed keys record changes as typed keys do: `.` inside a macro
+    /// repeats the latest change, the one made before the macro included,
+    /// and `.` after a macro repeats the last change it made.
     ///
     /// Settling once per replayed key, not once after the whole queue, keeps a
     /// macro's own hooks in the loop: a plugin that reconfigures the buffer on
@@ -1499,7 +1430,6 @@ impl Editor {
         if self.state.replay_queue.is_empty() {
             return;
         }
-        let saved = self.state.recording.take();
         let message_already_logged = self.state.message_logged_this_input;
         self.state.is_replaying = true;
         while let Some(key) = self.state.replay_queue.pop_front() {
@@ -1511,9 +1441,6 @@ impl Editor {
             }
         }
         self.state.is_replaying = false;
-        if !self.state.recording_accepting() {
-            self.state.recording = saved;
-        }
     }
 }
 

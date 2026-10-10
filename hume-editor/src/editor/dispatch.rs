@@ -39,30 +39,33 @@ impl Editor {
     /// executed via [`Editor::run_steel_command`] (which needs `&mut Editor` for
     /// `self.scripting`).
     ///
-    /// Dot-repeat replay bypasses this for the commands it replays. It
-    /// calls [`commands::run_body`] or `run_steel_command` directly, though
-    /// a replayed Steel body's own `call!`s still reach [`commands::run`].
-    ///
     /// A native command dispatched without the operand it takes reads it
-    /// from the user first: the next key's character, or its prompt.
-    pub(in crate::editor) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) {
+    /// from the user first: the next key's character, or its prompt. During
+    /// `.` that read takes the recorded answer instead.
+    ///
+    /// Returns `false` when the command refused or failed, or its operand
+    /// read was refused; `true` otherwise, including while it waits on its
+    /// operand.
+    pub(in crate::editor) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) -> bool {
         // Native path: a keypress always acts at the focused pane.
         // `NotNative` hands `cmd` back unbound for a Steel-backed/Lazy
         // command, which the path below dispatches instead.
         let fp = commands::FocusedPane::current(&self.state);
         let cmd = match commands::BoundCommand::focused(cmd, fp, None) {
-            Ok(bound) => {
-                commands::run(&mut self.state, &mut self.view, bound, ctx);
-                return;
-            }
+            Ok(bound) => return commands::run(&mut self.state, &mut self.view, bound, ctx),
             Err(commands::FocusedBindError::NeedsOperand(missing)) => {
                 let pane = fp.handle(&self.view);
-                commands::collect_operand(&mut self.state, &mut self.view, missing, pane, ctx);
-                return;
+                return commands::collect_operand(
+                    &mut self.state,
+                    &mut self.view,
+                    missing,
+                    pane,
+                    ctx,
+                );
             }
             Err(commands::FocusedBindError::Arg { name, error }) => {
                 commands::report_arg_error(&mut self.state, &name, &error);
-                return;
+                return false;
             }
             Err(commands::FocusedBindError::NotNative(cmd)) => cmd,
         };
@@ -105,7 +108,7 @@ impl Editor {
             // Failed command: undo whatever a partial inner dispatch wrote to
             // the recipe.
             self.state.selection_recipe = pre_recipe;
-            return;
+            return false;
         }
 
         // AFTER
@@ -122,6 +125,7 @@ impl Editor {
         // step_align_view: their meta hardcodes is_jump = clears_extend =
         // aligns_view = false. An inner native (call! …) still fires all three
         // because it routes through `commands::run` with its own meta.
+        true
     }
 
     /// Activate `plugin` (a `Lazy` stub's owner), reporting the standard
@@ -217,14 +221,13 @@ impl Editor {
 
         // Classified by `name` (never a passed-in `MappableCommand`): `name`
         // is the single source of truth for which command this call runs:
-        // both callers (`dispatch`, `replay_command`) already derive it from
-        // their own `cmd`, so re-deriving the entry from that same `name`
-        // rules out a caller ever activating one command's plugin while
-        // running another's body. Pure registry metadata, resolved (and its
-        // arity/arg-count errors reported) before the `scripting` guard
-        // below, so a `:cmd` arity mismatch is reported even in the
-        // (test-only) case where a SteelBacked entry exists in the registry
-        // but no scripting host is installed.
+        // `dispatch` already derives it from its own `cmd`, so re-deriving
+        // the entry from that same `name` rules out ever activating one
+        // command's plugin while running another's body. Pure registry
+        // metadata, resolved (and its arity/arg-count errors reported) before
+        // the `scripting` guard below, so a `:cmd` arity mismatch is reported
+        // even in the (test-only) case where a SteelBacked entry exists in
+        // the registry but no scripting host is installed.
         let (inline_output, cmd_arity, cmd_is_variadic) =
             match self.state.config.registry.get_mappable(name) {
                 Some(MappableCommand::SteelBacked {

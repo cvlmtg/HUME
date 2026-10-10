@@ -17,6 +17,7 @@ use super::super::input_stack::{
     preview_search, sift_within,
 };
 use super::super::registry::PatternPrompt;
+use super::super::replay::InputOpener;
 use super::super::{EditorState, MiniBuffer};
 use super::{
     CommandPane, FocusedPane, PendingDispatch, doc, effective_word_chars, pane_selections,
@@ -115,21 +116,27 @@ pub(in crate::editor) fn cmd_search_backward(
 /// Open `prompt` in `fp` to read the pattern `then` was dispatched without.
 /// Selections that are all bare cursors have nothing to sift, so the sift
 /// prompt doesn't open over them.
+///
+/// The prompt is an interactive input `.` never answers: it passes
+/// `EditorState::waiting_input` as it opens, which ends the change in flight
+/// and, during `.`, refuses with the returned message.
 pub(in crate::editor) fn open_pattern_prompt(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
     prompt: PatternPrompt,
     then: PendingDispatch,
-) {
+) -> Result<(), String> {
     match prompt {
         PatternPrompt::Search(direction) => {
+            drop(state.waiting_input(&then.name, InputOpener::Code)?);
             begin_search(state, view, fp, direction, then);
         }
         PatternPrompt::Sift => {
             if all_cursors(state, view, fp.pane()) {
-                return;
+                return Ok(());
             }
+            drop(state.waiting_input(&then.name, InputOpener::Code)?);
             // `SiftLayer::setup` snapshots the current selections once the
             // layer lands; see `SearchLayer::setup`'s doc for why the capture
             // happens there rather than here.
@@ -144,6 +151,7 @@ pub(in crate::editor) fn open_pattern_prompt(
             );
         }
     }
+    Ok(())
 }
 
 /// Ensure `t`'s buffer has an active search pattern.

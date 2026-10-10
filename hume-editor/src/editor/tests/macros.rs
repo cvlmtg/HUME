@@ -438,8 +438,7 @@ fn macro_insert_mode_round_trip() {
     );
 }
 
-/// After replaying a macro, `.` must repeat the last *editing* action, not
-/// the macro itself. The recorded change is saved/restored around the replay drain.
+/// A macro that makes no change leaves the change `.` repeats as it was.
 #[test]
 fn macro_replay_preserves_dot_repeat() {
     let mut ed = editor_from("-[a]>bc\nxyz\n");
@@ -464,7 +463,7 @@ fn macro_replay_preserves_dot_repeat() {
     ed.handle_key(key('q'));
     ed.drain_replay_queue();
 
-    // the recorded change must still be "delete", not whatever the macro did.
+    // The macro only moved, so the recorded change is still "delete".
     let action_after_replay = ed.state.last_action().map(|a| a.command.as_ref());
     assert_eq!(
         action_after_replay,
@@ -472,6 +471,34 @@ fn macro_replay_preserves_dot_repeat() {
         "dot-repeat must survive macro replay; got {:?}",
         action_after_replay
     );
+}
+
+/// `.` inside a macro repeats the change made before the macro ran.
+#[test]
+fn dot_inside_a_macro_repeats_the_change_made_before_it() {
+    let mut ed = editor_from("-[a]>b\ncd\n");
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), "b\ncd\n");
+
+    ed.state
+        .registers
+        .write_macro('q', vec![key('j'), key('.')]);
+    ed.feed_key(key('q'));
+    ed.feed_key(key('q'));
+    assert_eq!(ed.doc().text().to_string(), "b\nd\n");
+}
+
+/// `.` after a macro repeats the last change the macro made.
+#[test]
+fn dot_after_a_macro_repeats_the_macros_last_change() {
+    let mut ed = editor_from("-[a]>bcd\n");
+    ed.state.registers.write_macro('q', vec![key('d')]);
+    ed.feed_key(key('q'));
+    ed.feed_key(key('q'));
+    assert_eq!(ed.doc().text().to_string(), "bcd\n");
+
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "cd\n");
 }
 
 /// Pressing `q` while recording should be silently captured as a recorded key.
@@ -764,14 +791,9 @@ fn macro_with_two_pastes_does_not_panic() {
 
 /// `.` inside a macro replay fires `replay_dot` within the replay loop.
 ///
-/// `drain_replay_queue` clears the recorded change before the loop (to prevent
-/// the macro's edits from corrupting the user's stored dot-repeat). This means `.`
-/// inside a macro can only repeat an edit that occurred earlier in the SAME macro,
-/// not any pre-macro action.
-///
-/// Macro `['d', '.']` reproduces this: the inner `d` stamps the recorded change
-/// inside the loop, then `.` reads it and fires `replay_dot` at the tail
-/// of the inner `handle_key` call, within `drain_replay_queue`'s loop, not after.
+/// Macro `['d', '.']`: the inner `d` records the change inside the loop, then
+/// `.` reads it and fires `replay_dot` at the tail of the inner `handle_key`
+/// call, within `drain_replay_queue`'s loop, not after.
 ///
 /// If `replay_dot` ran only after the replay loop, the `.` would set
 /// `pending_repeat` on the last iteration without draining it, leaving the
@@ -800,10 +822,10 @@ fn dot_inside_macro_replay_fires_drain() {
         "dot inside macro replay must fire drain within loop; got: {buf:?}"
     );
 
-    // drain_replay_queue restores the recorded change from before the replay (None here).
-    assert!(
-        ed.state.last_action().is_none(),
-        "the recorded change must be restored to pre-replay value after drain"
+    // The macro's own change stays recorded for a `.` after it.
+    assert_eq!(
+        ed.state.last_action().map(|a| a.command.as_ref()),
+        Some("delete")
     );
 }
 
