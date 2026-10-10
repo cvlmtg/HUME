@@ -4056,7 +4056,6 @@ fn a_stale_answer_never_lands_in_a_later_bindings_entry() {
             state
                 .waiting_input("ask", InputOpener::Code)
                 .expect("not during `.`")
-                .ticket()
         })
         .expect("a repeatable binding's input records")
     }

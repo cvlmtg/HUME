@@ -51,7 +51,7 @@ pub(in crate::editor) fn open_prompt(
     if state.input.is::<PromptLayer>(state.input.mode_layer()) {
         return Err("prompt!: a minibuffer session is already open".to_string());
     }
-    let answer = state.waiting_input(WHAT, InputOpener::Code)?.ticket();
+    let answer = state.waiting_input(WHAT, InputOpener::Code)?;
     state.history.begin_session_all();
     state.push_mode_layer(
         view,

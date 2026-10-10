@@ -74,7 +74,7 @@ pub(in crate::editor) fn open_menu(
     if state.async_opener_stale::<BaseLayer, MenuLayer>(WHAT) {
         return Ok(None);
     }
-    let answer = state.waiting_input(WHAT, InputOpener::Code)?.ticket();
+    let answer = state.waiting_input(WHAT, InputOpener::Code)?;
     // Retires a prior `Menu` on the self-replace path, firing its callback
     // with `#f` explicitly (`take_firing_false`, shared with the drawer):
     // only this path, a genuine refresh, should fire one. Any open popup is

@@ -616,15 +616,6 @@ impl DotReplay {
 #[must_use]
 pub(in crate::editor) struct Interactive(());
 
-/// Proof that an interactive input resolving on a later key (a read, a
-/// picker, a prompt, a menu) passed [`EditorState::waiting_input`], which is
-/// the only way to get one. Carries the [`AnswerTicket`] its answer records
-/// under, if it belongs to a recorded change.
-#[must_use]
-pub(in crate::editor) struct WaitingInput {
-    ticket: Option<AnswerTicket>,
-}
-
 /// What opens an interactive input, for [`EditorState::waiting_input`] to
 /// tell whether it belongs to a recorded change.
 #[derive(Clone, Copy)]
@@ -636,12 +627,6 @@ pub(in crate::editor) enum InputOpener {
     /// that command's own change; inside one, the scope decides, as for
     /// `Code`.
     RepeatableOperand,
-}
-
-impl WaitingInput {
-    pub(in crate::editor) fn ticket(self) -> Option<AnswerTicket> {
-        self.ticket
-    }
 }
 
 // ── Deferred dot-repeat ───────────────────────────────────────────────────────
@@ -901,7 +886,7 @@ impl EditorState {
         &mut self,
         what: &str,
         opener: InputOpener,
-    ) -> Result<WaitingInput, String> {
+    ) -> Result<Option<AnswerTicket>, String> {
         if self.dot_replay.is_some() {
             return Err(dot_refusal(what));
         }
@@ -909,12 +894,12 @@ impl EditorState {
             if !matches!(opener, InputOpener::RepeatableOperand) {
                 self.stop_recording(None);
             }
-            return Ok(WaitingInput { ticket: None });
+            return Ok(None);
         };
         let slot = scope.slot;
         if let AnswerSlot::UnrecordedBinding(binding) = slot {
             self.stop_recording(Some(binding));
-            return Ok(WaitingInput { ticket: None });
+            return Ok(None);
         }
         let ticket = self
             .recording
@@ -929,7 +914,7 @@ impl EditorState {
                     index: answers.len() - 1,
                 })
             });
-        Ok(WaitingInput { ticket })
+        Ok(ticket)
     }
 
     /// End the change in flight, if any, at an input it cannot answer on

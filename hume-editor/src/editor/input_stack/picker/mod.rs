@@ -223,7 +223,7 @@ pub(in crate::editor) fn open_picker(
         })?;
         return Ok(token);
     }
-    if let Some(ticket) = state.waiting_input(what, InputOpener::Code)?.ticket() {
+    if let Some(ticket) = state.waiting_input(what, InputOpener::Code)? {
         session.attach_answer(ticket);
     }
     state.push_layer(view, PickerLayer(session));
