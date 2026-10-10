@@ -400,9 +400,9 @@ pub(in crate::editor) fn record_change<H: AsMut<EditorState>, R>(
 /// Read *before* the body: `i`/`c`/`o` open the session inside their own
 /// body, so a fresh change created before the body keeps ownership of the
 /// inner entry (outer name wins).
-fn repeat_slot_owned(state: &EditorState) -> bool {
+fn repeat_slot_owned(state: &mut EditorState) -> bool {
     state.recording_scope.running().is_some()
-        || state.insert_session_records()
+        || state.session_recording().is_some()
         || state.insert_key_dispatch
         || state.dot_replay.is_some()
 }
@@ -749,30 +749,33 @@ impl EditorState {
         }
     }
 
-    /// The recording in flight, if one is accepting input. A settled
-    /// recording takes no further input and opens no further source.
-    fn accepting_recording(&mut self) -> Option<&mut Recording> {
-        self.recording.as_mut().filter(|rec| rec.accepting())
+    /// The recording the open Insert session holds a source on, while it
+    /// accepts input: the one change every Insert-session input records
+    /// into, whatever else is accepting.
+    fn session_recording(&mut self) -> Option<&mut Recording> {
+        let ticket = self.active_session.as_ref()?.recording_ticket()?;
+        self.recording.as_mut().filter(|rec| rec.feeds(ticket))
     }
 
-    /// Append `input` to the recording in flight, if any. Called at the seam
-    /// each input arrives (a typed Insert key, a paste, a completion accept).
+    /// Append `input` to the open Insert session's recording, if any. Called
+    /// at the seam each input arrives (a typed Insert key, a paste, a
+    /// completion accept).
     pub(in crate::editor) fn record_input(&mut self, input: Input) {
-        if let Some(rec) = self.accepting_recording() {
+        if let Some(rec) = self.session_recording() {
             rec.action.transcript.push(input);
         }
     }
 
     /// Record the Insert-key binding `name` about to dispatch, before its
     /// body runs, so the answers its interactive inputs get have an entry to
-    /// go to. Returns the [`RecordingScope`] the binding runs in, `None` with
-    /// no recording in flight.
+    /// go to. Returns the [`RecordingScope`] the binding runs in, `None` when
+    /// the open Insert session records no change.
     pub(in crate::editor) fn record_binding(
         &mut self,
         name: Cow<'static, str>,
         repeatable: bool,
     ) -> Option<RecordingScope> {
-        let rec = self.accepting_recording()?;
+        let rec = self.session_recording()?;
         let id = BindingId(rec.next_binding);
         rec.next_binding += 1;
         rec.action.transcript.push(Input::Binding {
@@ -800,14 +803,6 @@ impl EditorState {
             .as_ref()
             .filter(|rec| rec.feeds(&scope.source))
             .map(Recording::open_ticket)
-    }
-
-    /// Whether the open Insert session feeds the recording in flight.
-    fn insert_session_records(&self) -> bool {
-        self.active_session
-            .as_ref()
-            .and_then(edit_session::EditSession::recording_ticket)
-            .is_some_and(|ticket| self.recording.as_ref().is_some_and(|rec| rec.feeds(ticket)))
     }
 
     /// The recording `ticket` was opened on, if it is still current.
@@ -943,7 +938,7 @@ impl EditorState {
     /// further input. The binding's entry and anything after it are dropped,
     /// so `.` does not re-run it.
     fn stop_recording(&mut self, binding: Option<BindingId>) {
-        let Some(rec) = self.accepting_recording() else {
+        let Some(rec) = self.recording.as_mut().filter(|rec| rec.accepting()) else {
             return;
         };
         if let Some(i) = binding.and_then(|id| rec.binding_index(id)) {
@@ -1014,7 +1009,7 @@ impl EditorState {
             }
             return;
         };
-        let Some(rec) = self.accepting_recording() else {
+        let Some(rec) = self.session_recording() else {
             return;
         };
         if let Some(i) = rec.binding_index(binding) {
