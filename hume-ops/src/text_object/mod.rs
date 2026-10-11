@@ -28,8 +28,8 @@ pub use quote::{
 };
 pub use word::{
     apply_nearest_word_result, cmd_around_uppercase_word, cmd_around_word,
-    cmd_inner_uppercase_word, cmd_inner_word, cmd_select_uppercase_word, cmd_select_word,
-    cmd_select_word_nearest_on_line, nearest_word_on_line,
+    cmd_inner_uppercase_word, cmd_inner_word, cmd_select_word_nearest_on_line,
+    nearest_word_on_line,
 };
 
 // ── Text object framework ──────────────────────────────────────────────────────

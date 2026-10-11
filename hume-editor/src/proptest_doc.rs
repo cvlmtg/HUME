@@ -36,7 +36,7 @@ mod tests {
         cmd_flip_selections, cmd_keep_primary_selection,
     };
     use hume_ops::text_object::{
-        cmd_around_word, cmd_inner_line, cmd_inner_word, cmd_select_uppercase_word,
+        cmd_around_uppercase_word, cmd_around_word, cmd_inner_line, cmd_inner_word,
     };
     use hume_ops::{MotionMode, WordCtx};
 
@@ -283,13 +283,19 @@ mod tests {
         SelectPrevWord,
         SelectNextUppercaseWord,
         SelectPrevUppercaseWord,
-        SelectNextWordAround,
-        SelectPrevWordAround,
-        SelectNextUppercaseWordAround,
-        SelectPrevUppercaseWordAround,
+        SelectNextWordBefore,
+        SelectPrevWordBefore,
+        SelectNextUppercaseWordBefore,
+        SelectPrevUppercaseWordBefore,
         InnerWord,
-        AroundWord,
-        SelectUppercaseWordAround,
+        AroundWordBefore,
+        AroundUppercaseWordBefore,
+        SelectNextWordAfter,
+        SelectPrevWordAfter,
+        SelectNextUppercaseWordAfter,
+        SelectPrevUppercaseWordAfter,
+        AroundWordAfter,
+        AroundUppercaseWordAfter,
         InnerLine,
         CollapseSelection,
         FlipSelections,
@@ -308,13 +314,19 @@ mod tests {
             Just(PureOp::SelectPrevWord),
             Just(PureOp::SelectNextUppercaseWord),
             Just(PureOp::SelectPrevUppercaseWord),
-            Just(PureOp::SelectNextWordAround),
-            Just(PureOp::SelectPrevWordAround),
-            Just(PureOp::SelectNextUppercaseWordAround),
-            Just(PureOp::SelectPrevUppercaseWordAround),
+            Just(PureOp::SelectNextWordBefore),
+            Just(PureOp::SelectPrevWordBefore),
+            Just(PureOp::SelectNextUppercaseWordBefore),
+            Just(PureOp::SelectPrevUppercaseWordBefore),
             Just(PureOp::InnerWord),
-            Just(PureOp::AroundWord),
-            Just(PureOp::SelectUppercaseWordAround),
+            Just(PureOp::AroundWordBefore),
+            Just(PureOp::AroundUppercaseWordBefore),
+            Just(PureOp::SelectNextWordAfter),
+            Just(PureOp::SelectPrevWordAfter),
+            Just(PureOp::SelectNextUppercaseWordAfter),
+            Just(PureOp::SelectPrevUppercaseWordAfter),
+            Just(PureOp::AroundWordAfter),
+            Just(PureOp::AroundUppercaseWordAfter),
             Just(PureOp::InnerLine),
             Just(PureOp::CollapseSelection),
             Just(PureOp::FlipSelections),
@@ -331,7 +343,7 @@ mod tests {
     /// Apply a `PureOp` with the given `MotionMode`, returning the new
     /// `SelectionSet` (buffer unchanged).
     ///
-    /// Word-family ops use `WordCtx::bare`/`WordCtx::around` (no configured
+    /// Word-family ops use `WordCtx::bare`/`before`/`after` (no configured
     /// `word-chars`): there is no per-buffer settings layer here to resolve
     /// a real one from, and none of these proptests exercise `word-chars`
     /// itself (that is covered by `hume-editor/src/editor/tests/word_chars.rs`).
@@ -355,20 +367,32 @@ mod tests {
             PureOp::SelectPrevUppercaseWord => {
                 cmd_select_prev_uppercase_word(st, 1, WordCtx::bare(mode))
             }
-            // "Around" variants exercise the same command with `around: true`
-            // (effective `word-selects-whitespace`).
-            PureOp::SelectNextWordAround => cmd_select_next_word(st, 1, WordCtx::around(mode)),
-            PureOp::SelectPrevWordAround => cmd_select_prev_word(st, 1, WordCtx::around(mode)),
-            PureOp::SelectNextUppercaseWordAround => {
-                cmd_select_next_uppercase_word(st, 1, WordCtx::around(mode))
+            // "Before"/"After" variants exercise the same command with each
+            // `word-selects-whitespace` side.
+            PureOp::SelectNextWordBefore => cmd_select_next_word(st, 1, WordCtx::before(mode)),
+            PureOp::SelectPrevWordBefore => cmd_select_prev_word(st, 1, WordCtx::before(mode)),
+            PureOp::SelectNextUppercaseWordBefore => {
+                cmd_select_next_uppercase_word(st, 1, WordCtx::before(mode))
             }
-            PureOp::SelectPrevUppercaseWordAround => {
-                cmd_select_prev_uppercase_word(st, 1, WordCtx::around(mode))
+            PureOp::SelectPrevUppercaseWordBefore => {
+                cmd_select_prev_uppercase_word(st, 1, WordCtx::before(mode))
             }
             PureOp::InnerWord => cmd_inner_word(st, 0, WordCtx::bare(mode)),
-            PureOp::AroundWord => cmd_around_word(st, 0, WordCtx::bare(mode)),
-            PureOp::SelectUppercaseWordAround => {
-                cmd_select_uppercase_word(st, 0, WordCtx::around(mode))
+            PureOp::AroundWordBefore => cmd_around_word(st, 0, WordCtx::before(mode)),
+            PureOp::AroundUppercaseWordBefore => {
+                cmd_around_uppercase_word(st, 0, WordCtx::before(mode))
+            }
+            PureOp::SelectNextWordAfter => cmd_select_next_word(st, 1, WordCtx::after(mode)),
+            PureOp::SelectPrevWordAfter => cmd_select_prev_word(st, 1, WordCtx::after(mode)),
+            PureOp::SelectNextUppercaseWordAfter => {
+                cmd_select_next_uppercase_word(st, 1, WordCtx::after(mode))
+            }
+            PureOp::SelectPrevUppercaseWordAfter => {
+                cmd_select_prev_uppercase_word(st, 1, WordCtx::after(mode))
+            }
+            PureOp::AroundWordAfter => cmd_around_word(st, 0, WordCtx::after(mode)),
+            PureOp::AroundUppercaseWordAfter => {
+                cmd_around_uppercase_word(st, 0, WordCtx::after(mode))
             }
             PureOp::InnerLine => cmd_inner_line(st, 0, mode),
             // Selection-manipulation commands don't use mode; pass it anyway for API uniformity.

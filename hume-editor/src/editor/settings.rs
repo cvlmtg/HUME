@@ -31,6 +31,7 @@ use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 
 use crate::editor::lsp::diagnostics::DiagSeverity;
 use crate::statusline::{StatusElement, StatusLineConfig};
+use hume_ops::WhitespaceSide;
 use hume_ops::auto_pairs::Pair;
 
 // ── settings_enum! ────────────────────────────────────────────────────────────
@@ -385,6 +386,35 @@ pub enum CommandCompletion {
 settings_enum!(CommandCompletion, [
     CommonPrefix => "common-prefix",
     FirstCandidate => "first-candidate",
+]);
+
+/// Which whitespace the word family (`w`/`W`/`b`/`B`, `mm`/`MM`,
+/// `maw`/`maW`) adds to the word it selects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WordSelectsWhitespace {
+    /// The bare word.
+    Off,
+    /// The run before the word, else the run after it.
+    #[default]
+    Before,
+    /// The run after the word, else the run before it.
+    After,
+}
+
+impl WordSelectsWhitespace {
+    pub(in crate::editor) fn side(self) -> Option<WhitespaceSide> {
+        match self {
+            Self::Off => None,
+            Self::Before => Some(WhitespaceSide::Before),
+            Self::After => Some(WhitespaceSide::After),
+        }
+    }
+}
+
+settings_enum!(WordSelectsWhitespace, [
+    Off => "off",
+    Before => "before",
+    After => "after",
 ]);
 
 /// A `:set` scope token: `global`, `buffer`, or `pane`.
@@ -1000,13 +1030,13 @@ define_settings! {
         "select-inserted-text" => select_inserted_text: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
-        // Word motions (`w`/`W`/`b`/`B`) and `mm`/`MM` cover the destination
-        // word's whitespace bookend (leading, or trailing for the first
-        // word of a line). See `word_select_cmd`'s `ctx.around` read and
-        // `run_body`'s `SelectionBody::Word` arm, which resolves it.
-        "word-selects-whitespace" => word_selects_whitespace: bool = true,
+        // Word motions (`w`/`W`/`b`/`B`), `mm`/`MM` and `maw`/`maW` cover
+        // the destination word's whitespace bookend on the preferred side.
+        // See `word_select_cmd`'s `ctx.whitespace` read and `run_body`'s
+        // `SelectionBody::Word` arm, which resolves it.
+        "word-selects-whitespace" => word_selects_whitespace: WordSelectsWhitespace = WordSelectsWhitespace::default(),
             scope: [Scope::Global, Scope::Buffer],
-            parser: bool;
+            parser: enum_str;
         // Extra characters this buffer counts as part of a word, on top of
         // the built-in alphanumeric-plus-`_` rule (Vim's `iskeyword`, minus
         // the range syntax), e.g. `-` makes `foo-bar` one word in CSS.

@@ -60,9 +60,10 @@ on `one`, `w` then delete leaves `one three` with a single space. The first
 word on a line is an exception — its leading whitespace is indentation, not
 inter-word spacing, so it's never touched. That word — and any word with no
 whitespace directly before it, say right after punctuation — takes its
-*trailing* whitespace instead. This is a separate, toggleable layer on top of the
+*trailing* whitespace instead. This is a separate, configurable layer on top of the
 "select the whole word" behavior above, not a different word-select model —
-an option restores the bare-word span shown here.
+an option switches the preference to the trailing whitespace, or restores the
+bare-word span shown here.
 
 ## Line crossing
 

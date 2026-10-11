@@ -99,8 +99,8 @@ impl CommandRegistry {
         // plain motion's bare-cursor result, this one *looks* replayable and
         // isn't: replaying it positionally would advance past the intended
         // word. Each covers the destination word's whitespace bookend in both
-        // modes when the buffer's `word-selects-whitespace` resolves true;
-        // see `WordCtx::around`, read inside `word_select_cmd`.
+        // modes unless the buffer's `word-selects-whitespace` resolves `off`;
+        // see `WordCtx::whitespace`, read inside `word_select_cmd`.
         super::motion!(
             self,
             "select-next-word",

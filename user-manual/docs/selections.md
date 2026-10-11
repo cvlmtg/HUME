@@ -44,8 +44,8 @@ Text objects select structured regions in one step. They use the `m` prefix: `m 
 
 | Sequence | Selects |
 |----------|---------|
-| `m i w` / `m a w` | Inner word / word + one adjacent whitespace run |
-| `m i W` / `m a W` | Inner WORD / WORD + one adjacent whitespace run |
+| `m i w` / `m a w` | Inner word / word + one adjacent whitespace run (see `word-selects-whitespace`) |
+| `m i W` / `m a W` | Inner WORD / WORD + one adjacent whitespace run (see `word-selects-whitespace`) |
 | `m i (` / `m a (` | Inside `()` / including `()` |
 | `m i [` / `m a [` | Inside `[]` / including `[]` |
 | `m i {` / `m a {` | Inside `{}` / including `{}` |
@@ -80,8 +80,8 @@ Two shortcuts select the word under the cursor directly:
 
 | Key | Effect |
 |-----|--------|
-| `m m` | Word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b`; disable `word-selects-whitespace` for `m i w` instead; see [Configuration](configuration.md)) |
-| `M M` | WORD under the cursor (same as `m a W` by default) |
+| `m m` | Word under the cursor, same as `m a w` (plus one adjacent whitespace run by default, same rule as `w`/`b`; set `word-selects-whitespace` to `off` for `m i w` instead; see [Configuration](configuration.md)) |
+| `M M` | WORD under the cursor, same as `m a W` |
 
 `m i` selects just the structure's content; `m a` includes what surrounds it: one adjacent whitespace run for words, the delimiters themselves for brackets:
 

@@ -20,7 +20,7 @@ fn editor_settings_default_matches_old_constants() {
     assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
     assert!(s.auto_pairs);
     assert!(s.select_inserted_text);
-    assert!(s.word_selects_whitespace);
+    assert_eq!(s.word_selects_whitespace, WordSelectsWhitespace::Before);
     assert_eq!(s.word_chars, "");
     assert!(s.pane_dividers);
     assert!(s.statusline_mode_colors);
@@ -584,11 +584,24 @@ fn set_global_select_inserted_text() {
 
 #[test]
 fn set_global_word_selects_whitespace() {
-    assert!(
-        !global("word-selects-whitespace", "false")
-            .unwrap()
-            .word_selects_whitespace
-    );
+    for (text, value) in [
+        ("off", WordSelectsWhitespace::Off),
+        ("before", WordSelectsWhitespace::Before),
+        ("after", WordSelectsWhitespace::After),
+    ] {
+        assert_eq!(
+            global("word-selects-whitespace", text)
+                .unwrap()
+                .word_selects_whitespace,
+            value
+        );
+    }
+}
+
+#[test]
+fn set_global_word_selects_whitespace_rejects_bool() {
+    assert!(global("word-selects-whitespace", "true").is_err());
+    assert!(global("word-selects-whitespace", "false").is_err());
 }
 
 #[test]
@@ -731,8 +744,11 @@ fn set_buffer_select_inserted_text() {
 #[test]
 fn set_buffer_word_selects_whitespace() {
     let global = EditorSettings::default();
-    let ov = buffer("word-selects-whitespace", "false").unwrap();
-    assert!(!ov.word_selects_whitespace(&global));
+    let ov = buffer("word-selects-whitespace", "after").unwrap();
+    assert_eq!(
+        ov.word_selects_whitespace(&global),
+        WordSelectsWhitespace::After
+    );
 }
 
 #[test]

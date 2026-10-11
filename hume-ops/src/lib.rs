@@ -39,7 +39,7 @@ pub enum MotionMode {
 ///
 /// This family needs more than the shared `(EditState, count, MotionMode)`
 /// shape: `hume-ops` cannot depend on `hume-editor`'s settings, so the
-/// caller resolves `around`/`chars` and passes them in, the same way
+/// caller resolves `whitespace`/`chars` and passes them in, the same way
 /// `tab_width`/`TabStyle` are resolved and passed to `align_selections`/
 /// `insert_tab`. Keeping this as its own struct (rather than widening every
 /// `hume-ops` selection command's signature) means the large majority of
@@ -47,34 +47,49 @@ pub enum MotionMode {
 #[derive(Debug, Clone, Copy)]
 pub struct WordCtx<'a> {
     pub mode: MotionMode,
-    /// Effective `word-selects-whitespace`: whether the destination word's
-    /// whitespace bookend is covered. `miw`/`maw`/`miW`/`maW` are fixed by
-    /// name and ignore this field, the same way a non-extendable command
-    /// ignores `mode`.
-    pub around: bool,
+    /// Effective `word-selects-whitespace`: which side's whitespace the
+    /// destination word's bookend prefers, or `None` for the bare word.
+    /// `miw`/`miW` are fixed by name and ignore this field, the same way a
+    /// non-extendable command ignores `mode`.
+    pub whitespace: Option<WhitespaceSide>,
     pub chars: hume_editing::word::WordChars<'a>,
+}
+
+/// The side of a word whose whitespace run its bookend takes first. The
+/// other side is the fallback when the preferred one has no run, and a run
+/// that is a line's indentation is never taken from either side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WhitespaceSide {
+    Before,
+    After,
 }
 
 impl<'a> WordCtx<'a> {
     #[cfg(any(test, feature = "test-util"))]
     pub fn bare(mode: MotionMode) -> Self {
-        Self {
-            mode,
-            around: false,
-            chars: hume_editing::word::WordChars::default(),
-        }
+        Self::with_whitespace(mode, None)
     }
 
     #[cfg(any(test, feature = "test-util"))]
-    pub fn around(mode: MotionMode) -> Self {
+    pub fn before(mode: MotionMode) -> Self {
+        Self::with_whitespace(mode, Some(WhitespaceSide::Before))
+    }
+
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn after(mode: MotionMode) -> Self {
+        Self::with_whitespace(mode, Some(WhitespaceSide::After))
+    }
+
+    #[cfg(any(test, feature = "test-util"))]
+    fn with_whitespace(mode: MotionMode, whitespace: Option<WhitespaceSide>) -> Self {
         Self {
             mode,
-            around: true,
+            whitespace,
             chars: hume_editing::word::WordChars::default(),
         }
     }
 
-    /// Swap in a non-default `word-chars` value, keeping `mode`/`around`,
+    /// Swap in a non-default `word-chars` value, keeping `mode`/`whitespace`,
     /// for tests that need a configured char without hand-writing the whole
     /// struct literal.
     #[cfg(any(test, feature = "test-util"))]

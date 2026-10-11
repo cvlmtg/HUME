@@ -8,11 +8,13 @@
 - `lsp.viewport-debounce-ms` is renamed to `viewport-debounce-ms`.
 - `bind-wait-char!`, `request-wait-char!` and `pending-char` are removed: commands read keys with `on-next-char!`, so `bind-key!` binds any command.
 - `repeat-last-action` runs only from a key: `call!` of it raises an error.
+- `word-selects-whitespace` takes `off`, `before` (the default) or `after` instead of `true`/`false`. `maw`/`maW` follow it too: with `off` they select the bare word, like `miw`/`miW`.
 
 ### Editing
 - `.` reuses your answers to a `#:repeatable` command's character read, picker, prompt or menu instead of asking again.
 - With the kitty keyboard protocol, `Ctrl-?` searches backward and extends the selection.
 - `:set buffer line-ending=lf|crlf` converts a buffer's line endings.
+- `:set word-selects-whitespace=after` makes `w`/`b`, `mm` and `maw` take the whitespace after the word, like Vim's and Helix's `aw`, falling back to the whitespace before it at the end of a line.
 
 ### Theming
 - With no `theme` set, HUME loads `sand` from `themes/`, so edits to `sand.toml` apply. The built-in copy is the fallback.
@@ -27,6 +29,7 @@
 - `.` after an Insert session that ended at a key bound to a search, sift or `:` prompt repeats the text typed before that key, without an error or a prompt.
 - `.` inside a macro repeats the last change, including one made before the macro ran. After a macro, `.` repeats the last change the macro made.
 - `:e!` restores a file's line ending even when its text is unchanged.
+- With soft wrap, `select-word-nearest-on-line` on a word that fills its display line no longer selects the space that starts the next display line.
 
 ## [0.14.1] - 2026-10-08
 

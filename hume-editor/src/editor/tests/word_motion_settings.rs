@@ -1,13 +1,14 @@
 use super::*;
+use crate::editor::settings::WordSelectsWhitespace;
 use pretty_assertions::assert_eq;
 
-// ── word-selects-whitespace (mm/MM, w/W/b/B around-word default) ──────────
+// ── word-selects-whitespace (w/W/b/B, mm/MM, maw/maW) ──────────────────────
 //
-// Full-dispatch coverage of the default flip: the ops-level tests in
+// Full-dispatch coverage of the setting: the ops-level tests in
 // hume-ops/src/motion/tests/ and hume-ops/src/text_object/tests/ cover the span math
-// (leading-preferred, trailing fallback for the first word of a line); these
-// confirm the setting actually gates behavior through the real
-// keymap/registry/dispatch path (:set, direct field write, and replay).
+// for each side; these confirm the setting actually gates behavior through
+// the real keymap/registry/dispatch path (:set, direct field write, and
+// replay).
 
 #[test]
 fn w_default_selects_leading_space() {
@@ -19,7 +20,7 @@ fn w_default_selects_leading_space() {
 #[test]
 fn w_with_setting_off_selects_bare_word() {
     let mut ed = editor_from("-[f]>oo bar baz\n");
-    ed.state.settings.word_selects_whitespace = false;
+    ed.state.settings.word_selects_whitespace = WordSelectsWhitespace::Off;
     ed.feed_key(key('w'));
     assert_eq!(state(&ed), "foo -[bar]> baz\n");
 }
@@ -28,7 +29,7 @@ fn w_with_setting_off_selects_bare_word() {
 fn w_set_buffer_off_selects_bare_word() {
     // Exercises the typed-command path (:set), not just a direct field write.
     let mut ed = editor_from("-[f]>oo bar baz\n");
-    type_cmd(&mut ed, ":set buffer word-selects-whitespace=false");
+    type_cmd(&mut ed, ":set buffer word-selects-whitespace=off");
     ed.feed_key(key('w'));
     assert_eq!(state(&ed), "foo -[bar]> baz\n");
 }
@@ -91,7 +92,7 @@ fn mm_mid_line_matches_maw() {
 #[test]
 fn mm_with_setting_off_matches_inner_word() {
     let mut ed = editor_from("-[h]>ello world\n");
-    ed.state.settings.word_selects_whitespace = false;
+    ed.state.settings.word_selects_whitespace = WordSelectsWhitespace::Off;
     ed.feed_keys([key('m'), key('m')]);
     assert_eq!(state(&ed), "-[hello]> world\n");
 }
@@ -118,7 +119,7 @@ fn MM_default_matches_around_uppercase_word() {
 #[allow(non_snake_case)]
 fn MM_with_setting_off_matches_inner_uppercase_word() {
     let mut ed = editor_from("-[h]>ello.world foo\n");
-    ed.state.settings.word_selects_whitespace = false;
+    ed.state.settings.word_selects_whitespace = WordSelectsWhitespace::Off;
     ed.feed_keys([key('M'), key('M')]);
     assert_eq!(state(&ed), "-[hello.world]> foo\n");
 }
@@ -144,18 +145,18 @@ fn MM_mid_line_matches_maW() {
 #[allow(non_snake_case)]
 fn MM_with_setting_off_matches_miW() {
     let mut ed = editor_from("foo.bar -[b]>az.qux quux\n");
-    ed.state.settings.word_selects_whitespace = false;
+    ed.state.settings.word_selects_whitespace = WordSelectsWhitespace::Off;
     ed.feed_keys([key('M'), key('M')]);
     assert_eq!(state(&ed), "foo.bar -[baz.qux]> quux\n");
 
     let mut ed2 = editor_from("foo.bar -[b]>az.qux quux\n");
-    ed2.state.settings.word_selects_whitespace = false;
+    ed2.state.settings.word_selects_whitespace = WordSelectsWhitespace::Off;
     ed2.feed_keys([key('m'), key('i'), key('W')]);
     assert_eq!(state(&ed2), "foo.bar -[baz.qux]> quux\n");
 }
 
 /// Every equivalence test above runs in Move mode only. `mm`/`MM` read
-/// `WordCtx.around` (resolved fresh by `run_body`'s `SelectionBody::Word`
+/// `WordCtx.whitespace` (resolved fresh by `run_body`'s `SelectionBody::Word`
 /// arm) regardless of `MotionMode`, so this checks the pairing also holds
 /// once an existing selection is being *grown* (Extend), not just replaced.
 #[test]
@@ -200,21 +201,50 @@ fn miw_unaffected_by_setting() {
     assert_eq!(state(&ed), "-[hello]> world\n");
 
     let mut ed2 = editor_from("-[h]>ello world\n");
-    ed2.state.settings.word_selects_whitespace = false;
+    ed2.state.settings.word_selects_whitespace = WordSelectsWhitespace::Off;
     ed2.feed_keys([key('m'), key('i'), key('w')]);
     assert_eq!(state(&ed2), "-[hello]> world\n");
 }
 
 #[test]
-fn maw_unaffected_by_setting() {
+fn maw_with_setting_off_matches_miw() {
     let mut ed = editor_from("-[h]>ello world\n");
     ed.feed_keys([key('m'), key('a'), key('w')]);
     assert_eq!(state(&ed), "-[hello ]>world\n");
 
     let mut ed2 = editor_from("-[h]>ello world\n");
-    ed2.state.settings.word_selects_whitespace = false;
+    ed2.state.settings.word_selects_whitespace = WordSelectsWhitespace::Off;
     ed2.feed_keys([key('m'), key('a'), key('w')]);
-    assert_eq!(state(&ed2), "-[hello ]>world\n");
+    assert_eq!(state(&ed2), "-[hello]> world\n");
+}
+
+#[test]
+fn w_set_buffer_after_selects_trailing_space() {
+    let mut ed = editor_from("-[f]>oo bar baz\n");
+    type_cmd(&mut ed, ":set buffer word-selects-whitespace=after");
+    ed.feed_key(key('w'));
+    assert_eq!(state(&ed), "foo -[bar ]>baz\n");
+}
+
+#[test]
+fn b_with_setting_after_selects_trailing_space() {
+    let mut ed = editor_from("foo bar -[b]>az\n");
+    ed.state.settings.word_selects_whitespace = WordSelectsWhitespace::After;
+    ed.feed_key(key('b'));
+    assert_eq!(state(&ed), "foo -[bar ]>baz\n");
+}
+
+#[test]
+fn mm_and_maw_with_setting_after_select_trailing_space() {
+    let mut ed = editor_from("foo -[b]>ar baz\n");
+    ed.state.settings.word_selects_whitespace = WordSelectsWhitespace::After;
+    ed.feed_keys([key('m'), key('m')]);
+    assert_eq!(state(&ed), "foo -[bar ]>baz\n");
+
+    let mut ed2 = editor_from("foo -[b]>ar baz\n");
+    ed2.state.settings.word_selects_whitespace = WordSelectsWhitespace::After;
+    ed2.feed_keys([key('m'), key('a'), key('w')]);
+    assert_eq!(state(&ed2), "foo -[bar ]>baz\n");
 }
 
 /// `select-word` (`mm`) is a Selection command (`SelectionTracking::Establishes`),
@@ -226,11 +256,11 @@ fn maw_unaffected_by_setting() {
 #[test]
 fn dot_repeat_of_mm_delete_reresolves_word_selects_whitespace() {
     let mut ed = editor_from("-[h]>ello world\n");
-    ed.feed_keys([key('m'), key('m')]); // select "hello " (around, default on)
+    ed.feed_keys([key('m'), key('m')]); // select "hello " (default before side)
     ed.feed_key(key('d')); // delete "hello " -> "world\n"
     assert_eq!(ed.doc().text().to_string(), "world\n");
 
-    ed.state.settings.word_selects_whitespace = false;
+    ed.state.settings.word_selects_whitespace = WordSelectsWhitespace::Off;
     ed.feed_key(key('.')); // replay: re-establishes via mm (now bare), then deletes
 
     assert_eq!(ed.doc().text().to_string(), "\n");

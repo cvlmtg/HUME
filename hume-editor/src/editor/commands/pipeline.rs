@@ -704,7 +704,10 @@ pub(in crate::editor) fn run_body(
                     let doc = state.buffers.get(buf);
                     let ctx = WordCtx {
                         mode: motion_mode,
-                        around: doc.overrides.word_selects_whitespace(&state.settings),
+                        whitespace: doc
+                            .overrides
+                            .word_selects_whitespace(&state.settings)
+                            .side(),
                         chars: effective_word_chars(doc, &state.settings),
                     };
                     // Can't route through `apply_pane_motion` (takes `&mut

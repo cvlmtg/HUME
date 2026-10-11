@@ -467,7 +467,10 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
 ) -> Result<(), CommandError> {
     let buf_id = t.bid(view);
     let doc = state.buffers.get(buf_id);
-    let around = doc.overrides.word_selects_whitespace(&state.settings);
+    let whitespace = doc
+        .overrides
+        .word_selects_whitespace(&state.settings)
+        .side();
     // Owned, not borrowed: the no-wrap branch below calls
     // `apply_pane_motion(state, ...)`, which takes `&mut EditorState` as
     // one opaque argument. A live borrow into `state.buffers`/`state.settings`
@@ -476,7 +479,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     let chars = WordChars::new(&word_chars);
     let ctx = WordCtx {
         mode,
-        around,
+        whitespace,
         chars,
     };
 
@@ -508,7 +511,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
                     sel.anchor(),
                     bounds.start().into(),
                     bounds.end(),
-                    around,
+                    whitespace,
                     chars,
                 );
                 apply_nearest_word_result(sel, found, mode)

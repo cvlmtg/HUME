@@ -1,8 +1,10 @@
 use super::doubles::InlineHint;
 use super::*;
+use crate::editor::settings::WordSelectsWhitespace;
 use hume_editing::selection::StickyDisplayCol;
 use hume_platform::dirs::Dirs;
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
+use hume_rope::offset::CharOffset;
 use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
 
@@ -1145,7 +1147,7 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
     );
 }
 
-/// With the default `word-selects-whitespace = true`, the snapped word's
+/// With the default `word-selects-whitespace = before`, the snapped word's
 /// leading whitespace bookend is absorbed into the selection (matching `mm`),
 /// even in wrap mode, since the absorbed space (char 76) is buffer-adjacent
 /// to "ratatui", not a crossing into a different word.
@@ -1202,6 +1204,46 @@ fn select_word_nearest_does_not_absorb_previous_display_line_whitespace() {
     assert_eq!(sel.head().offset(), co(10), "still selects all of 'wordB'");
 }
 
+/// Mirror of the leading-side case above: "abcdef" fills its display line,
+/// so the space after it starts the next display line and is not absorbed
+/// by either side's trailing scan.
+fn nearest_word_on_full_display_line(side: WordSelectsWhitespace) -> (CharOffset, CharOffset) {
+    use hume_editing::text::BufferText;
+    let text = BufferText::from("abcdef ghi\n");
+    let sels = sels_at(&text, &[(2, 2)], 0); // 'c' inside "abcdef"
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
+    ed.state.settings.word_selects_whitespace = side;
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::Indent { width: 6 }),
+        saved: None,
+    });
+
+    ed.execute_keymap_command(
+        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
+        Some(1),
+        false,
+    );
+
+    let sel = ed.current_view().primary();
+    (sel.anchor().offset(), sel.head().offset())
+}
+
+#[test]
+fn select_word_nearest_after_does_not_absorb_next_display_line_whitespace() {
+    assert_eq!(
+        nearest_word_on_full_display_line(WordSelectsWhitespace::After),
+        (co(0), co(5))
+    );
+}
+
+#[test]
+fn select_word_nearest_before_fallback_does_not_absorb_next_display_line_whitespace() {
+    assert_eq!(
+        nearest_word_on_full_display_line(WordSelectsWhitespace::Before),
+        (co(0), co(5))
+    );
+}
+
 /// `mm` (`select-word`) is NOT wrap-aware, unlike
 /// `select-word-nearest-on-line` (see
 /// `select_word_nearest_does_not_absorb_previous_display_line_whitespace` above, same
@@ -1244,7 +1286,7 @@ fn select_word_absorbs_previous_display_line_whitespace_unlike_nearest_on_line()
 #[test]
 fn select_word_nearest_respects_word_selects_whitespace_off() {
     let mut ed = word_wrap_editor();
-    ed.state.settings.word_selects_whitespace = false;
+    ed.state.settings.word_selects_whitespace = WordSelectsWhitespace::Off;
 
     ed.handle_key(key('j')); // head -> char 76 (leading space of display line 1)
     ed.execute_keymap_command(

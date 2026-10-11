@@ -38,11 +38,10 @@ the two delimiter characters as cursors — the building block for surround
 editing, where you then act on both delimiters at once (replace them, delete
 them, change them as a pair). `mw` plus a delimiter wraps the current selection
 in that pair. `mm` and `MM` select the word/WORD under the cursor directly —
-they select exactly what `maw`/`maW` would (see below), gated behind the
-`word-selects-whitespace` setting: on, they match `maw`/`maW`; off, they match
-`miw`/`miW` instead. `maw`/`miw`/`maW`/`miW` themselves are always available
-regardless of that setting. The same prefix keeps every "name a structural
-region" command under one key.
+they are `maw`/`maW` under a shorter name (see below). The
+`word-selects-whitespace` setting picks which whitespace all four take, and
+with it off they match `miw`/`miW`. The same prefix keeps every "name a
+structural region" command under one key.
 
 ## The whitespace rule for `maw`/`maW`
 
@@ -50,11 +49,17 @@ For bracket text objects, inner/around is straightforward: include or exclude
 the delimiter characters. For word text objects, "around" requires a choice:
 which whitespace run to include when neither side is obviously right?
 
-The rule: prefer the whitespace *before* the word, falling back to the
+The default rule: prefer the whitespace *before* the word, falling back to the
 whitespace *after* it when there is none — because the word starts its line
 (a leading run there is indentation, not inter-word spacing, and is never
 absorbed) or because punctuation sits directly before it. If neither side
 has whitespace, the selection stays bare.
+
+The `after` setting mirrors it, the way Vim's and Helix's `aw` work: prefer
+the whitespace *after* the word, up to the end of its line, and fall back to
+the whitespace before it when nothing follows (the last word of a line, or a
+word right before punctuation). Indentation is still never absorbed, so a
+lone word on an indented line stays bare.
 
 The reason: deleting "a word" should leave the surrounding text tidy. If you
 have `one two three` and delete `aw` with the cursor on `two`, you want

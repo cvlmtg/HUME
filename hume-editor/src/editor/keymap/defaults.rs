@@ -157,9 +157,8 @@ fn build_text_object_trie() -> KeyTrie {
     match_trie.bind(key!('s'), KeyTrieNode::Node(surround_trie));
     match_trie.bind_leaf(key!('w'), cmd!("surround-add"));
     match_trie.bind_leaf(key!('/'), cmd!("select-all-matches"));
-    // `mm`: select the word under the cursor. Follows
-    // `word-selects-whitespace` (see `cmd_select_word`'s `ctx.around`
-    // branch), unlike `miw`/`maw` above which are never flag-affected.
+    // `mm`: select the word under the cursor, the same command as `maw`
+    // above. Both follow `word-selects-whitespace`; `miw` never does.
     match_trie.bind_leaf(key!('m'), cmd!("select-word"));
     match_trie
 }
@@ -441,8 +440,8 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     // ── Match prefix (`m` / `M`) ───────────────────────────────────────────────
     // `m` → text objects (`mi`/`ma`), surround (`ms`), and `m/` (select-all-matches).
     // `M` mirrors `m` and only contains `MM` (select-uppercase-word): the WORD
-    // under the cursor, with the around body swapped in while
-    // `word-selects-whitespace` is on, same gating as `mm`.
+    // under the cursor, the same command as `maW`, following
+    // `word-selects-whitespace` like `mm`.
     t.bind(key!('m'), KeyTrieNode::Node(build_text_object_trie()));
     t.bind(key!('M'), KeyTrieNode::Node(build_uppercase_match_trie()));
 

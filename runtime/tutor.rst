@@ -81,9 +81,9 @@ destination word or token. When no space precedes it (the first word
 of a line, where a leading run would be indentation, or a token that
 directly follows punctuation, like "toml" after the dot), they pick up
 the space after it instead. That is why some of the steps above
-include an extra space alongside the word or token. Turn this off with
-``:set global word-selects-whitespace=false`` for bare-word
-selections instead.
+include an extra space alongside the word or token. Use
+``:set global word-selects-whitespace=after`` to pick up the space
+after the word instead, or ``=off`` for bare-word selections.
 
 Exercise
 ~~~~~~~~
@@ -1120,9 +1120,9 @@ Text objects select structured regions. Prefix ``mi`` for INNER
 Since selecting the word under the cursor is a very frequent
 operation, HUME adds a couple of shortcuts: ``mm`` and ``MM``. By
 default they cover one adjacent whitespace run of the word/WORD, the
-same rule ``w``/``b``/``W``/``B`` use; with ``word-selects-whitespace``
-off they behave like ``miw``/``miW`` instead. ``miw``/``maw``/``miW``/``maW``
-themselves are unaffected by that setting either way.
+same rule ``w``/``b``/``W``/``B`` use: they select the same as
+``maw``/``maW``. With ``word-selects-whitespace`` set to ``off``,
+all four behave like ``miw``/``miW`` instead.
 
 ``mii`` is different from the rest of this table: it selects
 whatever text you most recently typed in Insert mode, however you

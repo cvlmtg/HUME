@@ -10,7 +10,7 @@ use hume_ops::text_object::{
     cmd_around_single_quote, cmd_around_uppercase_word, cmd_around_word, cmd_inner_angle,
     cmd_inner_backtick, cmd_inner_brace, cmd_inner_bracket, cmd_inner_double_quote, cmd_inner_line,
     cmd_inner_paragraph, cmd_inner_paren, cmd_inner_single_quote, cmd_inner_uppercase_word,
-    cmd_inner_word, cmd_select_uppercase_word, cmd_select_word,
+    cmd_inner_word,
 };
 
 use super::builder::ecmd_pane;
@@ -88,23 +88,21 @@ impl CommandRegistry {
             cmd_around_uppercase_word,
             word
         );
-        // `mm`/`MM`: select the word/WORD under the cursor. Unlike
-        // `inner-word`/`around-word` (`miw`/`maw`, never flag-affected), these
-        // cover the destination word's whitespace bookend when
-        // `word-selects-whitespace` resolves true. See `WordCtx::around`,
-        // read inside `cmd_select_word`/`cmd_select_uppercase_word`.
+        // `mm`/`MM`: the key-friendly names for `around-word`/
+        // `around-uppercase-word`, the same commands under a second name.
+        // Both follow `word-selects-whitespace` via `WordCtx::whitespace`.
         super::selection!(
             self,
             "select-word",
             "Select the word under the cursor.",
-            cmd_select_word,
+            cmd_around_word,
             word
         );
         super::selection!(
             self,
             "select-uppercase-word",
             "Select the uppercase word (WORD) under the cursor.",
-            cmd_select_uppercase_word,
+            cmd_around_uppercase_word,
             word
         );
 

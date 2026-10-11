@@ -1,5 +1,6 @@
 use super::*;
 use crate::editor::replay::{Answer, Input, Pick, Picked};
+use crate::editor::settings::WordSelectsWhitespace;
 use pretty_assertions::assert_eq;
 
 /// `i` is the recorded unbound key `ch`.
@@ -774,7 +775,7 @@ fn dot_repeat_word_motion_acts_on_current_selection() {
     // This test is about the recipe/replay mechanism, not word-span shape.
     // Pin bare-word selection so the buffer arithmetic in the doc comment
     // above holds regardless of word-selects-whitespace's default.
-    ed.state.settings.word_selects_whitespace = false;
+    ed.state.settings.word_selects_whitespace = WordSelectsWhitespace::Off;
 
     ed.feed_key(key('w')); // select "foo" (Move mode: Extends, not Establishes)
     ed.feed_key(key('d')); // delete "foo" → "a   bar baz\n"

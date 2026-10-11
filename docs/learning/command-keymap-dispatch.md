@@ -67,8 +67,8 @@ This means adding a new motion requires **one function and one registration**
 
 A command may also register an *alternate body* chosen at dispatch time by a
 buffer option. Word motions ship this way: one command name, with the
-whitespace-including variant swapped in per buffer while
-`word-selects-whitespace` is on.
+side of whitespace to include chosen per buffer by
+`word-selects-whitespace`.
 
 ### The extendable flag
 

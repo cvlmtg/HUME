@@ -6,6 +6,8 @@ use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars, blank_class};
 use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
 
+use crate::WhitespaceSide;
+
 pub(crate) type IsBoundary = fn(CharClass, CharClass) -> bool;
 
 /// The char that classifies the cluster starting at `pos`.
@@ -97,19 +99,24 @@ pub fn inner_word_impl(
     )
 }
 
-/// Grow a word/punct `range` to include an adjacent whitespace run: leading
-/// preferred, trailing when the leading run is indentation or absent.
+/// Grow a word/punct `range` to include an adjacent whitespace run: the run
+/// on `side` preferred, the other side's run when that one is indentation or
+/// absent.
 ///
 /// A leading run that reaches back to the start of its line (or the start of
 /// the buffer) is indentation, not inter-word spacing, and must never be
-/// absorbed: the first word of a line always takes its trailing whitespace
-/// instead. This keeps `w`/`b`/`mm`/`maw` from ever eating indentation.
+/// absorbed from either side: the first word of a line takes its trailing
+/// whitespace or nothing. This keeps `w`/`b`/`mm`/`maw` from ever eating
+/// indentation. A trailing run stops at the line break, so it may end the
+/// line.
 ///
-/// `min_start` is a hard lower bound on the leading scan, never crossed.
-/// Buffer-line callers pass the text start (no floor beyond the buffer
-/// itself). The wrap path passes the visual sub-line's start so a word
-/// beginning a continuation display line never absorbs the inter-word space
-/// that lives at the end of the previous display line.
+/// `min_start` is a hard lower bound on the leading scan and `max_end` a
+/// hard upper bound on the trailing scan, never crossed. Buffer-line callers
+/// pass the text start and end (no bound beyond the buffer itself). The wrap
+/// path passes the visual sub-line's bounds so a word beginning a
+/// continuation display line never absorbs the inter-word space that lives
+/// at the end of the previous display line, and a word filling its display
+/// line never absorbs the space that starts the next one.
 ///
 /// Reaching `min_start` only counts as indentation (blocking absorption) when
 /// `min_start` is itself a genuine line start: the buffer start, or right
@@ -121,15 +128,35 @@ pub fn expand_word_unit(
     text: &BufferText,
     range: ClusterRange,
     min_start: ClusterBound,
+    max_end: ClusterBound,
+    side: WhitespaceSide,
 ) -> ClusterRange {
+    let run = match side {
+        WhitespaceSide::Before => {
+            leading_run(text, range, min_start).or_else(|| trailing_run(text, range, max_end))
+        }
+        WhitespaceSide::After => {
+            trailing_run(text, range, max_end).or_else(|| leading_run(text, range, min_start))
+        }
+    };
+    run.map_or(range, |run| range.hull(run))
+}
+
+/// The first cluster of the inter-word whitespace run right before `range`,
+/// or `None` when there is none or it is indentation (see
+/// [`expand_word_unit`]).
+fn leading_run(
+    text: &BufferText,
+    range: ClusterRange,
+    min_start: ClusterBound,
+) -> Option<ClusterRange> {
     let min_start_is_bol = text
         .clusters()
         .prev(min_start)
         .is_none_or(|prev| blank_class(first_char(text, prev)) == Some(CharClass::Eol));
 
-    // Leading scan: walk back over Space clusters from the range's start.
-    // Stopping on Eol means the run touches the start of the line, so it is
-    // indentation.
+    // Walk back over Space clusters from the range's start. Stopping on Eol
+    // means the run touches the start of the line, so it is indentation.
     let mut run_start = range.start();
     let mut hit_eol = false;
     for c in text
@@ -148,21 +175,22 @@ pub fn expand_word_unit(
     }
     let at_bol = hit_eol || (ClusterBound::from(run_start) == min_start && min_start_is_bol);
 
-    if run_start < range.start() && !at_bol {
-        return range.hull(ClusterRange::of(text.full_slice(), run_start));
-    }
+    (run_start < range.start() && !at_bol).then(|| ClusterRange::of(text.full_slice(), run_start))
+}
 
-    // Trailing fallback: first word of a line, punctuation immediately
-    // before, or no adjacent whitespace at all.
-    let trailing = text
-        .clusters()
+/// The last cluster of the whitespace run right after `range`, up to the
+/// line break and not past `max_end`, or `None` when the next cluster is not
+/// a space.
+fn trailing_run(
+    text: &BufferText,
+    range: ClusterRange,
+    max_end: ClusterBound,
+) -> Option<ClusterRange> {
+    text.clusters()
         .graphemes_at(range.end())
-        .take_while(|c| blank_class(c.first()) == Some(CharClass::Space))
-        .last();
-    match trailing {
-        Some(last) => range.hull(last.range()),
-        None => range,
-    }
+        .take_while(|c| c.end() <= max_end && blank_class(c.first()) == Some(CharClass::Space))
+        .last()
+        .map(|last| last.range())
 }
 
 /// The word (or WORD) unit at `pos`: the inner word plus its whitespace
@@ -181,17 +209,19 @@ pub fn expand_word_unit(
 /// This is the shared body of `mm`/`MM` and `maw`/`maW` (position-based,
 /// unlike the motion-based `w`/`b`): all four names select the same span.
 /// Also used to resolve an extend selection's anchor unit when
-/// `word-selects-whitespace` is on.
+/// `word-selects-whitespace` is not `off`.
 pub fn word_unit_at(
     text: &BufferText,
     pos: ClusterStart,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
     min_start: ClusterBound,
+    max_end: ClusterBound,
+    side: WhitespaceSide,
     chars: WordChars<'_>,
 ) -> Option<ClusterRange> {
     let range = inner_word_impl(text, pos, is_boundary, chars)?;
     if !is_blank_at(text, range.start()) {
-        return Some(expand_word_unit(text, range, min_start));
+        return Some(expand_word_unit(text, range, min_start, max_end, side));
     }
 
     // On whitespace: `range` is the whitespace run. Find the word adjacent
@@ -208,7 +238,25 @@ pub fn word_unit_at(
         }
     };
     let range = inner_word_impl(text, word_pos, is_boundary, chars)?;
-    Some(expand_word_unit(text, range, min_start))
+    Some(expand_word_unit(text, range, min_start, max_end, side))
+}
+
+/// The span `mm`/`maw` select at `pos`: [`word_unit_at`] with its bookend
+/// on `whitespace`'s side, or [`inner_word_impl`] when `whitespace` is
+/// `None`.
+pub fn word_span_at(
+    text: &BufferText,
+    pos: ClusterStart,
+    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+    min_start: ClusterBound,
+    max_end: ClusterBound,
+    whitespace: Option<WhitespaceSide>,
+    chars: WordChars<'_>,
+) -> Option<ClusterRange> {
+    match whitespace {
+        Some(side) => word_unit_at(text, pos, is_boundary, min_start, max_end, side, chars),
+        None => inner_word_impl(text, pos, is_boundary, chars),
+    }
 }
 
 /// The word (or WORD) holding `anchor`, or just `anchor`'s cluster when it
