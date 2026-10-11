@@ -177,6 +177,9 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         let Some(cmd) = self.state.config.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
         };
+        if cmd.meta().key_only {
+            return Err(format!("'{name}': runs only from a key"));
+        }
         // `count` came from `parse_native_args`, which decodes a Steel-side
         // count of 0 to `None`, the script's way of asking for "as if no
         // count was typed" (move-down/move-up read this as visual-line

@@ -7,6 +7,7 @@
 - `lsp.format-max-ranges` moves to `core:lsp`'s `#:config`.
 - `lsp.viewport-debounce-ms` is renamed to `viewport-debounce-ms`.
 - `bind-wait-char!`, `request-wait-char!` and `pending-char` are removed: commands read keys with `on-next-char!`, so `bind-key!` binds any command.
+- `repeat-last-action` runs only from a key: `call!` of it raises an error.
 
 ### Editing
 - `.` reuses your answers to a `#:repeatable` command's character read, picker, prompt or menu instead of asking again.

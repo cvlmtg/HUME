@@ -721,7 +721,9 @@ pub(in crate::editor) enum InputOpener {
 ///
 /// Splitting enqueue (pure State handler) from drain (`&mut Editor` plumbing)
 /// lets `cmd_repeat` keep the `FocusedCmdFn` shape (no `&mut Editor`) while
-/// still reaching `replay_dot`.
+/// still reaching `replay_dot`. Only a key dispatches `cmd_repeat`
+/// (`CmdMeta::key_only`), and no other command runs between it and the drain,
+/// so the replay runs where the key put it, once per key.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PendingRepeat {
     /// Effective replay count, with the explicit-count override already

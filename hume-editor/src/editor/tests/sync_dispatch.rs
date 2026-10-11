@@ -332,71 +332,61 @@ fn case_b_sync_cursor_read_reflects_motion() {
     );
 }
 
-// ── Steel deferred dot-repeat ────────────────────────────────────────────────
+// ── Steel and dot-repeat ─────────────────────────────────────────────────────
 
-/// A Steel command that calls `(call! "repeat-last-action" bid)` must actually replay
-/// the last editing action when its key is pressed.
-///
-/// `(call! "repeat-last-action" bid)` is a sync EditorCmd dispatch: it calls
-/// `run_command_sync("repeat-last-action", bid)`, which runs `cmd_repeat` and sets
-/// `state.pending_repeat`. The replay then fires in `replay_dot` at the
-/// tail of the enclosing `handle_key` call, NOT during the Steel eval.
-///
-/// The test drives the key through `feed_key` so the full `handle_key` tail
-/// (including `replay_dot`) executes before we inspect the buffer.
-///
-/// If `replay_dot` were not called at `handle_key`'s tail, `pending_repeat`
-/// would be set but never consumed, and the buffer would be unchanged after
-/// pressing the Steel key.
-#[test]
-fn steel_call_repeat_last_action_drains_via_handle_key() {
+fn has_error(ed: &Editor, needle: &str) -> bool {
+    ed.state
+        .message_log
+        .entries()
+        .any(|e| e.severity == Severity::Error && e.text.contains(needle))
+}
+
+/// Binds `body`, a Steel command taking the pane, to F2 in Normal mode,
+/// after `d` has recorded a change to repeat. Returns the F2 key.
+fn bind_f2_after_a_delete(ed: &mut Editor, body: &str) -> termina::event::KeyEvent {
     use crate::editor::keymap::BindMode;
     use termina::event::KeyCode;
 
-    let mut ed = editor_from("-[foo]> bar\n");
-
     attach_steel(
-        &mut ed,
-        r#"(define-command! "steel-dot-repeat" "Repeat last action via Steel"
-                 (lambda (bid) (call! "repeat-last-action" bid)))"#,
+        ed,
+        &format!(r#"(define-command! "f2-body" "" (lambda (pane) {body}))"#),
     );
-
-    // Bind the Steel command to an unoccupied key (F2) in Normal mode.
     let f2 = termina::event::KeyEvent::new(KeyCode::Function(2), termina::event::Modifiers::NONE);
-    ed.state.config.keymap.bind_user_with_extend(
-        BindMode::Normal,
-        &[f2],
-        "steel-dot-repeat".into(),
-        false,
-    );
-
-    // Establish the recorded change "delete" via a real keypress.
-    ed.feed_key(key('d')); // delete "foo"; buffer = " bar\n"
-    assert_eq!(
-        ed.doc().text().to_string(),
-        " bar\n",
-        "setup: 'foo' must be deleted"
-    );
+    ed.state
+        .config
+        .keymap
+        .bind_user_with_extend(BindMode::Normal, &[f2], "f2-body".into(), false);
+    ed.feed_key(key('d'));
     assert!(
         ed.state.last_action().is_some(),
-        "setup: the recorded change must be set"
+        "setup: `d` records a change"
     );
+    f2
+}
 
-    // Move to "bar" and press F2: the Steel command fires `(call! "repeat-last-action" bid)`,
-    // setting pending_repeat during eval; handle_key tail drains it, deleting the
-    // selection. "bar" is the first (and only) word on its line, so its leading
-    // space is indentation and is never absorbed, and there's no trailing space
-    // either (EOL follows), so `w` picks up bare "bar" (default around-word).
+#[test]
+fn call_repeat_last_action_raises_and_repeats_nothing() {
+    let mut ed = editor_from("-[foo]> bar\n");
+    let f2 = bind_f2_after_a_delete(&mut ed, r#"(call! "repeat-last-action" pane)"#);
     ed.feed_key(key('w'));
+    let before = state(&ed);
     ed.feed_key(f2);
+    assert!(has_error(&ed, "'repeat-last-action': runs only from a key"));
+    assert_eq!(state(&ed), before);
+}
 
-    // "foo" was deleted by the initial `d` (leaving " bar\n"); "bar" was deleted
-    // by the Steel repeat, leaving the indentation space, " \n".
-    assert_eq!(
-        ed.doc().text().to_string(),
-        " \n",
-        "Steel (call! \"repeat-last-action\" bid) must replay the delete via handle_key drain"
+#[test]
+fn call_repeat_last_action_stops_the_script_before_its_next_call() {
+    let mut ed = editor_from("-[foo]> bar\nbaz\n");
+    let f2 = bind_f2_after_a_delete(
+        &mut ed,
+        r#"(call! "repeat-last-action" pane) (call! "move-down" pane)"#,
     );
+    ed.feed_key(key('w'));
+    let before = state(&ed);
+    ed.feed_key(f2);
+    assert!(has_error(&ed, "'repeat-last-action': runs only from a key"));
+    assert_eq!(state(&ed), before);
 }
 
 // ── Agreement test ────────────────────────────────────────────────────────────

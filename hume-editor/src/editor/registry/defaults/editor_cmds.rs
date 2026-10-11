@@ -337,6 +337,8 @@ impl CommandRegistry {
         // The handler sets EditorState::pending_repeat; replay_dot does
         // the actual replay with &mut Editor after handle_key returns. The
         // handler itself still takes only a native EditorCmd's shape, no &mut Editor.
+        // So only a key runs it: a script's `call!` would return before the
+        // replay ran (`.key_only()`).
         //
         // `.defers_paste_commit()`: this dispatch itself must not commit a
         // paste session left open by a preceding `[`/`]`: replay_dot makes
@@ -348,6 +350,7 @@ impl CommandRegistry {
             cmd_repeat,
         )
         .defers_paste_commit()
+        .key_only()
         .reg(self);
 
         // ── Editor commands — search ──────────────────────────────────────────

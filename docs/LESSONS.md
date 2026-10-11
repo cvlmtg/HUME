@@ -1397,3 +1397,28 @@ to remove. The user asked why the keyword was still there.
 field, keyword and merge step that carried it before, and remove each one in
 the same plan. A consumer that needs the property (`core:steel-server`'s
 `cog.scm`) then supplies it through the owner.
+
+## L36 — A command that ran after its own dispatch returned (2026-10-11)
+
+**Root cause:** `repeat-last-action` only queued the replay, which ran at
+the end of the keypress. From a key, nothing else ran in between. From a
+script's `call!`, the script's next calls ran first: `.` then `move-down`
+moved, then repeated. Two calls in one body repeated once. A call from a
+timer or hook waited for the user's next key and ran after it. The
+dot-repeat redesign sent the replay through `Editor::dispatch` and never
+checked how `.` itself is dispatched. The same ordering bug had already been
+refused for operand reads in `call!`.
+
+**Prevention rules:**
+
+1. A command whose effect waits past its own dispatch is a second
+   implementation of that command: every caller other than the one the
+   wait was built for sees a different order. Run it at dispatch, or refuse
+   the callers that can't wait (`CmdMeta::key_only`).
+2. A redesign that moves work onto one dispatch path checks every way into
+   the feature too, not only the body it rewrites.
+
+**Files:** `hume-editor/src/editor/registry/command.rs` (`CmdMeta::key_only`),
+`hume-editor/src/editor/host_impl/commands.rs` (`run_command_sync`),
+`hume-editor/src/editor/replay.rs` (`PendingRepeat`),
+`hume-editor/src/editor/tests/sync_dispatch.rs`.

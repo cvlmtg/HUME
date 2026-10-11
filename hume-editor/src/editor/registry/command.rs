@@ -234,6 +234,12 @@ pub(in crate::editor) struct CmdMeta {
     /// whether the command declaring it statically is native or was
     /// discovered dynamically inside a Steel body.
     pub manages_own_session: bool,
+    /// Whether only a key may run this command, so a script's `call!`
+    /// refuses it. `true` only for `repeat-last-action`: replaying a change
+    /// needs the Steel engine, which a `call!` from Steel runs inside, so
+    /// the replay waits for the end of the keypress and would run after the
+    /// script's own later calls.
+    pub key_only: bool,
 }
 
 impl CmdMeta {
@@ -429,6 +435,9 @@ pub(in crate::editor) enum MappableCommand {
         /// Whether this command manages `EditorState::active_session` itself.
         /// See [`CmdMeta::manages_own_session`] for the full rationale.
         manages_own_session: bool,
+        /// Whether only a key may run this command. See
+        /// [`CmdMeta::key_only`].
+        key_only: bool,
     },
     /// A command implemented as a Steel (Scheme) lambda.
     ///
@@ -522,6 +531,7 @@ impl MappableCommand {
                 clears_extend: false,
                 aligns_view: *aligns_view,
                 manages_own_session: false,
+                key_only: false,
             },
             Self::Selection {
                 jump,
@@ -537,6 +547,7 @@ impl MappableCommand {
                 clears_extend: false,
                 aligns_view: false,
                 manages_own_session: false,
+                key_only: false,
             },
             Self::Edit { repeatable, .. } => CmdMeta {
                 selection_tracking: SelectionTracking::Untracked,
@@ -548,6 +559,7 @@ impl MappableCommand {
                 clears_extend: false,
                 aligns_view: false,
                 manages_own_session: false,
+                key_only: false,
             },
             Self::EditorCmd {
                 defers_paste_commit,
@@ -557,6 +569,7 @@ impl MappableCommand {
                 clears_extend,
                 selection_tracking,
                 manages_own_session,
+                key_only,
                 ..
             } => CmdMeta {
                 selection_tracking: *selection_tracking,
@@ -568,6 +581,7 @@ impl MappableCommand {
                 clears_extend: *clears_extend,
                 aligns_view: false,
                 manages_own_session: *manages_own_session,
+                key_only: *key_only,
             },
             Self::SteelBacked { repeatable, .. } => CmdMeta {
                 selection_tracking: SelectionTracking::Untracked,
@@ -579,6 +593,7 @@ impl MappableCommand {
                 clears_extend: false,
                 aligns_view: false,
                 manages_own_session: false,
+                key_only: false,
             },
             Self::Lazy { .. } => CmdMeta {
                 selection_tracking: SelectionTracking::Untracked,
@@ -590,6 +605,7 @@ impl MappableCommand {
                 clears_extend: false,
                 aligns_view: false,
                 manages_own_session: false,
+                key_only: false,
             },
         }
     }

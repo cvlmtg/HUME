@@ -22,6 +22,7 @@ pub(super) struct EditorCmdBuilder {
     clears_extend: bool,
     selection_tracking: SelectionTracking,
     manages_own_session: bool,
+    key_only: bool,
 }
 impl EditorCmdBuilder {
     pub(super) fn repeatable(mut self) -> Self {
@@ -63,6 +64,12 @@ impl EditorCmdBuilder {
         self.manages_own_session = true;
         self
     }
+    /// Refuse this command from a script's `call!`. See
+    /// [`crate::editor::registry::CmdMeta::key_only`].
+    pub(super) fn key_only(mut self) -> Self {
+        self.key_only = true;
+        self
+    }
     /// Mark this as a selection-consuming edit that exits sticky Extend mode.
     /// Use for buffer-modifying acts: delete, paste, replace, surround-add.
     /// Do NOT use for yank, change, undo, redo, or mode-entry commands.
@@ -98,6 +105,7 @@ impl EditorCmdBuilder {
             clears_extend: self.clears_extend,
             selection_tracking: self.selection_tracking,
             manages_own_session: self.manages_own_session,
+            key_only: self.key_only,
         });
     }
 }
@@ -115,6 +123,7 @@ fn ecmd_builder(name: &'static str, doc: &'static str, fun: EditorCmdBody) -> Ed
         clears_extend: false,
         selection_tracking: SelectionTracking::Untracked,
         manages_own_session: false,
+        key_only: false,
     }
 }
 

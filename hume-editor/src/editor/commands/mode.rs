@@ -336,6 +336,10 @@ pub(in crate::editor) fn cmd_repeat(
     } else {
         orig_count
     };
+    debug_assert!(
+        state.pending_repeat.is_none(),
+        "one key queues at most one repeat"
+    );
     state.pending_repeat = Some(PendingRepeat { count: effective });
     Ok(())
 }
