@@ -350,9 +350,9 @@ list to pick from instead of jumping directly, and `z r` (references) always ope
 even for a single hit.
 
 That list (the same one `:diagnostics` opens) is a scrolling drawer across the bottom of
-the screen. `Ctrl-d`/`Ctrl-u` page it half a screen at a time, `Shift-Down`/`Shift-Up` move
-one row, `Enter` jumps to the highlighted row, and `Esc` closes it. Every other key, including
-plain `j`/`k` and the arrow keys, reaches the buffer underneath instead: the drawer stays
+the screen. `Ctrl-d`/`Ctrl-u` page it half a screen at a time, `Down`/`Up` move one row,
+`Enter` jumps to the highlighted row, and `Esc` closes it. Every other key, including `j`/`k`,
+reaches the buffer underneath instead: the drawer stays
 open while you keep editing, so you can browse a long references list and edit at the same
 time without losing your place in either.
 

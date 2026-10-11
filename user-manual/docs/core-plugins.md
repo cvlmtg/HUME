@@ -210,7 +210,7 @@ o          2m
 o-'     S 12m
 ```
 
-The drawer opens with the highlight on the current revision. `Shift-Down`/`Shift-Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it, as in the [language server lists](lsp.md). `Enter` moves the buffer to the highlighted revision and leaves the drawer open, so you can step through history one revision at a time, and `Esc` closes it. After a jump, `U` and `Ctrl-r` redo along the branch you jumped into.
+The drawer opens with the highlight on the current revision. `Down`/`Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it, as in the [language server lists](lsp.md). `Enter` moves the buffer to the highlighted revision and leaves the drawer open, so you can step through history one revision at a time, and `Esc` closes it. After a jump, `U` and `Ctrl-r` redo along the branch you jumped into.
 
 With `core:stdlib` and `core:git-diff` loaded before it, the buffer also shows what the revision you are on changed: the text of its parent revision as deleted lines above the changed lines, the changed words highlighted, and a tint on the changed lines, drawn the way `core:git-diff`'s inline diff draws a diff against a git ref. It follows every jump and edit while the drawer is open, the root revision shows nothing, and closing the drawer clears it. Without `core:git-diff` the drawer works the same, and opening it shows a message saying to load the plugin. The diff does not depend on whether `core:git-diff`'s own inline diff is switched on.
 

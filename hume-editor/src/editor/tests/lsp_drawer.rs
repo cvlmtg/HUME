@@ -931,11 +931,11 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
     );
 }
 
-/// `j`/`k` and the arrow keys are not drawer keys. They fall through to
-/// the source buffer (so vertical motion keeps working while browsing),
-/// leaving the drawer open with its selection untouched.
+/// `j`/`k` are not drawer keys. They fall through to the source buffer (so
+/// vertical motion keeps working while browsing), leaving the drawer open
+/// with its selection untouched.
 #[test]
-fn vertical_motion_keys_fall_through_leaving_the_drawer_selection_untouched() {
+fn j_and_k_fall_through_leaving_the_drawer_selection_untouched() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\ndef\nghi\n");
     arm_three_items(&mut ed, tmp.path());
@@ -962,22 +962,6 @@ fn vertical_motion_keys_fall_through_leaving_the_drawer_selection_untouched() {
         "k must move the source cursor back up"
     );
 
-    ed.feed_key(key_down());
-    ed.settle();
-    assert_eq!(
-        cursor_line(&ed),
-        hume_rope::line::ContentLine::new(1),
-        "Down must move the source cursor down"
-    );
-
-    ed.feed_key(key_up());
-    ed.settle();
-    assert_eq!(
-        cursor_line(&ed),
-        hume_rope::line::ContentLine::new(0),
-        "Up must move the source cursor back up"
-    );
-
     assert!(
         ed.state.input.drawer().is_some(),
         "vertical motion must not close the drawer"
@@ -990,6 +974,29 @@ fn vertical_motion_keys_fall_through_leaving_the_drawer_selection_untouched() {
     assert!(
         ed.state.status_msg.is_none(),
         "vertical motion must not invoke the callback"
+    );
+}
+
+/// Down/Up move the drawer's selection, not the source cursor.
+#[test]
+fn arrow_keys_move_the_drawer_selection_not_the_source_cursor() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\ndef\nghi\n");
+    arm_three_items(&mut ed, tmp.path());
+    let head_before = ed.current_view().primary().head().offset();
+
+    ed.feed_key(key_down());
+    ed.settle();
+    assert_eq!(ed.state.input.drawer().unwrap().selected, 1);
+
+    ed.feed_key(key_up());
+    ed.settle();
+    assert_eq!(ed.state.input.drawer().unwrap().selected, 0);
+
+    assert_eq!(
+        ed.current_view().primary().head().offset(),
+        head_before,
+        "Down/Up must not reach the source buffer"
     );
 }
 
@@ -1020,10 +1027,10 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     type_cmd(&mut ed, ":go");
 
     // capacity = min(20 items + 1, 15 rows * 0.35 = 5) = 5; visible_rows = 4.
-    // Shift-Down, not Ctrl-d, so each press moves exactly one row. This
+    // Down, not Ctrl-d, so each press moves one row. This
     // test is about the scroll-follows-selection mechanism, not paging.
     for _ in 0..6 {
-        ed.feed_key(key_shift_down());
+        ed.feed_key(key_down());
     }
 
     let drawer = ed.state.input.drawer().unwrap();
@@ -1040,13 +1047,12 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     );
 }
 
-// ── Ctrl-d/Ctrl-u: half-page step; Shift-Down/Up: single-row step ────────────
+// ── Ctrl-d/Ctrl-u: half-page step; Down/Up: single-row step ─────────────────
 
 /// Arms the same 20-item / 40×15 fixture as
 /// `long_list_auto_scrolls_to_keep_selection_visible`: capacity =
 /// min(20+1, 15*0.35=5) = 5, so `visible_rows` = 4, each Ctrl-d/Ctrl-u moves
-/// by half that (`(4 / 2).max(1)` = 2 rows), and each Shift-Down/Shift-Up
-/// moves by exactly 1.
+/// by half that (`(4 / 2).max(1)` = 2 rows), and each Down/Up moves by 1.
 fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
     let items_scm: String = (0..20)
         .map(|i| format!("\"item {i}\""))
@@ -1139,17 +1145,13 @@ fn ctrl_u_clamps_at_the_first_item() {
     assert_eq!(drawer.scroll, 0);
 }
 
-fn key_shift_up() -> KeyEvent {
-    KeyEvent::new(KeyCode::Up, Modifiers::SHIFT)
-}
-
 #[test]
-fn shift_down_steps_down_one_row() {
+fn down_steps_down_one_row() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
-    ed.feed_key(key_shift_down());
+    ed.feed_key(key_down());
     assert_eq!(
         ed.state.input.drawer().unwrap().selected,
         1,
@@ -1157,20 +1159,20 @@ fn shift_down_steps_down_one_row() {
     );
 
     // Two rows still stay inside the first visible window (0..4).
-    ed.feed_key(key_shift_down());
+    ed.feed_key(key_down());
     let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(drawer.selected, 2);
     assert_eq!(drawer.scroll, 0, "still inside the first window");
 }
 
 #[test]
-fn shift_down_clamps_at_the_last_item() {
+fn down_clamps_at_the_last_item() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
     for _ in 0..25 {
-        ed.feed_key(key_shift_down());
+        ed.feed_key(key_down());
     }
     assert_eq!(
         ed.state.input.drawer().unwrap().selected,
@@ -1180,14 +1182,14 @@ fn shift_down_clamps_at_the_last_item() {
 }
 
 #[test]
-fn shift_up_steps_up_one_row() {
+fn up_steps_up_one_row() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
-    ed.feed_key(key_shift_down());
-    ed.feed_key(key_shift_down()); // selected = 2
-    ed.feed_key(key_shift_up());
+    ed.feed_key(key_down());
+    ed.feed_key(key_down()); // selected = 2
+    ed.feed_key(key_up());
     assert_eq!(
         ed.state.input.drawer().unwrap().selected,
         1,
@@ -1196,12 +1198,12 @@ fn shift_up_steps_up_one_row() {
 }
 
 #[test]
-fn shift_up_clamps_at_the_first_item() {
+fn up_clamps_at_the_first_item() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
-    ed.feed_key(key_shift_up());
+    ed.feed_key(key_up());
     let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(drawer.selected, 0, "clamped, never underflows");
     assert_eq!(drawer.scroll, 0);

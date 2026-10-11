@@ -9,6 +9,7 @@
 - `bind-wait-char!`, `request-wait-char!` and `pending-char` are removed: commands read keys with `on-next-char!`, so `bind-key!` binds any command.
 - `repeat-last-action` runs only from a key: `call!` of it raises an error.
 - `word-selects-whitespace` takes `off`, `before` (the default) or `after` instead of `true`/`false`. `maw`/`maW` follow it too: with `off` they select the bare word, like `miw`/`miW`.
+- The bottom drawer moves one row with `Down`/`Up` instead of `Shift-Down`/`Shift-Up`; `j`/`k` still move the cursor in the buffer.
 
 ### Editing
 - `.` reuses your answers to a `#:repeatable` command's character read, picker, prompt or menu instead of asking again.

@@ -381,7 +381,7 @@ fn undotree_enter_jumps_and_rerenders_current_marker() {
     assert_eq!(ed.doc().text().to_string(), "hllo\n");
     toggle(&mut ed);
 
-    ed.handle_key(key_shift_down());
+    ed.handle_key(key_down());
     ed.handle_key(key_enter());
     drain_frames_until(&mut ed, |ed| {
         drawer_rows(ed).get(1).is_some_and(|row| row.contains('@'))
@@ -406,7 +406,7 @@ fn undotree_redo_after_enter_follows_jumped_branch() {
     let (mut ed, _guard) = setup(tmp.path());
     two_branches(&mut ed);
     toggle(&mut ed);
-    ed.handle_key(key_shift_down());
+    ed.handle_key(key_down());
     ed.handle_key(key_enter());
     ed.settle();
 
@@ -568,7 +568,7 @@ fn undotree_enter_redraws_the_diff_for_the_revision_jumped_to() {
     let bid = ed.focused_buffer_id();
     toggle(&mut ed);
 
-    ed.handle_key(key_shift_down());
+    ed.handle_key(key_down());
     ed.handle_key(key_enter());
     drain_frames_until(&mut ed, |ed| {
         diff_vlines(ed, bid) == vec![(0, true, "hello".to_string(), vec![(0, 1)])]
@@ -587,7 +587,7 @@ fn undotree_enter_draws_the_jumped_to_revisions_diff_in_the_same_settle() {
     let bid = ed.focused_buffer_id();
     toggle(&mut ed);
 
-    ed.handle_key(key_shift_down());
+    ed.handle_key(key_down());
     ed.handle_key(key_enter());
     ed.settle();
 
@@ -634,8 +634,8 @@ fn undotree_root_has_no_diff() {
     toggle(&mut ed);
     assert!(!diff_vlines(&ed, bid).is_empty(), "setup: a diff is drawn");
 
-    ed.handle_key(key_shift_down());
-    ed.handle_key(key_shift_down());
+    ed.handle_key(key_down());
+    ed.handle_key(key_down());
     ed.handle_key(key_enter());
     drain_frames_until(&mut ed, |ed| diff_vlines(ed, bid).is_empty());
 
@@ -772,7 +772,7 @@ fn undotree_redraws_the_diff_only_when_the_revision_changes() {
         "the timer refreshed the rows without a revision change, so no redraw"
     );
 
-    ed.handle_key(key_shift_down());
+    ed.handle_key(key_down());
     ed.handle_key(key_enter());
     drain_frames_until(&mut ed, |ed| !diff_vlines(ed, bid).is_empty());
 }
@@ -981,7 +981,7 @@ fn undotree_enter_acts_through_the_focused_pane() {
     let second = ed.state.focus.id();
     assert_ne!(first, second, "setup: focus moved to the new pane");
 
-    ed.handle_key(key_shift_down());
+    ed.handle_key(key_down());
     ed.handle_key(key_enter());
     drain_frames_until(&mut ed, |ed| {
         drawer_rows(ed).get(1).is_some_and(|row| row.contains('@'))
@@ -1009,7 +1009,7 @@ fn undotree_enter_jumps_after_the_session_pane_closes() {
     ed.settle();
     assert!(drawer_open(&ed), "setup: the drawer survives the close");
 
-    ed.handle_key(key_shift_down());
+    ed.handle_key(key_down());
     ed.handle_key(key_enter());
     drain_frames_until(&mut ed, |ed| {
         drawer_rows(ed).get(1).is_some_and(|row| row.contains('@'))

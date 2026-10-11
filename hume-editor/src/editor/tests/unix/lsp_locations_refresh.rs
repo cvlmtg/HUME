@@ -288,7 +288,7 @@ fn a_refresh_keeps_the_selected_row() {
     );
     set_cursor(&mut ed, FOO_OFFSET);
     run_references(&mut ed);
-    ed.handle_key(key_shift_down());
+    ed.handle_key(key_down());
     assert_eq!(selected_row(&ed), 1, "setup: the second row is selected");
 
     insert_line_above_the_cursor_line(&mut ed);
@@ -316,8 +316,8 @@ fn a_refresh_with_fewer_rows_clamps_the_selected_row() {
     );
     set_cursor(&mut ed, FOO_OFFSET);
     run_references(&mut ed);
-    ed.handle_key(key_shift_down());
-    ed.handle_key(key_shift_down());
+    ed.handle_key(key_down());
+    ed.handle_key(key_down());
     assert_eq!(selected_row(&ed), 2, "setup: the last row is selected");
 
     insert_line_above_the_cursor_line(&mut ed);

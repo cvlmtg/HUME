@@ -370,20 +370,15 @@ impl super::stack::InputStack {
 }
 
 /// Handles one key while the bottom drawer is open. Ctrl-d/Ctrl-u page by
-/// half the visible band, Shift-Down/Shift-Up step one row at a time for
-/// fine adjustment, and `Enter` (which runs the drawer's [`DrawerSelect`]
+/// half the visible band, bare Down/Up step one row at a time for fine
+/// adjustment, and `Enter` (which runs the drawer's [`DrawerSelect`]
 /// repeatedly across a browse session, unlike the menu, without closing the
 /// drawer) is handled in place; `Esc` retires the layer and fires `#f` at a
-/// Steel drawer's callback; any other key,
-/// including bare `j`/`k`
-/// and the arrow keys, falls through completely untouched (no close, no
-/// callback), leaving the drawer open while focus moves to whatever the
-/// fallen-through key does (Helix-style browse-while-editing, so vertical
-/// motion in the source buffer keeps working). Shift-Down/Up are CSI
-/// sequences (`CSI 1;2B`/`CSI 1;2A`), not control bytes, so, unlike a
-/// hypothetical Ctrl-j/Ctrl-m (LF/CR, i.e. `Enter`) or Ctrl-k (a kitty
-/// one-shot extend elsewhere in the keymap), they carry no legacy-terminal
-/// collision and need no kitty-protocol gate.
+/// Steel drawer's callback; any other key, including `j`/`k`, falls through
+/// completely untouched (no close, no callback), leaving the drawer open
+/// while focus moves to whatever the fallen-through key does (Helix-style
+/// browse-while-editing, so vertical motion in the source buffer keeps
+/// working).
 ///
 /// No mode gate of its own, same reasoning as [`super::menu::menu_input`].
 /// A mouse event falls through untouched, same as any other key the
@@ -408,8 +403,8 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     let step: Option<isize> = match key.code {
         KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => Some(half_page_step),
         KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => Some(-half_page_step),
-        KeyCode::Down if key.modifiers.contains(Modifiers::SHIFT) => Some(1),
-        KeyCode::Up if key.modifiers.contains(Modifiers::SHIFT) => Some(-1),
+        KeyCode::Down if key.modifiers == Modifiers::NONE => Some(1),
+        KeyCode::Up if key.modifiers == Modifiers::NONE => Some(-1),
         _ => None,
     };
     if let Some(delta) = step {

@@ -2,14 +2,9 @@
 // the focused pane to that buffer and leaves the drawer open.
 
 use pretty_assertions::assert_eq;
-use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::*;
 use crate::editor::input_stack::DrawerSelect;
-
-fn key_shift_up() -> KeyEvent {
-    KeyEvent::new(KeyCode::Up, Modifiers::SHIFT)
-}
 
 /// The drawer's rows, which must all be rendered (a native drawer has no
 /// lazy rows).
@@ -130,8 +125,8 @@ fn enter_switches_buffer_with_a_jump_and_keeps_the_drawer_open() {
     let (mut ed, _tmp) = three_buffers();
     let departed = ed.focused_buffer_id();
     let pid = ed.state.focus.id();
-    ed.handle_key(key_shift_up());
-    ed.handle_key(key_shift_up());
+    ed.handle_key(key_up());
+    ed.handle_key(key_up());
     assert_eq!(selected(&ed), 0);
 
     ed.handle_key(key_enter());
@@ -149,7 +144,7 @@ fn enter_moves_the_markers_with_the_switch() {
     ed.report(Severity::Warning, "note".to_string());
     ed.execute_typed("messages", None).unwrap();
     ed.execute_typed("ls", None).unwrap();
-    ed.handle_key(key_shift_up());
+    ed.handle_key(key_up());
 
     ed.handle_key(key_enter());
 
