@@ -168,18 +168,18 @@ fn word_object_cmd(
 }
 
 /// Generates one `cmd_*_word` fn delegating to [`word_object_cmd`].
-/// `$whitespace` maps the command's `WordCtx` to the side it selects with.
+/// `$around` selects with `ctx.whitespace`'s bookend; otherwise the inner word.
 ///
 /// The command registry stores `fun` as a bare `fn` pointer (see
 /// `hume-editor`'s `SelectionBody` doc), so each variant still needs its own
 /// named item. Only the body is shared here, not the item itself.
 macro_rules! word_object_variant {
-    ($(#[$meta:meta])* $name:ident, $doc:expr, $is_boundary:expr, $whitespace:expr) => {
+    ($(#[$meta:meta])* $name:ident, $doc:expr, $is_boundary:expr, $around:literal) => {
         $(#[$meta])*
         #[doc = $doc]
         pub fn $name(state: EditState, _count: usize, ctx: WordCtx<'_>) -> EditState {
-            let whitespace: fn(WordCtx<'_>) -> Option<WhitespaceSide> = $whitespace;
-            word_object_cmd(state, ctx, $is_boundary, whitespace(ctx))
+            let whitespace = if $around { ctx.whitespace } else { None };
+            word_object_cmd(state, ctx, $is_boundary, whitespace)
         }
     };
 }
@@ -188,7 +188,7 @@ word_object_variant!(
     cmd_inner_word,
     "Inner word (`mi w`): the run of same-class characters touching the cursor.",
     is_word_boundary,
-    |_| None
+    false
 );
 word_object_variant!(
     cmd_around_word,
@@ -198,19 +198,19 @@ word_object_variant!(
      when `ctx.whitespace` is `None`. `Extend` unions it with the current \
      selection.",
     is_word_boundary,
-    |ctx| ctx.whitespace
+    true
 );
 word_object_variant!(
     #[allow(non_snake_case)]
     cmd_inner_uppercase_word,
     "Inner WORD (`mi W`); see [`cmd_inner_word`].",
     is_uppercase_word_boundary,
-    |_| None
+    false
 );
 word_object_variant!(
     #[allow(non_snake_case)]
     cmd_around_uppercase_word,
     "Around WORD (`ma W`, and `MM`); see [`cmd_around_word`].",
     is_uppercase_word_boundary,
-    |ctx| ctx.whitespace
+    true
 );

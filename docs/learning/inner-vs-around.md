@@ -55,11 +55,16 @@ whitespace *after* it when there is none — because the word starts its line
 absorbed) or because punctuation sits directly before it. If neither side
 has whitespace, the selection stays bare.
 
-The `after` setting mirrors it, the way Vim's and Helix's `aw` work: prefer
-the whitespace *after* the word, up to the end of its line, and fall back to
-the whitespace before it when nothing follows (the last word of a line, or a
-word right before punctuation). Indentation is still never absorbed, so a
-lone word on an indented line stays bare.
+The `after` setting mirrors it: prefer the whitespace *after* the word, up
+to the end of its line, and fall back to the whitespace before it when
+nothing follows (the last word of a line, or a word right before
+punctuation). Indentation is still never absorbed, so a lone word on an
+indented line stays bare.
+
+With the cursor on whitespace there is no word under it, so `maw` picks the
+word that whitespace belongs to: the word after it under `before`, the word
+before it under `after`. Either way the whitespace under the cursor is part
+of the selection, unless it is indentation.
 
 The reason: deleting "a word" should leave the surrounding text tidy. If you
 have `one two three` and delete `aw` with the cursor on `two`, you want

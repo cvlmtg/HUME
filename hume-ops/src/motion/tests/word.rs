@@ -1907,3 +1907,81 @@ fn extend_select_prev_word_after_shrinks_to_anchor_unit() {
         "foo -[bar ]>baz\n"
     );
 }
+
+#[test]
+fn extend_select_prev_word_after_from_trailing_run_steps_back() {
+    // The head sits on "bar"'s trailing space. The previous word is the one
+    // before "bar", not "bar" again.
+    assert_state!(
+        "foo -[bar ]>baz\n",
+        |(text, sels)| cmd_select_prev_word(
+            test_fixtures::testing::state(text, sels),
+            1,
+            WordCtx::after(MotionMode::Extend)
+        ),
+        "<[foo bar ]-baz\n"
+    );
+}
+
+#[test]
+fn extend_select_prev_word_after_twice_keeps_anchor_word() {
+    // After the first press the anchor sits on "baz"'s trailing space. The
+    // anchor's word is still "baz", so "qux" never joins the selection.
+    assert_state!(
+        "foo bar -[b]>az qux\n",
+        |(text, sels)| {
+            let s1 = cmd_select_prev_word(
+                test_fixtures::testing::state(text, sels),
+                1,
+                WordCtx::after(MotionMode::Extend),
+            );
+            cmd_select_prev_word(s1, 1, WordCtx::after(MotionMode::Extend))
+        },
+        "<[foo bar baz ]-qux\n"
+    );
+}
+
+#[test]
+fn extend_select_next_word_after_takes_target_trailing_run() {
+    // The target "baz" takes its trailing space, the same span Move `w`
+    // lands on.
+    assert_state!(
+        "foo -[b]>ar baz qux\n",
+        |(text, sels)| cmd_select_next_word(
+            test_fixtures::testing::state(text, sels),
+            1,
+            WordCtx::after(MotionMode::Extend)
+        ),
+        "foo -[bar baz ]>qux\n"
+    );
+}
+
+#[test]
+fn extend_select_next_word_around_from_leading_run_shrinks_to_anchor_unit() {
+    // The head sits on "bar"'s leading space. The next word is the one after
+    // "bar", which is the anchor's own word.
+    assert_state!(
+        "foo<[ bar baz]-\n",
+        |(text, sels)| cmd_select_next_word(
+            test_fixtures::testing::state(text, sels),
+            1,
+            WordCtx::before(MotionMode::Extend)
+        ),
+        "foo bar-[ baz]>\n"
+    );
+}
+
+#[test]
+fn extend_select_next_word_around_onto_indented_line_takes_trailing_run() {
+    // "baz" starts an indented line, so it takes its trailing space, the
+    // same span Move `w` lands on.
+    assert_state!(
+        "foo -[b]>ar\n  baz qux\n",
+        |(text, sels)| cmd_select_next_word(
+            test_fixtures::testing::state(text, sels),
+            1,
+            WordCtx::before(MotionMode::Extend)
+        ),
+        "foo-[ bar\n  baz ]>qux\n"
+    );
+}

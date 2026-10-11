@@ -1132,7 +1132,8 @@ fn select_word_after_matches_around_word() {
 }
 
 #[test]
-fn select_word_after_on_whitespace_snaps_to_following_word() {
+fn select_word_after_on_whitespace_snaps_to_preceding_word() {
+    // The preceding word's trailing run is the whitespace under the cursor.
     assert_state!(
         "foo-[ ]>bar baz\n",
         |(text, sels)| cmd_around_word(
@@ -1140,7 +1141,22 @@ fn select_word_after_on_whitespace_snaps_to_following_word() {
             0,
             WordCtx::after(MotionMode::Move)
         ),
-        "foo -[bar ]>baz\n"
+        "-[foo ]>bar baz\n"
+    );
+}
+
+#[test]
+fn select_word_after_on_indentation_snaps_to_following_word() {
+    // No word precedes the indentation on its line, so the following word is
+    // used, with its trailing run.
+    assert_state!(
+        "x\n -[ ]>foo bar\n",
+        |(text, sels)| cmd_around_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::after(MotionMode::Move)
+        ),
+        "x\n  -[foo ]>bar\n"
     );
 }
 

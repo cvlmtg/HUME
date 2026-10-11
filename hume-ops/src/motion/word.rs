@@ -1,7 +1,7 @@
 use super::MotionMode;
 use crate::word_unit::{
     IsBoundary, anchor_unit, class_at, expand_word_unit, find_word_end_from, find_word_start_from,
-    is_blank_at, prev_nonblank, word_unit_at,
+    is_blank_at, owning_word_cluster, prev_nonblank, word_unit_at,
 };
 use crate::{WhitespaceSide, WordCtx};
 use hume_editing::selection::{Facing, Selection};
@@ -211,12 +211,15 @@ pub(super) fn apply_word_select(
 /// it lies beyond the anchor's unit, shrink toward it if it has crossed back
 /// onto or past that unit. Replaces the old selection rather than unioning.
 ///
-/// The origin is the head, so repeated presses walk word by word. With a
-/// `whitespace` side, the anchor's unit is [`word_unit_at`] (its whitespace
-/// bookend included) instead of [`anchor_unit`], and a backward-growing
-/// target's head is expanded the same way. Comparisons use the target's raw bounds against
-/// the expanded anchor unit, so the one-space overlap between adjacent units
-/// is never double-counted.
+/// Each selection end stands for the word that owns it
+/// ([`owning_word_cluster`]), since an end may sit on its word's whitespace
+/// bookend. The motion searches from the head's word, so repeated presses
+/// walk word by word in either direction. With a `whitespace` side, the
+/// anchor's unit is [`word_unit_at`] of the anchor's word instead of
+/// [`anchor_unit`], and the target grows by its own bookend
+/// ([`expand_word_unit`]) whichever way the selection grows. Comparisons use
+/// the target's raw bounds against the expanded anchor unit, so the
+/// one-space overlap between adjacent units is never double-counted.
 ///
 /// A target lies wholly beyond, behind, or on the anchor's unit, so that unit
 /// is always kept whole: crossing it flips direction without truncating.
@@ -230,21 +233,35 @@ pub(super) fn apply_word_select_extend(
     motion: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
 ) -> EditState {
     let text = state.text().clone();
+    let expand = |range: ClusterRange| {
+        whitespace.map_or(range, |side| {
+            expand_word_unit(
+                &text,
+                range,
+                ClusterBound::TEXT_START,
+                text.clusters().text_end(),
+                side,
+            )
+        })
+    };
     state.map(|sel| {
         let mut current = sel.selection();
         for _ in 0..count {
-            let Some(target) = motion(&text, current.head()) else {
+            let (anchor, head) = (current.anchor(), current.head());
+            let origin = owning_word_cluster(&text, head, anchor).unwrap_or(head);
+            let Some(target) = motion(&text, origin) else {
                 break;
             };
             // `word_unit_at` returns `None` when the anchor sits on
             // whitespace with no adjacent word (e.g. indentation at the very
             // start of the buffer): the bare anchor cluster stands in, as
             // `anchor_unit` yields there.
+            let anchor_word = owning_word_cluster(&text, anchor, head).unwrap_or(anchor);
             let unit = whitespace
                 .and_then(|side| {
                     word_unit_at(
                         &text,
-                        current.anchor(),
+                        anchor_word,
                         is_boundary,
                         ClusterBound::TEXT_START,
                         text.clusters().text_end(),
@@ -252,20 +269,11 @@ pub(super) fn apply_word_select_extend(
                         chars,
                     )
                 })
-                .unwrap_or_else(|| anchor_unit(&text, current.anchor(), is_boundary, chars));
+                .unwrap_or_else(|| anchor_unit(&text, anchor, is_boundary, chars));
             current = if target.start() > unit.last() {
-                Selection::covering(unit.hull(target), Facing::Forward)
+                Selection::covering(unit.hull(expand(target)), Facing::Forward)
             } else if target.last() < unit.start() {
-                let head = whitespace.map_or(target, |side| {
-                    expand_word_unit(
-                        &text,
-                        target,
-                        ClusterBound::TEXT_START,
-                        text.clusters().text_end(),
-                        side,
-                    )
-                });
-                Selection::covering(head.hull(unit), Facing::Backward)
+                Selection::covering(expand(target).hull(unit), Facing::Backward)
             } else {
                 Selection::covering(unit, Facing::Forward)
             };
@@ -284,10 +292,9 @@ type SelectWord = fn(&BufferText, ClusterStart, IsBoundary, WordChars<'_>) -> Op
 /// [`is_uppercase_word_boundary`]).
 ///
 /// `backward` only affects the `Move` arm's search origin (see
-/// [`apply_word_select`]'s doc); `Extend`'s chaining always uses the head and
-/// has no analogous asymmetry. `ctx.whitespace` affects both arms
-/// identically: a plain field read deciding which whitespace, if any, the
-/// unit includes.
+/// [`apply_word_select`]'s doc); `Extend` searches from the head's word in
+/// both directions. `ctx.whitespace` affects both arms identically: a plain
+/// field read deciding which whitespace, if any, the unit includes.
 fn word_select_cmd(
     state: EditState,
     count: usize,

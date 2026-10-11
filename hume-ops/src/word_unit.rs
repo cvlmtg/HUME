@@ -41,6 +41,26 @@ pub(crate) fn prev_nonblank(
         .map(|c| c.start())
 }
 
+/// The first non-blank cluster from selection end `end` toward its other end
+/// `other`, both included, or `None` when every cluster between them is
+/// blank. A whitespace bookend lies on the outer side of its word, so this is
+/// the word the bookend belongs to.
+pub(crate) fn owning_word_cluster(
+    text: &BufferText,
+    end: ClusterStart,
+    other: ClusterStart,
+) -> Option<ClusterStart> {
+    if end <= other {
+        text.clusters()
+            .graphemes_at(end.into())
+            .take_while(|c| c.start() <= other)
+            .find(|c| blank_class(c.first()).is_none())
+            .map(|c| c.start())
+    } else {
+        prev_nonblank(text, text.clusters().end_of(end), other.into())
+    }
+}
+
 /// The first cluster of the word or punct group holding `pos`.
 ///
 /// Mirror of [`find_word_end_from`]: steps back while `is_boundary` reports
@@ -197,11 +217,11 @@ fn trailing_run(
 /// bookend per [`expand_word_unit`].
 ///
 /// When `pos` sits on whitespace there is no word under the cursor: snap to
-/// the adjacent word (the one right after the run if any, else the one right
-/// before it) and expand that instead. The whitespace under the cursor is
-/// never selected for its own sake; it only appears in the span when the
-/// expansion re-absorbs it (an inter-word space run is the following word's
-/// leading run), so newlines and indentation never leak into the selection.
+/// the word whose bookend on `side` is that run (the one right after it for
+/// `Before`, right before it for `After`), else the word on the other side,
+/// and expand that instead. The whitespace under the cursor is never
+/// selected for its own sake; it only appears in the span when the expansion
+/// re-absorbs it, so newlines and indentation never leak into the selection.
 /// Returns `None` when no word is adjacent to the run (e.g. a
 /// whitespace-only buffer, or indentation at the start of the buffer), and the
 /// callers treat that as a no-op.
@@ -224,19 +244,16 @@ pub fn word_unit_at(
         return Some(expand_word_unit(text, range, min_start, max_end, side));
     }
 
-    // On whitespace: `range` is the whitespace run. Find the word adjacent
-    // to it (following preferred, preceding fallback) and expand that one by
-    // the normal rule instead.
-    let word_pos = match text.clusters().next(range.last()) {
-        Some(next) if !is_blank_at(text, next) => next,
-        _ => {
-            let prev = text.clusters().prev(range.start().into())?;
-            if is_blank_at(text, prev) {
-                return None;
-            }
-            prev
-        }
+    let following = text.clusters().next(range.last());
+    let preceding = text.clusters().prev(range.start().into());
+    let (first, second) = match side {
+        WhitespaceSide::Before => (following, preceding),
+        WhitespaceSide::After => (preceding, following),
     };
+    let word_pos = [first, second]
+        .into_iter()
+        .flatten()
+        .find(|&c| !is_blank_at(text, c))?;
     let range = inner_word_impl(text, word_pos, is_boundary, chars)?;
     Some(expand_word_unit(text, range, min_start, max_end, side))
 }

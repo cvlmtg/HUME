@@ -104,6 +104,8 @@ numbers directly.
 - **L35** — Moving a property to its owner means removing every other carrier
   of it in the same plan. Check each field and keyword of the existing shape for a
   second copy of what the new owner now holds.
+- **L37** — Helix and Kakoune are the reference editors for selection and
+  text-object behaviour. Never cite Vim as the model for how HUME should behave.
 
 ---
 
@@ -1422,3 +1424,18 @@ refused for operand reads in `call!`.
 `hume-editor/src/editor/host_impl/commands.rs` (`run_command_sync`),
 `hume-editor/src/editor/replay.rs` (`PendingRepeat`),
 `hume-editor/src/editor/tests/sync_dispatch.rs`.
+
+## L37 — A review cited Vim as the model for a selection behaviour (2026-10-11)
+
+**Root cause:** A review of `word-selects-whitespace=after` argued that `maw`
+on whitespace should include that whitespace because Vim's `aw` does. HUME is
+a select-then-act editor modelled on Helix and Kakoune; Vim's operator-pending
+`aw` is not the reference, and the changelog and learning docs repeated the
+same comparison.
+
+**Prevention rule:** When a behaviour needs an outside example, take it from
+Helix or Kakoune. Otherwise argue from HUME's own settings and symmetry: under
+`after`, a case resolves as the mirror of its `before` resolution.
+
+**Files:** `hume-ops/src/word_unit.rs` (`word_unit_at`), `CHANGELOG.md`,
+`docs/learning/inner-vs-around.md`.
