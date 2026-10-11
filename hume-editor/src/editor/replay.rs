@@ -33,7 +33,7 @@ use super::dot_chain::{ChainBroken, DotChain};
 use super::edit_session::{self, DotCapture, EditSession, EditSessionKind, InsertState};
 use super::input_stack::char::{AfterRead, CharRead};
 use super::keymap::CanonicalKey;
-use super::registry::MappableCommand;
+use super::registry::{Dispatchable, MappableCommand};
 use super::{Editor, EditorState, Mode, commands, doc_ops};
 
 // ── The recorded change ───────────────────────────────────────────────────────
@@ -377,7 +377,7 @@ pub(in crate::editor) fn with_recording_scope<H: AsMut<EditorState>, R>(
 pub(in crate::editor) fn dispatch_insert_key(
     ed: &mut Editor,
     scope: Option<RecordingScope>,
-    cmd: MappableCommand,
+    cmd: Dispatchable,
 ) -> bool {
     let ctx = CmdCtx {
         count: Some(1),
@@ -1202,13 +1202,15 @@ impl Editor {
         // `Untracked`, native entries can never be unregistered, so the lookup
         // and bind always succeed.
         for step in &action.selection_recipe {
-            let cmd = self
+            let Some(MappableCommand::Native(cmd)) = self
                 .state
                 .config
                 .registry
                 .get_mappable(step.command.as_ref())
                 .cloned()
-                .expect("a dot-repeat selection-recipe step always names a native command");
+            else {
+                unreachable!("a dot-repeat selection-recipe step always names a native command");
+            };
             let Ok(bound) = commands::BoundCommand::focused(cmd, fp, None) else {
                 unreachable!(
                     "a dot-repeat selection-recipe step always names a native command taking no character"

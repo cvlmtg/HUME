@@ -1,7 +1,9 @@
 use std::borrow::Cow;
 
 use crate::editor::commands::{cmd_copy_selection_on_next_line, cmd_copy_selection_on_prev_line};
-use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionBody, SelectionTracking};
+use crate::editor::registry::{
+    CommandRegistry, MappableCommand, NativeCommand, SelectionBody, SelectionTracking,
+};
 use hume_ops::selection_cmd::{
     cmd_collapse_selection_to_head, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
     cmd_flip_selections, cmd_keep_primary_selection, cmd_remove_primary_selection, cmd_select_all,
@@ -82,7 +84,7 @@ impl CommandRegistry {
             cmd_trim_selection_whitespace,
             composes
         );
-        // EditorCmd, not the `selection!` macro (`MappableCommand::Selection`):
+        // EditorCmd, not the `selection!` macro (`NativeCommand::Selection`):
         // the display-column placement of each copy needs a `DisplayLineMap`, which
         // that signature has no channel for. See
         // `visual_move.rs::copy_selection_vertically`. `.extendable()`

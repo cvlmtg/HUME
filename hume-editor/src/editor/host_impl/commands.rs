@@ -1,7 +1,7 @@
 //! `EditorHostImpl`'s command registry queries, synchronous native
 //! dispatch, and Steel command registration.
 
-use crate::editor::registry::{MappableCommand, TypedBody, TypedCommand};
+use crate::editor::registry::{MappableCommand, SteelCommand, TypedBody, TypedCommand};
 
 use super::EditorHostImpl;
 use hume_scripting::host::CommandHost;
@@ -50,14 +50,14 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         self.state
             .config
             .registry
-            .register(MappableCommand::SteelBacked {
+            .register(MappableCommand::SteelBacked(SteelCommand {
                 name: def.name.into(),
                 doc: def.doc.into(),
                 arity: def.arity,
                 is_variadic: def.is_variadic,
                 inline_output: def.inline_output,
                 repeatable: def.repeatable,
-            });
+            }));
         Ok(())
     }
 
@@ -177,6 +177,11 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         let Some(cmd) = self.state.config.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
         };
+        let MappableCommand::Native(cmd) = cmd else {
+            return Err(format!(
+                "{name} is not a native command; use call! instead of call-native!"
+            ));
+        };
         if cmd.meta().key_only {
             return Err(format!("'{name}': runs only from a key"));
         }
@@ -193,11 +198,6 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             self.state, self.view, cmd, pane, arg,
         ) {
             Ok(bound) => bound,
-            Err(crate::editor::commands::BindError::NotNative) => {
-                return Err(format!(
-                    "{name} is not a native command; use call! instead of call-native!"
-                ));
-            }
             // A missing operand is refused too: a script passes the operand
             // it got from `on-next-char!` or `prompt!`, as reading it here
             // would return before the command ran, so the script's next call

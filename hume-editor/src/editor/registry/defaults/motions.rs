@@ -1,7 +1,9 @@
 use crate::editor::commands::{cmd_visual_move_down, cmd_visual_move_up};
 use std::borrow::Cow;
 
-use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionBody, SelectionTracking};
+use crate::editor::registry::{
+    CommandRegistry, MappableCommand, NativeCommand, SelectionBody, SelectionTracking,
+};
 use hume_ops::motion::{
     cmd_goto_first_line, cmd_goto_first_nonblank, cmd_goto_last_line, cmd_goto_line_end,
     cmd_goto_line_start, cmd_goto_matching_pair, cmd_goto_next_paragraph, cmd_goto_prev_paragraph,

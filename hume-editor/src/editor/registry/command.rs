@@ -69,7 +69,7 @@ pub(in crate::editor) enum PatternPrompt {
     Sift,
 }
 
-/// Body shape for [`MappableCommand::EditorCmd`]'s `fun` field: decides at
+/// Body shape for [`NativeCommand::EditorCmd`]'s `fun` field: decides at
 /// compile time whether `(call! "cmd" pane)` may act on a non-focused pane,
 /// and which operand, if any, the command takes.
 /// Motion/Selection/Edit need no such field, since a pure body can only reach
@@ -136,9 +136,9 @@ pub(in crate::editor) enum SelectionTracking {
 /// no category: each flag is still set independently at its own `meta()` arm.
 ///
 /// `Copy` and name-free on purpose: the variant→property mapping lives in
-/// `MappableCommand::meta()` and nowhere else, so `meta()` must be cheap enough
-/// that no caller is ever tempted to re-`match` the variant for a single bit
-/// (which would fork the SSOT). The command name is owned data: it is read
+/// `NativeCommand::meta()` and `steel_meta` and nowhere else, so `meta()`
+/// must be cheap enough that no caller is ever tempted to re-`match` the
+/// variant for a single bit (which would fork the SSOT). The command name is owned data: it is read
 /// separately via [`MappableCommand::name`] and cloned once per dispatch by the
 /// pipeline, not carried in here.
 #[derive(Debug, Clone, Copy)]
@@ -147,7 +147,7 @@ pub(in crate::editor) struct CmdMeta {
     ///
     /// Always `Extends` for Motion variants. `Selection` and `EditorCmd`
     /// each carry a `selection_tracking` field of their own (per-command
-    /// opt-in); see [`MappableCommand::Selection`]/[`MappableCommand::EditorCmd`].
+    /// opt-in); see [`NativeCommand::Selection`]/[`NativeCommand::EditorCmd`].
     /// `EditorCmd` additionally covers the rare case where a command needs
     /// `EditorState`/`EngineView` access to build a replayable selection
     /// extent: `select-all-matches` (`m/`) reads the buffer's search
@@ -250,8 +250,8 @@ impl CmdMeta {
     /// snapshots the pre-body position for the jump list and invalidates a
     /// still-open Insert session's pinned typed run.
     ///
-    /// **Blind spot**: [`MappableCommand::meta`] hardcodes all three flags
-    /// `false` for `SteelBacked` and `Lazy`, since a Steel command has no way to
+    /// **Blind spot**: [`SteelCommand::meta`] hardcodes all three flags
+    /// `false`, as does a `Lazy` stub's, since a Steel command has no way to
     /// declare its own motion semantics. A user-bound Steel motion therefore
     /// answers `false` here: the jump list won't record it, and a pinned typed
     /// run survives it. Both callers accept that rather than guess.
@@ -260,7 +260,7 @@ impl CmdMeta {
     }
 }
 
-/// Function pointer for an [`Edit`](MappableCommand::Edit) handler.
+/// Function pointer for an [`Edit`](NativeCommand::Edit) handler.
 pub(in crate::editor) type EditFn = fn(EditState) -> Edited;
 
 // ── MappableCommand ───────────────────────────────────────────────────────────
@@ -278,7 +278,7 @@ pub(in crate::editor) type EditFn = fn(EditState) -> Edited;
 /// gets a second body shape here in the registry. The four motions
 /// specifically stay `Motion` rather than joining `select-word-nearest-on-line`
 /// as an `EditorCmd` (which also resolves settings, via a `DisplayLineMap`) because
-/// `MappableCommand::meta` only ever sets `CmdMeta::is_motion` true for the
+/// `NativeCommand::meta` only ever sets `CmdMeta::is_motion` true for the
 /// `Motion` variant, and Move mode's jump-list/dot-repeat handling depends on
 /// that flag.
 #[derive(Clone, Copy)]
@@ -322,12 +322,96 @@ pub(in crate::editor) enum StructuralBody {
 /// individually, so this alone would not stop any file under `crate::editor`
 /// from destructuring a native variant's `fun` and calling it directly,
 /// skipping `commands::run`'s bookkeeping (jump list, dot-repeat,
-/// paste session). Every native variant's `fun` is wrapped in
+/// paste session). Every [`NativeCommand`] variant's `fun` is wrapped in
 /// [`NativeBody`] instead: its private
 /// field, readable only from `commands::pipeline::run_body`, is what
 /// actually closes that off.
 #[derive(Clone)]
 pub(in crate::editor) enum MappableCommand {
+    /// A command implemented in Rust.
+    Native(NativeCommand),
+    /// A command implemented as a Steel (Scheme) lambda.
+    SteelBacked(SteelCommand),
+    /// A placeholder for a lazy plugin command that has not yet been loaded.
+    ///
+    /// Registered by `CommandHost::register_lazy_command` as `declare-plugin!`
+    /// processes its `#:commands` entries. When dispatched, the owning
+    /// plugin's body is evaluated, the stub is replaced by the real
+    /// `SteelBacked` command, and dispatch re-runs.
+    Lazy {
+        name: Cow<'static, str>,
+        plugin: hume_scripting::attribution::EntryId,
+    },
+}
+
+impl MappableCommand {
+    /// The command's registered name.
+    ///
+    /// Returns the stored `Cow` (not `&str`) so the dispatch pipeline can clone
+    /// it preserving `Cow::Borrowed`: a `&'static str` name (every built-in)
+    /// clones with no heap allocation; only `Cow::Owned` Steel names allocate.
+    /// Pure field extraction, distinct from [`NativeCommand::meta`], which is
+    /// the single source of truth for derived bookkeeping properties.
+    pub(in crate::editor) fn name(&self) -> &Cow<'static, str> {
+        match self {
+            Self::Native(cmd) => cmd.name(),
+            Self::SteelBacked(cmd) => &cmd.name,
+            Self::Lazy { name, .. } => name,
+        }
+    }
+
+    /// One-line description of the command, for `:help` and command-palette display.
+    #[cfg(test)]
+    pub(in crate::editor) fn doc(&self) -> &str {
+        match self {
+            Self::Native(cmd) => cmd.doc(),
+            Self::SteelBacked(cmd) => cmd.doc.as_ref(),
+            Self::Lazy { .. } => "",
+        }
+    }
+
+    /// Declarative metadata for the dispatch pipeline. See
+    /// [`NativeCommand::meta`].
+    #[cfg(test)]
+    pub(in crate::editor) fn meta(&self) -> CmdMeta {
+        match self {
+            Self::Native(cmd) => cmd.meta(),
+            Self::SteelBacked(cmd) => cmd.meta(),
+            Self::Lazy { .. } => steel_meta(false),
+        }
+    }
+
+    /// Returns `true` if this command executes synchronously in Rust
+    /// ([`NativeCommand`]) rather than through the Steel dispatch queue
+    /// (`SteelBacked`/`Lazy`).
+    ///
+    /// Single source of truth for native-vs-scripted classification: the
+    /// `%call-native!` sync-dispatch gate and bare-binding registration both
+    /// derive from this.
+    pub(in crate::editor) fn is_native(&self) -> bool {
+        match self {
+            Self::Native(_) => true,
+            Self::SteelBacked(_) | Self::Lazy { .. } => false,
+        }
+    }
+
+    /// Returns `true` if this command has extend semantics and can be triggered
+    /// as a one-shot extend via Ctrl-key.
+    ///
+    /// Steel commands (SteelBacked and Lazy stubs) are always extendable:
+    /// the resolved lambda receives `extend` as its second arg. See
+    /// [`NativeCommand::is_extendable`] for native ones.
+    pub(in crate::editor) fn is_extendable(&self) -> bool {
+        match self {
+            Self::Native(cmd) => cmd.is_extendable(),
+            Self::SteelBacked(_) | Self::Lazy { .. } => true,
+        }
+    }
+}
+
+/// A command implemented in Rust, run synchronously by `commands::run`.
+#[derive(Clone)]
+pub(in crate::editor) enum NativeCommand {
     /// Motion that repeats `count` times.
     ///
     /// `fun` is a [`SelectionBody`] wrapped in
@@ -352,7 +436,7 @@ pub(in crate::editor) enum MappableCommand {
     },
     /// Selection or text-object operation (accepts count).
     ///
-    /// `fun` is a [`SelectionBody`]; see [`MappableCommand::Motion`]'s doc.
+    /// `fun` is a [`SelectionBody`]; see [`NativeCommand::Motion`]'s doc.
     ///
     /// All selection commands receive `MotionMode`. Non-extendable ones accept
     /// `_mode` and ignore it; extendable text objects branch on it. The `usize`
@@ -439,84 +523,36 @@ pub(in crate::editor) enum MappableCommand {
         /// [`CmdMeta::key_only`].
         key_only: bool,
     },
-    /// A command implemented as a Steel (Scheme) lambda.
-    ///
-    /// Dispatched by [`hume_scripting::ScriptingHost::call_steel_cmd`], which
-    /// routes through `%dispatch-command!` → `command_table` → `(apply proc args)`.
-    ///
-    /// All Steel commands are extendable (Ctrl-key delivers `extend = #t` to the
-    /// lambda body). Dot-repeat is opt-in via `#:repeatable #t` in `(define-command! …)`.
-    SteelBacked {
-        name: Cow<'static, str>,
-        // Pending command-palette / :help integration.
-        #[allow(dead_code)]
-        doc: Cow<'static, str>,
-        /// Number of required positional parameters.
-        ///
-        /// Used at dispatch time to inject the right number of `[count, extend]`
-        /// leading args (0, 1, or 2) when the keymap calls the command with no
-        /// explicit arguments. Introspected from the closure arity at define time.
-        arity: u16,
-        /// `true` if the lambda accepts a rest parameter.
-        is_variadic: bool,
-        /// `true` if dispatch should bracket the call with an alt-screen exit
-        /// so subprocess output streams live to the terminal.
-        inline_output: bool,
-        /// `true` if pressing `.` should replay this command.
-        ///
-        /// Opt in via `#:repeatable #t` in `(define-command! …)`.
-        /// Never `true` when `inline_output` is `true`, enforced at definition time.
-        repeatable: bool,
-    },
-    /// A placeholder for a lazy plugin command that has not yet been loaded.
-    ///
-    /// Registered by `CommandHost::register_lazy_command` as `declare-plugin!`
-    /// processes its `#:commands` entries. When dispatched, the owning
-    /// plugin's body is evaluated, the stub is replaced by the real
-    /// `SteelBacked` command, and dispatch re-runs.
-    Lazy {
-        name: Cow<'static, str>,
-        plugin: hume_scripting::attribution::EntryId,
-    },
 }
 
-impl MappableCommand {
-    /// The command's registered name.
-    ///
-    /// Returns the stored `Cow` (not `&str`) so the dispatch pipeline can clone
-    /// it preserving `Cow::Borrowed`: a `&'static str` name (every built-in)
-    /// clones with no heap allocation; only `Cow::Owned` Steel names allocate.
-    /// Pure field extraction, distinct from [`MappableCommand::meta`], which is
-    /// the single source of truth for derived bookkeeping properties.
+impl NativeCommand {
+    /// The command's registered name. See [`MappableCommand::name`].
     pub(in crate::editor) fn name(&self) -> &Cow<'static, str> {
         match self {
             Self::Motion { name, .. }
             | Self::Selection { name, .. }
             | Self::Edit { name, .. }
-            | Self::EditorCmd { name, .. }
-            | Self::SteelBacked { name, .. }
-            | Self::Lazy { name, .. } => name,
+            | Self::EditorCmd { name, .. } => name,
         }
     }
 
-    /// One-line description of the command, for `:help` and command-palette display.
+    /// One-line description of the command. See [`MappableCommand::doc`].
     #[cfg(test)]
-    pub(in crate::editor) fn doc(&self) -> &str {
+    fn doc(&self) -> &str {
         match self {
             Self::Motion { doc, .. }
             | Self::Selection { doc, .. }
             | Self::Edit { doc, .. }
-            | Self::EditorCmd { doc, .. }
-            | Self::SteelBacked { doc, .. } => doc.as_ref(),
-            Self::Lazy { .. } => "",
+            | Self::EditorCmd { doc, .. } => doc.as_ref(),
         }
     }
 
     /// Declarative metadata for the dispatch pipeline.
     ///
-    /// This is the single source of truth for bookkeeping properties. The
-    /// pipeline reads `CmdMeta`; it never matches on variant or checks
-    /// string sets to decide what bookkeeping to run.
+    /// This is the single source of truth for bookkeeping properties, with
+    /// `steel_meta` for Steel commands. The pipeline reads `CmdMeta`; it
+    /// never matches on variant or checks string sets to decide what
+    /// bookkeeping to run.
     pub(in crate::editor) fn meta(&self) -> CmdMeta {
         match self {
             Self::Motion {
@@ -583,69 +619,93 @@ impl MappableCommand {
                 manages_own_session: *manages_own_session,
                 key_only: *key_only,
             },
-            Self::SteelBacked { repeatable, .. } => CmdMeta {
-                selection_tracking: SelectionTracking::Untracked,
-                is_motion: false,
-                defers_paste_commit: false,
-                is_jump: false,
-                is_visual_move: false,
-                repeatable: *repeatable,
-                clears_extend: false,
-                aligns_view: false,
-                manages_own_session: false,
-                key_only: false,
-            },
-            Self::Lazy { .. } => CmdMeta {
-                selection_tracking: SelectionTracking::Untracked,
-                is_motion: false,
-                defers_paste_commit: false,
-                is_jump: false,
-                is_visual_move: false,
-                repeatable: false,
-                clears_extend: false,
-                aligns_view: false,
-                manages_own_session: false,
-                key_only: false,
-            },
         }
     }
 
-    /// Returns `true` if this command executes synchronously in Rust
-    /// (`Motion`/`Selection`/`Edit`/`EditorCmd`) rather than through the Steel
-    /// dispatch queue (`SteelBacked`/`Lazy`).
-    ///
-    /// Single source of truth for native-vs-scripted classification: the `%call-native!`
-    /// sync-dispatch gate and bare-binding registration both derive from
-    /// this; `commands::pipeline::BoundCommand`'s own native/Steel split
-    /// (`BoundCommand::focused`/`::resolve`, each `Err` on the same two
-    /// variants this excludes) classifies the same way without calling this
-    /// method directly. The match is intentionally exhaustive (no `_`) so a new
-    /// variant forces a decision here at compile time.
-    pub(in crate::editor) fn is_native(&self) -> bool {
-        match self {
-            Self::Motion { .. }
-            | Self::Selection { .. }
-            | Self::Edit { .. }
-            | Self::EditorCmd { .. } => true,
-            Self::SteelBacked { .. } | Self::Lazy { .. } => false,
-        }
-    }
-
-    /// Returns `true` if this command has extend semantics and can be triggered
-    /// as a one-shot extend via Ctrl-key.
+    /// Returns `true` if this command has extend semantics and can be
+    /// triggered as a one-shot extend via Ctrl-key.
     ///
     /// Motion and Selection are always extendable. Edit is never extendable.
     /// EditorCmd has an explicit flag set at registration time.
-    /// Steel commands (SteelBacked and Lazy stubs) are always extendable:
-    /// the resolved lambda receives `extend` as its second arg.
     pub(in crate::editor) fn is_extendable(&self) -> bool {
         match self {
-            Self::Motion { .. }
-            | Self::Selection { .. }
-            | Self::SteelBacked { .. }
-            | Self::Lazy { .. } => true,
+            Self::Motion { .. } | Self::Selection { .. } => true,
             Self::Edit { .. } => false,
             Self::EditorCmd { extendable, .. } => *extendable,
+        }
+    }
+}
+
+/// A command implemented as a Steel (Scheme) lambda.
+///
+/// Dispatched by [`hume_scripting::ScriptingHost::call_steel_cmd`], which
+/// routes through `%dispatch-command!` → `command_table` → `(apply proc args)`.
+///
+/// All Steel commands are extendable (Ctrl-key delivers `extend = #t` to the
+/// lambda body). Dot-repeat is opt-in via `#:repeatable #t` in `(define-command! …)`.
+#[derive(Clone)]
+pub(in crate::editor) struct SteelCommand {
+    pub(in crate::editor) name: Cow<'static, str>,
+    // Pending command-palette / :help integration.
+    #[allow(dead_code)]
+    pub(in crate::editor) doc: Cow<'static, str>,
+    /// Number of required positional parameters.
+    ///
+    /// Used at dispatch time to inject the right number of `[count, extend]`
+    /// leading args (0, 1, or 2) when the keymap calls the command with no
+    /// explicit arguments. Introspected from the closure arity at define time.
+    pub(in crate::editor) arity: u16,
+    /// `true` if the lambda accepts a rest parameter.
+    pub(in crate::editor) is_variadic: bool,
+    /// `true` if dispatch should bracket the call with an alt-screen exit
+    /// so subprocess output streams live to the terminal.
+    pub(in crate::editor) inline_output: bool,
+    /// `true` if pressing `.` should replay this command.
+    ///
+    /// Opt in via `#:repeatable #t` in `(define-command! …)`.
+    /// Never `true` when `inline_output` is `true`, enforced at definition time.
+    pub(in crate::editor) repeatable: bool,
+}
+
+impl SteelCommand {
+    /// Declarative metadata for the dispatch pipeline. See
+    /// [`NativeCommand::meta`].
+    pub(in crate::editor) fn meta(&self) -> CmdMeta {
+        steel_meta(self.repeatable)
+    }
+}
+
+/// The metadata of a Steel command or `Lazy` stub: only `repeatable` varies.
+fn steel_meta(repeatable: bool) -> CmdMeta {
+    CmdMeta {
+        selection_tracking: SelectionTracking::Untracked,
+        is_motion: false,
+        defers_paste_commit: false,
+        is_jump: false,
+        is_visual_move: false,
+        repeatable,
+        clears_extend: false,
+        aligns_view: false,
+        manages_own_session: false,
+        key_only: false,
+    }
+}
+
+/// A registry command ready to run, as `Editor::resolve_mappable` returns
+/// it: a `Lazy` stub is activated into its Steel command first, so
+/// `Editor::dispatch` never sees one.
+pub(in crate::editor) enum Dispatchable {
+    Native(NativeCommand),
+    Steel(SteelCommand),
+}
+
+impl Dispatchable {
+    /// Declarative metadata for the dispatch pipeline. See
+    /// [`NativeCommand::meta`].
+    pub(in crate::editor) fn meta(&self) -> CmdMeta {
+        match self {
+            Self::Native(cmd) => cmd.meta(),
+            Self::Steel(cmd) => cmd.meta(),
         }
     }
 }

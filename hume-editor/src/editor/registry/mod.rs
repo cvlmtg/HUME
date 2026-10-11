@@ -39,7 +39,8 @@ pub(in crate::editor) use command::{
 // `commands::pipeline::run_body` can call it; see `MappableCommand`'s
 // own doc.
 pub(in crate::editor) use command::{
-    EditorCmdBody, MappableCommand, SelectionBody, StructuralBody,
+    Dispatchable, EditorCmdBody, MappableCommand, NativeCommand, SelectionBody, SteelCommand,
+    StructuralBody,
 };
 pub(in crate::editor) use defaults::structural::STRUCTURAL_OBJECTS;
 
@@ -339,8 +340,8 @@ impl CommandRegistry {
         self.commands
             .values()
             .filter_map(|cmd| match cmd {
-                Command::Mappable(MappableCommand::SteelBacked { name, .. }) => {
-                    Some(name.as_ref().to_string())
+                Command::Mappable(MappableCommand::SteelBacked(cmd)) => {
+                    Some(cmd.name.as_ref().to_string())
                 }
                 _ => None,
             })

@@ -56,36 +56,54 @@ fn mappable_lookup_by_name_works() {
         .get_mappable("move-right")
         .expect("move-right should be registered");
     assert_eq!(cmd.name().as_ref(), "move-right");
-    assert!(matches!(cmd, MappableCommand::Motion { .. }));
+    assert!(matches!(
+        cmd,
+        MappableCommand::Native(NativeCommand::Motion { .. })
+    ));
 
     // Selection
     let cmd = reg
         .get_mappable("collapse-selection")
         .expect("collapse-selection should be registered");
     assert_eq!(cmd.name().as_ref(), "collapse-selection");
-    assert!(matches!(cmd, MappableCommand::Selection { .. }));
+    assert!(matches!(
+        cmd,
+        MappableCommand::Native(NativeCommand::Selection { .. })
+    ));
 
     // Edit
     let cmd = reg
         .get_mappable("delete-selection")
         .expect("delete-selection should be registered");
     assert_eq!(cmd.name().as_ref(), "delete-selection");
-    assert!(matches!(cmd, MappableCommand::Edit { .. }));
+    assert!(matches!(
+        cmd,
+        MappableCommand::Native(NativeCommand::Edit { .. })
+    ));
 
     // EditorCmd
     let cmd = reg.get_mappable("undo").expect("undo should be registered");
     assert_eq!(cmd.name().as_ref(), "undo");
-    assert!(matches!(cmd, MappableCommand::EditorCmd { .. }));
+    assert!(matches!(
+        cmd,
+        MappableCommand::Native(NativeCommand::EditorCmd { .. })
+    ));
 
     let cmd = reg
         .get_mappable("find-forward")
         .expect("find-forward should be registered");
-    assert!(matches!(cmd, MappableCommand::EditorCmd { .. }));
+    assert!(matches!(
+        cmd,
+        MappableCommand::Native(NativeCommand::EditorCmd { .. })
+    ));
 
     let cmd = reg
         .get_mappable("delete")
         .expect("delete should be registered");
-    assert!(matches!(cmd, MappableCommand::EditorCmd { .. }));
+    assert!(matches!(
+        cmd,
+        MappableCommand::Native(NativeCommand::EditorCmd { .. })
+    ));
 }
 
 #[test]
@@ -274,14 +292,14 @@ fn is_extendable_false_for_edits_and_non_extendable_editor_cmds() {
 fn is_extendable_steel_backed_always_true() {
     // All Steel commands participate in Ctrl-key one-shot extend; the
     // body receives `extend` as a lambda arg and decides what to do.
-    let cmd = MappableCommand::SteelBacked {
+    let cmd = MappableCommand::SteelBacked(SteelCommand {
         name: "x".into(),
         doc: "".into(),
         arity: 0,
         is_variadic: false,
         inline_output: false,
         repeatable: false,
-    };
+    });
     assert!(cmd.is_extendable());
 }
 
@@ -324,7 +342,7 @@ fn runtime_register_and_lookup() {
     ) -> Result<(), crate::editor::error::CommandError> {
         Ok(())
     }
-    let cmd = MappableCommand::EditorCmd {
+    let cmd = MappableCommand::Native(NativeCommand::EditorCmd {
         name: Cow::Owned("steel-test-cmd".to_string()),
         doc: Cow::Borrowed("A dummy Steel command for testing."),
         fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Pane(dummy_fn)),
@@ -337,7 +355,7 @@ fn runtime_register_and_lookup() {
         selection_tracking: SelectionTracking::Untracked,
         manages_own_session: false,
         key_only: false,
-    };
+    });
     reg.register(cmd);
 
     assert_eq!(reg.len(), before + 1);
@@ -403,22 +421,22 @@ fn steel_backed_names_filters_by_variant() {
     assert!(reg.steel_backed_names().is_empty());
 
     // Register two SteelBacked commands alongside a non-SteelBacked one.
-    reg.register(MappableCommand::SteelBacked {
+    reg.register(MappableCommand::SteelBacked(SteelCommand {
         name: Cow::Owned("my-steel-cmd".to_string()),
         doc: Cow::Borrowed("doc"),
         arity: 0,
         is_variadic: false,
         inline_output: false,
         repeatable: false,
-    });
-    reg.register(MappableCommand::SteelBacked {
+    }));
+    reg.register(MappableCommand::SteelBacked(SteelCommand {
         name: Cow::Owned("another-steel-cmd".to_string()),
         doc: Cow::Borrowed("doc"),
         arity: 0,
         is_variadic: false,
         inline_output: false,
         repeatable: false,
-    });
+    }));
     // An EditorCmd with a name that could be mistaken for a Steel proc:
     // the helper must still filter it out by variant, not by name shape.
     fn noop(
@@ -430,7 +448,7 @@ fn steel_backed_names_filters_by_variant() {
     ) -> Result<(), crate::editor::error::CommandError> {
         Ok(())
     }
-    reg.register(MappableCommand::EditorCmd {
+    reg.register(MappableCommand::Native(NativeCommand::EditorCmd {
         name: Cow::Owned("%hume-cmd-decoy".to_string()),
         doc: Cow::Borrowed("doc"),
         fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Pane(noop)),
@@ -443,7 +461,7 @@ fn steel_backed_names_filters_by_variant() {
         selection_tracking: SelectionTracking::Untracked,
         manages_own_session: false,
         key_only: false,
-    });
+    }));
 
     let mut names = reg.steel_backed_names();
     names.sort();
@@ -460,14 +478,14 @@ fn steel_backed_names_filters_by_variant() {
 fn unregister_removes_dynamic_but_not_native() {
     use hume_scripting::attribution::PluginId;
     let mut reg = CommandRegistry::with_defaults();
-    reg.register(MappableCommand::SteelBacked {
+    reg.register(MappableCommand::SteelBacked(SteelCommand {
         name: Cow::Owned("steel-cmd".to_string()),
         doc: Cow::Borrowed("doc"),
         arity: 0,
         is_variadic: false,
         inline_output: false,
         repeatable: false,
-    });
+    }));
     reg.register(MappableCommand::Lazy {
         name: Cow::Owned("lazy-cmd".to_string()),
         plugin: hume_scripting::attribution::EntryId::main(PluginId::User {

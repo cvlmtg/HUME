@@ -2,8 +2,8 @@ use std::borrow::Cow;
 
 use crate::editor::commands::NativeBody;
 use crate::editor::registry::{
-    CommandRegistry, EditorCmdBody, FocusedCmdFn, MappableCommand, PaneCharCmdFn, PaneCmdFn,
-    PaneTextCmdFn, PatternPrompt, SelectionTracking,
+    CommandRegistry, EditorCmdBody, FocusedCmdFn, MappableCommand, NativeCommand, PaneCharCmdFn,
+    PaneCmdFn, PaneTextCmdFn, PatternPrompt, SelectionTracking,
 };
 
 // Builder for EditorCmd registration. Each method sets one field (a bool,
@@ -93,7 +93,7 @@ impl EditorCmdBuilder {
         self
     }
     pub(super) fn reg(self, r: &mut CommandRegistry) {
-        r.register(MappableCommand::EditorCmd {
+        r.register(MappableCommand::Native(NativeCommand::EditorCmd {
             name: Cow::Borrowed(self.name),
             doc: Cow::Borrowed(self.doc),
             fun: NativeBody::new(self.fun),
@@ -106,7 +106,7 @@ impl EditorCmdBuilder {
             selection_tracking: self.selection_tracking,
             manages_own_session: self.manages_own_session,
             key_only: self.key_only,
-        });
+        }));
     }
 }
 

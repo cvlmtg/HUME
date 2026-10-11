@@ -4,7 +4,7 @@
 // strings embed OS paths) live in `unix/plugins.rs`.
 
 use super::*;
-use crate::editor::registry::MappableCommand;
+use crate::editor::registry::{MappableCommand, SteelCommand};
 use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
@@ -64,14 +64,14 @@ fn keypress_dispatch_command_table_desync_reports_error() {
     ed.state
         .config
         .registry
-        .register(MappableCommand::SteelBacked {
+        .register(MappableCommand::SteelBacked(SteelCommand {
             name: "ghost-cmd".to_owned().into(),
             doc: std::borrow::Cow::Borrowed(""),
             arity: 0,
             is_variadic: false,
             inline_output: false,
             repeatable: false,
-        });
+        }));
     // A fresh scripting host's command_table has no entry for "ghost-cmd":
     // it never went through define-command!, simulating a registry/table desync.
     ed.scripting = Some(ScriptingHost::new(&Dirs::none()));

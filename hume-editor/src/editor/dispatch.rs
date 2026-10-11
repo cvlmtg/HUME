@@ -7,7 +7,7 @@
 //! timer bridge: fields only reachable through `&mut Editor`.
 
 use super::event::EditorEvent;
-use super::registry::MappableCommand;
+use super::registry::{Dispatchable, MappableCommand, SteelCommand};
 use super::{Editor, Severity, commands, replay};
 
 // ── Command dispatch context ──────────────────────────────────────────────────
@@ -32,7 +32,7 @@ pub(in crate::editor) struct CmdCtx {
 impl Editor {
     // ── Unified command dispatch pipeline ──────────────────────────────────────
 
-    /// Execute a `MappableCommand` through the unified dispatch pipeline.
+    /// Execute a resolved command through the unified dispatch pipeline.
     ///
     /// Native commands delegate to [`commands::run`].  Steel-backed
     /// commands run the pipeline's BEFORE/AFTER stages inline, with the body
@@ -48,37 +48,35 @@ impl Editor {
     /// operand. During `.` the recorded operand is applied once this
     /// returns, by `Editor::finish_replayed_answers`, which reports whether
     /// the command then ran.
-    pub(in crate::editor) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) -> bool {
-        // Native path: a keypress always acts at the focused pane.
-        // `NotNative` hands `cmd` back unbound for a Steel-backed/Lazy
-        // command, which the path below dispatches instead.
-        let fp = commands::FocusedPane::current(&self.state);
-        let cmd = match commands::BoundCommand::focused(cmd, fp, None) {
-            Ok(bound) => return commands::run(&mut self.state, &mut self.view, bound, ctx),
-            Err(commands::FocusedBindError::NeedsOperand(missing)) => {
-                let pane = fp.handle(&self.view);
-                return commands::collect_operand(
-                    &mut self.state,
-                    &mut self.view,
-                    missing,
-                    pane,
-                    ctx,
-                );
+    pub(in crate::editor) fn dispatch(&mut self, cmd: Dispatchable, ctx: CmdCtx) -> bool {
+        let cmd = match cmd {
+            Dispatchable::Native(cmd) => {
+                // A keypress always acts at the focused pane.
+                let fp = commands::FocusedPane::current(&self.state);
+                return match commands::BoundCommand::focused(cmd, fp, None) {
+                    Ok(bound) => commands::run(&mut self.state, &mut self.view, bound, ctx),
+                    Err(commands::FocusedBindError::NeedsOperand(missing)) => {
+                        let pane = fp.handle(&self.view);
+                        commands::collect_operand(
+                            &mut self.state,
+                            &mut self.view,
+                            missing,
+                            pane,
+                            ctx,
+                        )
+                    }
+                    Err(commands::FocusedBindError::Arg { name, error }) => {
+                        commands::report_arg_error(&mut self.state, &name, &error);
+                        false
+                    }
+                };
             }
-            Err(commands::FocusedBindError::Arg { name, error }) => {
-                commands::report_arg_error(&mut self.state, &name, &error);
-                return false;
-            }
-            Err(commands::FocusedBindError::NotNative(cmd)) => cmd,
+            Dispatchable::Steel(cmd) => cmd,
         };
-
-        if let MappableCommand::Lazy { .. } = cmd {
-            unreachable!("resolve_mappable activates a Lazy stub before dispatch");
-        }
 
         // Steel path, composed from shared step functions.
         let meta = cmd.meta();
-        let name = cmd.name();
+        let name = &cmd.name;
         // BEFORE
         commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
         // Snapshot the recipe before the body by cloning, not `mem::take`: an
@@ -100,7 +98,7 @@ impl Editor {
 
         // BODY.
         let ran = replay::record_change(self, change, |ed| {
-            let ran = ed.run_steel_command(name.as_ref(), &ctx);
+            let ran = ed.run_steel_command(&cmd, &ctx);
             (ran, ran)
         });
 
@@ -145,19 +143,19 @@ impl Editor {
         }
     }
 
-    /// Activate a `Lazy` stub's `plugin` and return the `SteelBacked` entry
-    /// that replaced it. `None`, reported, when activation fails or leaves no
+    /// Activate a `Lazy` stub's `plugin` and return the Steel command that
+    /// replaced it. `None`, reported, when activation fails or leaves no
     /// such entry.
     fn resolve_lazy(
         &mut self,
         plugin: &hume_scripting::attribution::EntryId,
         name: &str,
-    ) -> Option<MappableCommand> {
+    ) -> Option<SteelCommand> {
         if !self.activate_lazy_and_report(plugin, name) {
             return None;
         }
         match self.state.config.registry.get_mappable(name) {
-            Some(cmd @ MappableCommand::SteelBacked { .. }) => Some(cmd.clone()),
+            Some(MappableCommand::SteelBacked(cmd)) => Some(cmd.clone()),
             _ => {
                 self.report_command_lost(name);
                 None
@@ -207,12 +205,11 @@ impl Editor {
         self.state.trigger_minibuf_completion(&self.view);
     }
 
-    /// Run the body of the Steel-backed mappable command [`Self::dispatch`]
-    /// resolved.
+    /// Run the body of the Steel command `cmd`.
     ///
     /// Returns `false` if the command aborted (scripting error, or
     /// `scripting` is `None`). On error, the caller skips AFTER stages.
-    fn run_steel_command(&mut self, name: &str, ctx: &CmdCtx) -> bool {
+    fn run_steel_command(&mut self, cmd: &SteelCommand, ctx: &CmdCtx) -> bool {
         // Injected into the lambda's `count` param verbatim: `0` is the Scheme
         // spelling of `None` ("no count was typed"), so a wrapper that forwards
         // this value straight into `(call! "move-down" pane count extend)` round-trips
@@ -221,28 +218,13 @@ impl Editor {
         let count = ctx.count.unwrap_or(0);
         let extend = ctx.extend;
 
-        // Classified by `name`, the single source of truth for which command
-        // this call runs. Pure registry metadata, resolved (and its
-        // arity/arg-count errors reported) before the `scripting` guard
-        // below, so a `:cmd` arity mismatch is reported even in the
-        // (test-only) case where a SteelBacked entry exists in the registry
-        // but no scripting host is installed.
-        let (inline_output, cmd_arity, cmd_is_variadic) =
-            match self.state.config.registry.get_mappable(name) {
-                Some(MappableCommand::SteelBacked {
-                    inline_output,
-                    arity,
-                    is_variadic,
-                    ..
-                }) => (*inline_output, *arity, *is_variadic),
-                _ => return self.report_command_lost(name),
-            };
+        let name = cmd.name.as_ref();
 
         // Inject pane, count, and extend as leading lambda args based on
         // declared arity.
         let effective_args = match marshal_leading_args(
-            cmd_arity,
-            cmd_is_variadic,
+            cmd.arity,
+            cmd.is_variadic,
             crate::editor::commands::FocusedPane::current(&self.state).handle(&self.view),
             steel::rvals::SteelVal::IntV(count as isize),
             steel::rvals::SteelVal::BoolV(extend),
@@ -255,7 +237,7 @@ impl Editor {
             }
         };
 
-        self.call_steel_command_body(name, effective_args, inline_output)
+        self.call_steel_command_body(name, effective_args, cmd.inline_output)
     }
 
     /// Run the body of a Steel-backed or Lazy *typed* command, dispatched
@@ -486,10 +468,13 @@ impl Editor {
     /// there. A `Lazy` stub is activated and its real entry returned, so
     /// every caller reads the command's own metadata: whether an Insert-key
     /// binding is repeatable is read before it dispatches.
-    pub(in crate::editor) fn resolve_mappable(&mut self, name: &str) -> Option<MappableCommand> {
+    pub(in crate::editor) fn resolve_mappable(&mut self, name: &str) -> Option<Dispatchable> {
         match self.state.config.registry.get_mappable(name).cloned() {
-            Some(MappableCommand::Lazy { name, plugin }) => self.resolve_lazy(&plugin, &name),
-            Some(cmd) => Some(cmd),
+            Some(MappableCommand::Native(cmd)) => Some(Dispatchable::Native(cmd)),
+            Some(MappableCommand::SteelBacked(cmd)) => Some(Dispatchable::Steel(cmd)),
+            Some(MappableCommand::Lazy { name, plugin }) => {
+                self.resolve_lazy(&plugin, &name).map(Dispatchable::Steel)
+            }
             None => {
                 self.report_unknown_command(name, format!("unknown command: {name}"));
                 None

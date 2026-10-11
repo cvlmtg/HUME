@@ -393,7 +393,7 @@ fn call_repeat_last_action_stops_the_script_before_its_next_call() {
 /// principles. If any of the three sites diverges from it, this test fails.
 #[test]
 fn classification_sites_all_agree() {
-    use crate::editor::registry::MappableCommand;
+    use crate::editor::registry::{MappableCommand, NativeCommand};
     use std::collections::HashSet;
 
     let mut ed = editor_from("-[a]>\n");
@@ -402,11 +402,13 @@ fn classification_sites_all_agree() {
     // error here too.
     let oracle = |cmd: &MappableCommand| -> bool {
         match cmd {
-            MappableCommand::Motion { .. }
-            | MappableCommand::Selection { .. }
-            | MappableCommand::Edit { .. }
-            | MappableCommand::EditorCmd { .. } => true,
-            MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => false,
+            MappableCommand::Native(
+                NativeCommand::Motion { .. }
+                | NativeCommand::Selection { .. }
+                | NativeCommand::Edit { .. }
+                | NativeCommand::EditorCmd { .. },
+            ) => true,
+            MappableCommand::SteelBacked(_) | MappableCommand::Lazy { .. } => false,
         }
     };
 

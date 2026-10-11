@@ -662,10 +662,10 @@ fn no_scripting_host_does_not_leak_a_pushed_frame() {
     );
     bind_backslash(&mut ed, "orphan");
     // Simulate the scripting host having gone away after the command was
-    // registered: `run_steel_command` still resolves `orphan` from the
-    // registry (a separate store from the host's own `command_table`), so
-    // dispatch proceeds all the way to `call_steel_command_body` before
-    // finding out there is no host left to call.
+    // registered: dispatch still resolves `orphan` from the registry (a
+    // separate store from the host's own `command_table`), so it proceeds
+    // all the way to `call_steel_command_body` before finding out there is
+    // no host left to call.
     ed.scripting = None;
     ed.feed_event(key('\\'));
 

@@ -26,7 +26,7 @@ pub(in crate::editor) fn collect_operand(
     ctx: CmdCtx,
 ) -> bool {
     let Missing {
-        name,
+        cmd,
         commits_paste,
         opener,
         operand,
@@ -34,7 +34,7 @@ pub(in crate::editor) fn collect_operand(
     if commits_paste {
         state.commit_paste_session();
     }
-    let pending = PendingDispatch { name, pane, ctx };
+    let pending = PendingDispatch { cmd, pane, ctx };
     let opened = match operand {
         MissingOperand::Char => read_command_char(state, view, pending, opener),
         MissingOperand::Pattern { prompt, fp } => {
@@ -52,19 +52,15 @@ pub(in crate::editor) fn collect_operand(
 
 /// Run `pending` with the operand the user supplied for it, reporting any
 /// refusal: by then no script caller is waiting to raise to. Returns
-/// `false` when the command is gone, the operand does not fit, or the
-/// command refused.
+/// `false` when the operand does not fit or the command refused.
 pub(in crate::editor) fn run_collected(
     state: &mut EditorState,
     view: &mut EngineView,
     pending: PendingDispatch,
     arg: CommandArg,
 ) -> bool {
-    let PendingDispatch { name, pane, ctx } = pending;
-    let Some(cmd) = state.config.registry.get_mappable(&name).cloned() else {
-        state.report(Severity::Error, format!("unknown command: {name}"));
-        return false;
-    };
+    let PendingDispatch { cmd, pane, ctx } = pending;
+    let name = cmd.name().clone();
     match BoundCommand::resolve(state, view, cmd, pane, Some(arg)) {
         Ok(bound) => run(state, view, bound, ctx),
         Err(e) => {

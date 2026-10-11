@@ -88,7 +88,7 @@ pub(in crate::editor) fn read_command_char(
     pending: PendingDispatch,
     opener: InputOpener,
 ) -> Result<(), String> {
-    let what = pending.name.clone();
+    let what = pending.cmd.name().clone();
     read_interactive(state, view, CharThen::Dispatch(pending), &what, opener)
 }
 

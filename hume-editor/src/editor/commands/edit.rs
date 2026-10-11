@@ -362,7 +362,7 @@ pub(in crate::editor) fn cmd_unindent(
 
 /// Delete the word before each cursor (Ctrl-w in insert mode).
 ///
-/// Promoted from a plain `MappableCommand::Edit` to an `EditorCmd` so it can
+/// Promoted from a plain `NativeCommand::Edit` to an `EditorCmd` so it can
 /// resolve this buffer's `word-chars` and close over it, the same pattern
 /// [`cmd_align_selections`] uses for `tab_width`. Ctrl-w is a *word*
 /// operation by name: leaving it on the built-in word rule would mean `b`

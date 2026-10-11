@@ -1,7 +1,9 @@
 use crate::editor::commands::cmd_surround_add;
 use std::borrow::Cow;
 
-use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionBody, SelectionTracking};
+use crate::editor::registry::{
+    CommandRegistry, MappableCommand, NativeCommand, SelectionBody, SelectionTracking,
+};
 use hume_ops::surround::{
     cmd_surround_angle, cmd_surround_backtick, cmd_surround_brace, cmd_surround_bracket,
     cmd_surround_double_quote, cmd_surround_paren, cmd_surround_single_quote,

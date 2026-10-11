@@ -1,7 +1,7 @@
 //! `EditorHostImpl`'s terminal-safety state around `#:inline-output`
 //! commands.
 
-use crate::editor::registry::MappableCommand;
+use crate::editor::registry::{MappableCommand, SteelCommand};
 
 use super::EditorHostImpl;
 use hume_scripting::host::OutputHost;
@@ -50,10 +50,10 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
         // arm for a path that can't actually happen.
         let declared = matches!(
             self.state.config.registry.get_mappable(name),
-            Some(MappableCommand::SteelBacked {
+            Some(MappableCommand::SteelBacked(SteelCommand {
                 inline_output: true,
                 ..
-            })
+            }))
         );
         if !declared {
             return None;

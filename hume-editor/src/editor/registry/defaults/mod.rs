@@ -12,8 +12,8 @@ mod typed;
 
 // Local macros to cut down on struct-literal boilerplate, shared by every
 // family registrar below (invoked as `super::motion!(self, ...)` etc.). Each
-// invoking file needs its own `use std::borrow::Cow;` and `MappableCommand`
-// import: macro_rules resolves plain paths written in the macro body against
+// invoking file needs its own `use std::borrow::Cow;` and `MappableCommand`/`NativeCommand`
+// imports: macro_rules resolves plain paths written in the macro body against
 // the *invocation* site, not this definition site. The registry is taken as
 // an explicit `$reg` argument rather than a bare `self` for the same reason:
 // a literal `self` in the macro body has no receiver to bind to here.
@@ -21,101 +21,101 @@ macro_rules! motion {
     // Forward object-jump family (`}`, `goto-next-<kind>`); see
     // `CmdMeta::aligns_view`'s doc for why only this direction opts in.
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump, aligns_view) => {
-        $reg.register(MappableCommand::Motion {
+        $reg.register(MappableCommand::Native(NativeCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: true,
             aligns_view: true,
-        })
+        }))
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump) => {
-        $reg.register(MappableCommand::Motion {
+        $reg.register(MappableCommand::Native(NativeCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: true,
             aligns_view: false,
-        })
+        }))
     };
     // Word-family motions (`w`/`W`/`b`/`B`); see [`SelectionBody::Word`].
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
-        $reg.register(MappableCommand::Motion {
+        $reg.register(MappableCommand::Native(NativeCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Word($fun)),
             jump: false,
             aligns_view: false,
-        })
+        }))
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
-        $reg.register(MappableCommand::Motion {
+        $reg.register(MappableCommand::Native(NativeCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: false,
             aligns_view: false,
-        })
+        }))
     };
 }
 macro_rules! selection {
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
-        $reg.register(MappableCommand::Selection {
+        $reg.register(MappableCommand::Native(NativeCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: false,
             selection_tracking: SelectionTracking::Establishes,
-        })
+        }))
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump) => {
-        $reg.register(MappableCommand::Selection {
+        $reg.register(MappableCommand::Native(NativeCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: true,
             selection_tracking: SelectionTracking::Establishes,
-        })
+        }))
     };
     // Transforms whatever extent is already staged instead of establishing
     // one; see `SelectionTracking::Composes`.
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, composes) => {
-        $reg.register(MappableCommand::Selection {
+        $reg.register(MappableCommand::Native(NativeCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: false,
             selection_tracking: SelectionTracking::Composes,
-        })
+        }))
     };
     // Word-family selections/text objects (`mm`/`MM`, `miw`/`maw`); see
     // [`SelectionBody::Word`].
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
-        $reg.register(MappableCommand::Selection {
+        $reg.register(MappableCommand::Native(NativeCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Word($fun)),
             jump: false,
             selection_tracking: SelectionTracking::Establishes,
-        })
+        }))
     };
 }
 macro_rules! edit {
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
-        $reg.register(MappableCommand::Edit {
+        $reg.register(MappableCommand::Native(NativeCommand::Edit {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new($fun),
             repeatable: false,
-        })
+        }))
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, repeatable) => {
-        $reg.register(MappableCommand::Edit {
+        $reg.register(MappableCommand::Native(NativeCommand::Edit {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new($fun),
             repeatable: true,
-        })
+        }))
     };
 }
 // macro_rules items need an explicit `use` to be path-addressable

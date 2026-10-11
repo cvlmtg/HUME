@@ -17,7 +17,7 @@ use crate::editor::pane_state::PaneBufferState;
 use crate::editor::dispatch::CmdCtx;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::registry::{
-    CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, MappableCommand, PaneCharCmdFn, PaneCmdFn,
+    CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, NativeCommand, PaneCharCmdFn, PaneCmdFn,
     PaneTextCmdFn, PatternPrompt, SelectionBody, SelectionTracking,
 };
 use crate::editor::replay::{InputOpener, NewChange, SelectionStep, record_change};
@@ -267,10 +267,10 @@ impl std::fmt::Display for TargetError {
 
 // ── Native dispatch funnel ──────────────────────────────────────────────────
 
-/// Wraps a native `MappableCommand` variant's body (`SelectionBody`, the
+/// Wraps a [`NativeCommand`] variant's body (`SelectionBody`, the
 /// `Edit` fn pointer, or an
 /// [`EditorCmdBody`])
-/// so that destructuring `MappableCommand::Motion { fun, .. }` (or any of its
+/// so that destructuring `NativeCommand::Motion { fun, .. }` (or any of its
 /// three siblings) anywhere outside this file yields an opaque value with no
 /// way to call it. `.0` is readable only here, where it's defined: the one
 /// place a native variant's body may actually run, unwrapped once by
@@ -300,7 +300,7 @@ impl<F> NativeBody<F> {
 /// through. One arm per body shape, each carrying exactly the target type
 /// that shape's signature needs: `FocusedCmd` a bare [`FocusedPane`], every
 /// other arm a [`Target`] (`Pane` or `Focused`, since those bodies accept
-/// either). A loose `(MappableCommand, Target)` pair would allow pairing an
+/// either). A loose `(NativeCommand, Target)` pair would allow pairing an
 /// `EditorCmdBody::FocusedPane` handler with a `Target::Pane` built for some
 /// other command. Only a runtime check could catch that, as a panic in
 /// release builds, reachable by any caller that constructs a `Target`
@@ -308,7 +308,7 @@ impl<F> NativeBody<F> {
 /// fields are `(FocusedCmdFn, Target)`.
 ///
 /// Built only by [`BoundCommand::focused`]/[`BoundCommand::resolve`], which
-/// derive each arm's target from the very `MappableCommand` they destructure,
+/// derive each arm's target from the very `NativeCommand` they destructure,
 /// never from an independently-obtained `Target`.
 enum Bound {
     /// Motion + Selection: both wrap [`SelectionBody`], dispatched
@@ -409,7 +409,7 @@ fn text_operand(arg: CommandArg) -> Result<String, ArgError> {
 /// user before it runs.
 pub(in crate::editor) struct Missing {
     /// The command waiting for the operand.
-    pub(super) name: Cow<'static, str>,
+    pub(super) cmd: NativeCommand,
     /// Whether starting the read commits the open paste session, as the
     /// command's own run would ([`step_paste_commit`]): it targets the
     /// focused pane and doesn't defer the commit.
@@ -443,7 +443,7 @@ impl std::fmt::Display for Missing {
 /// with `ctx` once the user supplies it ([`run_collected`](super::run_collected)).
 #[derive(Clone)]
 pub(in crate::editor) struct PendingDispatch {
-    pub(in crate::editor) name: Cow<'static, str>,
+    pub(in crate::editor) cmd: NativeCommand,
     pub(in crate::editor) pane: PaneHandle,
     pub(in crate::editor) ctx: CmdCtx,
 }
@@ -457,13 +457,10 @@ fn no_operand(arg: Option<CommandArg>) -> Result<(), ArgError> {
 }
 
 /// Why [`BoundCommand::resolve`] could not bind `cmd` to a `handle`: the
-/// handle itself didn't resolve ([`TargetError`]), `cmd` isn't a native
-/// command at all (`(call! "cmd" pane)` on a Steel-backed/Lazy command must
-/// use `call!`, not `call-native!`), the operand doesn't fit `cmd`
-/// ([`ArgError`]), or `cmd` was given no operand and is to read one.
+/// handle itself didn't resolve ([`TargetError`]), the operand doesn't fit
+/// `cmd` ([`ArgError`]), or `cmd` was given no operand and is to read one.
 pub(in crate::editor) enum BindError {
     Target(TargetError),
-    NotNative,
     Arg(ArgError),
     NeedsOperand(Missing),
 }
@@ -472,7 +469,6 @@ impl std::fmt::Display for BindError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Target(e) => e.fmt(f),
-            Self::NotNative => write!(f, "not a native command"),
             Self::Arg(e) => e.fmt(f),
             Self::NeedsOperand(missing) => missing.fmt(f),
         }
@@ -491,12 +487,9 @@ impl From<ArgError> for BindError {
     }
 }
 
-/// Why [`BoundCommand::focused`] could not bind `cmd`: it is a
-/// `SteelBacked`/`Lazy` command, handed back unbound for the caller's own
-/// Steel dispatch path, it was given no operand and is to read one, or its
-/// operand doesn't fit it.
+/// Why [`BoundCommand::focused`] could not bind `cmd`: it was given no
+/// operand and is to read one, or its operand doesn't fit it.
 pub(in crate::editor) enum FocusedBindError {
-    NotNative(MappableCommand),
     NeedsOperand(Missing),
     Arg {
         name: Cow<'static, str>,
@@ -504,34 +497,28 @@ pub(in crate::editor) enum FocusedBindError {
     },
 }
 
-/// Why [`bind_body`] handed `cmd` back unbound.
-enum Unbound {
-    /// A `SteelBacked`/`Lazy` command, which has no body to bind.
-    NotNative(MappableCommand),
-    /// An operand command given no operand, once its target resolved.
-    NeedsOperand(Missing),
-}
-
-/// Bind native `cmd`'s body to its target, then to its operand `arg`:
-/// `any` resolves the target of a body that runs on any pane, `focused` that
-/// of a body bound to the focused pane.
+/// Bind `cmd`'s body to its target, then to its operand `arg`: `any`
+/// resolves the target of a body that runs on any pane, `focused` that of a
+/// body bound to the focused pane. `Err` when `cmd` takes an operand it was
+/// given none of, once its target resolved.
 fn bind_body<E: From<ArgError>>(
-    cmd: MappableCommand,
+    cmd: NativeCommand,
     arg: Option<CommandArg>,
     any: impl FnOnce() -> Result<Target, E>,
     focused: impl FnOnce() -> Result<FocusedPane, E>,
-) -> Result<Result<Bound, E>, Unbound> {
+) -> Result<Result<Bound, E>, Missing> {
     let body = match cmd {
-        MappableCommand::Motion { fun, .. } | MappableCommand::Selection { fun, .. } => any()
-            .and_then(|t| {
+        NativeCommand::Motion { fun, .. } | NativeCommand::Selection { fun, .. } => {
+            any().and_then(|t| {
                 no_operand(arg)?;
                 Ok(Bound::Selection(fun.0, t))
-            }),
-        MappableCommand::Edit { fun, .. } => any().and_then(|t| {
+            })
+        }
+        NativeCommand::Edit { fun, .. } => any().and_then(|t| {
             no_operand(arg)?;
             Ok(Bound::Edit(fun.0, t))
         }),
-        MappableCommand::EditorCmd { fun, .. } => match fun.0 {
+        NativeCommand::EditorCmd { fun, .. } => match fun.0 {
             EditorCmdBody::Pane(f) => any().and_then(|t| {
                 no_operand(arg)?;
                 Ok(Bound::Pane(f, t))
@@ -561,19 +548,16 @@ fn bind_body<E: From<ArgError>>(
                 },
             },
         },
-        MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
-            return Err(Unbound::NotNative(cmd));
-        }
     };
     Ok(body)
 }
 
 /// `cmd` needs `operand` read before it runs, on the focused pane when
 /// `focused`.
-fn missing(cmd: &MappableCommand, focused: bool, operand: MissingOperand) -> Unbound {
+fn missing(cmd: &NativeCommand, focused: bool, operand: MissingOperand) -> Missing {
     let meta = cmd.meta();
-    Unbound::NeedsOperand(Missing {
-        name: cmd.name().clone(),
+    Missing {
+        cmd: cmd.clone(),
         commits_paste: focused && !meta.defers_paste_commit,
         opener: if meta.repeatable {
             InputOpener::RepeatableOperand
@@ -581,7 +565,7 @@ fn missing(cmd: &MappableCommand, focused: bool, operand: MissingOperand) -> Unb
             InputOpener::Code
         },
         operand,
-    })
+    }
 }
 
 /// Report why command `name` refused to bind, for a dispatch with no script
@@ -595,7 +579,7 @@ pub(in crate::editor) fn report_arg_error(
 }
 
 /// A native command resolved against its target: the single value
-/// [`run`]/[`run_body`] accept, replacing the `(MappableCommand, Target)`
+/// [`run`]/[`run_body`] accept, replacing the `(NativeCommand, Target)`
 /// pair [`Bound`]'s own doc explains. Built only by [`Self::focused`]/
 /// [`Self::resolve`], which always derive `body`'s target from `cmd`'s own
 /// shape, so there is no way to construct one whose body and target
@@ -609,11 +593,8 @@ pub(in crate::editor) struct BoundCommand {
 impl BoundCommand {
     /// Bind `cmd` and its operand `arg` to the focused pane, the shape every
     /// keypress and dot-repeat replay dispatch through.
-    /// [`FocusedBindError::NotNative`] hands `cmd` back unbound for
-    /// `SteelBacked`/`Lazy`, which never reach a target at all; the caller's
-    /// own Steel dispatch path takes it from there.
     pub(in crate::editor) fn focused(
-        cmd: MappableCommand,
+        cmd: NativeCommand,
         fp: FocusedPane,
         arg: Option<CommandArg>,
     ) -> Result<Self, FocusedBindError> {
@@ -622,8 +603,7 @@ impl BoundCommand {
         match bind_body(cmd, arg, || Ok(Target::Focused(fp)), || Ok(fp)) {
             Ok(Ok(body)) => Ok(Self { name, meta, body }),
             Ok(Err(error)) => Err(FocusedBindError::Arg { name, error }),
-            Err(Unbound::NotNative(cmd)) => Err(FocusedBindError::NotNative(cmd)),
-            Err(Unbound::NeedsOperand(missing)) => Err(FocusedBindError::NeedsOperand(missing)),
+            Err(missing) => Err(FocusedBindError::NeedsOperand(missing)),
         }
     }
 
@@ -635,7 +615,7 @@ impl BoundCommand {
     pub(in crate::editor) fn resolve(
         state: &EditorState,
         view: &EngineView,
-        cmd: MappableCommand,
+        cmd: NativeCommand,
         handle: PaneHandle,
         arg: Option<CommandArg>,
     ) -> Result<Self, BindError> {
@@ -647,10 +627,7 @@ impl BoundCommand {
             || Target::resolve(state, view, handle).map_err(BindError::from),
             || FocusedPane::resolve(state, view, handle).map_err(BindError::from),
         )
-        .map_err(|unbound| match unbound {
-            Unbound::NotNative(_) => BindError::NotNative,
-            Unbound::NeedsOperand(missing) => BindError::NeedsOperand(missing),
-        })??;
+        .map_err(BindError::NeedsOperand)??;
         Ok(Self { name, meta, body })
     }
 

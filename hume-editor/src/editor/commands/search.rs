@@ -132,7 +132,7 @@ pub(in crate::editor) fn open_pattern_prompt(
     if matches!(prompt, PatternPrompt::Sift) && all_cursors(state, view, fp.pane()) {
         return Ok(());
     }
-    let input = state.waiting_input(&then.name, InputOpener::Code)?;
+    let input = state.waiting_input(then.cmd.name(), InputOpener::Code)?;
     match prompt {
         PatternPrompt::Search(direction) => begin_search(state, view, fp, direction, then, input),
         PatternPrompt::Sift => {
