@@ -4,11 +4,11 @@
 use hume_editing::selection::{Facing, Selection, SelectionView};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
-use hume_editing::word::{WordChars, blank_class, is_uppercase_word_boundary, is_word_boundary};
+use hume_editing::word::{WordChars, is_uppercase_word_boundary, is_word_boundary};
 use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
 
 use super::apply_text_object_by_mode;
-use crate::word_unit::{IsBoundary, is_blank_at, prev_nonblank, word_span_at};
+use crate::word_unit::{IsBoundary, is_blank_at, next_nonblank, prev_nonblank, word_span_at};
 use crate::{MotionMode, WhitespaceSide, WordCtx};
 
 /// Find the nearest word within `[line_start, line_end)` from `head`.
@@ -56,13 +56,7 @@ pub fn nearest_word_on_line(
     let prev_anchor = prev_nonblank(text, head.into(), line_start);
 
     // Scan RIGHT within the given bounds for the first non-whitespace grapheme.
-    let next_anchor = text
-        .clusters()
-        .graphemes_at(head.into())
-        .skip(1)
-        .take_while(|cluster| cluster.end() <= line_end)
-        .find(|cluster| blank_class(cluster.first()).is_none())
-        .map(|cluster| cluster.start());
+    let next_anchor = next_nonblank(text, text.clusters().end_of(head), line_end);
 
     match (prev_anchor, next_anchor) {
         (None, None) => None,

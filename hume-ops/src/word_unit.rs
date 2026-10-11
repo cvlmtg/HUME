@@ -41,24 +41,35 @@ pub(crate) fn prev_nonblank(
         .map(|c| c.start())
 }
 
+/// The nearest non-blank cluster from `from` on and not past `ceiling`, or
+/// `None` if every cluster in between is blank.
+pub(crate) fn next_nonblank(
+    text: &BufferText,
+    from: ClusterBound,
+    ceiling: ClusterBound,
+) -> Option<ClusterStart> {
+    text.clusters()
+        .graphemes_at(from)
+        .take_while(|c| c.end() <= ceiling)
+        .find(|c| blank_class(c.first()).is_none())
+        .map(|c| c.start())
+}
+
 /// The first non-blank cluster from selection end `end` toward its other end
-/// `other`, both included, or `None` when every cluster between them is
-/// blank. A whitespace bookend lies on the outer side of its word, so this is
-/// the word the bookend belongs to.
+/// `other`, both included, or `end` itself when every cluster between them
+/// is blank. A whitespace bookend lies on the outer side of its word, so this
+/// is the word the bookend belongs to.
 pub(crate) fn owning_word_cluster(
     text: &BufferText,
     end: ClusterStart,
     other: ClusterStart,
-) -> Option<ClusterStart> {
-    if end <= other {
-        text.clusters()
-            .graphemes_at(end.into())
-            .take_while(|c| c.start() <= other)
-            .find(|c| blank_class(c.first()).is_none())
-            .map(|c| c.start())
+) -> ClusterStart {
+    let found = if end <= other {
+        next_nonblank(text, end.into(), text.clusters().end_of(other))
     } else {
         prev_nonblank(text, text.clusters().end_of(end), other.into())
-    }
+    };
+    found.unwrap_or(end)
 }
 
 /// The first cluster of the word or punct group holding `pos`.
@@ -226,10 +237,9 @@ fn trailing_run(
 /// whitespace-only buffer, or indentation at the start of the buffer), and the
 /// callers treat that as a no-op.
 ///
-/// This is the shared body of `mm`/`MM` and `maw`/`maW` (position-based,
-/// unlike the motion-based `w`/`b`): all four names select the same span.
-/// Also used to resolve an extend selection's anchor unit when
-/// `word-selects-whitespace` is not `off`.
+/// `word_span_at` routes `mm`/`MM` and `maw`/`maW` here when
+/// `word-selects-whitespace` names a side. Also used to resolve an extend
+/// selection's anchor unit in that case.
 pub fn word_unit_at(
     text: &BufferText,
     pos: ClusterStart,

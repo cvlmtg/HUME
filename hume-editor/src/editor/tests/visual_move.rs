@@ -1178,39 +1178,24 @@ fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
 /// was given instead of walking into the previous display line.
 #[test]
 fn select_word_nearest_does_not_absorb_previous_display_line_whitespace() {
-    use hume_editing::text::BufferText;
     // "hello wordB\n": wrap at column 6 puts "hello " (space included) on
     // display line 0, so "wordB" starts display line 1 with no leading space on it.
-    let text = BufferText::from("hello wordB\n");
-    let sels = sels_at(&text, &[(8, 8)], 0); // 'r' inside "wordB"
-    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Indent { width: 6 }),
-        saved: None,
-    });
-
-    ed.execute_keymap_command(
-        std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        Some(1),
-        false,
-    );
-
-    let sel = ed.current_view().primary();
     assert_eq!(
-        sel.anchor().offset(),
-        co(6),
-        "must not absorb the space at char 5: it belongs to the previous visual display line"
+        nearest_on_wrapped("hello wordB\n", 8, WordSelectsWhitespace::Before),
+        (co(6), co(10))
     );
-    assert_eq!(sel.head().offset(), co(10), "still selects all of 'wordB'");
 }
 
-/// Mirror of the leading-side case above: "abcdef" fills its display line,
-/// so the space after it starts the next display line and is not absorbed
-/// by either side's trailing scan.
-fn nearest_word_on_full_display_line(side: WordSelectsWhitespace) -> (CharOffset, CharOffset) {
+/// Run `select-word-nearest-on-line` from char `cursor` of `text`, wrapped
+/// at column 6, and return the selection's anchor and head.
+fn nearest_on_wrapped(
+    text: &str,
+    cursor: usize,
+    side: WordSelectsWhitespace,
+) -> (CharOffset, CharOffset) {
     use hume_editing::text::BufferText;
-    let text = BufferText::from("abcdef ghi\n");
-    let sels = sels_at(&text, &[(2, 2)], 0); // 'c' inside "abcdef"
+    let text = BufferText::from(text);
+    let sels = sels_at(&text, &[(cursor, cursor)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.state.settings.word_selects_whitespace = side;
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
@@ -1228,10 +1213,13 @@ fn nearest_word_on_full_display_line(side: WordSelectsWhitespace) -> (CharOffset
     (sel.anchor().offset(), sel.head().offset())
 }
 
+/// Mirror of the leading-side case above: "abcdef" fills its display line,
+/// so the space after it starts the next display line and is not absorbed
+/// by either side's trailing scan.
 #[test]
 fn select_word_nearest_after_does_not_absorb_next_display_line_whitespace() {
     assert_eq!(
-        nearest_word_on_full_display_line(WordSelectsWhitespace::After),
+        nearest_on_wrapped("abcdef ghi\n", 2, WordSelectsWhitespace::After),
         (co(0), co(5))
     );
 }
@@ -1239,7 +1227,7 @@ fn select_word_nearest_after_does_not_absorb_next_display_line_whitespace() {
 #[test]
 fn select_word_nearest_before_fallback_does_not_absorb_next_display_line_whitespace() {
     assert_eq!(
-        nearest_word_on_full_display_line(WordSelectsWhitespace::Before),
+        nearest_on_wrapped("abcdef ghi\n", 2, WordSelectsWhitespace::Before),
         (co(0), co(5))
     );
 }

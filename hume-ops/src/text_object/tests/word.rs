@@ -183,61 +183,7 @@ fn inner_uppercase_word_spans_punctuation() {
 // mm/MM and maw/maW are the same commands (`cmd_around_word`/
 // `cmd_around_uppercase_word`) under two names. With the `before` side:
 // leading-preferred, trailing fallback for the first word of a line, same as
-// w/W/b/B. Extend keeps bare inner-word units, matching cmd_inner_word's
-// Extend arm.
-
-#[test]
-fn select_word_around_move_first_word_of_buffer_takes_trailing() {
-    // "hello" is the first word of the buffer (no leading run is possible),
-    // so it falls back to its trailing space.
-    assert_state!(
-        "-[h]>ello world\n",
-        |(text, sels)| cmd_around_word(
-            test_fixtures::testing::state(text, sels),
-            0,
-            WordCtx::before(MotionMode::Move)
-        ),
-        "-[hello ]>world\n"
-    );
-}
-
-#[test]
-fn select_word_around_move_leading_preferred() {
-    // "world" isn't the first word on its line, so it takes its leading
-    // space regardless of what follows it (here, EOL).
-    assert_state!(
-        "hello -[w]>orld\n",
-        |(text, sels)| cmd_around_word(
-            test_fixtures::testing::state(text, sels),
-            0,
-            WordCtx::before(MotionMode::Move)
-        ),
-        "hello-[ world]>\n"
-    );
-}
-
-#[test]
-fn select_word_around_move_matches_around_word() {
-    // mm and maw select the identical span mid-line.
-    assert_state!(
-        "foo -[b]>ar baz\n",
-        |(text, sels)| cmd_around_word(
-            test_fixtures::testing::state(text, sels),
-            0,
-            WordCtx::before(MotionMode::Move)
-        ),
-        "foo-[ bar]> baz\n"
-    );
-    assert_state!(
-        "foo -[b]>ar baz\n",
-        |(text, sels)| cmd_around_word(
-            test_fixtures::testing::state(text, sels),
-            0,
-            WordCtx::before(MotionMode::Move)
-        ),
-        "foo-[ bar]> baz\n"
-    );
-}
+// w/W/b/B. Extend unions the whole unit, bookend included.
 
 #[test]
 fn select_word_around_move_indented_first_word_keeps_indent() {
@@ -369,22 +315,6 @@ fn select_word_around_extend_at_buffer_end_never_consumes_trailing_newline() {
             WordCtx::before(MotionMode::Extend)
         ),
         "-[hello world]>\n"
-    );
-}
-
-#[test]
-#[allow(non_snake_case)]
-fn select_uppercase_word_around_move_spans_punctuation_and_whitespace() {
-    // "hello.world" is one WORD and the first word of the buffer, so it
-    // falls back to its trailing space.
-    assert_state!(
-        "-[h]>ello.world foo\n",
-        |(text, sels)| cmd_around_uppercase_word(
-            test_fixtures::testing::state(text, sels),
-            0,
-            WordCtx::before(MotionMode::Move)
-        ),
-        "-[hello.world ]>foo\n"
     );
 }
 
@@ -1115,19 +1045,6 @@ fn around_uppercase_word_after_takes_trailing() {
             WordCtx::after(MotionMode::Move)
         ),
         "foo -[bar.x ]>baz\n"
-    );
-}
-
-#[test]
-fn select_word_after_matches_around_word() {
-    assert_state!(
-        "foo b-[a]>r baz\n",
-        |(text, sels)| cmd_around_word(
-            test_fixtures::testing::state(text, sels),
-            0,
-            WordCtx::after(MotionMode::Move)
-        ),
-        "foo -[bar ]>baz\n"
     );
 }
 
