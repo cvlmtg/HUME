@@ -18,7 +18,11 @@ use hume_ops::edit::clear_blank_line_indent;
 use super::{FocusedPane, doc, pane_view, refuse_if_read_only};
 
 /// `true` when `fp`'s (pane, buffer) has an open Insert-kind session.
-fn is_group_open_at(state: &EditorState, view: &EngineView, fp: FocusedPane) -> bool {
+pub(in crate::editor) fn is_group_open_at(
+    state: &EditorState,
+    view: &EngineView,
+    fp: FocusedPane,
+) -> bool {
     state
         .active_session
         .as_ref()

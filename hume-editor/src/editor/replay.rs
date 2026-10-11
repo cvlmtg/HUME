@@ -22,7 +22,6 @@
 //! what a dispatch did.
 
 use hume_engine::pipeline::EngineView;
-use hume_scripting::host::CommandArg;
 use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -222,8 +221,8 @@ pub(crate) struct RepeatableAction {
     /// Selection-building recipe to replay BEFORE the command.
     ///
     /// `[]` (the command acted on a pre-existing selection), or a sequence of
-    /// `Establishes`/`Composes` steps; see `SelectionTracking`. Filled from
-    /// `EditorState::selection_recipe` when the change settles.
+    /// `Establishes`/`Composes` steps; see `SelectionTracking`. Taken from
+    /// `EditorState::selection_recipe` when the change starts.
     pub selection_recipe: Vec<SelectionStep>,
     /// The answers the command's own interactive inputs got, in the order
     /// their inputs opened. See [`Answer`].
@@ -280,17 +279,6 @@ enum AnswerSlot {
 pub(in crate::editor) struct RecordingScope {
     source: SourceTicket,
     slot: AnswerSlot,
-}
-
-impl RecordingScope {
-    /// The entry of the Insert-key binding this scope runs, `None` for a
-    /// command body's.
-    pub(in crate::editor) fn binding(&self) -> Option<BindingId> {
-        match self.slot {
-            AnswerSlot::Binding(i) | AnswerSlot::UnrecordedBinding(i) => Some(i),
-            AnswerSlot::Command => None,
-        }
-    }
 }
 
 /// What runs now in [`ScopeSlot`].
@@ -405,9 +393,9 @@ pub(in crate::editor) fn dispatch_insert_key(
 pub(in crate::editor) struct NewChange {
     pub(in crate::editor) command: Cow<'static, str>,
     pub(in crate::editor) count: usize,
-    /// The operand the command was dispatched with, recorded as its first
-    /// answer.
-    pub(in crate::editor) seed: Option<CommandArg>,
+    /// The character operand the command was dispatched with, recorded as
+    /// its first answer.
+    pub(in crate::editor) seed: Option<char>,
     /// The selection recipe the change takes if it is kept.
     pub(in crate::editor) recipe: Vec<SelectionStep>,
 }
@@ -428,18 +416,12 @@ pub(in crate::editor) fn record_change<H: AsMut<EditorState>, R>(
     change: Option<NewChange>,
     body: impl FnOnce(&mut H) -> (R, bool),
 ) -> R {
-    let Some(NewChange {
-        command,
-        count,
-        seed,
-        recipe,
-    }) = change.filter(|_| !repeat_slot_owned(host.as_mut()))
-    else {
+    let Some(change) = change.filter(|_| !repeat_slot_owned(host.as_mut())) else {
         return body(host).0;
     };
-    let (prev, scope) = host.as_mut().begin_change(command, count, seed);
+    let (prev, scope) = host.as_mut().begin_change(change);
     let (r, succeeded) = with_recording_scope(host, Some(scope), body);
-    host.as_mut().end_change(prev, succeeded, recipe);
+    host.as_mut().end_change(prev, succeeded);
     r
 }
 
@@ -546,7 +528,7 @@ impl Recording {
         self.action
             .transcript
             .iter()
-            .position(|input| matches!(input, Input::Binding { id: entry, .. } if *entry == id))
+            .rposition(|input| matches!(input, Input::Binding { id: entry, .. } if *entry == id))
     }
 
     /// The answers `slot` names. `None` for a binding entry that was
@@ -555,15 +537,11 @@ impl Recording {
         match slot {
             AnswerSlot::Command => Some(&mut self.action.answers),
             AnswerSlot::Binding(id) => {
-                self.action
-                    .transcript
-                    .iter_mut()
-                    .find_map(|input| match input {
-                        Input::Binding {
-                            id: entry, answers, ..
-                        } if *entry == id => Some(answers),
-                        _ => None,
-                    })
+                let i = self.binding_index(id)?;
+                match &mut self.action.transcript[i] {
+                    Input::Binding { answers, .. } => Some(answers),
+                    _ => None,
+                }
             }
             AnswerSlot::UnrecordedBinding(_) => None,
         }
@@ -623,52 +601,20 @@ impl DotReplay {
         Some(taken)
     }
 
-    /// The next answer, if it is a character read's.
-    pub(in crate::editor) fn next_char(&mut self) -> Option<Replayed<Option<char>>> {
-        self.next(|a| match a {
-            Answer::Char(c) => Some(*c),
-            _ => None,
-        })
-    }
-
-    /// The next answer, if it is a pick.
-    pub(in crate::editor) fn next_pick(&mut self) -> Option<Replayed<Pick>> {
-        self.next(|a| match a {
-            Answer::Pick(pick) => Some(pick.clone()),
-            _ => None,
-        })
-    }
-
-    /// The next answer, if it is a prompt's.
-    pub(in crate::editor) fn next_prompt(&mut self) -> Option<Replayed<Option<String>>> {
-        self.next(|a| match a {
-            Answer::Prompt(text) => Some(text.clone()),
-            _ => None,
-        })
-    }
-
-    /// The next answer, if it is a menu's.
-    pub(in crate::editor) fn next_menu(&mut self) -> Option<Replayed<Option<Choice>>> {
-        self.next(|a| match a {
-            Answer::Menu(choice) => Some(choice.clone()),
-            _ => None,
-        })
-    }
-
     /// Answers a re-run interactive input (a read, a picker, a prompt, a
-    /// menu) from the recording instead of opening it: `next` takes its
-    /// answer, and `then` turns that answer into what to run after the
-    /// re-run body, or the refusal naming why it has no fit (a missing item,
-    /// an unbound action, a forgotten payload). Refuses with [`dot_refusal`]
+    /// menu) from the recording instead of opening it: `kind` takes its
+    /// answer out of the next recorded one, and `then` turns it into what to
+    /// run after the re-run body, or the refusal naming why it has no fit (a
+    /// missing item, an unbound action, a forgotten payload). Refuses with [`dot_refusal`]
     /// when the next answer is of another kind, and queues nothing for an
     /// input that never resolved live.
     pub(in crate::editor) fn answer_call<T>(
         &mut self,
         what: &str,
-        next: impl FnOnce(&mut Self) -> Option<Replayed<T>>,
+        kind: impl FnOnce(&Answer) -> Option<T>,
         then: impl FnOnce(T) -> Result<PendingAnswer, String>,
     ) -> Result<(), String> {
-        if let Replayed::Answered(answer) = next(self).ok_or_else(|| dot_refusal(what))? {
+        if let Replayed::Answered(answer) = self.next(kind).ok_or_else(|| dot_refusal(what))? {
             self.pending.push_back(then(answer)?);
         }
         Ok(())
@@ -773,22 +719,18 @@ impl EditorState {
     /// first answer. Returns the recording it replaced, which
     /// [`Self::end_change`] restores if the change is discarded, and the
     /// scope its command body runs in.
-    fn begin_change(
-        &mut self,
-        command: Cow<'static, str>,
-        count: usize,
-        seed: Option<CommandArg>,
-    ) -> (Option<Recording>, RecordingScope) {
-        let mut action = RepeatableAction {
-            command,
-            count,
-            selection_recipe: Vec::new(),
-            answers: Vec::new(),
+    fn begin_change(&mut self, change: NewChange) -> (Option<Recording>, RecordingScope) {
+        let action = RepeatableAction {
+            command: change.command,
+            count: change.count,
+            selection_recipe: change.recipe,
+            answers: change
+                .seed
+                .map(|ch| Answer::Char(Some(ch)))
+                .into_iter()
+                .collect(),
             transcript: Vec::new(),
         };
-        if let Some(CommandArg::Char(ch)) = seed {
-            action.answers.push(Answer::Char(Some(ch)));
-        }
         let rec = Recording::new(action);
         let body = RecordingScope {
             source: rec.open_ticket(),
@@ -801,19 +743,23 @@ impl EditorState {
     /// scope has closed. The change is kept when its body `succeeded`, or
     /// when anything it opened (an Insert session, a pending interactive
     /// input) still holds it: then it is a real change regardless of how the
-    /// body ended. A kept change takes `recipe` as its selection recipe; a
-    /// discarded one restores `prev`, so a refused body leaves nothing
-    /// behind.
-    fn end_change(&mut self, prev: Option<Recording>, succeeded: bool, recipe: Vec<SelectionStep>) {
-        let rec = self
+    /// body ended. A discarded one restores `prev`, so a refused body leaves
+    /// nothing behind.
+    fn end_change(&mut self, prev: Option<Recording>, succeeded: bool) {
+        if !self
             .recording
-            .as_mut()
-            .expect("begin_change installed the recording this closes");
-        if succeeded || rec.accepting() {
-            rec.action.selection_recipe = recipe;
-        } else {
+            .as_ref()
+            .is_some_and(|rec| succeeded || rec.accepting())
+        {
             self.recording = prev;
         }
+    }
+
+    /// The open session's Insert state, if it is an Insert session.
+    fn insert_state_mut(&mut self) -> Option<&mut InsertState> {
+        self.active_session
+            .as_mut()
+            .and_then(EditSession::insert_mut)
     }
 
     /// The recording the open Insert session holds a source on, while it
@@ -835,13 +781,13 @@ impl EditorState {
 
     /// Record the Insert-key binding `name` about to dispatch, before its
     /// body runs, so the answers its interactive inputs get have an entry to
-    /// go to. Returns the [`RecordingScope`] the binding runs in, `None` when
-    /// the open Insert session records no change.
+    /// go to. Returns the entry's id and the [`RecordingScope`] the binding
+    /// runs in, `None` when the open Insert session records no change.
     pub(in crate::editor) fn record_binding(
         &mut self,
         name: Cow<'static, str>,
         repeatable: bool,
-    ) -> Option<RecordingScope> {
+    ) -> Option<(BindingId, RecordingScope)> {
         let rec = self.session_recording()?;
         let id = BindingId(rec.next_binding);
         rec.next_binding += 1;
@@ -850,14 +796,15 @@ impl EditorState {
             name,
             answers: Vec::new(),
         });
-        Some(RecordingScope {
+        let scope = RecordingScope {
             source: rec.open_ticket(),
             slot: if repeatable {
                 AnswerSlot::Binding(id)
             } else {
                 AnswerSlot::UnrecordedBinding(id)
             },
-        })
+        };
+        Some((id, scope))
     }
 
     /// Open a source on the recording of the running [`RecordingScope`], for
@@ -941,9 +888,7 @@ impl EditorState {
             return Err(dot_refusal(what));
         }
         if let Some(cap) = self
-            .active_session
-            .as_mut()
-            .and_then(EditSession::insert_mut)
+            .insert_state_mut()
             .and_then(InsertState::dot_capture_mut)
         {
             cap.interactive = true;
@@ -1032,14 +977,10 @@ impl EditorState {
         fp: commands::FocusedPane,
         r: &CursorReplacement,
     ) -> Result<(), String> {
-        let (pid, bid) = (fp.pid(), fp.bid(view));
-        if !self
-            .active_session
-            .as_ref()
-            .is_some_and(|s| s.is_insert_at(pid, bid))
-        {
+        if !commands::is_group_open_at(self, view, fp) {
             return Err("no Insert session to apply the recorded result to".to_string());
         }
+        let (pid, bid) = (fp.pid(), fp.bid(view));
         if !self.panes.state[pid][bid]
             .view(self.buffers.get(bid).text())
             .all_cursors()
@@ -1102,17 +1043,13 @@ impl EditorState {
     /// in one body), before `with_dot_capture` takes it back.
     pub(in crate::editor) fn end_insert_recording(&mut self) {
         if let Some(cap) = self
-            .active_session
-            .as_mut()
-            .and_then(EditSession::insert_mut)
+            .insert_state_mut()
             .and_then(InsertState::take_dot_capture)
         {
             self.finalize_dot_capture(cap);
         }
         drop(
-            self.active_session
-                .as_mut()
-                .and_then(EditSession::insert_mut)
+            self.insert_state_mut()
                 .and_then(InsertState::release_recording),
         );
     }
@@ -1408,26 +1345,19 @@ impl Editor {
     ) {
         let fp = commands::FocusedPane::current(&self.state);
         let (pane, buffer) = (fp.pid(), fp.bid(&self.view));
-        let armed = self
-            .state
-            .active_session
-            .as_ref()
-            .is_some_and(|s| s.is_insert_at(pane, buffer));
+        let armed = commands::is_group_open_at(&self.state, &self.view, fp);
         if armed {
             let head = commands::pane_view(&self.state, &self.view, fp.pane())
                 .primary()
                 .head();
             let chain = DotChain::new(head, self.state.buffers.get(buffer).text());
-            self.state
-                .active_session
-                .as_mut()
-                .and_then(EditSession::insert_mut)
-                .expect("an Insert session was just confirmed open here")
-                .arm_dot_capture(DotCapture {
+            if let Some(insert) = self.state.insert_state_mut() {
+                insert.arm_dot_capture(DotCapture {
                     chain,
                     interactive: false,
                     binding,
                 });
+            }
         }
         f(self);
         if !armed {

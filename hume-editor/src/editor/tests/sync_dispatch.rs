@@ -334,13 +334,6 @@ fn case_b_sync_cursor_read_reflects_motion() {
 
 // ── Steel and dot-repeat ─────────────────────────────────────────────────────
 
-fn has_error(ed: &Editor, needle: &str) -> bool {
-    ed.state
-        .message_log
-        .entries()
-        .any(|e| e.severity == Severity::Error && e.text.contains(needle))
-}
-
 /// Binds `body`, a Steel command taking the pane, to F2 in Normal mode,
 /// after `d` has recorded a change to repeat. Returns the F2 key.
 fn bind_f2_after_a_delete(ed: &mut Editor, body: &str) -> termina::event::KeyEvent {

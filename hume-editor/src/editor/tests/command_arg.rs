@@ -2,7 +2,6 @@
 //! `call!` and from a key binding, and being refused when it doesn't fit.
 
 use super::*;
-use crate::editor::message_log::Severity;
 use crate::editor::minibuf::history::HistoryKind;
 
 /// Attach a scripting host defining `probe`, a no-parameter command whose
@@ -36,13 +35,6 @@ fn text(ed: &Editor) -> String {
         .get(ed.focused_buffer_id())
         .text()
         .to_string()
-}
-
-fn has_error(ed: &Editor, needle: &str) -> bool {
-    ed.state
-        .message_log
-        .entries()
-        .any(|e| e.severity == Severity::Error && e.text.contains(needle))
 }
 
 // ── Character commands from a script ────────────────────────────────────────

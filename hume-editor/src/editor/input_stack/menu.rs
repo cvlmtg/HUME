@@ -7,7 +7,7 @@ use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
 
 use super::super::mouse::is_fresh_gesture;
-use super::super::replay::{Answer, Choice, DotReplay, InputOpener, PendingAnswer, WaitingInput};
+use super::super::replay::{Answer, Choice, InputOpener, PendingAnswer, WaitingInput};
 use super::super::{Editor, EditorState, host_token};
 use super::base::BaseLayer;
 use super::placement::{focused_cursor, popup_placement};
@@ -53,19 +53,26 @@ pub(in crate::editor) fn open_menu(
 ) -> Result<Option<HostToken>, String> {
     const WHAT: &str = "show-menu!";
     if let Some(replay) = state.dot_replay.as_mut() {
-        replay.answer_call(WHAT, DotReplay::next_menu, |choice| {
-            let index = choice
-                .map(|choice| {
-                    choice
-                        .find(&items, String::as_str)
-                        .ok_or_else(|| choice.missing(WHAT))
+        replay.answer_call(
+            WHAT,
+            |a| match a {
+                Answer::Menu(choice) => Some(choice.clone()),
+                _ => None,
+            },
+            |choice| {
+                let index = choice
+                    .map(|choice| {
+                        choice
+                            .find(&items, String::as_str)
+                            .ok_or_else(|| choice.missing(WHAT))
+                    })
+                    .transpose()?;
+                Ok(PendingAnswer::Call {
+                    proc: callback,
+                    arg: menu_arg(index),
                 })
-                .transpose()?;
-            Ok(PendingAnswer::Call {
-                proc: callback,
-                arg: menu_arg(index),
-            })
-        })?;
+            },
+        )?;
         return Ok(None);
     }
     // A `Menu` on top is the self-replace exception: a second

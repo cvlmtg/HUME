@@ -20,7 +20,7 @@ use crate::editor::registry::{
     CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, MappableCommand, PaneCharCmdFn, PaneCmdFn,
     PaneTextCmdFn, PatternPrompt, SelectionBody, SelectionTracking,
 };
-use crate::editor::replay::{NewChange, SelectionStep, record_change};
+use crate::editor::replay::{InputOpener, NewChange, SelectionStep, record_change};
 use crate::editor::settings::ObjectJumpAlign;
 use crate::editor::{EditorState, Severity};
 use hume_ops::{MotionMode, WordCtx};
@@ -351,12 +351,16 @@ impl Bound {
         }
     }
 
-    /// The operand this body was bound with, as dot-repeat records it.
-    fn arg(&self) -> Option<CommandArg> {
+    /// The character operand this body was bound with, as dot-repeat
+    /// records it. No repeatable command takes a text operand.
+    fn char_arg(&self) -> Option<char> {
         match self {
-            Self::PaneChar(_, _, ch) => Some(CommandArg::Char(*ch)),
-            Self::PaneText(_, _, text) => Some(CommandArg::Text(text.clone())),
-            Self::Selection(..) | Self::Edit(..) | Self::Pane(..) | Self::FocusedCmd(..) => None,
+            Self::PaneChar(_, _, ch) => Some(*ch),
+            Self::PaneText(..)
+            | Self::Selection(..)
+            | Self::Edit(..)
+            | Self::Pane(..)
+            | Self::FocusedCmd(..) => None,
         }
     }
 }
@@ -410,9 +414,9 @@ pub(in crate::editor) struct Missing {
     /// command's own run would ([`step_paste_commit`]): it targets the
     /// focused pane and doesn't defer the commit.
     pub(super) commits_paste: bool,
-    /// Whether the command is repeatable: its operand read then seeds
-    /// its own change rather than ending one in flight.
-    pub(super) repeatable: bool,
+    /// How its operand read opens: a repeatable command's read seeds its
+    /// own change rather than ending one in flight.
+    pub(super) opener: InputOpener,
     pub(super) operand: MissingOperand,
 }
 
@@ -571,7 +575,11 @@ fn missing(cmd: &MappableCommand, focused: bool, operand: MissingOperand) -> Unb
     Unbound::NeedsOperand(Missing {
         name: cmd.name().clone(),
         commits_paste: focused && !meta.defers_paste_commit,
-        repeatable: meta.repeatable,
+        opener: if meta.repeatable {
+            InputOpener::RepeatableOperand
+        } else {
+            InputOpener::Code
+        },
         operand,
     })
 }
@@ -657,9 +665,10 @@ impl BoundCommand {
         self.body.focused()
     }
 
-    /// The operand this command was bound with. See [`Bound::arg`].
-    fn arg(&self) -> Option<CommandArg> {
-        self.body.arg()
+    /// The character operand this command was bound with. See
+    /// [`Bound::char_arg`].
+    fn char_arg(&self) -> Option<char> {
+        self.body.char_arg()
     }
 }
 
@@ -968,7 +977,7 @@ pub(in crate::editor) fn run(
     let change = pre_recipe.map(|recipe| NewChange {
         command: name.clone(),
         count: ctx.count.unwrap_or(1),
-        seed: bound.arg(),
+        seed: bound.char_arg(),
         recipe,
     });
     // Only snapshot the selection when step_update_recipe could push a step:

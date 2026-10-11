@@ -28,7 +28,7 @@ pub(in crate::editor) fn collect_operand(
     let Missing {
         name,
         commits_paste,
-        repeatable,
+        opener,
         operand,
     } = missing;
     if commits_paste {
@@ -36,7 +36,7 @@ pub(in crate::editor) fn collect_operand(
     }
     let pending = PendingDispatch { name, pane, ctx };
     let opened = match operand {
-        MissingOperand::Char => read_command_char(state, view, pending, repeatable),
+        MissingOperand::Char => read_command_char(state, view, pending, opener),
         MissingOperand::Pattern { prompt, fp } => {
             open_pattern_prompt(state, view, fp, prompt, pending)
         }

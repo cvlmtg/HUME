@@ -17,9 +17,7 @@ use steel::rvals::SteelVal;
 use super::super::commands::half_page;
 use super::super::keymap::CanonicalKey;
 use super::super::minibuf::flatten_single_line;
-use super::super::replay::{
-    Answer, DotReplay, InputOpener, PendingAnswer, Pick, Picked, WaitingInput,
-};
+use super::super::replay::{Answer, InputOpener, PendingAnswer, Pick, Picked, WaitingInput};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
@@ -199,7 +197,13 @@ pub(in crate::editor) fn open_picker(
 ) -> Result<HostToken, String> {
     let token = session.token();
     if let Some(replay) = state.dot_replay.as_mut() {
-        replay.answer_call(what, DotReplay::next_pick, |pick: Pick| {
+        replay.answer_call(
+            what,
+            |a| match a {
+                Answer::Pick(pick) => Some(pick.clone()),
+                _ => None,
+            },
+            |pick: Pick| {
             let proc = match pick.action {
                 None => session.on_select().clone(),
                 Some(key) => session

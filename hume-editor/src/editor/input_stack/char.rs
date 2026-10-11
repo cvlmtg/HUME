@@ -23,7 +23,7 @@ use termina::event::{KeyCode, Modifiers, MouseEventKind};
 
 use super::super::commands::{self, PendingDispatch};
 use super::super::event::PendingWork;
-use super::super::replay::{Answer, AnswerTicket, DotReplay, InputOpener, PendingAnswer};
+use super::super::replay::{Answer, AnswerTicket, InputOpener, PendingAnswer};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal};
 
@@ -81,19 +81,14 @@ impl CharRead {
 }
 
 /// Reads the character the native command `pending` was dispatched
-/// without, then runs it. `repeatable` is that command's.
+/// without, then runs it.
 pub(in crate::editor) fn read_command_char(
     state: &mut EditorState,
     view: &EngineView,
     pending: PendingDispatch,
-    repeatable: bool,
+    opener: InputOpener,
 ) -> Result<(), String> {
-    let what = pending.name.to_string();
-    let opener = if repeatable {
-        InputOpener::RepeatableOperand
-    } else {
-        InputOpener::Code
-    };
+    let what = pending.name.clone();
     read_interactive(state, view, CharThen::Dispatch(pending), &what, opener)
 }
 
@@ -123,9 +118,14 @@ fn read_interactive(
     opener: InputOpener,
 ) -> Result<(), String> {
     if let Some(replay) = state.dot_replay.as_mut() {
-        return replay.answer_call(what, DotReplay::next_char, |answer| {
-            Ok(PendingAnswer::Read(CharRead { then, source: None }, answer))
-        });
+        return replay.answer_call(
+            what,
+            |a| match a {
+                Answer::Char(c) => Some(*c),
+                _ => None,
+            },
+            |answer| Ok(PendingAnswer::Read(CharRead { then, source: None }, answer)),
+        );
     }
     let source = state.waiting_input(what, opener)?.take_answer();
     let read = CharRead { then, source };

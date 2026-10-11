@@ -321,6 +321,14 @@ fn status(ed: &Editor) -> String {
     ed.state.status_msg.clone().unwrap_or_default()
 }
 
+/// Whether the message log holds an error containing `needle`.
+fn has_error(ed: &Editor, needle: &str) -> bool {
+    ed.state
+        .message_log
+        .entries()
+        .any(|e| e.severity == Severity::Error && e.text.contains(needle))
+}
+
 /// Extracts and parses the `params` payload back out of a scripted
 /// `publishDiagnostics` notification `Message`, for tests that call
 /// `ingest_publish_diagnostics`/`dispatch_lsp_action` directly rather than

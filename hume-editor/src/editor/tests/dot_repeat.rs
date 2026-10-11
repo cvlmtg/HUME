@@ -4143,21 +4143,20 @@ fn a_stale_answer_never_lands_in_a_later_bindings_entry() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.feed_key(key('i'));
 
-    let a = ed
+    let (a_entry, a) = ed
         .state
         .record_binding("a".into(), true)
         .expect("`i` is recording");
-    let a_entry = a.binding();
     let stale = open_input(&mut ed, a);
 
     let text = ed.doc().text().clone();
     ed.state.finalize_dot_capture(DotCapture {
         chain: DotChain::new(test_fixtures::testing::at(&text, 0), &text),
         interactive: true,
-        binding: a_entry,
+        binding: Some(a_entry),
     });
 
-    let b = ed
+    let (_, b) = ed
         .state
         .record_binding("b".into(), true)
         .expect("`i` is still recording");

@@ -7,7 +7,7 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
-use super::super::replay::{Answer, DotReplay, InputOpener, PendingAnswer, WaitingInput};
+use super::super::replay::{Answer, InputOpener, PendingAnswer, WaitingInput};
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
@@ -36,12 +36,19 @@ pub(in crate::editor) fn open_prompt(
 ) -> Result<(), String> {
     const WHAT: &str = "prompt!";
     if let Some(replay) = state.dot_replay.as_mut() {
-        return replay.answer_call(WHAT, DotReplay::next_prompt, |text| {
-            Ok(PendingAnswer::Call {
-                proc: callback,
-                arg: prompt_arg(text),
-            })
-        });
+        return replay.answer_call(
+            WHAT,
+            |a| match a {
+                Answer::Prompt(text) => Some(text.clone()),
+                _ => None,
+            },
+            |text| {
+                Ok(PendingAnswer::Call {
+                    proc: callback,
+                    arg: prompt_arg(text),
+                })
+            },
+        );
     }
     // Not "a Command-mode minibuffer is open": a `prompt!` called from a
     // `:command`'s body runs while that command line's own `Command` layer

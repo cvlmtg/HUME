@@ -14,7 +14,7 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use super::super::keymap::WalkResult;
-use super::super::replay::{Input, RecordingScope, dispatch_insert_key};
+use super::super::replay::{Input, dispatch_insert_key};
 use super::super::{Editor, EditorState, commands, doc_ops};
 use super::popup::PopupLayer;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
@@ -92,8 +92,10 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             // `apply_doc_edit_grouped`), a motion clears a pinned typed run
             // (`with_jump`), and `repeat_slot_owned` keeps a repeatable
             // command it dispatches from starting a change of its own.
-            let scope = ed.state.record_binding(cmd.name, reg_cmd.meta().repeatable);
-            let binding = scope.as_ref().and_then(RecordingScope::binding);
+            let (binding, scope) = ed
+                .state
+                .record_binding(cmd.name, reg_cmd.meta().repeatable)
+                .unzip();
             ed.with_dot_capture(binding, |ed| {
                 dispatch_insert_key(ed, scope, reg_cmd);
             });
