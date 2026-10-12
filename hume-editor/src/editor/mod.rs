@@ -514,9 +514,10 @@ impl Default for EditorState {
     }
 }
 
-/// Every input a pane's layout depends on: [`EditorState::format_key`]'s
-/// fields plus content width, viewport height and scroll-margin, which decide
-/// where the cursor's display line falls.
+/// Every input a pane's layout depends on: its
+/// [`FormatKey`](hume_engine::display_lines::line_store::FormatKey) plus content
+/// width, viewport height and scroll-margin, which decide where the cursor's
+/// display line falls.
 ///
 /// `FormatKey` leaves out content width because formatting sees it only
 /// through the wrap mode it resolves. This key keeps it because a growing
@@ -533,31 +534,18 @@ impl Default for EditorState {
 /// decoration refresh) leaves it where it is.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(in crate::editor) struct LayoutKey {
-    buffer_tag: hume_engine::display_lines::line_store::BufferTag,
-    wrap_mode: hume_engine::pane::WrapMode,
-    tab_width: u8,
-    whitespace: hume_engine::pane::WhitespaceConfig,
+    format: hume_engine::display_lines::line_store::FormatKey,
     content_width: std::num::NonZeroU16,
     height: u16,
     scroll_margin: usize,
 }
 
 impl LayoutKey {
-    /// The subset of `self` a `DisplayLineMap` needs, as one
-    /// `hume_engine::display_lines::line_store::FormatKey`. See
-    /// [`EditorState::format_key`]'s own doc for which fields and why. A
-    /// caller that has already resolved a `LayoutKey` derives its `FormatKey` from here instead of
-    /// a second, independent `EditorState::format_key` call that would
-    /// re-resolve every field from scratch.
+    /// The part of `self` a `DisplayLineMap` is built from.
     pub(in crate::editor) fn format_key(
         &self,
     ) -> hume_engine::display_lines::line_store::FormatKey {
-        hume_engine::display_lines::line_store::FormatKey {
-            buffer_tag: self.buffer_tag,
-            wrap_mode: self.wrap_mode,
-            tab_width: self.tab_width,
-            whitespace: self.whitespace,
-        }
+        self.format
     }
 }
 
@@ -624,7 +612,7 @@ impl EditorState {
     /// makes that true.
     pub(in crate::editor) fn layout_key(&self, pane: &hume_engine::pane::Pane) -> LayoutKey {
         let doc = self.buffers.get(pane.buffer_id);
-        LayoutKey {
+        let format = hume_engine::display_lines::line_store::FormatKey {
             buffer_tag: [
                 // Not `{:?}`-formatted: this is a value to compare, not one
                 // to show, and `as_ffi` folds the key's index and version
@@ -637,17 +625,19 @@ impl EditorState {
             wrap_mode: commands::effective_wrap_mode(doc, &self.settings, pane),
             tab_width: doc.overrides.tab_width(&self.settings),
             whitespace: doc.overrides.whitespace(&self.settings),
+        };
+        LayoutKey {
+            format,
             content_width: pane.content_width(doc.text().last_ropey_line()),
             height: pane.viewport.height,
             scroll_margin: self.settings.scroll_margin,
         }
     }
 
-    /// Every input `pane`'s line formats depend on, as one
-    /// `hume_engine::display_lines::line_store::FormatKey`: [`Self::layout_key`]'s
-    /// `buffer_tag`, wrap mode, tab width and whitespace config: the
-    /// subset of [`LayoutKey`] the line store's scope actually needs.
-    /// `content_width` reaches formatting only through the wrap mode's
+    /// Every input `pane`'s line formats depend on: the
+    /// `hume_engine::display_lines::line_store::FormatKey` inside
+    /// [`Self::layout_key`], the part of [`LayoutKey`] the line store's scope
+    /// needs. `content_width` reaches formatting only through the wrap mode's
     /// resolved width (see `hume_engine::display_lines::line_store::ResolvedFormatKey`'s
     /// own doc), and `height`/`scroll-margin` don't reach formatting at all:
     /// neither names a line's shape, only where the viewport settles
