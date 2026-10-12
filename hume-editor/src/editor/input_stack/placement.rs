@@ -27,7 +27,10 @@ pub(in crate::editor) fn popup_placement(
     let focused = ed.state.focus.id();
     let pane_rect = ed.view.pane_rect(focused)?;
     let gutter_w = ed.pane_gutter_width(focused);
-    let content_width = pane_rect.width.saturating_sub(gutter_w);
+    let content_width = ed.view.panes[focused]
+        .viewport
+        .content_width(gutter_w)
+        .get();
     // The scroll step (`scroll_into_view`) already resolved the focused cursor's
     // screen cell this frame, via the same locate/distance walk
     // `content_pos` runs below. Nothing between the scroll step and this
