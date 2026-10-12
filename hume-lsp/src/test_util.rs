@@ -49,6 +49,11 @@ pub type ResponseLog = Rc<
 /// mirror.
 pub struct RecordingLspBackend {
     inner: InlineLspBackend,
+    /// Messages pushed for a server not yet started: a real server sends
+    /// nothing before it exists, so `drain` delivers each only once its
+    /// server has been started.
+    held: Vec<(ServerId, Message)>,
+    started: Vec<ServerId>,
     log: NotificationLog,
     server_log: ServerNotificationLog,
     request_log: RequestLog,
@@ -91,6 +96,8 @@ impl RecordingLspBackend {
         (
             Self {
                 inner,
+                held: Vec::new(),
+                started: Vec::new(),
                 log: log.clone(),
                 server_log: Rc::new(RefCell::new(Vec::new())),
                 request_log: request_log.clone(),
@@ -139,8 +146,10 @@ impl RecordingLspBackend {
         self.response_log.clone()
     }
 
+    /// Queues `msg` as traffic from `server`, delivered by the first
+    /// `drain` after `server` has been started.
     pub fn push_from_server(&mut self, server: ServerId, msg: Message) {
-        self.inner.push_from_server(server, msg);
+        self.held.push((server, msg));
     }
 }
 
@@ -152,7 +161,9 @@ impl LspBackend for RecordingLspBackend {
         root: &Path,
         env: &[(String, String)],
     ) -> std::io::Result<ServerId> {
-        self.inner.start(cmd, args, root, env)
+        let server = self.inner.start(cmd, args, root, env)?;
+        self.started.push(server);
+        Ok(server)
     }
 
     fn send(&mut self, server: ServerId, msg: Message) {
@@ -178,6 +189,13 @@ impl LspBackend for RecordingLspBackend {
     }
 
     fn drain(&mut self) -> Vec<(ServerId, InboundEvent)> {
+        let (ready, held): (Vec<_>, Vec<_>) = std::mem::take(&mut self.held)
+            .into_iter()
+            .partition(|(server, _)| self.started.contains(server));
+        self.held = held;
+        for (server, msg) in ready {
+            self.inner.push_from_server(server, msg);
+        }
         self.inner.drain()
     }
 

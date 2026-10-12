@@ -1041,13 +1041,10 @@ fn server_initiated_apply_edit_actually_applies_and_answers_true() {
 /// `workspace/applyEdit` opens files via `lsp::edits::resolve_or_open` →
 /// `buffer::lifecycle::open_or_dedup_and_notify`, which can't detect language
 /// inline (see that function's doc); it queues the buffer onto
-/// `EditorState.pending_language_detection`. `apply_edit_request_response`
-/// has a full `&mut Editor`, so it must drain that queue itself; nothing else
-/// on this path (a server-initiated request answered from `drain_lsp`) ever
-/// reaches `apply_script_effects`.
-///
-/// Without the `self.detect_pending_languages()` call in
-/// `apply_edit_request_response`, the opened buffer's `language` stays `None`.
+/// `EditorState.pending_language_detection`. Nothing on this path (a
+/// server-initiated request answered from `drain_lsp`) reaches
+/// `apply_script_effects`, so the opened buffer's language comes from the
+/// next `settle`.
 #[test]
 fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1072,6 +1069,7 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
     });
     let result = ed.apply_edit_request_response(&params, sid).unwrap();
     assert_eq!(result["applied"], serde_json::json!(true));
+    ed.settle();
 
     let bid = ed
         .state

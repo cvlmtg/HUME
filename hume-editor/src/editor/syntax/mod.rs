@@ -193,10 +193,10 @@ impl Editor {
     /// Detect and set the language for every buffer
     /// `buffer::lifecycle::open_buffer_and_notify` queued onto
     /// `state.config.pending_language_detection`. The disjoint-borrow open
-    /// chokepoint can't do this inline (see that function's doc), so every
-    /// caller that regains a full `&mut Editor` drains this once: directly
-    /// after opening (`Editor::open_buffer`, `apply_edit_request_response`),
-    /// or at the tail of `apply_script_effects` for every Steel-eval path.
+    /// chokepoint can't do this inline (see that function's doc). Every pass
+    /// of `drain_pending_work` drains it, so a buffer opened by any path is
+    /// announced before the next frame; `apply_script_effects` also drains it
+    /// at its tail, so later work in the same batch sees the language.
     ///
     /// Also fires `OnBufferOpen` for each buffer, after its `OnLanguageSet`
     /// (queued by `detect_and_set_language` above); `open_buffer_and_notify`

@@ -280,6 +280,7 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
     );
     ed.scripting = Some(host);
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    ed.settle();
     ed.drain_lsp();
 
     // Runs (and drains) as its own dispatch, well before the one under

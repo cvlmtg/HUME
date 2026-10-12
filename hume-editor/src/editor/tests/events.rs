@@ -318,6 +318,7 @@ fn on_buffer_open_queued_after_on_language_set() {
     let mut doc = Buffer::scratch();
     doc.set_path(Some(std::path::PathBuf::from("/tmp/foo.rs")));
     ed.open_buffer(doc);
+    ed.detect_pending_languages();
 
     // Inspect the queue before draining: settle() would empty it.
     let hook_order: Vec<&str> = ed

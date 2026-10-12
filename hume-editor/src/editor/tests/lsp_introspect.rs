@@ -846,6 +846,7 @@ fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
     rig.ed
         .execute_typed("tabnew", Some(extra.to_str().unwrap()))
         .unwrap();
+    rig.ed.settle();
     let other_bid = rig.ed.focused_buffer_id();
     assert!(
         rig.ed.state.buffer_positions.lsp.has_doc(other_bid),

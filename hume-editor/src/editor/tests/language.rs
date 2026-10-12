@@ -100,6 +100,30 @@ fn detect_and_set_language_matches_extension() {
     assert!(ed.state.buffers.get(bid).language.is_some());
 }
 
+/// A buffer queued for its open announcement by any path is detected and
+/// announced by the next `settle`, with no call from the path that opened it.
+#[test]
+fn settle_detects_and_announces_a_queued_buffer() {
+    let mut ed = editor_from("-[a]>b\n");
+    attach_host(
+        &mut ed,
+        r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right" (focused-pane))))"#,
+    );
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).path = Some(std::path::PathBuf::from("/tmp/foo.rs"));
+    register_rust(&mut ed, "rust", &["rs"]);
+    let before = state(&ed);
+
+    crate::editor::buffer::lifecycle::queue_open_announcement(&mut ed.state, bid);
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.config.languages.id_of("rust")
+    );
+    assert_ne!(state(&ed), before, "on-buffer-open hook must have fired");
+}
+
 #[test]
 fn detect_and_set_language_no_match_leaves_none() {
     let mut ed = editor_from("-[a]>b\n");

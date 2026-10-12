@@ -51,11 +51,12 @@ pub(in crate::editor) fn open_buffer(
 /// (see that function's doc). Does **not** run detection
 /// inline: that needs `set_buffer_language`, which can activate lazy
 /// language plugins via `self.scripting`, a full `&mut Editor`/Steel-eval
-/// capability neither of this function's callers hold. Also leaves
-/// `open_hook_pending` set until that drain fires its `OnBufferOpen`, read
-/// by [`close_buffer_and_notify`] so a buffer closed before the drain runs
-/// announces neither hook, rather than an `OnBufferClose` with no matching
-/// open.
+/// capability neither of this function's callers hold. The drain runs at the
+/// end of the Steel eval that queued `bid`, or else at the next
+/// `Editor::settle`. Also leaves `open_hook_pending` set until that drain
+/// fires its `OnBufferOpen`, read by [`close_buffer_and_notify`] so a
+/// buffer closed before the drain runs announces neither hook, rather than
+/// an `OnBufferClose` with no matching open.
 ///
 /// Two callers: [`open_buffer_and_notify`] below, and `Editor::open`, which
 /// builds the startup buffer inline (bootstrapping the very

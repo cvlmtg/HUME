@@ -39,6 +39,7 @@ fn open(rig: &mut LspRig, relative: &str, text: &str) -> BufferId {
     rig.ed
         .execute_typed("e", Some(path.to_str().unwrap()))
         .unwrap();
+    rig.ed.settle();
     rig.ed.focused_buffer_id()
 }
 

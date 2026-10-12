@@ -46,6 +46,7 @@ fn setup(guard: &RuntimeDirs, tmp: &Path, config_expr: Option<&str>) -> Editor {
 /// Opens `path` as a real, file-backed buffer and returns its id.
 fn open(ed: &mut Editor, path: &Path) -> BufferId {
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+    ed.settle();
     ed.focused_buffer_id()
 }
 

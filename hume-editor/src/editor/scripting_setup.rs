@@ -61,9 +61,11 @@ impl Editor {
     /// Finishes by draining `state.config.pending_language_detection`, which covers every
     /// buffer a disjoint-borrow Steel path opened via `buffer::lifecycle::
     /// open_buffer_and_notify` this eval (`(open-buffer! …)`, workspace edits,
-    /// goto-definition). *After* the effect loop, not before: a script that
-    /// opens a buffer and registers its language in the same eval must have
-    /// the registration land first.
+    /// goto-definition). `drain_pending_work` would reach them on its next
+    /// pass; draining here lets the next item of the same batch, and
+    /// `init_scripting`'s caller, see their language. *After* the effect loop,
+    /// not before: a script that opens a buffer and registers its language in
+    /// the same eval must have the registration land first.
     pub(in crate::editor) fn apply_script_effects(&mut self, effects: Vec<Effect>) {
         let mut effects: std::collections::VecDeque<Effect> = effects.into();
         while let Some(effect) = effects.pop_front() {
@@ -304,6 +306,10 @@ impl Editor {
     pub(super) fn drain_pending_work(&mut self) -> bool {
         let mut total_processed = 0usize;
         loop {
+            // First, so a buffer opened by any path, handlers of the previous
+            // pass included, queues `OnLanguageSet` and `OnBufferOpen` ahead
+            // of the `OnBufferEnter` its own focus change triggers.
+            self.detect_pending_languages();
             self.detect_buffer_enter();
             self.detect_mode_change();
             // A pane switch, a closed buffer or an edit from any path leaves

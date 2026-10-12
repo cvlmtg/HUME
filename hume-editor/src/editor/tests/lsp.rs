@@ -641,6 +641,7 @@ fn register_and_open_matching_file_spawns_exactly_one_server_and_second_buffer_a
     rig.ed
         .execute_typed("e", Some(lib.to_str().unwrap()))
         .unwrap();
+    rig.ed.settle();
 
     assert_eq!(
         rig.ed.state.lsp.instance_count_for_test(),
@@ -676,6 +677,7 @@ fn opening_a_file_under_a_different_root_spawns_a_second_server() {
     rig.ed
         .execute_typed("e", Some(other.to_str().unwrap()))
         .unwrap();
+    rig.ed.settle();
 
     assert_eq!(
         rig.ed.state.lsp.instance_count_for_test(),
@@ -705,6 +707,7 @@ fn attach_attempt_beside_a_crashed_server_reports_no_error() {
     rig.ed
         .execute_typed("e", Some(lib.to_str().unwrap()))
         .unwrap();
+    rig.ed.settle();
 
     let lib_bid = rig.ed.focused_buffer_id();
     assert_eq!(

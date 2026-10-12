@@ -1,13 +1,12 @@
 //! Edit + navigation primitives: `apply-text-edits!`,
 //! `apply-workspace-edit!`, `goto-location!`.
 //!
-//! Everything but `Editor::apply_edit_request_response` is state/view-only
-//! (no `&mut Editor` needed) so those are callable directly from
-//! `EditorHostImpl`, the same discipline as the decoration setters. The one
-//! exception answers a server-initiated request, which needs the full
-//! `apply_workspace_edit` + `detect_pending_languages` pair. It lives here
-//! rather than in `drain.rs` because it shares the edit-application path
-//! with `apply-workspace-edit!` and belongs next to it.
+//! The primitives are state/view-only (no `&mut Editor` needed) so they are
+//! callable directly from `EditorHostImpl`, the same discipline as the
+//! decoration setters. `Editor::apply_edit_request_response` answers a
+//! server-initiated request. It lives here rather than in `drain.rs` because
+//! it shares the edit-application path with `apply-workspace-edit!` and
+//! belongs next to it.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::apply_keeping_final_break;
@@ -369,7 +368,7 @@ fn resolve_or_open(
 /// misdecode a file with no server of its own attached, or one attached to
 /// a different server, and (for a file this call is opening for the first
 /// time) has no attached server to look up at all yet
-/// (`detect_pending_languages` only runs after this returns).
+/// (detection only runs after this returns).
 pub(in crate::editor) fn apply_workspace_edit(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -601,13 +600,7 @@ impl Editor {
         // No request-time buffer to check staleness against: this answers a
         // server-initiated request, not a Steel round-trip with its own
         // captured generation.
-        let result = apply_workspace_edit(&mut self.state, &mut self.view, pid, we, encoding, None);
-        // Drain regardless of outcome: `apply_workspace_edit`'s contract is
-        // "validate all, then apply all", but it opens buffers as it *validates*
-        // each entry (`edits.rs`'s `resolve_or_open` calls), so a failure on
-        // entry 3 of 5 still leaves entries 1-2's buffers open and queued here.
-        self.detect_pending_languages();
-        match result {
+        match apply_workspace_edit(&mut self.state, &mut self.view, pid, we, encoding, None) {
             Ok(_summary) => Ok(serde_json::json!({ "applied": true })),
             Err(e) => Ok(serde_json::json!({
                 "applied": false,

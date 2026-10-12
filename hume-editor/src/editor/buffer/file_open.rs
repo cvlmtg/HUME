@@ -103,7 +103,7 @@ impl Editor {
     }
 
     /// Dedup-open a resolved path: returns `(id, false)` if already open,
-    /// `(id, true)` if newly opened (including `OnBufferOpen` hook fire).
+    /// `(id, true)` if newly opened and queued for its open announcement.
     ///
     /// `resolved` is canonical when the file exists, or the best-effort form
     /// [`Self::resolve_buffer_path`] produces when it doesn't (parent canonicalized,
@@ -111,22 +111,14 @@ impl Editor {
     /// was stored, so dedup still works once the file is later created and
     /// reopened via its now-canonicalizable path.
     ///
-    /// Thin wrapper over [`lifecycle::open_or_dedup_and_notify`]; the actual
-    /// dedup-and-missing-file logic lives there so Steel's `open-buffer!` and
-    /// LSP goto/workspace-edit share it too; this only adds the
-    /// `&Editor`-only language detection a new, non-deduplicated buffer needs.
+    /// Thin wrapper over [`lifecycle::open_or_dedup_and_notify`], where the
+    /// dedup-and-missing-file logic lives so Steel's `open-buffer!` and LSP
+    /// goto/workspace-edit share it too.
     pub(in crate::editor) fn open_or_dedup(
         &mut self,
         resolved: &std::path::Path,
     ) -> std::io::Result<(BufferId, bool)> {
-        let (bid, is_new) =
-            lifecycle::open_or_dedup_and_notify(&mut self.view, &mut self.state, resolved)?;
-        if is_new {
-            // Steel eval capability only `&mut Editor` has; see
-            // `open_buffer_and_notify`'s doc for why detection can't live there.
-            self.detect_pending_languages();
-        }
-        Ok((bid, is_new))
+        lifecycle::open_or_dedup_and_notify(&mut self.view, &mut self.state, resolved)
     }
 
     /// `{name} [new file]`, the message reported when a newly opened `buf`
@@ -200,24 +192,13 @@ impl Editor {
     /// no pane is seeded yet.
     #[cfg(test)]
     pub(in crate::editor) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
-        let bid = lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc);
-        // Steel eval capability only `&mut Editor` has; see
-        // `open_buffer_and_notify`'s doc for why detection can't live there.
-        self.detect_pending_languages();
-        bid
+        lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc)
     }
 
     /// Remove buffer `id`; see [`lifecycle::close_buffer`]'s own doc for
     /// the last-buffer case (a fresh scratch buffer, not `id` reused).
     pub(in crate::editor) fn close_buffer(&mut self, id: BufferId) {
         lifecycle::close_buffer_and_notify(&mut self.view, &mut self.state, id);
-        // The last-buffer case queues a fresh scratch buffer for language
-        // detection and `OnBufferOpen` (`close_buffer_and_notify`'s
-        // `queue_open_announcement` call). `(close-buffer! id)`'s Steel path
-        // gets detection from `apply_script_effects`, which runs it after
-        // every batch of script effects; a direct `&mut Editor` caller like
-        // this one has no such funnel to fall back on.
-        self.detect_pending_languages();
     }
 
     /// Replace `fp`'s buffer text with `source`'s in place, preserving the
@@ -363,17 +344,13 @@ impl Editor {
         content: &str,
         cursor_line: Option<hume_rope::line::ContentLine>,
     ) -> BufferId {
-        let bid = lifecycle::show_read_only_view(
+        lifecycle::show_read_only_view(
             &mut self.state,
             &mut self.view,
             fp.pane(),
             label,
             content,
             cursor_line,
-        );
-        // A first-time open queues language detection, which needs the
-        // Steel eval capability only `&mut Editor` has.
-        self.detect_pending_languages();
-        bid
+        )
     }
 }

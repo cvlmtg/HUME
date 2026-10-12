@@ -147,6 +147,7 @@ impl LspRig {
         ed.scripting = Some(host);
         ed.execute_typed("e", Some(file.to_str().expect("utf-8 path")))
             .expect(":e opens the file");
+        ed.settle();
         let bid = ed.focused_buffer_id();
         select_marked(&mut ed, spec.marked);
         Self {
