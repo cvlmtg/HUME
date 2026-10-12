@@ -66,9 +66,11 @@ no value for it, so a language with none is `()`:
   grammar it borrows (`jsx` gets `tree_sitter_javascript`). `subpath` is the directory of the
   grammar's `src/` within its clone, empty for the clone root.
 
-The editor reads a language's file the first time a buffer is assigned that language, and fills
-each of `roots` and `language-id` that configuration has not set. A value from
-`configure-language!` always wins, whether it arrives before or after the file is read. A value
+The editor reads a language's file the first time a buffer is assigned that language, or a
+syntax layer parses text in it (a fenced code block), and fills each of `roots`, `language-id`,
+`comment-tokens` and `block-comment-tokens` that configuration has not set. It reaches the editor
+as a hash keyed by field, without `grammar`, which only the plugin-facing functions read.
+A value from `configure-language!` always wins, whether it arrives before or after the file is read. A value
 from `init.scm` beats a plugin's in either order, and the plugin's is dropped quietly; between two
 values from the same side the first wins and the ignored write is logged as a warning. `:reload-config` drops both and reads the files again on next use.
 

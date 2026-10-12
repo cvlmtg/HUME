@@ -158,6 +158,7 @@ Modify buffer text.
 | `open-line-above` | `O` | Open a new line above the cursor and enter insert mode. |
 | `open-line-below` | `o` | Open a new line below the cursor and enter insert mode. |
 | `replace` | `r` + char | Replace every character in each selection with the next typed character. From `call!`, pass the character as an argument. |
+| `toggle-comment` | `G G` | Comment or uncomment the lines of each selection. |
 | `unindent` | `<` | Unindent every line touched by a selection by one level. |
 
 ## Clipboard and registers

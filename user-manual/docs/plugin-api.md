@@ -192,7 +192,7 @@ Both ends speak the same list shape. A string a script writes pastes as whole li
 | Call | Effect |
 |------|--------|
 | `(define-language! name exts globs shebangs)` | Define a language, or replace how an existing one is detected. `exts`, `globs`, and `shebangs` default to `'()` |
-| `(configure-language! name #:roots #:language-id)` | Set a defined language's project root markers (a list of file names) and the identifier language servers know it by, when that differs from `name`. Each keyword left out leaves that setting as it is. A value from `init.scm` beats a plugin's in either order; of two values from `init.scm`, or two from plugins, the first wins and the later one is ignored with a warning |
+| `(configure-language! name #:roots #:language-id #:comment-tokens #:block-comment-tokens)` | Set a defined language's project root markers (a list of file names), the identifier language servers know it by when that differs from `name`, its line comment tokens (a list of strings) and its block comment pairs (a list of `(start . end)` string pairs). Each keyword left out leaves that setting as it is. A value from `init.scm` beats a plugin's in either order; of two values from `init.scm`, or two from plugins, the first wins and the later one is ignored with a warning |
 | `(bundled-language-grammar name)` | The grammar HUME ships for language `name`, as `(url rev symbol subpath)`, or `#f` when it ships none |
 | `(bundled-grammar-languages)` | Every language HUME ships a grammar for, sorted |
 | `(grammar-url g)`, `(grammar-rev g)`, `(grammar-symbol g)`, `(grammar-subpath g)` | One field of a grammar `bundled-language-grammar` returns |

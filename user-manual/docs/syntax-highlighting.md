@@ -109,7 +109,17 @@ It defaults to the language name when you don't set it.
 (configure-language! "my-lang" #:roots '("my-lang.toml" ".git"))
 ```
 
-A language with no roots uses the directory HUME was started in. Built-in languages already come with the roots and identifiers their language servers expect; `configure-language!` replaces them. A setting from your `init.scm` beats one from a plugin, whichever runs first. Setting the same thing twice in your `init.scm` keeps the first value and notes the second in `:messages`. Redefining a language with `define-language!` replaces only its extensions, globs and shebangs; its settings stay.
+A language with no roots uses the directory HUME was started in.
+
+`#:comment-tokens` and `#:block-comment-tokens` set what `G G` writes and recognises. The first entry of each list is the one `G G` writes; any entry counts as a comment when removing one:
+
+```scheme
+(configure-language! "my-lang"
+  #:comment-tokens '("--")
+  #:block-comment-tokens '(("{-" . "-}")))
+```
+
+Built-in languages already come with the roots, identifiers and comments their language servers and `G G` expect; `configure-language!` replaces them. A setting from your `init.scm` beats one from a plugin, whichever runs first. Setting the same thing twice in your `init.scm` keeps the first value and notes the second in `:messages`. Redefining a language with `define-language!` replaces only its extensions, globs and shebangs; its settings stay.
 
 Now `my-lang` is detected like any built-in. `:plum-install-grammar` installs grammars only for the languages HUME ships with, so for your own language, or a private or experimental tree-sitter grammar, point HUME at the compiled library and a highlight query file by hand:
 

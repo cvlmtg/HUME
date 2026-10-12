@@ -184,17 +184,17 @@ See [Language Servers](lsp.md#commands-and-keys).
 
 ## Edit prefix (`G`)
 
-Press `G` then a second key. Not a "case prefix": `G` holds the commands Vim files under
-`g` that aren't gotos (`G L`/`G U`/`G C` are Vim's `gu`/`gU`/`g~`):
+Press `G` then a second key. `G` holds edits of the selected text, where `g` holds gotos:
 
 | Key | Command | Kitty | Action |
 |-----|---------|:-----:|--------|
 | `G L` | `make-text-lowercase` |  | Lowercase the selection |
 | `G U` | `make-text-uppercase` |  | Uppercase the selection |
 | `G C` | `make-text-capitalized` |  | Capitalize each word in the selection |
+| `G G` | `toggle-comment` |  | Comment or uncomment the lines of each selection |
 
 `G U`/`G C` differ from `g U`/`g C` (previous unit test / previous comment) only in the prefix's
-case. `core:lsp` adds a fourth key here, `G R` for
+case. `core:lsp` adds `G R` here for
 `lsp-rename` (see [Language Servers](lsp.md)).
 
 ## View prefix (`z`)

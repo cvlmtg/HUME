@@ -14,6 +14,7 @@
 - `:plum-install-grammar`, `:plum-list-grammars` and `plum-ensure-grammars` take and list language names. A grammar installed under a name that is not a language (such as `proto`, the grammar of `protobuf`) shows as an orphan; remove it with `:plum-cleanup-grammars` and install the language's instead.
 
 ### Editing
+- `G G` comments or uncomments the lines of each selection, with the comment of the language at the cursor (a fenced code block in Markdown gets its own language's). One line takes a line comment, several lines a block comment; `:set prefer-line-comments=true` gives several lines line comments instead.
 - `.` reuses your answers to a `#:repeatable` command's character read, picker, prompt or menu instead of asking again.
 - With the kitty keyboard protocol, `Ctrl-?` searches backward and extends the selection.
 - `:set buffer line-ending=lf|crlf` converts a buffer's line endings.
@@ -23,7 +24,7 @@
 - With no `theme` set, HUME loads `sand` from `themes/`, so edits to `sand.toml` apply. The built-in copy is the fallback.
 
 ### Plugins & scripting
-- New `configure-language!` sets a language's project root markers and the identifier language servers know it by. A value from `init.scm` beats a plugin's, wherever the plugin loads, and either one replaces HUME's built-in value. Setting the same value twice from `init.scm`, or twice from plugins, keeps the first and notes the second in `:messages`.
+- New `configure-language!` sets a language's project root markers, the identifier language servers know it by, and its line and block comments. A value from `init.scm` beats a plugin's, wherever the plugin loads, and either one replaces HUME's built-in value. Setting the same value twice from `init.scm`, or twice from plugins, keeps the first and notes the second in `:messages`.
 - New `bundled-language-grammar` and `bundled-grammar-languages` read the grammars HUME ships for each language.
 - New `show-read-only-buffer!` shows text in a read-only buffer, reused by name.
 - New `read-data-file`, `data-file` and `data-file-names` read a plugin's Scheme data files: one value per file, with an error naming the file when it doesn't parse.

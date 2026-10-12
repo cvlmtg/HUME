@@ -69,6 +69,22 @@ You can align to the left or the right depending on which end of the selection i
 
 `>`/`<` shift every line touched by a selection by one indent level, using the buffer's `tab-width` and `tab-style` (see [Configuration](configuration.md)). A prefix count shifts by that many levels at once (`3>`). A blank or whitespace-only line inside the selection is left alone, so it never picks up trailing whitespace. Each touched line's whole indent is re-rendered to the new width in the current `tab-style`, not just prepended to or trimmed from, so `<` immediately after `>` restores the previous indent width exactly (the characters themselves are re-rendered in `tab-style`, so a mixed tabs-and-spaces indent normalizes rather than coming back byte-identical). `<` on an indent narrower than one level flattens it to the left margin instead of going negative, so `>` afterward lands on a full level rather than back where the first `<` started.
 
+## Comments
+
+| Key | Effect |
+|-----|--------|
+| `G G` | Comment or uncomment the lines of each selection |
+
+On a cursor, or a selection within one line, `G G` puts a line comment (`//` in Rust) in front of the line's text. In a language with only block comments (`<!-- -->` in HTML), it wraps the line's text instead.
+
+A selection over several lines is wrapped in one block comment, from its first non-blank character to its last. In a language with only line comments, each line gets one, all at the same column, and blank lines are left alone. `:set prefer-line-comments=true` gives several lines line comments even where the language has block comments.
+
+`G G` on a commented line removes the comment, whichever kind it is: a line comment with the space after it, or a block comment's start and end with the space inside each.
+
+With several selections, the primary selection decides. When its lines are commented, `G G` uncomments every selection; otherwise it comments every selection, including lines that already have a comment.
+
+The comment follows the language at the cursor: in a Markdown file, a fenced Rust block gets `//` and the text around it gets `<!-- -->`. To change a language's comments, see `configure-language!` in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).
+
 ## Undo and redo
 
 | Key | Effect |
