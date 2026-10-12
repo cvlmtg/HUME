@@ -63,8 +63,9 @@ LANGUAGE_DATA_HEADER = """\
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
 
-# Characters that make a language name unusable as a file name on some platform.
-UNSAFE_NAME_CHARS = set('<>:"/\\|?*')
+# The characters a language name may use. bootstrap.scm's %language-data-file
+# rejects any other name, so a data file it could never read is never written.
+NAME_CHARS = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
 
 LANGUAGE_SERVERS_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/language-servers.scm — each language's ordered LSP server list.
@@ -239,16 +240,13 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
 
 
 def check_language_names(langs: list[dict]) -> None:
-    """Fatal unless every language name is a distinct, portable file name."""
-    seen: dict[str, str] = {}
+    """Fatal unless every language name uses only NAME_CHARS and is not empty,
+    `.` or `..`. Lowercase-only names are distinct on case-insensitive file
+    systems too."""
     for lang in langs:
         name = lang["name"]
-        if UNSAFE_NAME_CHARS & set(name):
-            sys.exit(f"error: language name '{name}' cannot be a file name")
-        folded = name.lower()
-        if folded in seen:
-            sys.exit(f"error: language names '{seen[folded]}' and '{name}' differ only in case")
-        seen[folded] = name
+        if name in ("", ".", "..") or not set(name) <= NAME_CHARS:
+            sys.exit(f"error: language name '{name}' is outside [a-z0-9._-]")
 
 
 def emit_language_identities(langs: list[dict]) -> list[str]:

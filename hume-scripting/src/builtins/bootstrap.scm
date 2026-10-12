@@ -252,15 +252,20 @@
       #t))
 (define (%stdout-safe?) (%port-safe? (current-output-port)))
 
+(define (%language-data-all? ok? items)
+  (or (null? items) (and (ok? (car items)) (%language-data-all? ok? (cdr items)))))
+
+(define (%language-name-char? c)
+  (or (and (char>=? c #\a) (char<=? c #\z))
+      (and (char>=? c #\0) (char<=? c #\9))
+      (member c (list #\. #\_ #\-))))
+
 (define (%language-data-file name)
-  (when (or (not (string? name)) (member name '("" "." ".."))
-            (string-contains? name "/") (string-contains? name "\\"))
+  (unless (and (string? name) (not (member name '("" "." "..")))
+               (%language-data-all? %language-name-char? (string->list name)))
     (error (string-append "language data: " (to-string name) " is not a language name")))
   (let ((runtime (runtime-dir)))
     (and runtime (path-join runtime "scheme" "languages" (string-append name ".scm")))))
-
-(define (%language-data-all? ok? items)
-  (or (null? items) (and (ok? (car items)) (%language-data-all? ok? (cdr items)))))
 
 (define (%language-data-strings? items)
   (and (list? items) (%language-data-all? string? items)))

@@ -210,8 +210,9 @@ macro_rules! builtins {
 // instead of raising on bad syntax, and leaves the bad text for the next
 // call. The parse error is caught into a marker and a fresh error naming the
 // file is raised after the handler returns, so nothing is re-raised (hazard
-// above). A missing runtime dir or file reads as #f; a name that could leave
-// the directory raises. %bundled-language-config is the editor's view
+// above). A missing runtime dir or file reads as #f; a name outside
+// [a-z0-9._-], the generator's own charset (scripts/sync-grammars.py), raises,
+// which keeps a lookup inside the directory and off a case-insensitive alias. %bundled-language-config is the editor's view
 // (ScriptingHost::bundled_language decodes it); bundled-language-grammar and
 // bundled-grammar-languages are the plugins' view. bundled-grammar-languages
 // reads every file, so it keeps its list for the life of the Steel engine,
