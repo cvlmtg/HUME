@@ -163,7 +163,7 @@ fn a_refresh_request_is_answered_and_pulls_again() {
 
 fn excluding(feature: &str) -> String {
     format!(
-        r#"(%define-language! "rust" '("rs") '() '()) (%configure-language! "rust" '("Cargo.toml") #f)
+        r#"(%define-language! "rust" '("rs") '() '()) (%configure-language! "rust" (hash 'roots '("Cargo.toml")))
 (register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
 (set-language-servers! "rust" (list (hash 'name "rust-analyzer" 'except-features '({feature}))))"#
     )
@@ -421,7 +421,7 @@ fn a_config_reload_pulls_again_from_a_server_it_keeps() {
         &mut rig.ed,
         &mut host,
         &format!(
-            "(%define-language! \"rust\" '(\"rs\") '() '()) (%configure-language! \"rust\" '(\"Cargo.toml\") #f)\n{}",
+            "(%define-language! \"rust\" '(\"rs\") '() '()) (%configure-language! \"rust\" (hash 'roots '(\"Cargo.toml\")))\n{}",
             super::lsp_rig::RUST_ANALYZER
         ),
         tmp.path(),

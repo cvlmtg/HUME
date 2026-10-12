@@ -235,6 +235,115 @@ fn a_second_plugin_value_is_ignored_with_a_warning() {
     );
 }
 
+const TSX_COMMENTS_BUNDLED: (&str, &str) = (
+    "tsx",
+    r#"((comment-tokens "//") (block-comment-tokens ("/*" . "*/")))"#,
+);
+
+/// The line tokens and block pairs configured or bundled for `tsx`, as
+/// plain strings.
+fn comment_tokens(ed: &Editor) -> (Vec<String>, Vec<(String, String)>) {
+    let tokens = ed.state.config.languages.comment_tokens_of(tsx(ed));
+    let line = tokens
+        .line
+        .map(|l| l.iter().map(str::to_owned).collect())
+        .unwrap_or_default();
+    let block = tokens
+        .block
+        .map(|b| {
+            b.iter()
+                .map(|p| (p.start().to_owned(), p.end().to_owned()))
+                .collect()
+        })
+        .unwrap_or_default();
+    (line, block)
+}
+
+fn pair(start: &str, end: &str) -> (String, String) {
+    (start.to_owned(), end.to_owned())
+}
+
+#[test]
+fn bundled_comment_tokens_are_applied_when_a_buffer_first_uses_the_language() {
+    let (mut ed, _fixture) = boot(TSX_LANGUAGES, &[TSX_COMMENTS_BUNDLED], "", "");
+
+    open_as_tsx(&mut ed);
+
+    assert_no_errors(&ed);
+    assert_eq!(
+        comment_tokens(&ed),
+        (vec!["//".to_owned()], vec![pair("/*", "*/")])
+    );
+}
+
+#[test]
+fn comment_tokens_configured_in_init_beat_the_bundled_ones() {
+    let (mut ed, _fixture) = boot(
+        TSX_LANGUAGES,
+        &[TSX_COMMENTS_BUNDLED],
+        r##"(configure-language! "tsx" #:comment-tokens '("#" ";") #:block-comment-tokens '(("<!--" . "-->")))"##,
+        "",
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_no_errors(&ed);
+    assert_eq!(
+        comment_tokens(&ed),
+        (
+            vec!["#".to_owned(), ";".to_owned()],
+            vec![pair("<!--", "-->")]
+        )
+    );
+}
+
+#[test]
+fn a_second_init_comment_token_value_is_ignored_with_a_warning() {
+    let (mut ed, _fixture) = boot(
+        TSX_LANGUAGES,
+        &[],
+        "(configure-language! \"tsx\" #:comment-tokens '(\"#\"))\n\
+         (configure-language! \"tsx\" #:comment-tokens '(\";\") #:block-comment-tokens '((\"(*\" . \"*)\")))\n\
+         (configure-language! \"tsx\" #:block-comment-tokens '((\"{-\" . \"-}\")))",
+        "",
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_eq!(
+        comment_tokens(&ed),
+        (vec!["#".to_owned()], vec![pair("(*", "*)")])
+    );
+    let warnings = tsx_warnings(&ed);
+    assert!(
+        warnings.iter().any(|w| w.contains("comment-tokens")),
+        "the ignored comment-tokens must be reported; warnings: {warnings:?}"
+    );
+    assert!(
+        warnings.iter().any(|w| w.contains("block-comment-tokens")),
+        "the ignored block-comment-tokens must be reported; warnings: {warnings:?}"
+    );
+}
+
+#[test]
+fn a_malformed_comment_token_is_an_error_at_the_call() {
+    let (mut ed, _fixture) = boot(
+        TSX_LANGUAGES,
+        &[],
+        r#"(configure-language! "tsx" #:comment-tokens '(""))"#,
+        "",
+    );
+
+    open_as_tsx(&mut ed);
+
+    let errors = messages(&ed, Severity::Error);
+    assert!(
+        errors.iter().any(|e| e.contains("comment-tokens")),
+        "the malformed field must be named; errors: {errors:?}"
+    );
+    assert_eq!(comment_tokens(&ed), (vec![], vec![]));
+}
+
 #[test]
 fn reload_config_drops_configured_values_and_reloads_bundled_ones() {
     let (mut ed, fixture) = boot_tsx(r#"(configure-language! "tsx" #:roots '("deno.json"))"#, "");
@@ -325,7 +434,7 @@ fn the_startup_buffer_queues_on_language_set_before_on_buffer_open() {
 fn a_lazy_language_plugin_activates_for_the_startup_buffer_without_a_runtime_dir() {
     let init = r#"(%define-language! "tsx" '("tsx") '() '())
                   (declare-plugin! "user/tp" #:languages '("tsx"))"#;
-    let plugin = r#"(%configure-language! "tsx" '("plugin.json") #f)"#;
+    let plugin = r#"(%configure-language! "tsx" (hash 'roots '("plugin.json")))"#;
     let fixture = stage("", &[], init, plugin);
     let dirs = Dirs {
         runtime: None,

@@ -753,7 +753,7 @@ fn reload_that_changes_a_kept_filter_fires_lsp_attach_once() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(%define-language! "rust" '("rs") '() '()) (%configure-language! "rust" '("Cargo.toml") #f)
+            r#"(%define-language! "rust" '("rs") '() '()) (%configure-language! "rust" (hash 'roots '("Cargo.toml")))
 (register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
 (set-language-servers! "rust" (list (hash 'name "rust-analyzer" 'except-features '(hover))))
 {ATTACH_MOVES_RIGHT}"#

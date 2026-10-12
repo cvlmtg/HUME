@@ -1,5 +1,7 @@
+use super::super::args::cons_pair;
 use super::*;
-use crate::{ConfigOrigin, PendingLanguageReg, test_support::SteelCtxTestHarness};
+use crate::{ConfigOrigin, LanguageFields, PendingLanguageReg, test_support::SteelCtxTestHarness};
+use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use steel::rvals::IntoSteelVal as _;
 
 fn str_val(s: &str) -> SteelVal {
@@ -109,37 +111,102 @@ fn define_language_accepts_symbol_name() {
     ));
 }
 
+fn sym_hash(pairs: Vec<(&'static str, SteelVal)>) -> SteelVal {
+    super::super::args::symbol_hash(pairs)
+}
+
+fn str_list(items: &[&str]) -> SteelVal {
+    items
+        .iter()
+        .map(|s| str_val(s))
+        .collect::<Vec<_>>()
+        .into_steelval()
+        .unwrap()
+}
+
+fn configure(ctx: &mut SteelCtx, name: &str, fields: Vec<(&'static str, SteelVal)>) -> SteelResult {
+    configure_language(ctx, str_val(name), sym_hash(fields))
+}
+
+fn configured_fields(h: &SteelCtxTestHarness) -> Vec<&LanguageFields> {
+    lang_regs(h)
+        .into_iter()
+        .map(|reg| match reg {
+            PendingLanguageReg::Configure { fields, .. } => fields,
+            other => panic!("expected a Configure registration, got {other:?}"),
+        })
+        .collect()
+}
+
 /// `%configure-language!` queues a `PendingLanguageReg::Configure` with each
-/// field decoded: a list or string becomes `Some`, `#f` becomes `None`.
+/// field decoded; a missing key or `#f` becomes `None`.
 #[test]
 fn configure_language_decodes_each_field() {
     let mut h = SteelCtxTestHarness::new();
-    let roots = vec![str_val("go.work"), str_val("go.mod")]
-        .into_steelval()
-        .unwrap();
+    let block = vec![
+        cons_pair(str_val("/*"), str_val("*/")).unwrap(),
+        cons_pair(str_val("/**"), str_val("*/")).unwrap(),
+    ]
+    .into_steelval()
+    .unwrap();
     {
         let mut ctx = h.ctx_init();
-        configure_language(&mut ctx, str_val("go"), roots, SteelVal::BoolV(false))
-            .expect("roots without a language-id must decode");
-        configure_language(
+        configure(
             &mut ctx,
-            str_val("tsx"),
-            SteelVal::BoolV(false),
-            str_val("typescriptreact"),
+            "go",
+            vec![
+                ("roots", str_list(&["go.work", "go.mod"])),
+                ("language-id", SteelVal::BoolV(false)),
+            ],
+        )
+        .expect("roots without a language-id must decode");
+        configure(
+            &mut ctx,
+            "tsx",
+            vec![("language-id", str_val("typescriptreact"))],
         )
         .expect("a language-id without roots must decode");
+        configure(
+            &mut ctx,
+            "rust",
+            vec![
+                ("comment-tokens", str_list(&["//", "///"])),
+                ("block-comment-tokens", block),
+            ],
+        )
+        .expect("comment tokens must decode");
     }
-    let regs = lang_regs(&h);
-    assert!(matches!(
-        regs[0],
-        PendingLanguageReg::Configure { name, roots: Some(roots), lsp_language_id: None, .. }
-            if name == "go" && roots == &["go.work", "go.mod"]
-    ));
-    assert!(matches!(
-        regs[1],
-        PendingLanguageReg::Configure { name, roots: None, lsp_language_id: Some(id), .. }
-            if name == "tsx" && id == "typescriptreact"
-    ));
+    let fields = configured_fields(&h);
+    assert_eq!(
+        *fields[0],
+        LanguageFields {
+            roots: Some(vec!["go.work".to_string(), "go.mod".to_string()]),
+            ..LanguageFields::default()
+        }
+    );
+    assert_eq!(
+        *fields[1],
+        LanguageFields {
+            lsp_language_id: Some("typescriptreact".to_string()),
+            ..LanguageFields::default()
+        }
+    );
+    assert_eq!(
+        *fields[2],
+        LanguageFields {
+            comment_tokens: Some(
+                LineCommentTokens::new(vec!["//".to_string(), "///".to_string()]).unwrap()
+            ),
+            block_comment_tokens: Some(
+                BlockCommentTokens::new(vec![
+                    ("/*".to_string(), "*/".to_string()),
+                    ("/**".to_string(), "*/".to_string()),
+                ])
+                .unwrap()
+            ),
+            ..LanguageFields::default()
+        }
+    );
 }
 
 /// `%configure-language!` records who called it: init.scm's top level is the
@@ -149,27 +216,16 @@ fn configure_language_records_its_origin() {
     use crate::attribution::{EntryId, PluginId};
 
     let mut h = SteelCtxTestHarness::new();
-    configure_language(
-        &mut h.ctx_init(),
-        str_val("go"),
-        SteelVal::BoolV(false),
-        str_val("a"),
-    )
-    .expect("init top level must decode");
+    configure(&mut h.ctx_init(), "go", vec![("language-id", str_val("a"))])
+        .expect("init top level must decode");
     h.plugin_stack
         .push(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
-    configure_language(
-        &mut h.ctx_init(),
-        str_val("go"),
-        SteelVal::BoolV(false),
-        str_val("b"),
-    )
-    .expect("eager plugin load must decode");
-    configure_language(
+    configure(&mut h.ctx_init(), "go", vec![("language-id", str_val("b"))])
+        .expect("eager plugin load must decode");
+    configure(
         &mut h.ctx_activation(),
-        str_val("go"),
-        SteelVal::BoolV(false),
-        str_val("c"),
+        "go",
+        vec![("language-id", str_val("c"))],
     )
     .expect("lazy plugin activation must decode");
 
@@ -190,18 +246,37 @@ fn configure_language_records_its_origin() {
     );
 }
 
-/// `%configure-language!` rejects roots that are neither a list nor `#f`.
+/// Each malformed field is rejected with an error naming it.
 #[test]
-fn configure_language_rejects_roots_that_are_not_a_list() {
+fn configure_language_rejects_a_malformed_field() {
+    let not_a_pair = vec![str_val("/*")].into_steelval().unwrap();
+    let blank_edge = vec![cons_pair(str_val("/* "), str_val("*/")).unwrap()]
+        .into_steelval()
+        .unwrap();
+    for (key, value, problem) in [
+        ("roots", str_val("go.mod"), "roots"),
+        ("comment-tokens", str_list(&[""]), "empty"),
+        ("comment-tokens", empty_list(), "at least one"),
+        ("block-comment-tokens", not_a_pair, "block-comment-tokens"),
+        ("block-comment-tokens", blank_edge, "blank"),
+    ] {
+        let mut h = SteelCtxTestHarness::new();
+        let err = configure(&mut h.ctx_init(), "go", vec![(key, value)])
+            .expect_err("a malformed field must be rejected")
+            .to_string();
+        assert!(err.contains(key) && err.contains(problem), "{key}: {err}");
+        assert!(lang_regs(&h).is_empty(), "{key}: nothing is queued");
+    }
+}
+
+/// A key `configure-language!` does not know is an error, not ignored.
+#[test]
+fn configure_language_rejects_an_unknown_key() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_init();
-    let result = configure_language(
-        &mut ctx,
-        str_val("go"),
-        str_val("go.mod"),
-        SteelVal::BoolV(false),
-    );
-    assert!(result.is_err(), "roots must be a list of strings");
+    let err = configure(&mut h.ctx_init(), "go", vec![("grammar", str_list(&["x"]))])
+        .expect_err("an unknown key must be rejected")
+        .to_string();
+    assert!(err.contains("grammar"), "{err}");
 }
 
 /// `%configure-language!` is gated to config evaluation, like

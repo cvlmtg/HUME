@@ -3,7 +3,8 @@
 //! functions plugins call.
 
 use crate::null_host::NullHost;
-use crate::{BundledLanguage, ScriptingHost};
+use crate::{LanguageFields, ScriptingHost};
+use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_platform::dirs::Dirs;
 use std::path::Path;
 
@@ -28,12 +29,12 @@ fn host_for(runtime: Option<&Path>) -> ScriptingHost {
     })
 }
 
-fn read(files: &[(&str, &str)], name: &str) -> Result<Option<BundledLanguage>, String> {
+fn read(files: &[(&str, &str)], name: &str) -> Result<Option<LanguageFields>, String> {
     let runtime = runtime_with(files);
     host_for(Some(runtime.path())).bundled_language(name, &mut NullHost)
 }
 
-fn read_ok(body: &str) -> BundledLanguage {
+fn read_ok(body: &str) -> LanguageFields {
     read(&[("lang", body)], "lang")
         .expect("a well-formed file reads")
         .expect("the file exists")
@@ -75,7 +76,7 @@ fn read_bang_parses_dotted_pairs_raises_on_bad_syntax_and_keeps_no_state() {
 }
 
 #[test]
-fn the_config_carries_roots_and_language_id() {
+fn the_config_carries_every_field_but_the_grammar() {
     let lang = read_ok(
         r#"((comment-tokens "//" "///")
  (block-comment-tokens ("/*" . "*/") ("/**" . "*/"))
@@ -86,9 +87,17 @@ fn the_config_carries_roots_and_language_id() {
 
     assert_eq!(
         lang,
-        BundledLanguage {
+        LanguageFields {
             roots: Some(strings(&["package.json", "tsconfig.json"])),
             lsp_language_id: Some("typescriptreact".to_string()),
+            comment_tokens: Some(LineCommentTokens::new(strings(&["//", "///"])).unwrap()),
+            block_comment_tokens: Some(
+                BlockCommentTokens::new(vec![
+                    ("/*".to_string(), "*/".to_string()),
+                    ("/**".to_string(), "*/".to_string()),
+                ])
+                .unwrap()
+            ),
         }
     );
 }
@@ -96,14 +105,46 @@ fn the_config_carries_roots_and_language_id() {
 #[test]
 fn absent_keys_read_as_empty() {
     assert_eq!(
-        read_ok(r##"((comment-tokens "#"))"##),
-        BundledLanguage::default()
+        read_ok(r#"((grammar "u" "r" "s" ""))"#),
+        LanguageFields::default()
     );
 }
 
 #[test]
+fn a_comment_token_the_decoder_rejects_is_an_error_naming_the_file() {
+    for (body, problem) in [
+        (r#"((comment-tokens ""))"#, "empty"),
+        (r#"((comment-tokens))"#, "at least one"),
+        (r#"((block-comment-tokens ("/*" . " */")))"#, "blank"),
+    ] {
+        let err = read_err(body);
+        assert!(err.contains(problem), "{body}: {err}");
+    }
+}
+
+#[test]
+fn every_shipped_language_file_decodes() {
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../runtime");
+    let mut host = host_for(Some(&runtime));
+    let dir = runtime.join("scheme").join("languages");
+    let mut read = 0;
+    for entry in std::fs::read_dir(&dir).expect("list the shipped languages") {
+        let path = entry.expect("dir entry").path();
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .expect("a utf-8 file stem");
+        host.bundled_language(name, &mut NullHost)
+            .unwrap_or_else(|e| panic!("{name}: {e}"))
+            .unwrap_or_else(|| panic!("{name}: listed but not read"));
+        read += 1;
+    }
+    assert!(read > 300, "only {read} files read from {}", dir.display());
+}
+
+#[test]
 fn the_empty_list_reads_as_empty() {
-    assert_eq!(read_ok("()"), BundledLanguage::default());
+    assert_eq!(read_ok("()"), LanguageFields::default());
 }
 
 #[test]

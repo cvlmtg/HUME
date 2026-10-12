@@ -55,8 +55,8 @@ pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
-    BundledLanguage, CapabilityQuery, ConfigOrigin, DocSpan, Effect, EvalError, FeatureFilter,
-    GrammarReg, ListEntry, ListLayer, LspFeature, LspServerStatusEntry, LspServerTarget,
+    CapabilityQuery, ConfigOrigin, DocSpan, Effect, EvalError, FeatureFilter, GrammarReg,
+    LanguageFields, ListEntry, ListLayer, LspFeature, LspServerStatusEntry, LspServerTarget,
     PaneHandle, Params, PendingLanguageReg, PendingLspNotify, PendingLspRequest,
     PendingLspServerOp, PendingLspServerReg, RequestMode, RequestParams, RouteSpec, ServerName,
     SteelCmdDef, SteelTypedCmdDef, TriggerKind, TriggerScope, VirtualLineSpec, WhenUnavailable,
@@ -784,24 +784,17 @@ impl ScriptingHost {
         &mut self,
         name: &str,
         host: &mut dyn EditorHost,
-    ) -> Result<Option<BundledLanguage>, String> {
+    ) -> Result<Option<LanguageFields>, String> {
         const CONFIG: &str = "%bundled-language-config";
         let config = self.read_only_call(host, |steel| {
             steel.call_function_by_name_with_args(CONFIG, vec![SteelVal::StringV(name.into())])
         })?;
-        let decode = || {
-            let Some(fields) = builtins::args::optional_list_items(config, CONFIG)? else {
-                return Ok(None);
-            };
-            let [roots, lsp_language_id]: [SteelVal; 2] = fields.try_into().map_err(|_| {
-                builtins::errors::generic_err(format!("{CONFIG}: expected (roots language-id)"))
-            })?;
-            Ok::<_, steel::rerrs::SteelErr>(Some(BundledLanguage {
-                roots: builtins::args::optional_list_to_strings(roots, CONFIG)?,
-                lsp_language_id: builtins::args::optional_string_arg(lsp_language_id, CONFIG)?,
-            }))
-        };
-        decode().map_err(|e| e.to_string())
+        if matches!(config, SteelVal::BoolV(false)) {
+            return Ok(None);
+        }
+        builtins::syntax::language_fields(config, CONFIG)
+            .map(Some)
+            .map_err(|e| format!("{name}.scm: {e}"))
     }
 
     /// Runs `call` in a session whose host is read-only and whose queued

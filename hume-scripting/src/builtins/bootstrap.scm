@@ -352,8 +352,10 @@
 (define (%bundled-language-config name)
   (let ((data (%read-language-data name)))
     (and data
-         (list (%language-data-ref data 'roots)
-               (%language-data-ref data 'language-id)))))
+         (hash 'roots (%language-data-ref data 'roots)
+               'language-id (%language-data-ref data 'language-id)
+               'comment-tokens (%language-data-ref data 'comment-tokens)
+               'block-comment-tokens (%language-data-ref data 'block-comment-tokens)))))
 
 (define (bundled-language-grammar name)
   (let ((data (%read-language-data name)))

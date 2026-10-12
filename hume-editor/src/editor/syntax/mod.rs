@@ -10,7 +10,7 @@ mod parse;
 pub(in crate::editor) use parse::ensure_syntax_current;
 
 use hume_engine::pipeline::{BufferId, EngineView};
-use hume_scripting::{BundledLanguage, ConfigOrigin, GrammarReg};
+use hume_scripting::{ConfigOrigin, GrammarReg, LanguageFields};
 use hume_treesitter::registry::{
     BundledConfig, ConfigureOutcome, ConfiguredBy, LanguageId, QueryPaths, detect_language,
 };
@@ -171,19 +171,25 @@ impl Editor {
         let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
         let lang = match scripting.bundled_language(&name, &mut host) {
             Ok(Some(lang)) => lang,
-            Ok(None) => BundledLanguage::default(),
+            Ok(None) => LanguageFields::default(),
             Err(e) => {
                 self.report(super::Severity::Error, format!("language data: {e}"));
-                BundledLanguage::default()
+                LanguageFields::default()
             }
         };
+        let LanguageFields {
+            roots,
+            lsp_language_id,
+            comment_tokens,
+            block_comment_tokens,
+        } = lang;
         self.state.config.languages.fill_bundled(
             id,
             BundledConfig {
-                roots: lang.roots,
-                lsp_language_id: lang.lsp_language_id,
-                line_comment_tokens: None,
-                block_comment_tokens: None,
+                roots,
+                lsp_language_id,
+                line_comment_tokens: comment_tokens,
+                block_comment_tokens,
             },
         );
     }
@@ -309,15 +315,14 @@ impl Editor {
                 }
                 PendingLanguageReg::Configure {
                     name,
-                    roots,
-                    lsp_language_id,
+                    fields,
                     origin,
                 } => {
                     let by = match origin {
                         ConfigOrigin::User => ConfiguredBy::User,
                         ConfigOrigin::Plugin => ConfiguredBy::Plugin,
                     };
-                    self.configure_language(&name, roots, lsp_language_id, by);
+                    self.configure_language(&name, fields, by);
                 }
                 PendingLanguageReg::Grammar(reg) => {
                     match attach_grammar_from_reg(&mut self.state, &mut self.view, &reg) {
@@ -342,13 +347,13 @@ impl Editor {
     /// identity is an error. A field already set by the same tier keeps its
     /// value and the ignored write is logged as a warning; a plugin write
     /// under a user value is dropped quietly.
-    fn configure_language(
-        &mut self,
-        name: &str,
-        roots: Option<Vec<String>>,
-        lsp_language_id: Option<String>,
-        by: ConfiguredBy,
-    ) {
+    fn configure_language(&mut self, name: &str, fields: LanguageFields, by: ConfiguredBy) {
+        let LanguageFields {
+            roots,
+            lsp_language_id,
+            comment_tokens,
+            block_comment_tokens,
+        } = fields;
         let languages = &mut self.state.config.languages;
         let Some(id) = languages.defined_id(name) else {
             self.report(
@@ -368,6 +373,16 @@ impl Editor {
                 == ConfigureOutcome::Ignored
         {
             ignored.push("language-id");
+        }
+        if let Some(tokens) = comment_tokens
+            && languages.configure_line_comment_tokens(id, tokens, by) == ConfigureOutcome::Ignored
+        {
+            ignored.push("comment-tokens");
+        }
+        if let Some(tokens) = block_comment_tokens
+            && languages.configure_block_comment_tokens(id, tokens, by) == ConfigureOutcome::Ignored
+        {
+            ignored.push("block-comment-tokens");
         }
         for field in ignored {
             self.report(

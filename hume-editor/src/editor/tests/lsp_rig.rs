@@ -28,7 +28,7 @@ pub(in crate::editor) fn file_uri(path: &Path) -> String {
 
 /// One `rust-analyzer` server serving `rust` buffers, rooted at the nearest
 /// `Cargo.toml`: the setup most tests need.
-pub(in crate::editor) const RUST_ANALYZER: &str = r#"(%define-language! "rust" '("rs") '() '()) (%configure-language! "rust" '("Cargo.toml") #f)
+pub(in crate::editor) const RUST_ANALYZER: &str = r#"(%define-language! "rust" '("rs") '() '()) (%configure-language! "rust" (hash 'roots '("Cargo.toml")))
 (register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
 (set-language-servers! "rust" '("rust-analyzer"))"#;
 
@@ -38,7 +38,7 @@ pub(in crate::editor) const RA_LINT: &str = r#"(register-lsp-server! "ra-lint" #
 (set-language-servers! "rust" '("rust-analyzer" "ra-lint"))"#;
 
 /// [`RUST_ANALYZER`] then [`RA_LINT`].
-pub(in crate::editor) const TWO_RUST_SERVERS: &str = r#"(%define-language! "rust" '("rs") '() '()) (%configure-language! "rust" '("Cargo.toml") #f)
+pub(in crate::editor) const TWO_RUST_SERVERS: &str = r#"(%define-language! "rust" '("rs") '() '()) (%configure-language! "rust" (hash 'roots '("Cargo.toml")))
 (register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
 (register-lsp-server! "ra-lint" #:command "ra-lint")
 (set-language-servers! "rust" '("rust-analyzer" "ra-lint"))"#;

@@ -21,8 +21,13 @@
 
 (define (configure-language! name
                              #:roots [roots #f]
-                             #:language-id [language-id #f])
-  (%configure-language! name roots language-id))
+                             #:language-id [language-id #f]
+                             #:comment-tokens [comment-tokens #f]
+                             #:block-comment-tokens [block-comment-tokens #f])
+  (%configure-language! name (hash 'roots roots
+                                   'language-id language-id
+                                   'comment-tokens comment-tokens
+                                   'block-comment-tokens block-comment-tokens)))
 
 (define (register-grammar! name grammar-path symbol highlights-path
                            #:injections [injections-path #f]

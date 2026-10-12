@@ -2,13 +2,16 @@
 
 use steel::rvals::SteelVal;
 
+use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
+use steel::rerrs::SteelErr;
+
 use crate::context::EvalMode;
-use crate::{ConfigOrigin, Effect, GrammarReg, PendingLanguageReg, SteelCtx};
+use crate::{ConfigOrigin, Effect, GrammarReg, LanguageFields, PendingLanguageReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    list_to_strings, optional_list_to_strings, optional_path_arg, optional_string_arg, path_arg,
-    string_arg,
+    hash_entry, list_to_strings, optional_list_items, optional_list_to_strings, optional_path_arg,
+    optional_string_arg, pair_fields, path_arg, string_arg,
 };
 use super::errors::generic_err;
 
@@ -38,22 +41,70 @@ pub(crate) fn define_language(
     Ok(SteelVal::Void)
 }
 
-/// `(%configure-language! name roots lsp-language-id)`: init-only, like
-/// `%define-language!`. `roots` is a list of strings or `#f`,
-/// `lsp-language-id` a string or `#f`; `#f` leaves that field as it is.
-/// Pushes an `Effect::LanguageReg(PendingLanguageReg::Configure)`, applied in
-/// queue order after any `%define-language!` queued before it. A call inside
-/// a plugin body is a plugin's, any other is the user's.
+/// Decodes a symbol-keyed hash of per-language values: `'roots` (strings),
+/// `'language-id` (a string), `'comment-tokens` (strings) and
+/// `'block-comment-tokens` (`(start . end)` string pairs). A missing key or
+/// `#f` is `None`; any other key is an error. The one decoder for both
+/// `%configure-language!` and a bundled data file.
+pub(crate) fn language_fields(val: SteelVal, ctx_name: &str) -> Result<LanguageFields, SteelErr> {
+    let entry = hash_entry(
+        val,
+        ctx_name,
+        &[
+            "roots",
+            "language-id",
+            "comment-tokens",
+            "block-comment-tokens",
+        ],
+    )?;
+    let field = |key| entry.optional(key).unwrap_or(SteelVal::BoolV(false));
+    let token_err = |key: &str, e| generic_err(format!("{}: {e}", entry.label(key)));
+
+    let block_label = entry.label("block-comment-tokens");
+    let block_pairs = optional_list_items(field("block-comment-tokens"), &block_label)?
+        .map(|items| {
+            items
+                .into_iter()
+                .map(|item| {
+                    let (start, end) = pair_fields(item, &block_label, "a (start . end) pair")?;
+                    Ok((
+                        string_arg(start, &block_label)?,
+                        string_arg(end, &block_label)?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, SteelErr>>()
+        })
+        .transpose()?;
+
+    Ok(LanguageFields {
+        roots: optional_list_to_strings(field("roots"), &entry.label("roots"))?,
+        lsp_language_id: optional_string_arg(field("language-id"), &entry.label("language-id"))?,
+        comment_tokens: optional_list_to_strings(
+            field("comment-tokens"),
+            &entry.label("comment-tokens"),
+        )?
+        .map(LineCommentTokens::new)
+        .transpose()
+        .map_err(|e| token_err("comment-tokens", e))?,
+        block_comment_tokens: block_pairs
+            .map(BlockCommentTokens::new)
+            .transpose()
+            .map_err(|e| token_err("block-comment-tokens", e))?,
+    })
+}
+
+/// `(%configure-language! name fields)`: init-only, like `%define-language!`.
+/// `fields` is the hash [`language_fields`] decodes; a field it leaves `None`
+/// stays as it is. Pushes an `Effect::LanguageReg(PendingLanguageReg::Configure)`,
+/// applied in queue order after any `%define-language!` queued before it. A
+/// call inside a plugin body is a plugin's, any other is the user's.
 pub(crate) fn configure_language(
     ctx: &mut SteelCtx,
     name: SteelVal,
-    roots_val: SteelVal,
-    lsp_language_id_val: SteelVal,
+    fields_val: SteelVal,
 ) -> SteelResult {
     let name = string_arg(name, "%configure-language! name")?;
-    let roots = optional_list_to_strings(roots_val, "%configure-language! roots")?;
-    let lsp_language_id =
-        optional_string_arg(lsp_language_id_val, "%configure-language! language-id")?;
+    let fields = language_fields(fields_val, "%configure-language!")?;
     let origin = if ctx.mode() == EvalMode::Init {
         ConfigOrigin::User
     } else {
@@ -61,8 +112,7 @@ pub(crate) fn configure_language(
     };
     ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Configure {
         name,
-        roots,
-        lsp_language_id,
+        fields,
         origin,
     }));
     Ok(SteelVal::Void)

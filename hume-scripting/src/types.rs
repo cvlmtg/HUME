@@ -1,3 +1,4 @@
+use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_engine::pipeline::{BufferId, PaneId};
 use steel::rvals::SteelVal;
 
@@ -102,14 +103,17 @@ pub struct SteelTypedCmdDef {
     pub completer: Option<String>,
 }
 
-/// A language's bundled data as the editor applies it: the fields of its
-/// `<runtime>/scheme/languages/<name>.scm` the registry stores.
+/// The per-language values the registry stores, as one `configure-language!`
+/// call or one `<runtime>/scheme/languages/<name>.scm` file gives them;
+/// `None` where it gives none.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub struct BundledLanguage {
-    /// Workspace root markers, present only when the file lists them.
+pub struct LanguageFields {
+    /// Workspace root markers.
     pub roots: Option<Vec<String>>,
-    /// The wire `languageId`, present only when it differs from the name.
+    /// The wire `languageId`, when it differs from the name.
     pub lsp_language_id: Option<String>,
+    pub comment_tokens: Option<LineCommentTokens>,
+    pub block_comment_tokens: Option<BlockCommentTokens>,
 }
 
 /// Who called `configure-language!`: `init.scm`'s top level or a plugin body.
@@ -134,8 +138,7 @@ pub enum PendingLanguageReg {
     /// Per-language values; `None` leaves a field as it is.
     Configure {
         name: String,
-        roots: Option<Vec<String>>,
-        lsp_language_id: Option<String>,
+        fields: LanguageFields,
         origin: ConfigOrigin,
     },
     Grammar(GrammarReg),
