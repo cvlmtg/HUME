@@ -27,7 +27,6 @@ use super::buffer::Buffer;
 use super::doc_ops;
 use super::jump_list::{JumpRule, with_jump};
 use super::register_ops;
-use super::search::SearchPattern;
 use super::{EditorState, Severity};
 use crate::editor::error::CommandError;
 use crate::editor::settings::EditorSettings;
@@ -201,15 +200,6 @@ pub(in crate::editor) fn pane_view<'a>(
 ) -> hume_editing::selection::EditView<'a> {
     let text = state.buffers.get(t.bid(view)).text();
     t.state(&state.panes.state, view).view(text)
-}
-
-/// Active search pattern on `t`'s buffer, if any.
-pub(super) fn search_pattern<'a>(
-    state: &'a EditorState,
-    view: &EngineView,
-    t: CommandPane,
-) -> Option<&'a SearchPattern> {
-    state.buffers.get(t.bid(view)).search_pattern.as_ref()
 }
 
 /// Viewport state of pane `pid`.

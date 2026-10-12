@@ -22,7 +22,7 @@ use super::super::replay::{InputOpener, WaitingInput};
 use super::super::{EditorState, MiniBuffer};
 use super::{
     CommandPane, FocusedPane, PendingDispatch, doc, effective_word_chars, pane_selections,
-    pane_view, search_pattern, set_pane_selections, set_primary_selection,
+    pane_view, set_pane_selections, set_primary_selection,
 };
 use crate::editor::error::CommandError;
 
@@ -154,20 +154,27 @@ pub(in crate::editor) fn open_pattern_prompt(
     Ok(())
 }
 
-/// Ensure `t`'s buffer has an active search pattern.
-fn ensure_search_regex(state: &mut EditorState, view: &EngineView, t: CommandPane) -> bool {
-    if search_pattern(state, view, t).is_some() {
-        return true;
-    }
-    let Some(pattern) = state.registers.search_register().filter(|p| !p.is_empty()) else {
-        return false;
+/// `t`'s buffer's active search pattern, compiled from the `'s'` register
+/// when the buffer has none. `Err` when neither yields a usable pattern.
+fn ensure_search_pattern<'a>(
+    state: &'a mut EditorState,
+    view: &EngineView,
+    t: CommandPane,
+) -> Result<&'a SearchPattern, CommandError> {
+    let slot = &mut state.buffers.get_mut(t.bid(view)).search_pattern;
+    let sp = match slot.take() {
+        Some(sp) => sp,
+        None => {
+            let pattern = state
+                .registers
+                .search_register()
+                .filter(|p| !p.is_empty())
+                .ok_or_else(|| CommandError::transient("no search pattern"))?;
+            SearchPattern::compile(pattern)
+                .ok_or_else(|| CommandError::transient("invalid search pattern"))?
+        }
     };
-    let Some(sp) = SearchPattern::compile(pattern) else {
-        return false;
-    };
-    let bid = t.bid(view);
-    state.buffers.get_mut(bid).search_pattern = Some(sp);
-    true
+    Ok(slot.insert(sp))
 }
 
 /// Shared body for `search-next` / `search-prev` / extend variants.
@@ -188,17 +195,10 @@ fn search_jump(
     direction: SearchDirection,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if !ensure_search_regex(state, view, t) {
-        return Ok(());
-    }
-
-    let bid = t.bid(view);
-    let sp = match state.buffers.get(bid).search_pattern.as_ref() {
-        Some(sp) => sp,
-        None => return Ok(()),
-    };
+    let sp = ensure_search_pattern(state, view, t)?;
     let regex = Arc::clone(&sp.regex);
     let multi = sp.multi();
+    let bid = t.bid(view);
     let text = doc(state, view, t).text();
     let matches = state.buffers.get(bid).search_matches.matches(text);
     let scan = MatchScan {
@@ -275,14 +275,7 @@ pub(in crate::editor) fn cmd_select_all_matches(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if !ensure_search_regex(state, view, t) {
-        return Ok(());
-    }
-    let bid = t.bid(view);
-    let regex = match state.buffers.get(bid).search_pattern.as_ref() {
-        Some(sp) => Arc::clone(&sp.regex),
-        None => return Ok(()),
-    };
+    let regex = Arc::clone(&ensure_search_pattern(state, view, t)?.regex);
 
     let text = doc(state, view, t).text();
     let matches = find_all_matches(text, &regex);

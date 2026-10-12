@@ -1175,6 +1175,32 @@ fn dot_repeat_whose_recipe_step_fails_leaves_text_and_selections_unchanged() {
     );
 }
 
+/// `m/ d` replayed with no search pattern at all: `select-all-matches`
+/// refuses, so `.` must not run `d` on the cursor.
+#[test]
+fn dot_repeat_whose_recipe_step_has_no_search_pattern_leaves_text_unchanged() {
+    let mut ed = editor_from("-[f]>oo bar baz\n").with_search_regex("foo");
+
+    ed.feed_key(key('m'));
+    ed.feed_key(key('/'));
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), " bar baz\n");
+
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).search_pattern = None;
+    assert_eq!(ed.state.registers.search_register(), None);
+    let before = state(&ed);
+    ed.feed_key(key('.'));
+
+    assert_eq!(ed.doc().text().to_string(), " bar baz\n");
+    assert_eq!(state(&ed), before);
+    assert!(
+        status(&ed).contains("no search pattern"),
+        "status: {:?}",
+        status(&ed)
+    );
+}
+
 /// `x ms( d` where `ms(` finds no surrounding pair must record
 /// `[select-line, delete]`, not `[surround-paren, delete]`: `surround-paren`
 /// is infallible and leaves the selection unchanged on no-match (see
