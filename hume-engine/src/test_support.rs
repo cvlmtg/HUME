@@ -22,7 +22,7 @@ use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-use crate::display_lines::line_store::{FormatKey, FormatParams, PaneLineStore};
+use crate::display_lines::line_store::{FormatKey, PaneLineStore};
 use crate::display_lines::{DisplayLineMap, RenderDisplayLine};
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{
@@ -85,14 +85,12 @@ pub(crate) fn map<'a>(
     DisplayLineMap::new(
         rope,
         providers,
-        content_width,
+        std::num::NonZeroU16::new(content_width).expect("test content width is non-zero"),
         FormatKey {
             buffer_tag: [0; 3],
-            params: FormatParams {
-                wrap_mode: wrap,
-                tab_width: 4,
-                whitespace: WhitespaceConfig::default(),
-            },
+            wrap_mode: wrap,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
         },
         store,
     )

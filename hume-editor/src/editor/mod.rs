@@ -518,8 +518,8 @@ impl Default for EditorState {
 /// fields plus content width, viewport height and scroll-margin, which decide
 /// where the cursor's display line falls.
 ///
-/// `FormatKey` leaves out content width because formatting already sees it
-/// through the resolved `wrap_mode`. This key keeps it because a growing
+/// `FormatKey` leaves out content width because formatting sees it only
+/// through the wrap mode it resolves. This key keeps it because a growing
 /// gutter narrows the wrap column just like a resize, and reveal cares.
 ///
 /// `frame.rs`'s scroll step is the one comparison site: it stores this in
@@ -537,7 +537,7 @@ pub(in crate::editor) struct LayoutKey {
     wrap_mode: hume_engine::pane::WrapMode,
     tab_width: u8,
     whitespace: hume_engine::pane::WhitespaceConfig,
-    content_width: u16,
+    content_width: std::num::NonZeroU16,
     height: u16,
     scroll_margin: usize,
 }
@@ -554,11 +554,9 @@ impl LayoutKey {
     ) -> hume_engine::display_lines::line_store::FormatKey {
         hume_engine::display_lines::line_store::FormatKey {
             buffer_tag: self.buffer_tag,
-            params: hume_engine::display_lines::line_store::FormatParams {
-                wrap_mode: self.wrap_mode,
-                tab_width: self.tab_width,
-                whitespace: self.whitespace,
-            },
+            wrap_mode: self.wrap_mode,
+            tab_width: self.tab_width,
+            whitespace: self.whitespace,
         }
     }
 }
@@ -649,8 +647,8 @@ impl EditorState {
     /// `hume_engine::display_lines::line_store::FormatKey`: [`Self::layout_key`]'s
     /// `buffer_tag`, wrap mode, tab width and whitespace config: the
     /// subset of [`LayoutKey`] the line store's scope actually needs.
-    /// `content_width` reaches formatting only through `wrap_mode`'s own
-    /// resolved width (see `hume_engine::display_lines::line_store::FormatKey`'s
+    /// `content_width` reaches formatting only through the wrap mode's
+    /// resolved width (see `hume_engine::display_lines::line_store::ResolvedFormatKey`'s
     /// own doc), and `height`/`scroll-margin` don't reach formatting at all:
     /// neither names a line's shape, only where the viewport settles
     /// against one already formatted, so none of the three earns a place

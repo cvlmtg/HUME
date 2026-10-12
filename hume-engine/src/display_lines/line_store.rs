@@ -7,10 +7,10 @@
 //!
 //! A [`PaneLineStore`] lives on its [`Pane`](crate::pane::Pane), so the scroll
 //! pass, render pass and between-frame consumers (mouse, visual movement,
-//! `z`-scroll) share entries. It is per pane because [`FormatKey`] names no
+//! `z`-scroll) share entries. It is per pane because [`ResolvedFormatKey`] names no
 //! pane: two panes on the same buffer and width resolve an identical key.
 //!
-//! A store drops its entries when its [`FormatKey`] changes. The unwrapped
+//! A store drops its entries when its [`ResolvedFormatKey`] changes. The unwrapped
 //! render's `h_window` is not in the key because it doesn't affect block
 //! shape; it lives on [`LineFormat`], where
 //! [`LineFormat::covers`](crate::format::LineFormat::covers) keeps windowed and
@@ -25,7 +25,9 @@
 use rustc_hash::FxHashMap;
 
 use crate::format::{LineFormat, VirtualFormat};
-use crate::pane::{WhitespaceConfig, WrapMode};
+use std::num::NonZeroU16;
+
+use crate::pane::{ResolvedWrap, WhitespaceConfig, WrapMode};
 use hume_rope::line::ContentLine;
 
 /// The caller's identification of a buffer *state* (which buffer, at which
@@ -39,19 +41,11 @@ use hume_rope::line::ContentLine;
 /// one to buy nothing: a key this small is copied, not stored at scale.
 pub type BufferTag = [u64; 3];
 
-/// Everything a line's block shape depends on besides the line's own text.
-///
-/// Excludes the horizontal clip (`h_window`) a `WrapMode::None`
-/// render applies: block shape doesn't depend on it, only the formatted
-/// display lines do, so that lives on `LineFormat` instead (see the module
-/// doc's "Scope key" section).
-///
-/// Also excludes the pane's content width, which reaches formatting through
-/// `wrap_mode` and nowhere else: the mode is stored already resolved (see
-/// [`FormatKey::resolve`]), so a width that matters is already in this key,
-/// and one that doesn't (a resize under `WrapMode::None`, or under a wrap
-/// mode with an explicit column) would only rewind a store whose entries
-/// stayed valid.
+/// The formatting settings a pane views a buffer with, as the caller
+/// builds them: wrap mode raw (a `width: 0` still means "the content
+/// width"). [`DisplayLineMap::new`](super::DisplayLineMap::new) resolves it
+/// against the pane's content width into the [`ResolvedFormatKey`] its
+/// store is scoped by.
 ///
 /// One value rather than four loose ones, built once by the caller
 /// (`hume-editor`'s `EditorState::format_key`) and threaded unchanged through
@@ -64,34 +58,51 @@ pub type BufferTag = [u64; 3];
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct FormatKey {
     pub buffer_tag: BufferTag,
-    pub params: FormatParams,
-}
-
-/// The formatting settings in a [`FormatKey`]: what
-/// [`format_buffer_line`](crate::format::format_buffer_line) reads, without
-/// the buffer identity only the store's scope check needs.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct FormatParams {
     pub wrap_mode: WrapMode,
     pub tab_width: u8,
     pub whitespace: WhitespaceConfig,
 }
 
 impl FormatKey {
-    /// Replace `wrap_mode`'s `width: 0` sentinel with `content_width`,
-    /// [`WrapMode::resolve`]'s own contract. Applied once, by [`DisplayLineMap::new`](super::DisplayLineMap::new),
-    /// so every other holder of a `FormatKey` (the store's own `scope`, a
-    /// caller comparing two keys) sees one already resolved against the
-    /// pane geometry it was built for.
-    pub fn resolve(self, content_width: u16) -> Self {
-        Self {
+    pub fn resolve(self, content_width: NonZeroU16) -> ResolvedFormatKey {
+        ResolvedFormatKey {
+            buffer_tag: self.buffer_tag,
             params: FormatParams {
-                wrap_mode: self.params.wrap_mode.resolve(content_width),
-                ..self.params
+                wrap: self.wrap_mode.resolve(content_width),
+                tab_width: self.tab_width,
+                whitespace: self.whitespace,
             },
-            ..self
         }
     }
+}
+
+/// Everything a line's block shape depends on besides the line's own text:
+/// a [`FormatKey`] resolved against one content width.
+///
+/// Excludes the horizontal clip (`h_window`) a `WrapMode::None`
+/// render applies: block shape doesn't depend on it, only the formatted
+/// display lines do, so that lives on `LineFormat` instead (see the module
+/// doc's "Scope key" section).
+///
+/// Also excludes the pane's content width, which reaches formatting through
+/// the resolved wrap and nowhere else, so a width that matters is already in
+/// this key, and one that doesn't (a resize under `WrapMode::None`, or under
+/// a wrap mode with an explicit column) would only rewind a store whose
+/// entries stayed valid.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct ResolvedFormatKey {
+    pub buffer_tag: BufferTag,
+    pub params: FormatParams,
+}
+
+/// The formatting settings in a [`ResolvedFormatKey`]: what
+/// [`format_buffer_line`](crate::format::format_buffer_line) reads, without
+/// the buffer identity only the store's scope check needs.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct FormatParams {
+    pub wrap: ResolvedWrap,
+    pub tab_width: u8,
+    pub whitespace: WhitespaceConfig,
 }
 
 /// One line's block shape, and its formatted display lines once it has them.
@@ -138,7 +149,7 @@ impl LineEntry {
 /// block shape alone carries none.
 #[derive(Default)]
 pub struct PaneLineStore {
-    key: Option<FormatKey>,
+    key: Option<ResolvedFormatKey>,
     entries: Vec<LineEntry>,
     /// `entries[..live]` describe lines; the rest are spares.
     live: usize,
@@ -153,7 +164,7 @@ impl PaneLineStore {
 
     /// Point this store at `key`, dropping what it holds if that differs from
     /// what its entries were built under.
-    pub(super) fn scope(&mut self, key: FormatKey) {
+    pub(super) fn scope(&mut self, key: ResolvedFormatKey) {
         if self.key.as_ref() != Some(&key) {
             self.key = Some(key);
             self.rewind();

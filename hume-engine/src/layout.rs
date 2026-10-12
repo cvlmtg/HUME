@@ -1,3 +1,5 @@
+use std::num::NonZeroU16;
+
 use ropey::Rope;
 
 use crate::pane::Viewport;
@@ -18,7 +20,7 @@ pub struct PaneGeometry {
     /// Available terminal rows for content, in the content area.
     pub content_height: u16,
     /// Available columns in the content area (viewport width − gutter width).
-    pub content_width: u16,
+    pub content_width: NonZeroU16,
     /// Total gutter width in columns.
     pub gutter_width: u16,
     /// 0-based index of the last ropey line (`hume_rope::lines::last_ropey_line`),
@@ -79,7 +81,8 @@ pub fn compute_viewport<'a>(
 
     PaneGeometry {
         content_height: viewport.height,
-        content_width: viewport.width.saturating_sub(gutter_width).max(1),
+        content_width: NonZeroU16::new(viewport.width.saturating_sub(gutter_width))
+            .unwrap_or(NonZeroU16::MIN),
         gutter_width,
         last_line_idx,
     }

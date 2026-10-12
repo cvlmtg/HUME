@@ -47,7 +47,7 @@ pub struct LineFormat {
     pub extent: Option<FormatBound>,
     /// The horizontal clip this format was cut to, if any: `DisplayLineMap`'s own
     /// `h_window` at the moment this ran. Not a formatting input in the sense
-    /// `wrap_mode`/`tab_width`/etc. are (those live on `crate::display_lines::line_store::FormatKey`
+    /// `wrap_mode`/`tab_width`/etc. are (those live on `crate::display_lines::line_store::ResolvedFormatKey`
     /// and invalidate the whole entry on change): a windowed format *drops*
     /// leading graphemes rather than truncating, so it answers a different
     /// question from an unclipped one over the same line. Recording it here

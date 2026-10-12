@@ -193,7 +193,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(lane))];
     let visible = crate::layout::PaneGeometry {
         content_height: 1,
-        content_width: 6,
+        content_width: std::num::NonZeroU16::new(6).expect("non-zero"),
         gutter_width: 2,
         last_line_idx: RopeyLine::new(0),
     };
@@ -282,7 +282,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         vec![(0, Box::new(empty_lane)), (1, Box::new(content_lane))];
     let visible = crate::layout::PaneGeometry {
         content_height: 1,
-        content_width: 6,
+        content_width: std::num::NonZeroU16::new(6).expect("non-zero"),
         gutter_width: 2, // 0 (empty_lane) + 2 (content_lane)
         last_line_idx: RopeyLine::new(0),
     };
@@ -508,7 +508,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(lane))];
     let visible = crate::layout::PaneGeometry {
         content_height: 1,
-        content_width: 5,
+        content_width: std::num::NonZeroU16::new(5).expect("non-zero"),
         gutter_width: 3,
         last_line_idx: RopeyLine::new(0),
     };

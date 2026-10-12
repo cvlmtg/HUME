@@ -23,6 +23,7 @@
 //! content/wrap display lines, then `after`-virtuals. `Viewport::top` is
 //! that address directly.
 
+use std::num::NonZeroU16;
 use std::ops::Range;
 
 use ropey::Rope;
@@ -37,7 +38,7 @@ use hume_rope::line::ContentLine;
 
 pub mod line_store;
 
-use line_store::{FormatKey, PaneLineStore};
+use line_store::{FormatKey, PaneLineStore, ResolvedFormatKey};
 
 mod locate;
 mod pos;
@@ -72,17 +73,13 @@ pub struct RenderDisplayLine<'m> {
 /// The single authority on the document's display-line list. See the module doc.
 pub struct DisplayLineMap<'a> {
     rope: &'a Rope,
-    /// Everything this map's formats depend on besides the line's own text:
-    /// wrap mode (always resolved against `content_width`: `WrapMode::wrap_width`
-    /// panics on the `width: 0` sentinel, and [`DisplayLineMap::new`] is the one
-    /// funnel every consumer passes through, so it resolves there rather
-    /// than trusting callers to), tab width, whitespace config, and the
-    /// buffer's identity/generation, plus, verbatim, this map's store-scope
-    /// key. One field rather than four: see [`FormatKey`]'s own doc for why
-    /// the scroll pass and the render pass sharing a store depends on it.
-    key: FormatKey,
+    /// Everything this map's formats depend on besides the line's own text,
+    /// resolved against `content_width`, and verbatim this map's store-scope
+    /// key. See [`FormatKey`]'s own doc for why the scroll pass and the
+    /// render pass sharing a store depends on it being one value.
+    key: ResolvedFormatKey,
     providers: &'a ProviderSet,
-    content_width: u16,
+    content_width: NonZeroU16,
     h_window: Option<Range<DisplayLineCol>>,
     /// Everything this map knows about the lines it has visited: the
     /// pane's own store, so every other walk of that pane this frame shares
@@ -106,7 +103,7 @@ impl<'a> DisplayLineMap<'a> {
     pub fn new(
         rope: &'a Rope,
         providers: &'a ProviderSet,
-        content_width: u16,
+        content_width: NonZeroU16,
         key: FormatKey,
         store: &'a mut PaneLineStore,
     ) -> Self {
@@ -115,13 +112,6 @@ impl<'a> DisplayLineMap<'a> {
             "DisplayLineMap requires a trailing '\\n' (the buffer invariant): \
              without it `last_line`'s content-line derivation drops the \
              rope's actual last content line"
-        );
-        debug_assert!(
-            content_width >= 1,
-            "DisplayLineMap requires content_width >= 1: a 0 here leaves \
-             WrapMode::resolve's width:0 sentinel unresolved, and \
-             wrap_width() then panics far from this call site. Callers pass \
-             pane_width.max(1) (see Pane::content_width)."
         );
         let key = key.resolve(content_width);
         store.scope(key);
@@ -163,7 +153,7 @@ impl<'a> DisplayLineMap<'a> {
     /// only the render pass clips; they still share the block shape.
     pub fn with_h_window(mut self, h_window: Option<Range<DisplayLineCol>>) -> Self {
         debug_assert!(
-            h_window.is_none() || !self.key.params.wrap_mode.is_wrapping(),
+            h_window.is_none() || !self.key.params.wrap.is_wrapping(),
             "with_h_window is a WrapMode::None-only clip: a wrapping DisplayLineMap \
              would silently under-count content display lines, since ensure_format_at \
              passes h_window through to the formatter even while wrapping"
@@ -173,19 +163,19 @@ impl<'a> DisplayLineMap<'a> {
     }
 
     pub fn is_wrapping(&self) -> bool {
-        self.key.params.wrap_mode.is_wrapping()
+        self.key.params.wrap.is_wrapping()
     }
 
     /// The wrap column display lines are actually laid out against: `None`
     /// for `WrapMode::None`, otherwise the *resolved* width (the mode's own
-    /// explicit width, or `content_width` when the mode used the `0`
-    /// sentinel). Distinct from [`DisplayLineMap::content_width`]: an explicit wrap
+    /// explicit width, or `content_width` when the mode's width is `0`).
+    /// Distinct from [`DisplayLineMap::content_width`]: an explicit wrap
     /// width doesn't move when the pane resizes, so a resize-driven
     /// staleness check (a `DisplayLine`-relative sticky column surviving a
     /// wrap-width change) must compare this, not the raw content width, or
     /// it invalidates latches a resize never actually affected.
     pub fn resolved_wrap_width(&self) -> Option<u16> {
-        self.key.params.wrap_mode.wrap_width()
+        self.key.params.wrap.wrap_width()
     }
 
     /// Width available for content: the same `content_width` the caller
@@ -194,7 +184,7 @@ impl<'a> DisplayLineMap<'a> {
     /// against display columns (horizontal scroll) reads it here rather than
     /// re-deriving it from the pane and risking the two drifting apart.
     pub fn content_width(&self) -> u16 {
-        self.content_width
+        self.content_width.get()
     }
 
     // ── Block shape ──────────────────────────────────────────────────────
@@ -277,7 +267,7 @@ impl<'a> DisplayLineMap<'a> {
             &self.virtual_lines,
             line,
             self.key.params.tab_width,
-            &self.key.params.wrap_mode,
+            self.key.params.wrap,
             &mut entry.virtual_format,
         );
         idx
@@ -292,7 +282,7 @@ impl<'a> DisplayLineMap<'a> {
     /// formatter's output, so the line gets formatted here if it wasn't
     /// already.
     fn content_display_lines(&mut self, idx: usize) -> usize {
-        if !self.key.params.wrap_mode.is_wrapping() {
+        if !self.key.params.wrap.is_wrapping() {
             return 1;
         }
         // `Full`: the display-line count is the output, so nothing may be clipped.
@@ -385,7 +375,7 @@ impl<'a> DisplayLineMap<'a> {
         // fewer display lines than the count `block` already committed to.
         // Applied before the check *and* the record below, so a wrapping
         // query never stores a bound narrower than what it actually ran.
-        let bound = if self.key.params.wrap_mode.is_wrapping() {
+        let bound = if self.key.params.wrap.is_wrapping() {
             FormatBound::Full
         } else {
             bound

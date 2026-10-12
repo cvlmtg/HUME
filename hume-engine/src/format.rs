@@ -5,7 +5,7 @@ use hume_rope::offset::ExclusiveRange;
 use ropey::Rope;
 
 use crate::display_lines::line_store::FormatParams;
-use crate::pane::WrapMode;
+use crate::pane::ResolvedWrap;
 use crate::providers::{InlineInsert, ProviderId};
 use crate::types::{CellContent, DisplayLine, DisplayLineKind, Grapheme};
 
@@ -55,7 +55,7 @@ pub fn format_buffer_line(
     out: &mut LineFormat,
 ) {
     let &FormatParams {
-        ref wrap_mode,
+        wrap,
         tab_width,
         ref whitespace,
     } = params;
@@ -79,7 +79,7 @@ pub fn format_buffer_line(
     let mut insert_idx = 0usize;
     let mut wrap = WrapState::start(
         WrapOwner::Buffer(line_idx),
-        wrap_mode,
+        wrap,
         || indent_depth,
         tab_width,
         lines_out,
@@ -453,7 +453,7 @@ impl WrapState {
     /// it runs only under that mode.
     fn start(
         owner: WrapOwner,
-        wrap_mode: &WrapMode,
+        wrap: ResolvedWrap,
         indent_depth: impl FnOnce() -> u8,
         tab_width: u8,
         lines_out: &mut Vec<DisplayLine>,
@@ -469,8 +469,8 @@ impl WrapState {
             wrap_index: 0,
             line_g_start: graphemes_len,
             last_ws_g_idx: graphemes_len,
-            wrap_width: wrap_mode.wrap_width().map(u32::from),
-            continuation_col: if matches!(wrap_mode, WrapMode::Indent { .. }) {
+            wrap_width: wrap.wrap_width().map(u32::from),
+            continuation_col: if wrap.indents_continuations() {
                 DisplayLineCol::new(hume_rope::width::indent_stop(
                     indent_depth() as u32,
                     tab_width,
@@ -478,7 +478,7 @@ impl WrapState {
             } else {
                 DisplayLineCol::new(0)
             },
-            word_break: wrap_mode.breaks_at_word(),
+            word_break: wrap.breaks_at_word(),
             in_leading_ws: true,
         }
     }

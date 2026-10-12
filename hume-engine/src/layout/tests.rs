@@ -25,7 +25,7 @@ fn geometry_without_a_gutter_is_the_whole_viewport() {
     let viewport = Viewport::new(80, 3);
     let visible = compute_viewport(&rope, &viewport, std::iter::empty());
     assert_eq!(visible.gutter_width, 0);
-    assert_eq!(visible.content_width, 80);
+    assert_eq!(visible.content_width.get(), 80);
     assert_eq!(visible.content_height, 3);
 }
 
@@ -36,7 +36,7 @@ fn a_gutter_takes_its_width_out_of_the_content_area() {
     let lane: Box<dyn GutterColumn> = Box::new(FixedWidthGutter);
     let visible = compute_viewport(&rope, &viewport, std::iter::once(lane.as_ref()));
     assert_eq!(visible.gutter_width, 3);
-    assert_eq!(visible.content_width, 77);
+    assert_eq!(visible.content_width.get(), 77);
 }
 
 #[test]
@@ -47,7 +47,7 @@ fn content_width_never_reaches_zero() {
     let viewport = Viewport::new(2, 3);
     let lane: Box<dyn GutterColumn> = Box::new(FixedWidthGutter);
     let visible = compute_viewport(&rope, &viewport, std::iter::once(lane.as_ref()));
-    assert_eq!(visible.content_width, 1);
+    assert_eq!(visible.content_width.get(), 1);
 }
 
 #[test]

@@ -255,7 +255,7 @@ pub(super) fn word_chars_owned(doc: &Buffer, settings: &EditorSettings) -> Strin
 /// `Some` only once `:wrap` or `:set pane wrap-mode=…` has pinned this pane
 /// for this buffer; until then it inherits whatever the buffer (or, failing
 /// that, the global) resolves to: the single place this three-way
-/// precedence is applied. Folded into [`FormatParams::wrap_mode`](hume_engine::display_lines::line_store::FormatParams::wrap_mode) by
+/// precedence is applied. Folded into [`FormatKey::wrap_mode`](hume_engine::display_lines::line_store::FormatKey::wrap_mode) by
 /// [`EditorState::format_key`](super::EditorState::format_key) alongside
 /// `tab_width`/`whitespace`, which only ever have two levels.
 pub(super) fn effective_wrap_mode(

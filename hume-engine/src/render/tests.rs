@@ -63,7 +63,7 @@ fn renders_simple_text() {
     let styles = vec![ResolvedStyle::default(); 2];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -128,7 +128,7 @@ fn grapheme_byte_range_past_line_str_asserts() {
     let styles = vec![ResolvedStyle::default(); 1];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -176,7 +176,7 @@ fn filler_rows_have_tilde() {
     // it fills every requested row from the given start row onward.
     let visible = PaneGeometry {
         content_height: 5, // 5 rows requested; caller already rendered row 0
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -289,7 +289,7 @@ fn horizontal_scroll_clips_left_columns() {
     let styles = vec![ResolvedStyle::default(); 5];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -347,7 +347,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
     let styles = vec![ResolvedStyle::default(); 3];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -388,7 +388,7 @@ fn wide_grapheme_at_the_right_edge_does_not_bleed_past_the_pane() {
     let styles = vec![ResolvedStyle::default(); 1];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 5,
+        content_width: std::num::NonZeroU16::new(5).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -441,7 +441,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
     let styles = vec![hint_style; 2];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -480,7 +480,7 @@ fn indent_guide_drawn_at_inner_tab_stops() {
     let styles = vec![ResolvedStyle::default(); 11];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -538,7 +538,7 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
     let styles = vec![ResolvedStyle::default(); graphemes.len()];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -595,7 +595,7 @@ fn indent_guide_hidden_when_indent_guides_is_false() {
     let styles = vec![ResolvedStyle::default(); 11];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -674,7 +674,7 @@ fn indent_guide_not_drawn_on_wrap_display_lines() {
     let styles = vec![ResolvedStyle::default(); 4];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -727,7 +727,7 @@ fn indent_guide_leaves_a_reversed_cursor_cell_visibly_distinct() {
 
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -805,7 +805,7 @@ fn indicator_content_fills_tab_width() {
     let styles = vec![ResolvedStyle::default()];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -838,7 +838,7 @@ fn tab_fill_blanks_its_whole_width() {
     let styles = vec![ResolvedStyle::default()];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -876,7 +876,7 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
     let styles = vec![ResolvedStyle::default(); 2];
     let visible = PaneGeometry {
         content_height: 5,
-        content_width: 20,
+        content_width: std::num::NonZeroU16::new(20).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -932,7 +932,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         vec![(0, Box::new(OverlongGutter))];
     let visible = PaneGeometry {
         content_height: 1,
-        content_width: 6,
+        content_width: std::num::NonZeroU16::new(6).expect("non-zero"),
         gutter_width: 4,
         last_line_idx: RopeyLine::new(0),
     };
@@ -1003,7 +1003,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         vec![(0, Box::new(OverlongGutter))];
     let visible = PaneGeometry {
         content_height: 1,
-        content_width: 1,
+        content_width: std::num::NonZeroU16::new(1).expect("non-zero"),
         gutter_width: 4,
         last_line_idx: RopeyLine::new(0),
     };
@@ -1133,7 +1133,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     ];
     let visible = PaneGeometry {
         content_height: 1,
-        content_width: 2,
+        content_width: std::num::NonZeroU16::new(2).expect("non-zero"),
         gutter_width: 8, // 2 (ExactFillGutter) + 6 (LeftoverGutter)
         last_line_idx: RopeyLine::new(0),
     };
@@ -1238,7 +1238,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(HugeGutter))];
     let visible = PaneGeometry {
         content_height: 1,
-        content_width: 1,
+        content_width: std::num::NonZeroU16::new(1).expect("non-zero"),
         gutter_width: 20,
         last_line_idx: RopeyLine::new(0),
     };
@@ -1353,7 +1353,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
         let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, lane)];
         let visible = PaneGeometry {
             content_height: 1,
-            content_width: 4,
+            content_width: std::num::NonZeroU16::new(4).expect("non-zero"),
             gutter_width: 3,
             last_line_idx: RopeyLine::new(0),
         };
@@ -1467,7 +1467,7 @@ fn gutter_column_reads_rope_via_ctx() {
         vec![(0, Box::new(FirstCharGutter))];
     let visible = PaneGeometry {
         content_height: 2,
-        content_width: 10,
+        content_width: std::num::NonZeroU16::new(10).expect("non-zero"),
         gutter_width: 2,
         last_line_idx: RopeyLine::new(1),
     };
@@ -1582,7 +1582,7 @@ fn compose_display_line_dims_cells_inline() {
     }];
     let visible = PaneGeometry {
         content_height: 1,
-        content_width: 2,
+        content_width: std::num::NonZeroU16::new(2).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
@@ -1638,7 +1638,7 @@ fn compose_display_line_dim_leaves_an_uncoloured_cell_alone() {
     let styles = vec![ResolvedStyle::default()];
     let visible = PaneGeometry {
         content_height: 1,
-        content_width: 2,
+        content_width: std::num::NonZeroU16::new(2).expect("non-zero"),
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };

@@ -1366,7 +1366,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: crate::pane::WrapMode::None,
+            wrap: crate::pane::WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: crate::pane::WhitespaceConfig::default(),
         },
@@ -1428,7 +1428,7 @@ fn a_selection_ending_on_the_line_break_leaves_end_of_line_inserts_unselected() 
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: crate::pane::WrapMode::None,
+            wrap: crate::pane::WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: crate::pane::WhitespaceConfig::default(),
         },
@@ -1491,7 +1491,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: crate::pane::WrapMode::None,
+            wrap: crate::pane::WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: crate::pane::WhitespaceConfig::default(),
         },
@@ -1553,7 +1553,7 @@ fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: crate::pane::WrapMode::None,
+            wrap: crate::pane::WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: ws,
         },
@@ -1615,7 +1615,7 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: crate::pane::WrapMode::None,
+            wrap: crate::pane::WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: ws,
         },
@@ -1677,7 +1677,7 @@ fn insert_mid_display_line_head_resolves_to_real_grapheme_col() {
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: crate::pane::WrapMode::None,
+            wrap: crate::pane::WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: crate::pane::WhitespaceConfig::default(),
         },
@@ -1749,7 +1749,7 @@ fn selection_spanning_display_line_start_insert_begins_at_first_real_grapheme() 
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: crate::pane::WrapMode::None,
+            wrap: crate::pane::WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: crate::pane::WhitespaceConfig::default(),
         },

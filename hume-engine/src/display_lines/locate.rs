@@ -114,7 +114,7 @@ impl<'a> DisplayLineMap<'a> {
     /// callers that only want the display line.
     pub fn locate_display_line(&mut self, pos: ClusterStart) -> DisplayLinePos {
         self.debug_assert_in_text(pos);
-        if self.key.params.wrap_mode.is_wrapping() {
+        if self.key.params.wrap.is_wrapping() {
             // Wrapping needs the sub-index, which only formatting can
             // answer, and `block` has already formatted the line to count
             // its display lines.

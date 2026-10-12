@@ -28,7 +28,7 @@ fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayLine>, Vec<Grapheme
             &rope,
             line_idx,
             &crate::display_lines::line_store::FormatParams {
-                wrap_mode,
+                wrap: wrap_mode.resolve(std::num::NonZeroU16::MIN),
                 tab_width: 4,
                 whitespace: ws,
             },
@@ -372,7 +372,7 @@ fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayLine>, Vec<Grap
             &rope,
             line_idx,
             &crate::display_lines::line_store::FormatParams {
-                wrap_mode: WrapMode::None,
+                wrap: WrapMode::None.resolve(std::num::NonZeroU16::MIN),
                 tab_width: 4,
                 whitespace: ws,
             },
@@ -752,7 +752,7 @@ fn do_format_windowed(
             &rope,
             line_idx,
             &crate::display_lines::line_store::FormatParams {
-                wrap_mode,
+                wrap: wrap_mode.resolve(std::num::NonZeroU16::MIN),
                 tab_width: 4,
                 whitespace: ws,
             },
@@ -834,7 +834,7 @@ fn display_line_positions_are_non_decreasing_with_inline_inserts() {
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: WrapMode::None,
+            wrap: WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
         },
@@ -871,7 +871,7 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: WrapMode::None,
+            wrap: WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
         },
@@ -909,7 +909,7 @@ fn format_with_insert(line: &str, byte_offset: usize, text: &str) -> LineFormat 
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: WrapMode::None,
+            wrap: WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
         },
@@ -995,7 +995,7 @@ fn an_invisible_cluster_in_buffer_text_renders_as_its_codepoint() {
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: WrapMode::None,
+            wrap: WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
         },
@@ -1038,7 +1038,7 @@ fn a_control_character_in_buffer_text_never_reaches_the_terminal() {
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: WrapMode::None,
+            wrap: WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
         },
@@ -1075,7 +1075,7 @@ fn a_bidi_override_is_distinguishable_from_a_zero_width_space() {
             &rope,
             RopeyLine::new(0),
             &crate::display_lines::line_store::FormatParams {
-                wrap_mode: WrapMode::None,
+                wrap: WrapMode::None.resolve(std::num::NonZeroU16::MIN),
                 tab_width: 4,
                 whitespace: WhitespaceConfig::default(),
             },
@@ -1170,7 +1170,7 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
         &rope,
         RopeyLine::new(0),
         &crate::display_lines::line_store::FormatParams {
-            wrap_mode: WrapMode::None,
+            wrap: WrapMode::None.resolve(std::num::NonZeroU16::MIN),
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
         },

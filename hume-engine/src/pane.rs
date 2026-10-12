@@ -1,3 +1,5 @@
+use std::num::NonZeroU16;
+
 use slotmap::SecondaryMap;
 
 use crate::display_lines::DisplayLinePos;
@@ -173,19 +175,19 @@ pub struct ScrollPosition {
 
 /// How the formatter handles lines that exceed the content width.
 ///
-/// For `Soft`, `Word`, and `Indent`, `width: 0` is a sentinel meaning "wrap at
-/// the content width" (pane width minus gutter). Call `WrapMode::resolve(content_width)`
-/// to substitute a concrete column count before handing the mode to engine code.
+/// For `Soft`, `Word`, and `Indent`, `width: 0` means "wrap at the content
+/// width" (pane width minus gutter). [`WrapMode::resolve`] turns it into the
+/// [`ResolvedWrap`] formatting reads.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum WrapMode {
     /// No wrapping: horizontal scroll.
     #[default]
     None,
-    /// Break at `width` columns (`0` = content width sentinel).
+    /// Break at `width` columns (`0` = the content width).
     Soft { width: u16 },
-    /// Break at whitespace boundaries; prefer not to split words (`0` = content width sentinel).
+    /// Break at whitespace boundaries; prefer not to split words (`0` = the content width).
     Word { width: u16 },
-    /// Word wrap + indent continuation display lines to match the line's indent level (`0` = content width sentinel).
+    /// Word wrap + indent continuation display lines to match the line's indent level (`0` = the content width).
     Indent { width: u16 },
 }
 
@@ -212,8 +214,7 @@ pub struct WrapOverride {
     /// buffer's, then the global default (`hume-editor`'s
     /// `commands::effective_wrap_mode` is the resolver; `hume-engine` has
     /// no dependency on `hume-editor` and so cannot resolve that chain
-    /// itself). Stored raw (the `width: 0` sentinel unresolved) when `Some`;
-    /// call `WrapMode::resolve(content_width)` on the resolved mode since
+    /// itself). Stored raw (a `width: 0` unresolved) when `Some`, since
     /// content width depends on live pane geometry.
     pub mode: Option<WrapMode>,
     /// The *override* to restore when `:wrap` turns wrapping back on for
@@ -232,41 +233,14 @@ pub struct WrapOverride {
 }
 
 impl WrapMode {
-    /// Concrete wrap column, or `None` if wrapping is off.
-    ///
-    /// The caller must have already resolved the `width: 0` sentinel via
-    /// `WrapMode::resolve(content_width)`. Passing an unresolved sentinel is
-    /// a bug and panics in both debug and release. The alternative (returning
-    /// `None` or `Some(0)`) would silently format at column 0 in production.
-    pub fn wrap_width(&self) -> Option<u16> {
-        match self {
-            WrapMode::None => None,
-            WrapMode::Soft { width } | WrapMode::Word { width } | WrapMode::Indent { width } => {
-                assert!(
-                    *width != 0,
-                    "wrap_width() received unresolved sentinel (width: 0): \
-                     call WrapMode::resolve(content_width) before reaching the engine",
-                );
-                Some(*width)
-            }
-        }
-    }
-
-    /// Whether an overflowing line backtracks to its last whitespace
-    /// (`Word`, `Indent`) rather than splitting at the exact wrap column.
-    pub fn breaks_at_word(&self) -> bool {
-        matches!(self, WrapMode::Word { .. } | WrapMode::Indent { .. })
-    }
-
-    /// Replace the `width: 0` sentinel with a concrete column count.
-    ///
-    /// `WrapMode::None` and concrete non-zero widths pass through unchanged.
-    /// The effective mode (see `hume-editor`'s `commands::effective_wrap_mode`)
-    /// is raw (unresolved); call this at each use site, passing that pane's
-    /// `pane_width − gutter_width` (see `Pane::content_width`), since content
-    /// width depends on live pane geometry and must re-derive on resize.
-    pub fn resolve(self, content_width: u16) -> WrapMode {
-        match self {
+    /// Replace a `width: 0` with `content_width`: the only way to
+    /// get a [`ResolvedWrap`]. `WrapMode::None` and concrete non-zero widths
+    /// pass through unchanged. The effective mode (see `hume-editor`'s
+    /// `commands::effective_wrap_mode`) is raw; content width depends on live
+    /// pane geometry, so it is resolved again on every resize.
+    pub fn resolve(self, content_width: NonZeroU16) -> ResolvedWrap {
+        let content_width = content_width.get();
+        ResolvedWrap(match self {
             WrapMode::Soft { width: 0 } => WrapMode::Soft {
                 width: content_width,
             },
@@ -277,11 +251,44 @@ impl WrapMode {
                 width: content_width,
             },
             other => other,
-        }
+        })
     }
 
     pub fn is_wrapping(&self) -> bool {
         !matches!(self, WrapMode::None)
+    }
+}
+
+/// A [`WrapMode`] whose width is a concrete, non-zero column: what
+/// formatting reads. Minted only by [`WrapMode::resolve`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ResolvedWrap(WrapMode);
+
+impl ResolvedWrap {
+    /// Wrap column, or `None` if wrapping is off.
+    pub fn wrap_width(self) -> Option<u16> {
+        match self.0 {
+            WrapMode::None => None,
+            WrapMode::Soft { width } | WrapMode::Word { width } | WrapMode::Indent { width } => {
+                Some(width)
+            }
+        }
+    }
+
+    pub fn is_wrapping(self) -> bool {
+        self.0.is_wrapping()
+    }
+
+    /// Whether an overflowing line backtracks to its last whitespace
+    /// (`Word`, `Indent`) rather than splitting at the exact wrap column.
+    pub fn breaks_at_word(self) -> bool {
+        matches!(self.0, WrapMode::Word { .. } | WrapMode::Indent { .. })
+    }
+
+    /// Whether continuation display lines are indented to the line's own
+    /// indent (`Indent`).
+    pub fn indents_continuations(self) -> bool {
+        matches!(self.0, WrapMode::Indent { .. })
     }
 }
 
@@ -439,9 +446,9 @@ impl Pane {
     /// `last_line_idx` is the buffer's last ropey line index (used to size
     /// the line-number column, `hume_rope::lines::last_ropey_line`). Call this
     /// before `WrapMode::resolve` to get the concrete wrap column.
-    pub fn content_width(&self, last_line_idx: RopeyLine) -> u16 {
+    pub fn content_width(&self, last_line_idx: RopeyLine) -> NonZeroU16 {
         let gutter_w = gutter_width_for_line(self.providers.gutter_columns(), last_line_idx);
-        self.viewport.width.saturating_sub(gutter_w).max(1)
+        NonZeroU16::new(self.viewport.width.saturating_sub(gutter_w)).unwrap_or(NonZeroU16::MIN)
     }
 
     /// Snapshot the current viewport scroll into `saved_scrolls` for `buffer_id`.

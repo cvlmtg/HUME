@@ -4,7 +4,7 @@ use hume_rope::column::ByteCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::pane::WrapMode;
+use crate::pane::ResolvedWrap;
 use crate::providers::{VirtualLine, VirtualLineAnchor};
 use crate::style::highlight::IntervalCursor;
 
@@ -12,7 +12,7 @@ use super::virtual_cells::{VirtualCells, VirtualRun};
 use super::{VirtualFormat, WrapOwner, WrapState, close_display_line_at};
 
 /// Lay `virtual_lines` (sorted `Before` ones first, all anchored to
-/// `anchor_line`) out into `out`, wrapping each under `wrap_mode` the way
+/// `anchor_line`) out into `out`, wrapping each under `wrap` the way
 /// [`format_buffer_line`](super::format_buffer_line) wraps buffer text: one
 /// virtual line becomes as many display lines as it needs, all of the same
 /// `DisplayLineKind::Virtual`. `out` must be empty.
@@ -23,7 +23,7 @@ pub(crate) fn format_virtual_lines(
     virtual_lines: &[VirtualLine],
     anchor_line: ContentLine,
     tab_width: u8,
-    wrap_mode: &WrapMode,
+    wrap: ResolvedWrap,
     out: &mut VirtualFormat,
 ) {
     debug_assert!(out.display_lines.is_empty(), "`out` must start empty");
@@ -36,7 +36,7 @@ pub(crate) fn format_virtual_lines(
         };
         let mut wrap = WrapState::start(
             owner,
-            wrap_mode,
+            wrap,
             || hume_rope::width::indent_depth(&vl.text, tab_width),
             tab_width,
             &mut out.display_lines,

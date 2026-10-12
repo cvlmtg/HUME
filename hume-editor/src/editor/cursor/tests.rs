@@ -3,7 +3,7 @@ use crate::editor::tests::doubles::{VirtualLineBlock, no_providers, providers_wi
 use crate::editor::tests::{cluster_at, co};
 use hume_engine::display_lines::DisplayLineMap;
 use hume_engine::display_lines::DisplayLinePos;
-use hume_engine::display_lines::line_store::{FormatKey, FormatParams, PaneLineStore};
+use hume_engine::display_lines::line_store::{FormatKey, PaneLineStore};
 use hume_engine::pane::{Viewport, WhitespaceConfig, WrapMode};
 use hume_engine::providers::{ProviderSet, VirtualLineAnchor};
 use ropey::Rope;
@@ -31,14 +31,12 @@ fn map<'a>(
     DisplayLineMap::new(
         rope,
         providers,
-        content_width,
+        std::num::NonZeroU16::new(content_width).expect("test content width is non-zero"),
         FormatKey {
             buffer_tag: [0; 3],
-            params: FormatParams {
-                wrap_mode: wrap,
-                tab_width: 4,
-                whitespace: ws(),
-            },
+            wrap_mode: wrap,
+            tab_width: 4,
+            whitespace: ws(),
         },
         store,
     )

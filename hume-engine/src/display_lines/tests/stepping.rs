@@ -311,29 +311,6 @@ fn degenerate_single_empty_line_document() {
 }
 
 #[test]
-#[cfg(debug_assertions)]
-#[should_panic(expected = "content_width >= 1")]
-fn new_panics_on_zero_content_width() {
-    let rope = Rope::from_str("x\n");
-    let providers = ProviderSet::new();
-    let mut s = PaneLineStore::new();
-    DisplayLineMap::new(
-        &rope,
-        &providers,
-        0,
-        FormatKey {
-            buffer_tag: [0; 3],
-            params: crate::display_lines::line_store::FormatParams {
-                wrap_mode: WrapMode::None,
-                tab_width: 4,
-                whitespace: ws(),
-            },
-        },
-        &mut s,
-    );
-}
-
-#[test]
 fn wrap_width_one_emits_one_grapheme_per_display_line_without_hanging() {
     // One grapheme per display line at wrap width 1, plus a 5th display line for the trailing
     // '\n's own sentinel: every display line at width 1 exactly fills, so the
@@ -344,14 +321,12 @@ fn wrap_width_one_emits_one_grapheme_per_display_line_without_hanging() {
     let mut dlm = DisplayLineMap::new(
         &rope,
         &providers,
-        80,
+        std::num::NonZeroU16::new(80).expect("non-zero"),
         FormatKey {
             buffer_tag: [0; 3],
-            params: crate::display_lines::line_store::FormatParams {
-                wrap_mode: WrapMode::Soft { width: 1 },
-                tab_width: 4,
-                whitespace: ws(),
-            },
+            wrap_mode: WrapMode::Soft { width: 1 },
+            tab_width: 4,
+            whitespace: ws(),
         },
         &mut s,
     );

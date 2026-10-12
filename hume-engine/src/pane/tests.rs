@@ -10,35 +10,56 @@ fn viewport_defaults() {
     assert_eq!(vp.height, 24);
 }
 
+fn nz(width: u16) -> NonZeroU16 {
+    NonZeroU16::new(width).expect("test widths are non-zero")
+}
+
 #[test]
-fn wrap_mode_wrap_width() {
-    assert_eq!(WrapMode::None.wrap_width(), None);
-    assert_eq!(WrapMode::Soft { width: 80 }.wrap_width(), Some(80));
-    assert_eq!(WrapMode::Word { width: 40 }.wrap_width(), Some(40));
-    assert_eq!(WrapMode::Indent { width: 60 }.wrap_width(), Some(60));
+fn resolved_wrap_width() {
+    assert_eq!(WrapMode::None.resolve(nz(100)).wrap_width(), None);
+    assert_eq!(
+        WrapMode::Soft { width: 80 }.resolve(nz(100)).wrap_width(),
+        Some(80)
+    );
+    assert_eq!(
+        WrapMode::Word { width: 40 }.resolve(nz(100)).wrap_width(),
+        Some(40)
+    );
+    assert_eq!(
+        WrapMode::Indent { width: 60 }.resolve(nz(100)).wrap_width(),
+        Some(60)
+    );
 }
 
 #[test]
 fn wrap_mode_resolve() {
-    // Sentinel → concrete.
-    assert_eq!(
-        WrapMode::Soft { width: 0 }.resolve(80),
-        WrapMode::Soft { width: 80 }
+    // A zero width takes the content width.
+    for mode in [
+        WrapMode::Soft { width: 0 },
+        WrapMode::Word { width: 0 },
+        WrapMode::Indent { width: 0 },
+    ] {
+        assert_eq!(mode.resolve(nz(80)).wrap_width(), Some(80), "{mode:?}");
+    }
+    // The style survives resolution.
+    assert!(!WrapMode::Soft { width: 0 }.resolve(nz(80)).breaks_at_word());
+    assert!(WrapMode::Word { width: 0 }.resolve(nz(80)).breaks_at_word());
+    assert!(
+        !WrapMode::Word { width: 0 }
+            .resolve(nz(80))
+            .indents_continuations()
     );
-    assert_eq!(
-        WrapMode::Word { width: 0 }.resolve(80),
-        WrapMode::Word { width: 80 }
+    assert!(
+        WrapMode::Indent { width: 0 }
+            .resolve(nz(80))
+            .indents_continuations()
     );
+    // An explicit width and None pass through unchanged.
     assert_eq!(
-        WrapMode::Indent { width: 0 }.resolve(80),
-        WrapMode::Indent { width: 80 }
+        WrapMode::Soft { width: 40 }.resolve(nz(80)).wrap_width(),
+        Some(40)
     );
-    // Concrete and None pass through unchanged.
-    assert_eq!(
-        WrapMode::Soft { width: 40 }.resolve(80),
-        WrapMode::Soft { width: 40 }
-    );
-    assert_eq!(WrapMode::None.resolve(80), WrapMode::None);
+    assert!(!WrapMode::None.resolve(nz(80)).is_wrapping());
 }
 
 #[test]
