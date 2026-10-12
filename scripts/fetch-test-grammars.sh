@@ -45,8 +45,9 @@ compile_grammar() {
   echo "  $name: built $out"
 }
 
-# A language's data file holds its grammar on one line:
-# (grammar "url" "rev" "symbol" "subpath").
+# A language's data file holds its grammar on one line,
+# (grammar "url" "rev" "symbol" "subpath"), matched whole: any other shape
+# is an error rather than a field read from the wrong position.
 # `subpath` is the directory within the cloned repo holding the grammar's
 # `src/`, empty for the repo root; monorepos like tree-sitter-markdown hold
 # multiple grammars (tree-sitter-markdown, tree-sitter-markdown-inline) as
@@ -54,16 +55,17 @@ compile_grammar() {
 fetch_grammar() {
   local name="$1"
   local data="$LANGUAGES_DIR/$name.scm"
+  local entry='^[[:space:]]*\(?\(grammar "([^"]*)" "([^"]*)" "[^"]*" "([^"]*)"\)\)?$'
   local line repo rev subpath
   line=$(grep -F '(grammar "' "$data" 2>/dev/null || true)
-  repo=$(awk -F'"' '{print $2}' <<<"$line")
-  rev=$(awk -F'"' '{print $4}' <<<"$line")
-  subpath=$(awk -F'"' '{print $8}' <<<"$line")
 
-  if [[ -z "$repo" || -z "$rev" ]]; then
-    echo "error: no grammar for language '$name' in $data" >&2
+  if [[ ! "$line" =~ $entry || -z "${BASH_REMATCH[1]}" || -z "${BASH_REMATCH[2]}" ]]; then
+    echo "error: no (grammar \"url\" \"rev\" \"symbol\" \"subpath\") line for language '$name' in $data" >&2
     exit 1
   fi
+  repo="${BASH_REMATCH[1]}"
+  rev="${BASH_REMATCH[2]}"
+  subpath="${BASH_REMATCH[3]}"
 
   local target="$FIXTURES/$name"
 
