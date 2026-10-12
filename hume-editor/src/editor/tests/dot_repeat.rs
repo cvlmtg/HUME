@@ -1150,6 +1150,31 @@ fn dot_repeat_of_failed_select_all_matches_preserves_prior_recipe() {
     );
 }
 
+/// `m/ d` recorded under one pattern, replayed under a pattern with no match:
+/// the recipe's `select-all-matches` fails on replay, so `.` must not run `d`
+/// on the cursor it left behind.
+#[test]
+fn dot_repeat_whose_recipe_step_fails_leaves_text_and_selections_unchanged() {
+    let mut ed = editor_from("-[f]>oo bar baz\n").with_search_regex("foo");
+
+    ed.feed_key(key('m'));
+    ed.feed_key(key('/'));
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), " bar baz\n");
+
+    ed = ed.with_search_regex("qux");
+    let before = state(&ed);
+    ed.feed_key(key('.'));
+
+    assert_eq!(ed.doc().text().to_string(), " bar baz\n");
+    assert_eq!(state(&ed), before);
+    assert!(
+        status(&ed).contains("no matches"),
+        "status: {:?}",
+        status(&ed)
+    );
+}
+
 /// `x ms( d` where `ms(` finds no surrounding pair must record
 /// `[select-line, delete]`, not `[surround-paren, delete]`: `surround-paren`
 /// is infallible and leaves the selection unchanged on no-match (see

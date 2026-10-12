@@ -1144,6 +1144,8 @@ impl Editor {
     fn replay_action(&mut self, action: &RepeatableAction, count: usize) {
         // Read once, at entry: recipe steps never move focus.
         let fp = commands::FocusedPane::current(&self.state);
+        let pid = fp.pid();
+        let bid = fp.bid(&self.view);
 
         // Resolve the command before opening the edit group: a missing command
         // must return while there is still no cleanup obligation.
@@ -1169,8 +1171,6 @@ impl Editor {
         // `Err` here means a real session is already open, not expected given
         // `step_paste_commit` just ran; defer rather than steal it.
         if !meta.manages_own_session {
-            let pid = fp.pid();
-            let bid = fp.bid(&self.view);
             let sels = self.state.panes.state[pid][bid].selections().clone();
             let opened = edit_session::open_or_retarget(
                 &mut self.state.active_session,
@@ -1193,7 +1193,9 @@ impl Editor {
         // recipe step names a native command taking no operand (a `Composes`/
         // `Establishes` selection command): `SteelBacked`/`Lazy` are always
         // `Untracked`, native entries can never be unregistered, so the lookup
-        // and bind always succeed.
+        // and bind always succeed. A refused step cancels the replay before
+        // the edit runs, with the selections put back as they were.
+        let pre_recipe = self.state.panes.state[pid][bid].selections().clone();
         for step in &action.selection_recipe {
             let Some(MappableCommand::Native(cmd)) = self
                 .state
@@ -1209,7 +1211,7 @@ impl Editor {
                     "a dot-repeat selection-recipe step always names a native command taking no character"
                 )
             };
-            commands::run_body(
+            let ran = commands::run_body(
                 &mut self.state,
                 &mut self.view,
                 bound,
@@ -1218,6 +1220,12 @@ impl Editor {
                     extend: step.extend,
                 },
             );
+            if !ran {
+                self.state.panes.state[pid][bid]
+                    .set_selections(pre_recipe, self.state.buffers.get(bid).text());
+                self.finish_replay_session();
+                return;
+            }
         }
 
         let dispatched = self.dispatch(
