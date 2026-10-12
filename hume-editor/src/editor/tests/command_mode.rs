@@ -1534,15 +1534,16 @@ fn sort_bang_is_rejected() {
     assert_eq!(state(&ed), before);
 }
 
+/// `:sort` on a read-only buffer is refused like any other edit: the text is
+/// untouched and an armed `"<reg>` prefix is cleared.
 #[test]
 fn sort_on_read_only_buffer_is_blocked() {
-    // Validity: delete the `focused_buffer_read_only` check in `typed_sort`
-    // and this starts silently sorting `:messages` instead of erroring.
     let mut ed = editor_from("-[h]>ello\n");
     ed.report(Severity::Warning, "one".to_string());
     ed.report(Severity::Warning, "two".to_string());
     ed.execute_typed("messages", None).unwrap();
     let before = state(&ed);
+    ed.state.register_prefix = Some('a');
 
     let err = ed
         .execute_typed("sort", None)
@@ -1553,6 +1554,7 @@ fn sort_on_read_only_buffer_is_blocked() {
         before,
         ":sort must not mutate a read-only buffer"
     );
+    assert_eq!(ed.state.register_prefix, None);
 }
 
 #[test]

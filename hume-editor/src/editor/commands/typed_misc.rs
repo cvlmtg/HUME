@@ -541,12 +541,8 @@ pub(in crate::editor) fn typed_sort(
     }
     let opts = parse_sort_flags(arg)?;
 
-    // doc_ops's read-only guard is a silent no-op. Check explicitly here so
-    // `:sort` on a read-only buffer (e.g. `:messages`) reports why nothing happened.
     let t = fp.pane();
-    if super::doc(&ed.state, &ed.view, t).is_read_only() {
-        return Err(CommandError::transient("Buffer is read-only"));
-    }
+    super::ensure_writable(&mut ed.state, &ed.view, t)?;
 
     // Computing the sort before touching the buffer is what lets a refusal
     // (`SortRefusal`) leave the buffer untouched: an identity edit would
