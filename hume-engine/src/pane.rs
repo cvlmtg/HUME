@@ -44,6 +44,11 @@ pub struct Viewport {
 }
 
 impl Viewport {
+    /// Columns left for text once `gutter_width` is taken, at least one.
+    pub fn content_width(&self, gutter_width: u16) -> NonZeroU16 {
+        NonZeroU16::new(self.width.saturating_sub(gutter_width)).unwrap_or(NonZeroU16::MIN)
+    }
+
     pub fn new(width: u16, height: u16) -> Self {
         Self {
             top: DisplayLinePos::default(),
@@ -447,8 +452,10 @@ impl Pane {
     /// the line-number column, `hume_rope::lines::last_ropey_line`). Call this
     /// before `WrapMode::resolve` to get the concrete wrap column.
     pub fn content_width(&self, last_line_idx: RopeyLine) -> NonZeroU16 {
-        let gutter_w = gutter_width_for_line(self.providers.gutter_columns(), last_line_idx);
-        NonZeroU16::new(self.viewport.width.saturating_sub(gutter_w)).unwrap_or(NonZeroU16::MIN)
+        self.viewport.content_width(gutter_width_for_line(
+            self.providers.gutter_columns(),
+            last_line_idx,
+        ))
     }
 
     /// Snapshot the current viewport scroll into `saved_scrolls` for `buffer_id`.

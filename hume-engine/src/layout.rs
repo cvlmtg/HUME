@@ -81,8 +81,7 @@ pub fn compute_viewport<'a>(
 
     PaneGeometry {
         content_height: viewport.height,
-        content_width: NonZeroU16::new(viewport.width.saturating_sub(gutter_width))
-            .unwrap_or(NonZeroU16::MIN),
+        content_width: viewport.content_width(gutter_width),
         gutter_width,
         last_line_idx,
     }
