@@ -4,6 +4,5 @@
 
 ((comment-tokens "//")
  (block-comment-tokens ("/*" . "*/"))
- (language-id . "typescript")
  (roots "package.json" "tsconfig.json")
  (grammar "https://github.com/tree-sitter/tree-sitter-typescript" "75b3874edb2dc714fb1fd77a32013d0f8699989f" "tree_sitter_typescript" "typescript"))

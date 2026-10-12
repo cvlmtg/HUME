@@ -285,7 +285,7 @@ def emit_language_data(lang: dict) -> list[str]:
             for start, end in lang["block_comment_tokens"]
         )
         entries.append(f"(block-comment-tokens {pairs})")
-    if lang["language_id"]:
+    if lang["language_id"] and lang["language_id"] != lang["name"]:
         entries.append("(language-id . {})".format(scheme_str(lang["language_id"])))
     if lang["roots"]:
         entries.append("(roots {})".format(" ".join(scheme_str(r) for r in lang["roots"])))
@@ -309,9 +309,11 @@ def emit_language_data(lang: dict) -> list[str]:
 def write_language_files(directory: Path, sha: str, langs: list[dict]) -> None:
     """Write one data file per language into `directory` and delete the file of
     any language not in `langs`. The directory holds generated files only, so
-    anything other than a `.scm` file there is fatal."""
+    anything other than a `.scm` file there is fatal. Dotfiles (Finder's
+    `.DS_Store`) are left alone."""
     directory.mkdir(parents=True, exist_ok=True)
-    foreign = sorted(p.name for p in directory.iterdir() if p.suffix != ".scm")
+    entries = [p for p in directory.iterdir() if not p.name.startswith(".")]
+    foreign = sorted(p.name for p in entries if p.suffix != ".scm")
     if foreign:
         sys.exit(f"error: {directory} holds files that are not generated: {foreign}")
 
@@ -326,7 +328,7 @@ def write_language_files(directory: Path, sha: str, langs: list[dict]) -> None:
         read_sexpr(path)  # self-check: emitted file must re-parse
         written.add(path.name)
 
-    for path in sorted(directory.iterdir()):
+    for path in sorted(entries):
         if path.name not in written:
             path.unlink()
             print(f"removed {path}", file=sys.stderr)
