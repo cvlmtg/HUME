@@ -10,8 +10,9 @@ use crate::{ConfigOrigin, Effect, GrammarReg, LanguageFields, PendingLanguageReg
 
 use super::SteelResult;
 use super::args::{
-    hash_entry, list_to_strings, optional_list_items, optional_list_to_strings, optional_path_arg,
-    optional_string_arg, pair_fields, path_arg, string_arg,
+    HashEntry, hash_entry, list_to_strings, optional_hash_entry, optional_list_items,
+    optional_list_to_strings, optional_path_arg, optional_string_arg, pair_fields, path_arg,
+    string_arg,
 };
 use super::errors::generic_err;
 
@@ -41,22 +42,33 @@ pub(crate) fn define_language(
     Ok(SteelVal::Void)
 }
 
+const LANGUAGE_FIELD_KEYS: &[&str] = &[
+    "roots",
+    "language-id",
+    "comment-tokens",
+    "block-comment-tokens",
+];
+
 /// Decodes a symbol-keyed hash of per-language values: `'roots` (strings),
 /// `'language-id` (a string), `'comment-tokens` (strings) and
 /// `'block-comment-tokens` (`(start . end)` string pairs). A missing key or
 /// `#f` is `None`; any other key is an error. The one decoder for both
 /// `%configure-language!` and a bundled data file.
 pub(crate) fn language_fields(val: SteelVal, ctx_name: &str) -> Result<LanguageFields, SteelErr> {
-    let entry = hash_entry(
-        val,
-        ctx_name,
-        &[
-            "roots",
-            "language-id",
-            "comment-tokens",
-            "block-comment-tokens",
-        ],
-    )?;
+    fields_of(&hash_entry(val, ctx_name, LANGUAGE_FIELD_KEYS)?)
+}
+
+/// [`language_fields`] for a value that may be `#f` (no data).
+pub(crate) fn optional_language_fields(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<LanguageFields>, SteelErr> {
+    optional_hash_entry(val, ctx_name, LANGUAGE_FIELD_KEYS)?
+        .map(|entry| fields_of(&entry))
+        .transpose()
+}
+
+fn fields_of(entry: &HashEntry) -> Result<LanguageFields, SteelErr> {
     let field = |key| entry.optional(key).unwrap_or(SteelVal::BoolV(false));
     let token_err = |key: &str, e| generic_err(format!("{}: {e}", entry.label(key)));
 

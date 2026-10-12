@@ -789,11 +789,7 @@ impl ScriptingHost {
         let config = self.read_only_call(host, |steel| {
             steel.call_function_by_name_with_args(CONFIG, vec![SteelVal::StringV(name.into())])
         })?;
-        if matches!(config, SteelVal::BoolV(false)) {
-            return Ok(None);
-        }
-        builtins::syntax::language_fields(config, CONFIG)
-            .map(Some)
+        builtins::syntax::optional_language_fields(config, CONFIG)
             .map_err(|e| format!("{name}.scm: {e}"))
     }
 
