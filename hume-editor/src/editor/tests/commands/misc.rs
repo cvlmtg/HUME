@@ -484,8 +484,8 @@ fn typed_arity_rule_errors_on_arity_4() {
 // ── Extend-trie character-command sequence cleanup ───────────────────────────
 
 /// A multi-key sequence bound in sticky-Extend mode to a command that reads
-/// a character must clear `pending_keys` (and `pending_ctrl_extend`) once the
-/// sequence resolves. A prefix key (`g`) left in `pending_keys` would make
+/// a character must clear the pending sequence once the
+/// sequence resolves. A prefix key (`g`) left pending would make
 /// the next ordinary keystroke walk the trie as `[g, <key>]`, swallowing it.
 #[test]
 fn extend_trie_character_command_sequence_clears_pending_keys() {
@@ -512,15 +512,15 @@ fn extend_trie_character_command_sequence_clears_pending_keys() {
 
     ed.handle_key(key('g'));
     assert_eq!(
-        ed.state.pending_keys,
-        vec![key('g')],
+        ed.state.pending.keys(),
+        [key('g')],
         "sanity: 'g' commits as an interior prefix key"
     );
 
     ed.handle_key(key('r'));
     assert!(
-        ed.state.pending_keys.is_empty(),
-        "the completed sequence must clear pending_keys"
+        ed.state.pending.keys().is_empty(),
+        "the completed sequence must clear the pending keys"
     );
     assert!(
         reading_char(&ed),
@@ -531,7 +531,7 @@ fn extend_trie_character_command_sequence_clears_pending_keys() {
     ed.handle_key(key('z'));
     assert!(!reading_char(&ed));
 
-    // With pending_keys correctly cleared, this reaches the `x` leaf and
+    // With the pending keys correctly cleared, this reaches the `x` leaf and
     // deletes the char under the cursor.
     ed.handle_key(key('x'));
     assert_eq!(

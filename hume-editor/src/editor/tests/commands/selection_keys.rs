@@ -255,22 +255,22 @@ fn m_i_w_selects_inner_word() {
 
     ed.handle_key(key('m'));
     assert_eq!(
-        ed.state.pending_keys.len(),
+        ed.state.pending.keys().len(),
         1,
-        "pending_keys has 'm' after first press"
+        "pending keys has 'm' after first press"
     );
 
     ed.handle_key(key('i'));
     assert_eq!(
-        ed.state.pending_keys.len(),
+        ed.state.pending.keys().len(),
         2,
-        "pending_keys has 'm','i' after second press"
+        "pending keys has 'm','i' after second press"
     );
 
     ed.handle_key(key('w'));
     assert!(
-        ed.state.pending_keys.is_empty(),
-        "pending_keys cleared after dispatch"
+        ed.state.pending.keys().is_empty(),
+        "pending keys cleared after dispatch"
     );
     assert_eq!(state(&ed), "-[hello]> world\n");
 }
@@ -287,8 +287,8 @@ fn m_a_unknown_char_falls_through_cleanly() {
     ed.handle_key(key('~'));
 
     assert!(
-        ed.state.pending_keys.is_empty(),
-        "pending_keys cleared on NoMatch"
+        ed.state.pending.keys().is_empty(),
+        "pending keys cleared on NoMatch"
     );
     // Selection and buffer are unchanged.
     assert_eq!(state(&ed), "-[h]>ello\n");

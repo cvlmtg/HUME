@@ -34,7 +34,7 @@ pub(in crate::editor) mod sift;
 
 pub(in crate::editor) use stack::{InputEvent, InputStack, Layer, LayerRef};
 
-pub(in crate::editor) use base::BaseLayer;
+pub(in crate::editor) use base::{BaseLayer, PendingSequence};
 pub(in crate::editor) use char::{CharLayer, read_command_char, read_steel_char};
 pub(in crate::editor) use command::CommandLayer;
 pub(in crate::editor) use completion::{BufferCompletionLayer, MinibufCompletionLayer};

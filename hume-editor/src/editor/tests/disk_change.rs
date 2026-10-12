@@ -1059,17 +1059,17 @@ fn statusline_seam_hides_a_confirm_buried_under_a_prompt() {
     );
 }
 
-/// A confirm must never open while `pending_keys` is non-empty: a live
+/// A confirm must never open while the pending sequence is non-empty: a live
 /// multi-key sequence (e.g. `d` waiting for its motion) already owns the
 /// very next keystroke.
 ///
-/// `confirm_permit` checks `pending_keys` for this.
+/// `confirm_permit` checks the pending sequence for this.
 #[test]
 fn confirm_does_not_open_mid_pending_key_sequence() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid = ed.focused_buffer_id();
     rewrite_externally(&tmp, "hello, externally changed!\n");
-    ed.state.pending_keys.push(key('g'));
+    ed.state.pending.push(key('g'));
 
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
 
@@ -1222,7 +1222,7 @@ fn multi_pane_quit_prompts_the_surviving_panes_buffer() {
 /// `Ctrl-p c` (`pane-close`) reaches the same reveal as multi-pane `:q`, but
 /// as a keymap `EditorCmd` with no `&mut Editor` at all to call the check on.
 /// Pins that the post-dispatch chokepoint covers a keymap command with no
-/// per-command plumbing. Also pins that `pending_keys` is cleared before the
+/// per-command plumbing. Also pins that the pending sequence is cleared before the
 /// `c` leaf runs (`input_stack/base.rs`'s Leaf arm), so `confirm_permit`
 /// isn't blocked by the still-just-consumed `Ctrl-p` prefix.
 #[test]

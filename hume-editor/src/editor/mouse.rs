@@ -114,14 +114,14 @@ impl Editor {
     }
 
     /// Reset transient input state every click starts fresh from: any
-    /// half-typed key sequence (`pending_keys`/`count`) and the status line.
+    /// half-typed key sequence (`pending`/`count`) and the status line.
     /// Leaves `mouse_drag`
     /// alone: `mouse_left_down` sets its own right after calling this, and
     /// `tabline_click` clears it explicitly, since a tab switch is exactly
     /// the case where a stale drag would extend a selection in a pane that
     /// isn't even focused anymore.
     fn clear_pending_input(&mut self) {
-        self.state.pending_keys.clear();
+        self.state.pending.clear();
         self.state.count = None;
         self.state.status_msg = None;
     }

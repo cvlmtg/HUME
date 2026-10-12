@@ -255,8 +255,7 @@ pub(crate) struct EditorState {
     /// reset_config_state` calls `input.truncate_to_base()` explicitly,
     /// right where `ConfigState` itself is rebuilt.
     pub(in crate::editor) input: input_stack::InputStack,
-    /// Keys consumed so far in the current multi-key sequence (max depth 3).
-    pub(super) pending_keys: Vec<KeyEvent>,
+    pub(in crate::editor) pending: input_stack::PendingSequence,
     /// Accumulated numeric prefix for the next command (e.g. `3` in `3w`).
     pub(super) count: Option<usize>,
     pub(super) registers: RegisterSet,
@@ -411,11 +410,6 @@ pub(crate) struct EditorState {
     pub(in crate::editor) active_session: Option<edit_session::EditSession>,
     /// Whether the user explicitly typed a count prefix before the current command.
     pub(super) explicit_count: bool,
-    /// `true` when the current multi-key sequence began with a kitty one-shot
-    /// Ctrl-key that resolved to a prefix (Interior) node. Cleared on sequence
-    /// completion or abort. At Leaf resolution, only applied if the command is
-    /// extendable.
-    pub(super) pending_ctrl_extend: bool,
     /// Active macro recording session.
     pub(super) macro_recording: Option<(char, Vec<KeyEvent>)>,
     /// Queue of keys to replay before reading the next terminal event.
@@ -497,7 +491,7 @@ impl Default for EditorState {
             // until `set_kitty_support` runs, after `Editor::open`.
             config: ConfigState::new(false, 0),
             input: input_stack::InputStack::new(),
-            pending_keys: Vec::new(),
+            pending: input_stack::PendingSequence::default(),
             count: None,
             registers: RegisterSet::new(),
             kill_ring: KillRing::new(),
@@ -536,7 +530,6 @@ impl Default for EditorState {
             dot_replay: None,
             active_session: None,
             explicit_count: false,
-            pending_ctrl_extend: false,
             macro_recording: None,
             replay_queue: VecDeque::new(),
             skip_macro_record: false,

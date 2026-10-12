@@ -44,7 +44,7 @@ fn editor_state_fields_are_classified() {
             // drawer/completion/popup, and resets Base's extend flag and
             // sticky-popup slot)
             input: _,
-            pending_keys: _,        // preserved
+            pending: _,             // preserved
             count: _,               // preserved
             registers: _,           // preserved
             kill_ring: _,           // preserved
@@ -90,13 +90,12 @@ fn editor_state_fields_are_classified() {
             dot_replay: _,
             // preserved: never live across a reload (a keymap dispatch
             // never re-enters `init.scm`)
-            active_session: _, // preserved: end_focus_sessions already emptied it
-            explicit_count: _, // preserved
-            pending_ctrl_extend: _, // preserved
+            active_session: _,  // preserved: end_focus_sessions already emptied it
+            explicit_count: _,  // preserved
             macro_recording: _, // preserved
-            replay_queue: _,   // preserved
+            replay_queue: _,    // preserved
             skip_macro_record: _, // preserved
-            is_replaying: _,   // preserved
+            is_replaying: _,    // preserved
             message_logged_this_input: _, // preserved
             // config: resync_config_state clears this so
             // detect_buffer_enter's diff re-raises OnBufferEnter for

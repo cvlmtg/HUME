@@ -290,7 +290,7 @@ fn kitty_ctrl_0_extends_line_start() {
 
 /// Ctrl-g l extends to end of line via the goto-prefix trie.
 /// The kitty strip-CONTROL path resolves Ctrl-g to the Interior "goto" node,
-/// persists `pending_ctrl_extend`, and the follow-up `l` completes the
+/// persists the one-shot extend, and the follow-up `l` completes the
 /// sequence with extend=true.
 #[test]
 fn kitty_ctrl_g_l_extends_line_end() {
@@ -318,6 +318,18 @@ fn kitty_ctrl_g_g_extends_to_first_line() {
     assert_eq!(state(&ed), "<[first\ns]-econd\n");
 }
 
+/// A click between Ctrl-g and the next key abandons the sequence, its
+/// one-shot extend included: the next motion moves instead of extending.
+#[test]
+fn kitty_ctrl_g_then_click_drops_one_shot_extend() {
+    let mut ed = editor_from_kitty("-[h]>ello\n");
+    ed.view.last_pane_area = hume_grid::Rect::new(0, 0, 80, 24);
+    ed.handle_key(key_ctrl('g'));
+    ed.handle_input(mouse_left_down(1, 0));
+    ed.handle_key(key('l'));
+    assert_eq!(state(&ed), "he-[l]>lo\n");
+}
+
 /// Ctrl-z z must NOT extend: center-view-on-cursor is not extendable.
 /// The flag is persisted at the Interior node but rejected at Leaf resolution.
 #[test]
@@ -334,7 +346,7 @@ fn kitty_ctrl_z_z_does_not_extend() {
     );
 }
 
-/// Esc after Ctrl-g must clear pending_ctrl_extend so the next keypress
+/// Esc after Ctrl-g must drop the one-shot extend so the next keypress
 /// doesn't incorrectly extend. Regression test for the Esc reset path.
 #[test]
 fn kitty_ctrl_g_esc_then_l_does_not_extend() {
@@ -347,7 +359,7 @@ fn kitty_ctrl_g_esc_then_l_does_not_extend() {
     assert_eq!(
         sel.anchor().offset(),
         sel.head().offset(),
-        "Esc must clear pending_ctrl_extend"
+        "Esc must drop the one-shot extend"
     );
 }
 
