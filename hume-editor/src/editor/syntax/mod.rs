@@ -12,7 +12,7 @@ pub(in crate::editor) use parse::ensure_syntax_current;
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_scripting::{BundledLanguage, ConfigOrigin, GrammarReg};
 use hume_treesitter::registry::{
-    ConfigureOutcome, ConfiguredBy, LanguageId, QueryPaths, detect_language,
+    BundledConfig, ConfigureOutcome, ConfiguredBy, LanguageId, QueryPaths, detect_language,
 };
 
 use super::Editor;
@@ -177,10 +177,15 @@ impl Editor {
                 BundledLanguage::default()
             }
         };
-        self.state
-            .config
-            .languages
-            .fill_bundled(id, lang.roots, lang.lsp_language_id);
+        self.state.config.languages.fill_bundled(
+            id,
+            BundledConfig {
+                roots: lang.roots,
+                lsp_language_id: lang.lsp_language_id,
+                line_comment_tokens: None,
+                block_comment_tokens: None,
+            },
+        );
     }
 
     pub(super) fn detect_and_set_language(&mut self, bid: BufferId) {

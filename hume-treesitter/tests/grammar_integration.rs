@@ -4,7 +4,7 @@ use hume_engine::theme::ScopeRegistry;
 use hume_treesitter::grammar::LoadedGrammar;
 use hume_treesitter::highlight::{TreeSitterHighlighter, layer_highlights_for_line};
 use hume_treesitter::layers::{SyntaxLayer, SyntaxLayers};
-use hume_treesitter::registry::GrammarBundle;
+use hume_treesitter::registry::{GrammarBundle, LanguageRegistry};
 use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 
 /// Load `name`'s compiled grammar fixture and parse `source` with it.
@@ -42,6 +42,7 @@ fn bundle_for(name: &str, symbol: &str, query_src: &str) -> (Arc<GrammarBundle>,
         injections: None,
         textobjects: None,
         config_gen: 0,
+        language: LanguageRegistry::new().intern(name),
     });
     (bundle, scope_reg)
 }

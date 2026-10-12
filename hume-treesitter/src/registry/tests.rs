@@ -3,8 +3,10 @@ use std::path::Path;
 use globset::Glob;
 
 use super::{
-    ConfigureOutcome, ConfiguredBy, LanguageId, LanguageRegistry, QueryPaths, detect_language,
+    BundledConfig, ConfigureOutcome, ConfiguredBy, LanguageId, LanguageRegistry, QueryPaths,
+    detect_language,
 };
+use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
 use test_fixtures::{
     grammar_parser_path, grammar_query_path, helix_textobjects_path, require_fixture_file,
@@ -324,8 +326,11 @@ fn set_id(
 fn fill_tsx_bundled(reg: &mut LanguageRegistry, id: LanguageId) {
     reg.fill_bundled(
         id,
-        Some(strings(&["package.json"])),
-        Some("typescriptreact".to_string()),
+        BundledConfig {
+            roots: Some(strings(&["package.json"])),
+            lsp_language_id: Some("typescriptreact".to_string()),
+            ..BundledConfig::default()
+        },
     );
 }
 
@@ -493,11 +498,143 @@ fn an_empty_bundled_fill_still_marks_the_language_loaded() {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity_no_rebuild("plain", &[], &[], &[]);
 
-    reg.fill_bundled(id, None, None);
+    reg.fill_bundled(id, BundledConfig::default());
 
     assert!(reg.bundled_loaded(id));
     assert!(reg.roots_of(id).is_empty());
     assert_eq!(reg.lsp_language_id_of(id), "plain");
+}
+
+fn line_tokens(tokens: &[&str]) -> LineCommentTokens {
+    LineCommentTokens::new(strings(tokens)).expect("valid line tokens")
+}
+
+fn block_tokens(pairs: &[(&str, &str)]) -> BlockCommentTokens {
+    BlockCommentTokens::new(
+        pairs
+            .iter()
+            .map(|(s, e)| ((*s).to_owned(), (*e).to_owned()))
+            .collect(),
+    )
+    .expect("valid block tokens")
+}
+
+fn fill_comment_tokens(reg: &mut LanguageRegistry, id: LanguageId) {
+    reg.fill_bundled(
+        id,
+        BundledConfig {
+            line_comment_tokens: Some(line_tokens(&["//"])),
+            block_comment_tokens: Some(block_tokens(&[("/*", "*/")])),
+            ..BundledConfig::default()
+        },
+    );
+}
+
+#[test]
+fn a_language_without_comment_tokens_has_none() {
+    let (reg, id) = tsx();
+    assert!(reg.comment_tokens_of(id).is_empty());
+}
+
+#[test]
+fn bundled_comment_tokens_fill_both_kinds() {
+    let (mut reg, id) = tsx();
+
+    fill_comment_tokens(&mut reg, id);
+
+    let tokens = reg.comment_tokens_of(id);
+    assert_eq!(tokens.line, Some(&line_tokens(&["//"])));
+    assert_eq!(tokens.block, Some(&block_tokens(&[("/*", "*/")])));
+}
+
+#[test]
+fn configured_line_tokens_keep_the_bundled_block_tokens() {
+    let (mut reg, id) = tsx();
+    assert_eq!(
+        reg.configure_line_comment_tokens(id, line_tokens(&["#"]), ConfiguredBy::User),
+        ConfigureOutcome::Applied
+    );
+
+    fill_comment_tokens(&mut reg, id);
+
+    let tokens = reg.comment_tokens_of(id);
+    assert_eq!(tokens.line, Some(&line_tokens(&["#"])));
+    assert_eq!(tokens.block, Some(&block_tokens(&[("/*", "*/")])));
+}
+
+#[test]
+fn configured_comment_tokens_replace_bundled_ones() {
+    let (mut reg, id) = tsx();
+    let user = ConfiguredBy::User;
+    fill_comment_tokens(&mut reg, id);
+
+    assert_eq!(
+        reg.configure_line_comment_tokens(id, line_tokens(&["#"]), user),
+        ConfigureOutcome::Applied
+    );
+    assert_eq!(
+        reg.configure_block_comment_tokens(id, block_tokens(&[("<!--", "-->")]), user),
+        ConfigureOutcome::Applied
+    );
+
+    let tokens = reg.comment_tokens_of(id);
+    assert_eq!(tokens.line, Some(&line_tokens(&["#"])));
+    assert_eq!(tokens.block, Some(&block_tokens(&[("<!--", "-->")])));
+}
+
+#[test]
+fn comment_tokens_follow_the_configurer_tiers() {
+    let (mut reg, id) = tsx();
+    let (user, plugin) = (ConfiguredBy::User, ConfiguredBy::Plugin);
+    assert_eq!(
+        reg.configure_block_comment_tokens(id, block_tokens(&[("/*", "*/")]), user),
+        ConfigureOutcome::Applied
+    );
+    assert_eq!(
+        reg.configure_block_comment_tokens(id, block_tokens(&[("(*", "*)")]), user),
+        ConfigureOutcome::Ignored
+    );
+    assert_eq!(
+        reg.configure_block_comment_tokens(id, block_tokens(&[("{-", "-}")]), plugin),
+        ConfigureOutcome::Shadowed
+    );
+    assert_eq!(
+        reg.configure_line_comment_tokens(id, line_tokens(&["--"]), plugin),
+        ConfigureOutcome::Applied
+    );
+    assert_eq!(
+        reg.configure_line_comment_tokens(id, line_tokens(&[";"]), plugin),
+        ConfigureOutcome::Ignored
+    );
+
+    let tokens = reg.comment_tokens_of(id);
+    assert_eq!(tokens.line, Some(&line_tokens(&["--"])));
+    assert_eq!(tokens.block, Some(&block_tokens(&[("/*", "*/")])));
+}
+
+#[test]
+fn an_attached_bundle_names_its_language() {
+    require_grammars(&["rust"]);
+    let hl_path = grammar_query_path("rust");
+    let mut reg = LanguageRegistry::new();
+    let mut scope_reg = ScopeRegistry::new();
+    reg.intern("markdown");
+
+    let bundle = reg
+        .attach_grammar(
+            "rust",
+            &grammar_parser_path("rust"),
+            "tree_sitter_rust",
+            QueryPaths {
+                highlights: &hl_path,
+                injections: None,
+                textobjects: None,
+            },
+            &mut scope_reg,
+        )
+        .expect("attach rust");
+
+    assert_eq!(Some(bundle.language), reg.id_of("rust"));
 }
 
 #[test]

@@ -6,6 +6,7 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 
 use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
+use hume_editing::comment::{BlockCommentTokens, CommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
 
 use crate::injections::InjectionsQuery;
@@ -68,8 +69,20 @@ struct LanguageConfig {
     /// File or directory names that make a directory this language's
     /// workspace root (e.g. `"Cargo.toml"`, `".git"`).
     roots: Option<Setting<Vec<String>>>,
+    line_comment_tokens: Option<Setting<LineCommentTokens>>,
+    block_comment_tokens: Option<Setting<BlockCommentTokens>>,
     /// Whether the bundled data file has been read, found or not.
     bundled_loaded: bool,
+}
+
+/// The values a language's bundled data file gives; `None` where the file
+/// has no entry.
+#[derive(Debug, Default)]
+pub struct BundledConfig {
+    pub roots: Option<Vec<String>>,
+    pub lsp_language_id: Option<String>,
+    pub line_comment_tokens: Option<LineCommentTokens>,
+    pub block_comment_tokens: Option<BlockCommentTokens>,
 }
 
 /// Result of a configured write.
@@ -133,6 +146,8 @@ pub struct GrammarBundle {
     /// / staleness checks compare this instead of `Arc::ptr_eq`, a plain
     /// integer identity that survives across the worker-thread boundary.
     pub config_gen: u32,
+    /// The language this grammar was attached for.
+    pub language: LanguageId,
 }
 
 /// The query files `attach_grammar` may compile for a grammar. `highlights`
@@ -330,6 +345,15 @@ impl LanguageRegistry {
             .map_or_else(|| self.name_of(id), |s| s.value.as_str())
     }
 
+    /// The comment tokens configured or bundled for `id`.
+    pub fn comment_tokens_of(&self, id: LanguageId) -> CommentTokens<'_> {
+        let config = &self.entry(id).config;
+        CommentTokens {
+            line: config.line_comment_tokens.as_ref().map(|s| &s.value),
+            block: config.block_comment_tokens.as_ref().map(|s| &s.value),
+        }
+    }
+
     /// The workspace root markers configured or bundled for `id`; empty when
     /// there are none.
     pub fn roots_of(&self, id: LanguageId) -> &[String] {
@@ -366,6 +390,34 @@ impl LanguageRegistry {
         )
     }
 
+    /// Set `id`'s line comment tokens from configuration.
+    pub fn configure_line_comment_tokens(
+        &mut self,
+        id: LanguageId,
+        tokens: LineCommentTokens,
+        by: ConfiguredBy,
+    ) -> ConfigureOutcome {
+        configure(
+            &mut self.entry_mut(id).config.line_comment_tokens,
+            tokens,
+            by,
+        )
+    }
+
+    /// Set `id`'s block comment pairs from configuration.
+    pub fn configure_block_comment_tokens(
+        &mut self,
+        id: LanguageId,
+        tokens: BlockCommentTokens,
+        by: ConfiguredBy,
+    ) -> ConfigureOutcome {
+        configure(
+            &mut self.entry_mut(id).config.block_comment_tokens,
+            tokens,
+            by,
+        )
+    }
+
     /// Whether `id`'s bundled data file has been read.
     pub fn bundled_loaded(&self, id: LanguageId) -> bool {
         self.entry(id).config.bundled_loaded
@@ -373,12 +425,13 @@ impl LanguageRegistry {
 
     /// Record that `id`'s bundled data file has been read, filling each field
     /// it gives a value for that is still unset.
-    pub fn fill_bundled(
-        &mut self,
-        id: LanguageId,
-        roots: Option<Vec<String>>,
-        lsp_language_id: Option<String>,
-    ) {
+    pub fn fill_bundled(&mut self, id: LanguageId, bundled: BundledConfig) {
+        let BundledConfig {
+            roots,
+            lsp_language_id,
+            line_comment_tokens,
+            block_comment_tokens,
+        } = bundled;
         let config = &mut self.entry_mut(id).config;
         config.bundled_loaded = true;
         if let Some(roots) = roots {
@@ -386,6 +439,12 @@ impl LanguageRegistry {
         }
         if let Some(lsp_language_id) = lsp_language_id {
             fill(&mut config.lsp_language_id, lsp_language_id);
+        }
+        if let Some(tokens) = line_comment_tokens {
+            fill(&mut config.line_comment_tokens, tokens);
+        }
+        if let Some(tokens) = block_comment_tokens {
+            fill(&mut config.block_comment_tokens, tokens);
         }
     }
 
@@ -616,6 +675,7 @@ impl LanguageRegistry {
             injections,
             textobjects,
             config_gen,
+            language: id,
         });
         self.entry_mut(id).grammar = Some(Arc::clone(&bundle));
         self.rebuild_grammar_snapshot();
