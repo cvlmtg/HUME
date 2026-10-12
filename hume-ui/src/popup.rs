@@ -379,11 +379,15 @@ const MIN_SIDE_POPUP_WIDTH: u16 = 20;
 /// Resolve a popup placed beside `beside`, another box's outer rect in
 /// `pane_rect` (the completion menu's): to its right when at least
 /// `MIN_SIDE_POPUP_WIDTH` cells fit there, else to its left, else `None`.
-/// Its top edge is level with `beside`'s; it grows to the taller of
-/// `beside` and a third of the pane, and stops at the pane's bottom.
+/// It grows to the taller of `beside` and a third of the pane, away from
+/// `anchor_row`, the row `beside` was placed against: below it, its top
+/// edge is level with `beside`'s and it stops at the pane's bottom; above
+/// it, its bottom edge is, and it stops at the pane's top. Either way it
+/// never covers the anchor row.
 pub fn resolve_side_popup(
     content: &mut PopupContent,
     beside: Rect,
+    anchor_row: u16,
     pane_rect: Rect,
     border: bool,
 ) -> Option<PopupState> {
@@ -396,10 +400,13 @@ pub fn resolve_side_popup(
     } else {
         return None;
     };
-    let max_outer_h = beside
-        .height
-        .max(pane_rect.height / 3)
-        .min(pane_rect.bottom().saturating_sub(beside.y));
+    let above = beside.bottom() <= anchor_row;
+    let vertical_room = if above {
+        beside.bottom().saturating_sub(pane_rect.y)
+    } else {
+        pane_rect.bottom().saturating_sub(beside.y)
+    };
+    let max_outer_h = beside.height.max(pane_rect.height / 3).min(vertical_room);
     if max_outer_h < 3 {
         return None;
     }
@@ -416,7 +423,16 @@ pub fn resolve_side_popup(
     Some(PopupState {
         lines: Arc::clone(&wrapped.lines),
         visible: super::menu_box::window_range(total_rows, 0, (outer_h - 2) as usize),
-        rect: Rect::new(x, beside.y, outer_w, outer_h),
+        rect: Rect::new(
+            x,
+            if above {
+                beside.bottom() - outer_h
+            } else {
+                beside.y
+            },
+            outer_w,
+            outer_h,
+        ),
         selected: None,
         total_rows,
         scroll: 0,

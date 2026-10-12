@@ -23,13 +23,16 @@ use super::session::{BufferSession, Invocation, LiveDoc, MinibufSession, Reconci
 use super::{CompletionCtx, CompletionItem, arg_span};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{
-    BufferCompletionLayer, InsertLayer, LayerRef, MinibufCompletionLayer,
+    BufferCompletionLayer, DocView, InsertLayer, LayerRef, MinibufCompletionLayer,
 };
 use crate::editor::lsp::{RustDelivery, RustResponder};
 use crate::editor::registry::CommandRegistry;
 use crate::editor::replay::Interactive;
 use crate::editor::settings::{CommandCompletion, EditorSettings};
 use crate::editor::{EditorState, Severity};
+
+/// The supersede key of the selected candidate's documentation request.
+const COMPLETION_DOC_SUPERSEDE: &str = "completion-doc";
 
 /// What set an Insert-mode trigger in motion, and so which sources it
 /// invokes.
@@ -126,7 +129,13 @@ impl EditorState {
             self.report(Severity::Info, "no completions".to_string());
             return;
         }
-        self.push_layer(view, BufferCompletionLayer { session, doc: None });
+        self.push_layer(
+            view,
+            BufferCompletionLayer {
+                session,
+                doc: DocView::default(),
+            },
+        );
     }
 
     /// Brings the open `Buffer` session in line with the buffer's current
@@ -188,14 +197,21 @@ impl EditorState {
                 self.settle_buffer_completion(view, false);
             }
         }
-        self.request_selected_completion_doc();
+    }
+
+    /// Cancels the selected candidate's documentation request, for a
+    /// session leaving the input stack: nothing would read its answer.
+    pub(in crate::editor) fn cancel_completion_doc(&mut self) {
+        self.cancel_superseded(COMPLETION_DOC_SUPERSEDE);
     }
 
     /// Asks the selected candidate's server for its documentation, through
     /// `completionItem/resolve`, unless it has it already or the request is
     /// in flight ([`BufferSession::doc_request`]). Docs carry no buffer
-    /// position, so the reply is delivered even after further typing.
-    fn request_selected_completion_doc(&mut self) {
+    /// position, so the reply is delivered even after further typing. Sent
+    /// from the settle pass only: accepting or reusing a session takes it
+    /// out before its reply could matter.
+    pub(in crate::editor) fn request_selected_completion_doc(&mut self) {
         if !self.settings.completion_docs {
             return;
         }
@@ -206,15 +222,14 @@ impl EditorState {
         let Some(request) = session.doc_request(&self.config.completion_sources) else {
             return;
         };
-        let key = request.key;
+        let (key, version) = (request.key, request.version);
         let respond: RustResponder = Box::new(move |state, _view, result| {
             let Some(session) = state.input.buffer_completion_mut() else {
                 return;
             };
             match result {
-                Ok(reply) => session.finish_doc_request(key, Some(&reply)),
+                Ok(reply) => session.finish_doc_request(key, version, &reply),
                 Err(message) => {
-                    session.finish_doc_request(key, None);
                     state.report(Severity::Trace, format!("lsp completion docs: {message}"));
                 }
             }
@@ -226,7 +241,7 @@ impl EditorState {
             request.params,
             RustDelivery {
                 allow_stale: true,
-                supersede: Some("completion-doc"),
+                supersede: Some(COMPLETION_DOC_SUPERSEDE),
             },
             respond,
         );

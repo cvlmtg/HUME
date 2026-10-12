@@ -200,16 +200,18 @@ pub(in crate::editor) struct BufferSession {
     /// changes (an answer lands, a slot is dropped), not every keystroke;
     /// [`Self::rank`] only ever reads it.
     dedup_hidden: rustc_hash::FxHashSet<(u32, u32)>,
-    /// The item whose documentation `completionItem/resolve` is in flight.
-    /// At most one is: each new request supersedes the last, whose reply is
-    /// then never delivered.
-    doc_inflight: Option<ItemKey>,
+    /// The selected item whose documentation was last asked for. It is not
+    /// asked again until the selection leaves it: a request that failed or
+    /// never called back is retried on the next visit, not on every settle.
+    doc_asked: Option<ItemKey>,
     core: SlotSet<BufferSourceId, BufferSpan>,
 }
 
 /// A `completionItem/resolve` to send for the selected item's documentation.
 pub(in crate::editor) struct DocRequest {
     pub(in crate::editor) key: ItemKey,
+    /// The text the request is sent against.
+    pub(in crate::editor) version: TextVersion,
     pub(in crate::editor) server: hume_lsp::backend::ServerId,
     pub(in crate::editor) params: serde_json::Value,
 }
@@ -232,7 +234,7 @@ impl BufferSession {
             explicit: false,
             menu_anchor: None,
             dedup_hidden: rustc_hash::FxHashSet::default(),
-            doc_inflight: None,
+            doc_asked: None,
             core: SlotSet::new(),
         }
     }
@@ -272,7 +274,8 @@ impl BufferSession {
     }
 
     /// Lands an answer for invocation `id`, grouping its items by their own
-    /// edit-range start. Then, if it landed, rebuilds [`Self::dedup_hidden`]
+    /// edit-range start and keeping the resolutions of the candidates it
+    /// repeats from the answer it replaces. Then, if it landed, rebuilds [`Self::dedup_hidden`]
     /// against the item set as it now stands.
     pub(in crate::editor) fn contribute(
         &mut self,
@@ -281,12 +284,13 @@ impl BufferSession {
         items: Vec<CompletionItem>,
         incomplete: bool,
     ) -> bool {
-        let landed = self
-            .core
-            .contribute(id, items, incomplete, |source, span, items| {
-                let may_resolve = sources.buffer_get(source).resolve;
-                span.assign_token_groups(items, may_resolve);
-            });
+        let landed =
+            self.core
+                .contribute(id, items, incomplete, |source, span, items, previous| {
+                    let may_resolve = sources.buffer_get(source).resolve;
+                    span.assign_token_groups(items, may_resolve);
+                    CompletionItem::carry_resolutions(previous, items);
+                });
         if landed {
             self.recompute_dedup(sources);
         }
@@ -538,49 +542,45 @@ impl BufferSession {
     }
 
     /// The resolve that would fetch the selected item's documentation, and
-    /// marks it in flight. `None` when the item is already resolved or in
-    /// flight, its source did not declare `#:resolve`, or it has no server
-    /// item to resolve.
+    /// marks it asked. `None` when the item's docs are known or it was asked
+    /// since it was selected, its source did not declare `#:resolve`, or it
+    /// has no server item to resolve.
     pub(in crate::editor) fn doc_request(
         &mut self,
         sources: &SourceRegistry,
     ) -> Option<DocRequest> {
         let idx = self.core.selected();
         let key = self.core.key_at(idx)?;
-        let (source, _, item) = self.core.ranked(idx)?;
-        if item.resolved || self.doc_inflight == Some(key) || !sources.buffer_get(source).resolve {
+        if self.doc_asked == Some(key) {
             return None;
         }
-        let raw = item.raw.as_ref()?;
-        let hume_scripting::json::WireOrigin::Server { id: server, .. } = raw.origin() else {
+        self.doc_asked = None;
+        let (source, _, item) = self.core.ranked(idx)?;
+        if item.docs_known() || !sources.buffer_get(source).resolve {
             return None;
-        };
+        }
+        let (server, raw) = item.resolve_target()?;
         let params = raw.value().clone();
-        self.doc_inflight = Some(key);
+        self.doc_asked = Some(key);
         Some(DocRequest {
             key,
+            version: self.version,
             server,
             params,
         })
     }
 
-    /// Records the server's reply to the [`DocRequest`] for `key`, `None`
-    /// for a failed one. The item counts as resolved either way, so a
-    /// server that cannot answer is not asked again.
+    /// Records the server's reply to the [`DocRequest`] for `key`, sent
+    /// against the text at `version`. A reply for an item off the menu
+    /// is dropped.
     pub(in crate::editor) fn finish_doc_request(
         &mut self,
         key: ItemKey,
-        reply: Option<&serde_json::Value>,
+        version: TextVersion,
+        reply: &serde_json::Value,
     ) {
-        if self.doc_inflight == Some(key) {
-            self.doc_inflight = None;
-        }
-        let Some(item) = self.core.item_mut(key) else {
-            return;
-        };
-        match reply {
-            Some(reply) => item.apply_resolved(reply),
-            None => item.resolved = true,
+        if let Some(item) = self.core.item_mut(key) {
+            item.apply_resolved(reply, version);
         }
     }
 

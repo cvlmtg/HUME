@@ -218,19 +218,31 @@ the item's own source declared `#:resolve #t` at registration, it lacked
 `additionalTextEdits`, and the server offers `resolveProvider` — the source
 flag (`core:lsp` sets it, `core:buffer-words` doesn't) keeps a second
 `Buffer` source sharing the same LSP-attached buffer from having a resolve
-request sent for an item the server never produced.
+request sent for an item the server never produced. When the selection-time
+resolve below already answered for the item against the same text
+(`CompletionItem::resolved_reply_for`), accept applies that answer's
+`additionalTextEdits` instead of asking again; an answer to an older text
+counts its positions in a text accept cannot read them against.
 
-A second resolve runs on selection, for documentation. Every
-`reconcile_completion` pass (each settle, each Insert keystroke) asks the
-session for the selected item's `DocRequest`, sent under one supersede key:
-it is skipped for an item already resolved (its `documentation` came with
-it, or a resolve answered, even with an error), for the item already in
-flight, and under the same source and server gates as accept's. The reply
-carries no buffer position, so it is delivered after further typing too; it
-finds its item by `ItemKey` (the invocation id plus the item's index in
-it), so a reply whose answer is off the menu lands nowhere. A resolve that
-a newer one superseded is never answered, which is why the session holds
-the one in-flight key rather than marking items pending. The setting
+A second resolve runs on selection, for documentation. Each settle pass,
+after `reconcile_completion`, asks the session for the selected item's
+`DocRequest`, sent under one supersede key. Accepting takes the session
+out without one, and dismissing or accepting cancels the one in flight,
+since nothing would read its reply. The request is skipped for an
+item whose docs are known (its `documentation` came with it, or a resolve
+answered), for the item already asked since it was selected, and under the
+same source and server gates as accept's. The session holds that one asked
+key rather than marking items pending: a superseded resolve is never
+answered, and a failed one (`ContentModified` mid-edit, a timeout) or one
+that never went out leaves the item unresolved, asked again on its next
+selection rather than on every settle. The reply carries no buffer position
+the box reads, so it is delivered after further typing too; it finds its
+item by `ItemKey` (the invocation id plus the item's index in it), so a
+reply whose answer is off the menu lands nowhere. A source's new answer
+(an `isIncomplete` one, re-invoked each keystroke) takes over the
+resolutions of the answer it replaces, matched by label and kind
+(`CompletionItem::carry_resolutions`), so a repeated candidate keeps its
+docs without a new request. The setting
 `completion-docs` turns this off with the box below.
 
 ### The `:` line
@@ -260,11 +272,18 @@ the sources with a ranked candidate.
 
 The Insert-mode menu has a documentation box beside it
 (`OverlayViews::completion_doc`), placed by
-`hume_ui::popup::resolve_side_popup`: right of the menu, else left, top
-edges level, else not drawn. It shows the selected item's `detail` and
-`documentation` (`CompletionItem::doc_box_text`), highlighted as markdown
-when the documentation is markdown, built once per item and resolve state
-(`BufferCompletionLayer::doc`) and dropped on a theme change.
+`hume_ui::popup::resolve_side_popup`: right of the menu, else left, else
+not drawn. It grows away from the cursor row as the menu does: top edges
+level when the menu opens below the cursor, bottom edges level when it opens
+above, so it never covers the line being typed. It shows the selected item's `detail` and
+`documentation` (`CompletionItem::doc_box_text`), each the item's own or
+else a resolve's answer, and is not drawn for an item without documentation,
+whose `detail` the menu row already shows. A resolve's answer is kept apart
+from the item's own fields (`CompletionItem::resolution`), so it never
+changes the menu row. Markdown documentation is highlighted. The box's
+content is built once per text in a session (`DocView`): going back to a
+candidate, or meeting it again in its source's next answer, reuses it, and a
+theme change drops it.
 
 ## Steel surface
 

@@ -145,6 +145,26 @@ fn doc_box_follows_the_selection() {
     assert_eq!(lines, ["Does foobar."]);
 }
 
+/// Going back to a candidate reuses the box built for it, markdown parse
+/// included.
+#[test]
+fn doc_box_content_is_built_once_per_candidate() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(&mut ed, tmp.path(), DOCUMENTED);
+    frame(&mut ed, 60, 16);
+    for _ in 0..3 {
+        ed.feed_key(key_tab());
+        frame(&mut ed, 60, 16);
+    }
+    let builds = ed
+        .state
+        .input
+        .find::<crate::editor::input_stack::BufferCompletionLayer>()
+        .map(|layer| layer.doc.builds);
+    assert_eq!(builds, Some(2));
+}
+
 #[test]
 fn doc_box_flips_left_of_a_menu_near_the_right_edge() {
     let tmp = tempfile::tempdir().unwrap();

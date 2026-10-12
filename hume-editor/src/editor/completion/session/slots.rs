@@ -301,14 +301,15 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     /// latest call of any slot here: a superseded or already-replaced
     /// invocation, expected-normal for a late async source, never an
     /// error.
-    /// `prepare` sees the answering source, the invocation's span and the
-    /// items before they are stored.
+    /// `prepare` sees the answering source, the invocation's span, the
+    /// items before they are stored, and the items of the shown answer they
+    /// replace (empty when there is none).
     pub(super) fn contribute(
         &mut self,
         id: u64,
         mut items: Vec<CompletionItem>,
         incomplete: bool,
-        prepare: impl FnOnce(Id, &mut S, &mut [CompletionItem]),
+        prepare: impl FnOnce(Id, &mut S, &mut [CompletionItem], &mut [CompletionItem]),
     ) -> bool {
         let Some(slot) = self.slots.iter_mut().find(|s| s.latest_id() == Some(id)) else {
             return false;
@@ -320,7 +321,12 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
                 .take()
                 .expect("latest_id came from one of the two"),
         };
-        prepare(slot.source, &mut invocation.span, &mut items);
+        let previous = slot
+            .shown
+            .as_mut()
+            .and_then(Invocation::items_mut)
+            .unwrap_or(&mut []);
+        prepare(slot.source, &mut invocation.span, &mut items, previous);
         invocation.state = InvocationState::Shown { items, incomplete };
         slot.shown = Some(invocation);
         true

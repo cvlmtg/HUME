@@ -38,9 +38,9 @@ pub struct PendingCompletionSource {
     pub priority: i64,
     /// `#:resolve`: the source's own claim that its items are wire
     /// `CompletionItem`s from the buffer's attached LSP server, so
-    /// `completionItem/resolve` may be sent for them on accept. `Buffer`-
-    /// target only; the builtin layer rejects `#t` on a `'minibuf` source
-    /// before this is ever constructed (see `builtins/completion.rs`'s
+    /// `completionItem/resolve` may be sent for a selected or accepted one.
+    /// `Buffer`-target only; the builtin layer rejects `#t` on a `'minibuf`
+    /// source before this is ever constructed (see `builtins/completion.rs`'s
     /// `register_completion_source`).
     pub resolve: bool,
     /// `#:token-chars`: characters that belong to this source's token on

@@ -4,6 +4,10 @@ use super::*;
 /// wraps `v` as the sole element of a one-item response handle and decodes
 /// it through the real `from_json`, so `item.raw` (when present) resolves
 /// back to `v` exactly as it would in production.
+fn version() -> hume_editing::text::TextVersion {
+    hume_editing::text::BufferText::from("\n").version()
+}
+
 fn from_json(v: serde_json::Value) -> Option<CompletionItem> {
     from_json_with_default(v, None)
 }
@@ -296,14 +300,16 @@ fn a_markup_documentation_decodes_as_markdown_unless_its_kind_is_plaintext() {
 }
 
 #[test]
-fn an_item_without_documentation_is_unresolved_and_one_with_it_is_resolved() {
-    let bare = from_json(serde_json::json!({"label": "foo"})).expect("well-formed item");
+fn an_items_docs_are_known_once_sent_with_it_or_resolved() {
+    let mut bare = from_json(serde_json::json!({"label": "foo"})).expect("well-formed item");
     assert_eq!(bare.documentation, None);
-    assert!(!bare.resolved);
+    assert!(!bare.docs_known());
+    bare.apply_resolved(&serde_json::json!({"label": "foo"}), version());
+    assert!(bare.docs_known());
 
     let documented = from_json(serde_json::json!({"label": "foo", "documentation": "Does foo."}))
         .expect("well-formed item");
-    assert!(documented.resolved);
+    assert!(documented.docs_known());
 }
 
 #[test]
@@ -314,27 +320,79 @@ fn a_malformed_documentation_is_dropped_not_the_item() {
 }
 
 #[test]
-fn apply_resolved_fills_only_the_missing_fields_and_marks_the_item_resolved() {
+fn the_doc_box_prefers_the_items_own_fields_over_the_resolved_ones() {
     let mut item = from_json(serde_json::json!({"label": "foo", "detail": "fn foo()"}))
         .expect("well-formed item");
-    item.apply_resolved(&serde_json::json!({
-        "label": "foo",
-        "detail": "fn foo() -> u8",
-        "documentation": {"kind": "markdown", "value": "Does foo."},
-    }));
-    assert_eq!(item.detail.as_deref(), Some("fn foo()"));
+    item.apply_resolved(
+        &serde_json::json!({
+            "label": "foo",
+            "detail": "fn foo() -> u8",
+            "documentation": {"kind": "markdown", "value": "Does foo."},
+        }),
+        version(),
+    );
     assert_eq!(
-        item.documentation,
+        item.doc_box_text("rust"),
         Some(Documentation {
-            text: "Does foo.".to_string(),
+            text: "```rust\nfn foo()\n```\n\nDoes foo.".to_string(),
             markdown: true,
         })
     );
-    assert!(item.resolved);
 
     let mut bare = from_json(serde_json::json!({"label": "bar"})).expect("well-formed item");
-    bare.apply_resolved(&serde_json::json!({"label": "bar", "detail": "fn bar()"}));
-    assert_eq!(bare.detail.as_deref(), Some("fn bar()"));
-    assert_eq!(bare.documentation, None);
-    assert!(bare.resolved);
+    bare.apply_resolved(
+        &serde_json::json!({
+            "label": "bar",
+            "detail": "fn bar()",
+            "documentation": "Does bar.",
+        }),
+        version(),
+    );
+    assert_eq!(
+        bare.doc_box_text("rust"),
+        Some(Documentation {
+            text: "fn bar()\n\nDoes bar.".to_string(),
+            markdown: false,
+        })
+    );
+}
+
+#[test]
+fn a_resolved_detail_leaves_the_menu_row_unchanged() {
+    let mut item = from_json(serde_json::json!({"label": "foo"})).expect("well-formed item");
+    item.apply_resolved(
+        &serde_json::json!({"label": "foo", "detail": "fn foo() -> u8"}),
+        version(),
+    );
+    assert_eq!(item.menu_row().trailing, None);
+}
+
+#[test]
+fn an_item_with_detail_but_no_documentation_has_no_doc_box() {
+    let mut item = from_json(serde_json::json!({"label": "foo", "detail": "fn foo()"}))
+        .expect("well-formed item");
+    assert_eq!(item.doc_box_text("rust"), None);
+    item.apply_resolved(
+        &serde_json::json!({"label": "foo", "detail": "fn foo() -> u8"}),
+        version(),
+    );
+    assert_eq!(item.doc_box_text("rust"), None);
+}
+
+#[test]
+fn a_resolution_carries_only_to_a_new_item_with_the_same_label_and_kind() {
+    let mut previous = vec![
+        from_json(serde_json::json!({"label": "foo", "kind": 3})).expect("well-formed item"),
+        from_json(serde_json::json!({"label": "bar", "kind": 3})).expect("well-formed item"),
+    ];
+    for item in &mut previous {
+        item.apply_resolved(&serde_json::json!({"documentation": "Docs."}), version());
+    }
+    let mut items = vec![
+        from_json(serde_json::json!({"label": "foo", "kind": 3})).expect("well-formed item"),
+        from_json(serde_json::json!({"label": "bar", "kind": 6})).expect("well-formed item"),
+    ];
+    CompletionItem::carry_resolutions(&mut previous, &mut items);
+    assert!(items[0].docs_known());
+    assert!(!items[1].docs_known());
 }

@@ -265,10 +265,8 @@ impl EditorState {
         req: PendingLspRequest,
     ) {
         self.lsp_flush_pending();
-        if let Some(key) = &req.supersede
-            && let Some(old) = self.lsp.deliveries.in_flight_under(key)
-        {
-            self.cancel_delivery(old);
+        if let Some(key) = &req.supersede {
+            self.cancel_superseded(key);
         }
         let members = match self.request_members(&req) {
             Ok(members) => members,
@@ -321,10 +319,8 @@ impl EditorState {
             return;
         };
         self.lsp_flush_pending();
-        if let Some(key) = delivery.supersede
-            && let Some(old) = self.lsp.deliveries.in_flight_under(key)
-        {
-            self.cancel_delivery(old);
+        if let Some(key) = delivery.supersede {
+            self.cancel_superseded(key);
         }
         let spec = DeliverySpec {
             anchor: ResponseAnchor {
@@ -587,6 +583,14 @@ impl EditorState {
             }
         };
         self.queue_steel_call_anchored(callback, args, delivery.anchor);
+    }
+
+    /// Drops the delivery in flight under supersede `key`, if any, without
+    /// calling it back.
+    pub(in crate::editor) fn cancel_superseded(&mut self, key: &str) {
+        if let Some(did) = self.lsp.deliveries.in_flight_under(key) {
+            self.cancel_delivery(did);
+        }
     }
 
     /// Drops `did` without calling it back: every request it still has in

@@ -318,8 +318,38 @@ fn band_visible_rows_reserves_the_frame_row_pair_below_the_cap() {
 
 // ── Side popup ───────────────────────────────────────────────────────────────
 
+/// `beside` sits below its anchor row, as a menu opening downward does.
 fn side(text: &str, beside: Rect, pane: Rect) -> Option<PopupState> {
-    resolve_side_popup(&mut PopupContent::plain(text), beside, pane, true)
+    resolve_side_popup(
+        &mut PopupContent::plain(text),
+        beside,
+        beside.y.saturating_sub(1),
+        pane,
+        true,
+    )
+}
+
+#[test]
+fn side_popup_beside_a_box_above_its_anchor_grows_upward_from_its_bottom_edge() {
+    let text = (0..12)
+        .map(|i| format!("line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let beside = rect(10, 10, 20, 6);
+    let anchor_row = beside.bottom();
+    let state = resolve_side_popup(
+        &mut PopupContent::plain(&text),
+        beside,
+        anchor_row,
+        rect(0, 0, 80, 24),
+        true,
+    )
+    .expect("room on the right");
+    assert_eq!(state.rect.bottom(), beside.bottom());
+    assert_eq!(
+        state.rect.height, 8,
+        "a third of the pane, taller than the box"
+    );
 }
 
 #[test]

@@ -19,9 +19,9 @@ fn full_completion_caps() -> serde_json::Value {
     })
 }
 
-/// Turns off the selection-time docs resolve, for a test that counts or
-/// scripts the accept-time one: the scripted backend answers resolves in
-/// order, so a docs request would take the reply meant for accept.
+/// Turns off the selection-time docs resolve, for a test of the resolve
+/// accept sends itself: a docs request would take the scripted reply, and
+/// accept would apply that one instead of asking.
 fn without_completion_docs(ed: &mut Editor) {
     ed.state.settings.completion_docs = false;
 }
@@ -642,6 +642,90 @@ fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_
     );
 }
 
+fn auto_import_resolve() -> serde_json::Value {
+    serde_json::json!({
+        "label": "bar",
+        "documentation": "Does bar.",
+        "additionalTextEdits": [
+            {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}},
+             "newText": "use std::bar;\n"}
+        ]
+    })
+}
+
+/// The selected item's docs resolve answered before Enter, against the text
+/// accept edits: accept applies that answer's `additionalTextEdits` and
+/// asks the server nothing more.
+#[test]
+fn accept_reuses_the_docs_resolve_answered_for_the_same_text() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, requests) = setup_trigger_char_feature(
+        tmp.path(),
+        "\nfoo\n",
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar", "insertText": "bar"}]),
+            );
+            backend.respond_to("completionItem/resolve", auto_import_resolve());
+        },
+    );
+    set_cursor(&mut ed, 1);
+
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    settle(&mut ed);
+    assert_eq!(request_count(&requests, "completionItem/resolve"), 1);
+
+    ed.feed_key(key_enter());
+    settle(&mut ed);
+
+    assert_eq!(ed.doc().text().to_string(), "use std::bar;\n\nbarfoo\n");
+    assert_eq!(request_count(&requests, "completionItem/resolve"), 1);
+}
+
+/// A docs resolve answered before further typing counted its positions in
+/// an older text: accept asks again instead of applying it.
+#[test]
+fn accept_resolves_again_when_the_text_changed_since_the_docs_resolve() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, requests) = setup_trigger_char_feature(
+        tmp.path(),
+        "\nfoo\n",
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar", "insertText": "bar"}]),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "bar"}),
+            );
+            backend.respond_to("completionItem/resolve", auto_import_resolve());
+        },
+    );
+    set_cursor(&mut ed, 1);
+
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    settle(&mut ed);
+    ed.feed_key(key('b'));
+    settle(&mut ed);
+    assert_eq!(request_count(&requests, "completionItem/resolve"), 1);
+
+    ed.feed_key(key_enter());
+    settle(&mut ed);
+
+    assert_eq!(request_count(&requests, "completionItem/resolve"), 2);
+    assert_eq!(ed.doc().text().to_string(), "use std::bar;\n\nbarfoo\n");
+}
+
 #[test]
 fn null_resolve_response_is_a_clean_no_op() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1035,4 +1119,109 @@ fn completion_docs_off_sends_no_selection_time_resolve() {
     ed.feed_key(key_tab());
     settle(&mut ed);
     assert_eq!(request_count(&requests, "completionItem/resolve"), 0);
+}
+
+/// A failed docs resolve (a server answering `ContentModified` mid-edit, a
+/// timeout) is asked again once the candidate is selected anew, but not
+/// while it stays selected.
+#[test]
+fn a_failed_docs_resolve_is_retried_when_the_candidate_is_selected_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, requests) =
+        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([
+                    {"label": "bar", "sortText": "1"},
+                    {"label": "baz", "sortText": "2"},
+                ]),
+            );
+            backend.fail_with("completionItem/resolve", -32801, "content modified");
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "baz", "documentation": "Baz docs."}),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "bar", "documentation": "Bar docs."}),
+            );
+        });
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    settle(&mut ed);
+    settle(&mut ed);
+    assert_eq!(resolve_params(&requests).len(), 1);
+    assert_eq!(selected_doc(&ed), None);
+
+    ed.feed_key(key_tab());
+    settle(&mut ed);
+    ed.feed_key(key_tab());
+    settle(&mut ed);
+    assert_eq!(resolve_params(&requests).len(), 3);
+    assert_eq!(selected_doc(&ed).as_deref(), Some("Bar docs."));
+}
+
+/// Leaving the menu cancels the docs resolve still in flight, Esc and
+/// Enter alike: nothing would read its answer.
+#[test]
+fn closing_the_menu_cancels_the_docs_resolve_in_flight() {
+    for close in [key_esc(), key_enter()] {
+        let tmp = tempfile::tempdir().unwrap();
+        let (mut ed, _guard, _requests) =
+            setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+                backend.respond_to(
+                    "textDocument/completion",
+                    serde_json::json!([{"label": "bar", "additionalTextEdits": []}]),
+                );
+            });
+        ed.feed_key(key('i'));
+        ed.settle();
+        ed.feed_key(key_ctrl(' '));
+        settle(&mut ed);
+        assert_eq!(
+            ed.state.lsp.callback_count_for_test(),
+            1,
+            "sanity: the docs resolve is in flight"
+        );
+
+        ed.feed_key(close);
+        ed.settle();
+        assert_eq!(ed.state.lsp.callback_count_for_test(), 0);
+    }
+}
+
+/// An `isIncomplete` source is asked again on every keystroke: a candidate
+/// its new answer repeats (same label and kind) keeps the docs already
+/// resolved for it, with no new request.
+#[test]
+fn a_re_requested_answer_keeps_the_docs_resolved_for_a_repeated_candidate() {
+    let tmp = tempfile::tempdir().unwrap();
+    let incomplete = serde_json::json!({
+        "isIncomplete": true,
+        "items": [{"label": "foo", "kind": 3, "insertText": "foo"}],
+    });
+    let (mut ed, _guard, requests) =
+        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+            backend.respond_to("textDocument/completion", incomplete.clone());
+            backend.respond_to("textDocument/completion", incomplete);
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "foo", "documentation": "Foo docs."}),
+            );
+        });
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    settle(&mut ed);
+    assert_eq!(selected_doc(&ed).as_deref(), Some("Foo docs."));
+
+    ed.feed_key(key('f'));
+    settle(&mut ed);
+    settle(&mut ed);
+    assert_eq!(request_count(&requests, "textDocument/completion"), 2);
+    assert_eq!(resolve_params(&requests).len(), 1);
+    assert_eq!(selected_doc(&ed).as_deref(), Some("Foo docs."));
 }

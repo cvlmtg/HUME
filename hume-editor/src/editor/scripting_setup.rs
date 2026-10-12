@@ -317,6 +317,7 @@ impl Editor {
             // it is reconciled on every pass, like `detect_buffer_enter`'s
             // focus check. A `Minibuf` session watches no buffer.
             self.state.reconcile_completion(&self.view);
+            self.state.request_selected_completion_doc();
             // Inside the fixpoint, not outside it like `drain_async_sources`:
             // a *synchronous* handler that reacts to its own buffer's edit
             // (auto-format, trim-on-change) is a feedback loop, and only

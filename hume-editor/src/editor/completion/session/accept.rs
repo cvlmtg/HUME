@@ -3,7 +3,7 @@
 //! every cursor, then best-effort `completionItem/resolve`.
 
 use hume_editing::changeset::Assoc;
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::offset::CharOffset;
 
 use hume_lsp::completion_item::parse_additional_text_edits_lenient;
@@ -46,7 +46,9 @@ impl BufferSession {
     /// same delivery and anchor machinery every other
     /// `lsp-request!` uses, dropped silently if the buffer has moved past
     /// the accept's own generation by then, same staleness discipline as
-    /// any other LSP response). Without the source's own flag, an item from
+    /// any other LSP response). A selection-time resolve that already
+    /// answered for this item against this same text is applied at once
+    /// instead of asking again. Without the source's own flag, an item from
     /// a source that merely *shares* an LSP-attached buffer
     /// (`core:buffer-words`) would otherwise send the server an item it
     /// never produced. The server has no way to recognize it (most key a
@@ -126,7 +128,17 @@ impl BufferSession {
         });
 
         if may_resolve && !item.has_additional_text_edits {
-            self.maybe_send_resolve(state, item, rope_pre, accept_cs, encoding);
+            let base = ResolveBase {
+                pid,
+                bid,
+                rope_pre,
+                accept_cs,
+                encoding,
+            };
+            match item.resolved_reply_for(self.version) {
+                Some(reply) => base.apply(state, view, reply),
+                None => self.maybe_send_resolve(state, item, base),
+            }
         }
         Ok(())
     }
@@ -446,50 +458,30 @@ impl BufferSession {
 
     /// Sends `completionItem/resolve` to the server the item came from, when
     /// that server is still attached to the buffer, running, and advertised
-    /// `completionProvider.resolveProvider`. Best-effort: a resolution error,
-    /// timeout, or a server that's gone by send time only logs, it never fails
-    /// the accept that already landed. `self`'s own pane/buffer (already
-    /// validated by `accept`, this method's only caller) rides along in the
-    /// response callback's own closure rather than being re-read from live focus
-    /// when the response arrives, so a focus change while the request is in
-    /// flight can't redirect the resolved edit to the wrong pane.
+    /// `completionProvider.resolveProvider`, and applies the answer's
+    /// `additionalTextEdits` on top of `base`. Best-effort: a resolution
+    /// error, timeout, or a server that's gone by send time only logs, it
+    /// never fails the accept that already landed. `base` rides along in the
+    /// response callback rather than being re-read from live focus when the
+    /// response arrives, so a focus change while the request is in flight
+    /// can't redirect the resolved edit to the wrong pane.
     fn maybe_send_resolve(
         &self,
         state: &mut EditorState,
         item: &CompletionItem,
-        rope_pre: ropey::Rope,
-        accept_cs: hume_editing::changeset::ChangeSet,
-        encoding: hume_rope::position_encoding::PositionEncoding,
+        base: ResolveBase,
     ) {
-        let (pid, bid) = (self.pane_id, self.bid());
         // A `#:resolve #t` source's items are always real LSP items in
-        // practice, so `raw` is always `Some` here, but resolving is
+        // practice, so the target is always there, but resolving is
         // best-effort by this function's own contract, so a plain item (no
         // wire payload to resolve against) is skipped rather than assumed
         // impossible.
-        let Some(raw) = &item.raw else {
+        let Some((server_id, raw)) = item.resolve_target() else {
             return;
         };
-        let hume_scripting::json::WireOrigin::Server { id: server_id, .. } = raw.origin() else {
-            return;
-        };
-
+        let bid = base.bid;
         let respond: RustResponder = Box::new(move |state, view, result| match result {
-            Ok(resolved) => {
-                let resolved_edits = parse_additional_text_edits_lenient(&resolved);
-                let result = edits::build_edits_from_earlier_document(
-                    &rope_pre,
-                    &accept_cs,
-                    encoding,
-                    &resolved_edits,
-                )
-                .and_then(|char_edits| {
-                    edits::commit_char_edits(state, &view.panes, pid, bid, char_edits)
-                });
-                if let Err(e) = result {
-                    state.report(Severity::Error, format!("lsp completion resolve: {e}"));
-                }
-            }
+            Ok(resolved) => base.apply(state, view, &resolved),
             Err(message) => {
                 state.report(
                     Severity::Error,
@@ -505,6 +497,35 @@ impl BufferSession {
             RustDelivery::default(),
             respond,
         );
+    }
+}
+
+/// The accept a resolve answer's `additionalTextEdits` land on top of: the
+/// pre-accept document their positions decode against, and the accept's own
+/// change to map them through.
+struct ResolveBase {
+    pid: PaneId,
+    bid: BufferId,
+    rope_pre: ropey::Rope,
+    accept_cs: hume_editing::changeset::ChangeSet,
+    encoding: hume_rope::position_encoding::PositionEncoding,
+}
+
+impl ResolveBase {
+    fn apply(&self, state: &mut EditorState, view: &EngineView, resolved: &serde_json::Value) {
+        let resolved_edits = parse_additional_text_edits_lenient(resolved);
+        let result = edits::build_edits_from_earlier_document(
+            &self.rope_pre,
+            &self.accept_cs,
+            self.encoding,
+            &resolved_edits,
+        )
+        .and_then(|char_edits| {
+            edits::commit_char_edits(state, &view.panes, self.pid, self.bid, char_edits)
+        });
+        if let Err(e) = result {
+            state.report(Severity::Error, format!("lsp completion resolve: {e}"));
+        }
     }
 }
 

@@ -324,7 +324,7 @@ fn item_with_edits(
         kind: None,
         detail: None,
         documentation: None,
-        resolved: false,
+        resolution: None,
         sort_text: label.into(),
         filter_text: label.into(),
         insert_text: label.into(),

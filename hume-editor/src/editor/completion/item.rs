@@ -9,8 +9,10 @@
 //! The wire type is always spelled `lsp_types::CompletionItem`; the bare
 //! name here is this store's own item.
 
+use hume_editing::text::TextVersion;
+use hume_lsp::backend::ServerId;
 use hume_lsp::completion_item::{parse_additional_text_edits_lenient, strip_snippet};
-use hume_scripting::json::JsonHandle;
+use hume_scripting::json::{JsonHandle, WireOrigin};
 
 /// One item, decoded from a `textDocument/completion` response element.
 /// `insert_text`/`text_edit` have snippet syntax (`${n:default}`, `$n`)
@@ -25,11 +27,10 @@ pub(in crate::editor) struct CompletionItem {
     pub(super) kind: Option<lsp_types::CompletionItemKind>,
     pub(super) detail: Option<String>,
     pub(super) documentation: Option<Documentation>,
-    /// Whether `detail`/`documentation` are final: true once the server
-    /// sent `documentation` with the item or answered a
-    /// `completionItem/resolve` for it, even with an error, so the
-    /// selection-time resolve asks a server at most once per item.
-    pub(super) resolved: bool,
+    /// The server's answer to a `completionItem/resolve` for this item. Kept
+    /// apart from the fields above, which the menu row reads: a resolve
+    /// never changes the menu's layout while it is open.
+    pub(super) resolution: Option<Resolution>,
     pub(super) sort_text: String,
     pub(super) filter_text: String,
     pub(super) insert_text: String,
@@ -76,7 +77,7 @@ impl CompletionItem {
             kind: None,
             detail: None,
             documentation: None,
-            resolved: false,
+            resolution: None,
             text_edit: None,
             additional_text_edits: Vec::new(),
             has_additional_text_edits: false,
@@ -155,8 +156,8 @@ impl CompletionItem {
             label,
             kind,
             detail,
-            resolved: documentation.is_some(),
             documentation,
+            resolution: None,
             sort_text,
             filter_text,
             insert_text,
@@ -168,22 +169,54 @@ impl CompletionItem {
         })
     }
 
-    /// Takes `detail`/`documentation` from a `completionItem/resolve`
-    /// answer where this item has none, and marks it resolved. A field the
-    /// item already carries wins: it is what the menu row has been showing.
-    pub(super) fn apply_resolved(&mut self, resolved: &serde_json::Value) {
-        if self.detail.is_none() {
-            self.detail = resolved
+    /// Records the server's answer to a `completionItem/resolve` sent for
+    /// this item while the buffer held the text at `version`.
+    pub(super) fn apply_resolved(&mut self, reply: &serde_json::Value, version: TextVersion) {
+        self.resolution = Some(Resolution {
+            detail: reply
                 .get("detail")
                 .and_then(|x| x.as_str())
-                .map(str::to_string);
-        }
-        if self.documentation.is_none() {
-            self.documentation = resolved
+                .map(str::to_string),
+            documentation: reply
                 .get("documentation")
-                .and_then(Documentation::from_json);
+                .and_then(Documentation::from_json),
+            reply: reply.clone(),
+            version,
+        });
+    }
+
+    /// Moves each resolution in `previous`, a source's replaced answer, onto
+    /// the first item of `items`, its new one, with the same label and kind
+    /// and no resolution of its own: a re-invoked source repeating a
+    /// candidate keeps what a resolve fetched for it. Scans `items` once per
+    /// resolved item, which are few, since only a selected item is resolved.
+    pub(super) fn carry_resolutions(previous: &mut [Self], items: &mut [Self]) {
+        for old in previous.iter_mut().filter(|i| i.resolution.is_some()) {
+            if let Some(new) = items.iter_mut().find(|new| {
+                new.resolution.is_none() && new.label == old.label && new.kind == old.kind
+            }) {
+                new.resolution = old.resolution.take();
+            }
         }
-        self.resolved = true;
+    }
+
+    /// The resolve answer for this item, when it was asked against the text
+    /// at `version`: the only text its positions can be read against.
+    pub(super) fn resolved_reply_for(&self, version: TextVersion) -> Option<&serde_json::Value> {
+        self.resolution
+            .as_ref()
+            .filter(|r| r.version == version)
+            .map(|r| &r.reply)
+    }
+
+    /// The server a `completionItem/resolve` for this item goes to, and the
+    /// pristine item it sends. `None` for an item no server sent.
+    pub(super) fn resolve_target(&self) -> Option<(ServerId, &JsonHandle)> {
+        let raw = self.raw.as_ref()?;
+        let WireOrigin::Server { id, .. } = raw.origin() else {
+            return None;
+        };
+        Some((id, raw))
     }
 
     /// The encoding this item's wire positions were counted in. A
@@ -226,34 +259,38 @@ impl CompletionItem {
         &self.insert_text
     }
 
-    #[cfg(test)]
+    /// The item's own documentation, else a resolve's.
     pub(in crate::editor) fn documentation(&self) -> Option<&Documentation> {
-        self.documentation.as_ref()
+        self.documentation
+            .as_ref()
+            .or_else(|| self.resolution.as_ref()?.documentation.as_ref())
     }
 
-    pub(in crate::editor) fn is_resolved(&self) -> bool {
-        self.resolved
+    /// Whether this item's documentation is final: the server sent it with
+    /// the item, or answered a `completionItem/resolve` for it.
+    pub(in crate::editor) fn docs_known(&self) -> bool {
+        self.documentation.is_some() || self.resolution.is_some()
     }
 
     /// What the documentation box shows for this item: `detail`, a blank
-    /// line, then `documentation`. Markdown documentation fences `detail`
-    /// as `fence_lang` code, so the whole text reads as markdown. `None`
-    /// with neither.
+    /// line, then `documentation`, each the item's own or else the resolved
+    /// one. Markdown documentation fences `detail` as `fence_lang` code, so
+    /// the whole text reads as markdown. `None` without documentation: the
+    /// menu row already shows `detail`.
     pub(in crate::editor) fn doc_box_text(&self, fence_lang: &str) -> Option<Documentation> {
-        let detail = self.detail.as_deref().filter(|d| !d.is_empty());
-        let docs = self.documentation.as_ref().filter(|d| !d.text.is_empty());
-        Some(match (detail, docs) {
-            (None, None) => return None,
-            (Some(detail), None) => Documentation {
-                text: detail.to_string(),
-                markdown: false,
-            },
-            (None, Some(docs)) => docs.clone(),
-            (Some(detail), Some(docs)) if docs.markdown => Documentation {
+        let detail = self
+            .detail
+            .as_deref()
+            .or_else(|| self.resolution.as_ref()?.detail.as_deref())
+            .filter(|d| !d.is_empty());
+        let docs = self.documentation().filter(|d| !d.text.is_empty())?;
+        Some(match detail {
+            None => docs.clone(),
+            Some(detail) if docs.markdown => Documentation {
                 text: format!("```{fence_lang}\n{detail}\n```\n\n{}", docs.text),
                 markdown: true,
             },
-            (Some(detail), Some(docs)) => Documentation {
+            Some(detail) => Documentation {
                 text: format!("{detail}\n\n{}", docs.text),
                 markdown: false,
             },
@@ -320,9 +357,19 @@ impl CompletionItem {
     }
 }
 
+/// A `completionItem/resolve` answer: the fields the documentation box
+/// reads, and the whole reply for accept's `additionalTextEdits`, whose
+/// positions count in the text at `version`.
+pub(in crate::editor) struct Resolution {
+    detail: Option<String>,
+    documentation: Option<Documentation>,
+    reply: serde_json::Value,
+    version: TextVersion,
+}
+
 /// An item's `documentation`, either LSP shape: a bare string is plaintext,
 /// a `MarkupContent` is markdown unless its `kind` is `plaintext`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(in crate::editor) struct Documentation {
     pub(in crate::editor) text: String,
     pub(in crate::editor) markdown: bool,
