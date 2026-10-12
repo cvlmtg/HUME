@@ -20,6 +20,7 @@ fn editor_settings_default_matches_old_constants() {
     assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
     assert!(s.auto_pairs);
     assert!(s.select_inserted_text);
+    assert!(!s.prefer_line_comments);
     assert_eq!(s.word_selects_whitespace, WordSelectsWhitespace::Before);
     assert_eq!(s.word_chars, "");
     assert!(s.pane_dividers);
@@ -37,6 +38,7 @@ fn buffer_overrides_default_is_all_none() {
     assert!(ov.line_number_style.is_none());
     assert!(ov.auto_pairs.is_none());
     assert!(ov.select_inserted_text.is_none());
+    assert!(ov.prefer_line_comments.is_none());
     assert!(ov.word_selects_whitespace.is_none());
     assert!(ov.word_chars.is_none());
     assert!(ov.whitespace_space.is_none());
@@ -583,6 +585,15 @@ fn set_global_select_inserted_text() {
 }
 
 #[test]
+fn set_global_prefer_line_comments() {
+    assert!(
+        global("prefer-line-comments", "true")
+            .unwrap()
+            .prefer_line_comments
+    );
+}
+
+#[test]
 fn set_global_word_selects_whitespace() {
     for (text, value) in [
         ("off", WordSelectsWhitespace::Off),
@@ -739,6 +750,13 @@ fn set_buffer_select_inserted_text() {
     let global = EditorSettings::default();
     let ov = buffer("select-inserted-text", "false").unwrap();
     assert!(!ov.select_inserted_text(&global));
+}
+
+#[test]
+fn set_buffer_prefer_line_comments() {
+    let global = EditorSettings::default();
+    let ov = buffer("prefer-line-comments", "true").unwrap();
+    assert!(ov.prefer_line_comments(&global));
 }
 
 #[test]
@@ -904,6 +922,7 @@ fn is_bool_setting_matches_every_bool_field() {
         "pane-dividers",
         "auto-pairs",
         "select-inserted-text",
+        "prefer-line-comments",
         "indent-guides",
     ] {
         assert!(is_bool_setting(key), "'{key}' should be a bool setting");

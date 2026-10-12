@@ -1035,6 +1035,11 @@ define_settings! {
         "select-inserted-text" => select_inserted_text: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
+        // `toggle-comment` on a selection spanning several lines takes a
+        // line token per line instead of the language's block pair.
+        "prefer-line-comments" => prefer_line_comments: bool = false,
+            scope: [Scope::Global, Scope::Buffer],
+            parser: bool;
         // Word motions (`w`/`W`/`b`/`B`), `mm`/`MM` and `maw`/`maW` cover
         // the destination word's whitespace bookend on the preferred side.
         // See `word_select_cmd`'s `ctx.whitespace` read and `run_body`'s
