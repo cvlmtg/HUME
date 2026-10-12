@@ -761,7 +761,7 @@ fn view_buffer_refresh_drops_its_jump_entries() {
     let mut ed = editor_from("-[a]>b\n");
     let bid = ed.open_read_only_view(
         FocusedPane::current(&ed.state),
-        "[jump-list-test]",
+        &ViewLabel::named("jump-list-test").expect("view name"),
         "one\ntwo\nthree\nfour\nfive\n",
         Some(hume_rope::line::ContentLine::new(0)),
     );
@@ -779,7 +779,7 @@ fn view_buffer_refresh_drops_its_jump_entries() {
     // Re-open the same label: refreshes content in place via `set_view_content`.
     ed.open_read_only_view(
         FocusedPane::current(&ed.state),
-        "[jump-list-test]",
+        &ViewLabel::named("jump-list-test").expect("view name"),
         "brand new content\n",
         Some(hume_rope::line::ContentLine::new(0)),
     );
@@ -800,7 +800,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     let pid_a = ed.state.focus.id();
     ed.open_read_only_view(
         FocusedPane::current(&ed.state),
-        "[jump-list-test]",
+        &ViewLabel::named("jump-list-test").expect("view name"),
         "one\ntwo\nthree\nfour\nfive\n",
         Some(hume_rope::line::ContentLine::new(0)),
     );
@@ -826,7 +826,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     ed.switch_focused_pane(pid_a);
     ed.open_read_only_view(
         FocusedPane::current(&ed.state),
-        "[jump-list-test]",
+        &ViewLabel::named("jump-list-test").expect("view name"),
         "x\n",
         Some(hume_rope::line::ContentLine::new(0)),
     );
@@ -854,7 +854,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     let pid_a = ed.state.focus.id();
     let bid = ed.open_read_only_view(
         FocusedPane::current(&ed.state),
-        "[jump-list-test]",
+        &ViewLabel::named("jump-list-test").expect("view name"),
         "one\ntwo\nthree\nfour\nfive\n",
         Some(hume_rope::line::ContentLine::new(0)),
     );
@@ -883,7 +883,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     ed.switch_focused_pane(pid_b);
     ed.open_read_only_view(
         FocusedPane::current(&ed.state),
-        "[jump-list-test]",
+        &ViewLabel::named("jump-list-test").expect("view name"),
         "x\n",
         Some(hume_rope::line::ContentLine::new(0)),
     );

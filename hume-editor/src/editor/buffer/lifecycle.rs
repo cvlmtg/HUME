@@ -16,8 +16,8 @@ use hume_rope::column::GraphemeCol;
 use hume_rope::line::ContentLine;
 
 use crate::editor::EditorState;
-use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
+use crate::editor::buffer::{Buffer, ViewLabel};
 use crate::editor::commands::CommandPane;
 use crate::editor::event::EditorEvent;
 use crate::editor::jump_list::{JumpRule, with_jump};
@@ -185,7 +185,7 @@ pub(in crate::editor) fn show_read_only_view(
     state: &mut EditorState,
     ev: &mut EngineView,
     t: CommandPane,
-    label: &str,
+    label: &ViewLabel,
     content: &str,
     cursor_line: Option<ContentLine>,
 ) -> BufferId {
@@ -206,7 +206,7 @@ pub(in crate::editor) fn show_read_only_view(
         forget_saved_views(ev, existing);
         existing
     } else {
-        let doc = Buffer::read_only_view(BufferText::from(content), label.to_owned());
+        let doc = Buffer::read_only_view(BufferText::from(content), label.clone());
         open_buffer_and_notify(ev, state, doc)
     };
 

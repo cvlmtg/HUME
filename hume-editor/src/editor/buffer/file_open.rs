@@ -5,7 +5,7 @@ use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_platform::io::FileMeta;
 
-use crate::editor::buffer::Buffer;
+use crate::editor::buffer::{Buffer, ViewLabel};
 use crate::editor::commands::FocusedPane;
 use crate::editor::event::EditorEvent;
 
@@ -211,12 +211,11 @@ impl Editor {
     /// the last-buffer case (a fresh scratch buffer, not `id` reused).
     pub(in crate::editor) fn close_buffer(&mut self, id: BufferId) {
         lifecycle::close_buffer_and_notify(&mut self.view, &mut self.state, id);
-        // Mirrors `open_buffer`'s own call, right above: the last-buffer
-        // case queues a fresh scratch buffer for language detection and
-        // `OnBufferOpen` (`close_buffer_and_notify`'s `queue_open_announcement`
-        // call): this is `(close-buffer! id)`'s Steel path's own capability
-        // (`apply_script_effects` calls this unconditionally at the end of
-        // every command dispatch), but a direct `&mut Editor` caller like
+        // The last-buffer case queues a fresh scratch buffer for language
+        // detection and `OnBufferOpen` (`close_buffer_and_notify`'s
+        // `queue_open_announcement` call). `(close-buffer! id)`'s Steel path
+        // gets detection from `apply_script_effects`, which runs it after
+        // every batch of script effects; a direct `&mut Editor` caller like
         // this one has no such funnel to fall back on.
         self.detect_pending_languages();
     }
@@ -360,7 +359,7 @@ impl Editor {
     pub(in crate::editor) fn open_read_only_view(
         &mut self,
         fp: FocusedPane,
-        label: &str,
+        label: &ViewLabel,
         content: &str,
         cursor_line: Option<hume_rope::line::ContentLine>,
     ) -> BufferId {

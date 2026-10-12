@@ -546,7 +546,9 @@ impl Editor {
                 let fp = crate::editor::commands::FocusedPane::current(&self.state);
                 self.open_read_only_view(
                     fp,
-                    crate::editor::buffer::EditorView::LspStatus.label(),
+                    &crate::editor::buffer::ViewLabel::editor(
+                        crate::editor::buffer::EditorView::LspStatus,
+                    ),
                     &content,
                     Some(hume_rope::line::ContentLine::new(0)),
                 );

@@ -9,7 +9,7 @@ use hume_rope::lines::line_token_content;
 use hume_rope::offset::ExclusiveRange;
 
 use super::EditorHostImpl;
-use crate::editor::buffer::EditorView;
+use crate::editor::buffer::ViewLabel;
 use crate::editor::commands::FocusedPane;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::BufferHost;
@@ -118,15 +118,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         text: &str,
     ) -> Result<(), String> {
         let t = self.command_pane(pane)?;
-        if name.is_empty() {
-            return Err("show-read-only-buffer!: the name must not be empty".into());
-        }
-        let label = format!("[{name}]");
-        if EditorView::ALL.iter().any(|v| v.label() == label) {
-            return Err(format!(
-                "show-read-only-buffer!: {label} is one of the editor's own views"
-            ));
-        }
+        let label = ViewLabel::named(name).map_err(|e| format!("show-read-only-buffer!: {e}"))?;
         crate::editor::buffer::lifecycle::show_read_only_view(
             self.state,
             self.view,

@@ -386,7 +386,7 @@ fn readonly_element_empty_for_normal_buffer() {
 
 #[test]
 fn readonly_element_renders_ro_label() {
-    let ed = crate::editor::tests::editor_with_read_only_view("hello\n", "[test]");
+    let ed = crate::editor::tests::editor_with_read_only_view("hello\n", "test");
     let colors = crate::statusline::colors::EditorColors::default();
     let (text, _) = render_element(&StatusElement::ReadOnly, &ed.statusline(), &colors, "");
     insta::assert_snapshot!(text, @"[RO]");
@@ -644,8 +644,8 @@ fn statusline_display_path_scratch_buffer_shows_scratch_name() {
 
 #[test]
 fn statusline_display_path_synthetic_buffer_shows_label() {
-    let ed = crate::editor::tests::editor_with_read_only_view("hello\n", "[plugin-status]");
-    assert_eq!(statusline_display_path(&ed.statusline()), "[plugin-status]");
+    let ed = crate::editor::tests::editor_with_read_only_view("hello\n", "plugin-view");
+    assert_eq!(statusline_display_path(&ed.statusline()), "[plugin-view]");
 }
 
 #[test]

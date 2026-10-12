@@ -112,7 +112,7 @@ fn a_run_that_returns_normally_writes_no_dump_and_passes_its_value_through() {
 
 #[test]
 fn dump_skips_read_only_view_buffers() {
-    let ed = editor_with_read_only_view("log line\n", "[messages]");
+    let ed = editor_with_read_only_view("log line\n", "log");
 
     assert!(ed.dump_dirty_buffers(None).is_empty());
 }

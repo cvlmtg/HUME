@@ -8,9 +8,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::editor::EditorState;
-use crate::editor::buffer::Buffer;
 use crate::editor::buffer::ReplaceSource;
 use crate::editor::buffer::store::BufferStore;
+use crate::editor::buffer::{Buffer, ViewLabel};
 use crate::editor::commands::FocusedPane;
 use crate::editor::pane_state::{PaneBufferState, PaneView};
 use crate::editor::search::SearchPattern;
@@ -208,10 +208,10 @@ pub(crate) fn editor_with_language(content: &str, lang_name: &str) -> Editor {
 
 /// `statusline::tests`' other cross-boundary shape: a read-only view
 /// buffer, without handing that suite `Buffer::read_only_view` itself.
-pub(crate) fn editor_with_read_only_view(content: &str, label: &str) -> Editor {
+pub(crate) fn editor_with_read_only_view(content: &str, name: &str) -> Editor {
     Editor::for_testing(Buffer::read_only_view(
         BufferText::from(content),
-        label.to_string(),
+        ViewLabel::named(name).expect("view name"),
     ))
 }
 

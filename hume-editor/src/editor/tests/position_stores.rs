@@ -239,7 +239,12 @@ fn a_tracked_position_follows_a_reload() {
 fn a_tracked_position_is_dropped_when_its_buffer_is_replaced() {
     let mut ed = editor_from("-[a]>\n");
     let fp = FocusedPane::current(&ed.state);
-    let view = ed.open_read_only_view(fp, "[tracked]", "one\ntwo\n", None);
+    let view = ed.open_read_only_view(
+        fp,
+        &ViewLabel::named("tracked").expect("view name"),
+        "one\ntwo\n",
+        None,
+    );
     let head = ed.state.buffers.get(view).text().snap(co(0));
     let token = ed
         .state
@@ -257,7 +262,7 @@ fn a_tracked_position_is_dropped_when_its_buffer_is_replaced() {
 
     ed.open_read_only_view(
         FocusedPane::current(&ed.state),
-        "[tracked]",
+        &ViewLabel::named("tracked").expect("view name"),
         "other\n",
         None,
     );

@@ -42,8 +42,8 @@ pub(in crate::editor) mod store;
 use hume_treesitter::registry::LanguageId;
 use hume_treesitter::syntax::Syntax;
 
-/// A read-only view the editor itself opens. Its label is reserved:
-/// `show-read-only-buffer!` refuses every name in [`Self::ALL`].
+/// A read-only view the editor itself opens. Its name is reserved:
+/// [`ViewLabel::named`] refuses it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::editor) enum EditorView {
     Messages,
@@ -51,16 +51,56 @@ pub(in crate::editor) enum EditorView {
     LspStatus,
 }
 
-impl EditorView {
-    pub(in crate::editor) const ALL: [Self; 3] =
-        [Self::Messages, Self::PluginStatus, Self::LspStatus];
+/// Generates `EditorView::name`'s match and `EditorView::ALL` from one
+/// list, so a variant missing from `ALL` is also missing from `name`'s
+/// match and fails to compile.
+macro_rules! editor_views {
+    ($($variant:ident => $name:literal),+ $(,)?) => {
+        impl EditorView {
+            const ALL: &[Self] = &[$(Self::$variant),+];
 
-    pub(in crate::editor) fn label(self) -> &'static str {
-        match self {
-            Self::Messages => "[messages]",
-            Self::PluginStatus => "[plugin-status]",
-            Self::LspStatus => "[lsp-status]",
+            fn name(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $name,)+
+                }
+            }
         }
+    };
+}
+
+editor_views! {
+    Messages => "messages",
+    PluginStatus => "plugin-status",
+    LspStatus => "lsp-status",
+}
+
+/// The label of a read-only view buffer, `[name]`. A plugin's view can
+/// never take the label of one of the editor's own.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::editor) struct ViewLabel(String);
+
+impl ViewLabel {
+    pub(in crate::editor) fn editor(view: EditorView) -> Self {
+        Self::bracketed(view.name())
+    }
+
+    /// Errors on an empty `name` or an [`EditorView`]'s name.
+    pub(in crate::editor) fn named(name: &str) -> Result<Self, String> {
+        if name.is_empty() {
+            return Err("the name must not be empty".into());
+        }
+        if EditorView::ALL.iter().any(|v| v.name() == name) {
+            return Err(format!("[{name}] is one of the editor's own views"));
+        }
+        Ok(Self::bracketed(name))
+    }
+
+    fn bracketed(name: &str) -> Self {
+        Self(format!("[{name}]"))
+    }
+
+    pub(in crate::editor) fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
@@ -176,7 +216,7 @@ pub(crate) struct Buffer {
     pub(in crate::editor) read_only: bool,
     /// Display name used for synthetic, path-less view buffers (e.g. `"[messages]"`).
     /// Shown in the statusline and `:ls` instead of `*scratch*`.
-    pub(in crate::editor) label: Option<String>,
+    pub(in crate::editor) label: Option<ViewLabel>,
     /// True from chokepoint open (`lifecycle::open_buffer_and_notify`, or
     /// `lifecycle::close_buffer_and_notify`'s own `queue_open_announcement`
     /// call for the fresh scratch buffer a last-buffer close allocates)
@@ -322,11 +362,10 @@ impl Buffer {
         Self::at_start(BufferText::empty())
     }
 
-    /// Create a read-only view buffer from in-memory content.
-    ///
-    /// Used for `:messages` and `:plugin-status`. The buffer has no
-    /// backing file, no language detection, and blocks all user edits.
-    pub(in crate::editor) fn read_only_view(text: BufferText, label: String) -> Self {
+    /// Create a read-only view buffer from in-memory content, for
+    /// [`lifecycle::show_read_only_view`]. The buffer has no backing file,
+    /// no language detection, and blocks all user edits.
+    pub(in crate::editor) fn read_only_view(text: BufferText, label: ViewLabel) -> Self {
         let mut buf = Self::at_start(text);
         buf.read_only = true;
         buf.label = Some(label);
@@ -475,7 +514,7 @@ impl Buffer {
     /// buffers, `*scratch*` for unnamed ones.
     pub(crate) fn display_name(&self) -> String {
         if let Some(ref label) = self.label {
-            return label.clone();
+            return label.as_str().to_owned();
         }
         self.path()
             .and_then(|p| p.file_name())

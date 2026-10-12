@@ -12,7 +12,7 @@ use slotmap::SecondaryMap;
 use hume_engine::pipeline::BufferId;
 use hume_platform::path::strip_unc_prefix_cow;
 
-use crate::editor::buffer::Buffer;
+use crate::editor::buffer::{Buffer, ViewLabel};
 
 /// Mirrors the engine's `SlotMap<BufferId, ()>` with the full
 /// `Buffer` structs. Owns all per-buffer content, history, and file metadata.
@@ -99,13 +99,13 @@ impl BufferStore {
         })
     }
 
-    /// Find a read-only view buffer by its label (e.g. `"[messages]"`).
+    /// Find a read-only view buffer by its label.
     ///
     /// Returns the first `BufferId` whose `buffer.label == Some(label)`.
-    pub(in crate::editor) fn find_by_label(&self, label: &str) -> Option<BufferId> {
+    pub(in crate::editor) fn find_by_label(&self, label: &ViewLabel) -> Option<BufferId> {
         self.buffers
             .iter()
-            .find_map(|(id, buf)| buf.label.as_deref().filter(|l| *l == label).map(|_| id))
+            .find_map(|(id, buf)| (buf.label.as_ref() == Some(label)).then_some(id))
     }
 
     /// Infallible getter. Panics if `id` was never seeded: that is a caller bug.

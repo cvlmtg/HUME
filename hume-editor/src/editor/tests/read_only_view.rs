@@ -78,7 +78,7 @@ fn messages_reuses_existing_view_buffer() {
         .state
         .buffers
         .iter()
-        .filter(|(_, buf)| buf.label.as_deref() == Some("[messages]"))
+        .filter(|(_, buf)| buf.label.as_ref().map(ViewLabel::as_str) == Some("[messages]"))
         .count();
     assert_eq!(
         count, 1,
@@ -481,7 +481,7 @@ fn labelled_count(ed: &Editor, label: &str) -> usize {
     ed.state
         .buffers
         .iter()
-        .filter(|(_, buf)| buf.label.as_deref() == Some(label))
+        .filter(|(_, buf)| buf.label.as_ref().map(ViewLabel::as_str) == Some(label))
         .count()
 }
 

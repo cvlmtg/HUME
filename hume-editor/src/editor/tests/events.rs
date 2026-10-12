@@ -1871,7 +1871,7 @@ fn read_only_view_refresh_fires_on_text_changed() {
 
     ed.open_read_only_view(
         FocusedPane::current(&ed.state),
-        "[test-view]",
+        &ViewLabel::named("test-view").expect("view name"),
         "one\n",
         Some(hume_rope::line::ContentLine::new(0)),
     );
@@ -1884,7 +1884,7 @@ fn read_only_view_refresh_fires_on_text_changed() {
 
     ed.open_read_only_view(
         FocusedPane::current(&ed.state),
-        "[test-view]",
+        &ViewLabel::named("test-view").expect("view name"),
         "two\n",
         Some(hume_rope::line::ContentLine::new(0)),
     );
