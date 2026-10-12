@@ -1,0 +1,5 @@
+;;; runtime/plugins/core/lsp-install/data/registrations/typescript-language-server.scm — one LSP server's registration.
+;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Source: helix-editor/helix languages.toml @ ba40e547426b
+
+((args "--stdio") (config . "{\"hostInfo\": \"hume\", \"javascript\": {\"inlayHints\": {\"includeInlayEnumMemberValueHints\": true, \"includeInlayFunctionLikeReturnTypeHints\": true, \"includeInlayFunctionParameterTypeHints\": true, \"includeInlayParameterNameHints\": \"all\", \"includeInlayParameterNameHintsWhenArgumentMatchesName\": true, \"includeInlayPropertyDeclarationTypeHints\": true, \"includeInlayVariableTypeHints\": true}}, \"typescript\": {\"inlayHints\": {\"includeInlayEnumMemberValueHints\": true, \"includeInlayFunctionLikeReturnTypeHints\": true, \"includeInlayFunctionParameterTypeHints\": true, \"includeInlayParameterNameHints\": \"all\", \"includeInlayParameterNameHintsWhenArgumentMatchesName\": true, \"includeInlayPropertyDeclarationTypeHints\": true, \"includeInlayVariableTypeHints\": true}}}"))

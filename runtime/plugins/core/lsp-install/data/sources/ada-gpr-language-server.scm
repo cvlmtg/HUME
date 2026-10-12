@@ -1,0 +1,5 @@
+;;; runtime/plugins/core/lsp-install/data/sources/ada-gpr-language-server.scm — one LSP server's install source.
+;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Source: mason-org/mason-registry @ 2026-10-06-pricey-wrasse
+
+((kind . github) (version . "2026.3.202607051") (repo . "AdaCore/ada_language_server") (targets (darwin-arm64 "als-2026.3.202607051-darwin-arm64.tar.gz" "sha256:a7bf4ffc855cbf9851d5c21809c2213603aa0cd130987b9d9c102931c3a79923" "integration/vscode/ada/arm64/darwin/ada_language_server") (darwin-x64 "als-2026.3.202607051-darwin-x64.tar.gz" "sha256:f77115d4675f2e634b14babe77dabb1517d5e7c083d4d2feb4d6c7b305b16d5a" "integration/vscode/ada/x64/darwin/ada_language_server") (linux-x64 "als-2026.3.202607051-linux-x64.tar.gz" "sha256:9dfa29af05418913ff445be0c6875f7a51ebad5fc781f3446d3e2c3903d09787" "integration/vscode/ada/x64/linux/ada_language_server") (windows-x64 "als-2026.3.202607051-win32-x64.tar.gz" "sha256:7285d044f261d9b7e06816196b60cdc08a099ac22f2175e9109f4749b71f71fb" "integration/vscode/ada/x64/win32/ada_language_server.exe")))

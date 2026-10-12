@@ -1,0 +1,5 @@
+;;; runtime/plugins/core/lsp-install/data/sources/verible-verilog-ls.scm — one LSP server's install source.
+;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Source: mason-org/mason-registry @ 2026-10-06-pricey-wrasse
+
+((kind . github) (version . "v0.0-4296-g0f262651") (repo . "chipsalliance/verible") (targets (darwin-arm64 "verible-v0.0-4296-g0f262651-macOS.tar.gz" "sha256:fc397ee02b144184a3cce6d26efb8b9d3e41528e63c95a57cd3bf37dec2b52a4" "verible-v0.0-4296-g0f262651-macOS/bin/verible-verilog-ls") (darwin-x64 "verible-v0.0-4296-g0f262651-macOS.tar.gz" "sha256:fc397ee02b144184a3cce6d26efb8b9d3e41528e63c95a57cd3bf37dec2b52a4" "verible-v0.0-4296-g0f262651-macOS/bin/verible-verilog-ls") (linux-x64 "verible-v0.0-4296-g0f262651-linux-static-x86_64.tar.gz" "sha256:8569defb891d2316067613ea00442af28a7a09d405d95b54c0c91f9942d26635" "verible-v0.0-4296-g0f262651/bin/verible-verilog-ls") (windows-x64 "verible-v0.0-4296-g0f262651-win64.zip" "sha256:4590841d91dadb108879aa261dbfd7081db06360484a7a21470174bf6fb3cf80" "verible-v0.0-4296-g0f262651-win64/verible-verilog-ls.exe")))

@@ -1,0 +1,5 @@
+;;; runtime/plugins/core/lsp-install/data/sources/terraform-ls.scm — one LSP server's install source.
+;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Source: mason-org/mason-registry @ 2026-10-06-pricey-wrasse
+
+((kind . generic) (version . "v0.39.0") (targets (darwin-arm64 "terraform-ls.zip" "https://releases.hashicorp.com/terraform-ls/0.39.0/terraform-ls_0.39.0_darwin_arm64.zip" "sha256:6f80fe0b34af184175508f3d9135d8159f5dce4000d9b39540553eb1c267c54b" "terraform-ls") (darwin-x64 "terraform-ls.zip" "https://releases.hashicorp.com/terraform-ls/0.39.0/terraform-ls_0.39.0_darwin_amd64.zip" "sha256:cc5bbc5b5a39d12d455c0d2b1e4b3a2c1f237d02d2cf819cf5252358f2d674de" "terraform-ls") (linux-x64 "terraform-ls.zip" "https://releases.hashicorp.com/terraform-ls/0.39.0/terraform-ls_0.39.0_linux_amd64.zip" "sha256:7750edc736845fd8c04ff0fc6332423c12d8275b358668c8c17e8aedc43ef971" "terraform-ls") (windows-x64 "terraform-ls.zip" "https://releases.hashicorp.com/terraform-ls/0.39.0/terraform-ls_0.39.0_windows_amd64.zip" "sha256:6edc885fe113f6a7fd049622ed0bd255141e68c84acc2fce1bb6a54c1f47bfe1" "terraform-ls.exe")))

@@ -1,0 +1,5 @@
+;;; runtime/plugins/core/lsp-install/data/requirements/fortls.scm — one LSP server's install requirements.
+;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Source: sources/fortls.scm
+
+((targets ((darwin-arm64 darwin-x64 linux-x64) #f "python3") ((windows-x64) #f "python")) (missing . package))
