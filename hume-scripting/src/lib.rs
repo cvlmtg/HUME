@@ -832,7 +832,7 @@ impl ScriptingHost {
             return Err(refused);
         }
         if !queued.is_empty() {
-            return Err("call!: commands cannot be queued while rendering".to_string());
+            return Err("commands cannot be queued during a read-only call".to_string());
         }
         Ok(value.expect("a session that succeeded ran the call"))
     }

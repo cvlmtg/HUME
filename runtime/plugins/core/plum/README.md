@@ -64,9 +64,9 @@ source:
 
 - **`lib/plugins.scm`** (required by `plugin.scm`): third-party plugin install, update and
   cleanup.
-- **`grammars.scm`** (`#:entry`): the tree-sitter grammar install pipeline. It builds on the
-  grammar-source builtins and path helpers core provides (see
-  [Grammar sources and the Helix pin](#grammar-sources-and-the-helix-pin)).
+- **`grammars.scm`** (`#:entry`): the tree-sitter grammar install pipeline. It builds on
+  `bundled-language-grammar`, `bundled-grammar-languages` and the path helpers core provides
+  (see [Grammar sources and the Helix pin](#grammar-sources-and-the-helix-pin)).
 - **`themes.scm`** (`#:entry`): third-party theme install, update, list and remove (see
   [Theme install](#theme-install)).
 - **`lib/helpers.scm`**: `plum/require-stdlib!` (the `core:stdlib` check each entry runs),
