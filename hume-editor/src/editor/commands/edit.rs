@@ -36,9 +36,7 @@ pub(in crate::editor) fn cmd_delete(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if super::refuse_if_read_only(state, view, t) {
-        return Ok(());
-    }
+    super::ensure_writable(state, view, t)?;
     let mut yanked = Vec::new();
     let edited = apply_pane_edit(state, view, t, |s| {
         let removal = delete_selection(s);
@@ -64,9 +62,7 @@ pub(in crate::editor) fn cmd_change(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if super::refuse_if_read_only(state, view, fp.pane()) {
-        return Ok(());
-    }
+    super::ensure_writable(state, view, fp.pane())?;
     // Preserving, not `begin_insert_session`: `c` is itself a register-
     // consuming operator (see `state.route_kill` below), so clearing the
     // prefix here would consume it a step too early.
@@ -232,7 +228,7 @@ fn history_step(
         Ok(walk(b, id, stores, pane, count))
     })?;
     match result {
-        doc_ops::HistoryWalk::RefusedReadOnly => super::report_read_only_refusal(state),
+        doc_ops::HistoryWalk::RefusedReadOnly => return Err(super::read_only_refusal(state)),
         doc_ops::HistoryWalk::Took(taken) if taken < count => {
             state.report(Severity::Info, exhausted_msg.to_string());
         }

@@ -1,5 +1,6 @@
 use super::*;
 use crate::editor::doc_ops;
+use hume_scripting::host::CommandHost;
 use pretty_assertions::assert_eq;
 
 // ── Read-only view buffer properties ─────────────────────────────────────────
@@ -140,10 +141,11 @@ fn read_only_buffer_blocks_undo_and_redo() {
         Some("Buffer is read-only"),
         "u must report the refusal, same as :earlier does"
     );
-    assert!(
-        ed.state.command_refused,
-        "a refused u marks the command refused"
-    );
+    let pane = focused_pane(&ed);
+    let ran = live_host!(ed)
+        .run_command_sync("undo", pane, hume_scripting::host::NativeCall::default())
+        .expect("undo must dispatch");
+    assert!(!ran, "a refused undo reports the dispatch as refused");
 
     // Ctrl-r (redo) must also be a no-op.
     ed.doc_mut().read_only = false; // undo first to create redo history
@@ -199,7 +201,7 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
 
 /// `p` and `P` (paste) on a read-only view buffer must report "Buffer is
 /// read-only" and leave the buffer content unchanged.
-/// Validity: remove the `refuse_if_read_only()` guard from
+/// Validity: remove the `ensure_writable()` guard from
 /// `do_smart_paste` (p/P dispatch through it) and this test fails
 /// (status_msg will not contain the expected message, and the paste would
 /// silently diverge from the read-only contract).
@@ -247,7 +249,7 @@ fn view_buffer_blocks_paste() {
 /// the buffer content unchanged, and must not push anything onto the kill
 /// ring.
 ///
-/// Validity: drop the `refuse_if_read_only()` guard from `cmd_delete` and this
+/// Validity: drop the `ensure_writable()` guard from `cmd_delete` and this
 /// test fails: the ring head becomes the (refused) delete's yank instead of
 /// the pre-existing one.
 #[test]
@@ -299,7 +301,7 @@ fn read_only_buffer_blocks_delete_kill() {
 /// the buffer content and mode unchanged, and must not push anything onto
 /// the kill ring or touch the paste stamp.
 ///
-/// Validity: drop the `refuse_if_read_only()` guard from `cmd_change` and this
+/// Validity: drop the `ensure_writable()` guard from `cmd_change` and this
 /// test fails: the ring head becomes the (refused) change's yank and the
 /// editor drops into Insert mode.
 #[test]
@@ -360,7 +362,7 @@ fn read_only_buffer_blocks_change_kill() {
 /// itself cleared anything.
 ///
 /// Validity: drop the `state.register_prefix = None` line from
-/// `refuse_if_read_only()` and this test fails: the prefix survives and
+/// `read_only_refusal()` and this test fails: the prefix survives and
 /// silently redirects the next yank/kill into register `3`.
 #[test]
 fn read_only_refusal_clears_register_prefix_on_delete() {
@@ -389,7 +391,7 @@ fn read_only_refusal_clears_register_prefix_on_delete() {
 /// `read_only_refusal_clears_register_prefix_on_delete`.
 ///
 /// Validity: drop the `state.register_prefix = None` line from
-/// `refuse_if_read_only()` and this test fails: the prefix survives.
+/// `read_only_refusal()` and this test fails: the prefix survives.
 #[test]
 fn read_only_refusal_clears_register_prefix_on_paste() {
     let mut ed = editor_from("-[hell]>o\n");

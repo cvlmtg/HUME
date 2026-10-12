@@ -155,34 +155,32 @@ pub(in crate::editor) fn apply_focused_edit_grouped(
     );
 }
 
-/// Refuse an edit-mode command on a read-only buffer: report why and return
-/// `true` so the caller can bail out.
+/// `Err` for an edit-mode command on a read-only buffer, so the caller bails
+/// out with `?` and the dispatch funnel reports the refusal.
 ///
 /// Clearing `register_prefix` is part of the refusal: for `d`/`c`/`p`, the
 /// command consumed the `"<reg>` keystrokes, so leaving the prefix armed
-/// would silently redirect the *next* yank/kill into that register. (Insert
-/// session entry clears the prefix itself before ever reaching here, for a
-/// different reason; see `begin_insert_session`), so this is a no-op on
+/// would redirect the *next* yank/kill into that register. (Insert session
+/// entry clears the prefix itself before ever reaching here, for a
+/// different reason; see `begin_insert_session`, so this is a no-op on
 /// that path, not a second clear of the same kind.)
-pub(in crate::editor::commands) fn refuse_if_read_only(
+pub(in crate::editor::commands) fn ensure_writable(
     state: &mut EditorState,
     view: &EngineView,
     t: CommandPane,
-) -> bool {
-    if !doc(state, view, t).is_read_only() {
-        return false;
+) -> Result<(), CommandError> {
+    if doc(state, view, t).is_read_only() {
+        return Err(read_only_refusal(state));
     }
-    report_read_only_refusal(state);
-    true
+    Ok(())
 }
 
-/// The refusal [`refuse_if_read_only`] applies, for a caller that learned the
+/// The refusal [`ensure_writable`] returns, for a caller that learned the
 /// buffer is read-only from somewhere else (`history_step`, from the walk's
 /// own result).
-pub(in crate::editor::commands) fn report_read_only_refusal(state: &mut EditorState) {
+pub(in crate::editor::commands) fn read_only_refusal(state: &mut EditorState) -> CommandError {
     state.register_prefix = None;
-    state.command_refused = true;
-    state.report(Severity::Info, "Buffer is read-only".to_string());
+    CommandError::transient("Buffer is read-only")
 }
 
 /// `t`'s pane's selections for `t`'s buffer.

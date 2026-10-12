@@ -11,7 +11,6 @@ use hume_scripting::PaneHandle;
 use hume_scripting::host::CommandArg;
 use slotmap::SecondaryMap;
 
-use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneBufferState;
 
 use crate::editor::dispatch::CmdCtx;
@@ -651,24 +650,16 @@ impl BoundCommand {
 
 // ── Native command body execution ───────────────────────────────────────────
 
-/// Report a native command body's `Err` and mark the dispatch refused: the
-/// shared tail of every fallible native body (`Edit`, `EditorCmdBody::Pane`,
-/// `EditorCmdBody::FocusedPane`, and their operand-taking siblings).
-/// Reported at the error's own severity (e.g. search's "no match" is
-/// transient, statusline only; an I/O failure is logged); see
-/// `CommandError::new` vs `::transient`. Every `Err` still stamps
-/// `command_refused` regardless of severity: rollback is about whether an
-/// edit happened, not about how loudly the failure is recorded.
-fn report_refusal(state: &mut EditorState, e: CommandError) {
-    state.report(e.severity(), e.message().to_owned());
-    state.command_refused = true;
-}
-
 /// Run a bound native command's body with no dispatch bookkeeping: [`run`]
 /// wraps it with the bookkeeping every dispatch needs, and dot-repeat replay
 /// ([`crate::editor::Editor::replay_dot`]) runs its selection-recipe steps
-/// through it directly. Infallible: EditorCmd errors are reported but never
-/// propagated.
+/// through it directly.
+///
+/// Returns `false` when the body refused. Its `Err` is reported here at the
+/// error's own severity (search's "no match" is transient, statusline only;
+/// an I/O failure is logged; see `CommandError::new` vs `::transient`), and
+/// every `Err` counts as a refusal regardless of severity: rollback is about
+/// whether an edit happened, not about how loudly the failure is recorded.
 ///
 /// The single writer of `state.explicit_count`: `ctx.count` is `None` for a
 /// bare keyboard press (no count typed) or for a Steel `call!` that explicitly
@@ -684,7 +675,7 @@ pub(in crate::editor) fn run_body(
     view: &mut EngineView,
     bound: BoundCommand,
     ctx: &CmdCtx,
-) {
+) -> bool {
     let prev_explicit_count = std::mem::replace(&mut state.explicit_count, ctx.count.is_some());
     let count = ctx.count.unwrap_or(1).max(1);
     let motion_mode = if ctx.extend {
@@ -692,7 +683,7 @@ pub(in crate::editor) fn run_body(
     } else {
         MotionMode::Move
     };
-    match bound.body {
+    let outcome = match bound.body {
         Bound::Selection(fun, target) => {
             let t = target.pane();
             let buf = t.bid(view);
@@ -743,6 +734,7 @@ pub(in crate::editor) fn run_body(
                     });
                 }
             }
+            Ok(())
         }
         Bound::Edit(fun, target) => {
             let t = target.pane();
@@ -752,33 +744,24 @@ pub(in crate::editor) fn run_body(
             // creating a standalone undo revision. `Err` when another pane
             // holds one instead: same reporting shape as `EditorCmd`'s
             // fallible arms below.
-            if let Err(e) = apply_pane_edit(state, view, t, fun) {
-                report_refusal(state, e);
-            }
+            apply_pane_edit(state, view, t, fun)
         }
         // Any target will do: a focused pane is also a pane.
-        Bound::Pane(f, target) => {
-            if let Err(e) = f(state, view, target.pane(), count, motion_mode) {
-                report_refusal(state, e);
-            }
-        }
-        Bound::FocusedCmd(f, fp) => {
-            if let Err(e) = f(state, view, fp, count, motion_mode) {
-                report_refusal(state, e);
-            }
-        }
-        Bound::PaneChar(f, target, ch) => {
-            if let Err(e) = f(state, view, target.pane(), count, motion_mode, ch) {
-                report_refusal(state, e);
-            }
-        }
+        Bound::Pane(f, target) => f(state, view, target.pane(), count, motion_mode),
+        Bound::FocusedCmd(f, fp) => f(state, view, fp, count, motion_mode),
+        Bound::PaneChar(f, target, ch) => f(state, view, target.pane(), count, motion_mode, ch),
         Bound::PaneText(f, target, text) => {
-            if let Err(e) = f(state, view, target.pane(), count, motion_mode, &text) {
-                report_refusal(state, e);
-            }
+            f(state, view, target.pane(), count, motion_mode, &text)
+        }
+    };
+    state.explicit_count = prev_explicit_count;
+    match outcome {
+        Ok(()) => true,
+        Err(e) => {
+            state.report(e.severity(), e.message().to_owned());
+            false
         }
     }
-    state.explicit_count = prev_explicit_count;
 }
 
 // ── Dispatch step functions ─────────────────────────────────────────────────
@@ -912,8 +895,8 @@ pub(in crate::editor::commands::pipeline) fn step_clear_extend(
 /// (`EditorHostImpl::run_command_sync`) binds via [`BoundCommand::resolve`],
 /// which may name a pane other than the focused one.
 ///
-/// Returns `false` if the body refused outright (see
-/// `EditorState::command_refused`), `true` otherwise. `run_command_sync`
+/// Returns `false` if the body refused outright (see [`run_body`]), `true`
+/// otherwise. `run_command_sync`
 /// forwards this to Steel's `call!` as the outcome of the dispatch;
 /// `Editor::dispatch` returns it. A refusal already reported itself via
 /// `state.report` inside the body.
@@ -944,7 +927,6 @@ pub(in crate::editor) fn run(
     let pane = bound.pane();
     let focused = bound.target_focused();
     // BEFORE
-    state.command_refused = false;
     if focused.is_some() {
         step_paste_commit(state, meta.defers_paste_commit);
     }
@@ -978,8 +960,8 @@ pub(in crate::editor) fn run(
     // A cursor-moving command runs inside the jump list's capture. Selection
     // commands are excluded from that rule: a large text-object selection is
     // a select-then-act staging step, so only jump-flagged ones record.
-    let moved = record_change(state, change, |state| {
-        let moved = if meta.moves_cursor() {
+    let (ran, moved) = record_change(state, change, |state| {
+        let (ran, moved) = if meta.moves_cursor() {
             with_jump(
                 state,
                 view,
@@ -989,12 +971,10 @@ pub(in crate::editor) fn run(
                 },
                 |state, view| run_body(state, view, bound, &ctx),
             )
-            .1
         } else {
-            run_body(state, view, bound, &ctx);
-            false
+            (run_body(state, view, bound, &ctx), false)
         };
-        (moved, !state.command_refused)
+        ((ran, moved), ran)
     });
 
     // AFTER
@@ -1013,5 +993,5 @@ pub(in crate::editor) fn run(
         step_update_recipe(state, &meta, &name, &ctx, selection_changed);
         step_clear_extend(state, meta.clears_extend);
     }
-    !state.command_refused
+    ran
 }

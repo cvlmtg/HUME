@@ -371,23 +371,6 @@ pub(crate) struct EditorState {
     /// this: it would misfire when a body re-establishes the identical step it
     /// started with.
     pub(super) selection_recipe_touched: bool,
-    /// Set by `refuse_if_read_only` (and by a native `EditorCmd` body
-    /// returning `Err`) to tell `commands::run`'s AFTER stage the
-    /// command's body did not do its job: a read-only refusal, or an error
-    /// mid-body. A fresh repeatable change in that state is discarded rather
-    /// than kept: there is nothing new to repeat, and keeping it would drop
-    /// whatever change was recorded before (see `commands/pipeline.rs`'s
-    /// `record_change` call, whose body reports `!command_refused` as its
-    /// success).
-    /// `commands::run` resets this to `false` at its own BEFORE stage
-    /// and is the only reader, immediately after BODY in that same call. The
-    /// Steel dispatch path (`Editor::dispatch`) never reads or resets it
-    /// directly, but any native `call!` it makes goes through
-    /// `commands::run` too, so a stale value from an earlier dispatch
-    /// can never leak in. `commands::run` also returns this flag's
-    /// negation, so `EditorHostImpl::run_command_sync` can forward it as the
-    /// `#t`/`#f` a Steel `call!` sees for a native command.
-    pub(super) command_refused: bool,
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
@@ -514,7 +497,6 @@ impl Default for EditorState {
             recording_scope: replay::ScopeSlot::default(),
             selection_recipe: Vec::new(),
             selection_recipe_touched: false,
-            command_refused: false,
             pending_repeat: None,
             sift_reuse: None,
             #[cfg(test)]

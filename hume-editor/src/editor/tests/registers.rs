@@ -53,10 +53,10 @@ fn register_prefix_clears_after_one_operation() {
 /// subsequent operator after Insert exits never silently redirects into a
 /// register the user armed before an insert they didn't mean it for, and
 /// so a writable buffer agrees with a read-only one, which already cleared
-/// it via `refuse_if_read_only`.
+/// it via `ensure_writable`.
 ///
 /// Without the unconditional clear at the top of `begin_insert_session`,
-/// only `refuse_if_read_only` would clear the register, and only on a
+/// only `ensure_writable` would clear the register, and only on a
 /// read-only buffer. This test's `d` would then land in register `3`.
 #[test]
 fn insert_session_clears_register_prefix_on_a_writable_buffer() {

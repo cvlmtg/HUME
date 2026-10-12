@@ -15,7 +15,7 @@ use crate::editor::error::CommandError;
 use crate::editor::pane_state::{PaneBufferState, TypedRun};
 use hume_ops::edit::clear_blank_line_indent;
 
-use super::{FocusedPane, doc, pane_view, refuse_if_read_only};
+use super::{FocusedPane, doc, ensure_writable, pane_view};
 
 /// `true` when `fp`'s (pane, buffer) has an open Insert-kind session.
 pub(in crate::editor) fn is_group_open_at(
@@ -168,7 +168,7 @@ pub(super) fn begin_typed_run(
 /// No-op (with a warning) if the focused buffer is read-only. Clears any
 /// pending `"<reg>` prefix: `i`/`a`/`o` aren't operators, so a register spec
 /// typed just before one names nothing to write into (unlike `d`/`c`/`p`,
-/// which `refuse_if_read_only` clears it for on the assumption the command
+/// which `ensure_writable` clears it for on the assumption the command
 /// consumed it). It's cleared unconditionally so a read-only refusal and a
 /// normal session agree, matching Vim, where the spec applies only to the
 /// operator immediately after `"`.
@@ -195,9 +195,7 @@ pub(super) fn begin_insert_session_preserving_register(
     view: &EngineView,
     fp: FocusedPane,
 ) -> Result<(), CommandError> {
-    if refuse_if_read_only(state, view, fp.pane()) {
-        return Ok(());
-    }
+    ensure_writable(state, view, fp.pane())?;
     let (pid, bid) = (fp.pid(), fp.bid(view));
     // Already open here means this entry runs inside a live Insert session
     // (a binding re-entering Insert), whose group it joins. Otherwise open

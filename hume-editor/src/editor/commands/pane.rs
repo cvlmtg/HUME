@@ -195,8 +195,8 @@ pub(in crate::editor) fn fits_split(
 
 /// Split the focused pane so the new pane views `bid`, and move focus to it.
 /// Refuses with [`SPLIT_TOO_SMALL_MSG`] if the focused pane is too small to
-/// fit two panes plus the seam divider (see `fits_split`), surfaced to
-/// `commands::run` as `state.command_refused`, which is how the Steel
+/// fit two panes plus the seam divider (see `fits_split`). `commands::run`
+/// returns that refusal as `false`, which is how the Steel
 /// `call!` boolean (see `hume_scripting::host::CommandHost::run_command_sync`)
 /// reports the refusal back to a caller like `stdlib/with-pane-command`.
 ///

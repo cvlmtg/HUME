@@ -82,7 +82,6 @@ fn editor_state_fields_are_classified() {
             recording_scope: _,
             selection_recipe: _,         // preserved
             selection_recipe_touched: _, // preserved
-            command_refused: _,          // preserved
             pending_repeat: _,           // preserved
             sift_reuse: _,               // preserved: the next sift-within takes it
             sift_scans: _,               // preserved: a test-only count

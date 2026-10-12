@@ -346,9 +346,7 @@ fn do_normal_paste(
     // which runs after `do_paste` has written the selections it pastes at:
     // a refusal here leaves the pane untouched.
     edit_session::check_can_open(&state.active_session, pid, buf)?;
-    if super::refuse_if_read_only(state, view, fp.pane()) {
-        return Ok(());
-    }
+    super::ensure_writable(state, view, fp.pane())?;
     let Some(resolved) = resolve_plain(state) else {
         return Ok(());
     };
@@ -369,9 +367,7 @@ fn do_smart_paste(
 ) -> Result<(), CommandError> {
     let (pid, buf) = (fp.pid(), fp.bid(view));
     edit_session::check_can_open(&state.active_session, pid, buf)?;
-    if super::refuse_if_read_only(state, view, fp.pane()) {
-        return Ok(());
-    }
+    super::ensure_writable(state, view, fp.pane())?;
     let Some(resolved) = resolve_smart(state) else {
         return Ok(());
     };
