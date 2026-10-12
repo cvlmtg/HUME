@@ -3,7 +3,7 @@
 // receipts, orphan warnings, and the on-language-set discovery hint.
 //
 // Fixture servers, chosen from the real core:lsp-install
-// registrations/ and sources/ data (verified at authoring time, re-checked by these tests every run):
+// registrations/ and sources/ data:
 //   rust-analyzer (language "rust"): github, plain .gz, installable
 //   svlangserver (language "systemverilog"): npm, settings contain a real
 //     JSON array (systemverilog.includeIndexing)

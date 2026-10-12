@@ -178,7 +178,8 @@ the same server directory at once.
 **`:lsp-install`** takes a seeded server name or a language. A name that is a seeded server
 installs that server; anything else is a language, installing its first server, and no argument
 means the buffer's language. A name that is both a server and a language must be its own
-language's first server, so the two readings agree. Completion offers every installable server
+language's first server, so the two readings agree. Completion offers every server with an
+install source, including one that cannot be installed here (`:lsp-install` then reports why),
 and every seeded language. If the receipt's version already matches the
 seeded one it logs "up to date" and only runs the scan. Otherwise it installs under the
 lock and then runs the scan outside the lock, so a failure in the scan surfaces as its own

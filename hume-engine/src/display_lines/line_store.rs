@@ -82,7 +82,7 @@ impl FormatKey {
 /// Excludes the horizontal clip (`h_window`) a `WrapMode::None`
 /// render applies: block shape doesn't depend on it, only the formatted
 /// display lines do, so that lives on `LineFormat` instead (see the module
-/// doc's "Scope key" section).
+/// doc).
 ///
 /// Also excludes the pane's content width, which reaches formatting through
 /// the resolved wrap and nowhere else, so a width that matters is already in

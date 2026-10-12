@@ -137,9 +137,8 @@ pub struct GrammarBundle {
 
 /// The query files `attach_grammar` may compile for a grammar. `highlights`
 /// is required; `injections` and `textobjects` are each independently
-/// optional: a named struct instead of two more positional
-/// `Option<&Path>` parameters, since the parameter list was already at its
-/// limit before a third optional query joined it.
+/// optional. Named fields, so the two optional paths can't be swapped at a
+/// call site.
 #[derive(Clone, Copy)]
 pub struct QueryPaths<'a> {
     pub highlights: &'a Path,

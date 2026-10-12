@@ -172,8 +172,8 @@ pub(super) fn begin_typed_run(
 /// typed just before one names nothing to write into (unlike `d`/`c`/`p`,
 /// which `ensure_writable` clears it for on the assumption the command
 /// consumed it). It's cleared unconditionally so a read-only refusal and a
-/// normal session agree, matching Vim, where the spec applies only to the
-/// operator immediately after `"`.
+/// normal session agree: a register spec applies only to the command
+/// immediately after `"`.
 ///
 /// `cmd_change` (`c`) is the one caller for which this would be wrong: it's
 /// itself a genuine register-consuming operator that delegates its mode

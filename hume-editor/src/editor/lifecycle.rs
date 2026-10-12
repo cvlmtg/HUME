@@ -289,8 +289,8 @@ impl Editor {
     /// caller (`hume_editor::run_keys`) calls it once per key, mirroring how the
     /// interactive loop settles once per iteration rather than once per input
     /// handler. The one exception is [`Self::drain_replay_queue`], which settles
-    /// internally so a macro's buffer-enter diff is observed before its
-    /// `is_replaying` guard drops (see that function's doc). Here we use
+    /// once per replayed key while the replay mark is still set (see that
+    /// function's doc). Here we use
     /// [`Self::handle_key`] directly so the caller doesn't need a scripting host.
     pub(crate) fn step(&mut self, key: KeyEvent) {
         self.handle_key(key);
@@ -629,7 +629,7 @@ impl Editor {
 
             // ── 4. Drain macro replay queue ───────────────────────────────────
             // Drain after handling the terminal event so that a key that
-            // populates the queue (e.g. the register name after `Q`) causes
+            // populates the queue (e.g. the register name after `q`) causes
             // replay to run immediately: the results are visible on the very
             // next frame rather than requiring an additional keypress.
             self.drain_replay_queue();

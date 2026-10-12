@@ -54,8 +54,9 @@ fn stdout_gate_returns_true_and_calls_ensure_when_open_via_inline_output_command
 /// Guards the require-module hazard documented in this
 /// module's doc comment: a plugin file loaded via `(require "path.scm")`
 /// is a separately-compiled module, exactly the shape of every real
-/// `#:inline-output` plugin command (core:lsp's `servers.scm`'s
-/// `lsp-servers`, core:plum's `grammars.scm`'s grammar-compile line).
+/// `#:inline-output` plugin command (core:plum's `lib/plugins.scm`'s
+/// `plum-install-plugins`, core:plum's `grammars.scm`'s grammar-compile
+/// line).
 ///
 /// Defines a command inside a required module (mirroring how every real
 /// plugin command is defined) and dispatches it via `call_steel_cmd` (the
