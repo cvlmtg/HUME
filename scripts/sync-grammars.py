@@ -7,10 +7,10 @@ languages.toml at that commit, and rewrites:
   - languages.scm       — (define-language! …) detection data for every [[language]] block
   - languages/<name>.scm — one data file per [[language]] block: comment tokens,
     language-id, root markers and the source of the grammar the language uses
-  - lsp-install/servers.scm — each server's command, args and config, each omitted when it
-    is the default (the server's name, no args, no config), derived from
-    [language-server.*]
-  - lsp-install/language-servers.scm — each language's ordered server list, with
+  - lsp-install/data/registrations/<server>.scm — one file per server: its command,
+    args and config, each omitted when it is the default (the server's name, no
+    args, no config), derived from [language-server.*]
+  - lsp-install/data/language-servers.scm — each language's ordered server list, with
     Helix's only-features/except-features per entry
 
 Idempotent: running twice produces byte-identical files.
@@ -33,6 +33,7 @@ from sync_common import (  # noqa: E402
     scheme_str,
     scheme_str_list,
     write_generated_file,
+    write_named_files,
 )
 
 try:
@@ -48,10 +49,9 @@ REPO = Path(__file__).resolve().parent.parent
 HELIX_PIN_SCM = REPO / "runtime" / "scheme" / "helix-pin.scm"
 LANGUAGES_SCM = REPO / "runtime" / "scheme" / "languages.scm"
 LANGUAGES_DIR = REPO / "runtime" / "scheme" / "languages"
-LSP_SERVERS_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data" / "servers.scm"
-LANGUAGE_SERVERS_SCM = (
-    REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data" / "language-servers.scm"
-)
+LSP_INSTALL_DATA = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data"
+LSP_REGISTRATIONS_DIR = LSP_INSTALL_DATA / "registrations"
+LANGUAGE_SERVERS_SCM = LSP_INSTALL_DATA / "language-servers.scm"
 
 LANGUAGES_HEADER = """\
 ;;; runtime/scheme/languages.scm — HUME bundled default language identities.
@@ -65,9 +65,10 @@ LANGUAGE_DATA_HEADER = """\
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
 
-# A language name names its data file: lowercase so it stays distinct on
-# case-insensitive file systems, no leading dot so it is never a dotfile.
-LANGUAGE_NAME = re.compile(r"[a-z0-9_-][a-z0-9._-]*")
+# A language or server name names its data file: lowercase so it stays
+# distinct on case-insensitive file systems, no leading dot so it is never a
+# dotfile.
+FILE_NAME = re.compile(r"[a-z0-9_-][a-z0-9._-]*")
 
 LANGUAGE_SERVERS_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/language-servers.scm — each language's ordered LSP server list.
@@ -102,9 +103,9 @@ LSP_FEATURES = (
     "call-hierarchy",
 )
 
-LSP_SERVERS_HEADER = """\
-;;; runtime/plugins/core/lsp-install/data/servers.scm — HUME bundled LSP server registration catalog.
-;;; Generated — do not hand-edit. Record format: README.md, this directory.
+LSP_REGISTRATION_HEADER = """\
+;;; runtime/plugins/core/lsp-install/data/registrations/{name}.scm — one LSP server's registration.
+;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
 
@@ -241,12 +242,12 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
     return langs
 
 
-def check_language_names(langs: list[dict]) -> None:
-    """Fatal unless every language name matches LANGUAGE_NAME."""
-    for lang in langs:
-        name = lang["name"]
-        if not LANGUAGE_NAME.fullmatch(name):
-            sys.exit(f"error: language name '{name}' does not match {LANGUAGE_NAME.pattern}")
+def check_file_names(what: str, names) -> None:
+    """Fatal unless every name matches FILE_NAME; `what` names the kind in the
+    error."""
+    for name in names:
+        if not FILE_NAME.fullmatch(name):
+            sys.exit(f"error: {what} name '{name}' does not match {FILE_NAME.pattern}")
 
 
 def emit_language_identities(langs: list[dict]) -> list[str]:
@@ -299,31 +300,12 @@ def emit_language_data(lang: dict) -> list[str]:
 
 
 def write_language_files(directory: Path, sha: str, langs: list[dict]) -> None:
-    """Write one data file per language into `directory` and delete the file of
-    any language not in `langs`. The directory holds generated files only, so
-    anything other than a `.scm` file there is fatal. Dotfiles (Finder's
-    `.DS_Store`) are left alone."""
-    directory.mkdir(parents=True, exist_ok=True)
-    entries = [p for p in directory.iterdir() if not p.name.startswith(".")]
-    foreign = sorted(p.name for p in entries if p.suffix != ".scm")
-    if foreign:
-        sys.exit(f"error: {directory} holds files that are not generated: {foreign}")
-
-    written = set()
-    for lang in langs:
-        path = directory / f"{lang['name']}.scm"
-        write_generated_file(
-            path,
-            LANGUAGE_DATA_HEADER.format(name=lang["name"], sha=sha),
-            emit_language_data(lang),
-        )
-        read_sexpr(path)  # self-check: emitted file must re-parse
-        written.add(path.name)
-
-    for path in sorted(entries):
-        if path.name not in written:
-            path.unlink()
-            print(f"removed {path}", file=sys.stderr)
+    """One data file per language in `langs`, through `write_named_files`."""
+    write_named_files(
+        directory,
+        lambda name: LANGUAGE_DATA_HEADER.format(name=name, sha=sha),
+        {lang["name"]: emit_language_data(lang) for lang in langs},
+    )
 
 
 # HUME-specific corrections to upstream Helix `config` data, applied before
@@ -454,7 +436,7 @@ def check_lsp_invariants(
             if server_name not in servers:
                 sys.exit(
                     f"error: language-servers.scm: '{lang_name}' lists "
-                    f"'{server_name}', which servers.scm does not seed"
+                    f"'{server_name}', which registrations/ does not seed"
                 )
             if server_name in seen:
                 sys.exit(
@@ -470,19 +452,19 @@ def check_lsp_invariants(
                     )
 
 
-def emit_lsp_servers(servers: dict[str, dict]) -> list[str]:
-    rows = []
-    for name in sorted(servers):
-        s = servers[name]
-        fields = []
-        if s["command"] != name:
-            fields.append("(command . {})".format(scheme_str(s["command"])))
-        if s["args"]:
-            fields.append("(args {})".format(" ".join(scheme_str(a) for a in s["args"])))
-        if s["config"]:
-            fields.append("(config . {})".format(scheme_str(json.dumps(s["config"], sort_keys=True))))
-        rows.append(" ({})".format(" ".join([scheme_str(name), *fields])))
-    return ["("] + rows + [")"]
+def emit_lsp_registration(name: str, server: dict) -> list[str]:
+    """One server's registration file body: the fields that differ from the
+    defaults, or the empty list."""
+    fields = []
+    if server["command"] != name:
+        fields.append("(command . {})".format(scheme_str(server["command"])))
+    if server["args"]:
+        fields.append("(args {})".format(" ".join(scheme_str(a) for a in server["args"])))
+    if server["config"]:
+        fields.append(
+            "(config . {})".format(scheme_str(json.dumps(server["config"], sort_keys=True)))
+        )
+    return ["({})".format(" ".join(fields))]
 
 
 def emit_language_servers(
@@ -510,8 +492,9 @@ def main() -> None:
     doc = fetch_toml(sha)
     grammars = parse_grammars(doc)
     langs = parse_languages(doc, grammars)
-    check_language_names(langs)
+    check_file_names("language", (lang["name"] for lang in langs))
     servers, language_lists = parse_language_servers(doc)
+    check_file_names("server", servers)
     check_lsp_invariants(servers, langs, language_lists)
 
     print(
@@ -530,11 +513,12 @@ def main() -> None:
     # languages/<name>.scm — per-language data
     write_language_files(LANGUAGES_DIR, sha, langs)
 
-    # servers.scm — LSP server command, args and config, defaults omitted
-    write_generated_file(
-        LSP_SERVERS_SCM, LSP_SERVERS_HEADER.format(sha=sha), emit_lsp_servers(servers)
+    # lsp-install registrations/<server>.scm — command, args and config, defaults omitted
+    write_named_files(
+        LSP_REGISTRATIONS_DIR,
+        lambda name: LSP_REGISTRATION_HEADER.format(name=name, sha=sha),
+        {name: emit_lsp_registration(name, servers[name]) for name in sorted(servers)},
     )
-    read_sexpr(LSP_SERVERS_SCM)  # self-check: emitted file must re-parse
 
     # language-servers.scm — each language's ordered server list
     write_generated_file(

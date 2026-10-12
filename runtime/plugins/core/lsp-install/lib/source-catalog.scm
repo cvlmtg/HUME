@@ -2,9 +2,10 @@
 
 (require "catalog.scm")
 
-(provide lsp-install/source)
-
-(define lsp-install/sources (lsp-install/index-entries (lsp-install/read-data "sources.scm")))
+(provide lsp-install/source lsp-install/source-names)
 
 (define (lsp-install/source name)
-  (lsp-install/lookup lsp-install/sources name))
+  (lsp-install/read-record "sources" name))
+
+(define (lsp-install/source-names)
+  (data-file-names (lsp-install/data-path "sources")))

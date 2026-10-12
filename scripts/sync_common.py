@@ -70,6 +70,40 @@ def write_generated_file(path: Path, header: str, rows: list[str]) -> None:
     write_atomic(path, generated_file_text(header, rows))
 
 
+def write_named_files(directory: Path, header, bodies: dict[str, list[str]]) -> None:
+    """Write `<directory>/<name>.scm` for each `name` in `bodies`, headed by
+    `header(name)`, and delete the file of any name not in `bodies`. The
+    directory holds generated files only, so anything other than a `.scm` file
+    there is fatal. Dotfiles (Finder's `.DS_Store`) are left alone."""
+    directory.mkdir(parents=True, exist_ok=True)
+    entries = [p for p in directory.iterdir() if not p.name.startswith(".")]
+    foreign = sorted(p.name for p in entries if p.suffix != ".scm")
+    if foreign:
+        sys.exit(f"error: {directory} holds files that are not generated: {foreign}")
+
+    written = set()
+    for name, rows in bodies.items():
+        path = directory / f"{name}.scm"
+        write_generated_file(path, header(name), rows)
+        read_sexpr(path)  # self-check: emitted file must re-parse
+        written.add(path.name)
+
+    for path in sorted(entries):
+        if path.name not in written:
+            path.unlink()
+            print(f"removed {path}", file=sys.stderr)
+
+
+def read_named_files(directory: Path) -> dict:
+    """`{name: body}` for each `<directory>/<name>.scm` that `write_named_files`
+    writes, sorted by name. A missing directory has no files."""
+    return {
+        path.name[: -len(".scm")]: read_sexpr(path)
+        for path in sorted(directory.glob("*.scm"))
+        if not path.name.startswith(".")
+    }
+
+
 def fetch_bytes(url: str, *, timeout: int) -> bytes:
     """GET `url`, returning the raw response body. Aborts the whole sync
     loudly on failure — this is for a script's one registry/source-of-truth

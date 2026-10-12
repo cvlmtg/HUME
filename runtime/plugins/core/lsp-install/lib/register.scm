@@ -7,7 +7,7 @@
 
 (define (lsp-install/register-server! name cmd env)
   (unless (lsp-server-registered? name)
-    (let* ((fields (hash-ref lsp-install/servers name))
+    (let* ((fields (lsp-install/registration name))
            (args        (lsp-install/ref-or fields 'args '()))
            (config-json (lsp-install/ref-or fields 'config #f))
            (config (and config-json (json-parse config-json))))
@@ -29,9 +29,8 @@
     (lambda (lang)
       (set-default-language-servers!
         lang
-        (map lsp-install/entry->spec
-             (lsp-install/ref (hash-ref lsp-install/language-lists lang) 'servers))))
-    (hash-keys->list lsp-install/language-lists)))
+        (map lsp-install/entry->spec (lsp-install/language-list lang))))
+    (lsp-install/language-names)))
 
 (define (lsp-install/register-installed-servers!)
   (let ((sdir (lsp-install/servers-dir)))
@@ -43,7 +42,7 @@
               ((not receipt)
                (log! 'warn (string-append "LSP: interrupted install of " name
                                           " — run :lsp-install to redo, or delete the directory")))
-              ((not (hash-contains? lsp-install/servers name))
+              ((not (lsp-install/seeded-server? name))
                (log! 'warn (string-append "LSP: orphan server " name
                                           " — not in the seeded catalog, run :lsp-uninstall to remove")))
               (else

@@ -37,22 +37,22 @@
 
 (register-completion-source! "lsp:install-targets"
   (lambda (id input cursor)
-    (let ((servers (filter lsp-install/source (hash-keys->list lsp-install/servers))))
+    (let ((servers (lsp-install/source-names)))
       (completion-emit! id
         (append servers
                 (filter (lambda (lang) (not (member lang servers)))
-                        (hash-keys->list lsp-install/language-lists))))))
+                        (lsp-install/language-names))))))
   #:target 'minibuf #:match 'string)
 
 (define-typed-command! "lsp-install"
   "Download and verify a language server, then register it: :lsp-install [language|server] (default: the current buffer's language)."
   (lambda (pane arg)
-    (if (and (string? arg) (hash-contains? lsp-install/servers arg))
+    (if (and (string? arg) (lsp-install/seeded-server? arg))
         (lsp-install/install-or-report! arg)
         (let ((lang (call! "stdlib/resolve-lang-arg" pane "lsp-install" arg)))
           (cond
             ((not lang) (begin))
-            ((not (hash-contains? lsp-install/language-lists lang))
+            ((not (lsp-install/seeded-language? lang))
              (log! 'error (string-append "lsp-install: no language or server named \"" lang "\" is seeded")))
             (else
              (lsp-install/install-or-report! (lsp-install/primary lang)))))))
@@ -78,7 +78,7 @@
       (else
         (let* ((name arg)
                (dir  (lsp-install/server-dir name)))
-          (when (hash-contains? lsp-install/servers name)
+          (when (lsp-install/seeded-server? name)
             (unregister-lsp-server! name))
           (if (path-exists? dir)
               (begin
@@ -117,5 +117,5 @@
                           (let ((blocker (lsp-install/install-blocker name)))
                             (if blocker blocker "not installed"))))))
                 (string-append name " [" (string-join langs ", ") "]: " status)))
-            (sort (hash-keys->list lsp-install/servers) string<?))
+            (lsp-install/server-names))
           #f)))))

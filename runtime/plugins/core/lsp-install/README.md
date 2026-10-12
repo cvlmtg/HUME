@@ -20,9 +20,9 @@ download or build of that server registers the installed copy again.
   `stdlib/safe-path-segment?`).
 - **Activates on:** two entries, each on its own trigger. `plugin.scm` loads on the first
   buffer with a detected language: it scans `<data>/servers/`,
-  registers every installed server and gives the discovery hint. It reads `servers.scm` and
-  `language-servers.scm` at load, and `requirements.scm` when the hint or a blocker check first needs
-  a server's requirements. `commands.scm` loads on the
+  registers every installed server and gives the discovery hint. It reads `language-servers.scm`
+  and each installed server's `registrations/<name>.scm` at load, and a server's
+  `requirements/<name>.scm` when the hint or a blocker check needs it. `commands.scm` loads on the
   first `:lsp-install`, `:lsp-uninstall` or `:lsp-catalog`, or when Tab completes their
   argument, and brings the install pipeline with it. `manifest.scm` declares both: `plugin.scm` with
   `#:languages '("*")`, and `commands.scm`
@@ -41,8 +41,8 @@ two pins, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 
 | File | Owns |
 |---|---|
-| `lib/catalog.scm` | Reads `servers.scm` and `language-servers.scm` from this plugin's `data/` directory with `(plugin-dir)`, and `requirements.scm` on first use; field lookup; each language's ordered server list, its first (primary) server, and a server's languages |
-| `lib/source-catalog.scm` | Reads `sources.scm`, which only the install pipeline needs |
+| `lib/catalog.scm` | Reads `language-servers.scm` at load, and a server's `registrations/` or `requirements/` file when asked, from this plugin's `data/` directory with `(plugin-dir)`; field lookup; each language's ordered server list, its first (primary) server, and a server's languages |
+| `lib/source-catalog.scm` | Reads a server's `sources/` file, which only the install pipeline needs |
 | `lib/receipts.scm` | `<data>/servers/<name>/receipt.scm` paths, reading and writing |
 | `lib/register.scm` | The scan that turns installed servers into registrations, and the default server list of every catalog language |
 | `lib/blocker.scm` | This platform's requirements row for a server, and the check for what blocks installing it |
@@ -52,14 +52,14 @@ two pins, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 | `lib/lock.scm` | Cross-process install lock |
 | `lib/sha256.scm`, `lib/unpack.scm` | Hashing, unpacking and chmod through system tools |
 | `lib/platform.scm` | This platform's Mason target name, and whether it is Windows |
-| `data/servers.scm`, `data/language-servers.scm`, `data/requirements.scm`, `data/sources.scm`, `data/mason-pin.scm` | Generated catalogs and the Mason pin, described below |
+| `data/language-servers.scm`, `data/registrations/`, `data/requirements/`, `data/sources/`, `data/mason-pin.scm` | Generated catalogs and the Mason pin, described below |
 
 ## Internals
 
 - `lsp-install/install-blocker` (`blocker.scm`) returns the reason a server cannot be installed
   here, or `#f`. `lsp-install/row-blocker` (`blocker.scm`) is the same check for a row the caller
   already resolved.
-- `lsp-install/target-row` (`blocker.scm`) returns the server's `requirements.scm` row for this
+- `lsp-install/target-row` (`blocker.scm`) returns the server's `requirements/` row for this
   platform, or `#f`.
 - `lsp-install/package-installers` (`install.scm`) holds one `(kind installer env-dirs)` row per
   package manager; an installer takes `(name fields row dir)`, where `row` is the server's `target-row`.
@@ -70,21 +70,27 @@ two pins, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 
 ## Catalogs
 
-The catalogs are generated, single literal sexprs. `servers.scm` (one record per server),
-and `language-servers.scm` (one record per language)
-come from the registration pin (`scripts/sync-grammars.py`), `sources.scm` from the
-Mason pin (`scripts/sync-lsp-sources.py`), and `requirements.scm` from `sources.scm`
-(both by `scripts/sync-lsp-sources.py`). `scripts/README.md` has the run order.
+The catalogs are generated literal sexprs, each shaped by how it is read.
+`language-servers.scm` is one file, because the registration entry reads all of it at load.
+Every other catalog is a directory holding one file per server, `<name>.scm`, with that
+server's record, so a server's data is read only when something needs that server. Every
+file is read with `read-data-file`, and a name is looked up only when it is a file in that
+directory (`data-file`).
 
-**`servers.scm`**: what a server is registered with.
+`registrations/` and `language-servers.scm` come from the registration pin
+(`scripts/sync-grammars.py`), `sources/` from the Mason pin (`scripts/sync-lsp-sources.py`),
+and `requirements/` from `sources/` (both by `scripts/sync-lsp-sources.py`).
+`scripts/README.md` has the run order.
+
+**`registrations/<name>.scm`**: what a server is registered with.
 
 ```scheme
-(name
- [(command . executable)]
+([(command . executable)]
  [(args arg…)]
  [(config . json-string)])
 ```
 
+- A server whose fields are all defaults has the record `()`.
 - `command` is present only when the server's executable differs from its name; without it
   the server runs a command named like itself. The install pipeline reads it for its `$PATH`
   note.
@@ -108,13 +114,13 @@ order. Root markers are not here: they belong to the language (`runtime/scheme/l
 - The last write to a language's default list wins, so keep one plugin writing defaults for
   a language.
 
-**`requirements.scm`**: what installing a server needs on each platform. The runtime reads it
-when the discovery hint or a blocker check first needs a row, so it holds only what those
-need, and `sources.scm` stays unread until something installs.
+**`requirements/<name>.scm`**: what installing a server needs on each platform. The runtime
+reads it when the discovery hint or a blocker check needs it, so it holds only what those
+need, and `sources/` stays unread until something installs.
 
 ```scheme
-(name (targets (platforms fmt tool…)…) (missing . reason))   ; installable
-(name (blocked . kind))                                      ; stub kind, not installable
+((targets (platforms fmt tool…)…) (missing . reason))   ; installable
+((blocked . kind))                                      ; stub kind, not installable
 ```
 
 - `platforms` is `*` for every platform, or a list of the targets below.
@@ -128,7 +134,7 @@ need, and `sources.scm` stays unread until something installs.
   guessing. `sync-lsp-sources.py` already drops downloads that are not installable, which is
   why a row exists only for an installable one.
 
-**`sources.scm`**: install data, joined to `servers.scm` by server name.
+**`sources/<name>.scm`**: install data for the server its file is named after.
 
 - The target is one of `darwin-arm64`, `darwin-x64`, `linux-x64`, `windows-x64`. A server
   missing a target omits that row.
@@ -140,12 +146,12 @@ need, and `sources.scm` stays unread until something installs.
 - A package-manager row may carry `(platforms target …)` when Mason restricts it.
 - Any other kind is a stub and not installable: an unsupported purl kind, or a
   source-only `github-build` or `generic-build` package.
-- A server with no Mason equivalent has no entry.
+- A server with no Mason equivalent has no file.
 
 ## Mason pin
 
 `mason-pin.scm` holds one string: the `mason-org/mason-registry` release tag that
-`sources.scm` is generated from. To move to a newer registry, change the tag and run
+`sources/` is generated from. To move to a newer registry, change the tag and run
 `python3 scripts/sync-lsp-sources.py`. If a pin bump renamed or dropped servers, run
 `python3 scripts/sync-grammars.py` first. The script downloads every asset to record its
 sha256, so a run takes a while; `scripts/README.md` describes the hash cache.

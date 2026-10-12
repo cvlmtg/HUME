@@ -6,7 +6,7 @@
 
 ;;; Helix commit pin, read once at plugin load.
 (define *plum-helix-pin*
-  (call-with-input-file (path-join (runtime-dir) "scheme" "helix-pin.scm") read))
+  (read-data-file (path-join (runtime-dir) "scheme" "helix-pin.scm")))
 
 (define (plum/helix-query-url name filename)
   (string-append "https://raw.githubusercontent.com/helix-editor/helix/"

@@ -207,19 +207,24 @@ macro_rules! builtins {
 // stems-with-suffix: sorts after stripping the suffix, since sorting full
 // file names would put "a-b.x" ahead of "a.x" ('-' < '.').
 //
+// read-data-file: the one reader of a data file, returning its single
+// top-level form. It parses with hm.read!, never `read`: steel-core's `read`
+// keeps one buffer across calls, returns eof instead of raising on bad
+// syntax, and leaves the bad text for the next call. The parse error is
+// caught into a marker and a fresh error naming the file is raised after the
+// handler returns, so nothing is re-raised (hazard above).
+//
+// data-file, data-file-names: a name resolves only when it is the stem of a
+// file in its directory's listing, which keeps a lookup inside the directory
+// and off a case-insensitive alias. Each directory's listing is kept for the
+// life of the Steel engine, which :reload-config rebuilds.
+//
 // %read-language-data: the one reader of `<runtime>/scheme/languages/<name>.scm`
-// (record format: runtime/scheme/README.md). It parses with hm.read!, never
-// `read`: steel-core's `read` keeps one buffer across calls, returns eof
-// instead of raising on bad syntax, and leaves the bad text for the next
-// call. The parse error is caught into a marker and a fresh error naming the
-// file is raised after the handler returns, so nothing is re-raised (hazard
-// above). A name reads only when it is the stem of a file in that directory's
-// listing, which keeps a lookup inside the directory and off a
-// case-insensitive alias; any other name, or a missing runtime dir, reads as
-// #f. The listing is kept for the life of the Steel engine, which
-// :reload-config rebuilds. %bundled-language-config is the editor's view
-// (ScriptingHost::bundled_language decodes it); bundled-language-grammar and
-// bundled-grammar-languages are the plugins' view.
+// (record format: runtime/scheme/README.md), on data-file and read-data-file;
+// an unlisted name, or a missing runtime dir, reads as #f.
+// %bundled-language-config is the editor's view (ScriptingHost::bundled_language
+// decodes it); bundled-language-grammar and bundled-grammar-languages are the
+// plugins' view.
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
 // PRINT_GATE_SHIMS is appended both to BOOTSTRAP (top level) and, verbatim,

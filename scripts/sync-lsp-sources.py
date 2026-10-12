@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
-"""Regenerate runtime/plugins/core/lsp-install/data/sources.scm and requirements.scm from mason-org/mason-registry.
+"""Regenerate runtime/plugins/core/lsp-install/data/sources/ and requirements/ from mason-org/mason-registry.
 
 Reads the pinned release tag from runtime/plugins/core/lsp-install/data/mason-pin.scm, downloads
 that release's compiled registry.json.zip, joins it against the checked-in
-runtime/plugins/core/lsp-install/data/servers.scm (server names Helix actually wires) through
-an explicit name-mapping table, and rewrites sources.scm with per-server
-install records, then derives requirements.scm from the sources.scm it wrote: per
-server and platform, the format of the download and the programs the install needs
-on $PATH. The runtime reads requirements.scm when it first needs a server's requirements
-and sources.scm only when it installs.
+runtime/plugins/core/lsp-install/data/registrations/ (server names Helix actually wires) through
+an explicit name-mapping table, and rewrites sources/<server>.scm with each server's
+install record, then derives requirements/<server>.scm from the sources it wrote: per
+platform, the format of the download and the programs the install needs on $PATH.
+The runtime reads a server's requirements file when it first needs its requirements,
+and its sources file only when it installs.
 
-    sync-lsp-sources.py                          full sync, writes both files
-    sync-lsp-sources.py --requirements-only      rewrite requirements.scm from sources.scm, offline
-    sync-lsp-sources.py --requirements-only --check    exit 1 if requirements.scm is stale
-    --sources PATH / --out PATH                  with --requirements-only, read and write other files
+    sync-lsp-sources.py                          full sync, writes both directories
+    sync-lsp-sources.py --requirements-only      rewrite requirements/ from sources/, offline
+    sync-lsp-sources.py --requirements-only --check    exit 1 if requirements/ is stale
+    --sources DIR / --out DIR                    with --requirements-only, read and write other directories
 
 Standalone and slow by design: on a from-scratch run it downloads every
 selected github asset to compute a sha256. A repeat run reuses the sha256
-already recorded in the checked-in sources.scm for any (repo, version,
+already recorded in the checked-in sources/ for any (repo, version,
 asset-file) combination that hasn't changed, so a routine re-sync after an
 unrelated pin bump downloads only the genuinely new or changed assets. Run
 after sync-grammars.py if a helix-pin bump renamed or dropped any LSP
 servers — see scripts/README.md for the run order.
 
-Idempotent: running twice against the same pins produces a byte-identical
-file.
+Idempotent: running twice against the same pins produces byte-identical
+files.
 """
 
 from __future__ import annotations
@@ -47,30 +47,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sync_common import (  # noqa: E402
     fetch_bytes,
     generated_file_text,
+    read_named_files,
     read_pin,
-    read_sexpr,
     scheme_str,
     scheme_str_list,
-    write_generated_file,
+    write_named_files,
 )
 
 REPO = Path(__file__).resolve().parent.parent
 LSP_INSTALL_DIR = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data"
 MASON_PIN_SCM = LSP_INSTALL_DIR / "mason-pin.scm"
-LSP_SERVERS_SCM = LSP_INSTALL_DIR / "servers.scm"
-LSP_SOURCES_SCM = LSP_INSTALL_DIR / "sources.scm"
-LSP_REQUIREMENTS_SCM = LSP_INSTALL_DIR / "requirements.scm"
+LSP_REGISTRATIONS_DIR = LSP_INSTALL_DIR / "registrations"
+LSP_SOURCES_DIR = LSP_INSTALL_DIR / "sources"
+LSP_REQUIREMENTS_DIR = LSP_INSTALL_DIR / "requirements"
 
-LSP_SOURCES_HEADER = """\
-;;; runtime/plugins/core/lsp-install/data/sources.scm — HUME bundled LSP server install catalog.
-;;; Generated — do not hand-edit. Record format: README.md, this directory.
+LSP_SOURCE_HEADER = """\
+;;; runtime/plugins/core/lsp-install/data/sources/{name}.scm — one LSP server's install source.
+;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
 ;;; Source: mason-org/mason-registry @ {tag}
 """
 
-LSP_REQUIREMENTS_HEADER = """\
-;;; runtime/plugins/core/lsp-install/data/requirements.scm — HUME bundled LSP server install requirements.
-;;; Generated — do not hand-edit. Record format: README.md, this directory.
-;;; Source: sources.scm
+LSP_REQUIREMENT_HEADER = """\
+;;; runtime/plugins/core/lsp-install/data/requirements/{name}.scm — one LSP server's install requirements.
+;;; Generated — do not hand-edit. Record format: README.md, plugin directory.
+;;; Source: sources/{name}.scm
 """
 
 # Helix server name -> Mason package name, for the cases where the two
@@ -299,24 +299,22 @@ def pick_bin_template(bin_map: dict, helix_command: str, server_name: str):
     return None
 
 
-def load_sha256_cache(path: Path) -> dict[str, str]:
+def load_sha256_cache(directory: Path) -> dict[str, str]:
     """Return {download-url: sha256} read from the previously checked-in
-    sources.scm, so re-syncing after an unrelated pin bump doesn't
+    sources/, so re-syncing after an unrelated pin bump doesn't
     re-download and re-hash every unchanged github or generic asset. Best-effort: a
     missing or unparseable file yields an empty cache (equivalent to a
     from-scratch run) rather than aborting the sync — the cache is a speed
     optimization, not a correctness dependency."""
-    if not path.exists():
-        return {}
     try:
-        data = read_sexpr(path)
+        bodies = read_named_files(directory)
     except Exception as e:
-        print(f"  warning: could not read {path} for hash cache: {e}", file=sys.stderr)
+        print(f"  warning: could not read {directory} for hash cache: {e}", file=sys.stderr)
         return {}
 
     cache: dict[str, str] = {}
-    for rec in data:
-        fields = fields_of(rec)
+    for name, body in bodies.items():
+        fields = fields_of([name, *body])
         kind = fields.get("kind")
         if kind not in DOWNLOAD_KINDS:
             continue
@@ -639,92 +637,82 @@ def assert_no_unresolved_templates(rows: list[str]) -> None:
         )
 
 
-def emit_lsp_sources(records: dict) -> list[str]:
-    rows = []
-    for name in sorted(records):
-        r = records[name]
-        if r["kind"] == "github":
-            # build_github_record never returns a "github" record with an
-            # empty targets list (it downgrades to "github-build" instead —
-            # see its own trailing guard), so target_rows is always non-empty
-            # here.
-            target_rows = " ".join(
-                "({} {} {} {})".format(
-                    t, scheme_str(f), scheme_str(sha), scheme_str(b)
-                )
-                for t, f, sha, b in r["targets"]
+def emit_lsp_source(name: str, r: dict) -> list[str]:
+    """One server's sources file body: its install record."""
+    if r["kind"] == "github":
+        # build_github_record never returns a "github" record with an
+        # empty targets list (it downgrades to "github-build" instead —
+        # see its own trailing guard), so target_rows is always non-empty
+        # here.
+        target_rows = " ".join(
+            "({} {} {} {})".format(
+                t, scheme_str(f), scheme_str(sha), scheme_str(b)
             )
-            row = " ({} (kind . github) (version . {}) (repo . {}) (targets {}))".format(
-                scheme_str(name),
-                scheme_str(r["version"]),
-                scheme_str(r["repo"]),
-                target_rows,
+            for t, f, sha, b in r["targets"]
+        )
+        row = "((kind . github) (version . {}) (repo . {}) (targets {}))".format(
+            scheme_str(r["version"]),
+            scheme_str(r["repo"]),
+            target_rows,
+        )
+    elif r["kind"] == "generic":
+        target_rows = " ".join(
+            "({} {} {} {} {})".format(
+                t, scheme_str(f), scheme_str(u), scheme_str(sha), scheme_str(b)
             )
-        elif r["kind"] == "generic":
-            target_rows = " ".join(
-                "({} {} {} {} {})".format(
-                    t, scheme_str(f), scheme_str(u), scheme_str(sha), scheme_str(b)
-                )
-                for t, f, u, sha, b in r["targets"]
-            )
-            row = " ({} (kind . generic) (version . {}) (targets {}))".format(
-                scheme_str(name), scheme_str(r["version"]), target_rows
-            )
-        elif r["kind"] == "npm":
-            row = " ({} (kind . npm) (version . {}) (packages {}) (bin . {}){})".format(
-                scheme_str(name),
-                scheme_str(r["version"]),
-                scheme_str_list(r["packages"]),
-                scheme_str(r["bin"]),
-                platforms_field(r),
-            )
-        elif r["kind"] == "nuget":
-            row = " ({} (kind . nuget) (version . {}) (package . {}) (bin . {}){})".format(
-                scheme_str(name),
-                scheme_str(r["version"]),
-                scheme_str(r["package"]),
-                scheme_str(r["bin"]),
-                platforms_field(r),
-            )
-        elif r["kind"] == "gem":
-            row = " ({} (kind . gem) (version . {}) (packages {}) (bin . {}){})".format(
-                scheme_str(name),
-                scheme_str(r["version"]),
-                scheme_str_list(r["packages"]),
-                scheme_str(r["bin"]),
-                platforms_field(r),
-            )
-        elif r["kind"] == "pypi":
-            row = " ({} (kind . pypi) (version . {}) (package . {}) (extras{}) (bin . {}){})".format(
-                scheme_str(name),
-                scheme_str(r["version"]),
-                scheme_str(r["package"]),
-                "".join(" " + scheme_str(e) for e in r["extras"]),
-                scheme_str(r["bin"]),
-                platforms_field(r),
-            )
-        elif r["kind"] == "golang":
-            row = " ({} (kind . golang) (version . {}) (module . {}) (bin . {}){})".format(
-                scheme_str(name),
-                scheme_str(r["version"]),
-                scheme_str(r["module"]),
-                scheme_str(r["bin"]),
-                platforms_field(r),
-            )
-        elif r["kind"] == "cargo":
-            row = " ({} (kind . cargo) (version . {}) (crate . {}) (bin . {}){})".format(
-                scheme_str(name),
-                scheme_str(r["version"]),
-                scheme_str(r["crate"]),
-                scheme_str(r["bin"]),
-                platforms_field(r),
-            )
-        else:
-            row = " ({} (kind . {}) (version . {}))".format(
-                scheme_str(name), r["kind"], scheme_str(r["version"])
-            )
-        rows.append(row)
-    return ["("] + rows + [")"]
+            for t, f, u, sha, b in r["targets"]
+        )
+        row = "((kind . generic) (version . {}) (targets {}))".format(
+            scheme_str(r["version"]), target_rows
+        )
+    elif r["kind"] == "npm":
+        row = "((kind . npm) (version . {}) (packages {}) (bin . {}){})".format(
+            scheme_str(r["version"]),
+            scheme_str_list(r["packages"]),
+            scheme_str(r["bin"]),
+            platforms_field(r),
+        )
+    elif r["kind"] == "nuget":
+        row = "((kind . nuget) (version . {}) (package . {}) (bin . {}){})".format(
+            scheme_str(r["version"]),
+            scheme_str(r["package"]),
+            scheme_str(r["bin"]),
+            platforms_field(r),
+        )
+    elif r["kind"] == "gem":
+        row = "((kind . gem) (version . {}) (packages {}) (bin . {}){})".format(
+            scheme_str(r["version"]),
+            scheme_str_list(r["packages"]),
+            scheme_str(r["bin"]),
+            platforms_field(r),
+        )
+    elif r["kind"] == "pypi":
+        row = "((kind . pypi) (version . {}) (package . {}) (extras{}) (bin . {}){})".format(
+            scheme_str(r["version"]),
+            scheme_str(r["package"]),
+            "".join(" " + scheme_str(e) for e in r["extras"]),
+            scheme_str(r["bin"]),
+            platforms_field(r),
+        )
+    elif r["kind"] == "golang":
+        row = "((kind . golang) (version . {}) (module . {}) (bin . {}){})".format(
+            scheme_str(r["version"]),
+            scheme_str(r["module"]),
+            scheme_str(r["bin"]),
+            platforms_field(r),
+        )
+    elif r["kind"] == "cargo":
+        row = "((kind . cargo) (version . {}) (crate . {}) (bin . {}){})".format(
+            scheme_str(r["version"]),
+            scheme_str(r["crate"]),
+            scheme_str(r["bin"]),
+            platforms_field(r),
+        )
+    else:
+        row = "((kind . {}) (version . {}))".format(
+            r["kind"], scheme_str(r["version"])
+        )
+    return [row]
 
 
 DOWNLOAD_KINDS = ("github", "generic")
@@ -835,36 +823,49 @@ def package_rows(kind: str, platforms: list | None) -> list[str]:
     )
 
 
-def emit_requirements(records: list) -> list[str]:
-    rows = []
-    for record in sorted(records, key=lambda r: str(r[0])):
-        name = str(record[0])
-        fields = fields_of(record)
-        kind = str(fields["kind"])
-        if kind in DOWNLOAD_KINDS:
-            targets = download_rows(name, kind, fields["targets"])
-            missing = "download"
-        elif kind in PACKAGE_MANAGER_KINDS:
-            targets = package_rows(kind, fields.get("platforms"))
-            missing = "package"
-        else:
-            rows.append(f" ({scheme_str(name)} (blocked . {kind}))")
-            continue
-        rows.append(f" ({scheme_str(name)} (targets {' '.join(targets)}) (missing . {missing}))")
-    return ["("] + rows + [")"]
+def emit_requirement(name: str, body: list) -> list[str]:
+    """One server's requirements file body, derived from its sources body."""
+    fields = fields_of([name, *body])
+    kind = str(fields["kind"])
+    if kind in DOWNLOAD_KINDS:
+        targets = download_rows(name, kind, fields["targets"])
+        missing = "download"
+    elif kind in PACKAGE_MANAGER_KINDS:
+        targets = package_rows(kind, fields.get("platforms"))
+        missing = "package"
+    else:
+        return [f"((blocked . {kind}))"]
+    return [f"((targets {' '.join(targets)}) (missing . {missing}))"]
+
+
+def requirement_header(name: str) -> str:
+    return LSP_REQUIREMENT_HEADER.format(name=name)
 
 
 def write_requirements(sources: Path, out: Path, *, check: bool) -> None:
-    rows = emit_requirements(read_sexpr(sources))
+    if not sources.is_dir():
+        sys.exit(f"error: {sources} is not a directory")
+    bodies = {name: emit_requirement(name, body) for name, body in read_named_files(sources).items()}
     if check:
-        expected = generated_file_text(LSP_REQUIREMENTS_HEADER, rows)
-        if not out.exists() or out.read_text(encoding="utf-8") != expected:
+        expected = {
+            f"{name}.scm": generated_file_text(requirement_header(name), rows)
+            for name, rows in bodies.items()
+        }
+        actual = (
+            {
+                p.name: p.read_text(encoding="utf-8")
+                for p in out.glob("*.scm")
+                if not p.name.startswith(".")
+            }
+            if out.is_dir()
+            else {}
+        )
+        if actual != expected:
             sys.exit(
                 f"error: {out} is stale — run scripts/sync-lsp-sources.py --requirements-only"
             )
         return
-    write_generated_file(out, LSP_REQUIREMENTS_HEADER, rows)
-    read_sexpr(out)  # self-check: emitted file must re-parse
+    write_named_files(out, requirement_header, bodies)
 
 
 def parse_args() -> argparse.Namespace:
@@ -872,21 +873,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--requirements-only",
         action="store_true",
-        help="regenerate requirements.scm from sources.scm, offline",
+        help="regenerate requirements/ from sources/, offline",
     )
     parser.add_argument(
         "--check",
         action="store_true",
-        help="with --requirements-only: fail if requirements.scm is stale",
+        help="with --requirements-only: fail if requirements/ is stale",
     )
-    parser.add_argument("--sources", type=Path, default=LSP_SOURCES_SCM)
-    parser.add_argument("--out", type=Path, default=LSP_REQUIREMENTS_SCM)
+    parser.add_argument("--sources", type=Path, default=LSP_SOURCES_DIR)
+    parser.add_argument("--out", type=Path, default=LSP_REQUIREMENTS_DIR)
     parser.add_argument(
         "--no-cache", action="store_true", help="re-hash every asset instead of reusing hashes"
     )
     args = parser.parse_args()
     if not args.requirements_only and (
-        args.check or args.sources != LSP_SOURCES_SCM or args.out != LSP_REQUIREMENTS_SCM
+        args.check or args.sources != LSP_SOURCES_DIR or args.out != LSP_REQUIREMENTS_DIR
     ):
         parser.error("--check, --sources and --out require --requirements-only")
     return args
@@ -902,11 +903,13 @@ def main() -> None:
     tag = read_pin(MASON_PIN_SCM)
     print(f"mason-pin: {tag}", file=sys.stderr)
 
-    if not LSP_SERVERS_SCM.exists():
-        sys.exit(f"error: {LSP_SERVERS_SCM} does not exist — run scripts/sync-grammars.py first")
+    if not LSP_REGISTRATIONS_DIR.is_dir():
+        sys.exit(
+            f"error: {LSP_REGISTRATIONS_DIR} does not exist — run scripts/sync-grammars.py first"
+        )
     commands = {
-        str(rec[0]): str(next((f[1] for f in rec[1:] if f[0] == "command"), rec[0]))
-        for rec in read_sexpr(LSP_SERVERS_SCM)
+        name: str(next((f[1] for f in body if f[0] == "command"), name))
+        for name, body in read_named_files(LSP_REGISTRATIONS_DIR).items()
     }
     helix_names = sorted(commands)
 
@@ -920,7 +923,7 @@ def main() -> None:
     # is exactly the threat the sha256 pin exists to catch, so `--no-cache`
     # bypasses the cache entirely and re-hashes every asset — use it
     # periodically, not just on a version bump, to catch re-pushed tags.
-    hash_cache = {} if no_cache else load_sha256_cache(LSP_SOURCES_SCM)
+    hash_cache = {} if no_cache else load_sha256_cache(LSP_SOURCES_DIR)
     print(
         f"sha256 cache: {len(hash_cache)} entries loaded from prior sync"
         + (" (--no-cache: re-hashing everything)" if no_cache else ""),
@@ -1022,16 +1025,18 @@ def main() -> None:
 
     for name in records:
         if name not in commands:
-            sys.exit(f"error: invariant violated: emitted server '{name}' not in servers.scm")
+            sys.exit(
+                f"error: invariant violated: emitted server '{name}' has no registrations/ file"
+            )
 
-    source_rows = emit_lsp_sources(records)
-    assert_no_unresolved_templates(source_rows)
+    source_bodies = {name: emit_lsp_source(name, records[name]) for name in sorted(records)}
+    assert_no_unresolved_templates([row for rows in source_bodies.values() for row in rows])
 
-    write_generated_file(LSP_SOURCES_SCM, LSP_SOURCES_HEADER.format(tag=tag), source_rows)
+    write_named_files(
+        LSP_SOURCES_DIR, lambda name: LSP_SOURCE_HEADER.format(name=name, tag=tag), source_bodies
+    )
 
-    read_sexpr(LSP_SOURCES_SCM)  # self-check: emitted file must re-parse
-
-    write_requirements(LSP_SOURCES_SCM, LSP_REQUIREMENTS_SCM, check=False)
+    write_requirements(LSP_SOURCES_DIR, LSP_REQUIREMENTS_DIR, check=False)
 
 
 if __name__ == "__main__":

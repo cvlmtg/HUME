@@ -2,7 +2,7 @@
 //!
 //! `scripts/sync-grammars.py` and `scripts/sync-lsp-sources.py` each hold a
 //! Python triple-quoted `*_HEADER` template that becomes the leading comment
-//! block of a generated `runtime/scheme/*.scm` file. Hand-editing the
+//! block of a generated `.scm` file under `runtime/`. Hand-editing the
 //! generated file's header (as opposed to its data rows) drifts it from the
 //! template with nothing to catch it. The next routine sync run silently
 //! overwrites the hand-edit with the stale template text.
@@ -97,9 +97,9 @@ fn header_drift_ignores_non_comment_lines_past_the_header() {
 }
 
 /// A hand-edited header line in a generated `.scm` file is reported with
-/// the line that diverges from its generator's template. Every file in
-/// `runtime/scheme/languages/` is checked against `LANGUAGE_DATA_HEADER`, with
-/// its `{name}` slot filled from the file's own name.
+/// the line that diverges from its generator's template. Every file in a
+/// per-name directory is checked against its directory's template, with the
+/// `{name}` slot filled from the file's own name.
 #[test]
 fn generated_scm_headers_match_their_generator_templates() {
     let workspace_root = arch_lints::workspace_root();
@@ -112,23 +112,8 @@ fn generated_scm_headers_match_their_generator_templates() {
         ),
         (
             "scripts/sync-grammars.py",
-            "LSP_SERVERS_HEADER",
-            "runtime/plugins/core/lsp-install/data/servers.scm",
-        ),
-        (
-            "scripts/sync-grammars.py",
             "LANGUAGE_SERVERS_HEADER",
             "runtime/plugins/core/lsp-install/data/language-servers.scm",
-        ),
-        (
-            "scripts/sync-lsp-sources.py",
-            "LSP_SOURCES_HEADER",
-            "runtime/plugins/core/lsp-install/data/sources.scm",
-        ),
-        (
-            "scripts/sync-lsp-sources.py",
-            "LSP_REQUIREMENTS_HEADER",
-            "runtime/plugins/core/lsp-install/data/requirements.scm",
         ),
     ];
 
@@ -150,42 +135,63 @@ fn generated_scm_headers_match_their_generator_templates() {
         }
     }
 
-    let data_template = {
-        let script_path = workspace_root.join("scripts/sync-grammars.py");
+    let named_dirs = [
+        (
+            "scripts/sync-grammars.py",
+            "LANGUAGE_DATA_HEADER",
+            "runtime/scheme/languages",
+        ),
+        (
+            "scripts/sync-grammars.py",
+            "LSP_REGISTRATION_HEADER",
+            "runtime/plugins/core/lsp-install/data/registrations",
+        ),
+        (
+            "scripts/sync-lsp-sources.py",
+            "LSP_SOURCE_HEADER",
+            "runtime/plugins/core/lsp-install/data/sources",
+        ),
+        (
+            "scripts/sync-lsp-sources.py",
+            "LSP_REQUIREMENT_HEADER",
+            "runtime/plugins/core/lsp-install/data/requirements",
+        ),
+    ];
+    for (script_rel, const_name, dir_rel) in named_dirs {
+        let script_path = workspace_root.join(script_rel);
         let script_src = std::fs::read_to_string(&script_path)
             .unwrap_or_else(|e| panic!("cannot read {}: {e}", script_path.display()));
-        extract_header_template(&script_src, "LANGUAGE_DATA_HEADER")
-    };
-    let languages_dir = workspace_root.join("runtime/scheme/languages");
-    let mut data_files: Vec<_> = std::fs::read_dir(&languages_dir)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", languages_dir.display()))
-        .map(|entry| entry.expect("readable directory entry").path())
-        .collect();
-    data_files.sort();
-    assert!(
-        !data_files.is_empty(),
-        "{} holds no generated language data files",
-        languages_dir.display()
-    );
-    for path in data_files {
-        let name = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or_else(|| panic!("non-UTF-8 file name: {}", path.display()));
-        let generated = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-        let template = data_template.replace("{name}", name);
-        if let Some(reason) = header_drift(&template, &generated) {
-            violations.push(format!(
-                "{} (template LANGUAGE_DATA_HEADER in scripts/sync-grammars.py): {reason}",
-                path.display()
-            ));
+        let template = extract_header_template(&script_src, const_name);
+        let dir = workspace_root.join(dir_rel);
+        let mut files: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()))
+            .map(|entry| entry.expect("readable directory entry").path())
+            .collect();
+        files.sort();
+        assert!(
+            !files.is_empty(),
+            "{} holds no generated files",
+            dir.display()
+        );
+        for path in files {
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_else(|| panic!("non-UTF-8 file name: {}", path.display()));
+            let generated = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+            if let Some(reason) = header_drift(&template.replace("{name}", name), &generated) {
+                violations.push(format!(
+                    "{} (template {const_name} in {script_rel}): {reason}",
+                    path.display()
+                ));
+            }
         }
     }
 
     assert!(
         violations.is_empty(),
-        "\nA generated runtime/scheme/*.scm header drifted from its sync script's \
+        "\nA generated .scm header drifted from its sync script's \
          template, so the next sync run will silently overwrite the hand-edit with \
          the stale template text. Update the *_HEADER constant to match.\n\
          Violations:\n{}\n",

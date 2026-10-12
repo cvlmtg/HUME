@@ -314,6 +314,9 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(set-cwd! path)` | Change HUME's working directory, like `:cd`; a relative `path` is joined onto the current one; raises if `path` is not a directory |
 | `(path-join seg ...)` | Join path segments with the OS-native separator |
 | `(path->display path)` | Run an absolute `path` string through HUME's display-form pipeline (Windows `\\?\` stripping, `~`-collapse); no filesystem access |
+| `(read-data-file path)` | The one Scheme value written in the file at `path`; `;` comments are allowed around it. Raises an error naming the file when its text doesn't parse or holds more than one value. Use it instead of Steel's `read` for data files: `read` returns end-of-file instead of raising on bad syntax, and leaves the bad text for the next `read` |
+| `(data-file dir name)` | The path of `name.scm` in `dir` when `dir` holds that file, else `#f`. Only a name that is one of `dir`'s files matches, so a name like `../x` never reaches outside `dir` |
+| `(data-file-names dir)` | The names of `dir`'s `.scm` files without the suffix, sorted; `'()` when `dir` doesn't exist. Each directory is listed once and remembered until `:reload-config`, so a file added later is not seen before then |
 
 The pattern for reading a plugin's own files is covered in [Filesystem and processes](plugins.md#filesystem-and-processes).
 

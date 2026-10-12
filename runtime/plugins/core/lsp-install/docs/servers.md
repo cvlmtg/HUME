@@ -8,22 +8,25 @@ the contract with `core:lsp`, and the catalog record formats.
 
 ## Catalogs
 
-Files in the plugin's `data/` directory, read through `(plugin-dir)`. Registration (`plugin.scm`)
-reads the first two at load; the install pipeline (`commands.scm`) reads the rest.
-`requirements.scm` is read on the first requirements lookup (the discovery hint, a blocker
-check), not at load.
+Files in the plugin's `data/` directory, read through `(plugin-dir)` with `read-data-file`.
+Each file's shape follows how it is read. Registration (`plugin.scm`) reads all of
+`language-servers.scm` at load, and one `registrations/` file per installed server. A
+server's `requirements/` file is read by a requirements lookup (the discovery hint, a
+blocker check), and its `sources/` file only by an install (`commands.scm`).
 
-| Hash | Source | Answers |
+| Catalog | Source | Answers |
 |---|---|---|
-| Servers catalog | `servers.scm` | What a server is registered with: command, args and config, each omitted when it is the default |
-| Language catalog | `language-servers.scm` | Each language's ordered servers; a server's languages are derived from it |
-| Requirements catalog | `requirements.scm` | What installing a server needs on each platform |
-| Sources catalog | `sources.scm` | How to get it: kind, version, download targets |
+| Registrations | `registrations/<name>.scm` | What a server is registered with: command, args and config, each omitted when it is the default |
+| Language lists | `language-servers.scm` | Each language's ordered servers; a server's languages are derived from it |
+| Requirements | `requirements/<name>.scm` | What installing a server needs on each platform |
+| Sources | `sources/<name>.scm` | How to get it: kind, version, download targets |
 
-The first three come from the registration pin, the last two from the Mason pin, so they stay
-apart. Server, requirements and sources entries are tagged alist tails (`(key . value)` or `(key sub…)`, never a positional
-tuple), so one field lookup serves both. The hashes `catalog.scm` exposes are read-only:
-callers must not mutate what they return.
+The first two come from the registration pin, the last two from the Mason pin, so they stay
+apart. Registration, requirements and sources records are tagged alists (`(key . value)` or
+`(key sub…)`, never a positional tuple), so one field lookup serves them all. A name is
+looked up only when it is a file in its directory (`data-file`), so a seeded server is one
+with a `registrations/` file. The language table `catalog.scm` builds is read-only: callers
+must not mutate what it returns.
 
 The language catalog is also the language-to-server index. A language lists its servers in
 priority order, so `:lsp-install <lang>` installs the first and the discovery hint
@@ -51,18 +54,18 @@ needs the parent to exist and nothing else recreates it in between.
 ### Choosing the source
 
 What an install needs is decided when the catalogs are generated, not at runtime.
-`requirements.scm` records, per server and platform, the download's format and the tools the
-install needs on `$PATH`, so the blocker check and the discovery hint read a small file and
-never load `sources.scm` or the installers. The installer then reads the same row: it takes
-the unpack tool and the format from it instead of working them out again. A download row in
-`sources.scm` is read once, for this platform.
+A server's `requirements/` file records, per platform, the download's format and the tools
+the install needs on `$PATH`, so the blocker check and the discovery hint read a small file
+and never load the server's `sources/` file or the installers. The installer then reads the
+same row: it takes the unpack tool and the format from it instead of working them out again.
+A download row in the server's `sources/` file is read once, for this platform.
 A github row is `(target asset sha bin)` with the url derived from the repo and version.
 A generic row is `(target asset url sha bin)`.
 
 - **Asset format.** The generator classifies each download: a name ending in a tar suffix
   (`.tar.gz`, `.tgz`, `.tar.xz`, `.txz`, `.tar.bz2`) is a tar archive, `.zip` a zip, `.gz` a
   single gzip file. Any other asset is a bare executable; its bin path equals the asset name.
-  A download in none of these shapes is dropped when `sources.scm` is generated.
+  A download in none of these shapes is dropped when `sources/` is generated.
 - **Platforms.** A package-manager source with no `platforms` field installs everywhere.
 - **Blockers.** One function is the single source for `:lsp-install`'s error,
   `:lsp-catalog`'s annotation and the discovery hint's gate. In the order it checks:
@@ -89,7 +92,7 @@ Hashing, unpacking and chmod run the platform's own tools through `run-capture!`
 macOS and Windows `tar` decompress xz and bzip2 themselves. Linux `tar` shells out to the
 compressor, so that tool is also required.
 
-The archive is checked against the sha256 recorded in `sources.scm` before anything is
+The archive is checked against the sha256 recorded in its `sources/` file before anything is
 unpacked, and is deleted on a mismatch. A gz asset is decoded in place next to the
 archive, then renamed to its bin path. After extraction the bin path must exist, as a
 regular file on Unix, or the install fails.
@@ -130,7 +133,7 @@ It is passive (no subprocess, no network). It runs at load or lazy activation an
 install. It is the only registrar for managed servers. It lists
 subdirectories only, so the lock file is never read as a server. Two cases are logged as
 warnings and skipped: a directory with no readable receipt (an interrupted install) and
-a directory whose name is not in `servers.scm` (an orphan, to be removed with
+a directory whose name has no `registrations/` file (an orphan, to be removed with
 `:lsp-uninstall`).
 
 Each installed server registers once, under its catalog name, with the command, arguments,
@@ -183,11 +186,11 @@ error instead of being reported as a failed install.
 
 **`:lsp-uninstall`** takes a user-typed server name straight into a path join, so it first
 validates it with `core:stdlib`'s `stdlib/safe-path-segment?`. `:lsp-install` needs no such
-check, since its name is always a key of the seeded catalog. An invalid name logs
+check, since it reads only a name that is a file in the seeded catalog's directory. An invalid name logs
 `'error`, as any typed argument the command can't act on does, so a path-traversal attempt
 such as `"../plugins"` stays in `:messages` (see the index's
 [Log severity](../../README.md#log-severity)). The command unregisters the server, then
-removes its directory. An orphan (on disk, not in `servers.scm`) skips
+removes its directory. An orphan (on disk, with no `registrations/` file) skips
 the unregister step. The removal is deferred with `after! 0` so the unregister has shut
 down any running client before the lock is taken. Its completion lists every server with a
 directory on disk, seeded or orphan, because the on-disk check decides what there is to

@@ -269,18 +269,39 @@
   (let ((runtime (runtime-dir)))
     (and runtime (path-join runtime "scheme" "languages"))))
 
-(define %language-data-names-cache (box #f))
+(define %data-file-names-cache (box (hash)))
+
+(define (data-file-names dir)
+  (let ((cache (unbox %data-file-names-cache)))
+    (if (hash-contains? cache dir)
+        (hash-ref cache dir)
+        (let ((names (stems-with-suffix dir ".scm")))
+          (set-box! %data-file-names-cache (hash-insert cache dir names))
+          names))))
+
+(define (data-file dir name)
+  (and (member name (data-file-names dir))
+       (path-join dir (string-append name ".scm"))))
+
+(define (read-data-file path)
+  (let* ((text (call-with-input-file path read-port-to-string))
+         (parsed (with-handler (lambda (err) (list 'unparsable (to-string err)))
+                               (list 'parsed (hm.read! text)))))
+    (when (equal? (car parsed) 'unparsable)
+      (error (string-append path ": " (cadr parsed))))
+    (let ((forms (cadr parsed)))
+      (unless (= (length forms) 1)
+        (error (string-append path ": expected one top-level form, found "
+                              (number->string (length forms)))))
+      (car forms))))
 
 (define (%language-data-names)
-  (or (unbox %language-data-names-cache)
-      (let* ((dir (%language-data-dir))
-             (names (if dir (stems-with-suffix dir ".scm") '())))
-        (set-box! %language-data-names-cache names)
-        names)))
+  (let ((dir (%language-data-dir)))
+    (if dir (data-file-names dir) '())))
 
 (define (%language-data-file name)
-  (and (member name (%language-data-names))
-       (path-join (%language-data-dir) (string-append name ".scm"))))
+  (let ((dir (%language-data-dir)))
+    (and dir (data-file dir name))))
 
 (define (%language-data-strings? items)
   (and (list? items) (%language-data-all? string? items)))
@@ -322,17 +343,7 @@
 
 (define (%read-language-data name)
   (let ((path (%language-data-file name)))
-    (and path
-         (let* ((text (call-with-input-file path read-port-to-string))
-                (parsed (with-handler (lambda (err) (list 'unparsable (to-string err)))
-                                      (list 'parsed (hm.read! text)))))
-           (when (equal? (car parsed) 'unparsable)
-             (error (string-append path ": " (cadr parsed))))
-           (let ((forms (cadr parsed)))
-             (unless (= (length forms) 1)
-               (error (string-append path ": expected one top-level form, found "
-                                     (number->string (length forms)))))
-             (%check-language-data path (car forms)))))))
+    (and path (%check-language-data path (read-data-file path)))))
 
 (define (%language-data-ref data key)
   (let ((entry (assoc key data)))

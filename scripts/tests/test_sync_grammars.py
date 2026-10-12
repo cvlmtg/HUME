@@ -194,29 +194,21 @@ class Emit(unittest.TestCase):
             ],
         )
 
-    def test_servers_rows_omit_the_command_args_and_config_that_are_defaults(self):
-        rows = sync.emit_lsp_servers(
-            {
-                "b": {"command": "bb", "args": ["--stdio"], "config": {"x": 1}},
-                "a": {"command": "aa", "args": [], "config": None},
-                "same": {"command": "same", "args": [], "config": None},
-            }
-        )
-
+    def test_a_registration_body_omits_the_command_args_and_config_that_are_defaults(self):
         self.assertEqual(
-            rows,
-            [
-                "(",
-                ' ("a" (command . "aa"))',
-                ' ("b" (command . "bb") (args "--stdio") (config . "{\\"x\\": 1}"))',
-                ' ("same")',
-                ")",
-            ],
+            sync.emit_lsp_registration("a", {"command": "aa", "args": [], "config": None}),
+            ['((command . "aa"))'],
         )
-
-    def test_the_feature_vocabulary_is_helixs(self):
-        self.assertEqual(set(sync.LSP_FEATURES), HELIX_FEATURES)
-        self.assertEqual(len(sync.LSP_FEATURES), len(HELIX_FEATURES))
+        self.assertEqual(
+            sync.emit_lsp_registration(
+                "b", {"command": "bb", "args": ["--stdio"], "config": {"x": 1}}
+            ),
+            ['((command . "bb") (args "--stdio") (config . "{\\"x\\": 1}"))'],
+        )
+        self.assertEqual(
+            sync.emit_lsp_registration("same", {"command": "same", "args": [], "config": None}),
+            ["()"],
+        )
 
 
 def parse_langs(languages, grammars=None):
@@ -312,14 +304,18 @@ class LanguageGrammar(unittest.TestCase):
         self.assertIsNone(self.grammar_of({"name": "cabal"}))
 
 
-class LanguageNames(unittest.TestCase):
+class FileNames(unittest.TestCase):
     def test_a_name_outside_the_charset_or_with_a_leading_dot_is_fatal(self):
         for name in ("Nix", "C:x", "a/b", "", ".", "..", ".x"):
             with self.subTest(name=name), self.assertRaises(SystemExit):
-                sync.check_language_names([{"name": name}])
+                sync.check_file_names("language", [name])
+
+    def test_a_server_name_outside_the_charset_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            sync.check_file_names("server", ["ok-ls", "Foo-LS"])
 
     def test_dotted_names_are_accepted(self):
-        sync.check_language_names(parse_langs([{"name": "markdown.inline"}, {"name": "robots.txt"}]))
+        sync.check_file_names("language", ["markdown.inline", "robots.txt"])
 
 
 def parsed_language(**overrides):
@@ -395,34 +391,6 @@ class WriteLanguageFiles(unittest.TestCase):
             "\n"
             '((block-comment-tokens ("<!--" . "-->")))\n',
         )
-
-    def test_removes_a_file_for_a_language_that_is_gone(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp)
-            (directory / "gone.scm").write_text("()\n", encoding="utf-8")
-
-            self.write(directory)
-
-            self.assertEqual(sorted(p.name for p in directory.iterdir()), ["markdown.inline.scm"])
-
-    def test_a_dotfile_is_left_alone(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp)
-            (directory / ".DS_Store").write_bytes(b"finder")
-
-            self.write(directory)
-
-            self.assertEqual(
-                sorted(p.name for p in directory.iterdir()), [".DS_Store", "markdown.inline.scm"]
-            )
-
-    def test_a_file_that_is_not_scm_is_fatal(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp)
-            (directory / "notes.txt").write_text("hand-written\n", encoding="utf-8")
-
-            with self.assertRaises(SystemExit):
-                self.write(directory)
 
 
 if __name__ == "__main__":

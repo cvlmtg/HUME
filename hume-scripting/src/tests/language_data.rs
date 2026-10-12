@@ -1,6 +1,6 @@
-//! The language-data reader in `bootstrap.scm`, through
-//! `ScriptingHost::bundled_language` and the two grammar functions plugins
-//! call.
+//! The data-file reader in `bootstrap.scm`, and the language-data reader
+//! built on it, through `ScriptingHost::bundled_language` and the two grammar
+//! functions plugins call.
 
 use crate::null_host::NullHost;
 use crate::{BundledLanguage, ScriptingHost};
@@ -264,4 +264,93 @@ fn an_unparsable_file_read_inside_an_outer_handler_leaves_the_vm_usable() {
              (error "a read after the caught error failed"))"#,
     )
     .expect("the VM stays usable after a caught parse error");
+}
+
+/// `(path-join (runtime-dir) "scheme" "languages")`, where `runtime_with`
+/// writes its files.
+const LANGUAGES_DIR: &str = r#"(define dir (path-join (runtime-dir) "scheme" "languages"))"#;
+
+#[test]
+fn read_data_file_returns_the_files_one_form() {
+    eval(
+        &[("pin", r#"((a . "x") (b 1 2))"#)],
+        &format!(
+            r#"{LANGUAGES_DIR}
+               (let ((form (read-data-file (path-join dir "pin.scm"))))
+                 (unless (equal? form (list (cons 'a "x") (list 'b 1 2)))
+                   (error (to-string form))))"#
+        ),
+    )
+    .expect("one form");
+}
+
+#[test]
+fn read_data_file_raises_naming_the_file_on_bad_syntax_and_the_next_read_is_unaffected() {
+    eval(
+        &[("bad", "((a"), ("good", "(1)")],
+        &format!(
+            r#"{LANGUAGES_DIR}
+               (define caught
+                 (with-handler (lambda (err) (to-string err))
+                               (read-data-file (path-join dir "bad.scm"))))
+               (unless (and (string? caught) (string-contains? caught "bad.scm"))
+                 (error (string-append "expected an error naming bad.scm: " (to-string caught))))
+               (unless (equal? (read-data-file (path-join dir "good.scm")) (list 1))
+                 (error "a read after the failed one saw its text"))"#
+        ),
+    )
+    .expect("bad syntax raises and leaves no state");
+}
+
+#[test]
+fn read_data_file_raises_on_more_than_one_form() {
+    let err = eval(
+        &[("two", "() ()")],
+        &format!(r#"{LANGUAGES_DIR} (read-data-file (path-join dir "two.scm"))"#),
+    )
+    .expect_err("two forms are an error");
+
+    assert!(
+        err.contains("two.scm") && err.contains("top-level form"),
+        "{err}"
+    );
+}
+
+#[test]
+fn data_file_is_a_path_only_for_a_listed_stem() {
+    let runtime = runtime_with(&[("rust", "()"), ("markdown.inline", "()")]);
+    std::fs::write(runtime.path().join("scheme").join("init.scm"), "()")
+        .expect("write a file outside the listed dir");
+
+    host_for(Some(runtime.path()))
+        .eval_source(
+            &format!(
+                r#"{LANGUAGES_DIR}
+                   (unless (equal? (data-file dir "rust") (path-join dir "rust.scm"))
+                     (error "rust is listed"))
+                   (unless (equal? (data-file dir "markdown.inline") (path-join dir "markdown.inline.scm"))
+                     (error "a dotted stem is listed"))
+                   (for-each
+                     (lambda (name)
+                       (when (data-file dir name) (error (string-append "not listed: " name))))
+                     (list "../init" "a/b" "a\\b" ".." "." "" "Rust" "rust.scm" "nope"))"#
+            ),
+            &mut NullHost,
+        )
+        .expect("only listed stems");
+}
+
+#[test]
+fn data_file_names_lists_the_stems_sorted_and_a_missing_dir_as_empty() {
+    eval(
+        &[("b", "()"), ("a-b", "()"), ("a", "()")],
+        &format!(
+            r#"{LANGUAGES_DIR}
+               (unless (equal? (data-file-names dir) (list "a" "a-b" "b"))
+                 (error (to-string (data-file-names dir))))
+               (unless (null? (data-file-names (path-join dir "missing")))
+                 (error "a missing dir lists nothing"))"#
+        ),
+    )
+    .expect("sorted stems");
 }

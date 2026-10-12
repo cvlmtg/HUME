@@ -3,7 +3,7 @@
 // receipts, orphan warnings, and the on-language-set discovery hint.
 //
 // Fixture servers, chosen from the real core:lsp-install
-// servers.scm and sources.scm catalogs (verified at authoring time, re-checked by these tests every run):
+// registrations/ and sources/ data (verified at authoring time, re-checked by these tests every run):
 //   rust-analyzer (language "rust"): github, plain .gz, installable
 //   svlangserver (language "systemverilog"): npm, settings contain a real
 //     JSON array (systemverilog.includeIndexing)
@@ -57,8 +57,8 @@ fn plum_plugin_loads_cleanly() {
     );
 }
 
-/// core:lsp-install's catalog load, which reads its own `servers.scm` and
-/// `sources.scm`: the smoke test for both self-contained module loads.
+/// core:lsp-install's catalog load, which reads its own `data/` files: the
+/// smoke test for both self-contained module loads.
 #[test]
 fn lsp_plugin_loads_with_real_lsp_catalogs() {
     let _path = path_reader();
@@ -76,7 +76,7 @@ fn lsp_plugin_loads_with_real_lsp_catalogs() {
         .collect();
     assert!(
         errors.is_empty(),
-        "loading core:lsp-install against the real servers.scm/sources.scm catalogs must not error: {errors:?}"
+        "loading core:lsp-install against its real data files must not error: {errors:?}"
     );
 }
 
@@ -145,22 +145,19 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
     );
 }
 
-/// Registering installed servers needs only the registration catalogs:
-/// `requirements.scm` is read when an install or the discovery hint asks for
-/// a server's requirements, so an unreadable one does not stop the scan.
+/// Registering installed servers needs only `registrations/`: a server's
+/// `requirements/` file is read when an install or the discovery hint asks
+/// for it, and its `sources/` file only by an install, so unreadable ones do
+/// not stop the scan.
 #[test]
 fn scan_does_not_read_the_install_requirements() {
     let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(data_tmp.path(), "gopls", "0.20.0", "gopls");
-    let runtime = runtime_with_sources("()");
-    std::fs::write(
-        runtime
-            .path()
-            .join("plugins/core/lsp-install/data/requirements.scm"),
-        "(",
-    )
-    .unwrap();
+    let runtime = runtime_with_sources(&[]);
+    let data = runtime.path().join("plugins/core/lsp-install/data");
+    std::fs::write(data.join("sources/gopls.scm"), "(").unwrap();
+    std::fs::write(data.join("requirements/gopls.scm"), "(").unwrap();
 
     let mut ed = editor_from("-[x]>\n");
     load_with_init_in_runtime(
@@ -175,12 +172,12 @@ fn scan_does_not_read_the_install_requirements() {
 
     assert!(
         ed.state.lsp.registered_command_for_test("gopls").is_some(),
-        "the scan must register an installed server without reading requirements.scm"
+        "the scan must register an installed server without reading its sources or requirements"
     );
 }
 
 /// The expected JSON is transcribed by hand from
-/// runtime/plugins/core/lsp-install/data/servers.scm's current text, not derived by calling
+/// runtime/plugins/core/lsp-install/data/registrations/'s current text, not derived by calling
 /// `lsp/settings->hash`: this is the settings-conversion correctness
 /// check, so it must not share logic with the thing it verifies.
 #[test]
@@ -257,6 +254,47 @@ fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_object
     assert_eq!(
         ra_init_options, expected_ra,
         "catalog config must reach init-options with the same shape as settings"
+    );
+}
+
+/// An unparsable receipt reads as an interrupted install, and the receipt read
+/// after it is unaffected.
+#[test]
+fn an_unparsable_receipt_is_an_interrupted_install() {
+    let _path = path_reader();
+    let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(data_tmp.path(), "gopls", "0.0.1", "gopls");
+    fabricate_server(
+        data_tmp.path(),
+        "rust-analyzer",
+        "2026-07-06",
+        "rust-analyzer",
+    );
+    let receipt = canonical_data_dir(data_tmp.path())
+        .join("servers")
+        .join("gopls")
+        .join("receipt.scm");
+    std::fs::write(&receipt, "(").unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp_install_eager(&mut ed, data_tmp.path());
+
+    let log = ed.state.message_log.format_for_display();
+    assert_eq!(
+        ed.state.lsp.registered_command_for_test("gopls"),
+        None,
+        "{log}"
+    );
+    assert!(
+        log.contains("interrupted install of gopls"),
+        "must warn about the interrupted install, naming the server: {log}"
+    );
+    assert!(
+        ed.state
+            .lsp
+            .registered_command_for_test("rust-analyzer")
+            .is_some(),
+        "the next receipt must still read: {log}"
     );
 }
 
@@ -696,7 +734,7 @@ fn lsp_install_unknown_language_reports_an_error() {
 }
 
 /// Tab on `:lsp-install`'s argument completes against the seeded catalog's
-/// own languages, read from the real `runtime/plugins/core/lsp-install/data/servers.scm` (not
+/// own languages, read from the real `runtime/plugins/core/lsp-install/data/language-servers.scm` (not
 /// a fixture subset): "rus" matches only "rust" (unlike "ru", which also
 /// matches "ruby").
 #[test]
@@ -1466,6 +1504,37 @@ fn discovery_hint_does_not_fire_when_already_registered() {
     );
 }
 
+/// An installed server later in the language's default list serves it, so
+/// the primary's hint stays quiet. python lists ty before ruff.
+#[test]
+fn discovery_hint_does_not_fire_when_a_later_default_server_is_installed() {
+    let _path = path_reader();
+    let python_hints = |installed: &[&str]| {
+        let data_tmp = tempfile::tempdir().unwrap();
+        for server in installed {
+            fabricate_server(data_tmp.path(), server, "0.0.1", server);
+        }
+        let mut ed = editor_from("-[x]>\n");
+        load_lsp_install(&mut ed, data_tmp.path());
+        let bid = ed.focused_buffer_id();
+        let lang = ed.state.config.languages.intern("python");
+        ed.set_buffer_language(bid, Some(lang));
+        ed.settle();
+        ed.state.message_log.format_for_display()
+    };
+
+    let log = python_hints(&[]);
+    assert!(
+        log.contains("'ty' is available for python"),
+        "precondition: ty is hinted with nothing installed: {log}"
+    );
+    let log = python_hints(&["ruff"]);
+    assert!(
+        !log.contains("run :lsp-install"),
+        "ruff serves python, so ty must not be hinted: {log}"
+    );
+}
+
 // ── cargo installer (fake shim, no network/compile) ─────────────────────────────
 //
 // A real `cargo install` compiles a full crate graph (multi-minute,
@@ -1623,11 +1692,15 @@ fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
 //
 // The real catalog pins each asset's sha256, so a fabricated archive can't
 // pass it. These tests run the shipped plugin sources against a runtime copy
-// whose `core:lsp-install` source catalog names a fabricated asset with its true
+// whose `core:lsp-install` sources name a fabricated asset with its true
 // digest, and a `curl` shim that copies that asset into place.
 
-/// Copy of the repo's `runtime/` whose `core:lsp-install` source catalog is `sources`.
-fn runtime_with_sources(sources: &str) -> tempfile::TempDir {
+/// One `sources/<name>.scm` fixture: the server's name and its record.
+type SourceFixture = (String, String);
+
+/// Copy of the repo's `runtime/` whose `core:lsp-install` `sources/` holds only
+/// `sources`, with its requirements regenerated from them.
+fn runtime_with_sources(sources: &[SourceFixture]) -> tempfile::TempDir {
     let runtime = tempfile::tempdir().unwrap();
     let status = std::process::Command::new("cp")
         .arg("-R")
@@ -1636,20 +1709,20 @@ fn runtime_with_sources(sources: &str) -> tempfile::TempDir {
         .status()
         .expect("spawn cp");
     assert!(status.success());
-    let install_dir = runtime
-        .path()
-        .join("plugins")
-        .join("core")
-        .join("lsp-install")
-        .join("data");
-    std::fs::write(install_dir.join("sources.scm"), sources).unwrap();
+    let data = runtime.path().join("plugins/core/lsp-install/data");
+    let sources_dir = data.join("sources");
+    std::fs::remove_dir_all(&sources_dir).unwrap();
+    std::fs::create_dir(&sources_dir).unwrap();
+    for (name, body) in sources {
+        std::fs::write(sources_dir.join(format!("{name}.scm")), body).unwrap();
+    }
     let status = std::process::Command::new("python3")
         .arg(repo_runtime_dir().join("../scripts/sync-lsp-sources.py"))
         .arg("--requirements-only")
         .arg("--sources")
-        .arg(install_dir.join("sources.scm"))
+        .arg(&sources_dir)
         .arg("--out")
-        .arg(install_dir.join("requirements.scm"))
+        .arg(data.join("requirements"))
         .status()
         .expect("spawn python3");
     assert!(
@@ -1673,19 +1746,20 @@ fn sha256_hex(path: &Path) -> String {
         .to_string()
 }
 
-/// A github-kind source record serving `asset` (digest of `fixture`) for
-/// every Unix install target, with `bin` as the binary's path in the server
-/// directory.
-fn github_source(name: &str, asset: &str, fixture: &Path, bin: &str) -> String {
+/// `name`'s github-kind source record serving `asset` (digest of `fixture`)
+/// for every Unix install target, with `bin` as the binary's path in the
+/// server directory.
+fn github_source(name: &str, asset: &str, fixture: &Path, bin: &str) -> Vec<SourceFixture> {
     let sha = sha256_hex(fixture);
     let targets: String = ["darwin-arm64", "darwin-x64", "linux-x64"]
         .iter()
         .map(|t| format!("({t} \"{asset}\" \"sha256:{sha}\" \"{bin}\")"))
         .collect::<Vec<_>>()
         .join(" ");
-    format!(
-        "((\"{name}\" (kind . github) (version . \"9.9.9\") (repo . \"o/r\") (targets {targets})))"
-    )
+    vec![(
+        name.to_string(),
+        format!("((kind . github) (version . \"9.9.9\") (repo . \"o/r\") (targets {targets}))"),
+    )]
 }
 
 /// Fake `curl` that copies `fixture` to its `-o` argument and records its
@@ -1952,8 +2026,10 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
         .map(|t| format!("({t} \"tfls.zip\" \"{url}\" \"sha256:{sha}\" \"terraform-ls\")"))
         .collect::<Vec<_>>()
         .join(" ");
-    let sources =
-        &format!("((\"terraform-ls\" (kind . generic) (version . \"9.9.9\") (targets {targets})))");
+    let sources = &[(
+        "terraform-ls".to_string(),
+        format!("((kind . generic) (version . \"9.9.9\") (targets {targets}))"),
+    )];
     let (data_tmp, ed, _runtime) = install_from_fixture(&_lock, sources, &archive, "hcl");
 
     let argv = std::fs::read_to_string(archive.with_extension("curl-argv"))
@@ -1975,12 +2051,12 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
     assert_eq!(Path::new(&cmd), bin);
 }
 
-/// Load `core:lsp-install` against a runtime whose catalog is `sources`, with a curl
+/// Load `core:lsp-install` against a runtime whose sources are `sources`, with a curl
 /// shim serving `fixture`, and run `:lsp-install <lang>`. Returns the data dir
 /// and the editor for post-install assertions.
 fn install_from_fixture(
     claim: &EnvClaim,
-    sources: &str,
+    sources: &[SourceFixture],
     fixture: &Path,
     lang: &str,
 ) -> (tempfile::TempDir, Editor, tempfile::TempDir) {
@@ -2561,7 +2637,11 @@ fn lsp_install_pypi_requires_python3_on_path() {
 
 // ── per-platform restriction ────────────────────────────────────────────────────
 
-fn load_lsp_with_sources(ed: &mut Editor, sources: &str, data_dir: &Path) -> tempfile::TempDir {
+fn load_lsp_with_sources(
+    ed: &mut Editor,
+    sources: &[SourceFixture],
+    data_dir: &Path,
+) -> tempfile::TempDir {
     let runtime = runtime_with_sources(sources);
     load_with_init_in_runtime(
         ed,
@@ -2579,8 +2659,12 @@ fn lsp_install_refuses_a_server_restricted_to_other_platforms() {
     let mut ed = editor_from("-[x]>\n");
     let _runtime = load_lsp_with_sources(
         &mut ed,
-        "((\"ty\" (kind . pypi) (version . \"1.0.0\") (package . \"ty\") (extras) (bin . \"ty\") \
-          (platforms windows-x64)))",
+        &[(
+            "ty".to_string(),
+            "((kind . pypi) (version . \"1.0.0\") (package . \"ty\") (extras) (bin . \"ty\") \
+             (platforms windows-x64))"
+                .to_string(),
+        )],
         data_tmp.path(),
     );
 
@@ -2611,8 +2695,12 @@ fn lsp_install_allows_a_server_whose_platform_list_includes_this_one() {
     let mut ed = editor_from("-[x]>\n");
     let _runtime = load_lsp_with_sources(
         &mut ed,
-        "((\"ty\" (kind . pypi) (version . \"1.0.0\") (package . \"ty\") (extras) (bin . \"ty\") \
-          (platforms darwin-arm64 darwin-x64 linux-x64)))",
+        &[(
+            "ty".to_string(),
+            "((kind . pypi) (version . \"1.0.0\") (package . \"ty\") (extras) (bin . \"ty\") \
+             (platforms darwin-arm64 darwin-x64 linux-x64))"
+                .to_string(),
+        )],
         data_tmp.path(),
     );
 
@@ -2878,17 +2966,15 @@ fn effective(ed: &Editor, language: &str) -> Vec<String> {
         .collect()
 }
 
-/// The version `sources.scm` seeds for `server`, read from the file so the
-/// test follows a re-pin.
+/// The version `sources/<server>.scm` seeds, read from the file so the test
+/// follows a re-pin.
 fn seeded_version(server: &str) -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../runtime/plugins/core/lsp-install/data/sources.scm");
-    let text = std::fs::read_to_string(path).unwrap();
-    let row = text
-        .lines()
-        .find(|line| line.trim_start().starts_with(&format!("(\"{server}\" ")))
-        .unwrap_or_else(|| panic!("{server} is not in sources.scm"));
-    let after = &row[row.find("(version . \"").unwrap() + "(version . \"".len()..];
+        .join("../runtime/plugins/core/lsp-install/data/sources")
+        .join(format!("{server}.scm"));
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("{server} has no sources file: {e}"));
+    let after = &text[text.find("(version . \"").unwrap() + "(version . \"".len()..];
     after[..after.find('"').unwrap()].to_string()
 }
 
@@ -3060,10 +3146,16 @@ fn install_rejects_a_name_that_is_neither_language_nor_server() {
 fn a_name_that_is_both_language_and_server_is_its_own_primary() {
     let dir =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../runtime/plugins/core/lsp-install/data");
-    let servers = std::fs::read_to_string(dir.join("servers.scm")).unwrap();
     let languages = std::fs::read_to_string(dir.join("language-servers.scm")).unwrap();
     for row in languages.lines().filter(|l| l.starts_with(" (\"")) {
         let language = row[3..].split('"').next().unwrap();
+        if !dir
+            .join("registrations")
+            .join(format!("{language}.scm"))
+            .exists()
+        {
+            continue;
+        }
         let primary = row
             .split("(servers (\"")
             .nth(1)
@@ -3071,9 +3163,8 @@ fn a_name_that_is_both_language_and_server_is_its_own_primary() {
             .split('"')
             .next()
             .unwrap();
-        let is_server = servers.contains(&format!("\n (\"{language}\" (args"));
-        assert!(
-            !is_server || primary == language,
+        assert_eq!(
+            primary, language,
             "{language} is a server name but its language's primary is {primary}"
         );
     }

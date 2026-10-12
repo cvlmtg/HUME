@@ -11,7 +11,7 @@
   (lambda (pane lang)
     (when (and (not (equal? lang "")) (not (hash-contains? *lsp-install-hinted-languages* lang)))
       (set! *lsp-install-hinted-languages* (hash-insert *lsp-install-hinted-languages* lang #t))
-      (when (hash-contains? lsp-install/language-lists lang)
+      (when (lsp-install/seeded-language? lang)
         (let ((name (lsp-install/primary lang)))
           (when (and (null? (lsp-language-servers lang))
                      (not (lsp-install/read-receipt name))

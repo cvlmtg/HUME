@@ -3,12 +3,15 @@
 (provide lsp-install/ref
          lsp-install/ref-or
          lsp-install/require-stdlib!
-         lsp-install/read-data
-         lsp-install/index-entries
-         lsp-install/servers
-         lsp-install/lookup
+         lsp-install/data-path
+         lsp-install/read-record
+         lsp-install/registration
+         lsp-install/seeded-server?
+         lsp-install/server-names
+         lsp-install/language-list
+         lsp-install/seeded-language?
+         lsp-install/language-names
          lsp-install/requirement
-         lsp-install/language-lists
          lsp-install/server-languages
          lsp-install/primary)
 
@@ -18,51 +21,64 @@
   (unless (member "core:stdlib" (declared-plugins))
     (error "core:lsp-install: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:lsp-install\")")))
 
-(define (lsp-install/read-data file)
-  (call-with-input-file (path-join lsp-install/dir "data" file) read))
+(define (lsp-install/data-path kind)
+  (path-join lsp-install/dir "data" kind))
 
-(define (lsp-install/index-entries entries)
-  (let loop ((entries entries) (index (hash)))
-    (if (null? entries)
-        index
-        (loop (cdr entries) (hash-insert index (car (car entries)) (cdr (car entries)))))))
-
-(define lsp-install/servers (lsp-install/index-entries (lsp-install/read-data "servers.scm")))
-(define lsp-install/requirements #f)
+;; `name`'s record in data directory `kind`, or #f when it has no file there.
+(define (lsp-install/read-record kind name)
+  (let ((path (data-file (lsp-install/data-path kind) name)))
+    (and path (read-data-file path))))
 
 (define (lsp-install/ref fields key)
   (cdr (assoc key fields)))
 
-;; A field absent from the tail is `default`.
+;; A field absent from the record is `default`.
 (define (lsp-install/ref-or fields key default)
   (let ((entry (assoc key fields)))
     (if entry (cdr entry) default)))
 
-(define (lsp-install/lookup table name)
-  (if (hash-contains? table name)
-      (hash-ref table name)
-      #f))
+(define (lsp-install/registration name)
+  (lsp-install/read-record "registrations" name))
+
+(define (lsp-install/seeded-server? name)
+  (if (data-file (lsp-install/data-path "registrations") name) #t #f))
+
+(define (lsp-install/server-names)
+  (data-file-names (lsp-install/data-path "registrations")))
+
+;; One `(lang (servers entry ...))` row per language, sorted by name. Each
+;; entry is `("name")` or `("name" (only-features "f" ...))` /
+;; `("name" (except-features "f" ...))`.
+(define lsp-install/language-rows
+  (read-data-file (path-join lsp-install/dir "data" "language-servers.scm")))
+
+(define lsp-install/language-lists
+  (let loop ((rows lsp-install/language-rows) (table (hash)))
+    (if (null? rows)
+        table
+        (loop (cdr rows)
+              (hash-insert table (car (car rows)) (lsp-install/ref (cdr (car rows)) 'servers))))))
+
+;; A language's server entries, or #f.
+(define (lsp-install/language-list lang)
+  (and (hash-contains? lsp-install/language-lists lang)
+       (hash-ref lsp-install/language-lists lang)))
+
+(define (lsp-install/seeded-language? lang)
+  (hash-contains? lsp-install/language-lists lang))
+
+(define (lsp-install/language-names)
+  (map car lsp-install/language-rows))
 
 (define (lsp-install/requirement name)
-  (unless lsp-install/requirements
-    (set! lsp-install/requirements
-          (lsp-install/index-entries (lsp-install/read-data "requirements.scm"))))
-  (lsp-install/lookup lsp-install/requirements name))
-
-(define lsp-install/language-rows (lsp-install/read-data "language-servers.scm"))
-
-;; language -> `((servers entry ...))`. Each server entry is
-;; `("name")` or `("name" (only-features "f" ...))` / `("name" (except-features "f" ...))`.
-(define lsp-install/language-lists (lsp-install/index-entries lsp-install/language-rows))
+  (lsp-install/read-record "requirements" name))
 
 ;; The server `:lsp-install <lang>` installs for a language: its first, or #f.
 (define (lsp-install/primary lang)
-  (let ((fields (lsp-install/lookup lsp-install/language-lists lang)))
-    (and fields (car (car (lsp-install/ref fields 'servers))))))
+  (let ((entries (lsp-install/language-list lang)))
+    (and entries (car (car entries)))))
 
-;; Every language a server is listed for, in catalog order.
+;; Every language a server is listed for, in name order.
 (define (lsp-install/server-languages name)
-  (map car
-       (filter (lambda (row)
-                 (member name (map car (lsp-install/ref (cdr row) 'servers))))
-               lsp-install/language-rows)))
+  (filter (lambda (lang) (member name (map car (lsp-install/language-list lang))))
+          (lsp-install/language-names)))

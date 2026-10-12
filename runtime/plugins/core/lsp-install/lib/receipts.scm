@@ -12,7 +12,7 @@
 
 (define (lsp-install/read-receipt name)
   (with-handler (lambda (err) #f)
-    (call-with-input-file (lsp-install/receipt-path name) read)))
+    (read-data-file (lsp-install/receipt-path name))))
 
 (define (lsp-install/receipt-bin receipt) (lsp-install/ref receipt 'bin))
 (define (lsp-install/receipt-version receipt) (lsp-install/ref receipt 'version))

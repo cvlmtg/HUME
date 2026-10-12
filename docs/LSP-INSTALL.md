@@ -49,8 +49,8 @@ No upstream format is ever parsed inside the editor.
 
 | Concern | Upstream | Pin | Generated data |
 |---|---|---|---|
-| **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/plugins/core/lsp-install/servers.scm`, `language-servers.scm` (and each language's root markers in `runtime/scheme/languages/<name>.scm`) |
-| **Installation** — where to download, per platform | `mason-org/mason-registry` (Apache-2.0; one `package.yaml` per tool, purl sources, per-platform assets; publishes compiled `registry.json` per release tag) | new `mason-pin.scm` (registry release tag) | `runtime/plugins/core/lsp-install/sources.scm` |
+| **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/plugins/core/lsp-install/data/registrations/<server>.scm`, `data/language-servers.scm` (and each language's root markers in `runtime/scheme/languages/<name>.scm`) |
+| **Installation** — where to download, per platform | `mason-org/mason-registry` (Apache-2.0; one `package.yaml` per tool, purl sources, per-platform assets; publishes compiled `registry.json` per release tag) | new `mason-pin.scm` (registry release tag) | `runtime/plugins/core/lsp-install/data/sources/<server>.scm`, `data/requirements/<server>.scm` |
 
 One generated file per pin: a helix-pin bump touches only registration data, a mason-pin
 bump only install sources — every diff traceable to one upstream. Join key = server name,
@@ -70,12 +70,13 @@ Scripts align with *pins*, not features (see `scripts/README.md`):
 
 - **`scripts/sync-grammars.py`** (existing, extended): already fetches `languages.toml` at
   helix-pin and emits `languages.scm` + one `languages/<name>.scm` per language; additionally emits
-  `servers.scm` and `language-servers.scm` from the same parsed TOML. One bump, one run, all helix-derived files
+  one `registrations/<server>.scm` per server and `language-servers.scm` from the same parsed TOML. One bump, one run, all helix-derived files
   move in one diff.
-- **`scripts/sync-lsp-sources.py`** (new, standalone): mason-pin → `sources.scm`.
+- **`scripts/sync-lsp-sources.py`** (new, standalone): mason-pin → one `sources/<server>.scm`
+  per server, and each server's `requirements/<server>.scm` derived from it.
   Standalone because it is *expensive* — it downloads every asset per server×platform to
   compute sha256s; a routine helix bump must not pay that.
-- **Ordering**: the Mason script reads the checked-in `servers.scm` for the server-name
+- **Ordering**: the Mason script reads the checked-in `registrations/` for the server-name
   intersection filter, so after a helix bump that changes server names run helix sync
   first, mason sync second. Both outputs are checked in; normally each runs alone.
 - Shared sexpr-emission/pin-reading helpers move to `scripts/sync_common.py` (hyphenated
@@ -99,14 +100,24 @@ as today.
 
 ## Seeded data format
 
-Both files follow the per-language data files' contract — pure data, one literal sexpr, fully
-canonicalised at sync time, no defaults applied at read time — but use **tagged alists
-instead of positional tuples**: install records are heterogeneous (`github` vs `npm` carry
-different fields, and more kinds will come), and positional encoding does not survive
+Every catalog follows the per-language data files' contract — pure data, one literal sexpr per
+file, fully canonicalised at sync time, no defaults applied at read time — but uses **tagged
+alists instead of positional tuples**: install records are heterogeneous (`github` vs `npm`
+carry different fields, and more kinds will come), and positional encoding does not survive
 optional fields.
 
+**Each catalog's shape follows how it is read.** `language-servers.scm` is one file, because
+registration reads all of it at load: it feeds every language's default list, and the
+discovery hint asks the registry about a language as soon as a buffer first has it. Every
+per-server catalog (`registrations/`, `requirements/`, `sources/`) is a directory holding one
+`<server>.scm` per server, so each consumer reads the one server it needs, and which consumer
+reads which data shows in the path it opens. The layout is for that clarity: the bytes it
+saves at load are few and are not the reason for it. Every file is read through the
+bootstrap's `read-data-file`, and a name is looked up only when it is a file in its
+directory (`data-file`).
+
 **Registration catalogs** (from helix-pin) — split by what registration reads, so the
-scan at activation loads no field only the installer needs. `servers.scm` is keyed by
+scan at activation loads no field only the installer needs. `registrations/` is keyed by
 *server* and holds `args` and `config`: keying it by language would copy a multi-language
 server's `config` blob once per language (typescript-language-server serves four).
 `language-servers.scm` is keyed by *language* and holds the language's ordered server
@@ -116,16 +127,19 @@ language, not the server, and languages sharing a server differ: javascript/jsx 
 `jsconfig.json`, typescript/tsx on `tsconfig.json`), so they live in each language's
 `runtime/scheme/languages/<name>.scm`, not here. The scan registers each server with no languages
 and writes every language's list as its default.
-A `servers.scm` record omits each default field: `command` when it equals the server's name, `args` when empty, `config` when absent. Only the install pipeline and
+A `registrations/` record omits each default field: `command` when it equals the server's name, `args` when empty, `config` when absent. Only the install pipeline and
 `sync-lsp-sources.py` read `command`.
 
 ```scheme
-;; servers.scm
-(("rust-analyzer")
- ("ada-language-server" (command . "ada_language_server"))
- ("typescript-language-server"
-  (args "--stdio")
-  (config . "{\"hostInfo\": \"hume\", \"typescript\": {\"inlayHints\": {…}}}")))
+;; registrations/rust-analyzer.scm
+()
+
+;; registrations/ada-language-server.scm
+((command . "ada_language_server"))
+
+;; registrations/typescript-language-server.scm
+((args "--stdio")
+ (config . "{\"hostInfo\": \"hume\", \"typescript\": {\"inlayHints\": {…}}}"))
 
 ;; language-servers.scm
 (("rust" (servers ("rust-analyzer")))
@@ -142,28 +156,30 @@ A `servers.scm` record omits each default field: `command` when it equals the se
   [Config delivery & per-server audit](#config-delivery--per-server-audit) for why delivering
   the same blob two ways is correct rather than a mismatch.
 
-**`sources.scm`** (install, from mason-pin) — per-kind record shapes:
+**`sources/<server>.scm`** (install, from mason-pin) — per-kind record shapes:
 
 ```scheme
-(("rust-analyzer"
-  (kind . github)
-  (version . "2026-07-06")
-  (repo . "rust-lang/rust-analyzer")
-  (targets
-   (darwin-arm64 "rust-analyzer-aarch64-apple-darwin.gz" "sha256:ab12…" "rust-analyzer")
-   (darwin-x64   "rust-analyzer-x86_64-apple-darwin.gz"  "sha256:cd34…" "rust-analyzer")
-   (linux-x64    "rust-analyzer-x86_64-unknown-linux-gnu.gz" "sha256:…" "rust-analyzer")
-   (windows-x64  "rust-analyzer-x86_64-pc-windows-msvc.zip"  "sha256:…" "rust-analyzer.exe")))
- ("typescript-language-server"
-  (kind . npm)
-  (version . "5.3.0")
-  (packages "typescript-language-server@5.3.0" "typescript")
-  (bin . "typescript-language-server"))
- ("nls"
-  (kind . cargo)
-  (version . "1.17.0")
-  (crate . "nickel-lang-lsp")
-  (bin . "nls")))
+;; sources/rust-analyzer.scm
+((kind . github)
+ (version . "2026-07-06")
+ (repo . "rust-lang/rust-analyzer")
+ (targets
+  (darwin-arm64 "rust-analyzer-aarch64-apple-darwin.gz" "sha256:ab12…" "rust-analyzer")
+  (darwin-x64   "rust-analyzer-x86_64-apple-darwin.gz"  "sha256:cd34…" "rust-analyzer")
+  (linux-x64    "rust-analyzer-x86_64-unknown-linux-gnu.gz" "sha256:…" "rust-analyzer")
+  (windows-x64  "rust-analyzer-x86_64-pc-windows-msvc.zip"  "sha256:…" "rust-analyzer.exe")))
+
+;; sources/typescript-language-server.scm
+((kind . npm)
+ (version . "5.3.0")
+ (packages "typescript-language-server@5.3.0" "typescript")
+ (bin . "typescript-language-server"))
+
+;; sources/nls.scm
+((kind . cargo)
+ (version . "1.17.0")
+ (crate . "nickel-lang-lsp")
+ (bin . "nls"))
 ```
 
 - **github**: each target is `(target asset-file sha256 bin-path)` — the unpacked binary's
@@ -226,7 +242,7 @@ A `servers.scm` record omits each default field: `command` when it equals the se
 - **`#:settings` wired up**: pushed once as `workspace/didChangeConfiguration` after
   `initialized`, resolved per-item to answer `workspace/configuration` pull requests.
   Mechanism: `hume-lsp/src/client.rs`'s `resolve_config_section`.
-- **Seeded catalog delivers its config correctly**: `servers.scm`'s `config` field is
+- **Seeded catalog delivers its config correctly**: a `registrations/` record's `config` field is
   delivered as **both** `#:init-options` and `#:settings` by `core:lsp-install/lib/register.scm`,
   as the same blob goes to both — see
   `runtime/plugins/core/lsp-install/docs/servers.md`.
@@ -278,7 +294,7 @@ A `servers.scm` record omits each default field: `command` when it equals the se
   about, ignored by the scan, safely redone by `:lsp-install`. No half-installed server is
   ever registered. (This is a new mechanism, not grammar precedent — grammars have no
   receipts; they rely on delete-and-reclone idempotency.) Languages are *not* stored — the
-  scan derives them from `servers.scm`, and an orphan (no seeded entry) is never
+  scan derives them from `language-servers.scm`, and an orphan (no `registrations/` file) is never
   registered anyway, so caching them would only go stale.
 - **Integrity**: the installer verifies each downloaded asset against the sha256 recorded
   at sync time. GitHub release assets are not content-addressed (a tag can be re-pushed
@@ -382,13 +398,13 @@ lists) stays in the plugin — Rust never reads them.
 - **Several servers per language, in priority order.** A language lists *multiple*
   servers for some languages (python → `["ty", "ruff", "jedi", "pylsp", "zuban"]`,
   toml → `["taplo", "tombi"]`, go → `["gopls", "golangci-lint-lsp"]`), and their order is
-  priority order. The sync keeps every listed server: `servers.scm` seeds each one that has
+  priority order. The sync keeps every listed server: `registrations/` seeds each one that has
   a `[language-server.*]` command table (one without is dropped with a report), and
   `language-servers.scm` holds each language's ordered list. An inline-table entry's
   `only-features`/`except-features` (e.g. gjs/gts, `{ name = "typescript-language-server",
   except-features = [...] }`) is carried into the list as `(only-features "f" …)` or
   `(except-features "f" …)`. Both filters on one entry, an unknown feature name, a server
-  listed twice for one language, or a listed server `servers.scm` does not seed all stop
+  listed twice for one language, or a listed server `registrations/` does not seed all stop
   the sync. The feature names are the 21 in `LSP_FEATURES` in `sync-grammars.py`),
   mirrored by HUME's `LspFeature::ALL`; a test in `hume-editor` compares the two. The
   client attaches a buffer to every server of its language's list
@@ -409,8 +425,8 @@ lists) stays in the plugin — Rust never reads them.
 ## Implementation shape
 
 Each layer is a pure consumer of the one below it: a Python-only data pipeline
-(`mason-pin.scm`; `sync-grammars.py` → `servers.scm` and `language-servers.scm`; `sync-lsp-sources.py` →
-`sources.scm`, with the Helix→Mason name-mapping table and unmatched-server report;
+(`mason-pin.scm`; `sync-grammars.py` → `registrations/` and `language-servers.scm`; `sync-lsp-sources.py` →
+`sources/` and `requirements/`, with the Helix→Mason name-mapping table and unmatched-server report;
 shared `sync_common.py`); the generic scripting primitives below; and `core:lsp-install`
 itself (Steel, a pure consumer of the previous two — scan-on-load registration,
 `lsp-install`/`lsp-uninstall`/`lsp-catalog` commands, receipts, orphan
@@ -470,7 +486,7 @@ developer's `git`/build toolchain — costs no new install step in the common ca
 Info-ZIP strips `../` entries; bsdtar refuses them by default), rather than implemented in
 HUME. The residual risk is bounded by the sync-time sha256 pin: unpacking runs only
 after `lsp-install/verify-sha256!` (`install.scm`, over `sha256.scm`) has confirmed the
-archive matches the maintainer-vetted, hash-locked asset recorded in `sources.scm` — an attacker would need
+archive matches the maintainer-vetted, hash-locked asset recorded in its `sources/` file — an attacker would need
 to compromise the pinned upstream release itself, not just something interposed at install
 time.
 
