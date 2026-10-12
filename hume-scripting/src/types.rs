@@ -112,6 +112,13 @@ pub struct BundledLanguage {
     pub lsp_language_id: Option<String>,
 }
 
+/// Who called `configure-language!`: `init.scm`'s top level or a plugin body.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConfigOrigin {
+    User,
+    Plugin,
+}
+
 /// Language registration queued by `(define-language! …)`,
 /// `(configure-language! …)` or `(register-grammar! …)`, applied in queue
 /// order via `Editor::apply_pending_language_regs` as part of
@@ -129,6 +136,7 @@ pub enum PendingLanguageReg {
         name: String,
         roots: Option<Vec<String>>,
         lsp_language_id: Option<String>,
+        origin: ConfigOrigin,
     },
     Grammar(GrammarReg),
 }

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use globset::Glob;
 
-use super::{ConfigureOutcome, LanguageRegistry, QueryPaths, detect_language};
+use super::{ConfigureOutcome, ConfiguredBy, LanguageRegistry, QueryPaths, detect_language};
 use hume_engine::theme::ScopeRegistry;
 use test_fixtures::{
     grammar_parser_path, grammar_query_path, helix_textobjects_path, require_fixture_file,
@@ -272,7 +272,7 @@ fn roots_of_returns_the_configured_markers() {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity_no_rebuild("go", &["go"], &[], &[]);
     assert_eq!(
-        reg.configure_roots(id, strings(&["go.work", "go.mod"])),
+        reg.configure_roots(id, strings(&["go.work", "go.mod"]), ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
     assert_eq!(reg.roots_of(id), ["go.work", "go.mod"]);
@@ -290,7 +290,7 @@ fn reregistering_an_identity_keeps_its_configured_roots() {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity_no_rebuild("go", &[], &[], &[]);
     assert_eq!(
-        reg.configure_roots(id, strings(&["go.mod"])),
+        reg.configure_roots(id, strings(&["go.mod"]), ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
     reg.register_identity_no_rebuild("go", &["go"], &[], &[]);
@@ -319,11 +319,11 @@ fn bundled_values_never_replace_configured_ones() {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
     assert_eq!(
-        reg.configure_roots(id, strings(&["deno.json"])),
+        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "tsx-custom".to_string()),
+        reg.configure_lsp_language_id(id, "tsx-custom".to_string(), ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
 
@@ -342,7 +342,7 @@ fn bundled_values_fill_only_the_fields_left_unset() {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
     assert_eq!(
-        reg.configure_roots(id, strings(&["deno.json"])),
+        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
 
@@ -367,11 +367,11 @@ fn a_configured_value_replaces_a_bundled_one() {
     );
 
     assert_eq!(
-        reg.configure_roots(id, strings(&["deno.json"])),
+        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "tsx-custom".to_string()),
+        reg.configure_lsp_language_id(id, "tsx-custom".to_string(), ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
 
@@ -384,25 +384,94 @@ fn a_second_configured_value_is_ignored() {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
     assert_eq!(
-        reg.configure_roots(id, strings(&["deno.json"])),
+        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "first".to_string()),
+        reg.configure_lsp_language_id(id, "first".to_string(), ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
 
     assert_eq!(
-        reg.configure_roots(id, strings(&["package.json"])),
+        reg.configure_roots(id, strings(&["package.json"]), ConfiguredBy::User),
         ConfigureOutcome::Ignored
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "second".to_string()),
+        reg.configure_lsp_language_id(id, "second".to_string(), ConfiguredBy::User),
         ConfigureOutcome::Ignored
     );
 
     assert_eq!(reg.roots_of(id), ["deno.json"]);
     assert_eq!(reg.lsp_language_id_of(id), "first");
+}
+
+#[test]
+fn a_second_plugin_value_is_ignored() {
+    let mut reg = LanguageRegistry::new();
+    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    assert_eq!(
+        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::Plugin),
+        ConfigureOutcome::Applied
+    );
+
+    assert_eq!(
+        reg.configure_roots(id, strings(&["package.json"]), ConfiguredBy::Plugin),
+        ConfigureOutcome::Ignored
+    );
+
+    assert_eq!(reg.roots_of(id), ["deno.json"]);
+}
+
+#[test]
+fn a_user_value_replaces_a_plugin_value() {
+    let mut reg = LanguageRegistry::new();
+    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    assert_eq!(
+        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::Plugin),
+        ConfigureOutcome::Applied
+    );
+    assert_eq!(
+        reg.configure_lsp_language_id(id, "plugin".to_string(), ConfiguredBy::Plugin),
+        ConfigureOutcome::Applied
+    );
+
+    assert_eq!(
+        reg.configure_roots(id, strings(&["package.json"]), ConfiguredBy::User),
+        ConfigureOutcome::Applied
+    );
+    assert_eq!(
+        reg.configure_lsp_language_id(id, "user".to_string(), ConfiguredBy::User),
+        ConfigureOutcome::Applied
+    );
+
+    assert_eq!(reg.roots_of(id), ["package.json"]);
+    assert_eq!(reg.lsp_language_id_of(id), "user");
+}
+
+#[test]
+fn a_plugin_value_after_a_user_value_is_shadowed() {
+    let mut reg = LanguageRegistry::new();
+    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    assert_eq!(
+        reg.configure_roots(id, strings(&["package.json"]), ConfiguredBy::User),
+        ConfigureOutcome::Applied
+    );
+    assert_eq!(
+        reg.configure_lsp_language_id(id, "user".to_string(), ConfiguredBy::User),
+        ConfigureOutcome::Applied
+    );
+
+    assert_eq!(
+        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::Plugin),
+        ConfigureOutcome::Shadowed
+    );
+    assert_eq!(
+        reg.configure_lsp_language_id(id, "plugin".to_string(), ConfiguredBy::Plugin),
+        ConfigureOutcome::Shadowed
+    );
+
+    assert_eq!(reg.roots_of(id), ["package.json"]);
+    assert_eq!(reg.lsp_language_id_of(id), "user");
 }
 
 #[test]
@@ -543,7 +612,7 @@ fn lsp_language_id_of_returns_the_configured_override() {
     reg.register_identity("tsx", &["tsx"], &[], &[]).unwrap();
     let id = reg.id_of("tsx").unwrap();
     assert_eq!(
-        reg.configure_lsp_language_id(id, "typescriptreact".to_string()),
+        reg.configure_lsp_language_id(id, "typescriptreact".to_string(), ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
     assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
@@ -557,7 +626,7 @@ fn identity_re_registration_keeps_the_configured_lsp_language_id() {
     reg.register_identity("tsx", &["tsx"], &[], &[]).unwrap();
     let id = reg.id_of("tsx").unwrap();
     assert_eq!(
-        reg.configure_lsp_language_id(id, "typescriptreact".to_string()),
+        reg.configure_lsp_language_id(id, "typescriptreact".to_string(), ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
 

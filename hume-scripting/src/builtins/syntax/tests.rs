@@ -1,5 +1,5 @@
 use super::*;
-use crate::{PendingLanguageReg, test_support::SteelCtxTestHarness};
+use crate::{ConfigOrigin, PendingLanguageReg, test_support::SteelCtxTestHarness};
 use steel::rvals::IntoSteelVal as _;
 
 fn str_val(s: &str) -> SteelVal {
@@ -132,14 +132,62 @@ fn configure_language_decodes_each_field() {
     let regs = lang_regs(&h);
     assert!(matches!(
         regs[0],
-        PendingLanguageReg::Configure { name, roots: Some(roots), lsp_language_id: None }
+        PendingLanguageReg::Configure { name, roots: Some(roots), lsp_language_id: None, .. }
             if name == "go" && roots == &["go.work", "go.mod"]
     ));
     assert!(matches!(
         regs[1],
-        PendingLanguageReg::Configure { name, roots: None, lsp_language_id: Some(id) }
+        PendingLanguageReg::Configure { name, roots: None, lsp_language_id: Some(id), .. }
             if name == "tsx" && id == "typescriptreact"
     ));
+}
+
+/// `%configure-language!` records who called it: init.scm's top level is the
+/// user, any plugin body (eager load or lazy activation) is a plugin.
+#[test]
+fn configure_language_records_its_origin() {
+    use crate::attribution::{EntryId, PluginId};
+
+    let mut h = SteelCtxTestHarness::new();
+    configure_language(
+        &mut h.ctx_init(),
+        str_val("go"),
+        SteelVal::BoolV(false),
+        str_val("a"),
+    )
+    .expect("init top level must decode");
+    h.plugin_stack
+        .push(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
+    configure_language(
+        &mut h.ctx_init(),
+        str_val("go"),
+        SteelVal::BoolV(false),
+        str_val("b"),
+    )
+    .expect("eager plugin load must decode");
+    configure_language(
+        &mut h.ctx_activation(),
+        str_val("go"),
+        SteelVal::BoolV(false),
+        str_val("c"),
+    )
+    .expect("lazy plugin activation must decode");
+
+    let origins: Vec<ConfigOrigin> = lang_regs(&h)
+        .into_iter()
+        .map(|reg| match reg {
+            PendingLanguageReg::Configure { origin, .. } => *origin,
+            other => panic!("expected a Configure registration, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        origins,
+        [
+            ConfigOrigin::User,
+            ConfigOrigin::Plugin,
+            ConfigOrigin::Plugin
+        ]
+    );
 }
 
 /// `%configure-language!` rejects roots that are neither a list nor `#f`.

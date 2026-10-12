@@ -10,8 +10,10 @@ mod parse;
 pub(in crate::editor) use parse::ensure_syntax_current;
 
 use hume_engine::pipeline::{BufferId, EngineView};
-use hume_scripting::GrammarReg;
-use hume_treesitter::registry::{ConfigureOutcome, LanguageId, QueryPaths, detect_language};
+use hume_scripting::{ConfigOrigin, GrammarReg};
+use hume_treesitter::registry::{
+    ConfigureOutcome, ConfiguredBy, LanguageId, QueryPaths, detect_language,
+};
 
 use super::Editor;
 use super::EditorState;
@@ -286,7 +288,14 @@ impl Editor {
                     name,
                     roots,
                     lsp_language_id,
-                } => self.configure_language(&name, roots, lsp_language_id),
+                    origin,
+                } => {
+                    let by = match origin {
+                        ConfigOrigin::User => ConfiguredBy::User,
+                        ConfigOrigin::Plugin => ConfiguredBy::Plugin,
+                    };
+                    self.configure_language(&name, roots, lsp_language_id, by);
+                }
                 PendingLanguageReg::Grammar(reg) => {
                     match attach_grammar_from_reg(&mut self.state, &mut self.view, &reg) {
                         Ok(id) => grammar_sweeps.push(id),
@@ -306,14 +315,16 @@ impl Editor {
         }
     }
 
-    /// Apply one `configure-language!` call. A name with no identity is an
-    /// error; a field that already holds a configured value keeps it, and the
-    /// ignored write is logged as a warning.
+    /// Apply one `configure-language!` call made by `by`. A name with no
+    /// identity is an error. A field already set by the same tier keeps its
+    /// value and the ignored write is logged as a warning; a plugin write
+    /// under a user value is dropped quietly.
     fn configure_language(
         &mut self,
         name: &str,
         roots: Option<Vec<String>>,
         lsp_language_id: Option<String>,
+        by: ConfiguredBy,
     ) {
         let languages = &mut self.state.config.languages;
         let Some(id) = languages
@@ -328,12 +339,13 @@ impl Editor {
         };
         let mut ignored = Vec::new();
         if let Some(roots) = roots
-            && languages.configure_roots(id, roots) == ConfigureOutcome::Ignored
+            && languages.configure_roots(id, roots, by) == ConfigureOutcome::Ignored
         {
             ignored.push("roots");
         }
         if let Some(lsp_language_id) = lsp_language_id
-            && languages.configure_lsp_language_id(id, lsp_language_id) == ConfigureOutcome::Ignored
+            && languages.configure_lsp_language_id(id, lsp_language_id, by)
+                == ConfigureOutcome::Ignored
         {
             ignored.push("language-id");
         }

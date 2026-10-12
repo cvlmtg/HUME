@@ -2,7 +2,7 @@
 
 use steel::rvals::SteelVal;
 
-use crate::{Effect, GrammarReg, PendingLanguageReg, SteelCtx};
+use crate::{ConfigOrigin, Effect, GrammarReg, PendingLanguageReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
@@ -50,7 +50,8 @@ pub(crate) fn define_language(
 /// `%define-language!`. `roots` is a list of strings or `#f`,
 /// `lsp-language-id` a string or `#f`; `#f` leaves that field as it is.
 /// Pushes an `Effect::LanguageReg(PendingLanguageReg::Configure)`, applied in
-/// queue order after any `%define-language!` queued before it.
+/// queue order after any `%define-language!` queued before it. A call inside
+/// a plugin body is a plugin's, any other is the user's.
 pub(crate) fn configure_language(
     ctx: &mut SteelCtx,
     name: SteelVal,
@@ -61,10 +62,16 @@ pub(crate) fn configure_language(
     let roots = optional_list_to_strings(roots_val, "%configure-language! roots")?;
     let lsp_language_id =
         optional_string_arg(lsp_language_id_val, "%configure-language! language-id")?;
+    let origin = if ctx.plugin_stack.is_empty() {
+        ConfigOrigin::User
+    } else {
+        ConfigOrigin::Plugin
+    };
     ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Configure {
         name,
         roots,
         lsp_language_id,
+        origin,
     }));
     Ok(SteelVal::Void)
 }

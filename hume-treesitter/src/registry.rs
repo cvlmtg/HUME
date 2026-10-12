@@ -35,11 +35,19 @@ pub struct LanguageIdentity {
     pub shebangs: Vec<String>,
 }
 
-/// Where a per-language value came from. A configured value (`init.scm` or a
-/// plugin) always beats a bundled one, whichever arrives first.
+/// Who configured a per-language value. A user value (`init.scm`) beats a
+/// plugin's, whichever arrives first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ConfiguredBy {
+    Plugin,
+    User,
+}
+
+/// Where a per-language value came from. A configured value always beats a
+/// bundled one, whichever arrives first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SettingSource {
-    Configured,
+    Configured(ConfiguredBy),
     Bundled,
 }
 
@@ -64,26 +72,35 @@ struct LanguageConfig {
     bundled_loaded: bool,
 }
 
-/// Result of a configured write. The first configured value for a field
-/// wins; a later one is `Ignored`.
+/// Result of a configured write.
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConfigureOutcome {
     Applied,
+    /// The field already holds a value from the same configurer; the first
+    /// one stays.
     Ignored,
+    /// The field already holds a user value and this write came from a plugin.
+    Shadowed,
 }
 
-/// Store a configured `value` unless the slot already holds a configured one.
-fn configure<T>(slot: &mut Option<Setting<T>>, value: T) -> ConfigureOutcome {
-    if slot
-        .as_ref()
-        .is_some_and(|s| s.source == SettingSource::Configured)
+/// Store `value` from `by` unless the slot holds a value configured by the
+/// same or a higher tier.
+fn configure<T>(slot: &mut Option<Setting<T>>, value: T, by: ConfiguredBy) -> ConfigureOutcome {
+    if let Some(Setting {
+        source: SettingSource::Configured(held),
+        ..
+    }) = slot
     {
-        return ConfigureOutcome::Ignored;
+        match (*held).cmp(&by) {
+            std::cmp::Ordering::Equal => return ConfigureOutcome::Ignored,
+            std::cmp::Ordering::Greater => return ConfigureOutcome::Shadowed,
+            std::cmp::Ordering::Less => {}
+        }
     }
     *slot = Some(Setting {
         value,
-        source: SettingSource::Configured,
+        source: SettingSource::Configured(by),
     });
     ConfigureOutcome::Applied
 }
@@ -316,8 +333,13 @@ impl LanguageRegistry {
     // ── Per-language configuration ────────────────────────────────────────────
 
     /// Set `id`'s root markers from configuration.
-    pub fn configure_roots(&mut self, id: LanguageId, roots: Vec<String>) -> ConfigureOutcome {
-        configure(&mut self.configs[id.0 as usize].roots, roots)
+    pub fn configure_roots(
+        &mut self,
+        id: LanguageId,
+        roots: Vec<String>,
+        by: ConfiguredBy,
+    ) -> ConfigureOutcome {
+        configure(&mut self.configs[id.0 as usize].roots, roots, by)
     }
 
     /// Set `id`'s wire `languageId` from configuration.
@@ -325,10 +347,12 @@ impl LanguageRegistry {
         &mut self,
         id: LanguageId,
         lsp_language_id: String,
+        by: ConfiguredBy,
     ) -> ConfigureOutcome {
         configure(
             &mut self.configs[id.0 as usize].lsp_language_id,
             lsp_language_id,
+            by,
         )
     }
 

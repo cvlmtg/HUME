@@ -68,9 +68,9 @@ no value for it, so a language with none is `()`:
 
 The editor reads a language's file the first time a buffer is assigned that language, and fills
 each of `roots` and `language-id` that configuration has not set. A value from
-`configure-language!` always wins, whether it arrives before or after the file is read; among
-configured values the first wins, so `init.scm` beats a plugin, and the ignored write is
-logged as a warning. `:reload-config` drops both and reads the files again on next use.
+`configure-language!` always wins, whether it arrives before or after the file is read. A value
+from `init.scm` beats a plugin's in either order, and the plugin's is dropped quietly; between two
+values from the same side the first wins and the ignored write is logged as a warning. `:reload-config` drops both and reads the files again on next use.
 
 ## `grammars.scm`
 

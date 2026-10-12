@@ -169,8 +169,15 @@ fn a_value_configured_by_a_plugin_activated_after_the_bundled_load_beats_it() {
     assert_eq!(roots(&ed), ["deno.json"]);
 }
 
+fn tsx_warnings(ed: &Editor) -> Vec<String> {
+    messages(ed, Severity::Warning)
+        .into_iter()
+        .filter(|w| w.contains("'tsx'"))
+        .collect()
+}
+
 #[test]
-fn init_beats_a_plugin_and_the_ignored_plugin_value_is_a_warning() {
+fn init_beats_a_plugin_activated_later_without_a_warning() {
     let (mut ed, _fixture) = LanguageFixture::boot(
         TSX_LANGUAGES,
         &[TSX_BUNDLED],
@@ -181,12 +188,42 @@ fn init_beats_a_plugin_and_the_ignored_plugin_value_is_a_warning() {
     open_as_tsx(&mut ed);
 
     assert_eq!(roots(&ed), ["user.json"]);
-    let warnings = messages(&ed, Severity::Warning);
+    assert_eq!(tsx_warnings(&ed), Vec::<String>::new());
+}
+
+#[test]
+fn init_beats_a_plugin_loaded_before_the_init_line() {
+    let (mut ed, _fixture) = LanguageFixture::boot(
+        TSX_LANGUAGES,
+        &[TSX_BUNDLED],
+        "(load-plugin! \"user/tp\")\n(configure-language! \"tsx\" #:roots '(\"user.json\"))",
+        r#"(configure-language! "tsx" #:roots '("plugin.json"))"#,
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_eq!(messages(&ed, Severity::Error), Vec::<String>::new());
+    assert_eq!(roots(&ed), ["user.json"]);
+    assert_eq!(tsx_warnings(&ed), Vec::<String>::new());
+}
+
+#[test]
+fn a_second_init_value_is_ignored_with_a_warning() {
+    let (mut ed, _fixture) = LanguageFixture::boot(
+        TSX_LANGUAGES,
+        &[TSX_BUNDLED],
+        "(configure-language! \"tsx\" #:roots '(\"first.json\"))\n\
+         (configure-language! \"tsx\" #:roots '(\"second.json\"))",
+        "",
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_eq!(roots(&ed), ["first.json"]);
+    let warnings = tsx_warnings(&ed);
     assert!(
-        warnings
-            .iter()
-            .any(|w| w.contains("'tsx'") && w.contains("roots")),
-        "the plugin's ignored roots must be reported; warnings: {warnings:?}"
+        warnings.iter().any(|w| w.contains("roots")),
+        "the ignored roots must be reported; warnings: {warnings:?}"
     );
 }
 
