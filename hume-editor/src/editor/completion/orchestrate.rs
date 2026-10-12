@@ -203,8 +203,8 @@ impl EditorState {
     }
 
     /// Asks the selected candidate's server for its documentation, through
-    /// `completionItem/resolve`, unless it has it already or the request is
-    /// in flight ([`BufferSession::doc_request`]). Docs carry no buffer
+    /// `completionItem/resolve`, unless it has it already or was asked since it
+    /// was selected ([`BufferSession::doc_request`]). Docs carry no buffer
     /// position, so the reply is delivered even after further typing. Sent
     /// from the settle pass only: accepting or reusing a session takes it
     /// out before its reply could matter.

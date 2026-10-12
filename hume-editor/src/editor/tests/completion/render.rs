@@ -165,6 +165,34 @@ fn doc_box_content_is_built_once_per_candidate() {
     assert_eq!(builds, Some(2));
 }
 
+/// The box's content bakes the theme's colors in, so a theme change builds
+/// it again. Checked by object identity: every build allocates its own
+/// wrapped lines, styled or plain.
+#[test]
+fn doc_box_content_is_rebuilt_after_a_theme_reload() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    ed.state.dirs = repo_runtime_dirs();
+    insert_with_source(&mut ed, tmp.path(), DOCUMENTED);
+    let doc_lines = |ed: &Editor| {
+        ed.state
+            .views
+            .completion_doc
+            .read()
+            .as_ref()
+            .map(|state| std::sync::Arc::clone(&state.lines))
+    };
+    frame(&mut ed, 60, 16);
+    let first = doc_lines(&ed).expect("doc box showing");
+
+    let fp = FocusedPane::current(&ed.state);
+    commands::typed_theme(&mut ed, fp, Some("gruvbox"), false)
+        .expect(":theme gruvbox must succeed");
+    frame(&mut ed, 60, 16);
+    let second = doc_lines(&ed).expect("doc box still showing");
+    assert!(!std::sync::Arc::ptr_eq(&first, &second));
+}
+
 #[test]
 fn doc_box_flips_left_of_a_menu_near_the_right_edge() {
     let tmp = tempfile::tempdir().unwrap();

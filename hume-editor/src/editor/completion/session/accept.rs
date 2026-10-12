@@ -137,7 +137,7 @@ impl BufferSession {
             };
             match item.resolved_reply_for(self.version) {
                 Some(reply) => base.apply(state, view, reply),
-                None => self.maybe_send_resolve(state, item, base),
+                None => base.request(state, item),
             }
         }
         Ok(())
@@ -448,29 +448,37 @@ impl BufferSession {
         );
 
         // The full pre-accept-document → post-accept-document transform:
-        // `maybe_send_resolve` needs it composed, not just the cursor edit's
+        // `ResolveBase::apply` needs it composed, not just the cursor edit's
         // own half, to map a resolve response's positions forward correctly.
         Ok(match cs_additional {
             Some(cs_a) => cs_a.compose(cs_cursors),
             None => cs_cursors,
         })
     }
+}
 
+/// The accept a resolve answer's `additionalTextEdits` land on top of: the
+/// pre-accept document their positions decode against, and the accept's own
+/// change to map them through.
+struct ResolveBase {
+    pid: PaneId,
+    bid: BufferId,
+    rope_pre: ropey::Rope,
+    accept_cs: hume_editing::changeset::ChangeSet,
+    encoding: hume_rope::position_encoding::PositionEncoding,
+}
+
+impl ResolveBase {
     /// Sends `completionItem/resolve` to the server the item came from, when
     /// that server is still attached to the buffer, running, and advertised
     /// `completionProvider.resolveProvider`, and applies the answer's
-    /// `additionalTextEdits` on top of `base`. Best-effort: a resolution
+    /// `additionalTextEdits` on top of `self`. Best-effort: a resolution
     /// error, timeout, or a server that's gone by send time only logs, it
-    /// never fails the accept that already landed. `base` rides along in the
+    /// never fails the accept that already landed. `self` rides along in the
     /// response callback rather than being re-read from live focus when the
     /// response arrives, so a focus change while the request is in flight
     /// can't redirect the resolved edit to the wrong pane.
-    fn maybe_send_resolve(
-        &self,
-        state: &mut EditorState,
-        item: &CompletionItem,
-        base: ResolveBase,
-    ) {
+    fn request(self, state: &mut EditorState, item: &CompletionItem) {
         // A `#:resolve #t` source's items are always real LSP items in
         // practice, so the target is always there, but resolving is
         // best-effort by this function's own contract, so a plain item (no
@@ -479,9 +487,9 @@ impl BufferSession {
         let Some((server_id, raw)) = item.resolve_target() else {
             return;
         };
-        let bid = base.bid;
+        let bid = self.bid;
         let respond: RustResponder = Box::new(move |state, view, result| match result {
-            Ok(resolved) => base.apply(state, view, &resolved),
+            Ok(resolved) => self.apply(state, view, &resolved),
             Err(message) => {
                 state.report(
                     Severity::Error,
@@ -498,20 +506,7 @@ impl BufferSession {
             respond,
         );
     }
-}
 
-/// The accept a resolve answer's `additionalTextEdits` land on top of: the
-/// pre-accept document their positions decode against, and the accept's own
-/// change to map them through.
-struct ResolveBase {
-    pid: PaneId,
-    bid: BufferId,
-    rope_pre: ropey::Rope,
-    accept_cs: hume_editing::changeset::ChangeSet,
-    encoding: hume_rope::position_encoding::PositionEncoding,
-}
-
-impl ResolveBase {
     fn apply(&self, state: &mut EditorState, view: &EngineView, resolved: &serde_json::Value) {
         let resolved_edits = parse_additional_text_edits_lenient(resolved);
         let result = edits::build_edits_from_earlier_document(

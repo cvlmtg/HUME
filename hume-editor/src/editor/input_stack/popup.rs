@@ -48,10 +48,10 @@ pub(in crate::editor) struct PopupLayer {
     /// runs; see `frame.rs`'s `prepare_frame` step ordering). Its own
     /// internal wrap cache is then keyed by width, so an unchanged width
     /// across frames is O(1), not a re-wrap. Reset to `None` by
-    /// `theme::set_theme` (the one chokepoint every `view.theme` write goes
-    /// through), since the baked styles are the one input here that *can*
+    /// [`Layer::theme_changed`] (reached from `theme::set_theme`, the one
+    /// chokepoint every `view.theme` write goes through), since the baked styles are the one input here that *can*
     /// change out from under an open popup, unlike `text`/`syntax`.
-    pub(in crate::editor) content: Option<hume_ui::popup::PopupContent>,
+    content: Option<hume_ui::popup::PopupContent>,
     /// Identifies which `show-popup!` call opened this popup; see
     /// [`Self::token`]'s doc.
     token: HostToken,
