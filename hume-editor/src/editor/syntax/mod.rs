@@ -10,7 +10,7 @@ mod parse;
 pub(in crate::editor) use parse::ensure_syntax_current;
 
 use hume_engine::pipeline::{BufferId, EngineView};
-use hume_scripting::{ConfigOrigin, GrammarReg};
+use hume_scripting::{BundledLanguage, ConfigOrigin, GrammarReg};
 use hume_treesitter::registry::{
     ConfigureOutcome, ConfiguredBy, LanguageId, QueryPaths, detect_language,
 };
@@ -162,18 +162,18 @@ impl Editor {
             let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
             scripting.bundled_language(&name, &mut host)
         });
-        let (roots, lsp_language_id) = match bundled {
-            Some(Ok(Some(lang))) => (lang.roots, lang.lsp_language_id),
-            None | Some(Ok(None)) => (Vec::new(), None),
+        let lang = match bundled {
+            Some(Ok(Some(lang))) => lang,
+            None | Some(Ok(None)) => BundledLanguage::default(),
             Some(Err(e)) => {
                 self.report(super::Severity::Error, format!("language data: {e}"));
-                (Vec::new(), None)
+                BundledLanguage::default()
             }
         };
         self.state
             .config
             .languages
-            .fill_bundled(id, roots, lsp_language_id);
+            .fill_bundled(id, lang.roots, lang.lsp_language_id);
     }
 
     pub(super) fn detect_and_set_language(&mut self, bid: BufferId) {

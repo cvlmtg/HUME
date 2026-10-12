@@ -255,17 +255,32 @@
 (define (%language-data-all? ok? items)
   (or (null? items) (and (ok? (car items)) (%language-data-all? ok? (cdr items)))))
 
-(define (%language-name-char? c)
-  (or (and (char>=? c #\a) (char<=? c #\z))
-      (and (char>=? c #\0) (char<=? c #\9))
-      (member c (list #\. #\_ #\-))))
+(define (stems-with-suffix dir suffix)
+  (if (not (path-exists? dir))
+      '()
+      (let ((slen (string-length suffix)))
+        (sort (map (lambda (f) (substring f 0 (- (string-length f) slen)))
+                   (filter (lambda (f) (and (ends-with? f suffix)
+                                            (> (string-length f) slen)))
+                           (map file-name (read-dir dir))))
+              string<?))))
+
+(define (%language-data-dir)
+  (let ((runtime (runtime-dir)))
+    (and runtime (path-join runtime "scheme" "languages"))))
+
+(define %language-data-names-cache (box #f))
+
+(define (%language-data-names)
+  (or (unbox %language-data-names-cache)
+      (let* ((dir (%language-data-dir))
+             (names (if dir (stems-with-suffix dir ".scm") '())))
+        (set-box! %language-data-names-cache names)
+        names)))
 
 (define (%language-data-file name)
-  (unless (and (string? name) (not (member name '("" "." "..")))
-               (%language-data-all? %language-name-char? (string->list name)))
-    (error (string-append "language data: " (to-string name) " is not a language name")))
-  (let ((runtime (runtime-dir)))
-    (and runtime (path-join runtime "scheme" "languages" (string-append name ".scm")))))
+  (and (member name (%language-data-names))
+       (path-join (%language-data-dir) (string-append name ".scm"))))
 
 (define (%language-data-strings? items)
   (and (list? items) (%language-data-all? string? items)))
@@ -307,7 +322,7 @@
 
 (define (%read-language-data name)
   (let ((path (%language-data-file name)))
-    (and path (is-file? path)
+    (and path
          (let* ((text (call-with-input-file path read-port-to-string))
                 (parsed (with-handler (lambda (err) (list 'unparsable (to-string err)))
                                       (list 'parsed (hm.read! text)))))
@@ -326,26 +341,12 @@
 (define (%bundled-language-config name)
   (let ((data (%read-language-data name)))
     (and data
-         (list (or (%language-data-ref data 'roots) '())
+         (list (%language-data-ref data 'roots)
                (%language-data-ref data 'language-id)))))
 
 (define (bundled-language-grammar name)
   (let ((data (%read-language-data name)))
     (and data (%language-data-ref data 'grammar))))
 
-(define %bundled-grammar-languages (box #f))
-
 (define (bundled-grammar-languages)
-  (or (unbox %bundled-grammar-languages)
-      (let* ((runtime (runtime-dir))
-             (dir (and runtime (path-join runtime "scheme" "languages")))
-             (names
-              (if (and dir (is-dir? dir))
-                  (sort (filter bundled-language-grammar
-                                (map (lambda (file) (substring file 0 (- (string-length file) 4)))
-                                     (filter (lambda (file) (ends-with? file ".scm"))
-                                             (map file-name (read-dir dir)))))
-                        string<?)
-                  '())))
-        (set-box! %bundled-grammar-languages names)
-        names)))
+  (filter bundled-language-grammar (%language-data-names)))

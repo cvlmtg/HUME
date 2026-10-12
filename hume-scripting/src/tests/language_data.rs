@@ -39,8 +39,11 @@ fn read_ok(body: &str) -> BundledLanguage {
         .expect("the file exists")
 }
 
+/// Reads a malformed `lang.scm`, returning its error, which must name the file.
 fn read_err(body: &str) -> String {
-    read(&[("lang", body)], "lang").expect_err("a malformed file is an error")
+    let err = read(&[("lang", body)], "lang").expect_err("a malformed file is an error");
+    assert!(err.contains("lang.scm"), "{err}");
+    err
 }
 
 /// Evaluates `src` against a runtime holding `files`, returning its error.
@@ -51,7 +54,7 @@ fn eval(files: &[(&str, &str)], src: &str) -> Result<(), String> {
         .map(|_| ())
 }
 
-fn roots(items: &[&str]) -> Vec<String> {
+fn strings(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
 
@@ -84,7 +87,7 @@ fn the_config_carries_roots_and_language_id() {
     assert_eq!(
         lang,
         BundledLanguage {
-            roots: roots(&["package.json", "tsconfig.json"]),
+            roots: Some(strings(&["package.json", "tsconfig.json"])),
             lsp_language_id: Some("typescriptreact".to_string()),
         }
     );
@@ -112,7 +115,7 @@ fn a_dotted_language_name_reads_its_own_file() {
     .expect("reads")
     .expect("exists");
 
-    assert_eq!(lang.roots, roots(&["x"]));
+    assert_eq!(lang.roots, Some(strings(&["x"])));
 }
 
 #[test]
@@ -134,93 +137,44 @@ fn no_runtime_dir_is_no_data() {
 }
 
 #[test]
-fn an_unknown_key_is_an_error_naming_the_file() {
-    let err = read_err(r#"((indent "  "))"#);
-
-    assert!(err.contains("lang.scm"), "{err}");
-    assert!(err.contains("indent"), "{err}");
+fn a_malformed_file_is_an_error_naming_the_file_and_the_problem() {
+    for (body, problem) in [
+        (r#"((indent "  "))"#, "indent"),
+        (r#"((roots "a") (roots "b"))"#, "roots"),
+        (r#"(("roots" "a"))"#, "key symbol"),
+        ("((comment-tokens 3))", "comment-tokens"),
+        (
+            r#"((block-comment-tokens ("/*" "*/")))"#,
+            "block-comment-tokens",
+        ),
+        ("((roots 1))", "roots"),
+        (r#"((grammar "url" "rev" "sym"))"#, "grammar"),
+        (r#"((language-id "tsx"))"#, "language-id"),
+        (r#"((roots "a""#, "lang.scm"),
+        ("() ()", "top-level form"),
+    ] {
+        let err = read_err(body);
+        assert!(err.contains(problem), "{body}: {err}");
+    }
 }
 
 #[test]
-fn a_repeated_key_is_an_error() {
-    let err = read_err(r#"((roots "a") (roots "b"))"#);
-
-    assert!(err.contains("lang.scm"), "{err}");
-    assert!(err.contains("roots"), "{err}");
-}
-
-#[test]
-fn an_entry_without_a_key_symbol_is_an_error() {
-    let err = read_err(r#"(("roots" "a"))"#);
-
-    assert!(err.contains("lang.scm"), "{err}");
-}
-
-#[test]
-fn a_line_comment_token_that_is_not_a_string_is_an_error() {
-    let err = read_err("((comment-tokens 3))");
-
-    assert!(err.contains("lang.scm"), "{err}");
-    assert!(err.contains("comment-tokens"), "{err}");
-}
-
-#[test]
-fn a_block_comment_token_that_is_not_a_pair_is_an_error() {
-    let err = read_err(r#"((block-comment-tokens ("/*" "*/")))"#);
-
-    assert!(err.contains("lang.scm"), "{err}");
-    assert!(err.contains("block-comment-tokens"), "{err}");
-}
-
-#[test]
-fn a_root_that_is_not_a_string_is_an_error() {
-    let err = read_err("((roots 1))");
-
-    assert!(err.contains("lang.scm"), "{err}");
-    assert!(err.contains("roots"), "{err}");
-}
-
-#[test]
-fn a_grammar_with_three_fields_is_an_error() {
-    let err = read_err(r#"((grammar "url" "rev" "sym"))"#);
-
-    assert!(err.contains("lang.scm"), "{err}");
-    assert!(err.contains("grammar"), "{err}");
-}
-
-#[test]
-fn a_language_id_that_is_not_a_dotted_string_is_an_error() {
-    let err = read_err(r#"((language-id "tsx"))"#);
-
-    assert!(err.contains("lang.scm"), "{err}");
-    assert!(err.contains("language-id"), "{err}");
-}
-
-#[test]
-fn an_unparsable_file_is_an_error_naming_the_file() {
-    let err = read_err(r#"((roots "a""#);
-
-    assert!(err.contains("lang.scm"), "{err}");
-}
-
-#[test]
-fn two_top_level_forms_are_an_error() {
-    let err = read_err("() ()");
-
-    assert!(err.contains("lang.scm"), "{err}");
-}
-
-#[test]
-fn a_name_no_data_file_can_have_is_an_error() {
-    let runtime = runtime_with(&[]);
+fn a_name_that_is_not_a_listed_file_is_no_data() {
+    let runtime = runtime_with(&[("rust", r#"((roots "Cargo.toml"))"#)]);
+    std::fs::write(
+        runtime.path().join("scheme").join("init.scm"),
+        r#"((roots "outside"))"#,
+    )
+    .expect("write a file outside the languages dir");
     let mut host = host_for(Some(runtime.path()));
 
     for name in [
-        "../init", "a/b", "a\\b", "..", ".", "", "C:x", "Rust", "a b",
+        "../init", "a/b", "a\\b", "..", ".", "", "C:x", "Rust", "rust.scm", "a b",
     ] {
-        assert!(
-            host.bundled_language(name, &mut NullHost).is_err(),
-            "{name:?} must be rejected"
+        assert_eq!(
+            host.bundled_language(name, &mut NullHost),
+            Ok(None),
+            "{name:?}"
         );
     }
 }

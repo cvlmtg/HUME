@@ -14,63 +14,6 @@ use crate::cli::ConfigSource;
 use crate::editor::keymap::{BindMode, Keymap};
 use crate::editor::minibuf::history::HistoryKind;
 
-/// Owns three isolated tempdirs (`config`, `data`, `runtime`) that
-/// [`Self::dirs`] points a session at. Unlike
-/// `unix::plugins::setup_editor_with_init_scripting`, this fixture stays
-/// alive across an initial `init_scripting()` and a later `:reload-config`
-/// dispatch against the *same* config path.
-struct ReloadFixture {
-    config_dir: std::path::PathBuf,
-    data_dir: std::path::PathBuf,
-    runtime_dir: std::path::PathBuf,
-    _config_tmp: tempfile::TempDir,
-    _data_tmp: tempfile::TempDir,
-    _runtime_tmp: tempfile::TempDir,
-    _path: PathReader,
-}
-
-impl ReloadFixture {
-    fn new(init_scm: &str) -> Self {
-        let config_tmp = tempfile::tempdir().unwrap();
-        let data_tmp = tempfile::tempdir().unwrap();
-        let runtime_tmp = tempfile::tempdir().unwrap();
-        let config_dir = config_tmp.path().join("hume");
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::write(config_dir.join("init.scm"), init_scm).unwrap();
-        Self {
-            config_dir,
-            data_dir: data_tmp.path().join("hume"),
-            runtime_dir: runtime_tmp.path().to_path_buf(),
-            _config_tmp: config_tmp,
-            _data_tmp: data_tmp,
-            _runtime_tmp: runtime_tmp,
-            _path: path_reader(),
-        }
-    }
-
-    fn dirs(&self) -> Dirs {
-        Dirs {
-            config: Some(self.config_dir.clone()),
-            data: Some(self.data_dir.clone()),
-            runtime: Some(self.runtime_dir.clone()),
-            tmp: None,
-        }
-    }
-
-    fn write_init(&self, init_scm: &str) {
-        std::fs::write(self.config_dir.join("init.scm"), init_scm).unwrap();
-    }
-
-    /// Write a `--config` override file *outside* `config_dir` (the tmp
-    /// root, not the `hume/` subdir), so a test can prove the override (not
-    /// the default `init.scm`) is what actually ran.
-    fn write_override(&self, name: &str, init_scm: &str) -> std::path::PathBuf {
-        let path = self._config_tmp.path().join(name);
-        std::fs::write(&path, init_scm).unwrap();
-        path
-    }
-}
-
 /// `:reload-config`, dispatched through the real minibuffer path against a
 /// real `init.scm` on disk: a bound key and a global option revert to their
 /// compiled-in defaults, the reloaded file's own `define-command!` for the

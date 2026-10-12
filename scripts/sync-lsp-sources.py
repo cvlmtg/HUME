@@ -50,6 +50,7 @@ from sync_common import (  # noqa: E402
     read_pin,
     read_sexpr,
     scheme_str,
+    scheme_str_list,
     write_generated_file,
 )
 
@@ -622,10 +623,6 @@ def supported_hume_targets(package: dict) -> list[str] | None:
 def platforms_field(record: dict) -> str:
     platforms = record.get("platforms")
     return " (platforms {})".format(" ".join(platforms)) if platforms is not None else ""
-
-
-def scheme_str_list(items) -> str:
-    return " ".join(scheme_str(x) for x in items)
 
 
 def assert_no_unresolved_templates(rows: list[str]) -> None:

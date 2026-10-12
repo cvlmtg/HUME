@@ -362,17 +362,16 @@ impl LanguageRegistry {
     }
 
     /// Record that `id`'s bundled data file has been read, filling each field
-    /// it gives a value for that is still unset. Empty `roots` and `None`
-    /// leave a field unset.
+    /// it gives a value for that is still unset.
     pub fn fill_bundled(
         &mut self,
         id: LanguageId,
-        roots: Vec<String>,
+        roots: Option<Vec<String>>,
         lsp_language_id: Option<String>,
     ) {
         let config = &mut self.configs[id.0 as usize];
         config.bundled_loaded = true;
-        if !roots.is_empty() {
+        if let Some(roots) = roots {
             fill(&mut config.roots, roots);
         }
         if let Some(lsp_language_id) = lsp_language_id {

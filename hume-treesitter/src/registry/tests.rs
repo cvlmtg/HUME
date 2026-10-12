@@ -2,7 +2,9 @@ use std::path::Path;
 
 use globset::Glob;
 
-use super::{ConfigureOutcome, ConfiguredBy, LanguageRegistry, QueryPaths, detect_language};
+use super::{
+    ConfigureOutcome, ConfiguredBy, LanguageId, LanguageRegistry, QueryPaths, detect_language,
+};
 use hume_engine::theme::ScopeRegistry;
 use test_fixtures::{
     grammar_parser_path, grammar_query_path, helix_textobjects_path, require_fixture_file,
@@ -297,17 +299,44 @@ fn reregistering_an_identity_keeps_its_configured_roots() {
     assert_eq!(reg.roots_of(id), ["go.mod"]);
 }
 
-#[test]
-fn bundled_values_fill_a_language_with_none_configured() {
+fn tsx() -> (LanguageRegistry, LanguageId) {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
-    assert!(!reg.bundled_loaded(id));
+    (reg, id)
+}
 
+fn set_roots(
+    reg: &mut LanguageRegistry,
+    id: LanguageId,
+    roots: &[&str],
+    by: ConfiguredBy,
+) -> ConfigureOutcome {
+    reg.configure_roots(id, strings(roots), by)
+}
+
+fn set_id(
+    reg: &mut LanguageRegistry,
+    id: LanguageId,
+    lsp_language_id: &str,
+    by: ConfiguredBy,
+) -> ConfigureOutcome {
+    reg.configure_lsp_language_id(id, lsp_language_id.to_string(), by)
+}
+
+fn fill_tsx_bundled(reg: &mut LanguageRegistry, id: LanguageId) {
     reg.fill_bundled(
         id,
-        strings(&["package.json"]),
+        Some(strings(&["package.json"])),
         Some("typescriptreact".to_string()),
     );
+}
+
+#[test]
+fn bundled_values_fill_a_language_with_none_configured() {
+    let (mut reg, id) = tsx();
+    assert!(!reg.bundled_loaded(id));
+
+    fill_tsx_bundled(&mut reg, id);
 
     assert!(reg.bundled_loaded(id));
     assert_eq!(reg.roots_of(id), ["package.json"]);
@@ -316,22 +345,18 @@ fn bundled_values_fill_a_language_with_none_configured() {
 
 #[test]
 fn bundled_values_never_replace_configured_ones() {
-    let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    let (mut reg, id) = tsx();
+    let user = ConfiguredBy::User;
     assert_eq!(
-        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::User),
+        set_roots(&mut reg, id, &["deno.json"], user),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "tsx-custom".to_string(), ConfiguredBy::User),
+        set_id(&mut reg, id, "tsx-custom", user),
         ConfigureOutcome::Applied
     );
 
-    reg.fill_bundled(
-        id,
-        strings(&["package.json"]),
-        Some("typescriptreact".to_string()),
-    );
+    fill_tsx_bundled(&mut reg, id);
 
     assert_eq!(reg.roots_of(id), ["deno.json"]);
     assert_eq!(reg.lsp_language_id_of(id), "tsx-custom");
@@ -339,18 +364,13 @@ fn bundled_values_never_replace_configured_ones() {
 
 #[test]
 fn bundled_values_fill_only_the_fields_left_unset() {
-    let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    let (mut reg, id) = tsx();
     assert_eq!(
-        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::User),
+        set_roots(&mut reg, id, &["deno.json"], ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
 
-    reg.fill_bundled(
-        id,
-        strings(&["package.json"]),
-        Some("typescriptreact".to_string()),
-    );
+    fill_tsx_bundled(&mut reg, id);
 
     assert_eq!(reg.roots_of(id), ["deno.json"]);
     assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
@@ -358,20 +378,16 @@ fn bundled_values_fill_only_the_fields_left_unset() {
 
 #[test]
 fn a_configured_value_replaces_a_bundled_one() {
-    let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
-    reg.fill_bundled(
-        id,
-        strings(&["package.json"]),
-        Some("typescriptreact".to_string()),
-    );
+    let (mut reg, id) = tsx();
+    let user = ConfiguredBy::User;
+    fill_tsx_bundled(&mut reg, id);
 
     assert_eq!(
-        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::User),
+        set_roots(&mut reg, id, &["deno.json"], user),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "tsx-custom".to_string(), ConfiguredBy::User),
+        set_id(&mut reg, id, "tsx-custom", user),
         ConfigureOutcome::Applied
     );
 
@@ -381,23 +397,23 @@ fn a_configured_value_replaces_a_bundled_one() {
 
 #[test]
 fn a_second_configured_value_is_ignored() {
-    let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    let (mut reg, id) = tsx();
+    let user = ConfiguredBy::User;
     assert_eq!(
-        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::User),
+        set_roots(&mut reg, id, &["deno.json"], user),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "first".to_string(), ConfiguredBy::User),
+        set_id(&mut reg, id, "first", user),
         ConfigureOutcome::Applied
     );
 
     assert_eq!(
-        reg.configure_roots(id, strings(&["package.json"]), ConfiguredBy::User),
+        set_roots(&mut reg, id, &["package.json"], user),
         ConfigureOutcome::Ignored
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "second".to_string(), ConfiguredBy::User),
+        set_id(&mut reg, id, "second", user),
         ConfigureOutcome::Ignored
     );
 
@@ -407,15 +423,15 @@ fn a_second_configured_value_is_ignored() {
 
 #[test]
 fn a_second_plugin_value_is_ignored() {
-    let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    let (mut reg, id) = tsx();
+    let plugin = ConfiguredBy::Plugin;
     assert_eq!(
-        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::Plugin),
+        set_roots(&mut reg, id, &["deno.json"], plugin),
         ConfigureOutcome::Applied
     );
 
     assert_eq!(
-        reg.configure_roots(id, strings(&["package.json"]), ConfiguredBy::Plugin),
+        set_roots(&mut reg, id, &["package.json"], plugin),
         ConfigureOutcome::Ignored
     );
 
@@ -424,23 +440,23 @@ fn a_second_plugin_value_is_ignored() {
 
 #[test]
 fn a_user_value_replaces_a_plugin_value() {
-    let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    let (mut reg, id) = tsx();
+    let (user, plugin) = (ConfiguredBy::User, ConfiguredBy::Plugin);
     assert_eq!(
-        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::Plugin),
+        set_roots(&mut reg, id, &["deno.json"], plugin),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "plugin".to_string(), ConfiguredBy::Plugin),
+        set_id(&mut reg, id, "plugin", plugin),
         ConfigureOutcome::Applied
     );
 
     assert_eq!(
-        reg.configure_roots(id, strings(&["package.json"]), ConfiguredBy::User),
+        set_roots(&mut reg, id, &["package.json"], user),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "user".to_string(), ConfiguredBy::User),
+        set_id(&mut reg, id, "user", user),
         ConfigureOutcome::Applied
     );
 
@@ -450,23 +466,23 @@ fn a_user_value_replaces_a_plugin_value() {
 
 #[test]
 fn a_plugin_value_after_a_user_value_is_shadowed() {
-    let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    let (mut reg, id) = tsx();
+    let (user, plugin) = (ConfiguredBy::User, ConfiguredBy::Plugin);
     assert_eq!(
-        reg.configure_roots(id, strings(&["package.json"]), ConfiguredBy::User),
+        set_roots(&mut reg, id, &["package.json"], user),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "user".to_string(), ConfiguredBy::User),
+        set_id(&mut reg, id, "user", user),
         ConfigureOutcome::Applied
     );
 
     assert_eq!(
-        reg.configure_roots(id, strings(&["deno.json"]), ConfiguredBy::Plugin),
+        set_roots(&mut reg, id, &["deno.json"], plugin),
         ConfigureOutcome::Shadowed
     );
     assert_eq!(
-        reg.configure_lsp_language_id(id, "plugin".to_string(), ConfiguredBy::Plugin),
+        set_id(&mut reg, id, "plugin", plugin),
         ConfigureOutcome::Shadowed
     );
 
@@ -479,7 +495,7 @@ fn an_empty_bundled_fill_still_marks_the_language_loaded() {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity_no_rebuild("plain", &[], &[], &[]);
 
-    reg.fill_bundled(id, Vec::new(), None);
+    reg.fill_bundled(id, None, None);
 
     assert!(reg.bundled_loaded(id));
     assert!(reg.roots_of(id).is_empty());

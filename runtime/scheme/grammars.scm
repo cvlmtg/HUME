@@ -33,20 +33,14 @@
 (define (grammar-installed? name)
   (path-exists? (grammar-output-path name)))
 
-;; ── Installed-grammar discovery ───────────────────────────────────────────────
+;; ── Bundled grammar fields ────────────────────────────────────────────────────
 
-;;; Sorted stems of files in `dir` ending in `suffix`, or '() if `dir` is
-;;; absent. Sorts *after* stripping the suffix — sorting full filenames would
-;;; put e.g. "a-b.x" ahead of "a.x" ('-' < '.').
-(define (stems-with-suffix dir suffix)
-  (if (not (path-exists? dir))
-      '()
-      (let ((slen (string-length suffix)))
-        (sort (map (lambda (f) (substring f 0 (- (string-length f) slen)))
-                   (filter (lambda (f) (and (ends-with? f suffix)
-                                            (> (string-length f) slen)))
-                           (map file-name (read-dir dir))))
-              string<?))))
+(define (grammar-url grammar) (list-ref grammar 0))
+(define (grammar-rev grammar) (list-ref grammar 1))
+(define (grammar-symbol grammar) (list-ref grammar 2))
+(define (grammar-subpath grammar) (list-ref grammar 3))
+
+;; ── Installed-grammar discovery ───────────────────────────────────────────────
 
 (define (installed-grammars)
   (stems-with-suffix (grammars-dir) (string-append "." (platform-grammar-ext))))
@@ -67,7 +61,7 @@
                       (to (grammar-textobjects-path name)))
                   (register-grammar! name
                                      (grammar-output-path name)
-                                     (list-ref source 2)
+                                     (grammar-symbol source)
                                      hl
                                      #:injections (if (path-exists? inj) inj #f)
                                      #:textobjects (if (path-exists? to) to #f))))))))

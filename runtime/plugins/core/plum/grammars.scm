@@ -100,9 +100,11 @@
 (define (plum/not-installed? name)
   (not (grammar-installed? name)))
 
+(define (plum/no-grammar? name)
+  (not (bundled-language-grammar name)))
+
 (define (plum/orphan-grammars)
-  (filter (lambda (name) (not (bundled-language-grammar name)))
-          (installed-grammars)))
+  (filter plum/no-grammar? (installed-grammars)))
 
 ;;; A string argument wins; otherwise falls back to the current buffer's language.
 (define (plum/resolve-grammar-arg pane cmd arg)
@@ -119,10 +121,10 @@
 (define (plum/install-grammar name)
   (let* ((source  (or (bundled-language-grammar name)
                       (error (string-append "plum: no grammar for language \"" name "\""))))
-         (url     (list-ref source 0))
-         (rev     (list-ref source 1))
-         (symbol  (list-ref source 2))
-         (subpath (list-ref source 3))
+         (url     (grammar-url source))
+         (rev     (grammar-rev source))
+         (symbol  (grammar-symbol source))
+         (subpath (grammar-subpath source))
          (src-dir (grammar-source-dir name))
          (build-dir (if (equal? subpath "")
                         src-dir
@@ -167,7 +169,7 @@
   (lambda (grammars)
     (unless (and (list? grammars) (not (null? grammars)))
       (error "plum-ensure-grammars: requires a non-empty list of language names, e.g. (call! \"plum-ensure-grammars\" '(\"rust\" \"json\"))"))
-    (let ((unknown (filter (lambda (name) (not (bundled-language-grammar name))) grammars)))
+    (let ((unknown (filter plum/no-grammar? grammars)))
       (unless (null? unknown)
         (error (string-append "plum-ensure-grammars: no grammar for "
                               (string-join unknown ", ")))))

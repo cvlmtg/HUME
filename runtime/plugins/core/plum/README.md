@@ -98,7 +98,7 @@ Grammars are keyed by language name: a compiled grammar is `<data>/grammars/<lan
 and every command takes a language name. A language's grammar source (repo URL, pinned
 revision, tree-sitter symbol, subpath) lives in its bundled data file,
 `runtime/scheme/languages/<language>.scm`, read through core's `bundled-language-grammar` and
-`bundled-grammar-languages` functions; the path helpers live in core's
+`bundled-grammar-languages` functions; the field and path helpers live in core's
 `runtime/scheme/grammars.scm`. PLUM declares no copy of either. A language that borrows
 another's grammar (`jsx` uses javascript's) installs its own compiled copy under its own name.
 

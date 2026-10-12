@@ -313,41 +313,41 @@ class LanguageGrammar(unittest.TestCase):
 
 
 class LanguageNames(unittest.TestCase):
-    def test_an_uppercase_name_is_fatal(self):
-        langs = parse_langs([{"name": "Nix"}])
-
-        with self.assertRaises(SystemExit):
-            sync.check_language_names(langs)
-
-    def test_a_drive_relative_name_is_fatal(self):
-        langs = parse_langs([{"name": "C:x"}])
-
-        with self.assertRaises(SystemExit):
-            sync.check_language_names(langs)
-
-    def test_a_name_with_a_path_separator_is_fatal(self):
-        langs = parse_langs([{"name": "a/b"}])
-
-        with self.assertRaises(SystemExit):
-            sync.check_language_names(langs)
+    def test_a_name_outside_the_charset_or_with_a_leading_dot_is_fatal(self):
+        for name in ("Nix", "C:x", "a/b", "", ".", "..", ".x"):
+            with self.subTest(name=name), self.assertRaises(SystemExit):
+                sync.check_language_names([{"name": name}])
 
     def test_dotted_names_are_accepted(self):
         sync.check_language_names(parse_langs([{"name": "markdown.inline"}, {"name": "robots.txt"}]))
 
 
+def parsed_language(**overrides):
+    """A parsed language with no values, plus `overrides`."""
+    return {
+        "name": "lang",
+        "comment_tokens": [],
+        "block_comment_tokens": [],
+        "language_id": None,
+        "roots": [],
+        "grammar": None,
+        **overrides,
+    }
+
+
 class EmitLanguageData(unittest.TestCase):
     def test_every_key_in_its_fixed_order(self):
-        lang = {
-            "name": "tsx",
-            "comment_tokens": ["//", "///"],
-            "block_comment_tokens": [("/*", "*/"), ("/**", "*/")],
-            "language_id": "typescriptreact",
-            "roots": ["package.json", "tsconfig.json"],
-            "grammar": {"url": "https://ts", "rev": "r", "sym": "tree_sitter_tsx", "subpath": "tsx"},
-        }
+        tsx = parsed_language(
+            name="tsx",
+            comment_tokens=["//", "///"],
+            block_comment_tokens=[("/*", "*/"), ("/**", "*/")],
+            language_id="typescriptreact",
+            roots=["package.json", "tsconfig.json"],
+            grammar={"url": "https://ts", "rev": "r", "sym": "tree_sitter_tsx", "subpath": "tsx"},
+        )
 
         self.assertEqual(
-            sync.emit_language_data(lang),
+            sync.emit_language_data(tsx),
             [
                 '((comment-tokens "//" "///")',
                 ' (block-comment-tokens ("/*" . "*/") ("/**" . "*/"))',
@@ -358,49 +358,23 @@ class EmitLanguageData(unittest.TestCase):
         )
 
     def test_a_language_id_equal_to_the_name_is_omitted(self):
-        lang = {
-            "name": "javascript",
-            "comment_tokens": ["//"],
-            "block_comment_tokens": [],
-            "language_id": "javascript",
-            "roots": [],
-            "grammar": None,
-        }
+        javascript = parsed_language(
+            name="javascript", comment_tokens=["//"], language_id="javascript"
+        )
 
-        self.assertEqual(sync.emit_language_data(lang), ['((comment-tokens "//"))'])
+        self.assertEqual(sync.emit_language_data(javascript), ['((comment-tokens "//"))'])
 
     def test_absent_values_are_omitted(self):
-        lang = {
-            "comment_tokens": ["#"],
-            "block_comment_tokens": [],
-            "language_id": None,
-            "roots": [],
-            "grammar": None,
-        }
+        absent = parsed_language(comment_tokens=["#"])
 
-        self.assertEqual(sync.emit_language_data(lang), ['((comment-tokens "#"))'])
+        self.assertEqual(sync.emit_language_data(absent), ['((comment-tokens "#"))'])
 
     def test_a_language_with_no_values_is_the_empty_list(self):
-        lang = {
-            "comment_tokens": [],
-            "block_comment_tokens": [],
-            "language_id": None,
-            "roots": [],
-            "grammar": None,
-        }
-
-        self.assertEqual(sync.emit_language_data(lang), ["()"])
+        self.assertEqual(sync.emit_language_data(parsed_language()), ["()"])
 
 
 class WriteLanguageFiles(unittest.TestCase):
-    LANG = {
-        "name": "markdown.inline",
-        "comment_tokens": [],
-        "block_comment_tokens": [("<!--", "-->")],
-        "language_id": None,
-        "roots": [],
-        "grammar": None,
-    }
+    LANG = parsed_language(name="markdown.inline", block_comment_tokens=[("<!--", "-->")])
 
     def write(self, directory):
         with contextlib.redirect_stderr(io.StringIO()):

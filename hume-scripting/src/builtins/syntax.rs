@@ -2,6 +2,7 @@
 
 use steel::rvals::SteelVal;
 
+use crate::context::EvalMode;
 use crate::{ConfigOrigin, Effect, GrammarReg, PendingLanguageReg, SteelCtx};
 
 use super::SteelResult;
@@ -10,15 +11,6 @@ use super::args::{
     string_arg,
 };
 use super::errors::generic_err;
-
-/// A language name argument: a string or a symbol.
-fn language_name(val: &SteelVal, builtin: &str) -> Result<String, steel::rerrs::SteelErr> {
-    match val {
-        SteelVal::StringV(s) => Ok(s.to_string()),
-        SteelVal::SymbolV(s) => Ok(s.to_string()),
-        _ => steel::stop!(TypeMismatch => "{}: name must be a string or symbol", builtin),
-    }
-}
 
 /// `(%define-language! name extensions globs shebangs)`: init-only.
 ///
@@ -33,7 +25,7 @@ pub(crate) fn define_language(
     globs_val: SteelVal,
     shebangs_val: SteelVal,
 ) -> SteelResult {
-    let name = language_name(&name, "%define-language!")?;
+    let name = string_arg(name, "%define-language! name")?;
     let extensions = list_to_strings(exts_val, "%define-language! extensions")?;
     let globs = list_to_strings(globs_val, "%define-language! globs")?;
     let shebangs = list_to_strings(shebangs_val, "%define-language! shebangs")?;
@@ -58,11 +50,11 @@ pub(crate) fn configure_language(
     roots_val: SteelVal,
     lsp_language_id_val: SteelVal,
 ) -> SteelResult {
-    let name = language_name(&name, "%configure-language!")?;
+    let name = string_arg(name, "%configure-language! name")?;
     let roots = optional_list_to_strings(roots_val, "%configure-language! roots")?;
     let lsp_language_id =
         optional_string_arg(lsp_language_id_val, "%configure-language! language-id")?;
-    let origin = if ctx.plugin_stack.is_empty() {
+    let origin = if ctx.mode() == EvalMode::Init {
         ConfigOrigin::User
     } else {
         ConfigOrigin::Plugin

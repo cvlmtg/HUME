@@ -106,8 +106,8 @@ pub struct SteelTypedCmdDef {
 /// `<runtime>/scheme/languages/<name>.scm` the registry stores.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct BundledLanguage {
-    /// Workspace root markers; empty when the file lists none.
-    pub roots: Vec<String>,
+    /// Workspace root markers, present only when the file lists them.
+    pub roots: Option<Vec<String>>,
     /// The wire `languageId`, present only when it differs from the name.
     pub lsp_language_id: Option<String>,
 }

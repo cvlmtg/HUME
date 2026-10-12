@@ -797,7 +797,7 @@ impl ScriptingHost {
                 builtins::errors::generic_err(format!("{CONFIG}: expected (roots language-id)"))
             })?;
             Ok::<_, steel::rerrs::SteelErr>(Some(BundledLanguage {
-                roots: builtins::args::list_to_strings(roots, CONFIG)?,
+                roots: builtins::args::optional_list_to_strings(roots, CONFIG)?,
                 lsp_language_id: builtins::args::optional_string_arg(lsp_language_id, CONFIG)?,
             }))
         };
@@ -872,6 +872,7 @@ impl ScriptingHost {
 
     /// Evaluates `source` and returns its last value, under
     /// [`call_for_value`](Self::call_for_value)'s read-only rules.
+    #[cfg(any(test, feature = "test-util"))]
     pub fn eval_source_for_value(
         &mut self,
         source: &str,

@@ -204,19 +204,22 @@ macro_rules! builtins {
 // %port-safe?: a port is safe unless it is the real stdout, where the gate
 // decides. Every print shim's explicit-port branch uses it (io.rs module doc).
 //
+// stems-with-suffix: sorts after stripping the suffix, since sorting full
+// file names would put "a-b.x" ahead of "a.x" ('-' < '.').
+//
 // %read-language-data: the one reader of `<runtime>/scheme/languages/<name>.scm`
 // (record format: runtime/scheme/README.md). It parses with hm.read!, never
 // `read`: steel-core's `read` keeps one buffer across calls, returns eof
 // instead of raising on bad syntax, and leaves the bad text for the next
 // call. The parse error is caught into a marker and a fresh error naming the
 // file is raised after the handler returns, so nothing is re-raised (hazard
-// above). A missing runtime dir or file reads as #f; a name outside
-// [a-z0-9._-], the generator's own charset (scripts/sync-grammars.py), raises,
-// which keeps a lookup inside the directory and off a case-insensitive alias. %bundled-language-config is the editor's view
+// above). A name reads only when it is the stem of a file in that directory's
+// listing, which keeps a lookup inside the directory and off a
+// case-insensitive alias; any other name, or a missing runtime dir, reads as
+// #f. The listing is kept for the life of the Steel engine, which
+// :reload-config rebuilds. %bundled-language-config is the editor's view
 // (ScriptingHost::bundled_language decodes it); bundled-language-grammar and
-// bundled-grammar-languages are the plugins' view. bundled-grammar-languages
-// reads every file, so it keeps its list for the life of the Steel engine,
-// which :reload-config rebuilds.
+// bundled-grammar-languages are the plugins' view.
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
 // PRINT_GATE_SHIMS is appended both to BOOTSTRAP (top level) and, verbatim,

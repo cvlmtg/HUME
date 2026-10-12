@@ -27,10 +27,14 @@ def scheme_str(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def scheme_str_list(items) -> str:
+    return " ".join(scheme_str(x) for x in items)
+
+
 def scheme_list(items: list) -> str:
     if not items:
         return "'()"
-    return "'(" + " ".join(scheme_str(x) for x in items) + ")"
+    return "'(" + scheme_str_list(items) + ")"
 
 
 def read_pin(path: Path) -> str:

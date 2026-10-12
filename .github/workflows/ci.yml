@@ -131,8 +131,8 @@ jobs:
 
       # ── Grammar test fixtures ──────────────────────────────────────────────
       # Fixtures are grammar shared libraries (.so/.dylib/.dll) compiled from the
-      # revisions in runtime/scheme/grammar-sources.scm (the shipped SSOT).
-      # A helix-pin bump changes grammar-sources.scm and therefore the cache key,
+      # grammar revisions in runtime/scheme/languages/<name>.scm (the shipped SSOT).
+      # A helix-pin bump changes those files and therefore the cache key,
       # triggering a rebuild. On Windows, MSVC dev tools are needed by tree-sitter build.
       #
       # The tree-sitter CLI is installed unconditionally (not gated on cache-hit)

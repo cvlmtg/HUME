@@ -19,6 +19,7 @@ Idempotent: running twice produces byte-identical files.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -30,6 +31,7 @@ from sync_common import (  # noqa: E402
     read_sexpr,
     scheme_list,
     scheme_str,
+    scheme_str_list,
     write_generated_file,
 )
 
@@ -63,9 +65,9 @@ LANGUAGE_DATA_HEADER = """\
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
 
-# The characters a language name may use. bootstrap.scm's %language-data-file
-# rejects any other name, so a data file it could never read is never written.
-NAME_CHARS = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
+# A language name names its data file: lowercase so it stays distinct on
+# case-insensitive file systems, no leading dot so it is never a dotfile.
+LANGUAGE_NAME = re.compile(r"[a-z0-9_-][a-z0-9._-]*")
 
 LANGUAGE_SERVERS_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/language-servers.scm — each language's ordered LSP server list.
@@ -240,13 +242,11 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
 
 
 def check_language_names(langs: list[dict]) -> None:
-    """Fatal unless every language name uses only NAME_CHARS and is not empty,
-    `.` or `..`. Lowercase-only names are distinct on case-insensitive file
-    systems too."""
+    """Fatal unless every language name matches LANGUAGE_NAME."""
     for lang in langs:
         name = lang["name"]
-        if name in ("", ".", "..") or not set(name) <= NAME_CHARS:
-            sys.exit(f"error: language name '{name}' is outside [a-z0-9._-]")
+        if not LANGUAGE_NAME.fullmatch(name):
+            sys.exit(f"error: language name '{name}' does not match {LANGUAGE_NAME.pattern}")
 
 
 def emit_language_identities(langs: list[dict]) -> list[str]:
@@ -276,9 +276,7 @@ def emit_language_data(lang: dict) -> list[str]:
     only when the language has a value for it."""
     entries = []
     if lang["comment_tokens"]:
-        entries.append(
-            "(comment-tokens {})".format(" ".join(scheme_str(t) for t in lang["comment_tokens"]))
-        )
+        entries.append("(comment-tokens {})".format(scheme_str_list(lang["comment_tokens"])))
     if lang["block_comment_tokens"]:
         pairs = " ".join(
             "({} . {})".format(scheme_str(start), scheme_str(end))
@@ -288,17 +286,11 @@ def emit_language_data(lang: dict) -> list[str]:
     if lang["language_id"] and lang["language_id"] != lang["name"]:
         entries.append("(language-id . {})".format(scheme_str(lang["language_id"])))
     if lang["roots"]:
-        entries.append("(roots {})".format(" ".join(scheme_str(r) for r in lang["roots"])))
+        entries.append("(roots {})".format(scheme_str_list(lang["roots"])))
     grammar = lang["grammar"]
     if grammar:
-        entries.append(
-            "(grammar {} {} {} {})".format(
-                scheme_str(grammar["url"]),
-                scheme_str(grammar["rev"]),
-                scheme_str(grammar["sym"]),
-                scheme_str(grammar["subpath"]),
-            )
-        )
+        fields = [grammar["url"], grammar["rev"], grammar["sym"], grammar["subpath"]]
+        entries.append("(grammar {})".format(scheme_str_list(fields)))
     if not entries:
         return ["()"]
     rows = ["(" + entries[0]] + [" " + e for e in entries[1:]]
