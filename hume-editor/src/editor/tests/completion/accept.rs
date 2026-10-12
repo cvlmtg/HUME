@@ -473,6 +473,43 @@ fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
     );
 }
 
+/// Two additional edits that overlap each other fail when the accept applies
+/// them. An accept outside Insert mode opened its own edit group, and that
+/// group is closed again with nothing recorded.
+#[test]
+fn accept_whose_additional_text_edits_overlap_each_other_leaves_no_group_open() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("ab-[c]>def\n");
+    raw_insert_with_source(
+        &mut ed,
+        tmp.path(),
+        r#"(list (hash "label" "ab" "insertText" "abX"
+                       "additionalTextEdits"
+                         (list (hash "range" (hash "start" (hash "line" 0 "character" 3)
+                                                  "end" (hash "line" 0 "character" 5))
+                                 "newText" "P")
+                               (hash "range" (hash "start" (hash "line" 0 "character" 4)
+                                                  "end" (hash "line" 0 "character" 6))
+                                 "newText" "Q"))))"#,
+        ACCEPT_0,
+    );
+    assert!(
+        ed.state.active_session.is_none(),
+        "setup: not in Insert mode"
+    );
+
+    accept_via_steel(&mut ed);
+
+    assert_eq!(ed.doc().text().to_string(), "abcdef\n");
+    assert!(
+        status(&ed).contains("text edits overlap"),
+        "got {:?}",
+        status(&ed)
+    );
+    assert!(ed.state.active_session.is_none());
+    assert!(!ed.doc().can_undo());
+}
+
 /// A *zero-width* additional edit exactly at the textEdit's end counts as
 /// an overlap: once it lands first, the live head sits after the inserted
 /// text, and the cursor edit's `back` chars would delete that text instead

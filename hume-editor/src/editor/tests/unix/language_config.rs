@@ -218,6 +218,24 @@ fn a_second_init_value_is_ignored_with_a_warning() {
 }
 
 #[test]
+fn a_second_plugin_value_is_ignored_with_a_warning() {
+    let (mut ed, _fixture) = boot_tsx(
+        DECLARE_TSX_PLUGIN,
+        "(configure-language! \"tsx\" #:roots '(\"first.json\"))\n\
+         (configure-language! \"tsx\" #:roots '(\"second.json\"))",
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_eq!(roots(&ed), ["first.json"]);
+    let warnings = tsx_warnings(&ed);
+    assert!(
+        warnings.iter().any(|w| w.contains("roots")),
+        "the ignored roots must be reported; warnings: {warnings:?}"
+    );
+}
+
+#[test]
 fn reload_config_drops_configured_values_and_reloads_bundled_ones() {
     let (mut ed, fixture) = boot_tsx(r#"(configure-language! "tsx" #:roots '("deno.json"))"#, "");
     open_as_tsx(&mut ed);

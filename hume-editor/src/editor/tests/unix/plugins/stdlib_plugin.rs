@@ -562,25 +562,28 @@ fn core_stdlib_git_probes_outside_a_work_tree() {
 #[test]
 fn core_stdlib_report_section_command() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
-
-    let assertions = r#"
-(unless (equal? (call! "stdlib/report-section" "Fruit" '("apple" "pear") "eat them")
-                "Fruit (2), eat them\n  apple\n  pear\n")
-  (error "items with a hint"))
-(unless (equal? (call! "stdlib/report-section" "Fruit" '("apple") #f)
-                "Fruit (1)\n  apple\n")
-  (error "items without a hint"))
-(unless (equal? (call! "stdlib/report-section" "Fruit" '() "eat them")
-                "Fruit (0)\n  none\n")
-  (error "no items drops the hint"))
-"#;
-
-    let result = {
+    let mut section = |args: &str| {
         let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
+        match host.eval_source_for_value(
+            &format!(r#"(call! "stdlib/report-section" {args})"#),
+            &mut ih,
+        ) {
+            Ok(steel::rvals::SteelVal::StringV(s)) => s.to_string(),
+            other => panic!("report-section {args} must return a string: {other:?}"),
+        }
     };
-    assert!(
-        result.is_ok(),
-        "stdlib report-section assertions must all pass: {result:?}"
-    );
+
+    insta::assert_snapshot!(section(r#""Fruit" '("apple" "pear") "eat them""#), @"
+    Fruit (2), eat them
+      apple
+      pear
+    ");
+    insta::assert_snapshot!(section(r#""Fruit" '("apple") #f"#), @"
+    Fruit (1)
+      apple
+    ");
+    insta::assert_snapshot!(section(r#""Fruit" '() "eat them""#), @"
+    Fruit (0)
+      none
+    ");
 }

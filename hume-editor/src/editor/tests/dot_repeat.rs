@@ -1152,7 +1152,7 @@ fn dot_repeat_of_failed_select_all_matches_preserves_prior_recipe() {
 
 /// `m/ d` recorded under one pattern, replayed under a pattern with no match:
 /// the recipe's `select-all-matches` fails on replay, so `.` must not run `d`
-/// on the cursor it left behind.
+/// on the cursor it left behind, and leaves no undo step of its own.
 #[test]
 fn dot_repeat_whose_recipe_step_fails_leaves_text_and_selections_unchanged() {
     let mut ed = editor_from("-[f]>oo bar baz\n").with_search_regex("foo");
@@ -1173,6 +1173,9 @@ fn dot_repeat_whose_recipe_step_fails_leaves_text_and_selections_unchanged() {
         "status: {:?}",
         status(&ed)
     );
+
+    ed.feed_key(key('u'));
+    assert_eq!(ed.doc().text().to_string(), "foo bar baz\n");
 }
 
 /// `m/ d` replayed with no search pattern at all: `select-all-matches`
