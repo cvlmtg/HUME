@@ -1,7 +1,7 @@
 use test_fixtures::require_grammars;
 
-use super::{SyntaxLayer, layer_covers_line};
-use crate::test_support::{make_bundle, open_grammar, range};
+use super::{SyntaxLayer, SyntaxLayers, layer_covers_line};
+use crate::test_support::{make_bundle, open_grammar, range, test_language_id};
 
 // `layer_covers_line` only ever reads `ranges`. The tree's actual
 // content is irrelevant, so every test case shares one parsed layer and
@@ -84,4 +84,109 @@ fn injected_layer_boundary_is_half_open() {
     assert!(!layer_covers_line(&layer, 5, 10));
     // But a line covering the range's first byte does overlap.
     assert!(layer_covers_line(&layer, 5, 11));
+}
+
+fn layer_of(name: &str, symbol: &str, ranges: Vec<tree_sitter::Range>, depth: u8) -> SyntaxLayer {
+    let grammar = open_grammar(name, symbol);
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(grammar.language())
+        .expect("set language");
+    SyntaxLayer {
+        tree: parser.parse("", None).expect("parse"),
+        bundle: make_bundle(name, symbol, "", None, None),
+        ranges,
+        depth,
+    }
+}
+
+fn json() -> crate::registry::LanguageId {
+    test_language_id("json")
+}
+
+fn rust() -> crate::registry::LanguageId {
+    test_language_id("rust")
+}
+
+fn markdown() -> crate::registry::LanguageId {
+    test_language_id("markdown")
+}
+
+#[test]
+fn the_root_layer_contains_every_span() {
+    require_grammars(&["markdown"]);
+    let layers = SyntaxLayers::new(vec![layer_of(
+        "markdown",
+        "tree_sitter_markdown",
+        vec![],
+        0,
+    )]);
+
+    assert_eq!(layers.languages_containing(0..1), [markdown()]);
+    assert_eq!(layers.languages_containing(500..900), [markdown()]);
+}
+
+#[test]
+fn a_span_inside_one_included_range_is_in_that_layer() {
+    require_grammars(&["markdown", "rust"]);
+    let layers = SyntaxLayers::new(vec![
+        layer_of("markdown", "tree_sitter_markdown", vec![], 0),
+        layer_of(
+            "rust",
+            "tree_sitter_rust",
+            vec![range(10, 20), range(30, 40)],
+            1,
+        ),
+    ]);
+
+    assert_eq!(layers.languages_containing(10..20), [rust(), markdown()]);
+    assert_eq!(layers.languages_containing(32..35), [rust(), markdown()]);
+    assert_eq!(layers.languages_containing(5..12), [markdown()]);
+    assert_eq!(layers.languages_containing(18..21), [markdown()]);
+}
+
+#[test]
+fn a_span_straddling_a_gap_between_ranges_is_not_in_that_layer() {
+    require_grammars(&["markdown", "rust"]);
+    let layers = SyntaxLayers::new(vec![
+        layer_of("markdown", "tree_sitter_markdown", vec![], 0),
+        layer_of(
+            "rust",
+            "tree_sitter_rust",
+            vec![range(10, 20), range(30, 40)],
+            1,
+        ),
+    ]);
+
+    assert_eq!(layers.languages_containing(15..35), [markdown()]);
+}
+
+#[test]
+fn deeper_layers_come_first_whatever_their_order_in_the_vector() {
+    require_grammars(&["markdown", "rust", "json"]);
+    let layers = SyntaxLayers::new(vec![
+        layer_of("markdown", "tree_sitter_markdown", vec![], 0),
+        layer_of("json", "tree_sitter_json", vec![range(12, 18)], 2),
+        layer_of("rust", "tree_sitter_rust", vec![range(10, 20)], 1),
+    ]);
+
+    assert_eq!(
+        layers.languages_containing(13..15),
+        [json(), rust(), markdown()]
+    );
+}
+
+#[test]
+fn of_two_layers_at_one_depth_the_later_comes_first() {
+    require_grammars(&["markdown", "rust", "json"]);
+    let layers = SyntaxLayers::new(vec![
+        layer_of("markdown", "tree_sitter_markdown", vec![], 0),
+        layer_of("rust", "tree_sitter_rust", vec![range(10, 20)], 1),
+        layer_of("json", "tree_sitter_json", vec![range(10, 20)], 1),
+    ]);
+
+    assert_eq!(
+        layers.languages_containing(11..12),
+        [json(), rust(), markdown()]
+    );
 }

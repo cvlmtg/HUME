@@ -1,6 +1,8 @@
+use std::cmp::Reverse;
+use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
-use crate::registry::GrammarBundle;
+use crate::registry::{GrammarBundle, LanguageId};
 use crate::textobjects::{ObjectSpans, SpanSelector};
 
 /// One parsed layer of a buffer's syntax tree: the root grammar, or one
@@ -67,6 +69,25 @@ impl SyntaxLayers {
         self.layers.first().map(|l| &l.tree)
     }
 
+    /// The languages of the layers holding all of `bytes` inside one of
+    /// their included ranges, innermost first. A span that crosses a gap
+    /// between two of a layer's ranges is not in that layer: part of it is
+    /// another language's text. Of two layers at one depth, the later one
+    /// comes first, as it does in highlighting.
+    pub fn languages_containing(&self, bytes: Range<usize>) -> Vec<LanguageId> {
+        let mut containing: Vec<(usize, &SyntaxLayer)> = self
+            .layers
+            .iter()
+            .enumerate()
+            .filter(|(_, layer)| layer_contains(layer, &bytes))
+            .collect();
+        containing.sort_by_key(|&(index, layer)| Reverse((layer.depth, index)));
+        containing
+            .into_iter()
+            .map(|(_, layer)| layer.bundle.language)
+            .collect()
+    }
+
     /// Drop the text-object memo. Called from `Syntax::bake`, the only path
     /// that edits these layers without replacing them (see the field's doc).
     pub(crate) fn clear_textobject_memo(&mut self) {
@@ -89,6 +110,18 @@ pub(crate) fn layer_covers_line(layer: &SyntaxLayer, line_start: usize, line_end
     // combined layers with one range per paragraph (markdown.inline).
     let idx = layer.ranges.partition_point(|r| r.start_byte < line_end);
     idx > 0 && line_start < layer.ranges[idx - 1].end_byte
+}
+
+/// True if one of `layer`'s included ranges holds all of `bytes`. The root
+/// layer (empty `ranges`) holds every span.
+fn layer_contains(layer: &SyntaxLayer, bytes: &Range<usize>) -> bool {
+    if layer.ranges.is_empty() {
+        return true;
+    }
+    let idx = layer
+        .ranges
+        .partition_point(|r| r.start_byte <= bytes.start);
+    idx > 0 && bytes.end <= layer.ranges[idx - 1].end_byte
 }
 
 #[cfg(test)]
