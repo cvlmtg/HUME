@@ -1,5 +1,6 @@
 mod align;
 mod case;
+mod comment;
 mod corpus;
 mod delete;
 mod indent;

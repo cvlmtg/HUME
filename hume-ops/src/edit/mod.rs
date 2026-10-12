@@ -4,6 +4,7 @@ use hume_editing::state::EditState;
 
 mod align;
 mod case;
+mod comment;
 mod delete;
 mod indent;
 mod insert;
@@ -14,6 +15,7 @@ mod sort;
 
 pub use align::align_selections;
 pub use case::{make_text_capitalized, make_text_lowercase, make_text_uppercase};
+pub use comment::{CommentPlan, MultiLineComments, apply_comment_plan, plan_comment_toggle};
 pub use delete::{
     Removal, dedent_tab_backward, delete_char_backward, delete_char_forward, delete_selection,
     delete_selection_content, delete_word_backward, yank_selections,
