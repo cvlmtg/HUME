@@ -207,8 +207,8 @@ grammar management. For grammars specifically, plum provides:
 - **`plum-ensure-grammars`** — batch-installs a list of named grammars that
   are not yet compiled. Not a command-mode command: called from `init.scm`,
   e.g. `(call! "plum-ensure-grammars" '("rust" "json"))`.
-- **`:plum-list-grammars`** — reports declared, installed, missing, and
-  orphan grammars.
+- **`:plum-list-grammars`** — shows the installed grammars and the orphans
+  among them.
 - **`:plum-cleanup-grammars`** — removes on-disk artifacts for names
   that ship no grammar.
 

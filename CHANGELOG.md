@@ -38,6 +38,7 @@
 - With soft wrap, `select-word-nearest-on-line` on a word that fills its display line no longer selects the space that starts the next display line.
 - In Extend mode, `w` after a backward extend moves the selection's start forward by one word instead of doing nothing.
 - In Extend mode, `w` onto the first word of an indented line takes the space after that word, as `w` does in Normal mode.
+- `:plum-list-plugins`, `:plum-list-grammars` and `:plum-list-themes` show their lists in a read-only buffer, where every list stays visible. `:plum-list-grammars` shows the installed grammars and the orphans.
 
 ## [0.14.1] - 2026-10-08
 

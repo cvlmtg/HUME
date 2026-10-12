@@ -56,6 +56,67 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
     );
 }
 
+/// `:plum-list-grammars` shows the compiled grammars in `[plum-grammars]`,
+/// splitting off the ones compiled under a name that is not a language.
+/// The files are written after load so core's startup grammar walk never
+/// sees them.
+#[test]
+fn plum_list_grammars_shows_installed_and_orphan_grammars() {
+    let _path = path_reader();
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+    let grammars = data_tmp.path().join("hume/grammars");
+    std::fs::create_dir_all(&grammars).unwrap();
+    let ext = test_fixtures::grammar_platform_ext();
+    for name in ["rust", "proto"] {
+        std::fs::write(grammars.join(format!("{name}.{ext}")), b"").unwrap();
+    }
+
+    type_cmd(&mut ed, ":plum-list-grammars");
+
+    assert_eq!(ed.doc().display_name(), "[plum-grammars]");
+    insta::assert_snapshot!(ed.doc().text().to_string(), @"
+    Installed grammars (1)
+      rust
+
+    Orphan grammars (1), remove with :plum-cleanup-grammars
+      proto
+    ");
+}
+
+/// `:plum-list-plugins` shows its four lists in `[plum-plugins]`.
+#[test]
+fn plum_list_plugins_shows_each_list() {
+    let _path = path_reader();
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let orphan_dir = data_tmp.path().join("hume/plugins/testuser/orphanrepo");
+    std::fs::create_dir_all(&orphan_dir).unwrap();
+    std::fs::write(orphan_dir.join("plugin.scm"), "; orphan\n").unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-list-plugins");
+
+    assert_eq!(ed.doc().display_name(), "[plum-plugins]");
+    insta::assert_snapshot!(ed.doc().text().to_string(), @"
+    Declared plugins (2)
+      core:stdlib
+      core:plum
+
+    Installed plugins (1)
+      testuser/orphanrepo
+
+    Orphan plugins (1), remove with :plum-cleanup-plugins
+      testuser/orphanrepo
+
+    Missing plugins (0)
+      none
+    ");
+}
+
 /// A stray file directly inside `<data>/plugins/` (e.g. a macOS `.DS_Store`)
 /// must not make `plum/installed-plugins` raise. Walking into it as if it
 /// were a "user" directory would call `Path::read_dir` on a non-directory,

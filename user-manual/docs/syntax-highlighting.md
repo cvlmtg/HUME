@@ -75,7 +75,7 @@ If HUME can't guess correctly the buffer language, you can override it manually:
 :set buffer language=python
 ```
 
-Use the exact language name. Press `Tab` after `language=` to complete from the languages HUME recognizes. (`:plum-list-grammars` lists only the languages HUME can install a grammar for, a slightly smaller set.) The override lasts for that buffer only.
+Use the exact language name. Press `Tab` after `language=` to complete from the languages HUME recognizes. (`:plum-install-grammar` completes only the languages HUME can install a grammar for, a slightly smaller set.) The override lasts for that buffer only.
 
 ## Teach HUME a new language
 
@@ -165,7 +165,7 @@ Omit both keywords for a language with nothing to offer there.
 :plum-list-grammars
 ```
 
-Logs the names HUME knows, which are compiled on disk, which are missing, and which are orphans (compiled under a name HUME ships no grammar for).
+Opens a read-only buffer listing the grammars compiled on disk, with the orphans (compiled under a name HUME ships no grammar for) in a section of their own.
 
 ```
 :plum-cleanup-grammars
@@ -185,7 +185,7 @@ See [Configuration](configuration.md) for the full settings reference.
 
 ## Troubleshooting
 
-**The file opens with no colors.** No compiled grammar for the language. Run `:plum-list-grammars` and look at the **missing** line. If the language is missing, run `:plum-install-grammar <name>` (or just `:plum-install-grammar` while that buffer is focused). If the language isn't *declared* at all, HUME doesn't recognize the file. Set it with `:set buffer language=<name>` or define it in your `init.scm`.
+**The file opens with no colors.** No compiled grammar for the language. Run `:plum-list-grammars`. If the language isn't under **Installed grammars**, run `:plum-install-grammar <name>` (or just `:plum-install-grammar` while that buffer is focused). If `:plum-install-grammar` doesn't offer the language when you press `Tab`, HUME doesn't recognize the file. Set it with `:set buffer language=<name>` or define it in your `init.scm`.
 
 **`:plum-install-grammar` fails.** The message names the missing piece. Usually a missing tool on your `PATH`; check the [prerequisites](#prerequisites). A bad source tree recovers by running `:plum-install-grammar` again.
 

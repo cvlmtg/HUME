@@ -42,13 +42,13 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 | `:plum-install-plugins` | Install all plugins declared in `init.scm` that are not yet on disk |
 | `:plum-cleanup-plugins` | Remove on-disk plugins that are no longer declared |
 | `:plum-update-plugins` | Run `git pull` in every installed third-party plugin |
-| `:plum-list-plugins` | Log the declared, installed, orphan and missing plugin lists |
+| `:plum-list-plugins` | Show the declared, installed, orphan and missing plugin lists in `[plum-plugins]` |
 | `:plum-install-grammar [lang]` | Install or repair a grammar: purge its source, re-clone, recompile. Defaults to the current buffer's language. Tab-completes the languages with a bundled grammar |
-| `:plum-list-grammars` | Log the declared, installed, orphan and missing grammar lists |
+| `:plum-list-grammars` | Show the installed and orphan grammars in `[plum-grammars]` |
 | `:plum-cleanup-grammars` | Delete compiled grammar files that are no longer declared |
 | `:plum-install-theme <user/repo>` | Install or reinstall a theme repo's `themes/*.toml` from a GitHub slug |
 | `:plum-update-themes` | Run `git pull` in every installed theme repo and re-sync its `.toml` copies |
-| `:plum-list-themes` | Log installed theme repos, the theme names each provides, and any unmanaged `.toml` |
+| `:plum-list-themes` | Show installed theme repos, the theme names each provides, and any unmanaged `.toml` in `[plum-themes]` |
 | `:plum-remove-theme <user/repo>` | Remove a theme repo's `.toml` copies and its clone. Tab-completes installed slugs |
 
 `plum-ensure-grammars` installs the grammars of any of the given languages that are not yet compiled, and raises before installing anything if a name has no bundled grammar.
@@ -71,8 +71,9 @@ source:
   [Theme install](#theme-install)).
 - **`lib/helpers.scm`**: `plum/require-stdlib!` (the `core:stdlib` check each entry runs),
   `plum/clone-github!` and `plum/git-pull!` (the one GitHub clone URL shape
-  and its update counterpart, shared by every install command), `plum/batch-run!` (see
-  [Output model](#output-model)), and `plum/two-level-repos` (the `<root>/<user>/<repo>/`
+  and its update counterpart, shared by every install command), `plum/batch-run!`,
+  `plum/report-section` and `plum/show-report!` (see [Output model](#output-model)), and
+  `plum/two-level-repos` (the `<root>/<user>/<repo>/`
   walk behind plugin and theme-repo discovery). Directory listing, filesystem cleanup, list
   search and path-segment validation come from `core:stdlib` through `call!`.
 
@@ -221,6 +222,14 @@ buffers until the command returns and then collapses into one status-line slot, 
 lose every per-item line but the last while the batch runs. `displayln` is gated shut for a
 command that is not `#:inline-output` (`plum-cleanup-plugins`, `plum-cleanup-grammars`);
 those finish at once and keep their summary `log!` line.
+
+The list commands (`plum-list-plugins`, `plum-list-grammars`, `plum-list-themes`) build
+their report with `plum/report-section` and show it with `plum/show-report!`, in a
+read-only buffer named after the command (`[plum-plugins]`, `[plum-grammars]`,
+`[plum-themes]`). A list does not fit the one status-line slot `log!` writes to.
+`:plum-list-grammars` leaves out the languages with no compiled grammar: that list is
+nearly the whole bundled catalog, which `:plum-install-grammar`'s Tab completion already
+offers.
 
 ## Design decisions
 

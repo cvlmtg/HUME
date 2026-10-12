@@ -105,21 +105,19 @@
   #:inline-output #t)
 
 (define-typed-command! "plum-list-themes"
-  "Log installed theme repos and the theme names each provides, plus any unmanaged .toml files in <data>/themes/."
-  (lambda ()
+  "Show installed theme repos and the theme names each provides, plus any unmanaged .toml files in <data>/themes/."
+  (lambda (pane)
     ;; Pair each repo with its theme names once, reused below for `managed`.
-    (let ((per-repo (map (lambda (slug) (cons slug (plum/repo-theme-names slug)))
-                         (plum/installed-theme-repos))))
-      (if (null? per-repo)
-          (log! 'info "PLUM: no theme repos installed")
-          (for-each
-            (lambda (p) (log! 'info (string-append "PLUM: " (car p) ": " (string-join (cdr p) ", "))))
-            per-repo))
-      (let* ((managed (apply append (map cdr per-repo)))
-             (unmanaged (filter (lambda (n) (not (member n managed)))
-                                (stems-with-suffix (plum/themes-dir) ".toml"))))
-        (unless (null? unmanaged)
-          (log! 'info (string-append "PLUM unmanaged: " (string-join unmanaged ", "))))))))
+    (let* ((per-repo (map (lambda (slug) (cons slug (plum/repo-theme-names slug)))
+                          (plum/installed-theme-repos)))
+           (managed (apply append (map cdr per-repo)))
+           (unmanaged (filter (lambda (n) (not (member n managed)))
+                              (stems-with-suffix (plum/themes-dir) ".toml"))))
+      (plum/show-report! pane "plum-themes"
+        (list (plum/report-section "Installed theme repos"
+                (map (lambda (p) (string-append (car p) ": " (string-join (cdr p) ", "))) per-repo)
+                #f)
+              (plum/report-section "Unmanaged themes" unmanaged #f))))))
 
 ;;; `:plum-remove-theme`'s own completion universe — see README.md's "Commands".
 (register-completion-source! "plum:themes"

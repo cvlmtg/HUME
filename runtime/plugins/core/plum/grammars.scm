@@ -180,16 +180,13 @@
   #:inline-output #t)
 
 (define-typed-command! "plum-list-grammars"
-  "Log declared, installed, orphan, and missing grammar lists."
-  (lambda ()
-    (let* ((declared  (bundled-grammar-languages))
-           (installed (installed-grammars))
-           (orphans   (plum/orphan-grammars))
-           (missing   (filter plum/not-installed? declared)))
-      (log! 'info (string-append "PLUM grammars declared:   " (string-join declared  ", ")))
-      (log! 'info (string-append "PLUM grammars installed:  " (string-join installed ", ")))
-      (log! 'info (string-append "PLUM grammars orphan:     " (string-join orphans   ", ")))
-      (log! 'info (string-append "PLUM grammars missing:    " (string-join missing   ", "))))))
+  "Show the installed grammars and the orphan ones."
+  (lambda (pane)
+    (plum/show-report! pane "plum-grammars"
+      (list (plum/report-section "Installed grammars"
+              (filter bundled-language-grammar (installed-grammars)) #f)
+            (plum/report-section "Orphan grammars" (plum/orphan-grammars)
+              "remove with :plum-cleanup-grammars")))))
 
 (define-typed-command! "plum-cleanup-grammars"
   "Delete compiled grammar files that are no longer in the declared source list."

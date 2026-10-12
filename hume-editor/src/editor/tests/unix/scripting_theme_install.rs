@@ -276,12 +276,9 @@ fn update_themes_warns_on_shadowed_theme_name() {
 }
 
 // ── List ──────────────────────────────────────────────────────────────────────
-//
-// Split into two tests so each checks the one line guaranteed to be the
-// final `status_msg`, rather than a middle line an overwrite would hide.
 
-/// One installed repo, no unmanaged files: the per-repo line is the last
-/// (and only) `log!` call, so it's exactly what `status_msg` holds after.
+/// One installed repo, no unmanaged files: `[plum-themes]` lists the repo
+/// with the themes it provides.
 #[test]
 fn list_themes_reports_installed_repo() {
     let _path = path_reader();
@@ -293,15 +290,17 @@ fn list_themes_reports_installed_repo() {
     let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-list-themes");
 
-    let status = ed.state.status_msg.as_deref().unwrap_or_default();
-    assert!(
-        status.contains("acme/theme.hume: acme_dark, acme_light"),
-        "expected the installed repo and its themes in status_msg: {status:?}"
-    );
+    assert_eq!(ed.doc().display_name(), "[plum-themes]");
+    insta::assert_snapshot!(ed.doc().text().to_string(), @"
+    Installed theme repos (1)
+      acme/theme.hume: acme_dark, acme_light
+
+    Unmanaged themes (0)
+      none
+    ");
 }
 
-/// An unmanaged `.toml` with no installed repos at all: the unmanaged line
-/// is logged last regardless, so it's what `status_msg` holds after.
+/// An unmanaged `.toml` with no installed repos at all.
 #[test]
 fn list_themes_reports_unmanaged_file() {
     let _path = path_reader();
@@ -313,11 +312,13 @@ fn list_themes_reports_unmanaged_file() {
     let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-list-themes");
 
-    let status = ed.state.status_msg.as_deref().unwrap_or_default();
-    assert!(
-        status.contains("PLUM unmanaged: hand_dropped"),
-        "expected the unmanaged file called out in status_msg: {status:?}"
-    );
+    insta::assert_snapshot!(ed.doc().text().to_string(), @"
+    Installed theme repos (0)
+      none
+
+    Unmanaged themes (1)
+      hand_dropped
+    ");
 }
 
 // ── Remove ────────────────────────────────────────────────────────────────────

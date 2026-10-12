@@ -28,7 +28,7 @@ PLUM never installs anything on its own: the commands below do the work when you
 | `:plum-update-plugins` | Pull the latest version of every installed third-party plugin |
 | `:plum-list-plugins` | Show named / installed / orphan / missing plugins |
 | `:plum-install-grammar <lang>` | Install and compile one language's grammar; Tab-completes the languages HUME ships a grammar for |
-| `:plum-list-grammars` | Show the languages with a grammar and which are installed |
+| `:plum-list-grammars` | Show the installed grammars, and the orphans left under names HUME ships no grammar for |
 | `:plum-cleanup-grammars` | Remove compiled grammars you no longer need |
 | `:plum-install-theme <user/repo>` | Install (or reinstall) a theme repo's themes |
 | `:plum-update-themes` | Pull the latest version of every installed theme repo |

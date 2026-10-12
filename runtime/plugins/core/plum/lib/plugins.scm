@@ -65,13 +65,12 @@
   #:inline-output #t)
 
 (define-typed-command! "plum-list-plugins"
-  "Log the declared, installed, orphan, and missing plugin lists."
-  (lambda ()
-    (let ((declared   (declared-plugins))
-          (installed  (plum/installed-plugins))
-          (orphans    (plum/orphan-plugins))
-          (missing    (plum/missing-plugins)))
-      (log! 'info (string-append "PLUM declared:   " (string-join declared ", ")))
-      (log! 'info (string-append "PLUM installed:  " (string-join installed ", ")))
-      (log! 'info (string-append "PLUM orphan:     " (string-join orphans ", ")))
-      (log! 'info (string-append "PLUM missing:    " (string-join missing ", "))))))
+  "Show the declared, installed, orphan, and missing plugin lists."
+  (lambda (pane)
+    (plum/show-report! pane "plum-plugins"
+      (list (plum/report-section "Declared plugins" (declared-plugins) #f)
+            (plum/report-section "Installed plugins" (plum/installed-plugins) #f)
+            (plum/report-section "Orphan plugins" (plum/orphan-plugins)
+              "remove with :plum-cleanup-plugins")
+            (plum/report-section "Missing plugins" (plum/missing-plugins)
+              "install with :plum-install-plugins")))))
