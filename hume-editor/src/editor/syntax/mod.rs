@@ -154,8 +154,8 @@ impl Editor {
     }
 
     /// Read `id`'s bundled data file (`<runtime>/scheme/languages/<name>.scm`)
-    /// the first time a buffer uses the language in this configuration, and
-    /// fill each field configuration left unset. A missing file or runtime
+    /// the first time a buffer or an injected layer uses the language in this
+    /// configuration, and fill each field configuration left unset. A missing file or runtime
     /// directory leaves the language without bundled data; a malformed file
     /// is reported and does the same. Either way the file is not read again
     /// until `:reload-config` rebuilds the registry.
@@ -167,7 +167,7 @@ impl Editor {
         let scripting = self
             .scripting
             .as_mut()
-            .expect("set_buffer_language_impl checks for a scripting host");
+            .expect("a buffer has a language, and so syntax layers, only with a scripting host");
         let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
         let lang = match scripting.bundled_language(&name, &mut host) {
             Ok(Some(lang)) => lang,

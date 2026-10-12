@@ -6,6 +6,7 @@
 
 use super::*;
 
+use hume_scripting::ScriptingHost;
 use hume_treesitter::registry::QueryPaths;
 use test_fixtures::{
     grammar_parser_path, grammar_query_path, helix_injections_path, require_fixture_file,
@@ -50,6 +51,12 @@ fn require_fixtures() {
 /// rather than through the `editor_from` marker DSL: this file's tests
 /// mostly care about byte-offset edits at position 0, not cursor placement.
 fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
+    markdown_editor_with(source, &Dirs::none())
+}
+
+/// [`markdown_editor`] with a scripting host over `dirs`, so a language's
+/// bundled data file is read from `dirs.runtime`.
+fn markdown_editor_with(source: &str, dirs: &Dirs) -> (Editor, hume_engine::pipeline::BufferId) {
     let buf = crate::editor::buffer::Buffer::at_start(hume_editing::text::BufferText::from(source));
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
@@ -78,7 +85,7 @@ fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
         .unwrap();
     attach(&mut ed, "rust", "tree_sitter_rust", false);
 
-    super::language::attach_host(&mut ed, "");
+    ed.scripting = Some(ScriptingHost::new(dirs));
     let lang = ed.state.config.languages.intern("markdown");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drains the initial full parse
@@ -267,6 +274,58 @@ fn stale_gen_discards_whole_layer_set() {
         "recovered layer set must include the rust fence layer, got {} layer(s)",
         layers.len()
     );
+}
+
+fn bundled_loaded(ed: &Editor, name: &str) -> bool {
+    let languages = &ed.state.config.languages;
+    languages.bundled_loaded(languages.id_of(name).expect("a registered language"))
+}
+
+fn line_comment_primary(ed: &Editor, name: &str) -> Option<String> {
+    let languages = &ed.state.config.languages;
+    let id = languages.id_of(name).expect("a registered language");
+    languages
+        .comment_tokens_of(id)
+        .line
+        .map(|tokens| tokens.primary().to_owned())
+}
+
+fn has_rust_layer(ed: &Editor, bid: hume_engine::pipeline::BufferId) -> bool {
+    let rust = ed.state.config.languages.id_of("rust");
+    ed.state
+        .buffers
+        .get(bid)
+        .syntax
+        .as_ref()
+        .and_then(|syn| syn.layers())
+        .is_some_and(|layers| {
+            layers
+                .layers
+                .iter()
+                .any(|l| Some(l.bundle.language) == rust)
+        })
+}
+
+#[test]
+fn an_injected_layer_loads_its_languages_bundled_data() {
+    require_fixtures();
+    let (ed, bid) = markdown_editor_with("```rust\nfn f() {}\n```\n", &repo_runtime_dirs());
+
+    assert!(
+        has_rust_layer(&ed, bid),
+        "premise: the fence is a rust layer"
+    );
+    assert!(bundled_loaded(&ed, "rust"));
+    assert_eq!(line_comment_primary(&ed, "rust").as_deref(), Some("//"));
+}
+
+#[test]
+fn a_language_with_no_layer_stays_unloaded() {
+    require_fixtures();
+    let (ed, bid) = markdown_editor_with("# Title\n\nprose\n", &repo_runtime_dirs());
+
+    assert!(!has_rust_layer(&ed, bid));
+    assert!(!bundled_loaded(&ed, "rust"));
 }
 
 // ---------------------------------------------------------------------------

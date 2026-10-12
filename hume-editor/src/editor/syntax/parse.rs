@@ -110,6 +110,30 @@ impl Editor {
         if self.parse_worker.is_disconnected() {
             self.surface_parse_worker_disconnect();
         }
+        self.load_layer_languages();
+    }
+
+    /// Read the bundled data file of every language an installed layer uses
+    /// whose file has not been read yet. Scans the layers themselves, so a
+    /// layer installed by a worker result and one made by
+    /// [`ensure_syntax_current`]'s synchronous parse are both seen here.
+    fn load_layer_languages(&mut self) {
+        let languages = &self.state.config.languages;
+        let mut unloaded: Vec<LanguageId> = Vec::new();
+        for (_, buf) in self.state.buffers.iter() {
+            let Some(layers) = buf.syntax.as_ref().and_then(|syn| syn.layers()) else {
+                continue;
+            };
+            for layer in &layers.layers {
+                let id = layer.bundle.language;
+                if !languages.bundled_loaded(id) && !unloaded.contains(&id) {
+                    unloaded.push(id);
+                }
+            }
+        }
+        for id in unloaded {
+            self.load_bundled_language(id);
+        }
     }
 
     /// Reparse any visible buffer whose text has changed since the last parse.
