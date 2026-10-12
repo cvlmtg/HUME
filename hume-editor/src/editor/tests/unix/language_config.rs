@@ -318,3 +318,27 @@ fn a_lazy_language_plugin_activates_for_the_startup_buffer_without_a_runtime_dir
     assert_no_errors(&ed);
     assert_eq!(roots(&ed), ["plugin.json"]);
 }
+
+#[test]
+fn reload_config_leaves_a_read_only_view_without_a_language() {
+    let (mut ed, _fixture) = boot(
+        r#"(define-language! "python" '("py") '() '("python"))"#,
+        &[],
+        "",
+        "",
+    );
+    let label = ViewLabel::named("report").expect("view name");
+    ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
+        &label,
+        "#!/usr/bin/env python\nprint(1)\n",
+        None,
+    );
+    ed.settle();
+
+    type_cmd(&mut ed, ":reload-config");
+
+    assert_no_errors(&ed);
+    assert_eq!(ed.doc().display_name(), "[report]");
+    assert_eq!(ed.doc().language, None);
+}

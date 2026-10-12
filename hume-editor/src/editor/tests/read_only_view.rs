@@ -531,3 +531,39 @@ fn show_read_only_buffer_refuses_editor_view_names() {
         );
     }
 }
+
+/// View text is not a file: a shebang in it gives the view no language, and
+/// the view still announces its open.
+#[test]
+fn show_read_only_buffer_text_gets_no_language_but_announces_its_open() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.state
+        .config
+        .languages
+        .register_identity_no_rebuild("python", &["py"], &[], &["python"]);
+    ed.state
+        .config
+        .languages
+        .rebuild_glob_set()
+        .expect("rebuild ok");
+    let tmp = tempfile::tempdir().unwrap();
+    run(
+        &mut ed,
+        tmp.path(),
+        r##"(register-hook! 'on-buffer-open (lambda (pane) (log! 'warn "opened")))
+           (define-typed-command! "probe" "" (lambda (pane)
+             (show-read-only-buffer! pane "report" "#!/usr/bin/env python\nprint(1)\n")))"##,
+    );
+    type_cmd(&mut ed, ":probe");
+    ed.settle();
+
+    assert_eq!(ed.doc().display_name(), "[report]");
+    assert_eq!(ed.doc().language, None);
+    let opened = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.text == "opened")
+        .count();
+    assert_eq!(opened, 1);
+}

@@ -184,6 +184,11 @@ impl Editor {
     }
 
     pub(super) fn detect_and_set_language(&mut self, bid: BufferId) {
+        // A view's text is generated, not a file, so nothing in it names a
+        // language.
+        if self.state.buffers.get(bid).is_synthetic() {
+            return;
+        }
         let detected = {
             let buf = self.state.buffers.get(bid);
             let path = buf.path().map(|p| p.to_path_buf());
