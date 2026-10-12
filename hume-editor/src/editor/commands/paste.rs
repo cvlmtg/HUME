@@ -212,43 +212,68 @@ fn do_paste(
     Ok(())
 }
 
+/// The kill-ring head, or the refusal for an empty ring.
+fn kill_ring_head(state: &EditorState) -> Result<Vec<Piece>, CommandError> {
+    state
+        .kill_ring
+        .head()
+        .map(<[Piece]>::to_vec)
+        .ok_or_else(|| CommandError::transient("kill ring is empty"))
+}
+
+/// The refusal for a register with nothing in it.
+fn empty_register(reg: char) -> CommandError {
+    CommandError::transient(format!("register '{reg}' is empty"))
+}
+
 /// Resolve values for a fresh paste against an explicit `"<reg>` prefix.
 /// An explicit register bypasses the smart-paste heuristic entirely.
-/// Returns `None` for a no-op paste: black-hole or an empty register.
-fn resolve_explicit_register(state: &mut EditorState, reg: char) -> Option<ResolvedPaste> {
+/// `Err` when there is nothing to paste: the black-hole register, an empty
+/// register, or a system clipboard that could not be read with nothing in
+/// its in-memory mirror.
+fn resolve_explicit_register(
+    state: &mut EditorState,
+    reg: char,
+) -> Result<ResolvedPaste, CommandError> {
     let (values, from) = match reg {
-        KILL_RING_REGISTER => (state.kill_ring.head()?.to_vec(), Some(PasteSource::Ring(0))),
-        BLACK_HOLE_REGISTER => return None,
+        KILL_RING_REGISTER => (kill_ring_head(state)?, Some(PasteSource::Ring(0))),
+        BLACK_HOLE_REGISTER => return Err(empty_register(reg)),
         c => {
             // Digits and clipboard. Digits read in-memory RegisterSet (symmetric
             // with "Ny writes). Clipboard routes through the OS clipboard.
             let (cow, warn) =
                 register_ops::read_register_text(&state.registers, &mut state.clipboard, c);
             let values = cow.map(|c| c.to_vec()); // end borrow of state.registers
-            if let Some(w) = warn {
-                state.report(Severity::Warning, w);
+            match (values, warn) {
+                (Some(values), warn) => {
+                    if let Some(w) = warn {
+                        state.report(Severity::Warning, w);
+                    }
+                    (values, None)
+                }
+                (None, Some(w)) => return Err(CommandError::warning(w)),
+                (None, None) => return Err(empty_register(c)),
             }
-            (values?, None)
         }
     };
-    Some(ResolvedPaste {
+    Ok(ResolvedPaste {
         values,
         from,
         bare: false,
     })
 }
 
-/// Resolve values for a fresh plain (`paste-after`/`-before`) paste. Returns
-/// `None` to signal a no-op paste.
-fn resolve_plain(state: &mut EditorState) -> Option<ResolvedPaste> {
+/// Resolve values for a fresh plain (`paste-after`/`-before`) paste. `Err`
+/// when there is nothing to paste.
+fn resolve_plain(state: &mut EditorState) -> Result<ResolvedPaste, CommandError> {
     match state.take_register_prefix() {
         // Bare source is always the kill-ring head, with no clipboard
         // fallback and no stamp consultation, but `do_paste` still writes
         // the stamp for it, so an immediately following bare *smart* paste
         // (no capture in between) continues from the same ring slot instead
         // of jumping to the clipboard just because a paste is itself an edit.
-        None => Some(ResolvedPaste {
-            values: state.kill_ring.head()?.to_vec(),
+        None => Ok(ResolvedPaste {
+            values: kill_ring_head(state)?,
             from: Some(PasteSource::Ring(0)),
             bare: true,
         }),
@@ -257,8 +282,8 @@ fn resolve_plain(state: &mut EditorState) -> Option<ResolvedPaste> {
 }
 
 /// Resolve values for a fresh smart (`smart-paste-after`/`-before`) paste.
-/// Returns `None` to signal a no-op paste.
-fn resolve_smart(state: &mut EditorState) -> Option<ResolvedPaste> {
+/// `Err` when there is nothing to paste.
+fn resolve_smart(state: &mut EditorState) -> Result<ResolvedPaste, CommandError> {
     match state.take_register_prefix() {
         None => resolve_smart_bare(state),
         Some(reg) => resolve_explicit_register(state, reg),
@@ -270,15 +295,19 @@ fn resolve_smart(state: &mut EditorState) -> Option<ResolvedPaste> {
 /// the clipboard otherwise. When the clipboard yields nothing, a *fresh*
 /// paste falls back to the ring head silently, but a *repeat* (fresh
 /// `Clipboard` stamp) refuses to substitute; see the `None` arm below.
-fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
+fn resolve_smart_bare(state: &mut EditorState) -> Result<ResolvedPaste, CommandError> {
     let fresh_source = state
         .paste_stamp
         .as_ref()
         .filter(|s| s.seq == state.buffers.edit_seq())
         .map(|s| s.source);
     if let Some(PasteSource::Ring(slot)) = fresh_source {
-        let values = state.kill_ring.slot(slot)?.to_vec();
-        return Some(ResolvedPaste {
+        let values = state
+            .kill_ring
+            .slot(slot)
+            .ok_or_else(|| CommandError::transient("nothing to paste"))?
+            .to_vec();
+        return Ok(ResolvedPaste {
             values,
             from: Some(PasteSource::Ring(slot)),
             bare: true,
@@ -291,12 +320,17 @@ fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
         &mut state.clipboard,
         CLIPBOARD_REGISTER,
     );
+    // The clipboard's own warning when it could not be read, or `empty`.
+    let refusal = |warn: Option<String>, empty: &str| match warn {
+        Some(w) => CommandError::warning(w),
+        None => CommandError::transient(empty),
+    };
     match cow.map(|c| c.to_vec()) {
         Some(values) => {
             if let Some(w) = warn {
                 state.report(Severity::Warning, w);
             }
-            Some(ResolvedPaste {
+            Ok(ResolvedPaste {
                 values,
                 from: Some(PasteSource::Clipboard),
                 bare: true,
@@ -304,30 +338,24 @@ fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
         }
         None => {
             // A repeat press (fresh Clipboard stamp) must repeat the
-            // clipboard value or do nothing: substituting the ring head
+            // clipboard value or be refused: substituting the ring head
             // would feed `collapse_if_repeat` unrelated text and replace
-            // what the previous press just pasted. Warn and no-op.
+            // what the previous press just pasted.
             if matches!(fresh_source, Some(PasteSource::Clipboard)) {
-                if let Some(w) = warn {
-                    state.report(Severity::Warning, w);
-                }
-                return None;
+                return Err(refusal(warn, "clipboard is empty"));
             }
             // A fresh paste with no readable clipboard falls back to the
-            // ring head silently. Only emit the warning when the fallback
-            // also fails. Otherwise the user sees a warning alongside a
-            // successful paste.
+            // ring head silently. Only report the clipboard when the
+            // fallback also fails. Otherwise the user sees a warning
+            // alongside a successful paste.
             if let Some(head) = state.kill_ring.head() {
-                return Some(ResolvedPaste {
+                return Ok(ResolvedPaste {
                     values: head.to_vec(),
                     from: Some(PasteSource::Ring(0)),
                     bare: true,
                 });
             }
-            if let Some(w) = warn {
-                state.report(Severity::Warning, w);
-            }
-            None
+            Err(refusal(warn, "nothing to paste"))
         }
     }
 }
@@ -348,9 +376,7 @@ fn do_normal_paste(
     // a refusal here leaves the pane untouched.
     edit_session::check_can_open(&state.active_session, pid, buf)?;
     super::ensure_writable(state, view, fp.pane())?;
-    let Some(resolved) = resolve_plain(state) else {
-        return Ok(());
-    };
+    let resolved = resolve_plain(state)?;
     let sels = state.panes.state[pid][buf].selections().clone();
     do_paste(state, pid, buf, before, resolved, sels.clone(), sels)
 }
@@ -369,9 +395,7 @@ fn do_smart_paste(
     let (pid, buf) = (fp.pid(), fp.bid(view));
     edit_session::check_can_open(&state.active_session, pid, buf)?;
     super::ensure_writable(state, view, fp.pane())?;
-    let Some(resolved) = resolve_smart(state) else {
-        return Ok(());
-    };
+    let resolved = resolve_smart(state)?;
     let pbs = &state.panes.state[pid][buf];
     let sels = pbs.selections().clone();
     let base = if resolved.bare {
@@ -436,7 +460,8 @@ pub(in crate::editor) fn cmd_smart_paste_before(
 /// Shared implementation for `[` and `]`: advance/retreat the kill-ring cycle
 /// cursor and re-paste from the session snapshot.
 ///
-/// Noop when no paste session is open or when the cycle is already at a boundary.
+/// Refused when no paste session is open in `fp` or when the cycle is
+/// already at a boundary.
 fn do_paste_cycle(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -450,7 +475,7 @@ fn do_paste_cycle(
         .filter(|s| s.owned_by(focused, buf))
         .map(|s| s.kind())
     else {
-        return Ok(());
+        return Err(CommandError::transient("no paste to cycle"));
     };
     // Eagerly convert to owned Vec so the borrow of state.kill_ring ends before
     // state.buffers and state.panes.state are borrowed mutably below.
@@ -459,30 +484,35 @@ fn do_paste_cycle(
     } else {
         state.kill_ring.cycle_newer()
     }
-    .map(|v| v.to_vec());
-    if let Some(values) = values {
-        let paste_fn = if before { paste_before } else { paste_after };
-        doc_ops::apply_doc_edit_regrouped(
-            &mut state.buffers,
-            &mut crate::editor::position_stores::PositionStores::new(
-                &mut state.panes,
-                &mut state.input,
-                &mut state.buffer_positions,
-                &mut state.config.decorations,
-            ),
-            &mut state.active_session,
-            focused,
-            buf,
-            |s| paste_fn(s, &values),
-        );
-        // Cycling always lands on a ring slot, so reflect it in the stamp so a
-        // following bare paste (of either variant) continues from here.
-        if let Some(slot) = state.kill_ring.cycle_position() {
-            state.paste_stamp = Some(PasteStamp {
-                seq: state.buffers.edit_seq(),
-                source: PasteSource::Ring(slot),
-            });
-        }
+    .map(|v| v.to_vec())
+    .ok_or_else(|| {
+        CommandError::transient(if older {
+            "no older entry"
+        } else {
+            "no newer entry"
+        })
+    })?;
+    let paste_fn = if before { paste_before } else { paste_after };
+    doc_ops::apply_doc_edit_regrouped(
+        &mut state.buffers,
+        &mut crate::editor::position_stores::PositionStores::new(
+            &mut state.panes,
+            &mut state.input,
+            &mut state.buffer_positions,
+            &mut state.config.decorations,
+        ),
+        &mut state.active_session,
+        focused,
+        buf,
+        |s| paste_fn(s, &values),
+    );
+    // Cycling always lands on a ring slot, so reflect it in the stamp so a
+    // following bare paste (of either variant) continues from here.
+    if let Some(slot) = state.kill_ring.cycle_position() {
+        state.paste_stamp = Some(PasteStamp {
+            seq: state.buffers.edit_seq(),
+            source: PasteSource::Ring(slot),
+        });
     }
     Ok(())
 }

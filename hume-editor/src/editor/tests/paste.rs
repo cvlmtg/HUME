@@ -924,10 +924,10 @@ fn explicit_register_paste_with_equal_text_replaces() {
 }
 
 /// A repeat press after a clipboard paste must repeat the clipboard value or
-/// do nothing: when the re-read fails entirely (no OS clipboard, empty
-/// in-memory mirror), the press warns and no-ops rather than substituting
-/// the ring head, which would not match the selected just-pasted text and
-/// so would replace it.
+/// be refused: when the re-read fails entirely (no OS clipboard, empty
+/// in-memory mirror), the press is refused with the clipboard's warning
+/// rather than substituting the ring head, which would not match the
+/// selected just-pasted text and so would replace it.
 #[test]
 fn repeat_clipboard_paste_with_dead_clipboard_is_noop() {
     use crate::editor::Severity;
@@ -974,13 +974,15 @@ fn paste_leaves_output_selected() {
 
 // ── Ring cycling (`[`/`]`) ──────────────────────────────────────────────────
 
-/// `paste-ring-older` / `paste-ring-newer` (`[` / `]`) on an empty ring are no-ops.
+/// `paste-ring-older` / `paste-ring-newer` (`[` / `]`) with no paste to
+/// cycle leave the text alone and say why.
 #[test]
 fn paste_ring_older_empty_ring_is_noop() {
     let mut ed = editor_from("-[a]>bc\n");
     let before = state(&ed);
     ed.feed_key(key('['));
     assert_eq!(state(&ed), before, "[ on empty ring is a no-op");
+    assert_eq!(status(&ed), "no paste to cycle");
     // Capture fresh snapshot so ] is verified against actual post-[ state,
     // not the original. If [ accidentally mutated state, this catches both.
     let after_open = state(&ed);
@@ -1404,7 +1406,7 @@ fn plain_paste_honors_register_prefix() {
     assert!(!buf.contains("RING"));
 }
 
-/// `"b` (black hole) on a plain paste is a no-op, same as on smart paste.
+/// `"b` (black hole) on a plain paste is refused, same as on smart paste.
 #[test]
 fn plain_paste_black_hole_is_noop() {
     let mut ed = editor_from("-[x]>\n");
@@ -1419,6 +1421,32 @@ fn plain_paste_black_hole_is_noop() {
         "x\n",
         "\"b + plain paste must be a no-op"
     );
+    assert_eq!(status(&ed), "register 'b' is empty");
+}
+
+/// A paste with nothing to paste is refused, so a `.`, a macro or a `call!`
+/// running it sees the step fail.
+#[test]
+fn plain_paste_with_an_empty_kill_ring_is_refused() {
+    use hume_scripting::host::CommandHost;
+
+    let mut ed = editor_from("-[x]>\n");
+    let (pid, bid) = (ed.state.focus.id(), ed.focused_buffer_id());
+
+    let ran = live_host!(ed)
+        .run_command_sync(
+            "paste-after",
+            hume_scripting::PaneHandle::with_pane(bid, pid),
+            NativeCall {
+                count: Some(1),
+                ..NativeCall::default()
+            },
+        )
+        .expect("a refused command is still a successful dispatch");
+
+    assert!(!ran, "an empty paste must be refused");
+    assert_eq!(ed.doc().text().to_string(), "x\n");
+    assert_eq!(status(&ed), "kill ring is empty");
 }
 
 /// `"b` (black hole) on a *smart* paste is a no-op too: `resolve_smart`
@@ -1439,6 +1467,7 @@ fn smart_paste_black_hole_is_noop() {
         "x\n",
         "\"b + smart paste must be a no-op"
     );
+    assert_eq!(status(&ed), "register 'b' is empty");
 }
 
 /// A smart paste right after a plain paste appends: a bare

@@ -30,7 +30,7 @@ Text from outside HUME, such as the system clipboard after another program wrote
 `p` and `P` decide what to paste based on whether the buffer has changed since the ring last did:
 
 - **Nothing edited since the last `d`, `c`, or `y`**: reads the kill ring. Right after a `d`, `c`, or `y` that is the head (the most recently killed, changed, or yanked text); right after a paste or a `[`/`]` cycle it is the entry that paste or cycle used.
-- **Something edited since**: reads the system clipboard. A first paste falls back to the kill ring head when the clipboard is empty or unavailable. Once a press has read the clipboard, a further `p` or `P` pastes nothing if the clipboard is then empty or unavailable.
+- **Something edited since**: reads the system clipboard. A first paste falls back to the kill ring head when the clipboard is empty or unavailable. Once a press has read the clipboard, a further `p` or `P` pastes nothing, and says why, if the clipboard is then empty or unavailable.
 
 Since `y` writes to both the clipboard and the kill ring, `y` then `p` pastes what you just yanked. Yanking to an explicit register instead (`"0y`) leaves both the clipboard and this "what should a bare `p` read" tracking untouched. A following bare `p` behaves exactly as it would have if the `"0y` hadn't happened. Use `"0p` to read the register back.
 

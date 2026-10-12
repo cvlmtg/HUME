@@ -5,8 +5,8 @@ use super::message_log::Severity;
 /// A user-facing error produced when a command fails to execute.
 ///
 /// Carries a human-readable message suitable for display in the status bar,
-/// plus the [`Severity`] its report site should use (see [`Self::new`] vs
-/// [`Self::transient`]). Distinct from [`hume_editing::error::ApplyError`]
+/// plus the [`Severity`] its report site should use (see [`Self::new`],
+/// [`Self::warning`] and [`Self::transient`]). Distinct from [`hume_editing::error::ApplyError`]
 /// (an internal buffer integrity error): `CommandError` represents a user-level failure such as an I/O
 /// error during a file write, or a boundary condition like "no match".
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +41,17 @@ impl CommandError {
         Self {
             message: msg.into(),
             severity: Severity::Info,
+        }
+    }
+
+    /// Construct a `CommandError` reported at `Severity::Warning`: the user
+    /// asked for something the environment could not provide (the system
+    /// clipboard could not be read), worth a `:messages` record but not an
+    /// error.
+    pub(in crate::editor) fn warning(msg: impl Into<String>) -> Self {
+        Self {
+            message: msg.into(),
+            severity: Severity::Warning,
         }
     }
 
