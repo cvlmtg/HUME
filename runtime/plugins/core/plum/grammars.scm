@@ -184,11 +184,11 @@
   (lambda (pane)
     (let* ((installed (installed-grammars))
            (orphans (plum/orphan-grammars installed)))
-      (plum/show-report! pane "plum-grammars"
-        (list (plum/report-section "Installed grammars"
+      (call! "stdlib/show-report!" pane "plum-grammars"
+        (list (call! "stdlib/report-section" "Installed grammars"
                 (filter (lambda (name) (not (member name orphans))) installed)
                 #f)
-              (plum/report-section "Orphan grammars" orphans
+              (call! "stdlib/report-section" "Orphan grammars" orphans
                 "remove with :plum-cleanup-grammars"))))))
 
 (define-typed-command! "plum-cleanup-grammars"

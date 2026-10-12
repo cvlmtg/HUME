@@ -148,6 +148,21 @@
 (define (stdlib/split-words pane str)
   (split-words str (get-buffer-option pane "word-chars")))
 
+;; ── Reports ───────────────────────────────────────────────────────────────────
+;; See README.md's "Reports".
+
+(define (stdlib/report-section title items hint)
+  (string-append
+    title " (" (number->string (length items)) ")"
+    (if (and hint (not (null? items))) (string-append ", " hint) "")
+    "\n"
+    (if (null? items)
+        "  none\n"
+        (string-join (map (lambda (item) (string-append "  " item "\n")) items) ""))))
+
+(define (stdlib/show-report! pane name sections)
+  (show-read-only-buffer! pane name (string-join sections "\n")))
+
 ;; ── Plugin config helpers ────────────────────────────────────────────────────
 
 (define (stdlib/config-value cfg key default)
@@ -264,6 +279,14 @@
 (define-command! "stdlib/resolve-lang-arg"
   "A typed language-name argument, else pane's language, else #f after an info message."
   stdlib/resolve-lang-arg)
+
+(define-command! "stdlib/report-section"
+  "One report section: a title (count) header, then the given hint after a comma when there are items (#f for none), then one indented line per item, or none."
+  stdlib/report-section)
+
+(define-command! "stdlib/show-report!"
+  "Shows the given report sections, separated by blank lines, on the given pane in the read-only buffer [name]."
+  stdlib/show-report!)
 
 (define-command! "stdlib/config-boolean"
   "A #:config hash's value for the given key, or the given default if absent; errors if it isn't #t or #f."

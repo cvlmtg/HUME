@@ -193,9 +193,9 @@ down any running client before the lock is taken. Its completion lists every ser
 directory on disk, seeded or orphan, because the on-disk check decides what there is to
 remove.
 
-**`:lsp-catalog`** prints one line per seeded server: its name, its languages, and either
-`installed vX`, `installed vX — update available (vY)`, the install blocker, or `not
-installed`. A count line follows.
+**`:lsp-catalog`** shows one `stdlib/report-section` in `[lsp-catalog]`, with one line per
+seeded server sorted by name: its name, its languages, and either `installed vX`,
+`installed vX — update available (vY)`, the install blocker, or `not installed`.
 
 ### Discovery hint
 

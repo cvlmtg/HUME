@@ -66,10 +66,12 @@
   (lambda (pane)
     (let ((declared (declared-plugins))
           (installed (plum/installed-plugins)))
-      (plum/show-report! pane "plum-plugins"
-        (list (plum/report-section "Declared plugins" declared #f)
-              (plum/report-section "Installed plugins" installed #f)
-              (plum/report-section "Orphan plugins" (plum/orphan-plugins declared installed)
+      (call! "stdlib/show-report!" pane "plum-plugins"
+        (list (call! "stdlib/report-section" "Declared plugins" declared #f)
+              (call! "stdlib/report-section" "Installed plugins" installed #f)
+              (call! "stdlib/report-section" "Orphan plugins"
+                (plum/orphan-plugins declared installed)
                 "remove with :plum-cleanup-plugins")
-              (plum/report-section "Missing plugins" (plum/missing-plugins declared installed)
+              (call! "stdlib/report-section" "Missing plugins"
+                (plum/missing-plugins declared installed)
                 "install with :plum-install-plugins"))))))

@@ -443,37 +443,37 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
     );
 }
 
-/// `lsp-servers` is `#:inline-output #t` and *does* print via `displayln`
-/// (one line per seeded server). Off the event loop that must still reach
-/// `EditorHostImpl::ensure_inline_output_screen`'s no-terminal early return
-/// rather than the real terminal: printing must succeed without ever
-/// entering the alt-screen.
+/// An `#:inline-output` command that *does* print via `displayln` must,
+/// off the event loop, still reach `EditorHostImpl::ensure_inline_output_screen`'s
+/// no-terminal early return rather than the real terminal: printing must
+/// succeed without ever entering the alt-screen.
 ///
 /// Without the `needs_enter`/`tui` guard, `ensure_inline_output_screen` would
 /// always enter, and this test would hang on `wait_for_keypress` against a
 /// real TTY or panic against a non-TTY stdin in CI.
 #[test]
 fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
-    let _path = path_reader();
-
-    let data_tmp = tempfile::tempdir().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
-    load_lsp_install(&mut ed, data_tmp.path());
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "printer" ""
+             (lambda () (displayln "one line") (log! 'info "printed"))
+             #:inline-output #t)"#,
+    );
 
-    type_cmd(&mut ed, ":lsp-catalog");
+    type_cmd(&mut ed, ":printer");
 
     assert_eq!(
         ed.inline_output_enter_count(),
         0,
         "displayln output off the event loop must not enter the real terminal bracket"
     );
-    assert!(
-        ed.state
-            .status_msg
-            .as_deref()
-            .is_some_and(|m| m.contains("seeded servers")),
-        "lsp-catalog must still log its summary line, got: {:?}",
-        ed.state.status_msg
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("printed"),
+        "the command must run past its print"
     );
 }
 

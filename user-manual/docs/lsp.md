@@ -136,8 +136,9 @@ uninstalled server shows a one-line `run :lsp-install` hint, once per language p
 :lsp-catalog
 ```
 
-Lists every server HUME knows about: its languages, its seeded version, and whether it's
-installed, out of date, or not installable on your platform (and why). A language a server
+Opens a read-only `[lsp-catalog]` buffer listing every server HUME knows about, by name: its
+languages, and whether it's installed, out of date, or not installable on your platform
+(and why). A language a server
 only backs second to another is marked `(secondary)`. Not every entry can
 be installed for you: many are listed so you can point HUME at a copy you install yourself,
 with `register-lsp-server!` below.

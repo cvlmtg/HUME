@@ -43,6 +43,7 @@ under [How it works](#how-it-works) cover what a contributor needs beyond that.
 | [Subprocess](#subprocess) | `stdlib/run!` |
 | [Git](#git) | `stdlib/git-repo?`, `stdlib/git-toplevel` |
 | [Command arguments](#command-arguments) | `stdlib/resolve-lang-arg` |
+| [Reports](#reports) | `stdlib/report-section`, `stdlib/show-report!` |
 | [Picker buffer-placement](#picker-buffer-placement) | `stdlib/with-tab`, `stdlib/with-vsplit`, `stdlib/with-split`, `stdlib/buffer-actions` |
 | [Word tokenization](#word-tokenization) | `stdlib/split-words` |
 | [Plugin config](#plugin-config) | `stdlib/config-boolean`, `-string`, `-enum`, `-integer`, `-list` |
@@ -117,6 +118,15 @@ argument helper, by `:plum-install-grammar [lang]`. Both are 2-arity typed comma
 `crate::editor::dispatch`'s typed-command marshalling never puts anything else in that
 slot. `resolve-lang-arg` falls back to the current buffer's language when `arg` is not a
 string, and logs `'info` and answers `#f` when the buffer has none.
+
+### Reports
+
+A list command shows its output in a read-only buffer, because a list does not fit the one
+status-line slot `log!` writes to. `stdlib/report-section` renders one section: a
+`title (count)` header, followed by `, hint` when the section has items (`hint` may be
+`#f`), then one indented line per item, or `none`. `stdlib/show-report!` joins sections
+with a blank line and shows them with `show-read-only-buffer!`, in the buffer `[name]`.
+`core:plum`'s list commands and `:lsp-catalog` build their output this way.
 
 ### Picker buffer-placement
 

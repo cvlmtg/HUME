@@ -64,6 +64,15 @@ Both answer for HUME's own working directory (`:pwd`), not necessarily the curre
 
 Use this for a `:` command that takes an optional language name: `arg` is whatever the user typed after the command, or `#f` if they typed nothing. Falling back to the invoking buffer's language covers the common case of acting on the language of the buffer the command was invoked for; when neither is available, it logs an info message naming `cmd` and returns `#f` so your command can bail out cleanly.
 
+## Reports
+
+| Call | Effect |
+|------|--------|
+| `(call! "stdlib/report-section" title items hint)` | One section as text: `title (count)`, then `, hint` when `items` is not empty (`hint` may be `#f`), then one indented line per item, or `none` |
+| `(call! "stdlib/show-report!" pane name sections)` | Shows `sections`, separated by blank lines, on `pane` in the read-only buffer `[name]` |
+
+Use these for a `:` command that lists things: a list longer than one line does not fit on the status line. A later call with the same `name` replaces that buffer's text. The `:plum-list-*` commands and `:lsp-catalog` use them.
+
 ## Word tokenization
 
 | Call | Effect |

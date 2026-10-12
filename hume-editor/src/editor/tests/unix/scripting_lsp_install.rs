@@ -1140,45 +1140,44 @@ fn lsp_uninstall_without_a_name_reports_an_error() {
 
 // ── :lsp-catalog ──────────────────────────────────────────────────────────────
 
+/// `:lsp-catalog` shows the seeded servers in the read-only `[lsp-catalog]`
+/// buffer: a counted header, then one line per server sorted by name, an
+/// installed one with its version.
 #[test]
-fn lsp_catalog_command_runs_without_error() {
+fn lsp_catalog_shows_the_servers_in_a_read_only_buffer() {
     let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
+    fabricate_server(
+        data_tmp.path(),
+        "rust-analyzer",
+        "2026-07-06",
+        "rust-analyzer",
+    );
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
     type_cmd(&mut ed, ":lsp-catalog");
 
-    let errors: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect();
-    assert!(errors.is_empty(), ":lsp-catalog must not error: {errors:?}");
-
-    // The trailing `'info` summary lands in `status_msg` (see the
-    // `lsp_uninstall_of_never_installed_server_is_silent` comment on
-    // Severity routing). An empty command body would leave this `None`,
-    // so this pins that the catalog walk actually ran against real data.
-    let status = ed
-        .state
-        .status_msg
-        .as_deref()
-        .expect("lsp-catalog must report a seeded-server count");
     assert!(
-        status.starts_with("LSP: ") && status.ends_with(" seeded servers"),
-        "unexpected status message: {status}"
+        !has_error(&ed, ""),
+        "{}",
+        ed.state.message_log.format_for_display()
     );
-    let count: usize = status
-        .trim_start_matches("LSP: ")
-        .trim_end_matches(" seeded servers")
-        .parse()
-        .unwrap_or_else(|_| panic!("status message count is not a number: {status}"));
+    assert_eq!(ed.doc().display_name(), "[lsp-catalog]");
+    assert!(ed.doc().is_read_only());
+    let text = ed.doc().text().to_string();
+    let mut lines = text.lines();
+    let header = lines.next().expect("a header line");
+    let items: Vec<&str> = lines.map(|l| l.trim_start()).collect();
+    assert_eq!(header, format!("LSP servers ({})", items.len()));
+    let mut sorted = items.clone();
+    sorted.sort_unstable();
+    assert_eq!(items, sorted, "servers are listed by name");
     assert!(
-        count > 0,
-        "expected a non-zero seeded-server count: {status}"
+        items
+            .iter()
+            .any(|l| l.starts_with("rust-analyzer [") && l.contains("]: installed v2026-07-06")),
+        "{text}"
     );
 }
 

@@ -113,14 +113,14 @@
            (managed (apply append (map cdr per-repo)))
            (unmanaged (filter (lambda (n) (not (member n managed)))
                               (stems-with-suffix (plum/themes-dir) ".toml"))))
-      (plum/show-report! pane "plum-themes"
-        (list (plum/report-section "Installed theme repos"
+      (call! "stdlib/show-report!" pane "plum-themes"
+        (list (call! "stdlib/report-section" "Installed theme repos"
                 (map (lambda (p)
                        (string-append (car p) ": "
                          (if (null? (cdr p)) "no themes" (string-join (cdr p) ", "))))
                      per-repo)
                 #f)
-              (plum/report-section "Unmanaged themes" unmanaged #f))))))
+              (call! "stdlib/report-section" "Unmanaged themes" unmanaged #f))))))
 
 ;;; `:plum-remove-theme`'s own completion universe — see README.md's "Commands".
 (register-completion-source! "plum:themes"

@@ -91,30 +91,31 @@
   #:complete "lsp:servers")
 
 (define-typed-command! "lsp-catalog"
-  "Log the LSP server catalog: languages, seeded version, and install status."
-  (lambda ()
-    (for-each
-      (lambda (name)
-        (let* ((receipt (lsp-install/read-receipt name))
-               (source  (lsp-install/source name))
-               (langs   (map (lambda (lang)
-                               (if (equal? (lsp-install/primary lang) name)
-                                   lang
-                                   (string-append lang " (secondary)")))
-                             (lsp-install/server-languages name)))
-               (status
-                 (cond
-                   (receipt
-                    (let ((installed (lsp-install/receipt-version receipt))
-                          (seeded    (if source (lsp-install/ref source 'version) #f)))
-                      (if (and seeded (not (equal? installed seeded)))
-                          (string-append "installed v" installed " — update available (v" seeded ")")
-                          (string-append "installed v" installed))))
-                   (else
-                    (let ((blocker (lsp-install/install-blocker name)))
-                      (if blocker blocker "not installed"))))))
-          (displayln (string-append name " [" (string-join langs ", ") "]: " status))))
-      (hash-keys->list lsp-install/servers))
-    (log! 'info (string-append "LSP: " (number->string (length (hash-keys->list lsp-install/servers)))
-                               " seeded servers")))
-  #:inline-output #t)
+  "Show the LSP server catalog: languages, seeded version, and install status."
+  (lambda (pane)
+    (call! "stdlib/show-report!" pane "lsp-catalog"
+      (list
+        (call! "stdlib/report-section" "LSP servers"
+          (map
+            (lambda (name)
+              (let* ((receipt (lsp-install/read-receipt name))
+                     (source  (lsp-install/source name))
+                     (langs   (map (lambda (lang)
+                                     (if (equal? (lsp-install/primary lang) name)
+                                         lang
+                                         (string-append lang " (secondary)")))
+                                   (lsp-install/server-languages name)))
+                     (status
+                       (cond
+                         (receipt
+                          (let ((installed (lsp-install/receipt-version receipt))
+                                (seeded    (if source (lsp-install/ref source 'version) #f)))
+                            (if (and seeded (not (equal? installed seeded)))
+                                (string-append "installed v" installed " — update available (v" seeded ")")
+                                (string-append "installed v" installed))))
+                         (else
+                          (let ((blocker (lsp-install/install-blocker name)))
+                            (if blocker blocker "not installed"))))))
+                (string-append name " [" (string-join langs ", ") "]: " status)))
+            (sort (hash-keys->list lsp-install/servers) string<?))
+          #f)))))

@@ -556,3 +556,31 @@ fn core_stdlib_git_probes_outside_a_work_tree() {
         "stdlib git probe assertions must pass outside a work tree: {result:?}"
     );
 }
+
+/// `stdlib/report-section` renders a counted header, a hint only when there
+/// are items, then one indented line per item or `none`.
+#[test]
+fn core_stdlib_report_section_command() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let assertions = r#"
+(unless (equal? (call! "stdlib/report-section" "Fruit" '("apple" "pear") "eat them")
+                "Fruit (2), eat them\n  apple\n  pear\n")
+  (error "items with a hint"))
+(unless (equal? (call! "stdlib/report-section" "Fruit" '("apple") #f)
+                "Fruit (1)\n  apple\n")
+  (error "items without a hint"))
+(unless (equal? (call! "stdlib/report-section" "Fruit" '() "eat them")
+                "Fruit (0)\n  none\n")
+  (error "no items drops the hint"))
+"#;
+
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(assertions, &mut ih)
+    };
+    assert!(
+        result.is_ok(),
+        "stdlib report-section assertions must all pass: {result:?}"
+    );
+}

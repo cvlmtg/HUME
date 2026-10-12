@@ -71,8 +71,7 @@ source:
   [Theme install](#theme-install)).
 - **`lib/helpers.scm`**: `plum/require-stdlib!` (the `core:stdlib` check each entry runs),
   `plum/clone-github!` and `plum/git-pull!` (the one GitHub clone URL shape
-  and its update counterpart, shared by every install command), `plum/batch-run!`,
-  `plum/report-section` and `plum/show-report!` (see [Output model](#output-model)), and
+  and its update counterpart, shared by every install command), `plum/batch-run!`, and
   `plum/two-level-repos` (the `<root>/<user>/<repo>/`
   walk behind plugin and theme-repo discovery). Directory listing, filesystem cleanup, list
   search and path-segment validation come from `core:stdlib` through `call!`.
@@ -224,11 +223,9 @@ command that is not `#:inline-output` (`plum-cleanup-plugins`, `plum-cleanup-gra
 those finish at once and keep their summary `log!` line.
 
 The list commands (`plum-list-plugins`, `plum-list-grammars`, `plum-list-themes`) build
-their report with `plum/report-section` and show it with `plum/show-report!`, in a
+their report with `core:stdlib`'s [report commands](../stdlib/README.md#reports), in a
 read-only buffer named after the command (`[plum-plugins]`, `[plum-grammars]`,
-`[plum-themes]`). A list does not fit the one status-line slot `log!` writes to. Each
-section is a `title (count)` header, followed by `, hint` when the section has items
-(`hint` may be `#f`), then one indented line per item, or `none`.
+`[plum-themes]`).
 `:plum-list-grammars` leaves out the languages with no compiled grammar: that list is
 nearly the whole bundled catalog, which `:plum-install-grammar`'s Tab completion already
 offers.

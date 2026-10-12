@@ -1,7 +1,7 @@
 ;;; core:plum/lib/helpers.scm
 
 (provide plum/require-stdlib! plum/batch-run! plum/read-file plum/two-level-repos
-         plum/clone-github! plum/git-pull! plum/report-section plum/show-report!)
+         plum/clone-github! plum/git-pull!)
 
 (define (plum/require-stdlib!)
   (unless (member "core:stdlib" (declared-plugins))
@@ -44,21 +44,6 @@
     (let ([content (read-port-to-string port)])
       (close-input-port port)
       content)))
-
-;; ── Listing reports ───────────────────────────────────────────────────────────
-;; See README.md's "Output model".
-
-(define (plum/report-section title items hint)
-  (string-append
-    title " (" (number->string (length items)) ")"
-    (if (and hint (not (null? items))) (string-append ", " hint) "")
-    "\n"
-    (if (null? items)
-        "  none\n"
-        (string-join (map (lambda (item) (string-append "  " item "\n")) items) ""))))
-
-(define (plum/show-report! pane name sections)
-  (show-read-only-buffer! pane name (string-join sections "\n")))
 
 ;; ── Batch runner ──────────────────────────────────────────────────────────────
 
