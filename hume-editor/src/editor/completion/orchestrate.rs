@@ -23,7 +23,7 @@ use super::session::{BufferSession, Invocation, LiveDoc, MinibufSession, Reconci
 use super::{CompletionCtx, CompletionItem, arg_span};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{
-    BufferCompletionLayer, DocView, InsertLayer, LayerRef, MinibufCompletionLayer,
+    BufferCompletionLayer, InsertLayer, LayerRef, MinibufCompletionLayer,
 };
 use crate::editor::lsp::{RustDelivery, RustResponder};
 use crate::editor::registry::CommandRegistry;
@@ -129,13 +129,7 @@ impl EditorState {
             self.report(Severity::Info, "no completions".to_string());
             return;
         }
-        self.push_layer(
-            view,
-            BufferCompletionLayer {
-                session,
-                doc: DocView::default(),
-            },
-        );
+        self.push_layer(view, BufferCompletionLayer::new(session));
     }
 
     /// Brings the open `Buffer` session in line with the buffer's current
@@ -199,9 +193,12 @@ impl EditorState {
         }
     }
 
-    /// Cancels the selected candidate's documentation request, for a
-    /// session leaving the input stack: nothing would read its answer.
-    pub(in crate::editor) fn cancel_completion_doc(&mut self) {
+    /// Clears a `Buffer` session's menu and documentation box and cancels
+    /// its documentation request, for a session leaving the input stack:
+    /// nothing would read the answer.
+    pub(in crate::editor) fn close_buffer_completion_views(&mut self) {
+        self.views.completion_menu.set(None);
+        self.views.completion_doc.set(None);
         self.cancel_superseded(COMPLETION_DOC_SUPERSEDE);
     }
 
@@ -228,7 +225,7 @@ impl EditorState {
                 return;
             };
             match result {
-                Ok(reply) => session.finish_doc_request(key, version, &reply),
+                Ok(reply) => session.finish_doc_request(key, version, reply),
                 Err(message) => {
                     state.report(Severity::Trace, format!("lsp completion docs: {message}"));
                 }

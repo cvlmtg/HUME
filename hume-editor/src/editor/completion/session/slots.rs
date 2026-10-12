@@ -301,15 +301,15 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     /// latest call of any slot here: a superseded or already-replaced
     /// invocation, expected-normal for a late async source, never an
     /// error.
-    /// `prepare` sees the answering source, the invocation's span, the
-    /// items before they are stored, and the items of the shown answer they
-    /// replace (empty when there is none).
+    /// `prepare` sees the answering source, the invocation's span and the
+    /// items before they are stored. The items keep the resolutions of the
+    /// candidates they repeat from the shown answer they replace.
     pub(super) fn contribute(
         &mut self,
         id: u64,
         mut items: Vec<CompletionItem>,
         incomplete: bool,
-        prepare: impl FnOnce(Id, &mut S, &mut [CompletionItem], &mut [CompletionItem]),
+        prepare: impl FnOnce(Id, &mut S, &mut [CompletionItem]),
     ) -> bool {
         let Some(slot) = self.slots.iter_mut().find(|s| s.latest_id() == Some(id)) else {
             return false;
@@ -321,12 +321,10 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
                 .take()
                 .expect("latest_id came from one of the two"),
         };
-        let previous = slot
-            .shown
-            .as_mut()
-            .and_then(Invocation::items_mut)
-            .unwrap_or(&mut []);
-        prepare(slot.source, &mut invocation.span, &mut items, previous);
+        prepare(slot.source, &mut invocation.span, &mut items);
+        if let Some(previous) = slot.shown.as_mut().and_then(Invocation::items_mut) {
+            CompletionItem::carry_resolutions(previous, &mut items);
+        }
         invocation.state = InvocationState::Shown { items, incomplete };
         slot.shown = Some(invocation);
         true
@@ -404,14 +402,16 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         Some(self.item(s, i))
     }
 
-    /// The key of the item behind ranked position `idx`.
-    pub(super) fn key_at(&self, idx: usize) -> Option<ItemKey> {
+    /// The source, key and item behind ranked position `idx`.
+    pub(super) fn keyed(&self, idx: usize) -> Option<(Id, ItemKey, &CompletionItem)> {
         let (s, i) = self.ranked_indices(idx)?;
-        let inv = self.slots[s as usize].shown.as_ref()?;
-        Some(ItemKey {
+        let slot = &self.slots[s as usize];
+        let inv = slot.shown.as_ref()?;
+        let key = ItemKey {
             invocation: inv.id,
             item: i,
-        })
+        };
+        Some((slot.source, key, &inv.items()[i as usize]))
     }
 
     /// The item `key` names, while the answer holding it is still shown.

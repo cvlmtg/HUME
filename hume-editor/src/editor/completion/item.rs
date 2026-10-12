@@ -117,8 +117,7 @@ impl CompletionItem {
         let kind = v
             .get("kind")
             .and_then(|k| lsp_types::CompletionItemKind::deserialize(k).ok());
-        let detail = v.get("detail").and_then(|x| x.as_str()).map(str::to_string);
-        let documentation = v.get("documentation").and_then(Documentation::from_json);
+        let (detail, documentation) = detail_and_documentation(v);
         let string_or_label = |key: &str| -> String {
             v.get(key)
                 .and_then(|x| x.as_str())
@@ -171,16 +170,12 @@ impl CompletionItem {
 
     /// Records the server's answer to a `completionItem/resolve` sent for
     /// this item while the buffer held the text at `version`.
-    pub(super) fn apply_resolved(&mut self, reply: &serde_json::Value, version: TextVersion) {
+    pub(super) fn apply_resolved(&mut self, reply: serde_json::Value, version: TextVersion) {
+        let (detail, documentation) = detail_and_documentation(&reply);
         self.resolution = Some(Resolution {
-            detail: reply
-                .get("detail")
-                .and_then(|x| x.as_str())
-                .map(str::to_string),
-            documentation: reply
-                .get("documentation")
-                .and_then(Documentation::from_json),
-            reply: reply.clone(),
+            detail,
+            documentation,
+            reply,
             version,
         });
     }
@@ -369,10 +364,19 @@ pub(in crate::editor) struct Resolution {
 
 /// An item's `documentation`, either LSP shape: a bare string is plaintext,
 /// a `MarkupContent` is markdown unless its `kind` is `plaintext`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::editor) struct Documentation {
     pub(in crate::editor) text: String,
     pub(in crate::editor) markdown: bool,
+}
+
+/// A wire item's `detail` and `documentation`, a completion answer's or a
+/// resolve's alike.
+fn detail_and_documentation(v: &serde_json::Value) -> (Option<String>, Option<Documentation>) {
+    (
+        v.get("detail").and_then(|x| x.as_str()).map(str::to_string),
+        v.get("documentation").and_then(Documentation::from_json),
+    )
 }
 
 impl Documentation {

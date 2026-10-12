@@ -161,7 +161,7 @@ fn doc_box_content_is_built_once_per_candidate() {
         .state
         .input
         .find::<crate::editor::input_stack::BufferCompletionLayer>()
-        .map(|layer| layer.doc.builds);
+        .map(|layer| layer.doc_builds());
     assert_eq!(builds, Some(2));
 }
 

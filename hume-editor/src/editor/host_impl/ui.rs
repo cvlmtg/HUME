@@ -64,7 +64,13 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         } else {
             hume_ui::popup::PopupLayout::Cursor
         };
-        let syntax = lang.and_then(|lang| self.state.build_markup_syntax(&lang, &text));
+        let syntax = lang.and_then(|lang| {
+            crate::editor::popup_syntax::build_markup_syntax(
+                &self.state.config.languages,
+                &lang,
+                &text,
+            )
+        });
         let model = PopupLayer::new(text, syntax, layout);
         let token = model.token();
         match kind {

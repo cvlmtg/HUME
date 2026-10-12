@@ -955,7 +955,8 @@ fn selected_doc(ed: &Editor) -> Option<String> {
     ed.state
         .input
         .buffer_completion()?
-        .selected_item()?
+        .selected_keyed()?
+        .1
         .documentation()
         .map(|d| d.text.clone())
 }

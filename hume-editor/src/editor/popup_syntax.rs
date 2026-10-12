@@ -2,7 +2,7 @@
 //! grammar's capture spans into the flat run sequence
 //! `hume_ui::popup::wrap_styled` wraps.
 //!
-//! Built once per content (`EditorState::build_markup_syntax`): at
+//! Built once per content ([`build_markup_syntax`]): at
 //! `show-popup!` time, or when the completion documentation box first shows
 //! an item's docs. There is nothing to incrementally reparse, since the
 //! content never changes after this.
@@ -12,27 +12,22 @@ use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
 use hume_engine::types::{ResolvedStyle, Scope};
 
-use crate::editor::EditorState;
+use hume_treesitter::registry::LanguageRegistry;
 
-impl EditorState {
-    /// Synchronously parses `text` through the grammar named `lang`, if one
-    /// is registered, `None` otherwise (no such grammar), which leaves the
-    /// popup rendering plain.
-    pub(in crate::editor) fn build_markup_syntax(
-        &self,
-        lang: &str,
-        text: &str,
-    ) -> Option<MarkupSyntax> {
-        let lang_id = self.config.languages.id_of(lang)?;
-        let bundle = std::sync::Arc::clone(self.config.languages.grammar(lang_id)?);
-        let text = hume_editing::text::BufferText::from(text);
-        let syntax = hume_treesitter::syntax::Syntax::attach_sync(
-            bundle,
-            &text,
-            &self.config.languages.grammar_snapshot(),
-        );
-        Some(MarkupSyntax { syntax, text })
-    }
+/// Synchronously parses `text` through the grammar named `lang`, if
+/// `languages` has one, `None` otherwise (no such grammar), which leaves the
+/// popup rendering plain.
+pub(in crate::editor) fn build_markup_syntax(
+    languages: &LanguageRegistry,
+    lang: &str,
+    text: &str,
+) -> Option<MarkupSyntax> {
+    let lang_id = languages.id_of(lang)?;
+    let bundle = std::sync::Arc::clone(languages.grammar(lang_id)?);
+    let text = hume_editing::text::BufferText::from(text);
+    let syntax =
+        hume_treesitter::syntax::Syntax::attach_sync(bundle, &text, &languages.grammar_snapshot());
+    Some(MarkupSyntax { syntax, text })
 }
 
 /// A `ui.popup` box's content for `text`: highlighted through `syntax` when

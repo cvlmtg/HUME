@@ -9,14 +9,11 @@ use crate::editor::message_log::{MessageLog, Severity};
 
 /// Replace `view.theme`, record the name it came from in `shown_theme` (empty
 /// for the fallback), and invalidate everything that caches against its baked
-/// colors: an open popup's per-width/style cache (`PopupLayer::content`), the
-/// one input to that cache besides `text`/`syntax` (which never change during
-/// a popup's lifetime) that can change out from under it, and the completion
-/// documentation box's content (`BufferCompletionLayer::doc`). The single chokepoint for replacing a *live*
-/// `view.theme`, so a future third replacement site can't forget the
-/// invalidation the way a hand-placed `popup.content = None` next to each
-/// write site could. `Editor::open`'s initial construction bypasses this on
-/// purpose; there is no popup yet to invalidate.
+/// colors: each input-stack layer drops its own
+/// ([`InputStack::theme_changed`]). The single chokepoint for replacing a
+/// *live* `view.theme`, so no replacement site can skip the invalidation.
+/// `Editor::open`'s initial construction bypasses this: there is no layer
+/// cache yet to invalidate.
 pub(in crate::editor) fn set_theme(
     view: &mut EngineView,
     shown_theme: &mut String,
@@ -26,10 +23,7 @@ pub(in crate::editor) fn set_theme(
 ) {
     view.theme = theme;
     name.clone_into(shown_theme);
-    if let Some(popup) = input.popup_mut() {
-        popup.content = None;
-    }
-    input.forget_completion_doc();
+    input.theme_changed();
 }
 
 /// Load a theme by name and apply it to the engine view.

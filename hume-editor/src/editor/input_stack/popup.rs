@@ -101,6 +101,10 @@ impl Layer for PopupLayer {
         None
     }
 
+    fn theme_changed(&mut self) {
+        self.content = None;
+    }
+
     fn handler(&self) -> LayerHandler {
         popup_input
     }

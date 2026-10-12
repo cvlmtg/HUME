@@ -304,7 +304,7 @@ fn an_items_docs_are_known_once_sent_with_it_or_resolved() {
     let mut bare = from_json(serde_json::json!({"label": "foo"})).expect("well-formed item");
     assert_eq!(bare.documentation, None);
     assert!(!bare.docs_known());
-    bare.apply_resolved(&serde_json::json!({"label": "foo"}), version());
+    bare.apply_resolved(serde_json::json!({"label": "foo"}), version());
     assert!(bare.docs_known());
 
     let documented = from_json(serde_json::json!({"label": "foo", "documentation": "Does foo."}))
@@ -324,7 +324,7 @@ fn the_doc_box_prefers_the_items_own_fields_over_the_resolved_ones() {
     let mut item = from_json(serde_json::json!({"label": "foo", "detail": "fn foo()"}))
         .expect("well-formed item");
     item.apply_resolved(
-        &serde_json::json!({
+        serde_json::json!({
             "label": "foo",
             "detail": "fn foo() -> u8",
             "documentation": {"kind": "markdown", "value": "Does foo."},
@@ -341,7 +341,7 @@ fn the_doc_box_prefers_the_items_own_fields_over_the_resolved_ones() {
 
     let mut bare = from_json(serde_json::json!({"label": "bar"})).expect("well-formed item");
     bare.apply_resolved(
-        &serde_json::json!({
+        serde_json::json!({
             "label": "bar",
             "detail": "fn bar()",
             "documentation": "Does bar.",
@@ -361,7 +361,7 @@ fn the_doc_box_prefers_the_items_own_fields_over_the_resolved_ones() {
 fn a_resolved_detail_leaves_the_menu_row_unchanged() {
     let mut item = from_json(serde_json::json!({"label": "foo"})).expect("well-formed item");
     item.apply_resolved(
-        &serde_json::json!({"label": "foo", "detail": "fn foo() -> u8"}),
+        serde_json::json!({"label": "foo", "detail": "fn foo() -> u8"}),
         version(),
     );
     assert_eq!(item.menu_row().trailing, None);
@@ -373,7 +373,7 @@ fn an_item_with_detail_but_no_documentation_has_no_doc_box() {
         .expect("well-formed item");
     assert_eq!(item.doc_box_text("rust"), None);
     item.apply_resolved(
-        &serde_json::json!({"label": "foo", "detail": "fn foo() -> u8"}),
+        serde_json::json!({"label": "foo", "detail": "fn foo() -> u8"}),
         version(),
     );
     assert_eq!(item.doc_box_text("rust"), None);
@@ -386,7 +386,7 @@ fn a_resolution_carries_only_to_a_new_item_with_the_same_label_and_kind() {
         from_json(serde_json::json!({"label": "bar", "kind": 3})).expect("well-formed item"),
     ];
     for item in &mut previous {
-        item.apply_resolved(&serde_json::json!({"documentation": "Docs."}), version());
+        item.apply_resolved(serde_json::json!({"documentation": "Docs."}), version());
     }
     let mut items = vec![
         from_json(serde_json::json!({"label": "foo", "kind": 3})).expect("well-formed item"),

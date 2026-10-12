@@ -196,6 +196,15 @@ pub(in crate::editor) trait Layer: Any {
     fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupLayer>> {
         None
     }
+
+    /// Drops whatever this layer built against the outgoing theme's
+    /// colors, rebuilt on the next frame. By default that is the popup in
+    /// its sticky slot, if any.
+    fn theme_changed(&mut self) {
+        if let Some(Some(popup)) = self.sticky_popup_slot_mut() {
+            popup.theme_changed();
+        }
+    }
 }
 
 /// A layer whose self-replace path takes the outgoing layer by value and
@@ -698,6 +707,13 @@ impl InputStack {
                  above it retires it first"
             );
             self.truncate(r);
+        }
+    }
+
+    /// Runs [`Layer::theme_changed`] on every layer, for a theme change.
+    pub(in crate::editor) fn theme_changed(&mut self) {
+        for (_, layer) in &mut self.layers {
+            layer.theme_changed();
         }
     }
 

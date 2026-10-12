@@ -98,7 +98,7 @@ impl MinibufSession {
         items: Vec<CompletionItem>,
         incomplete: bool,
     ) -> bool {
-        self.core.contribute(id, items, incomplete, |_, _, _, _| {})
+        self.core.contribute(id, items, incomplete, |_, _, _| {})
     }
 
     pub(in crate::editor) fn is_pending(&self) -> bool {

@@ -93,6 +93,26 @@ struct Wrapped {
     styled_rows: Option<Arc<Vec<StyledRow>>>,
 }
 
+impl Wrapped {
+    /// The popup showing these rows in the box at `rect`, scrolled to
+    /// `scroll` clamped to what its inner height leaves scrollable.
+    fn popup_state(&self, rect: Rect, scroll: usize, border: bool) -> PopupState {
+        let total_rows = self.lines.len();
+        let inner_h = rect.height.saturating_sub(2) as usize;
+        let scroll = scroll.min(total_rows.saturating_sub(inner_h));
+        PopupState {
+            lines: Arc::clone(&self.lines),
+            visible: super::menu_box::window_range(total_rows, scroll, inner_h),
+            rect,
+            selected: None,
+            total_rows,
+            scroll,
+            styled_rows: self.styled_rows.clone(),
+            border,
+        }
+    }
+}
+
 impl PopupContent {
     pub fn plain(text: &str) -> Self {
         Self {
@@ -358,19 +378,7 @@ pub fn resolve_popup(
         super::menu_box::outer_dims_from_width(wrapped.inner_width, total_rows, max_height);
     let (x, y, outer_w, outer_h) =
         resolve_popup_geometry(outer_w, outer_h, placement.anchor, placement.pane_rect);
-    let inner_h = outer_h.saturating_sub(2) as usize;
-    let scroll = scroll.min(total_rows.saturating_sub(inner_h));
-    let visible = super::menu_box::window_range(total_rows, scroll, inner_h);
-    PopupState {
-        lines: Arc::clone(&wrapped.lines),
-        visible,
-        rect: Rect::new(x, y, outer_w, outer_h),
-        selected: None,
-        total_rows,
-        scroll,
-        styled_rows: wrapped.styled_rows.clone(),
-        border,
-    }
+    wrapped.popup_state(Rect::new(x, y, outer_w, outer_h), scroll, border)
 }
 
 /// Narrowest side popup worth drawing, frame included.
@@ -420,25 +428,12 @@ pub fn resolve_side_popup(
     } else {
         beside.x - outer_w
     };
-    Some(PopupState {
-        lines: Arc::clone(&wrapped.lines),
-        visible: super::menu_box::window_range(total_rows, 0, (outer_h - 2) as usize),
-        rect: Rect::new(
-            x,
-            if above {
-                beside.bottom() - outer_h
-            } else {
-                beside.y
-            },
-            outer_w,
-            outer_h,
-        ),
-        selected: None,
-        total_rows,
-        scroll: 0,
-        styled_rows: wrapped.styled_rows.clone(),
-        border,
-    })
+    let y = if above {
+        beside.bottom() - outer_h
+    } else {
+        beside.y
+    };
+    Some(wrapped.popup_state(Rect::new(x, y, outer_w, outer_h), 0, border))
 }
 
 /// Resolve a docked popup's content for this frame: the [`PopupLayout::
