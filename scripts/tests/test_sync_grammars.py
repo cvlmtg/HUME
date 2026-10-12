@@ -1,9 +1,10 @@
-"""Tests for the LSP server parsing in scripts/sync-grammars.py."""
+"""Tests for the parsing and emission in scripts/sync-grammars.py."""
 
 import contextlib
 import importlib.util
 import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -174,23 +175,22 @@ class Emit(unittest.TestCase):
             ],
         )
 
-    def test_identity_rows_carry_roots(self):
+    def test_identity_rows_carry_detection_data_only(self):
         base = {"extensions": ["go"], "globs": [], "shebangs": []}
         rows = sync.emit_language_identities(
             [
                 {"name": "go", **base, "roots": ["go.work", "go.mod"], "language_id": None},
-                {"name": "gomod", **base, "roots": [], "language_id": None},
                 {"name": "tsx", **base, "roots": ["package.json"], "language_id": "typescriptreact"},
+                {"name": "sh", "extensions": [], "globs": ["*.sh"], "shebangs": ["bash"]},
             ]
         )
 
         self.assertEqual(
             rows,
             [
-                """(define-language! "go" '("go") #:roots '("go.work" "go.mod"))""",
-                """(define-language! "gomod" '("go"))""",
-                """(define-language! "tsx" '("go") #:language-id "typescriptreact" """
-                """#:roots '("package.json"))""",
+                """(define-language! "go" '("go"))""",
+                """(define-language! "sh" '() '("*.sh") '("bash"))""",
+                """(define-language! "tsx" '("go"))""",
             ],
         )
 
@@ -217,6 +217,208 @@ class Emit(unittest.TestCase):
     def test_the_feature_vocabulary_is_helixs(self):
         self.assertEqual(set(sync.LSP_FEATURES), HELIX_FEATURES)
         self.assertEqual(len(sync.LSP_FEATURES), len(HELIX_FEATURES))
+
+
+def parse_langs(languages, grammars=None):
+    with contextlib.redirect_stderr(io.StringIO()):
+        return sync.parse_languages({"language": languages}, grammars or {})
+
+
+class CommentTokens(unittest.TestCase):
+    def tokens(self, entry):
+        (lang,) = parse_langs([{"name": "x", **entry}])
+        return lang["comment_tokens"], lang["block_comment_tokens"]
+
+    def test_a_single_line_token_becomes_a_one_element_list(self):
+        self.assertEqual(self.tokens({"comment-token": "#"}), (["#"], []))
+
+    def test_a_bare_string_under_the_plural_key_becomes_a_one_element_list(self):
+        self.assertEqual(self.tokens({"comment-tokens": "--"}), (["--"], []))
+
+    def test_a_token_list_keeps_its_order(self):
+        self.assertEqual(
+            self.tokens({"comment-tokens": ["//", "///", "//!"]}), (["//", "///", "//!"], [])
+        )
+
+    def test_a_block_table_becomes_one_pair(self):
+        self.assertEqual(
+            self.tokens({"block-comment-tokens": {"start": "<!--", "end": "-->"}}),
+            ([], [("<!--", "-->")]),
+        )
+
+    def test_a_list_of_block_tables_keeps_its_order(self):
+        self.assertEqual(
+            self.tokens(
+                {
+                    "block-comment-tokens": [
+                        {"start": "/*", "end": "*/"},
+                        {"start": "/**", "end": "*/"},
+                    ]
+                }
+            ),
+            ([], [("/*", "*/"), ("/**", "*/")]),
+        )
+
+    def test_a_positional_start_end_pair_becomes_one_pair(self):
+        self.assertEqual(
+            self.tokens({"block-comment-tokens": ["#-", "-#"]}), ([], [("#-", "-#")])
+        )
+
+    def test_no_tokens_gives_empty_lists(self):
+        self.assertEqual(self.tokens({}), ([], []))
+
+    def test_a_line_token_that_is_not_a_string_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            self.tokens({"comment-token": 3})
+
+    def test_a_block_table_without_an_end_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            self.tokens({"block-comment-tokens": {"start": "/*"}})
+
+    def test_a_three_string_block_list_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            self.tokens({"block-comment-tokens": ["/*", "*/", "x"]})
+
+
+class LanguageGrammar(unittest.TestCase):
+    GRAMMARS = {
+        "javascript": {"url": "https://js", "rev": "r1", "subpath": ""},
+        "markdown_inline": {"url": "https://md", "rev": "r2", "subpath": "tree-sitter-markdown-inline"},
+    }
+
+    def grammar_of(self, entry):
+        (lang,) = parse_langs([entry], self.GRAMMARS)
+        return lang["grammar"]
+
+    def test_a_language_uses_the_grammar_of_its_own_name(self):
+        self.assertEqual(
+            self.grammar_of({"name": "javascript"}),
+            {"url": "https://js", "rev": "r1", "sym": "tree_sitter_javascript", "subpath": ""},
+        )
+
+    def test_a_language_naming_another_grammar_gets_that_grammars_source_and_symbol(self):
+        self.assertEqual(
+            self.grammar_of({"name": "jsx", "grammar": "javascript"}),
+            {"url": "https://js", "rev": "r1", "sym": "tree_sitter_javascript", "subpath": ""},
+        )
+
+    def test_the_symbol_replaces_dashes_in_the_grammar_name(self):
+        grammars = {"glimmer-javascript": {"url": "u", "rev": "r", "subpath": ""}}
+        (lang,) = parse_langs([{"name": "gjs", "grammar": "glimmer-javascript"}], grammars)
+
+        self.assertEqual(lang["grammar"]["sym"], "tree_sitter_glimmer_javascript")
+
+    def test_a_language_with_no_git_grammar_has_none(self):
+        self.assertIsNone(self.grammar_of({"name": "cabal"}))
+
+
+class LanguageNames(unittest.TestCase):
+    def test_names_differing_only_in_case_are_fatal(self):
+        langs = parse_langs([{"name": "nix"}, {"name": "Nix"}])
+
+        with self.assertRaises(SystemExit):
+            sync.check_language_names(langs)
+
+    def test_a_name_with_a_path_separator_is_fatal(self):
+        langs = parse_langs([{"name": "a/b"}])
+
+        with self.assertRaises(SystemExit):
+            sync.check_language_names(langs)
+
+    def test_dotted_names_are_accepted(self):
+        sync.check_language_names(parse_langs([{"name": "markdown.inline"}, {"name": "robots.txt"}]))
+
+
+class EmitLanguageData(unittest.TestCase):
+    def test_every_key_in_its_fixed_order(self):
+        lang = {
+            "comment_tokens": ["//", "///"],
+            "block_comment_tokens": [("/*", "*/"), ("/**", "*/")],
+            "language_id": "typescriptreact",
+            "roots": ["package.json", "tsconfig.json"],
+            "grammar": {"url": "https://ts", "rev": "r", "sym": "tree_sitter_tsx", "subpath": "tsx"},
+        }
+
+        self.assertEqual(
+            sync.emit_language_data(lang),
+            [
+                '((comment-tokens "//" "///")',
+                ' (block-comment-tokens ("/*" . "*/") ("/**" . "*/"))',
+                ' (language-id . "typescriptreact")',
+                ' (roots "package.json" "tsconfig.json")',
+                ' (grammar "https://ts" "r" "tree_sitter_tsx" "tsx"))',
+            ],
+        )
+
+    def test_absent_values_are_omitted(self):
+        lang = {
+            "comment_tokens": ["#"],
+            "block_comment_tokens": [],
+            "language_id": None,
+            "roots": [],
+            "grammar": None,
+        }
+
+        self.assertEqual(sync.emit_language_data(lang), ['((comment-tokens "#"))'])
+
+    def test_a_language_with_no_values_is_the_empty_list(self):
+        lang = {
+            "comment_tokens": [],
+            "block_comment_tokens": [],
+            "language_id": None,
+            "roots": [],
+            "grammar": None,
+        }
+
+        self.assertEqual(sync.emit_language_data(lang), ["()"])
+
+
+class WriteLanguageFiles(unittest.TestCase):
+    LANG = {
+        "name": "markdown.inline",
+        "comment_tokens": [],
+        "block_comment_tokens": [("<!--", "-->")],
+        "language_id": None,
+        "roots": [],
+        "grammar": None,
+    }
+
+    def write(self, directory):
+        with contextlib.redirect_stderr(io.StringIO()):
+            sync.write_language_files(directory, "abc123", [self.LANG])
+
+    def test_writes_one_file_per_language_with_its_header(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "languages"
+
+            self.write(directory)
+
+            text = (directory / "markdown.inline.scm").read_text(encoding="utf-8")
+        self.assertEqual(
+            text,
+            ";;; runtime/scheme/languages/markdown.inline.scm — HUME bundled language data.\n"
+            ";;; Generated — do not hand-edit. Record format: README.md, parent directory.\n"
+            ";;; Source: helix-editor/helix languages.toml @ abc123\n"
+            "\n"
+            '((block-comment-tokens ("<!--" . "-->")))\n',
+        )
+
+    def test_removes_a_file_for_a_language_that_is_gone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "gone.scm").write_text("()\n", encoding="utf-8")
+
+            self.write(directory)
+
+            self.assertEqual(sorted(p.name for p in directory.iterdir()), ["markdown.inline.scm"])
+
+    def test_a_file_that_is_not_scm_is_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "notes.txt").write_text("hand-written\n", encoding="utf-8")
+
+            with self.assertRaises(SystemExit):
+                self.write(directory)
 
 
 if __name__ == "__main__":

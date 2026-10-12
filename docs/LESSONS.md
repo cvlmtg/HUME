@@ -106,6 +106,9 @@ numbers directly.
   second copy of what the new owner now holds.
 - **L37** — Helix and Kakoune are the reference editors for selection and
   text-object behaviour. Never cite Vim as the model for how HUME should behave.
+- **L38** — Analyse the change the user proposed. Restructuring something they
+  did not name is a separate proposal; offer it as optional, never as a
+  requirement of theirs.
 
 ---
 
@@ -1439,3 +1442,17 @@ Helix or Kakoune. Otherwise argue from HUME's own settings and symmetry: under
 
 **Files:** `hume-ops/src/word_unit.rs` (`word_unit_at`), `CHANGELOG.md`,
 `docs/learning/inner-vs-around.md`.
+
+## L38 — A design reply split a file the user never proposed to split (2026-10-11)
+
+**Root cause:** The user proposed a `runtime/scheme/languages/` directory with
+one file per language, for comment tokens and grammar sources. The reply read
+that as splitting `languages.scm` itself, then argued that detection had to
+stay central, against a change nobody had asked for. The user had to correct
+the premise before the real questions could be answered.
+
+**Prevention rule:** Analyse the change as proposed. If an existing file or
+structure could also change, say so as a separate, optional proposal with its
+own reason, and keep it out of the analysis of the user's idea.
+
+**Files:** `runtime/scheme/languages.scm`, `runtime/scheme/README.md`.

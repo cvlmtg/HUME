@@ -11,11 +11,12 @@ pub(in crate::editor) use parse::ensure_syntax_current;
 
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_scripting::GrammarReg;
-use hume_treesitter::registry::{LanguageId, QueryPaths, detect_language};
+use hume_treesitter::registry::{ConfigureOutcome, LanguageId, QueryPaths, detect_language};
 
 use super::Editor;
 use super::EditorState;
 use super::event::EditorEvent;
+use super::host_impl::EditorHostImpl;
 
 /// Compile and attach the grammar `reg` describes, returning the language's
 /// interned id.
@@ -115,6 +116,9 @@ impl Editor {
         }
         let lang_name = new_lang.map(|id| self.state.config.languages.name_of(id).to_owned());
         self.state.buffers.get_mut(bid).language = new_lang;
+        if let Some(id) = new_lang {
+            self.load_bundled_language(id);
+        }
         // Activate language-matched plugins after the write so handlers are
         // registered in time for the OnLanguageSet fire below.
         if let Some(name) = lang_name.as_deref() {
@@ -139,6 +143,35 @@ impl Editor {
         // Attach this buffer to the servers its (possibly new, possibly
         // absent) language plans, detaching any it no longer does.
         self.state.lsp_reconcile_buffer(&self.view, bid);
+    }
+
+    /// Read `id`'s bundled data file (`<runtime>/scheme/languages/<name>.scm`)
+    /// the first time a buffer uses the language in this configuration, and
+    /// fill each field configuration left unset. A missing file, runtime
+    /// directory or scripting host leaves the language without bundled data;
+    /// a malformed file is reported and does the same. Either way the file is
+    /// not read again until `:reload-config` rebuilds the registry.
+    fn load_bundled_language(&mut self, id: LanguageId) {
+        if self.state.config.languages.bundled_loaded(id) {
+            return;
+        }
+        let name = self.state.config.languages.name_of(id).to_owned();
+        let bundled = self.scripting.as_mut().map(|scripting| {
+            let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
+            scripting.bundled_language(&name, &mut host)
+        });
+        let (roots, lsp_language_id) = match bundled {
+            Some(Ok(Some(lang))) => (lang.roots, lang.lsp_language_id),
+            None | Some(Ok(None)) => (Vec::new(), None),
+            Some(Err(e)) => {
+                self.report(super::Severity::Error, format!("language data: {e}"));
+                (Vec::new(), None)
+            }
+        };
+        self.state
+            .config
+            .languages
+            .fill_bundled(id, roots, lsp_language_id);
     }
 
     pub(super) fn detect_and_set_language(&mut self, bid: BufferId) {
@@ -228,12 +261,9 @@ impl Editor {
                     extensions,
                     globs,
                     shebangs,
-                    lsp_language_id,
-                    roots,
                 } => {
                     let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
                     let shebangs_ref: Vec<&str> = shebangs.iter().map(String::as_str).collect();
-                    let roots_ref: Vec<&str> = roots.iter().map(String::as_str).collect();
                     let mut valid_globs: Vec<globset::Glob> = Vec::with_capacity(globs.len());
                     for g in &globs {
                         match globset::Glob::new(g) {
@@ -249,11 +279,14 @@ impl Editor {
                         &exts,
                         &valid_globs,
                         &shebangs_ref,
-                        lsp_language_id.as_deref(),
-                        &roots_ref,
                     );
                     any_identity = true;
                 }
+                PendingLanguageReg::Configure {
+                    name,
+                    roots,
+                    lsp_language_id,
+                } => self.configure_language(&name, roots, lsp_language_id),
                 PendingLanguageReg::Grammar(reg) => {
                     match attach_grammar_from_reg(&mut self.state, &mut self.view, &reg) {
                         Ok(id) => grammar_sweeps.push(id),
@@ -270,6 +303,47 @@ impl Editor {
         }
         if !grammar_sweeps.is_empty() {
             self.sweep_buffers_for_grammars(grammar_sweeps);
+        }
+    }
+
+    /// Apply one `configure-language!` call. A name with no identity is an
+    /// error; a field that already holds a configured value keeps it, and the
+    /// ignored write is logged as a warning.
+    fn configure_language(
+        &mut self,
+        name: &str,
+        roots: Option<Vec<String>>,
+        lsp_language_id: Option<String>,
+    ) {
+        let languages = &mut self.state.config.languages;
+        let Some(id) = languages
+            .id_of(name)
+            .filter(|_| languages.by_name(name).is_some())
+        else {
+            self.report(
+                super::Severity::Error,
+                format!("configure-language!: language '{name}' is not defined"),
+            );
+            return;
+        };
+        let mut ignored = Vec::new();
+        if let Some(roots) = roots
+            && languages.configure_roots(id, roots) == ConfigureOutcome::Ignored
+        {
+            ignored.push("roots");
+        }
+        if let Some(lsp_language_id) = lsp_language_id
+            && languages.configure_lsp_language_id(id, lsp_language_id) == ConfigureOutcome::Ignored
+        {
+            ignored.push("language-id");
+        }
+        for field in ignored {
+            self.report(
+                super::Severity::Warning,
+                format!(
+                    "configure-language! '{name}': {field} is already configured; this value is ignored"
+                ),
+            );
         }
     }
 }

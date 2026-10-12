@@ -20,7 +20,7 @@ use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// `<repo>/runtime/scheme/`: the runtime catalog directory.
+/// `<repo>/runtime/scheme/`: the runtime Scheme directory.
 pub(super) fn runtime_scheme_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -28,22 +28,36 @@ pub(super) fn runtime_scheme_dir() -> PathBuf {
         .join("runtime/scheme")
 }
 
-/// Read `(url, rev)` for grammar `name` from `grammar-sources.scm`, the same
-/// catalog core's `grammars.scm` reads at runtime. Avoids duplicating pins
-/// into the test (they drift otherwise). Entries are 5-tuples of quoted
-/// strings:
-///   ("name" "url" "rev" "symbol" "subpath")
-/// so splitting a matched line on `"` puts the values at odd indices.
+/// `(url rev symbol subpath)` of the grammar language `name` uses, from its
+/// shipped data file, read by `bundled-language-grammar` the way the editor
+/// and `core:plum` read it. Avoids duplicating pins into the test (they drift
+/// otherwise).
+pub(super) fn shipped_grammar(name: &str) -> Vec<String> {
+    let mut scripting = hume_scripting::ScriptingHost::new(&repo_runtime_dirs());
+    let source = scripting
+        .eval_source_for_value(
+            &format!("(bundled-language-grammar {name:?})"),
+            &mut crate::testing::MockHost::new(),
+        )
+        .unwrap_or_else(|e| panic!("shipped data for '{name}' must be well-formed: {e}"));
+    match source {
+        steel::rvals::SteelVal::ListV(fields) => fields
+            .iter()
+            .map(|field| match field {
+                steel::rvals::SteelVal::StringV(s) => s.to_string(),
+                other => panic!("grammar fields must be strings, got {other:?}"),
+            })
+            .collect(),
+        other => panic!("no shipped grammar for '{name}': {other:?}"),
+    }
+}
+
+/// `(url, rev)` of the grammar language `name` uses; see [`shipped_grammar`].
 pub(super) fn grammar_source(name: &str) -> (String, String) {
-    let catalog = std::fs::read_to_string(runtime_scheme_dir().join("grammar-sources.scm"))
-        .expect("read grammar-sources.scm");
-    let needle = format!("(\"{name}\" ");
-    let line = catalog
-        .lines()
-        .find(|l| l.trim_start().starts_with(&needle))
-        .unwrap_or_else(|| panic!("no grammar-sources.scm entry for '{name}'"));
-    let fields: Vec<&str> = line.split('"').collect();
-    (fields[3].to_string(), fields[5].to_string())
+    let mut fields = shipped_grammar(name).into_iter();
+    let url = fields.next().expect("a grammar has a url");
+    let rev = fields.next().expect("a grammar has a rev");
+    (url, rev)
 }
 
 /// Read the pinned helix commit SHA from `helix-pin.scm` (one quoted literal,
@@ -79,7 +93,7 @@ fn attach_then_set_language_attaches_syntax() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
@@ -118,7 +132,7 @@ fn reset_config_state_clears_buffer_syntax_not_just_language() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
@@ -148,7 +162,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
@@ -176,7 +190,7 @@ fn sweep_attaches_syntax_on_matching_language() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     // Set language BEFORE grammar is attached: no syntax yet.
     let lang = ed.state.config.languages.intern("json");
@@ -204,7 +218,7 @@ fn sweep_no_op_for_nonmatching_language() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     // Set language but don't attach grammar yet: parser stays absent.
     let lang = ed.state.config.languages.intern("json");
@@ -238,7 +252,7 @@ fn reparse_advances_parsed_gen_after_edit() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
@@ -317,7 +331,7 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
@@ -348,7 +362,7 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     assert!(
         !ed.state.config.languages.has_grammar("json"),
@@ -384,7 +398,7 @@ fn closing_the_last_buffer_clears_engine_syntax_state() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
@@ -427,7 +441,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
@@ -489,7 +503,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
@@ -607,7 +621,7 @@ fn parse_worker_result_is_async_then_installed() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
@@ -668,12 +682,12 @@ fn grammar_swap_clears_stale_in_flight() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[], None)
+        .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
@@ -706,11 +720,11 @@ fn grammar_swap_clears_stale_in_flight() {
     );
 }
 
-/// `grammar_source` / `helix_pin` must parse real values out of the runtime
-/// catalog so the e2e installs the actually-pinned revision. Always runs (no
-/// network), so a malformed catalog or a broken parser is caught in normal CI.
+/// `grammar_source` / `helix_pin` must read real values out of the shipped
+/// runtime data so the e2e installs the actually-pinned revision. Always runs
+/// (no network), so malformed shipped data is caught in normal CI.
 #[test]
-fn catalog_parsing_extracts_json_pins() {
+fn shipped_data_reading_extracts_json_pins() {
     let (url, rev) = grammar_source("json");
     assert_eq!(url, "https://github.com/tree-sitter/tree-sitter-json");
     assert_eq!(
@@ -755,7 +769,7 @@ fn rust_function_highlight_snapshot() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[], None)
+        .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
     attach_fixture_grammar(&mut ed, "rust", "tree_sitter_rust");
     // Bake after scopes are interned so theme.resolve() returns correct styles.

@@ -161,5 +161,7 @@ fn steel_path_literal_rejects_a_path_containing_a_quote() {
     );
 }
 
+mod language_data;
+
 #[cfg(unix)]
 mod unix;

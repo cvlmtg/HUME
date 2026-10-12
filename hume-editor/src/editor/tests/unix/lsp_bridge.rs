@@ -260,7 +260,7 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
     ed.state
         .config
         .languages
-        .register_identity("rust", &["rs"], &[], &[], None)
+        .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
 
     let mut host = ScriptingHost::new(&Dirs::none());

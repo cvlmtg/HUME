@@ -147,7 +147,7 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
         .state
         .config
         .languages
-        .register_identity("python", &["py"], &[], &[], None)
+        .register_identity("python", &["py"], &[], &[])
         .unwrap();
     let py = rig.root.join("x.py");
     std::fs::write(&py, "x\n").unwrap();

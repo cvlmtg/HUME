@@ -96,7 +96,7 @@ fn setup_two_servers(
         .state
         .config
         .languages
-        .register_identity("python", &["py"], &[], &[], None)
+        .register_identity("python", &["py"], &[], &[])
         .unwrap();
     let file_b = rig.root.join("main.py");
     std::fs::write(&file_b, "x = 1\n").unwrap();

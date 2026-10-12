@@ -17,8 +17,8 @@ use crate::textobjects::TextObjectsQuery;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct LanguageId(u32);
 
-/// Identity of one language: detection data (extensions, glob patterns,
-/// shebangs), the wire `languageId`, and its workspace root markers.
+/// Identity of one language: its detection data (extensions, glob patterns,
+/// shebangs).
 ///
 /// Immutable once registered: re-registration (`register_identity_no_rebuild`)
 /// replaces the whole record rather than mutating it in place. The name is
@@ -33,13 +33,69 @@ pub struct LanguageIdentity {
     pub globs: Vec<Glob>,
     /// Shebang substrings to match (e.g. `"python"`, `"node"`).
     pub shebangs: Vec<String>,
+}
+
+/// Where a per-language value came from. A configured value (`init.scm` or a
+/// plugin) always beats a bundled one, whichever arrives first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SettingSource {
+    Configured,
+    Bundled,
+}
+
+#[derive(Debug)]
+struct Setting<T> {
+    value: T,
+    source: SettingSource,
+}
+
+/// Per-language values outside the identity: set by configuration, or filled
+/// from the language's bundled data file the first time a buffer uses it.
+/// Re-registering the identity leaves them in place.
+#[derive(Debug, Default)]
+struct LanguageConfig {
     /// Override for the wire `languageId` sent to language servers, when it
     /// differs from the name (e.g. `"tsx"` needs `"typescriptreact"`).
-    /// `None` means callers should fall back to the name (see `lsp_language_id_of`).
-    pub lsp_language_id: Option<String>,
+    lsp_language_id: Option<Setting<String>>,
     /// File or directory names that make a directory this language's
     /// workspace root (e.g. `"Cargo.toml"`, `".git"`).
-    pub roots: Vec<String>,
+    roots: Option<Setting<Vec<String>>>,
+    /// Whether the bundled data file has been read, found or not.
+    bundled_loaded: bool,
+}
+
+/// Result of a configured write. The first configured value for a field
+/// wins; a later one is `Ignored`.
+#[must_use]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConfigureOutcome {
+    Applied,
+    Ignored,
+}
+
+/// Store a configured `value` unless the slot already holds a configured one.
+fn configure<T>(slot: &mut Option<Setting<T>>, value: T) -> ConfigureOutcome {
+    if slot
+        .as_ref()
+        .is_some_and(|s| s.source == SettingSource::Configured)
+    {
+        return ConfigureOutcome::Ignored;
+    }
+    *slot = Some(Setting {
+        value,
+        source: SettingSource::Configured,
+    });
+    ConfigureOutcome::Applied
+}
+
+/// Store a bundled `value` only into an empty slot.
+fn fill<T>(slot: &mut Option<Setting<T>>, value: T) {
+    if slot.is_none() {
+        *slot = Some(Setting {
+            value,
+            source: SettingSource::Bundled,
+        });
+    }
 }
 
 /// Tree-sitter grammar + precompiled highlight query, shared across all buffers
@@ -89,14 +145,16 @@ impl<'a> QueryPaths<'a> {
 
 /// Global registry of configured language identities. Lives on `Editor`.
 ///
-/// `ids`/`names`/`identities`/`grammars` are the interner: dense, append-only,
-/// all index-aligned by `LanguageId.0`. `identities.len() == grammars.len() ==
-/// names.len()` always: `intern` pushes one entry to each.
+/// `ids`/`names`/`identities`/`configs`/`grammars` are the interner: dense,
+/// append-only, all index-aligned by `LanguageId.0`. `identities.len() ==
+/// configs.len() == grammars.len() == names.len()` always: `intern` pushes one
+/// entry to each.
 pub struct LanguageRegistry {
     ids: FxHashMap<Arc<str>, LanguageId>,
     names: Vec<Arc<str>>,
     /// `None` = interned but no identity registered.
     identities: Vec<Option<LanguageIdentity>>,
+    configs: Vec<LanguageConfig>,
     /// The `LanguageId -> GrammarBundle` map.
     grammars: Vec<Option<Arc<GrammarBundle>>>,
     /// Detection indices, never rebuilt on `attach_grammar`, only on
@@ -178,6 +236,7 @@ impl Default for LanguageRegistry {
             ids: FxHashMap::default(),
             names: Vec::new(),
             identities: Vec::new(),
+            configs: Vec::new(),
             grammars: Vec::new(),
             by_ext: FxHashMap::default(),
             compiled_globs: GlobSet::empty(),
@@ -217,6 +276,7 @@ impl LanguageRegistry {
         let owned: Arc<str> = Arc::from(name);
         self.names.push(Arc::clone(&owned));
         self.identities.push(None);
+        self.configs.push(LanguageConfig::default());
         self.grammars.push(None);
         self.ids.insert(owned, id);
         id
@@ -234,28 +294,71 @@ impl LanguageRegistry {
     }
 
     /// The `languageId` LSP servers expect for `id`: the language name
-    /// unless an override was registered. HUME's names mirror Helix's, which
-    /// diverge from the LSP spec's well-known identifiers for a handful of
-    /// languages (`tsx` → `typescriptreact`).
+    /// unless an override was configured or bundled. HUME's names mirror
+    /// Helix's, which diverge from the LSP spec's well-known identifiers for a
+    /// handful of languages (`tsx` → `typescriptreact`).
     pub fn lsp_language_id_of(&self, id: LanguageId) -> &str {
-        self.identities[id.0 as usize]
+        self.configs[id.0 as usize]
+            .lsp_language_id
             .as_ref()
-            .and_then(|i| i.lsp_language_id.as_deref())
-            .unwrap_or_else(|| self.name_of(id))
+            .map_or_else(|| self.name_of(id), |s| s.value.as_str())
     }
 
-    /// The workspace root markers registered for `id`; empty when `id` has no
-    /// identity.
+    /// The workspace root markers configured or bundled for `id`; empty when
+    /// there are none.
     pub fn roots_of(&self, id: LanguageId) -> &[String] {
-        self.identities[id.0 as usize]
+        self.configs[id.0 as usize]
+            .roots
             .as_ref()
-            .map_or(&[], |i| i.roots.as_slice())
+            .map_or(&[], |s| s.value.as_slice())
+    }
+
+    // ── Per-language configuration ────────────────────────────────────────────
+
+    /// Set `id`'s root markers from configuration.
+    pub fn configure_roots(&mut self, id: LanguageId, roots: Vec<String>) -> ConfigureOutcome {
+        configure(&mut self.configs[id.0 as usize].roots, roots)
+    }
+
+    /// Set `id`'s wire `languageId` from configuration.
+    pub fn configure_lsp_language_id(
+        &mut self,
+        id: LanguageId,
+        lsp_language_id: String,
+    ) -> ConfigureOutcome {
+        configure(
+            &mut self.configs[id.0 as usize].lsp_language_id,
+            lsp_language_id,
+        )
+    }
+
+    /// Whether `id`'s bundled data file has been read.
+    pub fn bundled_loaded(&self, id: LanguageId) -> bool {
+        self.configs[id.0 as usize].bundled_loaded
+    }
+
+    /// Record that `id`'s bundled data file has been read, filling each field
+    /// it gives a value for that is still unset. Empty `roots` and `None`
+    /// leave a field unset.
+    pub fn fill_bundled(
+        &mut self,
+        id: LanguageId,
+        roots: Vec<String>,
+        lsp_language_id: Option<String>,
+    ) {
+        let config = &mut self.configs[id.0 as usize];
+        config.bundled_loaded = true;
+        if !roots.is_empty() {
+            fill(&mut config.roots, roots);
+        }
+        if let Some(lsp_language_id) = lsp_language_id {
+            fill(&mut config.lsp_language_id, lsp_language_id);
+        }
     }
 
     // ── Identity ──────────────────────────────────────────────────────────────
 
-    /// Register a language identity: name, extensions, glob patterns, shebangs,
-    /// LSP `languageId` override. It carries no root markers.
+    /// Register a language identity: name, extensions, glob patterns, shebangs.
     ///
     /// Returns `Err(RegisterError::GlobBuild)` if the combined glob set would exceed
     /// globset's NFA size limit.
@@ -268,16 +371,8 @@ impl LanguageRegistry {
         extensions: &[&str],
         globs: &[Glob],
         shebangs: &[&str],
-        lsp_language_id: Option<&str>,
     ) -> Result<LanguageId, RegisterError> {
-        let id = self.register_identity_no_rebuild(
-            name,
-            extensions,
-            globs,
-            shebangs,
-            lsp_language_id,
-            &[],
-        );
+        let id = self.register_identity_no_rebuild(name, extensions, globs, shebangs);
         self.rebuild_glob_set()?;
         Ok(id)
     }
@@ -287,8 +382,8 @@ impl LanguageRegistry {
     /// Intended for batch registration: call this N times then call
     /// `rebuild_glob_set` once, avoiding O(N²) NFA constructions at startup.
     ///
-    /// Replaces extensions/globs/shebangs/lsp_language_id/roots for `name`; an
-    /// already-attached grammar is kept. Identity and grammar are independent
+    /// Replaces extensions/globs/shebangs for `name`; an already-attached
+    /// grammar and the per-language configuration are kept. Identity and grammar are independent
     /// facts about a language, and re-registering one must not silently undo
     /// the other. (Symmetric with `attach_grammar`, which likewise preserves an
     /// existing identity.) A grammar only ever changes via `attach_grammar`.
@@ -298,8 +393,6 @@ impl LanguageRegistry {
         extensions: &[&str],
         globs: &[Glob],
         shebangs: &[&str],
-        lsp_language_id: Option<&str>,
-        roots: &[&str],
     ) -> LanguageId {
         let id = self.intern(name);
         if let Some(old) = self.identities[id.0 as usize].take() {
@@ -309,8 +402,6 @@ impl LanguageRegistry {
             extensions: extensions.iter().map(|s| s.to_string()).collect(),
             globs: globs.to_vec(),
             shebangs: shebangs.iter().map(|s| s.to_string()).collect(),
-            lsp_language_id: lsp_language_id.map(str::to_owned),
-            roots: roots.iter().map(|s| s.to_string()).collect(),
         };
         for ext in &new_identity.extensions {
             self.by_ext.insert(ext.clone(), id);

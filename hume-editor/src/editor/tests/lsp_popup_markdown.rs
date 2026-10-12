@@ -19,7 +19,7 @@ fn register_markdown(ed: &mut Editor) {
     ed.state
         .config
         .languages
-        .register_identity("markdown", &["md"], &[], &[], None)
+        .register_identity("markdown", &["md"], &[], &[])
         .unwrap();
     attach_fixture_grammar(ed, "markdown", "tree_sitter_markdown");
 }

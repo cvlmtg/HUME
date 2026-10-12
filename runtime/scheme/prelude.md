@@ -10,7 +10,8 @@ and inside plugin modules loaded via `(require)`.
 
 Identifiers prefixed `%` are internal Rust forms. User code should always call the unprefixed
 macro or function the prelude wraps instead: `define-language!` over `%define-language!`,
-`register-grammar!` over `%register-grammar!`.
+`configure-language!` over `%configure-language!`, `register-grammar!` over
+`%register-grammar!`.
 
 ## What is deliberately not here
 
@@ -23,8 +24,8 @@ it.
 
 ## What it defines
 
-Six forms: `bind-keys!`, `bind-keys-extend!`, `unbind-keys!`, `define-language!`,
-`register-grammar!`, `configure-statusline!`. For signatures and usage examples, see the user manual:
+Seven forms: `bind-keys!`, `bind-keys-extend!`, `unbind-keys!`, `define-language!`,
+`configure-language!`, `register-grammar!`, `configure-statusline!`. For signatures and usage examples, see the user manual:
 - [Configuration — Key bindings](https://cvlmtg.github.io/HUME/configuration.html#key-bindings)
 - [Configuration — Statusline](https://cvlmtg.github.io/HUME/configuration.html#statusline)
 - [Syntax Highlighting — Teach HUME a new language](https://cvlmtg.github.io/HUME/syntax-highlighting.html#teach-hume-a-new-language)

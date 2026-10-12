@@ -3,12 +3,12 @@ use super::*;
 /// Core's `register-installed-grammars!` (`runtime/scheme/grammars.scm`)
 /// already ran before PLUM ever loaded (`init_scripting` evaluates it
 /// unconditionally), walked the empty `<data>/grammars/`, found nothing,
-/// and never touched the catalog at all. This test then loads `core:plum`
+/// and read no language data at all. This test then loads `core:plum`
 /// itself, checking its `grammars.scm` (the install pipeline) compiles
 /// cleanly and its bindings resolve against those same core bindings: a
 /// pure Scheme-syntax/logic smoke test, not an installation test.
 #[test]
-fn plum_plugin_loads_with_real_grammar_catalog() {
+fn plum_plugin_loads_with_real_language_data() {
     let _path = path_reader();
 
     let data_tmp = tempfile::tempdir().unwrap();
@@ -24,7 +24,7 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
         .collect();
     assert!(
         errors.is_empty(),
-        "loading core:plum against the real grammar-sources.scm must not error: {errors:?}"
+        "loading core:plum against the real language data must not error: {errors:?}"
     );
 }
 
@@ -287,17 +287,17 @@ fn plum_install_grammar_unreadable_query_fails_cleanly() {
         ed.state
             .status_msg
             .as_deref()
-            .is_some_and(|m| m.contains(r#"unknown grammar "nosuchlang""#)),
+            .is_some_and(|m| m.contains(r#"no grammar for language "nosuchlang""#)),
         "a later command must still run: {:?}",
         ed.state.status_msg
     );
 }
 
-/// `:plum-install-grammar nosuchlang`: a name absent from the catalog
-/// reports the unknown-grammar message instead of failing deep inside the
-/// install pipeline with an opaque hash-lookup error. This validation runs
-/// before the stale-source `delete-dir` purge in `plum/install-grammar`, so
-/// an unknown name deletes nothing.
+/// `:plum-install-grammar nosuchlang`: a language with no bundled grammar
+/// reports the no-grammar message instead of failing deep inside the
+/// install pipeline. This validation runs before the stale-source
+/// `delete-dir` purge in `plum/install-grammar`, so an unknown name deletes
+/// nothing.
 #[test]
 fn plum_install_grammar_unknown_name_warns() {
     let _path = path_reader();
@@ -312,8 +312,8 @@ fn plum_install_grammar_unknown_name_warns() {
         ed.state
             .status_msg
             .as_deref()
-            .is_some_and(|m| m.contains(r#"unknown grammar "nosuchlang""#)),
-        "expected unknown-grammar message naming 'nosuchlang', got: {:?}",
+            .is_some_and(|m| m.contains(r#"no grammar for language "nosuchlang""#)),
+        "expected no-grammar message naming 'nosuchlang', got: {:?}",
         ed.state.status_msg
     );
 }
@@ -338,7 +338,7 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
         ed.state
             .status_msg
             .as_deref()
-            .is_some_and(|m| m.contains(r#"unknown grammar "nosuchlang""#)),
+            .is_some_and(|m| m.contains(r#"no grammar for language "nosuchlang""#)),
         "typed arg must win over buffer language 'rust', got: {:?}",
         ed.state.status_msg
     );
@@ -500,7 +500,7 @@ fn plum_install_grammar_resolves_helix_inherits_chain() {
     ed.state
         .config
         .languages
-        .register_identity("tsx", &["tsx"], &[], &[], None)
+        .register_identity("tsx", &["tsx"], &[], &[])
         .unwrap();
 
     type_cmd(&mut ed, ":plum-install-grammar tsx");

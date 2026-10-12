@@ -93,7 +93,7 @@ Mason pin (`scripts/sync-lsp-sources.py`), and `requirements.scm` from `sources.
   present only when the server has one.
 
 **`language-servers.scm`**: each language's servers in priority
-order. Root markers are not here: they belong to the language (`define-language! #:roots`).
+order. Root markers are not here: they belong to the language (`runtime/scheme/languages/<name>.scm`, or `configure-language!`'s `#:roots`).
 
 ```scheme
 (lang-name (servers (server-name [(only-features feature…) | (except-features feature…)])…))

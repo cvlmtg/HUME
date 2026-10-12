@@ -148,7 +148,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: tests/fixtures/grammars
-          key: grammars-${{ runner.os }}-${{ hashFiles('scripts/fetch-test-grammars.sh','runtime/scheme/grammar-sources.scm') }}
+          key: grammars-${{ runner.os }}-${{ hashFiles('scripts/fetch-test-grammars.sh','runtime/scheme/languages/*.scm') }}
 
       - name: Install tree-sitter CLI
         run: npm install -g tree-sitter-cli

@@ -10,6 +10,8 @@
 - `repeat-last-action` runs only from a key: `call!` of it raises an error.
 - `word-selects-whitespace` takes `off`, `before` (the default) or `after` instead of `true`/`false`. `maw`/`maW` follow it too: with `off` they select the bare word, like `miw`/`miW`.
 - The bottom drawer moves one row with `Down`/`Up` instead of `Shift-Down`/`Shift-Up`; `j`/`k` still move the cursor in the buffer.
+- `define-language!` no longer takes `#:roots` or `#:language-id`: set them with the new `configure-language!`, after the `define-language!` that defines the language.
+- `:plum-install-grammar`, `:plum-list-grammars` and `plum-ensure-grammars` take and list language names. A grammar installed under a name that is not a language (such as `proto`, the grammar of `protobuf`) shows as an orphan; remove it with `:plum-cleanup-grammars` and install the language's instead.
 
 ### Editing
 - `.` reuses your answers to a `#:repeatable` command's character read, picker, prompt or menu instead of asking again.
@@ -21,6 +23,8 @@
 - With no `theme` set, HUME loads `sand` from `themes/`, so edits to `sand.toml` apply. The built-in copy is the fallback.
 
 ### Plugins & scripting
+- New `configure-language!` sets a language's project root markers and the identifier language servers know it by. The first value set wins, `init.scm` before plugins, and either one replaces HUME's built-in value; a value set later is ignored with a warning in `:messages`.
+- New `bundled-language-grammar` and `bundled-grammar-languages` read the grammars HUME ships for each language.
 - `call!` can pass a pattern to `search-forward`, `search-backward` and `sift-within`, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add`.
 
 ### Fixes

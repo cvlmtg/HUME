@@ -46,7 +46,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
         // loaded by this test's bare `ScriptingHost::new(&Dirs::none())`.
         r#"(register-lsp-server! "widget" #:command "widget-lsp")
            (set-buffer-option! (car (buffers)) "language" "widget")
-           (%define-language! "widget" '("widget") '() '() #f '())
+           (%define-language! "widget" '("widget") '() '())
            (define-command! "efx-noop" "" (lambda () 0))"#,
         r#"(declare-plugin! "user/efx" #:commands '("efx-noop"))"#,
     );
@@ -300,7 +300,7 @@ fn steel_open_buffer_detects_language() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[], None, &[]);
+        .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
     ed.state
         .config
         .languages

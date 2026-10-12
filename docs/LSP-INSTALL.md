@@ -42,14 +42,14 @@ arrived at.
 
 ## Architecture: two seeded data sources, two pins
 
-Both data sources are consumed the way `grammar-sources.scm` is produced today:
+Both data sources are consumed the way the per-language data files in `runtime/scheme/languages/` are produced:
 a pin file names an upstream revision, a sync script (dev-time, Python) regenerates
 pure-data sexpr files checked into the repo, and the runtime reads only the dumb data.
 No upstream format is ever parsed inside the editor.
 
 | Concern | Upstream | Pin | Generated data |
 |---|---|---|---|
-| **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/plugins/core/lsp-install/servers.scm`, `language-servers.scm` (and each language's root markers in `runtime/scheme/languages.scm`) |
+| **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/plugins/core/lsp-install/servers.scm`, `language-servers.scm` (and each language's root markers in `runtime/scheme/languages/<name>.scm`) |
 | **Installation** — where to download, per platform | `mason-org/mason-registry` (Apache-2.0; one `package.yaml` per tool, purl sources, per-platform assets; publishes compiled `registry.json` per release tag) | new `mason-pin.scm` (registry release tag) | `runtime/plugins/core/lsp-install/sources.scm` |
 
 One generated file per pin: a helix-pin bump touches only registration data, a mason-pin
@@ -69,7 +69,7 @@ server is guaranteed wired), resolve per-platform assets, and record a sha256 pe
 Scripts align with *pins*, not features (see `scripts/README.md`):
 
 - **`scripts/sync-grammars.py`** (existing, extended): already fetches `languages.toml` at
-  helix-pin and emits `languages.scm` + `grammar-sources.scm`; additionally emits
+  helix-pin and emits `languages.scm` + one `languages/<name>.scm` per language; additionally emits
   `servers.scm` and `language-servers.scm` from the same parsed TOML. One bump, one run, all helix-derived files
   move in one diff.
 - **`scripts/sync-lsp-sources.py`** (new, standalone): mason-pin → `sources.scm`.
@@ -99,7 +99,7 @@ as today.
 
 ## Seeded data format
 
-Both files follow the `grammar-sources.scm` contract — pure data, one literal sexpr, fully
+Both files follow the per-language data files' contract — pure data, one literal sexpr, fully
 canonicalised at sync time, no defaults applied at read time — but use **tagged alists
 instead of positional tuples**: install records are heterogeneous (`github` vs `npm` carry
 different fields, and more kinds will come), and positional encoding does not survive
@@ -113,8 +113,8 @@ server's `config` blob once per language (typescript-language-server serves four
 list; a server's languages are the inverse of that list, so they are not stored a second
 time under the server. Root markers are per-language (`roots` belongs to the
 language, not the server, and languages sharing a server differ: javascript/jsx root on
-`jsconfig.json`, typescript/tsx on `tsconfig.json`), so they live in `languages.scm`
-(`define-language! #:roots`), not here. The scan registers each server with no languages
+`jsconfig.json`, typescript/tsx on `tsconfig.json`), so they live in each language's
+`runtime/scheme/languages/<name>.scm`, not here. The scan registers each server with no languages
 and writes every language's list as its default.
 A `servers.scm` record omits each default field: `command` when it equals the server's name, `args` when empty, `config` when absent. Only the install pipeline and
 `sync-lsp-sources.py` read `command`.

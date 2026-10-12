@@ -5,13 +5,25 @@ use steel::rvals::SteelVal;
 use crate::{Effect, GrammarReg, PendingLanguageReg, SteelCtx};
 
 use super::SteelResult;
-use super::args::{list_to_strings, optional_path_arg, optional_string_arg, path_arg, string_arg};
+use super::args::{
+    list_to_strings, optional_list_to_strings, optional_path_arg, optional_string_arg, path_arg,
+    string_arg,
+};
 use super::errors::generic_err;
 
-/// `(%define-language! name extensions globs shebangs lsp-language-id roots)`: init-only.
+/// A language name argument: a string or a symbol.
+fn language_name(val: &SteelVal, builtin: &str) -> Result<String, steel::rerrs::SteelErr> {
+    match val {
+        SteelVal::StringV(s) => Ok(s.to_string()),
+        SteelVal::SymbolV(s) => Ok(s.to_string()),
+        _ => steel::stop!(TypeMismatch => "{}: name must be a string or symbol", builtin),
+    }
+}
+
+/// `(%define-language! name extensions globs shebangs)`: init-only.
 ///
-/// `extensions`, `globs`, `shebangs` and `roots` must be lists of strings;
-/// `lsp-language-id` is a string or `#f`. Pushes an `Effect::LanguageReg(PendingLanguageReg::Identity)`;
+/// `extensions`, `globs` and `shebangs` must be lists of strings. Pushes an
+/// `Effect::LanguageReg(PendingLanguageReg::Identity)`;
 /// `Editor::apply_pending_language_regs` applies it as part of
 /// `Editor::apply_script_effects`.
 pub(crate) fn define_language(
@@ -20,27 +32,39 @@ pub(crate) fn define_language(
     exts_val: SteelVal,
     globs_val: SteelVal,
     shebangs_val: SteelVal,
-    lsp_language_id_val: SteelVal,
-    roots_val: SteelVal,
 ) -> SteelResult {
-    let name = match &name {
-        SteelVal::StringV(s) => s.to_string(),
-        SteelVal::SymbolV(s) => s.to_string(),
-        _ => steel::stop!(TypeMismatch => "%define-language!: name must be a string or symbol"),
-    };
+    let name = language_name(&name, "%define-language!")?;
     let extensions = list_to_strings(exts_val, "%define-language! extensions")?;
     let globs = list_to_strings(globs_val, "%define-language! globs")?;
     let shebangs = list_to_strings(shebangs_val, "%define-language! shebangs")?;
-    let lsp_language_id =
-        optional_string_arg(lsp_language_id_val, "%define-language! lsp-language-id")?;
-    let roots = list_to_strings(roots_val, "%define-language! roots")?;
     ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Identity {
         name,
         extensions,
         globs,
         shebangs,
-        lsp_language_id,
+    }));
+    Ok(SteelVal::Void)
+}
+
+/// `(%configure-language! name roots lsp-language-id)`: init-only, like
+/// `%define-language!`. `roots` is a list of strings or `#f`,
+/// `lsp-language-id` a string or `#f`; `#f` leaves that field as it is.
+/// Pushes an `Effect::LanguageReg(PendingLanguageReg::Configure)`, applied in
+/// queue order after any `%define-language!` queued before it.
+pub(crate) fn configure_language(
+    ctx: &mut SteelCtx,
+    name: SteelVal,
+    roots_val: SteelVal,
+    lsp_language_id_val: SteelVal,
+) -> SteelResult {
+    let name = language_name(&name, "%configure-language!")?;
+    let roots = optional_list_to_strings(roots_val, "%configure-language! roots")?;
+    let lsp_language_id =
+        optional_string_arg(lsp_language_id_val, "%configure-language! language-id")?;
+    ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Configure {
+        name,
         roots,
+        lsp_language_id,
     }));
     Ok(SteelVal::Void)
 }

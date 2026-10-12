@@ -6,8 +6,12 @@ formats at runtime. Design rationale for the LSP parts: `docs/LSP-INSTALL.md`.
 
 | Script | Pin | Fetches | Emits |
 |---|---|---|---|
-| `sync-grammars.py` | `runtime/scheme/helix-pin.scm` | `helix-editor/helix` `languages.toml` | `runtime/scheme/languages.scm`, `runtime/scheme/grammar-sources.scm`, `runtime/plugins/core/lsp-install/data/servers.scm`, and `language-servers.scm` |
+| `sync-grammars.py` | `runtime/scheme/helix-pin.scm` | `helix-editor/helix` `languages.toml` | `runtime/scheme/languages.scm`, one `runtime/scheme/languages/<name>.scm` per language, `runtime/plugins/core/lsp-install/data/servers.scm`, and `language-servers.scm` |
 | `sync-lsp-sources.py` | `runtime/plugins/core/lsp-install/data/mason-pin.scm` | `mason-org/mason-registry` `registry.json.zip` + every release asset (for sha256) | `runtime/plugins/core/lsp-install/data/sources.scm` and `requirements.scm` |
+
+`sync-grammars.py` owns `runtime/scheme/languages/`: it deletes the file of every language Helix
+does not list, and stops with an error if the directory holds anything other than `.scm`
+files, so nothing hand-written belongs there.
 
 Shared helpers (pin reading, sexpr emission, atomic writes) live in `sync_common.py`. The
 parsing logic is tested against fixtures, without the network, by

@@ -752,7 +752,7 @@ fn reload_that_changes_a_kept_filter_fires_lsp_attach_once() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(%define-language! "rust" '("rs") '() '() #f '("Cargo.toml"))
+            r#"(%define-language! "rust" '("rs") '() '()) (%configure-language! "rust" '("Cargo.toml") #f)
 (register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
 (set-language-servers! "rust" (list (hash 'name "rust-analyzer" 'except-features '(hover))))
 {ATTACH_MOVES_RIGHT}"#
@@ -793,7 +793,7 @@ fn reload_keeps_an_instance_the_new_config_still_plans() {
         &mut ed,
         &mut host,
         &format!(
-            "(%define-language! \"rust\" '(\"rs\") '() '() #f '())\n{RUST_ANALYZER}\n{ATTACH_MOVES_RIGHT}"
+            "(%define-language! \"rust\" '(\"rs\") '() '())\n{RUST_ANALYZER}\n{ATTACH_MOVES_RIGHT}"
         ),
         tmp.path(),
     );

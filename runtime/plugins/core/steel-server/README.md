@@ -14,7 +14,7 @@ a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), including HUME's own
 ```
 
 - **Depends on:** nothing at load time. The plugin only calls `register-lsp-server!`,
-  `lsp-server-registered?`, `define-language!` and `set-default-language-servers!`, so it
+  `lsp-server-registered?`, `configure-language!` and `set-default-language-servers!`, so it
   loads without `core:lsp`. The editor-side features
   that make the registered server useful (hover, goto, diagnostics) come from `core:lsp`,
   which in turn needs `core:stdlib`.
@@ -34,9 +34,9 @@ a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), including HUME's own
 
 ### Registration
 
-At load the plugin redefines the `scheme` language with the root marker `cog.scm`,
-repeating the bundled extensions, globs and shebangs, and sets the language's default list
-to `steel-language-server`. When that binary is on `$PATH` it also registers the server under
+At load the plugin configures the `scheme` language's root marker as `cog.scm` and sets the
+language's default list to `steel-language-server`. A root set in `init.scm` comes first and
+wins, and the plugin's is then ignored with a warning. When that binary is on `$PATH` it also registers the server under
 that name; otherwise it logs a warning that points at `:steel-server-install`. A registration
 under that name that already exists, such as a manual
 `register-lsp-server! "steel-language-server" …` in `init.scm`, is left alone.

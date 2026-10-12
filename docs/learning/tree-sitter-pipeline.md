@@ -209,14 +209,15 @@ grammar management. For grammars specifically, plum provides:
   e.g. `(call! "plum-ensure-grammars" '("rust" "json"))`.
 - **`:plum-list-grammars`** — reports declared, installed, missing, and
   orphan grammars.
-- **`:plum-cleanup-grammars`** — removes on-disk artifacts for grammars
-  no longer in the catalog.
+- **`:plum-cleanup-grammars`** — removes on-disk artifacts for names
+  that ship no grammar.
 
-The grammar catalog is a Scheme data file that ships with HUME. It declares
-each supported language as a 5-tuple: the language name, the upstream git
-repository, the revision to pin, the tree-sitter symbol name inside the
-library, and (optionally) a subdirectory within the repo. This is the only
-place where the list of supported grammars is maintained.
+Each language HUME ships has a small data file of its own, and the grammar
+it uses is one entry in it: the upstream git repository, the revision to
+pin, the tree-sitter symbol name inside the library, and (optionally) a
+subdirectory within the repo. Grammars are installed per language, so two
+languages sharing one grammar (JavaScript and JSX) each get their own
+compiled copy.
 
 When you run `:plum-install-grammar`, plum:
 
@@ -238,10 +239,10 @@ When you run `:plum-install-grammar`, plum:
 
 On subsequent starts, HUME scans the data directory for compiled grammars and
 registers every one whose library and queries are already on disk. No network
-access on startup, and no catalog *scan* either — the walk works from what's
-actually present on the filesystem, not from what's declared, and only
-consults the catalog for a name it actually finds there. A fresh setup with
-nothing installed never touches the catalog at all.
+access on startup, and no scan of every language's data either — the walk works
+from what's actually present on the filesystem, not from what's declared, and
+only reads the data file of a language it actually finds there. A fresh setup
+with nothing installed reads none of them.
 
 ## Why pinned revisions
 
@@ -249,12 +250,12 @@ Grammar repositories and their highlight queries are pinned to specific
 revisions for reproducibility. The coupling is tight: query patterns match
 named nodes that the grammar defines; if the grammar changes, the query may
 stop matching or match incorrectly. Pinning both to known-good revisions
-ensures that every HUME installation using the same catalog produces the same
-highlighting behavior.
+ensures that every HUME installation shipping the same language data produces
+the same highlighting behavior.
 
 A separate pinned-revision record tracks the Helix revision from which
 queries are fetched. Updating grammars means moving the Helix pin forward and
-re-deriving the catalog's grammar revisions from it — the two records move
+re-deriving the languages' grammar revisions from it — the two records move
 together.
 
 ## Late grammar registration

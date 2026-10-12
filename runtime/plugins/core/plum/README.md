@@ -43,7 +43,7 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 | `:plum-cleanup-plugins` | Remove on-disk plugins that are no longer declared |
 | `:plum-update-plugins` | Run `git pull` in every installed third-party plugin |
 | `:plum-list-plugins` | Log the declared, installed, orphan and missing plugin lists |
-| `:plum-install-grammar [lang]` | Install or repair a grammar: purge its source, re-clone, recompile. Defaults to the current buffer's language. Tab-completes declared grammar names |
+| `:plum-install-grammar [lang]` | Install or repair a grammar: purge its source, re-clone, recompile. Defaults to the current buffer's language. Tab-completes the languages with a bundled grammar |
 | `:plum-list-grammars` | Log the declared, installed, orphan and missing grammar lists |
 | `:plum-cleanup-grammars` | Delete compiled grammar files that are no longer declared |
 | `:plum-install-theme <user/repo>` | Install or reinstall a theme repo's `themes/*.toml` from a GitHub slug |
@@ -51,7 +51,7 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 | `:plum-list-themes` | Log installed theme repos, the theme names each provides, and any unmanaged `.toml` |
 | `:plum-remove-theme <user/repo>` | Remove a theme repo's `.toml` copies and its clone. Tab-completes installed slugs |
 
-`plum-ensure-grammars` installs any of the given grammar names that are not yet compiled.
+`plum-ensure-grammars` installs the grammars of any of the given languages that are not yet compiled, and raises before installing anything if a name has no bundled grammar.
 It is a plain editor command, not a `:` command, and takes a list argument, so it belongs
 in `init.scm` (`(call! "plum-ensure-grammars" '("rust" "json"))`), not at the command
 prompt.
@@ -64,8 +64,8 @@ source:
 
 - **`lib/plugins.scm`** (required by `plugin.scm`): third-party plugin install, update and
   cleanup.
-- **`grammars.scm`** (`#:entry`): the tree-sitter grammar install pipeline. It builds on the source
-  catalog and path helpers core registers at startup (see
+- **`grammars.scm`** (`#:entry`): the tree-sitter grammar install pipeline. It builds on the
+  grammar-source builtins and path helpers core provides (see
   [Grammar sources and the Helix pin](#grammar-sources-and-the-helix-pin)).
 - **`themes.scm`** (`#:entry`): third-party theme install, update, list and remove (see
   [Theme install](#theme-install)).
@@ -94,10 +94,13 @@ Declared plugins live in `init.scm`. Installed plugins are found by walking
 
 ### Grammar sources and the Helix pin
 
-Grammar source metadata (repo URL, pinned revision, tree-sitter symbol, subpath) and the
-path helpers built on it belong to core, not PLUM: `runtime/scheme/grammars.scm` owns them.
-PLUM's `grammars.scm` calls those same bindings for its install pipeline and declares no
-copy of its own. Core reads `runtime/scheme/grammar-sources.scm` on first use.
+Grammars are keyed by language name: a compiled grammar is `<data>/grammars/<language>.<ext>`,
+and every command takes a language name. A language's grammar source (repo URL, pinned
+revision, tree-sitter symbol, subpath) lives in its bundled data file,
+`runtime/scheme/languages/<language>.scm`, read through core's `bundled-language-grammar` and
+`bundled-grammar-languages` functions; the path helpers live in core's
+`runtime/scheme/grammars.scm`. PLUM declares no copy of either. A language that borrows
+another's grammar (`jsx` uses javascript's) installs its own compiled copy under its own name.
 
 Highlighting and structural-text-object queries (`highlights.scm`, `injections.scm`,
 `textobjects.scm`) are not authored in HUME. They are fetched from the Helix project's

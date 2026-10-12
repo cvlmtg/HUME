@@ -100,19 +100,16 @@
 (define (plum/not-installed? name)
   (not (grammar-installed? name)))
 
-(define (plum/missing-grammars)
-  (filter plum/not-installed? (grammar-source-names)))
-
 (define (plum/orphan-grammars)
-  (filter (lambda (name) (not (grammar-source-known? name)))
+  (filter (lambda (name) (not (bundled-language-grammar name)))
           (installed-grammars)))
 
 ;;; A string argument wins; otherwise falls back to the current buffer's language.
 (define (plum/resolve-grammar-arg pane cmd arg)
   (let ((name (call! "stdlib/resolve-lang-arg" pane cmd arg)))
     (cond ((not name) #f)
-          ((not (grammar-source-known? name))
-           (log! 'info (string-append cmd ": unknown grammar \"" name "\" — see :plum-list-grammars"))
+          ((not (bundled-language-grammar name))
+           (log! 'info (string-append cmd ": no grammar for language \"" name "\" — see :plum-list-grammars"))
            #f)
           (else name))))
 
@@ -120,10 +117,12 @@
 
 ;;; Always from a clean slate — see README.md's "Grammar install pipeline".
 (define (plum/install-grammar name)
-  (let* ((url     (grammar-source-url name))
-         (rev     (grammar-source-rev name))
-         (symbol  (grammar-source-symbol name))
-         (subpath (grammar-source-subpath name))
+  (let* ((source  (or (bundled-language-grammar name)
+                      (error (string-append "plum: no grammar for language \"" name "\""))))
+         (url     (list-ref source 0))
+         (rev     (list-ref source 1))
+         (symbol  (list-ref source 2))
+         (subpath (list-ref source 3))
          (src-dir (grammar-source-dir name))
          (build-dir (if (equal? subpath "")
                         src-dir
@@ -148,11 +147,11 @@
 ;;; `:plum-install-grammar`'s own completion universe — see README.md's "Commands".
 (register-completion-source! "plum:grammars"
   (lambda (id input cursor)
-    (completion-emit! id (grammar-source-names)))
+    (completion-emit! id (bundled-grammar-languages)))
   #:target 'minibuf #:match 'string)
 
 (define-typed-command! "plum-install-grammar"
-  "Install (or repair) a tree-sitter grammar by name, always from a clean re-clone (default: the current buffer's language)."
+  "Install (or repair) a language's tree-sitter grammar, always from a clean re-clone (default: the current buffer's language)."
   (lambda (pane arg)
     (let ((name (plum/resolve-grammar-arg pane "plum-install-grammar" arg)))
       (when name
@@ -164,10 +163,14 @@
   #:inline-output #t #:complete "plum:grammars")
 
 (define-command! "plum-ensure-grammars"
-  "Install the named grammars (a list) that are not yet compiled."
+  "Install the grammars of the named languages (a list) that are not yet compiled."
   (lambda (grammars)
     (unless (and (list? grammars) (not (null? grammars)))
-      (error "plum-ensure-grammars: requires a non-empty list of grammar names, e.g. (call! \"plum-ensure-grammars\" '(\"rust\" \"json\"))"))
+      (error "plum-ensure-grammars: requires a non-empty list of language names, e.g. (call! \"plum-ensure-grammars\" '(\"rust\" \"json\"))"))
+    (let ((unknown (filter (lambda (name) (not (bundled-language-grammar name))) grammars)))
+      (unless (null? unknown)
+        (error (string-append "plum-ensure-grammars: no grammar for "
+                              (string-join unknown ", ")))))
     (let ((missing (filter plum/not-installed? grammars)))
       (if (null? missing)
           (log! 'info "PLUM: all requested grammars are installed")
@@ -177,10 +180,10 @@
 (define-typed-command! "plum-list-grammars"
   "Log declared, installed, orphan, and missing grammar lists."
   (lambda ()
-    (let ((declared  (grammar-source-names))
-          (installed (installed-grammars))
-          (orphans   (plum/orphan-grammars))
-          (missing   (plum/missing-grammars)))
+    (let* ((declared  (bundled-grammar-languages))
+           (installed (installed-grammars))
+           (orphans   (plum/orphan-grammars))
+           (missing   (filter plum/not-installed? declared)))
       (log! 'info (string-append "PLUM grammars declared:   " (string-join declared  ", ")))
       (log! 'info (string-append "PLUM grammars installed:  " (string-join installed ", ")))
       (log! 'info (string-append "PLUM grammars orphan:     " (string-join orphans   ", ")))

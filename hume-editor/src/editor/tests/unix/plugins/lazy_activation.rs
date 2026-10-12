@@ -197,7 +197,7 @@ fn failed_activation_does_not_leave_a_queued_lsp_registration() {
 fn lazy_plugin_defined_language_is_registered_on_activation() {
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
-        r#"(%define-language! "foo" '() '() '() #f '())
+        r#"(%define-language! "foo" '() '() '())
            (define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 

@@ -1,6 +1,6 @@
 // Editor-level tests for the tree-sitter grammar wiring that load Steel
 // plugins or run `init_scripting` end-to-end. The platform-neutral half
-// (and the shared catalog/fixture helpers) lives in
+// (and the shared runtime-data/fixture helpers) lives in
 // `../scripting_grammar.rs`.
 //
 // Tests that use the grammar fixture (grammar_fixture()) require the shared
@@ -103,7 +103,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
@@ -352,7 +352,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 }
 
 /// Tab on `:plum-install-grammar`'s argument completes against the real
-/// declared catalog (`runtime/scheme/grammar-sources.scm`), not a fixture:
+/// shipped language data (`runtime/scheme/languages/`), not a fixture:
 /// no network, no install, so it needs neither `require_grammars` nor the
 /// e2e tests' own PATH/tree-sitter setup below. "ag" is unique to "agda"
 /// among every declared name (checked at authoring time; re-verified by
@@ -387,7 +387,7 @@ fn install_real_json_grammar_e2e() {
     // resolves to nothing (see `PathReader`'s doc).
     let _path = path_reader();
 
-    // Read the JSON grammar's url + pinned rev straight from the runtime catalog
+    // Read the JSON grammar's url + pinned rev straight from the shipped data
     // (single source of truth, no hardcoded pins to drift out of sync).
     let (url, rev) = grammar_source("json");
     let (url, rev) = (url.as_str(), rev.as_str());
@@ -415,7 +415,7 @@ fn install_real_json_grammar_e2e() {
     assert!(out_path.exists(), "compiled grammar must exist after build");
 
     let hl_path = src_dir.join("highlights.scm");
-    // Fetch highlights query via curl, using the helix commit pinned in the catalog.
+    // Fetch highlights query via curl, using the pinned helix commit.
     let pin = helix_pin();
     let hl_url = format!(
         "https://raw.githubusercontent.com/helix-editor/helix/{pin}/runtime/queries/json/highlights.scm"
@@ -455,7 +455,7 @@ fn install_real_json_grammar_e2e() {
     ed.state
         .config
         .languages
-        .register_identity("json", &["json"], &[], &[], None)
+        .register_identity("json", &["json"], &[], &[])
         .unwrap();
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
@@ -536,20 +536,15 @@ fn setup_editor_with_languages_scm(
     (ed, vec![config_tmp, runtime_tmp, data_tmp])
 }
 
-/// `define-language!`'s `#:language-id` keyword round-trips through the real
-/// `prelude.scm` exactly like the positional-only calls used everywhere else
-/// in `languages.scm`. `define-language!` is a plain function so it can take
-/// an optional trailing keyword arg. Exercises both call shapes side by side:
-/// `plain-lang` (no keyword) and `tsx` (with the override).
-///
-/// A 4-arg arity for `%define-language!` (or `prelude.scm`'s function) would
-/// break eval outright: `init_scripting` would log an error and neither
-/// identity would register.
+/// `configure-language!`'s `#:language-id` keyword round-trips through the
+/// real `prelude.scm`. Exercises both shapes side by side: `plain-lang` (not
+/// configured) and `tsx` (with the override).
 #[test]
-fn define_language_language_id_keyword_round_trips_through_real_prelude() {
+fn configure_language_language_id_keyword_round_trips_through_real_prelude() {
     let languages_scm = r#"
         (define-language! "plain-lang" '("plainext"))
-        (define-language! "tsx" '("tsx") #:language-id "typescriptreact")
+        (define-language! "tsx" '("tsx"))
+        (configure-language! "tsx" #:language-id "typescriptreact")
     "#;
 
     let (ed, _dirs) = setup_editor_with_languages_scm(languages_scm, "test.tsx");
@@ -563,7 +558,7 @@ fn define_language_language_id_keyword_round_trips_through_real_prelude() {
         .collect();
     assert!(
         errors.is_empty(),
-        "#:language-id must parse and eval cleanly: {errors:?}"
+        "configure-language! #:language-id must parse and eval cleanly: {errors:?}"
     );
 
     let plain_id = ed
@@ -575,7 +570,7 @@ fn define_language_language_id_keyword_round_trips_through_real_prelude() {
     assert_eq!(
         ed.state.config.languages.lsp_language_id_of(plain_id),
         "plain-lang",
-        "a call with no #:language-id must fall back to the name"
+        "a language with no configured language-id must fall back to the name"
     );
 
     let tsx_id = ed
@@ -591,13 +586,14 @@ fn define_language_language_id_keyword_round_trips_through_real_prelude() {
     );
 }
 
-/// `define-language!`'s `#:roots` keyword round-trips through the real
-/// prelude into the language registry; a call without it leaves no roots.
+/// `configure-language!`'s `#:roots` keyword round-trips through the real
+/// prelude into the language registry; a language not configured has no roots.
 #[test]
-fn define_language_roots_keyword_round_trips_through_real_prelude() {
+fn configure_language_roots_keyword_round_trips_through_real_prelude() {
     let languages_scm = r#"
         (define-language! "plain-lang" '("pln"))
-        (define-language! "rooted-lang" '("rtd") #:roots '("proj.toml" "proj.lock"))
+        (define-language! "rooted-lang" '("rtd"))
+        (configure-language! "rooted-lang" #:roots '("proj.toml" "proj.lock"))
     "#;
 
     let (ed, _dirs) = setup_editor_with_languages_scm(languages_scm, "test.rtd");
@@ -614,12 +610,12 @@ fn define_language_roots_keyword_round_trips_through_real_prelude() {
 /// The actual bug report this whole feature exists for: opening a `.tsx`
 /// file made `typescript-language-server` log "Invalid languageId \"tsx\"
 /// ... Correcting to \"typescriptreact\"", because the bundled
-/// `languages.scm` sent HUME's own language name as the wire `languageId`.
+/// language data sent HUME's own language name as the wire `languageId`.
 /// Boots against the real, shipped `runtime/` dir (not a hand-written
 /// fixture) so this fails if a future `scripts/sync-grammars.py` run ever
-/// drops the `#:language-id` overrides again.
+/// drops the `language-id` overrides again.
 ///
-/// Without `tsx`'s `#:language-id` override in `languages.scm`, or with
+/// Without `language-id` in the shipped `languages/tsx.scm`, or with
 /// `lsp_language_id_of` falling back to `name_of`, the id would be `"tsx"`.
 #[test]
 fn tsx_bundled_language_id_is_typescriptreact() {
@@ -638,6 +634,8 @@ fn tsx_bundled_language_id_is_typescriptreact() {
         tmp: None,
     };
     ed.init_scripting(&mut Default::default());
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language_by_name(bid, Some("tsx"));
 
     let id = ed
         .state
@@ -735,7 +733,7 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
 /// Stages a real compiled JSON grammar at the exact paths core's
 /// `grammar-output-path`/`grammar-highlights-path` expect, points the
 /// runtime dir at the repo's real `runtime/` dir (so the real
-/// `grammar-sources.scm` catalog and `grammars.scm` registrar run), and runs
+/// language data and `grammars.scm` registrar run), and runs
 /// `init_scripting` against an `init.scm` that never mentions PLUM.
 ///
 /// If grammar registration depended on PLUM, `has_grammar` would stay false
@@ -863,16 +861,20 @@ fn define_language_override_in_init_keeps_startup_grammar() {
 }
 
 // ---------------------------------------------------------------------------
-// Registration is driven by <data>/grammars/, and the catalog is lazy
+// Registration is driven by <data>/grammars/, reading only installed
+// languages' data files
 // ---------------------------------------------------------------------------
 
+/// A bundled `json` data file naming a grammar.
+const JSON_DATA: &str = "((grammar \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
+
 /// Run `init_scripting` against a temp runtime holding the real `prelude.scm`
-/// and `grammars.scm` but a caller-supplied `grammar-sources.scm` and a
-/// tiny `languages.scm`, with `populate_data` free to lay out the
-/// data dir first. Returns the editor's error log. Caller must keep the
-/// returned `TempDir`s alive.
-fn init_errors_with_catalog(
-    catalog_src: &str,
+/// and `grammars.scm`, a tiny `languages.scm` and a caller-supplied bundled
+/// `languages/json.scm`, with `populate_data` free to lay out the data dir
+/// first. Returns the editor's error log. Caller must keep the returned
+/// `TempDir`s alive.
+fn init_errors_with_json_data(
+    json_data: &str,
     populate_data: impl FnOnce(&std::path::Path),
 ) -> (Vec<String>, Editor, Vec<tempfile::TempDir>) {
     let _path = path_reader();
@@ -896,7 +898,9 @@ fn init_errors_with_catalog(
         "(define-language! \"json\" '(\"json\"))\n",
     )
     .unwrap();
-    std::fs::write(scheme_dir.join("grammar-sources.scm"), catalog_src).unwrap();
+    let languages_dir = scheme_dir.join("languages");
+    std::fs::create_dir_all(&languages_dir).unwrap();
+    std::fs::write(languages_dir.join("json.scm"), json_data).unwrap();
 
     populate_data(&data_tmp.path().join("hume"));
 
@@ -919,26 +923,26 @@ fn init_errors_with_catalog(
     (errors, ed, vec![config_tmp, runtime_tmp, data_tmp])
 }
 
-/// The grammar source catalog is parsed on first use, not at startup: with no
-/// `<data>/grammars/` directory there is nothing to register, so a catalog
-/// that cannot even be read must never be touched.
+/// Startup reads a language's data file only when its grammar is installed:
+/// with no `<data>/grammars/` directory there is nothing to register, so a
+/// data file that cannot even be parsed must never be touched.
 ///
-/// Uses a syntactically broken catalog as the tripwire: if anything forces it,
-/// `grammars.scm` raises and `init_scripting` logs an error. The second half
-/// (a compiled file present ⇒ the same broken catalog now *does* raise) proves
-/// the tripwire works, so the first half cannot pass vacuously.
+/// Uses a syntactically broken `json.scm` as the tripwire: if anything reads
+/// it, `grammars.scm` raises and `init_scripting` logs an error. The last
+/// case (a compiled `json` present ⇒ the same broken file now *is* read)
+/// proves the tripwire works, so the first cases cannot pass vacuously.
 #[test]
-fn grammar_catalog_is_read_lazily_on_first_use() {
-    let broken = "( (\"json\" \"url\" \"rev\" \"sym\"";
+fn startup_reads_only_installed_languages_data_files() {
+    let broken = "((grammar \"url\" \"rev\"";
 
-    let (errors, ..) = init_errors_with_catalog(broken, |_data| {});
+    let (errors, ..) = init_errors_with_json_data(broken, |_data| {});
     assert!(
         errors.is_empty(),
-        "no <data>/grammars/ ⇒ the catalog must never be read: {errors:?}"
+        "no <data>/grammars/ ⇒ no data file is read: {errors:?}"
     );
 
     // A bare sources/ subdirectory yields no grammar names either, so still no read.
-    let (errors, ..) = init_errors_with_catalog(broken, |data| {
+    let (errors, ..) = init_errors_with_json_data(broken, |data| {
         std::fs::create_dir_all(data.join("grammars").join("sources")).unwrap();
     });
     assert!(
@@ -946,32 +950,31 @@ fn grammar_catalog_is_read_lazily_on_first_use() {
         "only sources/ present ⇒ still no grammar names, so still no read: {errors:?}"
     );
 
-    // Tripwire check: one compiled file forces the catalog, which then fails.
+    // Tripwire check: a compiled json grammar forces json.scm, which then fails.
     let ext = test_fixtures::grammar_platform_ext();
-    let (errors, ..) = init_errors_with_catalog(broken, |data| {
+    let (errors, ..) = init_errors_with_json_data(broken, |data| {
         let grammars = data.join("grammars");
         std::fs::create_dir_all(&grammars).unwrap();
         std::fs::write(grammars.join(format!("json.{ext}")), b"not a real library").unwrap();
     });
     assert!(
-        errors.iter().any(|e| e.contains("grammars.scm")),
-        "a compiled grammar must force the catalog, surfacing the broken file: {errors:?}"
+        errors.iter().any(|e| e.contains("json.scm")),
+        "a compiled grammar must read its data file, surfacing the broken file: {errors:?}"
     );
 }
 
-/// A compiled grammar whose name is no longer in the catalog (installed, then
+/// A compiled grammar for a name with no bundled grammar (installed, then
 /// dropped by a HUME update) has no tree-sitter symbol to look up. Walking the
 /// install directory reaches it anyway, so registration must skip it rather
-/// than raise on the missing entry.
+/// than raise.
 ///
-/// Without the `grammar-source-known?` guard in `register-installed-grammars!`,
-/// `grammar-source-symbol`'s `hash-ref` would raise.
+/// Without the `bundled-language-grammar` check in
+/// `register-installed-grammars!`, `(list-ref #f 2)` would raise.
 #[test]
 fn orphan_compiled_grammar_is_skipped_not_registered() {
-    let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
     let ext = test_fixtures::grammar_platform_ext();
 
-    let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
+    let (errors, ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
         let grammars = data.join("grammars");
         std::fs::create_dir_all(&grammars).unwrap();
         std::fs::write(
@@ -999,19 +1002,18 @@ fn orphan_compiled_grammar_is_skipped_not_registered() {
     );
 }
 
-/// A grammar the catalog still knows about, with a compiled library on disk
+/// A language that still has a bundled grammar, with a compiled library on disk
 /// but no `highlights.scm` (e.g. the user cleared `<data>/grammars/sources/`
 /// to reclaim disk), must warn (naming the grammar so `:plum-install-grammar
 /// <name>` is the obvious next step) instead of being dropped as silently as
 /// a genuine orphan. Distinguishes the two cases `register-installed-grammars!`
-/// must tell apart: unknown-to-catalog (expected-silent) vs. known-but-broken
+/// must tell apart: no bundled grammar (expected-silent) vs. known-but-broken
 /// (repairable, must be surfaced).
 #[test]
 fn known_grammar_missing_highlights_warns_and_is_not_registered() {
-    let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
     let ext = test_fixtures::grammar_platform_ext();
 
-    let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
+    let (errors, ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
         let grammars = data.join("grammars");
         std::fs::create_dir_all(&grammars).unwrap();
         std::fs::write(grammars.join(format!("json.{ext}")), b"not a real library").unwrap();
@@ -1060,14 +1062,13 @@ fn known_grammar_missing_highlights_warns_and_is_not_registered() {
 /// and log `register-grammar! 'json': grammar library not found`.
 #[test]
 fn wrong_extension_grammar_is_skipped_not_registered() {
-    let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
     let wrong_ext = if cfg!(target_os = "macos") {
         "so"
     } else {
         "dylib"
     };
 
-    let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
+    let (errors, ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
         let grammars = data.join("grammars");
         std::fs::create_dir_all(&grammars).unwrap();
         std::fs::write(
@@ -1101,15 +1102,14 @@ fn wrong_extension_grammar_is_skipped_not_registered() {
 
 /// `installed-grammars` must sort by stem, not by full filename: `"b-x.<ext>"
 /// < "b.<ext>"` (`-` sorts before `.`), so sorting before stripping the
-/// extension would put `b-x` ahead of `b`. Neither name is catalog-known, so
+/// extension would put `b-x` ahead of `b`. Neither name has a bundled grammar, so
 /// `register-installed-grammars!` skips both silently. Only the list order
 /// is under test.
 #[test]
 fn installed_grammars_sorts_by_stem_not_filename() {
-    let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
     let ext = test_fixtures::grammar_platform_ext();
 
-    let (errors, mut ed, _dirs) = init_errors_with_catalog(catalog, |data| {
+    let (errors, mut ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
         let grammars = data.join("grammars");
         std::fs::create_dir_all(&grammars).unwrap();
         std::fs::write(grammars.join(format!("b.{ext}")), b"").unwrap();
@@ -1131,10 +1131,10 @@ fn installed_grammars_sorts_by_stem_not_filename() {
     );
 }
 
-/// The bundled `languages.scm` carries each language's Helix root markers:
+/// The shipped language data carries each language's root markers:
 /// `go` lists two, `gomod` none.
 #[test]
-fn bundled_languages_carry_helix_roots() {
+fn bundled_languages_carry_root_markers() {
     let _path = path_reader();
     let config_tmp = tempfile::tempdir().unwrap();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1150,6 +1150,9 @@ fn bundled_languages_carry_helix_roots() {
         tmp: None,
     };
     ed.init_scripting(&mut Default::default());
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language_by_name(bid, Some("go"));
+    ed.set_buffer_language_by_name(bid, Some("gomod"));
 
     let languages = &ed.state.config.languages;
     let go = languages
@@ -1158,6 +1161,7 @@ fn bundled_languages_carry_helix_roots() {
     let gomod = languages
         .id_of("gomod")
         .expect("gomod must be a bundled language");
+    assert!(languages.bundled_loaded(gomod));
     assert_eq!(languages.roots_of(go), ["go.work", "go.mod"]);
     assert!(languages.roots_of(gomod).is_empty());
 }

@@ -83,6 +83,14 @@ fn optional<T>(
     }
 }
 
+/// A Steel list of strings that may be `#f` (absent).
+pub(crate) fn optional_list_to_strings(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<Vec<String>>, SteelErr> {
+    optional(val, ctx_name, list_to_strings)
+}
+
 /// A string argument that may be `#f` (absent).
 pub(crate) fn optional_string_arg(
     val: SteelVal,

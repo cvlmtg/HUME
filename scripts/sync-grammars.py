@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Regenerate runtime/scheme/{languages,grammar-sources}.scm and the lsp-install
-catalog files from helix-editor/helix languages.toml.
+"""Regenerate runtime/scheme/languages.scm, runtime/scheme/languages/*.scm and the
+lsp-install catalog files from helix-editor/helix languages.toml.
 
 Reads the pinned SHA from runtime/scheme/helix-pin.scm, fetches helix's
 languages.toml at that commit, and rewrites:
-  - languages.scm       — (define-language! …) for every [[language]] block,
-    with its root markers as `#:roots`
-  - grammar-sources.scm — tree-sitter grammar source catalog
+  - languages.scm       — (define-language! …) detection data for every [[language]] block
+  - languages/<name>.scm — one data file per [[language]] block: comment tokens,
+    language-id, root markers and the source of the grammar the language uses
   - lsp-install/servers.scm — each server's command, args and config, each omitted when it
     is the default (the server's name, no args, no config), derived from
     [language-server.*]
@@ -45,7 +45,7 @@ except ImportError:
 REPO = Path(__file__).resolve().parent.parent
 HELIX_PIN_SCM = REPO / "runtime" / "scheme" / "helix-pin.scm"
 LANGUAGES_SCM = REPO / "runtime" / "scheme" / "languages.scm"
-GRAMMAR_SOURCES_SCM = REPO / "runtime" / "scheme" / "grammar-sources.scm"
+LANGUAGES_DIR = REPO / "runtime" / "scheme" / "languages"
 LSP_SERVERS_SCM = REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data" / "servers.scm"
 LANGUAGE_SERVERS_SCM = (
     REPO / "runtime" / "plugins" / "core" / "lsp-install" / "data" / "language-servers.scm"
@@ -57,11 +57,14 @@ LANGUAGES_HEADER = """\
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
 
-GRAMMAR_SOURCES_HEADER = """\
-;;; runtime/scheme/grammar-sources.scm — HUME bundled tree-sitter grammar source catalog.
-;;; Generated — do not hand-edit. Record format and load order: README.md, this directory.
+LANGUAGE_DATA_HEADER = """\
+;;; runtime/scheme/languages/{name}.scm — HUME bundled language data.
+;;; Generated — do not hand-edit. Record format: README.md, parent directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
+
+# Characters that make a language name unusable as a file name on some platform.
+UNSAFE_NAME_CHARS = set('<>:"/\\|?*')
 
 LANGUAGE_SERVERS_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/language-servers.scm — each language's ordered LSP server list.
@@ -131,8 +134,52 @@ def parse_grammars(doc: dict) -> dict[str, dict]:
     return grammars
 
 
+def comment_tokens(entry: dict) -> list[str]:
+    """`comment-token`/`comment-tokens` as a list, accepting the shapes Helix's
+    `from_comment_tokens` accepts: one string, or a list of strings."""
+    name = entry["name"]
+    value = entry.get("comment-tokens", entry.get("comment-token"))
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list) and all(isinstance(t, str) for t in value):
+        return list(value)
+    sys.exit(f"error: language '{name}': malformed comment-tokens {value!r}")
+
+
+def block_comment_tokens(entry: dict) -> list[tuple[str, str]]:
+    """`block-comment-tokens` as (start, end) pairs, accepting the shapes Helix's
+    `from_block_comment_tokens` accepts: one `{start, end}` table, a list of
+    them, or a positional `[start, end]` pair."""
+    name = entry["name"]
+    value = entry.get("block-comment-tokens")
+
+    def pair(table) -> tuple[str, str]:
+        if (
+            isinstance(table, dict)
+            and set(table) == {"start", "end"}
+            and all(isinstance(v, str) for v in table.values())
+        ):
+            return table["start"], table["end"]
+        sys.exit(f"error: language '{name}': malformed block-comment-tokens {value!r}")
+
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        return [pair(value)]
+    if isinstance(value, list) and len(value) == 2 and all(isinstance(t, str) for t in value):
+        return [(value[0], value[1])]
+    if isinstance(value, list):
+        return [pair(t) for t in value]
+    sys.exit(f"error: language '{name}': malformed block-comment-tokens {value!r}")
+
+
 def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
-    """Return [{name, extensions, globs, shebangs, roots, grammar_name, language_id}] for each language."""
+    """Return one dict per language: detection data (name, extensions, globs,
+    shebangs) and per-language data (comment_tokens, block_comment_tokens,
+    language_id, roots, grammar). `grammar` is the source of the grammar the
+    language uses, with its C symbol, or None when that grammar has no git source."""
     langs = []
     overrides = []
     no_grammar = []
@@ -160,17 +207,22 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
         grammar_name = entry.get("grammar", name)
         if grammar_name != name:
             overrides.append(f"{name} -> {grammar_name}")
-        if grammar_name not in grammars:
+        grammar = grammars.get(grammar_name)
+        if grammar is None:
             no_grammar.append(name)
+        else:
+            grammar = {**grammar, "sym": "tree_sitter_" + grammar_name.replace("-", "_")}
         langs.append(
             {
                 "name": name,
                 "extensions": extensions,
                 "globs": globs,
                 "shebangs": shebangs,
-                "roots": entry.get("roots", []),
-                "grammar_name": grammar_name,
+                "comment_tokens": comment_tokens(entry),
+                "block_comment_tokens": block_comment_tokens(entry),
                 "language_id": entry.get("language-id"),
+                "roots": entry.get("roots", []),
+                "grammar": grammar,
             }
         )
 
@@ -186,48 +238,17 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
     return langs
 
 
-def emit_grammar_sources(grammars: dict[str, dict], langs: list[dict]) -> list[str]:
-    # Start with all direct grammars, then add one alias entry per language that
-    # delegates to a different grammar (e.g. jsx → javascript).  Each alias gets
-    # the target grammar's URL/rev/subpath but the *target* grammar's symbol,
-    # so the compiled .so exports the right C function.
-    entries: dict[str, dict] = {}
-    for gname, g in grammars.items():
-        entries[gname] = {**g, "sym": "tree_sitter_" + gname.replace("-", "_")}
-
+def check_language_names(langs: list[dict]) -> None:
+    """Fatal unless every language name is a distinct, portable file name."""
+    seen: dict[str, str] = {}
     for lang in langs:
-        lname = lang["name"]
-        gname = lang["grammar_name"]
-        if gname != lname and gname in grammars:
-            if lname in entries:
-                print(
-                    f"  grammar delegation: language '{lname}' delegates to grammar "
-                    f"'{gname}', overriding its own same-named direct grammar entry",
-                    file=sys.stderr,
-                )
-            g = grammars[gname]
-            entries[lname] = {**g, "sym": "tree_sitter_" + gname.replace("-", "_")}
-
-    subpath_entries = [(n, e["subpath"]) for n, e in entries.items() if e["subpath"]]
-    if subpath_entries:
-        print(f"subpath grammars ({len(subpath_entries)}):", file=sys.stderr)
-        for n, sp in sorted(subpath_entries):
-            print(f"  {n}: {sp}", file=sys.stderr)
-
-    # Emit a single literal sexpr (a list of 5-tuples) with no define/provide.
-    # Consumers read this via (call-with-input-file path read).
-    rows = []
-    for name in sorted(entries):
-        e = entries[name]
-        row = " ({} {} {} {} {})".format(
-            scheme_str(name),
-            scheme_str(e["url"]),
-            scheme_str(e["rev"]),
-            scheme_str(e["sym"]),
-            scheme_str(e["subpath"]),
-        )
-        rows.append(row)
-    return ["("] + rows + [")"]
+        name = lang["name"]
+        if UNSAFE_NAME_CHARS & set(name):
+            sys.exit(f"error: language name '{name}' cannot be a file name")
+        folded = name.lower()
+        if folded in seen:
+            sys.exit(f"error: language names '{seen[folded]}' and '{name}' differ only in case")
+        seen[folded] = name
 
 
 def emit_language_identities(langs: list[dict]) -> list[str]:
@@ -237,27 +258,80 @@ def emit_language_identities(langs: list[dict]) -> list[str]:
         exts = lang["extensions"]
         globs = lang["globs"]
         shebangs = lang["shebangs"]
-        language_id = lang.get("language_id")
-        roots = lang["roots"]
-        suffix = f" #:language-id {scheme_str(language_id)}" if language_id else ""
-        if roots:
-            suffix += f" #:roots {scheme_list(roots)}"
 
         if shebangs:
             lines.append(
                 f"(define-language! {name_s} {scheme_list(exts)} {scheme_list(globs)} "
-                f"{scheme_list(shebangs)}{suffix})"
+                f"{scheme_list(shebangs)})"
             )
         elif globs:
-            lines.append(
-                f"(define-language! {name_s} {scheme_list(exts)} {scheme_list(globs)}"
-                f"{suffix})"
-            )
+            lines.append(f"(define-language! {name_s} {scheme_list(exts)} {scheme_list(globs)})")
         elif exts:
-            lines.append(f"(define-language! {name_s} {scheme_list(exts)}{suffix})")
+            lines.append(f"(define-language! {name_s} {scheme_list(exts)})")
         else:
-            lines.append(f"(define-language! {name_s}{suffix})")
+            lines.append(f"(define-language! {name_s})")
     return lines
+
+
+def emit_language_data(lang: dict) -> list[str]:
+    """One language's data file body: a single literal alist, each key present
+    only when the language has a value for it."""
+    entries = []
+    if lang["comment_tokens"]:
+        entries.append(
+            "(comment-tokens {})".format(" ".join(scheme_str(t) for t in lang["comment_tokens"]))
+        )
+    if lang["block_comment_tokens"]:
+        pairs = " ".join(
+            "({} . {})".format(scheme_str(start), scheme_str(end))
+            for start, end in lang["block_comment_tokens"]
+        )
+        entries.append(f"(block-comment-tokens {pairs})")
+    if lang["language_id"]:
+        entries.append("(language-id . {})".format(scheme_str(lang["language_id"])))
+    if lang["roots"]:
+        entries.append("(roots {})".format(" ".join(scheme_str(r) for r in lang["roots"])))
+    grammar = lang["grammar"]
+    if grammar:
+        entries.append(
+            "(grammar {} {} {} {})".format(
+                scheme_str(grammar["url"]),
+                scheme_str(grammar["rev"]),
+                scheme_str(grammar["sym"]),
+                scheme_str(grammar["subpath"]),
+            )
+        )
+    if not entries:
+        return ["()"]
+    rows = ["(" + entries[0]] + [" " + e for e in entries[1:]]
+    rows[-1] += ")"
+    return rows
+
+
+def write_language_files(directory: Path, sha: str, langs: list[dict]) -> None:
+    """Write one data file per language into `directory` and delete the file of
+    any language not in `langs`. The directory holds generated files only, so
+    anything other than a `.scm` file there is fatal."""
+    directory.mkdir(parents=True, exist_ok=True)
+    foreign = sorted(p.name for p in directory.iterdir() if p.suffix != ".scm")
+    if foreign:
+        sys.exit(f"error: {directory} holds files that are not generated: {foreign}")
+
+    written = set()
+    for lang in langs:
+        path = directory / f"{lang['name']}.scm"
+        write_generated_file(
+            path,
+            LANGUAGE_DATA_HEADER.format(name=lang["name"], sha=sha),
+            emit_language_data(lang),
+        )
+        read_sexpr(path)  # self-check: emitted file must re-parse
+        written.add(path.name)
+
+    for path in sorted(directory.iterdir()):
+        if path.name not in written:
+            path.unlink()
+            print(f"removed {path}", file=sys.stderr)
 
 
 # HUME-specific corrections to upstream Helix `config` data, applied before
@@ -444,6 +518,7 @@ def main() -> None:
     doc = fetch_toml(sha)
     grammars = parse_grammars(doc)
     langs = parse_languages(doc, grammars)
+    check_language_names(langs)
     servers, language_lists = parse_language_servers(doc)
     check_lsp_invariants(servers, langs, language_lists)
 
@@ -453,20 +528,15 @@ def main() -> None:
         file=sys.stderr,
     )
 
-    # languages.scm — identity and root markers. Not a single-literal-sexpr file (a
-    # sequence of top-level (define-language! …) forms), so unlike the two
-    # below it has no read_sexpr self-check.
+    # languages.scm — detection data. Not a single-literal-sexpr file (a
+    # sequence of top-level (define-language! …) forms), so unlike the others
+    # it has no read_sexpr self-check.
     write_generated_file(
         LANGUAGES_SCM, LANGUAGES_HEADER.format(sha=sha), emit_language_identities(langs)
     )
 
-    # grammar-sources.scm — source catalog only
-    write_generated_file(
-        GRAMMAR_SOURCES_SCM,
-        GRAMMAR_SOURCES_HEADER.format(sha=sha),
-        emit_grammar_sources(grammars, langs),
-    )
-    read_sexpr(GRAMMAR_SOURCES_SCM)  # self-check: emitted file must re-parse
+    # languages/<name>.scm — per-language data
+    write_language_files(LANGUAGES_DIR, sha, langs)
 
     # servers.scm — LSP server command, args and config, defaults omitted
     write_generated_file(

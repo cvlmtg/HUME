@@ -6,8 +6,8 @@
 //! preconditions. Fixtures are installed
 //! by `scripts/fetch-test-grammars.sh` into `tests/fixtures/grammars/<name>/`,
 //! with `queries/` normalized to the fixture root regardless of whether the
-//! upstream grammar repo is a monorepo — callers never need to parse
-//! `grammar-sources.scm` for subpaths.
+//! upstream grammar repo is a monorepo — callers never need to read a
+//! language's data file for subpaths.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 

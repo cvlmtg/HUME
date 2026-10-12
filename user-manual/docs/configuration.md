@@ -287,7 +287,7 @@ Place `"steel:<name>"` for any `<name>` of your choosing to add your own element
 
 ## Language detection
 
-HUME detects file languages from extension, glob pattern, or shebang line. See [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language) for defining custom languages with `define-language!` and, for grammars outside the catalog, `register-grammar!`.
+HUME detects file languages from extension, glob pattern, or shebang line. See [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language) for defining custom languages with `define-language!`, setting their project roots and language-server identifier with `configure-language!` and, for grammars HUME doesn't ship, `register-grammar!`.
 
 ## Example init.scm
 
@@ -303,7 +303,7 @@ A complete starting config. Copy it to `~/.config/hume/init.scm` and edit:
 (load-plugin! "core:git-diff")         ; live inline git diff
 ```
 
-Before your `init.scm` runs, HUME loads its own prelude (which defines `bind-keys!`, `define-language!` and friends) and its built-in language definitions, so those are always available to you.
+Before your `init.scm` runs, HUME loads its own prelude (which defines `bind-keys!`, `define-language!`, `configure-language!` and friends) and its built-in language definitions, so those are always available to you.
 
 ## File locations
 

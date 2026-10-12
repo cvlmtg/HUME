@@ -246,12 +246,8 @@ fn set_completer_double_space_before_value_still_offers_bools() {
 fn set_completer_value_language_from_registry() {
     let (reg, store, dir) = make_ctx_parts();
     let mut langs = LanguageRegistry::new();
-    langs
-        .register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
-    langs
-        .register_identity("ruby", &["rb"], &[], &[], None)
-        .unwrap();
+    langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
+    langs.register_identity("ruby", &["rb"], &[], &[]).unwrap();
     let ctx = ctx_with(&reg, &store, dir.path(), &langs);
     let result = complete_set("set buffer language=", 21, &ctx);
     let names = names_of(&result);
@@ -266,9 +262,7 @@ fn set_completer_value_language_only_buffer_scope() {
     // language names under a non-buffer scope.
     let (reg, store, dir) = make_ctx_parts();
     let mut langs = LanguageRegistry::new();
-    langs
-        .register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
+    langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
     let ctx = ctx_with(&reg, &store, dir.path(), &langs);
     let result = complete_set("set global language=", 21, &ctx);
     assert!(result.1.is_empty());
@@ -278,12 +272,8 @@ fn set_completer_value_language_only_buffer_scope() {
 fn set_completer_value_language_prefix_filters() {
     let (reg, store, dir) = make_ctx_parts();
     let mut langs = LanguageRegistry::new();
-    langs
-        .register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
-    langs
-        .register_identity("ruby", &["rb"], &[], &[], None)
-        .unwrap();
+    langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
+    langs.register_identity("ruby", &["rb"], &[], &[]).unwrap();
     let ctx = ctx_with(&reg, &store, dir.path(), &langs);
     let result = complete_set("set buffer language=ru", 22, &ctx);
     let names = names_of(&result);
@@ -297,10 +287,8 @@ fn set_completer_value_language_includes_an_exact_match() {
     // typed language name is prefix-filtered in, dropped later by rank.
     let (reg, store, dir) = make_ctx_parts();
     let mut langs = LanguageRegistry::new();
-    langs.register_identity("ru", &[], &[], &[], None).unwrap();
-    langs
-        .register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
+    langs.register_identity("ru", &[], &[], &[]).unwrap();
+    langs.register_identity("rust", &["rs"], &[], &[]).unwrap();
     let ctx = ctx_with(&reg, &store, dir.path(), &langs);
     let result = complete_set("set buffer language=ru", 22, &ctx);
     let names = names_of(&result);

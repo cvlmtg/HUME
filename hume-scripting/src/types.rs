@@ -102,9 +102,20 @@ pub struct SteelTypedCmdDef {
     pub completer: Option<String>,
 }
 
-/// Language identity registration queued by `(define-language! …)`, applied
-/// via `Editor::apply_pending_language_regs` as part of `Effect::LanguageReg`
-/// application (`Editor::apply_script_effects`).
+/// A language's bundled data as the editor applies it: the fields of its
+/// `<runtime>/scheme/languages/<name>.scm` the registry stores.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct BundledLanguage {
+    /// Workspace root markers; empty when the file lists none.
+    pub roots: Vec<String>,
+    /// The wire `languageId`, present only when it differs from the name.
+    pub lsp_language_id: Option<String>,
+}
+
+/// Language registration queued by `(define-language! …)`,
+/// `(configure-language! …)` or `(register-grammar! …)`, applied in queue
+/// order via `Editor::apply_pending_language_regs` as part of
+/// `Effect::LanguageReg` application (`Editor::apply_script_effects`).
 #[derive(Debug)]
 pub enum PendingLanguageReg {
     Identity {
@@ -112,8 +123,12 @@ pub enum PendingLanguageReg {
         extensions: Vec<String>,
         globs: Vec<String>,
         shebangs: Vec<String>,
+    },
+    /// Per-language values; `None` leaves a field as it is.
+    Configure {
+        name: String,
+        roots: Option<Vec<String>>,
         lsp_language_id: Option<String>,
-        roots: Vec<String>,
     },
     Grammar(GrammarReg),
 }

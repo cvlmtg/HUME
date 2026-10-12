@@ -97,7 +97,9 @@ fn header_drift_ignores_non_comment_lines_past_the_header() {
 }
 
 /// A hand-edited header line in a generated `.scm` file is reported with
-/// the line that diverges from its generator's template.
+/// the line that diverges from its generator's template. Every file in
+/// `runtime/scheme/languages/` is checked against `LANGUAGE_DATA_HEADER`, with
+/// its `{name}` slot filled from the file's own name.
 #[test]
 fn generated_scm_headers_match_their_generator_templates() {
     let workspace_root = arch_lints::workspace_root();
@@ -107,11 +109,6 @@ fn generated_scm_headers_match_their_generator_templates() {
             "scripts/sync-grammars.py",
             "LANGUAGES_HEADER",
             "runtime/scheme/languages.scm",
-        ),
-        (
-            "scripts/sync-grammars.py",
-            "GRAMMAR_SOURCES_HEADER",
-            "runtime/scheme/grammar-sources.scm",
         ),
         (
             "scripts/sync-grammars.py",
@@ -149,6 +146,39 @@ fn generated_scm_headers_match_their_generator_templates() {
         if let Some(reason) = header_drift(&template, &generated) {
             violations.push(format!(
                 "{generated_rel} (template {const_name} in {script_rel}): {reason}"
+            ));
+        }
+    }
+
+    let data_template = {
+        let script_path = workspace_root.join("scripts/sync-grammars.py");
+        let script_src = std::fs::read_to_string(&script_path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", script_path.display()));
+        extract_header_template(&script_src, "LANGUAGE_DATA_HEADER")
+    };
+    let languages_dir = workspace_root.join("runtime/scheme/languages");
+    let mut data_files: Vec<_> = std::fs::read_dir(&languages_dir)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", languages_dir.display()))
+        .map(|entry| entry.expect("readable directory entry").path())
+        .collect();
+    data_files.sort();
+    assert!(
+        !data_files.is_empty(),
+        "{} holds no generated language data files",
+        languages_dir.display()
+    );
+    for path in data_files {
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or_else(|| panic!("non-UTF-8 file name: {}", path.display()));
+        let generated = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+        let template = data_template.replace("{name}", name);
+        if let Some(reason) = header_drift(&template, &generated) {
+            violations.push(format!(
+                "{} (template LANGUAGE_DATA_HEADER in scripts/sync-grammars.py): {reason}",
+                path.display()
             ));
         }
     }

@@ -142,7 +142,7 @@ fn did_open_carries_the_lsp_language_id_override_not_the_hume_name() {
         file: "component.tsx",
         marked: "-[c]>onst x = 1;\n",
         markers: &[],
-        init: r#"(%define-language! "tsx" '("tsx") '() '() "typescriptreact" '())
+        init: r#"(%define-language! "tsx" '("tsx") '() '()) (%configure-language! "tsx" #f "typescriptreact")
                  (register-lsp-server! "typescript-language-server"
                                        #:command "typescript-language-server")
                  (set-language-servers! "tsx" '("typescript-language-server"))"#,

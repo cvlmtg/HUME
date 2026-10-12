@@ -2,7 +2,7 @@ use std::path::Path;
 
 use globset::Glob;
 
-use super::{LanguageRegistry, QueryPaths, detect_language};
+use super::{ConfigureOutcome, LanguageRegistry, QueryPaths, detect_language};
 use hume_engine::theme::ScopeRegistry;
 use test_fixtures::{
     grammar_parser_path, grammar_query_path, helix_textobjects_path, require_fixture_file,
@@ -248,8 +248,7 @@ fn language_registry_remove_is_idempotent() {
 #[test]
 fn register_identity_then_by_name_returns_entry() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("toml", &["toml"], &[], &[], None)
-        .unwrap();
+    reg.register_identity("toml", &["toml"], &[], &[]).unwrap();
     assert!(
         reg.by_name("toml").is_some(),
         "identity should be registered"
@@ -264,11 +263,18 @@ fn register_identity_then_by_name_returns_entry() {
     assert!(reg.by_extension("yaml").is_none());
 }
 
+fn strings(items: &[&str]) -> Vec<String> {
+    items.iter().map(|s| s.to_string()).collect()
+}
+
 #[test]
-fn roots_of_returns_the_registered_markers() {
+fn roots_of_returns_the_configured_markers() {
     let mut reg = LanguageRegistry::new();
-    let id =
-        reg.register_identity_no_rebuild("go", &["go"], &[], &[], None, &["go.work", "go.mod"]);
+    let id = reg.register_identity_no_rebuild("go", &["go"], &[], &[]);
+    assert_eq!(
+        reg.configure_roots(id, strings(&["go.work", "go.mod"])),
+        ConfigureOutcome::Applied
+    );
     assert_eq!(reg.roots_of(id), ["go.work", "go.mod"]);
 }
 
@@ -280,24 +286,142 @@ fn roots_of_an_interned_language_without_identity_is_empty() {
 }
 
 #[test]
-fn reregistering_an_identity_replaces_its_roots() {
+fn reregistering_an_identity_keeps_its_configured_roots() {
     let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("go", &[], &[], &[], None, &["go.mod"]);
-    reg.register_identity_no_rebuild("go", &[], &[], &[], None, &[]);
+    let id = reg.register_identity_no_rebuild("go", &[], &[], &[]);
+    assert_eq!(
+        reg.configure_roots(id, strings(&["go.mod"])),
+        ConfigureOutcome::Applied
+    );
+    reg.register_identity_no_rebuild("go", &["go"], &[], &[]);
+    assert_eq!(reg.roots_of(id), ["go.mod"]);
+}
+
+#[test]
+fn bundled_values_fill_a_language_with_none_configured() {
+    let mut reg = LanguageRegistry::new();
+    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    assert!(!reg.bundled_loaded(id));
+
+    reg.fill_bundled(
+        id,
+        strings(&["package.json"]),
+        Some("typescriptreact".to_string()),
+    );
+
+    assert!(reg.bundled_loaded(id));
+    assert_eq!(reg.roots_of(id), ["package.json"]);
+    assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
+}
+
+#[test]
+fn bundled_values_never_replace_configured_ones() {
+    let mut reg = LanguageRegistry::new();
+    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    assert_eq!(
+        reg.configure_roots(id, strings(&["deno.json"])),
+        ConfigureOutcome::Applied
+    );
+    assert_eq!(
+        reg.configure_lsp_language_id(id, "tsx-custom".to_string()),
+        ConfigureOutcome::Applied
+    );
+
+    reg.fill_bundled(
+        id,
+        strings(&["package.json"]),
+        Some("typescriptreact".to_string()),
+    );
+
+    assert_eq!(reg.roots_of(id), ["deno.json"]);
+    assert_eq!(reg.lsp_language_id_of(id), "tsx-custom");
+}
+
+#[test]
+fn bundled_values_fill_only_the_fields_left_unset() {
+    let mut reg = LanguageRegistry::new();
+    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    assert_eq!(
+        reg.configure_roots(id, strings(&["deno.json"])),
+        ConfigureOutcome::Applied
+    );
+
+    reg.fill_bundled(
+        id,
+        strings(&["package.json"]),
+        Some("typescriptreact".to_string()),
+    );
+
+    assert_eq!(reg.roots_of(id), ["deno.json"]);
+    assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
+}
+
+#[test]
+fn a_configured_value_replaces_a_bundled_one() {
+    let mut reg = LanguageRegistry::new();
+    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    reg.fill_bundled(
+        id,
+        strings(&["package.json"]),
+        Some("typescriptreact".to_string()),
+    );
+
+    assert_eq!(
+        reg.configure_roots(id, strings(&["deno.json"])),
+        ConfigureOutcome::Applied
+    );
+    assert_eq!(
+        reg.configure_lsp_language_id(id, "tsx-custom".to_string()),
+        ConfigureOutcome::Applied
+    );
+
+    assert_eq!(reg.roots_of(id), ["deno.json"]);
+    assert_eq!(reg.lsp_language_id_of(id), "tsx-custom");
+}
+
+#[test]
+fn a_second_configured_value_is_ignored() {
+    let mut reg = LanguageRegistry::new();
+    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    assert_eq!(
+        reg.configure_roots(id, strings(&["deno.json"])),
+        ConfigureOutcome::Applied
+    );
+    assert_eq!(
+        reg.configure_lsp_language_id(id, "first".to_string()),
+        ConfigureOutcome::Applied
+    );
+
+    assert_eq!(
+        reg.configure_roots(id, strings(&["package.json"])),
+        ConfigureOutcome::Ignored
+    );
+    assert_eq!(
+        reg.configure_lsp_language_id(id, "second".to_string()),
+        ConfigureOutcome::Ignored
+    );
+
+    assert_eq!(reg.roots_of(id), ["deno.json"]);
+    assert_eq!(reg.lsp_language_id_of(id), "first");
+}
+
+#[test]
+fn an_empty_bundled_fill_still_marks_the_language_loaded() {
+    let mut reg = LanguageRegistry::new();
+    let id = reg.register_identity_no_rebuild("plain", &[], &[], &[]);
+
+    reg.fill_bundled(id, Vec::new(), None);
+
+    assert!(reg.bundled_loaded(id));
     assert!(reg.roots_of(id).is_empty());
+    assert_eq!(reg.lsp_language_id_of(id), "plain");
 }
 
 #[test]
 fn register_identity_with_globs_lookup() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity(
-        "makefile",
-        &[],
-        &globs(&["Makefile", "GNUmakefile"]),
-        &[],
-        None,
-    )
-    .unwrap();
+    reg.register_identity("makefile", &[], &globs(&["Makefile", "GNUmakefile"]), &[])
+        .unwrap();
     let matches = reg.compiled_globs().matches(Path::new("Makefile"));
     assert!(!matches.is_empty(), "Makefile should match registered glob");
     let name = reg.glob_lang_id(matches[0]).map(|id| reg.name_of(id));
@@ -313,7 +437,7 @@ fn register_identity_with_globs_lookup() {
 #[test]
 fn remove_clears_glob_and_shebang_entries() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("python", &["py"], &globs(&["*.py"]), &["python"], None)
+    reg.register_identity("python", &["py"], &globs(&["*.py"]), &["python"])
         .unwrap();
     assert!(reg.by_extension("py").is_some());
     assert!(reg.by_shebang("python").is_some());
@@ -333,9 +457,8 @@ fn remove_clears_glob_and_shebang_entries() {
 #[test]
 fn deindex_does_not_clobber_another_languages_shared_extension() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("c", &["c", "h"], &[], &[], None)
-        .unwrap();
-    reg.register_identity("cpp", &["cpp", "h"], &[], &[], None)
+    reg.register_identity("c", &["c", "h"], &[], &[]).unwrap();
+    reg.register_identity("cpp", &["cpp", "h"], &[], &[])
         .unwrap();
     assert_eq!(
         reg.by_extension("h"),
@@ -344,7 +467,7 @@ fn deindex_does_not_clobber_another_languages_shared_extension() {
     );
 
     // Re-register c, dropping .h from its own extension list.
-    reg.register_identity("c", &["c"], &[], &[], None).unwrap();
+    reg.register_identity("c", &["c"], &[], &[]).unwrap();
 
     assert_eq!(
         reg.by_extension("h"),
@@ -380,7 +503,7 @@ fn attached_grammar_survives_identity_re_registration() {
 
     // Re-register identity, as `define-language!` would from init.scm to add
     // an extra extension.
-    reg.register_identity("rust", &["rs", "mylang"], &[], &[], None)
+    reg.register_identity("rust", &["rs", "mylang"], &[], &[])
         .expect("re-registering identity must succeed");
 
     assert!(
@@ -407,51 +530,47 @@ fn attached_grammar_survives_identity_re_registration() {
 #[test]
 fn lsp_language_id_of_falls_back_to_name_when_unset() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
+    reg.register_identity("rust", &["rs"], &[], &[]).unwrap();
     let id = reg.id_of("rust").unwrap();
     assert_eq!(reg.lsp_language_id_of(id), "rust");
 }
 
-/// An `lsp_language_id` override is returned verbatim instead of the name:
-/// the case this whole feature exists for (`tsx` -> `typescriptreact`).
+/// A configured `languageId` is returned verbatim instead of the name: the
+/// case the override exists for (`tsx` -> `typescriptreact`).
 #[test]
-fn lsp_language_id_of_returns_override_when_set() {
+fn lsp_language_id_of_returns_the_configured_override() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("tsx", &["tsx"], &[], &[], Some("typescriptreact"))
-        .unwrap();
+    reg.register_identity("tsx", &["tsx"], &[], &[]).unwrap();
     let id = reg.id_of("tsx").unwrap();
+    assert_eq!(
+        reg.configure_lsp_language_id(id, "typescriptreact".to_string()),
+        ConfigureOutcome::Applied
+    );
     assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
 }
 
-/// Re-registering a language's identity without `lsp_language_id` resets the
-/// override to `None`: `define-language!` replaces the whole identity
-/// record, matching how it already replaces extensions/globs/shebangs
-/// wholesale (see `attached_grammar_survives_identity_re_registration`, which
-/// covers the sibling "grammar survives, identity doesn't" half of the same
-/// contract).
+/// The `languageId` is per-language configuration, not identity:
+/// `define-language!` replacing the detection data leaves it in place.
 #[test]
-fn identity_re_registration_resets_lsp_language_id_override() {
+fn identity_re_registration_keeps_the_configured_lsp_language_id() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("tsx", &["tsx"], &[], &[], Some("typescriptreact"))
-        .unwrap();
+    reg.register_identity("tsx", &["tsx"], &[], &[]).unwrap();
     let id = reg.id_of("tsx").unwrap();
-    assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
-
-    reg.register_identity("tsx", &["tsx", "mytsx"], &[], &[], None)
-        .unwrap();
     assert_eq!(
-        reg.lsp_language_id_of(id),
-        "tsx",
-        "re-registering without an override must reset to the name"
+        reg.configure_lsp_language_id(id, "typescriptreact".to_string()),
+        ConfigureOutcome::Applied
     );
+
+    reg.register_identity("tsx", &["tsx", "mytsx"], &[], &[])
+        .unwrap();
+
+    assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
 }
 
 #[test]
 fn detect_language_by_extension() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("rust", &["rs"], &[], &[], None)
-        .unwrap();
+    reg.register_identity("rust", &["rs"], &[], &[]).unwrap();
     let id = detect_language(Some(Path::new("foo.rs")), None, &reg);
     assert_eq!(id, reg.id_of("rust"));
     // A different extension must not detect.
@@ -462,14 +581,8 @@ fn detect_language_by_extension() {
 #[test]
 fn detect_language_by_glob() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity(
-        "makefile",
-        &[],
-        &globs(&["Makefile", "GNUmakefile"]),
-        &[],
-        None,
-    )
-    .unwrap();
+    reg.register_identity("makefile", &[], &globs(&["Makefile", "GNUmakefile"]), &[])
+        .unwrap();
     let id = detect_language(Some(Path::new("/project/Makefile")), None, &reg);
     assert_eq!(id, reg.id_of("makefile"));
     let no_match = detect_language(Some(Path::new("/project/other")), None, &reg);
@@ -479,18 +592,16 @@ fn detect_language_by_glob() {
 #[test]
 fn detect_language_glob_beats_extension() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("typescript", &["ts"], &[], &[], None)
+    reg.register_identity("typescript", &["ts"], &[], &[])
         .unwrap();
     reg.register_identity(
         "tsconfig",
         &[],
         &globs(&["tsconfig.json", "*.config.json"]),
         &[],
-        None,
     )
     .unwrap();
-    reg.register_identity("json", &["json"], &[], &[], None)
-        .unwrap();
+    reg.register_identity("json", &["json"], &[], &[]).unwrap();
     let id = detect_language(Some(Path::new("tsconfig.json")), None, &reg);
     assert_eq!(id, reg.id_of("tsconfig"));
     // A plain .json that no glob covers still detects as json.
@@ -501,9 +612,9 @@ fn detect_language_glob_beats_extension() {
 #[test]
 fn detect_language_glob_tiebreak_last_registered_wins() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("generic-json", &[], &globs(&["*.json"]), &[], None)
+    reg.register_identity("generic-json", &[], &globs(&["*.json"]), &[])
         .unwrap();
-    reg.register_identity("strict-json", &[], &globs(&["*.json"]), &[], None)
+    reg.register_identity("strict-json", &[], &globs(&["*.json"]), &[])
         .unwrap();
     assert_eq!(
         detect_language(Some(Path::new("config.json")), None, &reg),
@@ -511,9 +622,9 @@ fn detect_language_glob_tiebreak_last_registered_wins() {
     );
 
     let mut reg2 = LanguageRegistry::new();
-    reg2.register_identity("strict-json", &[], &globs(&["*.json"]), &[], None)
+    reg2.register_identity("strict-json", &[], &globs(&["*.json"]), &[])
         .unwrap();
-    reg2.register_identity("generic-json", &[], &globs(&["*.json"]), &[], None)
+    reg2.register_identity("generic-json", &[], &globs(&["*.json"]), &[])
         .unwrap();
     assert_eq!(
         detect_language(Some(Path::new("config.json")), None, &reg2),
@@ -524,7 +635,7 @@ fn detect_language_glob_tiebreak_last_registered_wins() {
 #[test]
 fn detect_language_by_shebang() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("python", &["py"], &[], &["python3", "python"], None)
+    reg.register_identity("python", &["py"], &[], &["python3", "python"])
         .unwrap();
     let id = detect_language(
         Some(Path::new("script")),
@@ -540,7 +651,7 @@ fn detect_language_by_shebang() {
 #[test]
 fn detect_language_shebang_direct_path() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("bash", &["sh"], &[], &["bash"], None)
+    reg.register_identity("bash", &["sh"], &[], &["bash"])
         .unwrap();
     // Extension wins over shebang.
     let id = detect_language(Some(Path::new("run.sh")), Some("#!/bin/bash"), &reg);
@@ -565,9 +676,8 @@ fn detect_language_no_match() {
 #[test]
 fn extension_matching_is_case_sensitive() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("c", &["c"], &[], &[], None).unwrap();
-    reg.register_identity("cpp", &["C"], &[], &[], None)
-        .unwrap();
+    reg.register_identity("c", &["c"], &[], &[]).unwrap();
+    reg.register_identity("cpp", &["C"], &[], &[]).unwrap();
     assert_eq!(
         detect_language(Some(Path::new("foo.c")), None, &reg),
         reg.id_of("c"),

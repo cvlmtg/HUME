@@ -75,7 +75,7 @@ If HUME can't guess correctly the buffer language, you can override it manually:
 :set buffer language=python
 ```
 
-Use the exact language name. Press `Tab` after `language=` to complete from the languages HUME recognizes. (`:plum-list-grammars` lists the *grammar* catalog, which is a slightly different set.) The override lasts for that buffer only.
+Use the exact language name. Press `Tab` after `language=` to complete from the languages HUME recognizes. (`:plum-list-grammars` lists only the languages HUME can install a grammar for, a slightly smaller set.) The override lasts for that buffer only.
 
 ## Teach HUME a new language
 
@@ -93,29 +93,25 @@ The arguments, in order, are:
 
 Trailing arguments you don't need can be dropped: `(define-language! "my-lang" '("myl"))` is fine.
 
-If the language server you'll connect expects a different identifier than `"my-lang"` (for example, TypeScript's language servers expect `"typescriptreact"` for `.tsx` files), override it with `#:language-id`:
+Settings beyond detection go through `configure-language!`, which works on any language, built-in or your own. Call it after the `define-language!` that defines the language.
+
+If the language server you'll connect expects a different identifier than `"my-lang"` (for example, TypeScript's language servers expect `"typescriptreact"` for `.tsx` files), set `#:language-id`:
 
 ```scheme
-(define-language! "my-lang" '("myl") #:language-id "my-language-server-id")
+(configure-language! "my-lang" #:language-id "my-language-server-id")
 ```
 
-It defaults to the language name when omitted.
+It defaults to the language name when you don't set it.
 
 `#:roots` lists the file or directory names that mark a project's root for this language (HUME walks up from the opened file to the nearest directory holding one). Language servers use the directory it finds as their workspace:
 
 ```scheme
-(define-language! "my-lang" '("myl") #:roots '("my-lang.toml" ".git"))
+(configure-language! "my-lang" #:roots '("my-lang.toml" ".git"))
 ```
 
-A language with no roots uses the directory HUME was started in. Defining a language that already exists replaces its whole record, so a redefinition also repeats the extensions and roots it should keep.
+A language with no roots uses the directory HUME was started in. Built-in languages already come with the roots and identifiers their language servers expect; `configure-language!` replaces them. The first value set for a setting wins: a later `configure-language!` for the same setting, from your `init.scm` or from a plugin, is ignored and noted in `:messages`. Redefining a language with `define-language!` replaces only its extensions, globs and shebangs; its settings stay.
 
-Now `my-lang` is detected like any built-in. If its grammar is already in PLUM's catalog under that name, install it the normal way:
-
-```
-:plum-install-grammar my-lang
-```
-
-For a grammar that isn't in the catalog (a private or experimental tree-sitter grammar), point HUME at the compiled library and a highlight query file by hand:
+Now `my-lang` is detected like any built-in. `:plum-install-grammar` installs grammars only for the languages HUME ships with, so for your own language, or a private or experimental tree-sitter grammar, point HUME at the compiled library and a highlight query file by hand:
 
 ```scheme
 (register-grammar! "my-lang"
@@ -169,7 +165,7 @@ Omit both keywords for a language with nothing to offer there.
 :plum-list-grammars
 ```
 
-Logs the names HUME knows, which are compiled on disk, which are missing, and which are orphans (compiled but no longer in the catalog).
+Logs the names HUME knows, which are compiled on disk, which are missing, and which are orphans (compiled under a name HUME ships no grammar for).
 
 ```
 :plum-cleanup-grammars

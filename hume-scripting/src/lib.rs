@@ -55,11 +55,11 @@ pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
-    CapabilityQuery, DocSpan, Effect, EvalError, FeatureFilter, GrammarReg, ListEntry, ListLayer,
-    LspFeature, LspServerStatusEntry, LspServerTarget, PaneHandle, Params, PendingLanguageReg,
-    PendingLspNotify, PendingLspRequest, PendingLspServerOp, PendingLspServerReg, RequestMode,
-    RequestParams, RouteSpec, ServerName, SteelCmdDef, SteelTypedCmdDef, TriggerKind, TriggerScope,
-    VirtualLineSpec, WhenUnavailable,
+    BundledLanguage, CapabilityQuery, DocSpan, Effect, EvalError, FeatureFilter, GrammarReg,
+    ListEntry, ListLayer, LspFeature, LspServerStatusEntry, LspServerTarget, PaneHandle, Params,
+    PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
+    PendingLspServerReg, RequestMode, RequestParams, RouteSpec, ServerName, SteelCmdDef,
+    SteelTypedCmdDef, TriggerKind, TriggerScope, VirtualLineSpec, WhenUnavailable,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than
@@ -773,6 +773,46 @@ impl ScriptingHost {
         args: Vec<SteelVal>,
         host: &mut dyn EditorHost,
     ) -> Result<SteelVal, String> {
+        self.read_only_call(host, |steel| steel.call_function_with_args(proc, args))
+    }
+
+    /// `name`'s bundled data, read by `bootstrap.scm`'s
+    /// `%bundled-language-config` under [`call_for_value`](Self::call_for_value)'s
+    /// read-only rules. `None` when there is no runtime directory or no file
+    /// for `name`; a malformed file is an error naming it.
+    pub fn bundled_language(
+        &mut self,
+        name: &str,
+        host: &mut dyn EditorHost,
+    ) -> Result<Option<BundledLanguage>, String> {
+        const CONFIG: &str = "%bundled-language-config";
+        let config = self.read_only_call(host, |steel| {
+            steel.call_function_by_name_with_args(CONFIG, vec![SteelVal::StringV(name.into())])
+        })?;
+        let decode = || {
+            let Some(fields) = builtins::args::optional_list_items(config, CONFIG)? else {
+                return Ok(None);
+            };
+            let [roots, lsp_language_id]: [SteelVal; 2] = fields.try_into().map_err(|_| {
+                builtins::errors::generic_err(format!("{CONFIG}: expected (roots language-id)"))
+            })?;
+            Ok::<_, steel::rerrs::SteelErr>(Some(BundledLanguage {
+                roots: builtins::args::list_to_strings(roots, CONFIG)?,
+                lsp_language_id: builtins::args::optional_string_arg(lsp_language_id, CONFIG)?,
+            }))
+        };
+        decode().map_err(|e| e.to_string())
+    }
+
+    /// Runs `call` in a session whose host is read-only and whose queued
+    /// commands fail the call; the shared body of
+    /// [`call_for_value`](Self::call_for_value) and
+    /// [`bundled_language`](Self::bundled_language).
+    fn read_only_call(
+        &mut self,
+        host: &mut dyn EditorHost,
+        call: impl FnOnce(&mut Engine) -> Result<SteelVal, steel::rerrs::SteelErr>,
+    ) -> Result<SteelVal, String> {
         let budget_ms = host.settings().steel_command_budget_ms();
         let effects_start = self.effects.len();
         let mut read_only = ReadOnlyHost::new(host);
@@ -781,7 +821,7 @@ impl ScriptingHost {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(&mut read_only, bundle);
             run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
-                value = Some(steel.call_function_with_args(proc, args)?);
+                value = Some(call(steel)?);
                 Ok(())
             })
             .map_err(|e| e.message)
@@ -828,6 +868,22 @@ impl ScriptingHost {
         host: &mut dyn EditorHost,
     ) -> Result<Vec<Effect>, String> {
         self.eval_source_with_budget(source, 10_000, host)
+    }
+
+    /// Evaluates `source` and returns its last value, under
+    /// [`call_for_value`](Self::call_for_value)'s read-only rules.
+    pub fn eval_source_for_value(
+        &mut self,
+        source: &str,
+        host: &mut dyn EditorHost,
+    ) -> Result<SteelVal, String> {
+        let source = source.to_owned();
+        self.read_only_call(host, |steel| {
+            steel
+                .compile_and_run_raw_program(source)?
+                .pop()
+                .ok_or_else(|| builtins::errors::generic_err("the source produced no value"))
+        })
     }
 
     /// Like [`eval_source`](Self::eval_source) but arms a real

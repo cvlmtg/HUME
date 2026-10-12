@@ -203,6 +203,17 @@ macro_rules! builtins {
 //
 // %port-safe?: a port is safe unless it is the real stdout, where the gate
 // decides. Every print shim's explicit-port branch uses it (io.rs module doc).
+//
+// %read-language-data: the one reader of `<runtime>/scheme/languages/<name>.scm`
+// (record format: runtime/scheme/README.md). It parses with hm.read!, never
+// `read`: steel-core's `read` keeps one buffer across calls, returns eof
+// instead of raising on bad syntax, and leaves the bad text for the next
+// call. The parse error is caught into a marker and a fresh error naming the
+// file is raised after the handler returns, so nothing is re-raised (hazard
+// above). A missing runtime dir or file reads as #f; a name that could leave
+// the directory raises. %bundled-language-config is the editor's view
+// (ScriptingHost::bundled_language decodes it); bundled-language-grammar and
+// bundled-grammar-languages are the plugins' view.
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
 // PRINT_GATE_SHIMS is appended both to BOOTSTRAP (top level) and, verbatim,
@@ -364,7 +375,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "switch-to-buffer!" buffers::switch_to_buffer(pane: args::LivePane, target: args::LivePane);
 
         // Language identity and grammar builtins
-        config "%define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal, lsp_language_id_val: SteelVal, roots_val: SteelVal);
+        config "%define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal);
+        config "%configure-language!" syntax::configure_language(name: SteelVal, roots_val: SteelVal, lsp_language_id_val: SteelVal);
         open   "%register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, injections_path: SteelVal, textobjects_path: SteelVal);
 
         // LSP server registration: last-wins, queued (like language regs) and

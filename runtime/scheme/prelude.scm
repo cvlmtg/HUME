@@ -16,11 +16,13 @@
     ((_ mode key ...)
      (begin (unbind-key! mode key) ...))))
 
-(define (define-language! name
-                          [exts '()] [globs '()] [shebangs '()]
-                          #:language-id [language-id #f]
-                          #:roots [roots '()])
-  (%define-language! name exts globs shebangs language-id roots))
+(define (define-language! name [exts '()] [globs '()] [shebangs '()])
+  (%define-language! name exts globs shebangs))
+
+(define (configure-language! name
+                             #:roots [roots #f]
+                             #:language-id [language-id #f])
+  (%configure-language! name roots language-id))
 
 (define (register-grammar! name grammar-path symbol highlights-path
                            #:injections [injections-path #f]

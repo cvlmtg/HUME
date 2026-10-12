@@ -19,7 +19,7 @@ Editor commands and builtins are different things. A command, such as `completio
 - Optional arguments are keywords with a default, like `#:cwd`, never a positional `#f` placeholder. The exception is `define-language!`, whose extensions, globs, and shebangs are positional lists you can drop from the end.
 - A structured value you pass in or get back (a decoration entry, a diagnostic, a request error) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. Values decoded from server JSON are JSON handles instead (see [JSON handles](lsp-api.md#json-handles)). Two kinds of value are hashmaps with string keys, the wire shape: the `lsp-*-params` results (`(hash-ref (lsp-position-params pane) "position")`) and the items `completion-top` returns, whose source is `(hash-ref item "source")`. Picker items `(display . payload)`, picker `#:actions` `(key-spec . proc)`, and `register-lsp-server!`'s `#:env` `("KEY" . "VALUE")` are pairs, not records: the first two are per-row data on a hot path, the last a map.
 - Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, and every call that closes or changes that widget takes it. A stale token (the widget already closed or was replaced) is a no-op, so a late callback can never touch someone else's widget. `#f` — an opener's own answer when the open was dropped before it could happen — is stale by construction and a no-op the same way.
-- Where a call may run depends on what it touches. Calls that read or change a live buffer, pane, selection, or widget raise at the top level of `init.scm` and in a plugin body loaded at startup, since nothing is on screen yet; call them from a command, hook, timer, or callback. Registrations (`bind-key!` and its variants, `define-command!`, `define-typed-command!`, `register-hook!`, `register-lsp-notification-hook!`, `register-completion-source!`, `define-language!`) raise inside a command, hook, timer, or callback; call them at the top level of `init.scm` or in a plugin body. `load-plugin!` and `declare-plugin!` work only at the top level of `init.scm`.
+- Where a call may run depends on what it touches. Calls that read or change a live buffer, pane, selection, or widget raise at the top level of `init.scm` and in a plugin body loaded at startup, since nothing is on screen yet; call them from a command, hook, timer, or callback. Registrations (`bind-key!` and its variants, `define-command!`, `define-typed-command!`, `register-hook!`, `register-lsp-notification-hook!`, `register-completion-source!`, `define-language!`, `configure-language!`) raise inside a command, hook, timer, or callback; call them at the top level of `init.scm` or in a plugin body. `load-plugin!` and `declare-plugin!` work only at the top level of `init.scm`.
 - A value from a fixed set of names (a mode, a hook name, a log level, an enum option's value) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
 ## Settings & statusline
@@ -190,11 +190,14 @@ Both ends speak the same list shape. A string a script writes pastes as whole li
 
 | Call | Effect |
 |------|--------|
-| `(define-language! name exts globs shebangs #:language-id #:roots)` | Define or override a language identity, including the file names that mark its project root. `exts`, `globs`, and `shebangs` default to `'()`; `#:language-id` is the identifier language servers know it by, when that differs from `name` |
+| `(define-language! name exts globs shebangs)` | Define a language, or replace how an existing one is detected. `exts`, `globs`, and `shebangs` default to `'()` |
+| `(configure-language! name #:roots #:language-id)` | Set a defined language's project root markers (a list of file names) and the identifier language servers know it by, when that differs from `name`. Each keyword left out leaves that setting as it is. The first value set for a setting wins; a later one is ignored with a warning |
+| `(bundled-language-grammar name)` | The grammar HUME ships for language `name`, as `(url rev symbol subpath)`, or `#f` when it ships none |
+| `(bundled-grammar-languages)` | Every language HUME ships a grammar for, sorted |
 | `(register-grammar! name grammar-path symbol highlights-path #:injections #:textobjects)` | Register an already-compiled tree-sitter grammar |
 | `(language-has-grammar? name)` | `#t` if `name` has an attached grammar |
 
-`define-language!`/`register-grammar!` are covered with examples in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).
+`define-language!`/`configure-language!`/`register-grammar!` are covered with examples in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).
 
 ## Diagnostics & decorations
 

@@ -7,8 +7,7 @@
          (let ([dir (path-join rt "plugins" "core" "steel-server" "lsp-home")])
            (and (path-exists? (path-join dir "hume-globals.scm")) dir)))))
 
-(define-language! "scheme" '("ss" "scm" "sld") '() '("scheme" "guile" "chicken")
-                  #:roots '("cog.scm"))
+(configure-language! "scheme" #:roots '("cog.scm"))
 (set-default-language-servers! "scheme" '("steel-language-server"))
 
 (define (steel-server/register!)
