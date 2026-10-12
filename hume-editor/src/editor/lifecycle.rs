@@ -191,10 +191,11 @@ impl Editor {
         // This buffer predates the scripting host, so it can't route through
         // `open_buffer_and_notify`, but it must end up in the state that
         // chokepoint leaves a buffer in, or `detect_pending_languages` never
-        // announces its open. Safe to queue this early: `queue_event` only
-        // enqueues, and `pending_work` isn't drained until the first
-        // `settle()` (`Editor::run`'s loop / `frame.rs`), long after
-        // `init_scripting` has registered every hook handler.
+        // announces its open. Safe to queue this early: detection waits for
+        // the scripting host `init_scripting` attaches, and `pending_work`
+        // isn't drained until the first `settle()` (`Editor::run`'s loop /
+        // `frame.rs`), after `init_scripting` has registered every hook
+        // handler.
         super::buffer::lifecycle::queue_open_announcement(&mut editor.state, buffer_id);
         Ok(editor)
     }

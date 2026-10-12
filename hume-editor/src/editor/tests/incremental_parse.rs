@@ -23,6 +23,7 @@ fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     let buf = Buffer::at_start(BufferText::from(source));
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
+    super::language::attach_host(&mut ed, "");
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));

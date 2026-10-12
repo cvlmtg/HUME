@@ -164,7 +164,8 @@ pub(crate) struct ConfigState {
     /// with only `&mut EditorState`/`&mut EngineView`) never hold, so they
     /// queue the buffer id here instead of detecting inline. Every
     /// `drain_pending_work` pass drains it; every Steel-eval path also drains
-    /// it at the tail of `apply_script_effects`.
+    /// it at the tail of `apply_script_effects`. Nothing drains it while no
+    /// scripting host is attached.
     pub(in crate::editor) pending_language_detection: Vec<hume_engine::pipeline::BufferId>,
     /// In-flight `spawn-async!` jobs, keyed by the id `spawn-async!`
     /// returned to Steel. Drained by `Editor::drain_async_jobs`; dropping

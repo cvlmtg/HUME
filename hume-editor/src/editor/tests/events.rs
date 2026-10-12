@@ -385,9 +385,9 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
         .rebuild_glob_set()
         .expect("rebuild ok");
 
-    // Stands in for what `apply_script_effects`'s tail does during
-    // `init_scripting` (`scripting_setup.rs:105`), inspecting the queue
-    // before `settle()` drains it, same as the sibling test above.
+    // Stands in for the drain `init_scripting` runs once it attaches its
+    // host, inspecting the queue before `settle()` drains it, same as the
+    // sibling test above.
     ed.detect_pending_languages();
 
     let hook_order: Vec<&str> = ed

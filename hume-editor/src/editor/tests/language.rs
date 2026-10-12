@@ -50,6 +50,15 @@ fn set_buffer_language_writes_language_field() {
 }
 
 #[test]
+#[should_panic(expected = "a buffer's language changes only with a scripting host attached")]
+fn changing_a_language_without_a_scripting_host_panics() {
+    let mut ed = editor_from("-[a]>b\n");
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.config.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
+}
+
+#[test]
 fn set_buffer_language_to_none_clears_language() {
     let mut ed = editor_from("-[a]>b\n");
     attach_host(&mut ed, "");

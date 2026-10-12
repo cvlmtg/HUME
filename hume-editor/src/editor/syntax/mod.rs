@@ -116,6 +116,12 @@ impl Editor {
         if self.state.buffers.get(bid).language == new_lang {
             return;
         }
+        // Bundled data and lazy plugin activation both run through the host;
+        // a change made without one would be recorded without either.
+        assert!(
+            self.scripting.is_some(),
+            "a buffer's language changes only with a scripting host attached"
+        );
         let lang_name = new_lang.map(|id| self.state.config.languages.name_of(id).to_owned());
         self.state.buffers.get_mut(bid).language = new_lang;
         if let Some(id) = new_lang {
@@ -149,23 +155,24 @@ impl Editor {
 
     /// Read `id`'s bundled data file (`<runtime>/scheme/languages/<name>.scm`)
     /// the first time a buffer uses the language in this configuration, and
-    /// fill each field configuration left unset. A missing file, runtime
-    /// directory or scripting host leaves the language without bundled data;
-    /// a malformed file is reported and does the same. Either way the file is
-    /// not read again until `:reload-config` rebuilds the registry.
+    /// fill each field configuration left unset. A missing file or runtime
+    /// directory leaves the language without bundled data; a malformed file
+    /// is reported and does the same. Either way the file is not read again
+    /// until `:reload-config` rebuilds the registry.
     fn load_bundled_language(&mut self, id: LanguageId) {
         if self.state.config.languages.bundled_loaded(id) {
             return;
         }
         let name = self.state.config.languages.name_of(id).to_owned();
-        let bundled = self.scripting.as_mut().map(|scripting| {
-            let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
-            scripting.bundled_language(&name, &mut host)
-        });
-        let lang = match bundled {
-            Some(Ok(Some(lang))) => lang,
-            None | Some(Ok(None)) => BundledLanguage::default(),
-            Some(Err(e)) => {
+        let scripting = self
+            .scripting
+            .as_mut()
+            .expect("set_buffer_language_impl checks for a scripting host");
+        let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
+        let lang = match scripting.bundled_language(&name, &mut host) {
+            Ok(Some(lang)) => lang,
+            Ok(None) => BundledLanguage::default(),
+            Err(e) => {
                 self.report(super::Severity::Error, format!("language data: {e}"));
                 BundledLanguage::default()
             }
@@ -196,7 +203,10 @@ impl Editor {
     /// chokepoint can't do this inline (see that function's doc). Every pass
     /// of `drain_pending_work` drains it, so a buffer opened by any path is
     /// announced before the next frame; `apply_script_effects` also drains it
-    /// at its tail, so later work in the same batch sees the language.
+    /// at its tail, so later work in the same batch sees the language. With
+    /// no scripting host attached (inside `init_scripting`, before it attaches
+    /// the host it built) the queue is left for the drain `init_scripting`
+    /// runs after attaching: setting a language needs the host.
     ///
     /// Also fires `OnBufferOpen` for each buffer, after its `OnLanguageSet`
     /// (queued by `detect_and_set_language` above); `open_buffer_and_notify`
@@ -211,6 +221,9 @@ impl Editor {
     /// drains) only the buffers *it* queued, and returns to find nothing left
     /// for this call to reprocess.
     pub(super) fn detect_pending_languages(&mut self) {
+        if self.scripting.is_none() {
+            return;
+        }
         let pending = std::mem::take(&mut self.state.config.pending_language_detection);
         for bid in pending {
             // The buffer may have been closed by the same batch of work that

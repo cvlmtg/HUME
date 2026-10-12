@@ -43,6 +43,7 @@ fn rust_editor_undrained(source: &str) -> Editor {
             textobjects: Some(&to_path),
         },
     );
+    super::language::attach_host(&mut ed, "");
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     ed
@@ -545,6 +546,7 @@ fn inner_argument_with_a_grammar_but_no_textobjects_query_falls_back_to_the_lexi
     require_fixtures();
     let mut ed = editor_from("fn f() {\n    foo(-[a]>aa, bbb);\n}\n");
     let bid = ed.focused_buffer_id();
+    super::language::attach_host(&mut ed, "");
     attach_fixture_grammar(&mut ed, "rust", "tree_sitter_rust");
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));

@@ -26,6 +26,7 @@ fn language(name: &str) -> TriggerScope {
 fn rust_buffer() -> (crate::editor::Editor, BufferId) {
     let mut ed = editor_from("-[a]>b\n");
     let bid = ed.focused_buffer_id();
+    super::language::attach_host(&mut ed, "");
     let rust = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(rust));
     (ed, bid)

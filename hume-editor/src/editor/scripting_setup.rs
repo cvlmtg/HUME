@@ -62,10 +62,10 @@ impl Editor {
     /// buffer a disjoint-borrow Steel path opened via `buffer::lifecycle::
     /// open_buffer_and_notify` this eval (`(open-buffer! …)`, workspace edits,
     /// goto-definition). `drain_pending_work` would reach them on its next
-    /// pass; draining here lets the next item of the same batch, and
-    /// `init_scripting`'s caller, see their language. *After* the effect loop,
-    /// not before: a script that opens a buffer and registers its language in
-    /// the same eval must have the registration land first.
+    /// pass; draining here lets the next item of the same batch see their
+    /// language. *After* the effect loop, not before: a script that opens a
+    /// buffer and registers its language in the same eval must have the
+    /// registration land first.
     pub(in crate::editor) fn apply_script_effects(&mut self, effects: Vec<Effect>) {
         let mut effects: std::collections::VecDeque<Effect> = effects.into();
         while let Some(effect) = effects.pop_front() {
@@ -792,6 +792,10 @@ impl Editor {
             self.report(log_level_to_severity(level), text);
         }
         self.scripting = Some(host);
+        // Every language is registered by now, so the startup buffer queued
+        // by `Editor::open` announces `on-language-set` before
+        // `on-buffer-open`, like any other open.
+        self.detect_pending_languages();
         // Post-init lint: warn on keymap leaves that target a name a key
         // binding can't actually reach. Lazy stubs are registered live as
         // each declare-plugin! call runs during init.scm eval, so they
@@ -837,13 +841,13 @@ impl Editor {
                 }
             }
         }
-        // Re-detect language for every open buffer (the startup buffer is
-        // opened in lib.rs before init_scripting is called; a
-        // `:reload-config` cleared every buffer's language in
-        // `reset_config_state`). A buffer with an explicit assertion,
-        // restored from `snapshot` (this is a `:reload-config`) or made by
-        // `init.scm` itself against a buffer that predates this call (e.g.
-        // the startup buffer), skips detection entirely: `set_buffer_
+        // Re-detect language for every open buffer (a `:reload-config`
+        // cleared every buffer's language in `reset_config_state`; the
+        // startup buffer, detected by the drain above, is unchanged here).
+        // A buffer with an explicit assertion, restored from `snapshot`
+        // (this is a `:reload-config`) or made by `init.scm` itself against a
+        // buffer that predates this call (e.g. the startup buffer), skips
+        // detection entirely: `set_buffer_
         // language_impl` stamps `language_explicit` unconditionally, so a
         // later detection pass would otherwise silently overwrite that
         // assertion with whatever plain detection finds. Restoring the

@@ -97,6 +97,7 @@ fn attach_then_set_language_attaches_syntax() {
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
     assert!(
@@ -136,6 +137,7 @@ fn reset_config_state_clears_buffer_syntax_not_just_language() {
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
     assert!(
@@ -166,6 +168,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     assert!(ed.state.buffers.get(bid).syntax.is_some());
 
@@ -194,6 +197,7 @@ fn sweep_attaches_syntax_on_matching_language() {
         .unwrap();
     // Set language BEFORE grammar is attached: no syntax yet.
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
@@ -222,6 +226,7 @@ fn sweep_no_op_for_nonmatching_language() {
         .unwrap();
     // Set language but don't attach grammar yet: parser stays absent.
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     assert!(ed.state.buffers.get(bid).syntax.is_none());
 
@@ -256,6 +261,7 @@ fn reparse_advances_parsed_gen_after_edit() {
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain the initial parse result
 
@@ -335,6 +341,7 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
@@ -402,6 +409,7 @@ fn closing_the_last_buffer_clears_engine_syntax_state() {
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
     assert!(
@@ -445,6 +453,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
@@ -507,6 +516,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers();
 
@@ -625,6 +635,7 @@ fn parse_worker_result_is_async_then_installed() {
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain initial parse result
 
@@ -691,6 +702,7 @@ fn grammar_swap_clears_stale_in_flight() {
         .unwrap();
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let lang = ed.state.config.languages.intern("json");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain json parse result
 
@@ -776,6 +788,7 @@ fn rust_function_highlight_snapshot() {
     ed.view.theme.bake(&ed.view.registry);
 
     let lang = ed.state.config.languages.intern("rust");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
     // Drain the parse result posted synchronously inside setup_buffer_syntax
     // (InlineParseBackend completes the parse inside post; drain installs the tree).

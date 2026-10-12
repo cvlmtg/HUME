@@ -105,6 +105,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
+    ed.scripting = Some(host);
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(
@@ -112,7 +113,6 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
         "no grammar attached yet"
     );
 
-    ed.scripting = Some(host);
     type_cmd(&mut ed, ":attach-json");
 
     assert!(
@@ -457,9 +457,9 @@ fn install_real_json_grammar_e2e() {
         .languages
         .register_identity("json", &["json"], &[], &[])
         .unwrap();
+    ed.scripting = Some(host);
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
-    ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":attach-json");
 

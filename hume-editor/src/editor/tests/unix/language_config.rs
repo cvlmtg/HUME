@@ -16,6 +16,15 @@ fn boot(
     init: &str,
     plugin: &str,
 ) -> (Editor, ReloadFixture) {
+    let fixture = stage(languages_scm, bundled, init, plugin);
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
+    ed.init_scripting(&mut Default::default());
+    (ed, fixture)
+}
+
+/// The files [`boot`] runs against.
+fn stage(languages_scm: &str, bundled: &[(&str, &str)], init: &str, plugin: &str) -> ReloadFixture {
     let fixture = ReloadFixture::new(init);
 
     let plugin_dir = fixture.data_dir.join("plugins").join("user").join("tp");
@@ -31,11 +40,32 @@ fn boot(
     for (name, body) in bundled {
         std::fs::write(languages_dir.join(format!("{name}.scm")), body).unwrap();
     }
+    fixture
+}
 
-    let mut ed = editor_from("-[a]>b\n");
-    ed.state.dirs = fixture.dirs();
+/// Start a session the way `hume <file>` does: `Editor::open` with `file`
+/// as the startup buffer, then `init_scripting` over `dirs`.
+fn boot_with_file(file: &str, dirs: Dirs, fixture: &ReloadFixture) -> Editor {
+    let path = fixture.data_dir.join(file);
+    std::fs::create_dir_all(&fixture.data_dir).unwrap();
+    std::fs::write(&path, "x\n").unwrap();
+    let mut ed =
+        Editor::open(Some(path), std::sync::Arc::new(|| {}), dirs, test_cwd()).expect("open");
     ed.init_scripting(&mut Default::default());
-    (ed, fixture)
+    ed
+}
+
+fn queued_hook_names(ed: &Editor) -> Vec<&'static str> {
+    ed.state
+        .config
+        .pending_work
+        .iter()
+        .filter_map(|w| match w {
+            crate::editor::event::PendingWork::Event(e) => Some(e.name()),
+            crate::editor::event::PendingWork::Call { .. } => None,
+        })
+        .filter(|name| matches!(*name, "on-language-set" | "on-buffer-open"))
+        .collect()
 }
 
 const TSX_LANGUAGES: &str = r#"(define-language! "tsx" '("tsx"))"#;
@@ -259,4 +289,32 @@ fn the_shipped_jsx_file_carries_the_javascript_grammar() {
 
     assert_eq!(jsx[2], "tree_sitter_javascript");
     assert_eq!(jsx, shipped_grammar("javascript"));
+}
+
+#[test]
+fn the_startup_buffer_queues_on_language_set_before_on_buffer_open() {
+    let fixture = stage(TSX_LANGUAGES, &[TSX_BUNDLED], "", "");
+    let ed = boot_with_file("main.tsx", fixture.dirs(), &fixture);
+
+    assert_no_errors(&ed);
+    assert_eq!(
+        queued_hook_names(&ed),
+        ["on-language-set", "on-buffer-open"]
+    );
+}
+
+#[test]
+fn a_lazy_language_plugin_activates_for_the_startup_buffer_without_a_runtime_dir() {
+    let init = r#"(%define-language! "tsx" '("tsx") '() '())
+                  (declare-plugin! "user/tp" #:languages '("tsx"))"#;
+    let plugin = r#"(%configure-language! "tsx" '("plugin.json") #f)"#;
+    let fixture = stage("", &[], init, plugin);
+    let dirs = Dirs {
+        runtime: None,
+        ..fixture.dirs()
+    };
+    let ed = boot_with_file("main.tsx", dirs, &fixture);
+
+    assert_no_errors(&ed);
+    assert_eq!(roots(&ed), ["plugin.json"]);
 }

@@ -78,6 +78,7 @@ fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
         .unwrap();
     attach(&mut ed, "rust", "tree_sitter_rust", false);
 
+    super::language::attach_host(&mut ed, "");
     let lang = ed.state.config.languages.intern("markdown");
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drains the initial full parse

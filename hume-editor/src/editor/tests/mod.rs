@@ -1168,7 +1168,8 @@ fn eval_with_real_host(
     ed.apply_script_effects(effects);
 }
 
-/// `eval_with_real_host` + installing the host on `ed`: the eval-and-install
+/// `eval_with_real_host` + installing the host on `ed` and draining the
+/// language detection that waited for it: the eval-and-install
 /// core `run` and `run_probe` both need, factored out so a probe body
 /// (layered onto a caller-supplied host) and a plain command definition
 /// (always a fresh host) don't duplicate it.
@@ -1180,6 +1181,7 @@ fn install_source(
 ) {
     eval_with_real_host(ed, &mut host, source, tmp);
     ed.scripting = Some(host);
+    ed.detect_pending_languages();
 }
 
 /// Evaluates `source` against a fresh `ScriptingHost` and installs it on

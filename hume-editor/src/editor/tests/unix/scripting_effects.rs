@@ -109,6 +109,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
         effects[2]
     );
 
+    ed.scripting = Some(host);
     ed.apply_script_effects(effects);
 
     assert!(

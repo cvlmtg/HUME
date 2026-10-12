@@ -313,6 +313,7 @@ fn reset_clears_stale_buffer_language_ids() {
     let mut ed = editor_from("-[a]>b\n");
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
+    super::language::attach_host(&mut ed, "");
     ed.set_buffer_language(bid, Some(lang));
 
     assert_eq!(
@@ -918,6 +919,7 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
     )
     .unwrap();
     assert!(is_new, "sanity: this must be a genuinely new buffer");
+    super::language::attach_host(&mut ed, "");
     ed.detect_pending_languages();
     ed.settle();
 
