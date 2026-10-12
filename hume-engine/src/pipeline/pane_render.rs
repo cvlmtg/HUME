@@ -70,7 +70,7 @@ pub(crate) fn render_pane(
     // single unwrapped line can be arbitrarily long (a minified JS file is a
     // real case), so scanning past the right edge would cost O(line_length)
     // per frame. Wrapping modes are already bounded by `wrap_width`.
-    let h_window = (!pane_ctx.settings.format.wrap_mode.is_wrapping()).then(|| {
+    let h_window = (!pane_ctx.settings.format.params.wrap_mode.is_wrapping()).then(|| {
         let h_offset = pane_ctx.viewport.horizontal_offset;
         let end = h_offset
             .advance_saturating(visible.content_width as u32)
@@ -101,7 +101,7 @@ pub(crate) fn render_pane(
         horizontal_offset: pane_ctx.viewport.horizontal_offset,
         mode: pane_ctx.settings.mode,
         primary_head_line: crate::pane::primary_head_line(pane_ctx.selections, pane_ctx.rope),
-        tab_width: pane_ctx.settings.format.tab_width,
+        tab_width: pane_ctx.settings.format.params.tab_width,
         tilde_style: pane_ctx.theme.ui.virtual_text,
         indent_guide_style: pane_ctx.theme.ui.indent_guide,
         indent_guides: pane_ctx.settings.indent_guides,

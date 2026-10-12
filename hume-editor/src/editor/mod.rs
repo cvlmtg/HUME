@@ -554,9 +554,11 @@ impl LayoutKey {
     ) -> hume_engine::display_lines::line_store::FormatKey {
         hume_engine::display_lines::line_store::FormatKey {
             buffer_tag: self.buffer_tag,
-            wrap_mode: self.wrap_mode,
-            tab_width: self.tab_width,
-            whitespace: self.whitespace,
+            params: hume_engine::display_lines::line_store::FormatParams {
+                wrap_mode: self.wrap_mode,
+                tab_width: self.tab_width,
+                whitespace: self.whitespace,
+            },
         }
     }
 }

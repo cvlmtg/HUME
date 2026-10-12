@@ -27,9 +27,11 @@ fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayLine>, Vec<Grapheme
         format_buffer_line(
             &rope,
             line_idx,
-            4,
-            &ws,
-            &wrap_mode,
+            &crate::display_lines::line_store::FormatParams {
+                wrap_mode,
+                tab_width: 4,
+                whitespace: ws,
+            },
             None,
             FormatBound::Full,
             &inserts,
@@ -369,9 +371,11 @@ fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayLine>, Vec<Grap
         format_buffer_line(
             &rope,
             line_idx,
-            4,
-            &ws,
-            &WrapMode::None,
+            &crate::display_lines::line_store::FormatParams {
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace: ws,
+            },
             None,
             FormatBound::Full,
             &inserts,
@@ -747,9 +751,11 @@ fn do_format_windowed(
         format_buffer_line(
             &rope,
             line_idx,
-            4,
-            &ws,
-            &wrap_mode,
+            &crate::display_lines::line_store::FormatParams {
+                wrap_mode,
+                tab_width: 4,
+                whitespace: ws,
+            },
             h_window.clone(),
             FormatBound::Full,
             &inserts,
@@ -827,9 +833,11 @@ fn display_line_positions_are_non_decreasing_with_inline_inserts() {
     format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &WhitespaceConfig::default(),
-        &WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+        },
         None,
         FormatBound::Full,
         &inserts,
@@ -862,9 +870,11 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
     format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &WhitespaceConfig::default(),
-        &WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+        },
         None,
         FormatBound::Full,
         &inserts,
@@ -898,9 +908,11 @@ fn format_with_insert(line: &str, byte_offset: usize, text: &str) -> LineFormat 
     format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &WhitespaceConfig::default(),
-        &WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+        },
         None,
         FormatBound::Full,
         &inserts,
@@ -982,9 +994,11 @@ fn an_invisible_cluster_in_buffer_text_renders_as_its_codepoint() {
     format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &WhitespaceConfig::default(),
-        &WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+        },
         None,
         FormatBound::Full,
         &[],
@@ -1023,9 +1037,11 @@ fn a_control_character_in_buffer_text_never_reaches_the_terminal() {
     format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &WhitespaceConfig::default(),
-        &WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+        },
         None,
         FormatBound::Full,
         &[],
@@ -1058,9 +1074,11 @@ fn a_bidi_override_is_distinguishable_from_a_zero_width_space() {
         format_buffer_line(
             &rope,
             RopeyLine::new(0),
-            4,
-            &WhitespaceConfig::default(),
-            &WrapMode::None,
+            &crate::display_lines::line_store::FormatParams {
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace: WhitespaceConfig::default(),
+            },
             None,
             FormatBound::Full,
             &[],
@@ -1151,9 +1169,11 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
     format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &WhitespaceConfig::default(),
-        &WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+        },
         None,
         FormatBound::Full,
         &inserts,

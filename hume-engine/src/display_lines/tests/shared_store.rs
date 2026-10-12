@@ -160,9 +160,11 @@ fn a_changed_key_drops_the_scope() {
         80,
         FormatKey {
             buffer_tag: [1; 3],
-            wrap_mode: wrap,
-            tab_width: 4,
-            whitespace: ws(),
+            params: crate::display_lines::line_store::FormatParams {
+                wrap_mode: wrap,
+                tab_width: 4,
+                whitespace: ws(),
+            },
         },
         &mut store,
     )
@@ -176,9 +178,11 @@ fn a_changed_key_drops_the_scope() {
         80,
         FormatKey {
             buffer_tag: [2; 3],
-            wrap_mode: wrap,
-            tab_width: 4,
-            whitespace: ws(),
+            params: crate::display_lines::line_store::FormatParams {
+                wrap_mode: wrap,
+                tab_width: 4,
+                whitespace: ws(),
+            },
         },
         &mut store,
     )
@@ -234,9 +238,11 @@ fn a_shape_only_entry_allocates_no_format_buffers() {
         80,
         FormatKey {
             buffer_tag: [1; 3],
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: ws(),
+            params: crate::display_lines::line_store::FormatParams {
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace: ws(),
+            },
         },
         &mut store,
     )
@@ -311,9 +317,11 @@ fn grapheme_capacity_across_rewind(width: usize) -> (usize, usize) {
         80,
         FormatKey {
             buffer_tag: [1; 3],
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: ws(),
+            params: crate::display_lines::line_store::FormatParams {
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace: ws(),
+            },
         },
         &mut store,
     )

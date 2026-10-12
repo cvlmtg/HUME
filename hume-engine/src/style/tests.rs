@@ -1365,9 +1365,11 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
     crate::format::format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &crate::pane::WhitespaceConfig::default(),
-        &crate::pane::WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: crate::pane::WrapMode::None,
+            tab_width: 4,
+            whitespace: crate::pane::WhitespaceConfig::default(),
+        },
         None,
         crate::format::FormatBound::Full,
         &inserts,
@@ -1425,9 +1427,11 @@ fn a_selection_ending_on_the_line_break_leaves_end_of_line_inserts_unselected() 
     crate::format::format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &crate::pane::WhitespaceConfig::default(),
-        &crate::pane::WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: crate::pane::WrapMode::None,
+            tab_width: 4,
+            whitespace: crate::pane::WhitespaceConfig::default(),
+        },
         None,
         crate::format::FormatBound::Full,
         &inserts,
@@ -1486,9 +1490,11 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
     crate::format::format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &crate::pane::WhitespaceConfig::default(),
-        &crate::pane::WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: crate::pane::WrapMode::None,
+            tab_width: 4,
+            whitespace: crate::pane::WhitespaceConfig::default(),
+        },
         None,
         crate::format::FormatBound::Full,
         &[],
@@ -1546,9 +1552,11 @@ fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
     crate::format::format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &ws,
-        &crate::pane::WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: crate::pane::WrapMode::None,
+            tab_width: 4,
+            whitespace: ws,
+        },
         None,
         crate::format::FormatBound::Full,
         &[],
@@ -1606,9 +1614,11 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
     crate::format::format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &ws,
-        &crate::pane::WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: crate::pane::WrapMode::None,
+            tab_width: 4,
+            whitespace: ws,
+        },
         None,
         crate::format::FormatBound::Full,
         &[],
@@ -1666,9 +1676,11 @@ fn insert_mid_display_line_head_resolves_to_real_grapheme_col() {
     crate::format::format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &crate::pane::WhitespaceConfig::default(),
-        &crate::pane::WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: crate::pane::WrapMode::None,
+            tab_width: 4,
+            whitespace: crate::pane::WhitespaceConfig::default(),
+        },
         None,
         crate::format::FormatBound::Full,
         &inserts,
@@ -1736,9 +1748,11 @@ fn selection_spanning_display_line_start_insert_begins_at_first_real_grapheme() 
     crate::format::format_buffer_line(
         &rope,
         RopeyLine::new(0),
-        4,
-        &crate::pane::WhitespaceConfig::default(),
-        &crate::pane::WrapMode::None,
+        &crate::display_lines::line_store::FormatParams {
+            wrap_mode: crate::pane::WrapMode::None,
+            tab_width: 4,
+            whitespace: crate::pane::WhitespaceConfig::default(),
+        },
         None,
         crate::format::FormatBound::Full,
         &inserts,

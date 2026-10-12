@@ -152,9 +152,11 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
         80,
         FormatKey {
             buffer_tag: [0; 3],
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace,
+            params: crate::display_lines::line_store::FormatParams {
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace,
+            },
         },
         &mut s,
     );

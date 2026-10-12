@@ -47,9 +47,11 @@ fn render_test_pane(
         mode: EditorMode::Normal,
         format: crate::display_lines::line_store::FormatKey {
             buffer_tag: [0; 3],
-            wrap_mode,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
+            params: crate::display_lines::line_store::FormatParams {
+                wrap_mode,
+                tab_width: 4,
+                whitespace: WhitespaceConfig::default(),
+            },
         },
         indent_guides: true,
         cursor_is_block: true,

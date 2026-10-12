@@ -4,7 +4,8 @@ use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::offset::ExclusiveRange;
 use ropey::Rope;
 
-use crate::pane::{WhitespaceConfig, WrapMode};
+use crate::display_lines::line_store::FormatParams;
+use crate::pane::WrapMode;
 use crate::providers::{InlineInsert, ProviderId};
 use crate::types::{CellContent, DisplayLine, DisplayLineKind, Grapheme};
 
@@ -44,18 +45,20 @@ use cells::grapheme_display;
 /// `bound` stops the scan once the requesting query's answer is determined;
 /// see [`FormatBound`]. Pass [`FormatBound::Full`] whenever the display line
 /// count or the line's tail matters.
-#[allow(clippy::too_many_arguments)]
 pub fn format_buffer_line(
     rope: &Rope,
     line_idx: hume_rope::line::RopeyLine,
-    tab_width: u8,
-    whitespace: &WhitespaceConfig,
-    wrap_mode: &WrapMode,
+    params: &FormatParams,
     h_window: Option<Range<DisplayLineCol>>,
     bound: FormatBound,
     inline_inserts: &[InlineInsert],
     out: &mut LineFormat,
 ) {
+    let &FormatParams {
+        ref wrap_mode,
+        tab_width,
+        ref whitespace,
+    } = params;
     out.line_text.load(rope, line_idx);
     let had_newline = out.line_text.break_pos().is_some();
     let line_str = out.line_text.as_str();

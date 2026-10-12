@@ -64,6 +64,14 @@ pub type BufferTag = [u64; 3];
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct FormatKey {
     pub buffer_tag: BufferTag,
+    pub params: FormatParams,
+}
+
+/// The formatting settings in a [`FormatKey`]: what
+/// [`format_buffer_line`](crate::format::format_buffer_line) reads, without
+/// the buffer identity only the store's scope check needs.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct FormatParams {
     pub wrap_mode: WrapMode,
     pub tab_width: u8,
     pub whitespace: WhitespaceConfig,
@@ -77,7 +85,10 @@ impl FormatKey {
     /// pane geometry it was built for.
     pub fn resolve(self, content_width: u16) -> Self {
         Self {
-            wrap_mode: self.wrap_mode.resolve(content_width),
+            params: FormatParams {
+                wrap_mode: self.params.wrap_mode.resolve(content_width),
+                ..self.params
+            },
             ..self
         }
     }

@@ -323,9 +323,11 @@ fn new_panics_on_zero_content_width() {
         0,
         FormatKey {
             buffer_tag: [0; 3],
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: ws(),
+            params: crate::display_lines::line_store::FormatParams {
+                wrap_mode: WrapMode::None,
+                tab_width: 4,
+                whitespace: ws(),
+            },
         },
         &mut s,
     );
@@ -345,9 +347,11 @@ fn wrap_width_one_emits_one_grapheme_per_display_line_without_hanging() {
         80,
         FormatKey {
             buffer_tag: [0; 3],
-            wrap_mode: WrapMode::Soft { width: 1 },
-            tab_width: 4,
-            whitespace: ws(),
+            params: crate::display_lines::line_store::FormatParams {
+                wrap_mode: WrapMode::Soft { width: 1 },
+                tab_width: 4,
+                whitespace: ws(),
+            },
         },
         &mut s,
     );

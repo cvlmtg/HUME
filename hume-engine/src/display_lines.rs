@@ -163,7 +163,7 @@ impl<'a> DisplayLineMap<'a> {
     /// only the render pass clips; they still share the block shape.
     pub fn with_h_window(mut self, h_window: Option<Range<DisplayLineCol>>) -> Self {
         debug_assert!(
-            h_window.is_none() || !self.key.wrap_mode.is_wrapping(),
+            h_window.is_none() || !self.key.params.wrap_mode.is_wrapping(),
             "with_h_window is a WrapMode::None-only clip: a wrapping DisplayLineMap \
              would silently under-count content display lines, since ensure_format_at \
              passes h_window through to the formatter even while wrapping"
@@ -173,7 +173,7 @@ impl<'a> DisplayLineMap<'a> {
     }
 
     pub fn is_wrapping(&self) -> bool {
-        self.key.wrap_mode.is_wrapping()
+        self.key.params.wrap_mode.is_wrapping()
     }
 
     /// The wrap column display lines are actually laid out against: `None`
@@ -185,7 +185,7 @@ impl<'a> DisplayLineMap<'a> {
     /// wrap-width change) must compare this, not the raw content width, or
     /// it invalidates latches a resize never actually affected.
     pub fn resolved_wrap_width(&self) -> Option<u16> {
-        self.key.wrap_mode.wrap_width()
+        self.key.params.wrap_mode.wrap_width()
     }
 
     /// Width available for content: the same `content_width` the caller
@@ -276,8 +276,8 @@ impl<'a> DisplayLineMap<'a> {
         format_virtual_lines(
             &self.virtual_lines,
             line,
-            self.key.tab_width,
-            &self.key.wrap_mode,
+            self.key.params.tab_width,
+            &self.key.params.wrap_mode,
             &mut entry.virtual_format,
         );
         idx
@@ -292,7 +292,7 @@ impl<'a> DisplayLineMap<'a> {
     /// formatter's output, so the line gets formatted here if it wasn't
     /// already.
     fn content_display_lines(&mut self, idx: usize) -> usize {
-        if !self.key.wrap_mode.is_wrapping() {
+        if !self.key.params.wrap_mode.is_wrapping() {
             return 1;
         }
         // `Full`: the display-line count is the output, so nothing may be clipped.
@@ -385,7 +385,7 @@ impl<'a> DisplayLineMap<'a> {
         // fewer display lines than the count `block` already committed to.
         // Applied before the check *and* the record below, so a wrapping
         // query never stores a bound narrower than what it actually ran.
-        let bound = if self.key.wrap_mode.is_wrapping() {
+        let bound = if self.key.params.wrap_mode.is_wrapping() {
             FormatBound::Full
         } else {
             bound
@@ -425,9 +425,7 @@ impl<'a> DisplayLineMap<'a> {
         format_buffer_line(
             self.rope,
             line.into(),
-            self.key.tab_width,
-            &self.key.whitespace,
-            &self.key.wrap_mode,
+            &self.key.params,
             self.h_window.clone(),
             bound,
             &self.inline_inserts,

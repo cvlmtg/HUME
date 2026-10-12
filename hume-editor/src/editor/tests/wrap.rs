@@ -579,7 +579,7 @@ fn resolve_pane_settings_honours_the_buffer_rung() {
     let pid = ed.state.focus.id();
     let settings = ed.resolve_pane_settings(pid);
     assert_eq!(
-        settings.format.wrap_mode,
+        settings.format.params.wrap_mode,
         WrapMode::None,
         "the render path must resolve the buffer override, not just pane → global"
     );
