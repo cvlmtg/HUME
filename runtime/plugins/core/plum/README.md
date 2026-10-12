@@ -45,7 +45,7 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 | `:plum-list-plugins` | Show the declared, installed, orphan and missing plugin lists in `[plum-plugins]` |
 | `:plum-install-grammar [lang]` | Install or repair a grammar: purge its source, re-clone, recompile. Defaults to the current buffer's language. Tab-completes the languages with a bundled grammar |
 | `:plum-list-grammars` | Show the installed and orphan grammars in `[plum-grammars]` |
-| `:plum-cleanup-grammars` | Delete compiled grammar files that are no longer declared |
+| `:plum-cleanup-grammars` | Delete the orphan grammars: compiled files whose name is not a language with a bundled grammar |
 | `:plum-install-theme <user/repo>` | Install or reinstall a theme repo's `themes/*.toml` from a GitHub slug |
 | `:plum-update-themes` | Run `git pull` in every installed theme repo and re-sync its `.toml` copies |
 | `:plum-list-themes` | Show installed theme repos, the theme names each provides, and any unmanaged `.toml` in `[plum-themes]` |
@@ -157,13 +157,14 @@ left in a failed state (a source tree cloned but never compiled):
 
 `register-installed-grammars!` (`runtime/scheme/grammars.scm`) runs once at editor startup,
 whether or not PLUM is declared, and registers every already-compiled grammar in
-`<data>/grammars/`. It lists that directory rather than probing every catalog entry, so a
-setup with no grammars installed pays one `path-exists?`. It starts no subprocess and uses
-no network. A compiled grammar whose catalog entry has no `highlights.scm` on disk logs a
-`'warn` pointing at `:plum-install-grammar` and is skipped. Grammars declared but not yet
-compiled stay missing until `:plum-install-grammar` runs or `init.scm` calls
-`plum-ensure-grammars`; nothing installs at startup, since a first run with many declared
-languages would stall before the editor is usable.
+`<data>/grammars/`. It lists that directory rather than asking every language for its
+bundled grammar, so a setup with no grammars installed pays one `path-exists?`. It starts no
+subprocess and uses no network. An orphan is skipped. A compiled grammar of a language with
+a bundled grammar but no `highlights.scm` on disk logs a `'warn` pointing at
+`:plum-install-grammar` and is skipped. A language whose grammar is not compiled stays
+without one until `:plum-install-grammar` runs or `init.scm` calls `plum-ensure-grammars`;
+nothing installs at startup, since a first run that compiled every bundled grammar would
+stall before the editor is usable.
 
 ### Theme install
 

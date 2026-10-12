@@ -46,9 +46,6 @@
 (define (lsp-install/server-names)
   (data-file-names (lsp-install/data-path "registrations")))
 
-;; One `(lang (servers entry ...))` row per language, sorted by name. Each
-;; entry is `("name")` or `("name" (only-features "f" ...))` /
-;; `("name" (except-features "f" ...))`.
 (define lsp-install/language-rows
   (read-data-file (path-join lsp-install/dir "data" "language-servers.scm")))
 

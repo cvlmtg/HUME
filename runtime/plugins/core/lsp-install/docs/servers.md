@@ -152,8 +152,8 @@ has set no list of their own for the language. A server the user registered by h
 a language only when a list names it. The last write to a language's default list wins, so
 only one plugin should write defaults for a language.
 
-A server's `config` field is delivered as both `#:init-options` and `#:settings`. The loader decodes the JSON string each time it registers a server. An empty config
-tail decodes to `#f`, so nothing is sent.
+A server's `config` field is delivered as both `#:init-options` and `#:settings`. The loader decodes the JSON string each time it registers a server. A record with no
+`config` field decodes to `#f`, so nothing is sent.
 
 ## Install lock
 

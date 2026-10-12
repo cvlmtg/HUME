@@ -192,7 +192,7 @@
                 "remove with :plum-cleanup-grammars"))))))
 
 (define-typed-command! "plum-cleanup-grammars"
-  "Delete compiled grammar files that are no longer in the declared source list."
+  "Delete compiled grammar files whose name is not a language with a bundled grammar."
   (lambda ()
     (let ((orphans (plum/orphan-grammars (installed-grammars))))
       (if (null? orphans)

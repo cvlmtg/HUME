@@ -165,7 +165,7 @@ pub(super) fn begin_typed_run(
 
 /// Enter Insert mode as a repeatable insert action.
 ///
-/// No-op (with a warning) if the focused buffer is read-only. Clears any
+/// Refused if the focused buffer is read-only. Clears any
 /// pending `"<reg>` prefix: `i`/`a`/`o` aren't operators, so a register spec
 /// typed just before one names nothing to write into (unlike `d`/`c`/`p`,
 /// which `ensure_writable` clears it for on the assumption the command

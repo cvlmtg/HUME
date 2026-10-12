@@ -52,8 +52,8 @@ No upstream format is ever parsed inside the editor.
 | **Registration** — which servers per language, command, args, config | `helix-editor/helix` `languages.toml` (`[[language]].language-servers` + `[language-server.*]` tables) | existing `helix-pin.scm` | `runtime/plugins/core/lsp-install/data/registrations/<server>.scm`, `data/language-servers.scm` (and each language's root markers in `runtime/scheme/languages/<name>.scm`) |
 | **Installation** — where to download, per platform | `mason-org/mason-registry` (Apache-2.0; one `package.yaml` per tool, purl sources, per-platform assets; publishes compiled `registry.json` per release tag) | new `mason-pin.scm` (registry release tag) | `runtime/plugins/core/lsp-install/data/sources/<server>.scm`, `data/requirements/<server>.scm` |
 
-One generated file per pin: a helix-pin bump touches only registration data, a mason-pin
-bump only install sources — every diff traceable to one upstream. Join key = server name,
+Each pin has its own generated files: a helix-pin bump touches only registration data, a
+mason-pin bump only install sources — every diff traceable to one upstream. Join key = server name,
 **via an explicit Helix→Mason name-mapping table** maintained in the sync script: the two
 namespaces differ (Helix `pylsp` is Mason `python-lsp-server`; Helix
 `vscode-json-language-server` lives in Mason's `json-lsp` package). The sync prints every
@@ -149,7 +149,7 @@ A `registrations/` record omits each default field: `command` when it equals the
 - **Languages live only in `language-servers.scm`.** Its language names match
   `languages.scm` (same upstream, same pin). Mason's `languages:` field uses different
   naming ("TypeScript") and would need its own mapping — dropped entirely.
-- Field encoding (empty tail never `#f`, canonical JSON `config` string, delivered both ways
+- Field encoding (a record with no fields is `()`, never `#f`, canonical JSON `config` string, delivered both ways
   by `core:lsp-install/lib/register.scm`, decoded once via `(json-parse)` at the one consuming site):
   see `runtime/plugins/core/lsp-install/README.md`'s record-shape reference. A JSON string sidesteps the fact that plain
   sexpr syntax can't tell an empty JSON array from an empty JSON object. See

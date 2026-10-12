@@ -304,9 +304,9 @@ def load_sha256_cache(directory: Path) -> dict[str, str]:
     """Return {download-url: sha256} read from the previously checked-in
     sources/, so re-syncing after an unrelated pin bump doesn't
     re-download and re-hash every unchanged github or generic asset. Best-effort: a
-    missing or unparseable file yields an empty cache (equivalent to a
-    from-scratch run) rather than aborting the sync — the cache is a speed
-    optimization, not a correctness dependency."""
+    missing directory, or any file in it that does not parse, yields an empty
+    cache (equivalent to a from-scratch run) rather than aborting the sync —
+    the cache is a speed optimization, not a correctness dependency."""
     try:
         bodies = read_named_files(directory)
     except Exception as e:

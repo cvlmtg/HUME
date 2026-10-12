@@ -161,7 +161,7 @@ pub(in crate::editor) fn apply_focused_edit_grouped(
 /// command consumed the `"<reg>` keystrokes, so leaving the prefix armed
 /// would redirect the *next* yank/kill into that register. (Insert session
 /// entry clears the prefix itself before ever reaching here, for a
-/// different reason; see `begin_insert_session`, so this is a no-op on
+/// different reason (see `begin_insert_session`), so this is a no-op on
 /// that path, not a second clear of the same kind.)
 pub(in crate::editor::commands) fn ensure_writable(
     state: &mut EditorState,

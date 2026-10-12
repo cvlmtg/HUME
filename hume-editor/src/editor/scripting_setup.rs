@@ -843,7 +843,8 @@ impl Editor {
         }
         // Re-detect language for every open buffer (a `:reload-config`
         // cleared every buffer's language in `reset_config_state`; the
-        // startup buffer, detected by the drain above, is unchanged here).
+        // startup buffer, detected by the drain above, detects the same
+        // language again, which changes nothing).
         // A buffer with an explicit assertion, restored from `snapshot`
         // (this is a `:reload-config`) or made by a lazy plugin that the
         // drain above or an earlier iteration activated, skips detection

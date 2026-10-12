@@ -30,11 +30,10 @@ pub fn word_start_before(text: &BufferText, pos: CharOffset, chars: WordChars<'_
 /// `start_of(text, i, head)` through `forward` chars past the head and insert
 /// `replacement`.
 ///
-/// [`replace_around_cursors`] is the uniform case (a fixed backward char
-/// count, valid for an LSP `textEdit` range since it contains the request
-/// position). LSP completion's `insertText` fallback calls this directly,
-/// because only the primary cursor's token start is tracked; other cursors
-/// scan their own word start.
+/// [`replace_around_cursors`] is the uniform case, one backward char count
+/// for every cursor. LSP completion accept calls this directly with a count
+/// per cursor: the server's `textEdit` range gives every cursor the same
+/// count, and the `insertText` fallback scans each cursor's own token start.
 ///
 /// `text` may already include an earlier edit from the same group (e.g.
 /// `additionalTextEdits`), so a fresh scan could wander into inserted text.
@@ -69,12 +68,9 @@ pub fn replace_span_around_cursors(
 
 /// Replaces `back` chars behind each selection's head and `forward` chars
 /// ahead of it with `replacement`: the multi-cursor form of "the user typed
-/// this text here." Used by LSP completion accept for a server-provided
-/// `textEdit` range: a conforming server's completion range always contains
-/// the request position (LSP spec), so a `(back, forward)` pair derived from
-/// one cursor's own edit is the same char span typing would have consumed at
-/// any cursor, and applying it uniformly gives every cursor the completion,
-/// not just the one the server saw.
+/// this text here." Dot-repeat uses it to replay a recorded completion
+/// accept, whose `(back, forward)` pair was measured at the primary cursor
+/// and applies the same span at every cursor.
 pub fn replace_around_cursors(
     state: EditState,
     back: usize,
