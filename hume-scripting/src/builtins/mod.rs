@@ -213,7 +213,9 @@ macro_rules! builtins {
 // above). A missing runtime dir or file reads as #f; a name that could leave
 // the directory raises. %bundled-language-config is the editor's view
 // (ScriptingHost::bundled_language decodes it); bundled-language-grammar and
-// bundled-grammar-languages are the plugins' view.
+// bundled-grammar-languages are the plugins' view. bundled-grammar-languages
+// reads every file, so it keeps its list for the life of the Steel engine,
+// which :reload-config rebuilds.
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
 // PRINT_GATE_SHIMS is appended both to BOOTSTRAP (top level) and, verbatim,

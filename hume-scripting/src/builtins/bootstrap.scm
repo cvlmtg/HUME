@@ -328,13 +328,19 @@
   (let ((data (%read-language-data name)))
     (and data (%language-data-ref data 'grammar))))
 
+(define %bundled-grammar-languages (box #f))
+
 (define (bundled-grammar-languages)
-  (let* ((runtime (runtime-dir))
-         (dir (and runtime (path-join runtime "scheme" "languages"))))
-    (if (and dir (is-dir? dir))
-        (sort (filter bundled-language-grammar
-                      (map (lambda (file) (substring file 0 (- (string-length file) 4)))
-                           (filter (lambda (file) (ends-with? file ".scm"))
-                                   (map file-name (read-dir dir)))))
-              string<?)
-        '())))
+  (or (unbox %bundled-grammar-languages)
+      (let* ((runtime (runtime-dir))
+             (dir (and runtime (path-join runtime "scheme" "languages")))
+             (names
+              (if (and dir (is-dir? dir))
+                  (sort (filter bundled-language-grammar
+                                (map (lambda (file) (substring file 0 (- (string-length file) 4)))
+                                     (filter (lambda (file) (ends-with? file ".scm"))
+                                             (map file-name (read-dir dir)))))
+                        string<?)
+                  '())))
+        (set-box! %bundled-grammar-languages names)
+        names)))
