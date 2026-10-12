@@ -336,6 +336,31 @@ impl Editor {
         self.state.message_logged_this_input = self.state.message_log.totals() != totals_before;
     }
 
+    /// Handle one non-resize terminal event read by [`Self::run_loop`].
+    fn dispatch_terminal_event(&mut self, ev: TerminalEvent) {
+        match ev {
+            // Release events arrive only with kitty keyboard protocol
+            // (REPORT_EVENT_TYPES flag). Ignore them; we act on Press and
+            // Repeat (held key). Without kitty all events are Press anyway.
+            TerminalEvent::Key(key) if key.kind != KeyEventKind::Release => {
+                self.handle_input(TerminalEvent::Key(key));
+                self.sync_search_cache();
+            }
+            TerminalEvent::Paste(text) => {
+                self.handle_input(TerminalEvent::Paste(text));
+                self.sync_search_cache();
+            }
+            // Regaining focus raises `OnFocusGained` (see `handle_input`,
+            // which is what actually queues it). The external-file-change
+            // sweep is that event's Rust reaction, not a direct call here.
+            ev @ (TerminalEvent::Mouse(_) | TerminalEvent::FocusIn) => self.handle_input(ev),
+            // CSI/OSC/DCS protocol responses: nothing in the run loop
+            // needs them. The `|_| true` filter guarantees they can't
+            // pile up unread in the reader's buffer either way.
+            _ => {}
+        }
+    }
+
     /// Run the editor event loop until the user quits.
     ///
     /// Each iteration:
@@ -571,66 +596,25 @@ impl Editor {
             // rebuilding one `ensure_syntax_current` would parse inline.
             self.install_parse_results();
             match reader.read(|_| true)? {
-                // Release events arrive only with kitty keyboard protocol
-                // (REPORT_EVENT_TYPES flag). Ignore them; we act on Press and
-                // Repeat (held key). Without kitty all events are Press anyway.
-                TerminalEvent::Key(key) if key.kind != KeyEventKind::Release => {
-                    self.handle_input(TerminalEvent::Key(key));
-                    self.sync_search_cache();
-                }
-                TerminalEvent::Key(_) => {}
-                TerminalEvent::Mouse(mouse) => {
-                    self.handle_input(TerminalEvent::Mouse(mouse));
-                }
-                TerminalEvent::Paste(text) => {
-                    self.handle_input(TerminalEvent::Paste(text));
-                    self.sync_search_cache();
-                }
                 TerminalEvent::WindowResized(_) => {
                     // Drain any additional resize events that are already queued
                     // so a drag (which emits one event per delta) collapses into a
                     // single render on the next iteration. Viewport dimensions are
                     // re-read at loop top, so only the final size matters.
-                    // Non-resize events that arrive during the drain are handled
-                    // inline so they are never lost.
+                    // The first non-resize event ends the drain and is handled
+                    // like any other, so none is lost: a window manager can
+                    // resize and refocus in one gesture.
                     while reader.poll(Some(Duration::ZERO), |_| true)? {
                         match reader.read(|_| true)? {
                             TerminalEvent::WindowResized(_) => continue,
-                            // A window manager can resize and refocus in the
-                            // same gesture (snapping a tile, say), and the
-                            // `_ => break` catch-all below would otherwise
-                            // swallow this without raising `OnFocusGained`.
-                            TerminalEvent::FocusIn => {
-                                self.handle_input(TerminalEvent::FocusIn);
+                            ev => {
+                                self.dispatch_terminal_event(ev);
                                 break;
                             }
-                            TerminalEvent::Key(key) if key.kind != KeyEventKind::Release => {
-                                self.handle_input(TerminalEvent::Key(key));
-                                self.sync_search_cache();
-                                break;
-                            }
-                            TerminalEvent::Key(_) => break,
-                            TerminalEvent::Mouse(mouse) => {
-                                self.handle_input(TerminalEvent::Mouse(mouse));
-                                break;
-                            }
-                            TerminalEvent::Paste(text) => {
-                                self.handle_input(TerminalEvent::Paste(text));
-                                self.sync_search_cache();
-                                break;
-                            }
-                            _ => break,
                         }
                     }
                 }
-                // Regaining focus raises `OnFocusGained` (see `handle_input`,
-                // which is what actually queues it). The external-file-change
-                // sweep is that event's Rust reaction, not a direct call here.
-                TerminalEvent::FocusIn => self.handle_input(TerminalEvent::FocusIn),
-                // CSI/OSC/DCS protocol responses: nothing in the run loop
-                // needs them. The `|_| true` filter guarantees they can't
-                // pile up unread in the reader's buffer either way.
-                _ => {}
+                ev => self.dispatch_terminal_event(ev),
             }
 
             // Not a `break`: this loop's top now owns the one quit-observation
