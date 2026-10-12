@@ -215,7 +215,9 @@ fn a_name_no_data_file_can_have_is_an_error() {
     let runtime = runtime_with(&[]);
     let mut host = host_for(Some(runtime.path()));
 
-    for name in ["../init", "a/b", "a\\b", "..", ".", "", "C:x", "Rust", "a b"] {
+    for name in [
+        "../init", "a/b", "a\\b", "..", ".", "", "C:x", "Rust", "a b",
+    ] {
         assert!(
             host.bundled_language(name, &mut NullHost).is_err(),
             "{name:?} must be rejected"

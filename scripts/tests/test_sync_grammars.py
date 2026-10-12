@@ -313,8 +313,14 @@ class LanguageGrammar(unittest.TestCase):
 
 
 class LanguageNames(unittest.TestCase):
-    def test_names_differing_only_in_case_are_fatal(self):
-        langs = parse_langs([{"name": "nix"}, {"name": "Nix"}])
+    def test_an_uppercase_name_is_fatal(self):
+        langs = parse_langs([{"name": "Nix"}])
+
+        with self.assertRaises(SystemExit):
+            sync.check_language_names(langs)
+
+    def test_a_drive_relative_name_is_fatal(self):
+        langs = parse_langs([{"name": "C:x"}])
 
         with self.assertRaises(SystemExit):
             sync.check_language_names(langs)
@@ -332,6 +338,7 @@ class LanguageNames(unittest.TestCase):
 class EmitLanguageData(unittest.TestCase):
     def test_every_key_in_its_fixed_order(self):
         lang = {
+            "name": "tsx",
             "comment_tokens": ["//", "///"],
             "block_comment_tokens": [("/*", "*/"), ("/**", "*/")],
             "language_id": "typescriptreact",
@@ -349,6 +356,18 @@ class EmitLanguageData(unittest.TestCase):
                 ' (grammar "https://ts" "r" "tree_sitter_tsx" "tsx"))',
             ],
         )
+
+    def test_a_language_id_equal_to_the_name_is_omitted(self):
+        lang = {
+            "name": "javascript",
+            "comment_tokens": ["//"],
+            "block_comment_tokens": [],
+            "language_id": "javascript",
+            "roots": [],
+            "grammar": None,
+        }
+
+        self.assertEqual(sync.emit_language_data(lang), ['((comment-tokens "//"))'])
 
     def test_absent_values_are_omitted(self):
         lang = {
@@ -411,6 +430,17 @@ class WriteLanguageFiles(unittest.TestCase):
             self.write(directory)
 
             self.assertEqual(sorted(p.name for p in directory.iterdir()), ["markdown.inline.scm"])
+
+    def test_a_dotfile_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / ".DS_Store").write_bytes(b"finder")
+
+            self.write(directory)
+
+            self.assertEqual(
+                sorted(p.name for p in directory.iterdir()), [".DS_Store", "markdown.inline.scm"]
+            )
 
     def test_a_file_that_is_not_scm_is_fatal(self):
         with tempfile.TemporaryDirectory() as tmp:
