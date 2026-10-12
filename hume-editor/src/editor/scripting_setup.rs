@@ -845,12 +845,11 @@ impl Editor {
         // cleared every buffer's language in `reset_config_state`; the
         // startup buffer, detected by the drain above, is unchanged here).
         // A buffer with an explicit assertion, restored from `snapshot`
-        // (this is a `:reload-config`) or made by `init.scm` itself against a
-        // buffer that predates this call (e.g. the startup buffer), skips
-        // detection entirely: `set_buffer_
-        // language_impl` stamps `language_explicit` unconditionally, so a
-        // later detection pass would otherwise silently overwrite that
-        // assertion with whatever plain detection finds. Restoring the
+        // (this is a `:reload-config`) or made by a lazy plugin that the
+        // drain above or an earlier iteration activated, skips detection
+        // entirely: `set_buffer_language_impl` stamps `language_explicit`
+        // unconditionally, so a later detection pass would otherwise
+        // overwrite that assertion with whatever plain detection finds. Restoring the
         // snapshot *inside* this loop, rather than as a second
         // detect-then-correct pass afterward, also avoids firing language
         // hooks for the buffer's *detected* language before its real,
@@ -895,9 +894,10 @@ impl Editor {
                     continue;
                 }
             } else if self.state.buffers.get(bid).language_explicit {
-                // Asserted during *this very* init.scm eval (e.g. on a
-                // buffer that predates this call), so detection must not
-                // clobber it either; see `set_buffer_language_impl`'s doc.
+                // Asserted by a lazy plugin activated since the host was
+                // attached (`init.scm` itself cannot set a buffer option), so
+                // detection must not clobber it either; see
+                // `set_buffer_language_impl`'s doc.
                 continue;
             }
             self.detect_and_set_language(bid);
