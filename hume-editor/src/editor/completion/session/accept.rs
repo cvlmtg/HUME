@@ -15,7 +15,7 @@ use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{RustResponder, edits, wire_range_to_chars};
 use crate::editor::replay::Interactive;
 use crate::editor::{EditorState, Severity};
-use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors};
+use hume_ops::edit::replace_span_around_cursors;
 
 impl BufferSession {
     /// Applies the ranked candidate at `idx`'s `textEdit` (falling back to `insertText`
@@ -60,14 +60,91 @@ impl BufferSession {
         idx: usize,
         _input: Interactive,
     ) -> Result<(), String> {
+        let AcceptPlan {
+            item,
+            may_resolve,
+            encoding,
+            rope_pre,
+            edits,
+        } = self.plan(state, view, idx)?;
+        let (pid, bid) = (self.pane_id, self.bid());
+
+        // Insert mode already has a group open on this exact (pane, buffer)
+        // (composing this accept into the ongoing session); a Steel-
+        // triggered accept outside Insert mode does not, so open one here:
+        // both edits then land as one undo step regardless of caller.
+        // Checked by kind and owner, not `state.active_session.is_none()`:
+        // a session open on a *different* (pane, buffer), or a non-Insert
+        // one here (e.g. a Paste session from an unrelated `p` keypress),
+        // is a real conflict. The fallible `begin_edit_group` call below
+        // reports it as an `Err` rather than this function silently
+        // treating "some session is open" as "the group I need is open."
+        let opened_group = !state
+            .active_session
+            .as_ref()
+            .is_some_and(|s| s.is_insert_at(pid, bid));
+        if opened_group {
+            crate::editor::doc_ops::begin_edit_group(
+                &state.buffers,
+                &mut state.panes.state,
+                &mut state.active_session,
+                pid,
+                bid,
+                None,
+            )
+            .map_err(|e| e.message().to_owned())?;
+        }
+
+        // Committed on both outcomes: after a failed `apply` the group is
+        // still open and empty, and the next edit would wrongly compose into
+        // it. `commit_edit_group` skips recording when nothing was composed.
+        let applied = self.apply(state, view, edits);
+        if opened_group {
+            crate::editor::doc_ops::commit_edit_group(
+                &mut state.buffers,
+                &state.panes.state,
+                &mut state.active_session,
+            );
+        }
+        let accept_cs = applied?;
+
+        // Fire on-completion-accept with the raw (pristine) item after the
+        // edit lands: an extension point for anything this store doesn't
+        // parse (e.g. `command`); Rust owns additionalTextEdits/resolve. A
+        // label-only item (`plain()`'s own constructor, `core:buffer-words`'
+        // bare-string answers) has no real wire payload to hand over, and
+        // `{"label": …}` is a more useful hook payload than a bare `null`.
+        let hook_item = match &item.raw {
+            Some(raw) => raw.clone(),
+            None => {
+                hume_scripting::json::JsonHandle::new(serde_json::json!({"label": &item.label}))
+            }
+        };
+        state.queue_event(EditorEvent::OnCompletionAccept {
+            target: hume_scripting::PaneHandle::with_pane(bid, pid),
+            item: hook_item,
+        });
+
+        if may_resolve && !item.has_additional_text_edits {
+            self.maybe_send_resolve(state, item, rope_pre, accept_cs, encoding);
+        }
+        Ok(())
+    }
+
+    /// Every check and computation `accept` needs, against an `EditorState`
+    /// it cannot change: an accept that fails any check leaves the buffer
+    /// untouched.
+    fn plan<'a>(
+        &'a self,
+        state: &EditorState,
+        view: &EngineView,
+        idx: usize,
+    ) -> Result<AcceptPlan<'a>, String> {
         let (source, invocation, item) = self
             .ranked(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
         let BufferSpan { doc, start, .. } = &invocation.span;
         let bid = self.bid();
-        // Copied out now: a plain `bool`, so there's no reason to keep the
-        // registry borrow (or `source`) alive across the `&mut state` uses
-        // below just to read it again at the bottom.
         let may_resolve = state.config.completion_sources.buffer_get(source).resolve;
         let buf = edits::checked_buffer(state, bid, None)?;
         if buf.text().version() != self.version {
@@ -194,8 +271,8 @@ impl BufferSession {
             end_now.chars_since(head_now.offset()),
         );
 
-        // Captured before any edit lands: a resolve response (if one ends
-        // up sent below) is computed against this exact pre-accept document,
+        // Captured before any edit lands: a resolve response (if `accept`
+        // ends up sending one) is computed against this exact pre-accept document,
         // and its wire positions must be decoded against it, not whatever
         // the buffer holds once the response actually arrives.
         let rope_pre = state.buffers.get(bid).text().rope().clone();
@@ -212,7 +289,7 @@ impl BufferSession {
         // Each cursor's own `back` distance, computed once, now, against
         // the pre-edit document, and applied as a plain char *count* from
         // here on rather than a live re-scan: `additionalTextEdits` land
-        // document-wide before the per-cursor replacement (just below), and
+        // document-wide before the per-cursor replacement (in `apply`), and
         // a `start_of` that re-scanned `text` fresh at that later point
         // would risk wandering into text that very additionalTextEdits
         // insertion just added, rather than staying immune to the shift the
@@ -275,59 +352,46 @@ impl BufferSession {
             );
         }
 
-        // Insert mode already has a group open on this exact (pane, buffer)
-        // (composing this accept into the ongoing session); a Steel-
-        // triggered accept outside Insert mode does not, so open one here:
-        // both edits below then land as one undo step regardless of caller.
-        // Checked by kind and owner, not `state.active_session.is_none()`:
-        // a session open on a *different* (pane, buffer), or a non-Insert
-        // one here (e.g. a Paste session from an unrelated `p` keypress),
-        // is a real conflict. The fallible `begin_edit_group` call below
-        // reports it as an `Err` rather than this function silently
-        // treating "some session is open" as "the group I need is open."
-        let opened_group = !state
-            .active_session
-            .as_ref()
-            .is_some_and(|s| s.is_insert_at(pid, bid));
-        if opened_group {
-            crate::editor::doc_ops::begin_edit_group(
-                &state.buffers,
-                &mut state.panes.state,
-                &mut state.active_session,
-                pid,
-                bid,
-                None,
-            )
-            .map_err(|e| e.message().to_owned())?;
-        }
+        Ok(AcceptPlan {
+            item,
+            may_resolve,
+            encoding,
+            rope_pre,
+            edits: AcceptEdits {
+                additional: additional_char_edits,
+                per_cursor_back,
+                forward,
+                new_text,
+            },
+        })
+    }
 
+    /// Lands `edits` in the group `accept` holds open: `additionalTextEdits`
+    /// first, then the per-cursor replacement. Returns the composed
+    /// pre-accept → post-accept transform.
+    fn apply(
+        &self,
+        state: &mut EditorState,
+        view: &EngineView,
+        edits: AcceptEdits<'_>,
+    ) -> Result<hume_editing::changeset::ChangeSet, String> {
+        let (pid, bid) = (self.pane_id, self.bid());
+        let AcceptEdits {
+            additional,
+            per_cursor_back,
+            forward,
+            new_text,
+        } = edits;
         // additionalTextEdits have no cursor of their own (document-level),
         // applied first so the cursor edit below reads live selections
         // already shifted across them, not the pre-edit positions.
         //
-        // Validation (overlap/reversed-range checks) already ran above, so
-        // a rejected batch here means the *in-batch* overlap check inside
-        // `commit_char_edits` fired. The buffer is still untouched, but a
-        // group opened just above would otherwise leak, still open and
-        // empty, for the next edit to wrongly compose into. Commit it (a
-        // no-op: `commit_edit_group` skips recording when nothing was ever
-        // composed in) before propagating the error.
+        // Validation (overlap/reversed-range checks) already ran in `plan`,
+        // so a rejected batch here means the *in-batch* overlap check inside
+        // `commit_char_edits` fired, with the buffer still untouched.
         // `commit_char_edits` is a no-op `Ok(None)` for an empty batch, so no
         // separate `is_empty()` branch is needed here.
-        let cs_additional =
-            match edits::commit_char_edits(state, &view.panes, pid, bid, additional_char_edits) {
-                Ok(cs) => cs,
-                Err(e) => {
-                    if opened_group {
-                        crate::editor::doc_ops::commit_edit_group(
-                            &mut state.buffers,
-                            &state.panes.state,
-                            &mut state.active_session,
-                        );
-                    }
-                    return Err(e);
-                }
-            };
+        let cs_additional = edits::commit_char_edits(state, &view.panes, pid, bid, additional)?;
 
         // `forward` chars ahead of each cursor's own *live* head, plus
         // `per_cursor_back[i]` chars behind it, travels forward through
@@ -350,83 +414,34 @@ impl BufferSession {
         // pin-tracking bug: the accept's own edit rewrote that whole span,
         // so every character in it was written by this session, and
         // selecting the freshly completed token is the useful outcome.
-        //
-        // A server-provided `textEdit` (`per_cursor_back` uniformly
-        // `back`) goes through the simpler, dedicated `replace_around_
-        // cursors` rather than re-deriving the same uniform count through
-        // `replace_span_around_cursors`'s more general per-cursor form.
-        let cs_cursors = match &item.text_edit {
-            Some(_) => crate::editor::doc_ops::apply_doc_edit_grouped(
-                &mut state.buffers,
-                &mut crate::editor::position_stores::PositionStores::new(
-                    &mut state.panes,
-                    &mut state.input,
-                    &mut state.buffer_positions,
-                    &mut state.config.decorations,
-                ),
-                &mut state.active_session,
-                pid,
-                bid,
-                move |s| replace_around_cursors(s, back, forward, &new_text),
+        let cs_cursors = crate::editor::doc_ops::apply_doc_edit_grouped(
+            &mut state.buffers,
+            &mut crate::editor::position_stores::PositionStores::new(
+                &mut state.panes,
+                &mut state.input,
+                &mut state.buffer_positions,
+                &mut state.config.decorations,
             ),
-            None => crate::editor::doc_ops::apply_doc_edit_grouped(
-                &mut state.buffers,
-                &mut crate::editor::position_stores::PositionStores::new(
-                    &mut state.panes,
-                    &mut state.input,
-                    &mut state.buffer_positions,
-                    &mut state.config.decorations,
-                ),
-                &mut state.active_session,
-                pid,
-                bid,
-                move |s| {
-                    replace_span_around_cursors(
-                        s,
-                        move |_text, i, head| head.retreat_saturating(per_cursor_back[i]),
-                        forward,
-                        &new_text,
-                    )
-                },
-            ),
-        };
-        if opened_group {
-            crate::editor::doc_ops::commit_edit_group(
-                &mut state.buffers,
-                &state.panes.state,
-                &mut state.active_session,
-            );
-        }
+            &mut state.active_session,
+            pid,
+            bid,
+            move |s| {
+                replace_span_around_cursors(
+                    s,
+                    move |_text, i, head| head.retreat_saturating(per_cursor_back[i]),
+                    forward,
+                    &new_text,
+                )
+            },
+        );
 
         // The full pre-accept-document → post-accept-document transform:
         // `maybe_send_resolve` needs it composed, not just the cursor edit's
         // own half, to map a resolve response's positions forward correctly.
-        let accept_cs = match cs_additional {
+        Ok(match cs_additional {
             Some(cs_a) => cs_a.compose(cs_cursors),
             None => cs_cursors,
-        };
-
-        // Fire on-completion-accept with the raw (pristine) item after the
-        // edit lands: an extension point for anything this store doesn't
-        // parse (e.g. `command`); Rust owns additionalTextEdits/resolve. A
-        // label-only item (`plain()`'s own constructor, `core:buffer-words`'
-        // bare-string answers) has no real wire payload to hand over, and
-        // `{"label": …}` is a more useful hook payload than a bare `null`.
-        let hook_item = match &item.raw {
-            Some(raw) => raw.clone(),
-            None => {
-                hume_scripting::json::JsonHandle::new(serde_json::json!({"label": &item.label}))
-            }
-        };
-        state.queue_event(EditorEvent::OnCompletionAccept {
-            target: hume_scripting::PaneHandle::with_pane(bid, pid),
-            item: hook_item,
-        });
-
-        if may_resolve && !item.has_additional_text_edits {
-            self.maybe_send_resolve(state, item, rope_pre, accept_cs, encoding);
-        }
-        Ok(())
+        })
     }
 
     /// Sends `completionItem/resolve` to the server the item came from, when
@@ -490,4 +505,26 @@ impl BufferSession {
             respond,
         );
     }
+}
+
+/// What [`BufferSession::plan`] hands `accept`: the item and everything
+/// computed from it before any edit lands.
+struct AcceptPlan<'a> {
+    item: &'a CompletionItem,
+    may_resolve: bool,
+    encoding: hume_rope::position_encoding::PositionEncoding,
+    /// The pre-accept document a resolve response's positions decode
+    /// against.
+    rope_pre: ropey::Rope,
+    edits: AcceptEdits<'a>,
+}
+
+/// The edits [`BufferSession::apply`] lands.
+struct AcceptEdits<'a> {
+    additional: Vec<(hume_rope::offset::ExclusiveRange<CharOffset>, &'a str)>,
+    /// Chars behind each cursor's head the replacement starts at, by
+    /// selection index.
+    per_cursor_back: Vec<usize>,
+    forward: usize,
+    new_text: String,
 }
