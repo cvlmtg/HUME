@@ -35,8 +35,8 @@ a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), including HUME's own
 ### Registration
 
 At load the plugin configures the `scheme` language's root marker as `cog.scm` and sets the
-language's default list to `steel-language-server`. A root set in `init.scm` comes first and
-wins, and the plugin's is then ignored with a warning. When that binary is on `$PATH` it also registers the server under
+language's default list to `steel-language-server`. A root set in `init.scm` wins over the
+plugin's whichever runs first, and the plugin's is dropped without a message. When that binary is on `$PATH` it also registers the server under
 that name; otherwise it logs a warning that points at `:steel-server-install`. A registration
 under that name that already exists, such as a manual
 `register-lsp-server! "steel-language-server" …` in `init.scm`, is left alone.
