@@ -198,6 +198,7 @@ impl Editor {
     /// Allocate a new buffer slot (engine + BufferStore) and return the
     /// allocated `BufferId`; see `lifecycle::open_buffer`'s own doc for why
     /// no pane is seeded yet.
+    #[cfg(test)]
     pub(in crate::editor) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
         let bid = lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc);
         // Steel eval capability only `&mut Editor` has; see
@@ -304,6 +305,7 @@ impl Editor {
     }
 
     /// Redirect `fp` to `target` without recording a jump.
+    #[cfg(test)]
     pub(in crate::editor) fn switch_to_buffer_without_jump(
         &mut self,
         fp: FocusedPane,
@@ -350,66 +352,29 @@ impl Editor {
         }
     }
 
-    /// Open or refresh a read-only view buffer (`:messages`, `:plugin-status`).
-    ///
-    /// If a buffer with this label already exists, replaces its content in-place
-    /// so repeated calls don't accumulate duplicates in the buffer list. Otherwise opens a
-    /// fresh read-only buffer. Then switches `fp` to it and positions
-    /// the cursor at `cursor_line` (clamped to last content line), or the last
-    /// content line itself when `cursor_line` is `None`: `:messages` wants the
-    /// bottom (most recent entry) without needing a sentinel value to name it.
-    /// Returns the view buffer's id, e.g. for callers attaching decorations
-    /// (`:messages`'s severity highlights) that must target this specific
-    /// buffer rather than whatever ends up focused.
+    /// Show `content` in the read-only view labelled `label` on `fp`; see
+    /// [`lifecycle::show_read_only_view`]. Returns the view buffer's id, e.g.
+    /// for callers attaching decorations (`:messages`'s severity highlights)
+    /// that must target this specific buffer rather than whatever ends up
+    /// focused.
     pub(in crate::editor) fn open_read_only_view(
         &mut self,
         fp: FocusedPane,
-        label: &'static str,
+        label: &str,
         content: &str,
         cursor_line: Option<hume_rope::line::ContentLine>,
     ) -> BufferId {
-        let bid = if let Some(existing) = self.state.buffers.find_by_label(label) {
-            // `set_view_content` resets history and every position stored
-            // for the buffer: a regenerated view buffer (`[messages]`,
-            // `[plugin-status]`) shares nothing but its id with the old content.
-            self.state.buffers.get_mut(existing).set_view_content(
-                existing,
-                &mut PositionStores::new(
-                    &mut self.state.panes,
-                    &mut self.state.input,
-                    &mut self.state.buffer_positions,
-                    &mut self.state.config.decorations,
-                ),
-                content,
-            );
-            lifecycle::forget_saved_views(&mut self.view, existing);
-            existing
-        } else {
-            let doc = Buffer::read_only_view(
-                hume_editing::text::BufferText::from(content),
-                label.to_owned(),
-            );
-            self.open_buffer(doc)
-        };
-
-        if fp.bid(&self.view) != bid {
-            self.switch_to_buffer_without_jump(fp, bid);
-        }
-
-        // Position cursor at the requested line (clamped to last content
-        // line), or the bottom when the caller didn't ask for a specific one.
-        let cursor_line =
-            cursor_line.unwrap_or_else(|| self.state.buffers.get(bid).text().last_content_line());
-        crate::editor::pane_state::park_cursor_at(
-            &mut self.state.panes.state,
-            &self.state.buffers,
-            &self.view.panes,
-            fp.pid(),
-            bid,
+        let bid = lifecycle::show_read_only_view(
+            &mut self.state,
+            &mut self.view,
+            fp.pane(),
+            label,
+            content,
             cursor_line,
-            hume_rope::column::GraphemeCol::new(0),
         );
-
+        // A first-time open queues language detection, which needs the
+        // Steel eval capability only `&mut Editor` has.
+        self.detect_pending_languages();
         bid
     }
 }

@@ -102,6 +102,16 @@ pub trait BufferHost {
     /// Kind-B: raises if `pane` carries no pane, a closed one, or one that
     /// no longer shows `pane`'s buffer.
     fn switch_to_buffer(&mut self, pane: PaneHandle, target: BufferId) -> Result<(), String>;
+    /// Show `text` on `pane`'s own pane in the read-only buffer labelled
+    /// `[name]`, opening it on first use and replacing its text after.
+    /// Kind-B, like [`Self::switch_to_buffer`]. `Err` for an empty name or
+    /// one the editor's own views use.
+    fn show_read_only_buffer(
+        &mut self,
+        pane: PaneHandle,
+        name: &str,
+        text: &str,
+    ) -> Result<(), String>;
 
     /// Steel-side staleness token for buffer `id` (its text generation, bumped by
     /// every mutation), or `None` if `id` is unknown. Not LSP-specific (any

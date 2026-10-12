@@ -144,6 +144,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | `(open-buffer! path)` | Open `path`, returning a pane-less pane value for it |
 | `(close-buffer! pane)` | Close a buffer |
 | `(switch-to-buffer! pane target)` | Redirect `pane`'s own pane to `target`'s buffer |
+| `(show-read-only-buffer! pane name text)` | Show `text` in `pane`'s own pane, in a read-only buffer named `[name]` with the cursor on the first line. Calling it again with the same `name` replaces the text in that buffer. Raises for an empty `name` and for `messages`, `plugin-status` and `lsp-status`, which HUME's own commands use |
 | `(buffer-generation pane)` | Int, bumped by every mutation to the buffer: a staleness token for comparing against a stored snapshot |
 | `(buffer-undo-tree pane)` | The buffer's undo history as a list with one `(hash 'id 'parent 'age-secs 'current? 'saved?)` per revision, in `'id` order, so a parent comes before its children. `'parent` is `#f` for the root, `'age-secs` is whole seconds since the revision was made, `'current?` marks the revision the buffer is on and `'saved?` the one last saved |
 | `(selections-linewise? pane)` | `#t` if every selection in `pane`'s own pane covers whole lines. A cursor sitting alone on a blank line doesn't count either way (it neither satisfies this nor breaks it when a real whole-line selection is also present), and `#f` if every selection is such a cursor |

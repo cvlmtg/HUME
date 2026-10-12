@@ -462,3 +462,79 @@ fn synthetic_buffer_e_bang_errors() {
     );
     assert!(ed.doc().is_read_only(), "buffer must still be read-only");
 }
+
+// ── show-read-only-buffer! ────────────────────────────────────────────────────
+
+/// Defines `:probe` as `body`, with `pane` bound to the pane it runs in, and
+/// runs it.
+fn run_show_probe(ed: &mut Editor, body: &str) {
+    let tmp = tempfile::tempdir().unwrap();
+    run(
+        ed,
+        tmp.path(),
+        &format!(r#"(define-typed-command! "probe" "" (lambda (pane) {body}))"#),
+    );
+    type_cmd(ed, ":probe");
+}
+
+fn labelled_count(ed: &Editor, label: &str) -> usize {
+    ed.state
+        .buffers
+        .iter()
+        .filter(|(_, buf)| buf.label.as_deref() == Some(label))
+        .count()
+}
+
+/// The pane switches to a read-only buffer labelled `[name]` holding `text`,
+/// with the cursor on the first line.
+#[test]
+fn show_read_only_buffer_opens_the_text_in_the_pane() {
+    let mut ed = editor_from("-[h]>ello\n");
+    run_show_probe(
+        &mut ed,
+        r#"(show-read-only-buffer! pane "report" "one\ntwo\nthree\n")"#,
+    );
+
+    assert!(ed.doc().is_read_only());
+    assert_eq!(ed.doc().display_name(), "[report]");
+    assert_eq!(ed.doc().text().to_string(), "one\ntwo\nthree\n");
+    assert_eq!(ed.current_view().primary().head().offset().index(), 0);
+}
+
+/// A second call with the same name replaces the first call's text in the
+/// same buffer. It names the pane through `(focused-pane)`: after the first
+/// call, `pane` names a buffer its pane does not show.
+#[test]
+fn show_read_only_buffer_reuses_the_named_buffer() {
+    let mut ed = editor_from("-[h]>ello\n");
+    run_show_probe(
+        &mut ed,
+        r#"(show-read-only-buffer! pane "report" "first\n")
+           (show-read-only-buffer! (focused-pane) "report" "second\n")"#,
+    );
+
+    assert_eq!(labelled_count(&ed, "[report]"), 1);
+    assert_eq!(ed.doc().text().to_string(), "second\n");
+}
+
+/// The editor's own view names and an empty name raise, and leave the pane
+/// where it was.
+#[test]
+fn show_read_only_buffer_refuses_editor_view_names() {
+    for name in ["messages", "plugin-status", "lsp-status", ""] {
+        let mut ed = editor_from("-[h]>ello\n");
+        let before = ed.focused_buffer_id();
+        run_show_probe(
+            &mut ed,
+            &format!(r#"(show-read-only-buffer! pane "{name}" "x\n")"#),
+        );
+
+        assert_eq!(ed.focused_buffer_id(), before, "{name:?}");
+        assert_eq!(labelled_count(&ed, &format!("[{name}]")), 0, "{name:?}");
+        assert!(
+            ed.state.message_log.entries().any(|e| e.severity == Severity::Error
+                && e.text.contains("show-read-only-buffer!")),
+            "{name:?} must raise"
+        );
+    }
+}

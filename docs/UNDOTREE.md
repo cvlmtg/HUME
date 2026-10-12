@@ -193,9 +193,9 @@ builtins return `hume-editing`'s `ChangeHunk`, the one hunk type behind
 
 - [ ] Docked-pane `LayoutTree` variant (see `docs/ROADMAP.md`'s docked-panes
       item) and scoping `equalize` to skip docked panes
-- [ ] Steel builtin to mint a read-only view buffer, the `[messages]` shape
-      with an owned-`String` label (`Editor::open_read_only_view` takes a
-      `&'static str` today)
+- [x] Steel builtin to mint a read-only view buffer, the `[messages]` shape
+      with an owned-`String` label: `show-read-only-buffer!` (`hume-editor`,
+      `hume-scripting`)
 - [ ] Panes as Steel inputs: `focused-pane`/`panes` return `PaneId`s but no
       builtin accepts one to place a buffer in a narrow pane
 - [ ] Per-buffer keymaps

@@ -4,10 +4,12 @@
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::BufferId;
+use hume_rope::line::ContentLine;
 use hume_rope::lines::line_token_content;
 use hume_rope::offset::ExclusiveRange;
 
 use super::EditorHostImpl;
+use crate::editor::buffer::EditorView;
 use crate::editor::commands::FocusedPane;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::BufferHost;
@@ -106,6 +108,32 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             self.view,
             t.pid(),
             target,
+        );
+        Ok(())
+    }
+    fn show_read_only_buffer(
+        &mut self,
+        pane: PaneHandle,
+        name: &str,
+        text: &str,
+    ) -> Result<(), String> {
+        let t = self.command_pane(pane)?;
+        if name.is_empty() {
+            return Err("show-read-only-buffer!: the name must not be empty".into());
+        }
+        let label = format!("[{name}]");
+        if EditorView::ALL.iter().any(|v| v.label() == label) {
+            return Err(format!(
+                "show-read-only-buffer!: {label} is one of the editor's own views"
+            ));
+        }
+        crate::editor::buffer::lifecycle::show_read_only_view(
+            self.state,
+            self.view,
+            t,
+            &label,
+            text,
+            Some(ContentLine::new(0)),
         );
         Ok(())
     }

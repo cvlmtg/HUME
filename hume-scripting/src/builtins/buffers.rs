@@ -326,6 +326,27 @@ pub(crate) fn switch_to_buffer(
     Ok(SteelVal::Void)
 }
 
+/// `(show-read-only-buffer! pane name text)` → void.
+///
+/// Shows `text` on `pane`'s own pane in a read-only buffer labelled
+/// `[name]`, cursor on the first line, recording no jump. A later call with
+/// the same `name` replaces the text in that same buffer. Raises for an
+/// empty `name`, one the editor's own views use (`messages`,
+/// `plugin-status`, `lsp-status`), or a `pane` that `switch-to-buffer!`
+/// would also refuse.
+pub(crate) fn show_read_only_buffer(
+    ctx: &mut SteelCtx,
+    pane: PaneHandle,
+    name: String,
+    text: String,
+) -> SteelResult {
+    ctx.host
+        .buffers()
+        .show_read_only_buffer(pane, &name, &text)
+        .map_err(generic_err)?;
+    Ok(SteelVal::Void)
+}
+
 // ── Live cursor/selection reads ───────────────────────────────────────────────
 
 /// `(buffer-cursor-line pane)` → 0-indexed line of the primary

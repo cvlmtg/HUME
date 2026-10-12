@@ -25,6 +25,7 @@
 ### Plugins & scripting
 - New `configure-language!` sets a language's project root markers and the identifier language servers know it by. A value from `init.scm` beats a plugin's, wherever the plugin loads, and either one replaces HUME's built-in value. Setting the same value twice from `init.scm`, or twice from plugins, keeps the first and notes the second in `:messages`.
 - New `bundled-language-grammar` and `bundled-grammar-languages` read the grammars HUME ships for each language.
+- New `show-read-only-buffer!` shows text in a read-only buffer, reused by name.
 - `call!` can pass a pattern to `search-forward`, `search-backward` and `sift-within`, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add`.
 
 ### Fixes

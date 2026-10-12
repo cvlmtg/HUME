@@ -7,7 +7,7 @@ use hume_scripting::host::DecorationHost;
 use super::super::Editor;
 use super::super::{EditorState, Severity};
 use super::{CommandPane, FocusedPane, cmd_redo, cmd_undo};
-use crate::editor::buffer::Buffer;
+use crate::editor::buffer::{Buffer, EditorView};
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
 use crate::editor::input_stack::DrawerLayer;
@@ -36,7 +36,7 @@ pub(in crate::editor) fn typed_messages(
     }
     ed.state.message_log.mark_all_seen();
     // None parks at the bottom (most recent entry).
-    let bid = ed.open_read_only_view(fp, "[messages]", &content, None);
+    let bid = ed.open_read_only_view(fp, EditorView::Messages.label(), &content, None);
     let spans = spans
         .into_iter()
         .map(|(start, end, scope)| (start, end, scope.to_string()))
@@ -91,7 +91,7 @@ pub(in crate::editor) fn typed_plugin_status(
     }
     ed.open_read_only_view(
         fp,
-        "[plugin-status]",
+        EditorView::PluginStatus.label(),
         &out,
         Some(hume_rope::line::ContentLine::new(0)),
     );

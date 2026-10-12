@@ -124,6 +124,14 @@ impl BufferHost for NullHost {
     fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {
         Err("NullHost: switch_to_buffer not available".into())
     }
+    fn show_read_only_buffer(
+        &mut self,
+        _pane: PaneHandle,
+        _name: &str,
+        _text: &str,
+    ) -> Result<(), String> {
+        Err("NullHost: show_read_only_buffer not available".into())
+    }
     fn buffer_generation(&self, _id: BufferId) -> Option<u64> {
         None
     }

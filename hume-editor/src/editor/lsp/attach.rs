@@ -546,7 +546,7 @@ impl Editor {
                 let fp = crate::editor::commands::FocusedPane::current(&self.state);
                 self.open_read_only_view(
                     fp,
-                    "[lsp-status]",
+                    crate::editor::buffer::EditorView::LspStatus.label(),
                     &content,
                     Some(hume_rope::line::ContentLine::new(0)),
                 );

@@ -234,6 +234,14 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {
         Err(self.refuse("switch_to_buffer"))
     }
+    fn show_read_only_buffer(
+        &mut self,
+        _pane: PaneHandle,
+        _name: &str,
+        _text: &str,
+    ) -> Result<(), String> {
+        Err(self.refuse("show_read_only_buffer"))
+    }
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         self.inner.borrow_mut().buffers().buffer_generation(id)
     }

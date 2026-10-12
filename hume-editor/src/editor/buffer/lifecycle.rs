@@ -6,10 +6,14 @@
 //! host through `SteelCtx`), just never the same `Editor` these live on, so
 //! they take `state`/`ev` directly instead of `&mut self`.
 //!
-//! The `impl Editor` choke-points (`open_buffer`, `close_buffer`,
-//! `switch_to_buffer_with_jump`) are thin delegators; all logic lives here.
+//! The `impl Editor` choke-points (`close_buffer`,
+//! `switch_to_buffer_with_jump`, `open_read_only_view`) are thin
+//! delegators; all logic lives here.
 
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_rope::column::GraphemeCol;
+use hume_rope::line::ContentLine;
 
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
@@ -167,6 +171,61 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
     with_jump(state, ev, t, JumpRule::IfMoved, |state, ev| {
         switch_pane_to_buffer(state, ev, pid, target);
     });
+}
+
+/// Show `content` on pane `t` in the read-only view buffer labelled
+/// `label`, recording no jump. The first call opens the buffer; a later
+/// call replaces its text in place, so the buffer list never holds two
+/// views with one label. The cursor lands on `cursor_line` (clamped to the
+/// last content line), or on the last content line when `None`.
+///
+/// The `Editor` view commands (`:messages`, `:plugin-status`,
+/// `:lsp-status`) and `show-read-only-buffer!` all open their views here.
+pub(in crate::editor) fn show_read_only_view(
+    state: &mut EditorState,
+    ev: &mut EngineView,
+    t: CommandPane,
+    label: &str,
+    content: &str,
+    cursor_line: Option<ContentLine>,
+) -> BufferId {
+    let bid = if let Some(existing) = state.buffers.find_by_label(label) {
+        // `set_view_content` resets history and every position stored for
+        // the buffer: the new content shares only the buffer id with the
+        // text it overwrites.
+        state.buffers.get_mut(existing).set_view_content(
+            existing,
+            &mut PositionStores::new(
+                &mut state.panes,
+                &mut state.input,
+                &mut state.buffer_positions,
+                &mut state.config.decorations,
+            ),
+            content,
+        );
+        forget_saved_views(ev, existing);
+        existing
+    } else {
+        let doc = Buffer::read_only_view(BufferText::from(content), label.to_owned());
+        open_buffer_and_notify(ev, state, doc)
+    };
+
+    if t.bid(ev) != bid {
+        switch_pane_to_buffer(state, ev, t.pid(), bid);
+    }
+
+    let cursor_line =
+        cursor_line.unwrap_or_else(|| state.buffers.get(bid).text().last_content_line());
+    pane_state::park_cursor_at(
+        &mut state.panes.state,
+        &state.buffers,
+        &ev.panes,
+        t.pid(),
+        bid,
+        cursor_line,
+        GraphemeCol::new(0),
+    );
+    bid
 }
 
 /// Remove buffer `id`. Every pane showing it (active tab or not) redirects

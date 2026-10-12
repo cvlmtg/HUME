@@ -109,6 +109,10 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
             "switch-to-buffer!",
             "(switch-to-buffer! (focused-pane) (focused-pane))",
         ),
+        (
+            "show-read-only-buffer!",
+            r#"(show-read-only-buffer! (focused-pane) "name" "text")"#,
+        ),
         ("offset->line", "(offset->line (focused-pane) 0)"),
         ("line->offset", "(line->offset (focused-pane) 0)"),
         (

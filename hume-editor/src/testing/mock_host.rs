@@ -167,6 +167,14 @@ impl BufferHost for MockHost {
     fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {
         Err("MockHost: switch_to_buffer not available".into())
     }
+    fn show_read_only_buffer(
+        &mut self,
+        _pane: PaneHandle,
+        _name: &str,
+        _text: &str,
+    ) -> Result<(), String> {
+        Err("MockHost: show_read_only_buffer not available".into())
+    }
     fn buffer_undo_tree(&self, _id: BufferId) -> Option<Vec<hume_scripting::host::UndoNode>> {
         None
     }

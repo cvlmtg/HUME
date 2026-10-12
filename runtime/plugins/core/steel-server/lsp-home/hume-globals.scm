@@ -320,6 +320,7 @@
 (#%register-global "show-drawer-list!")
 (#%register-global "show-menu!")
 (#%register-global "show-popup!")
+(#%register-global "show-read-only-buffer!")
 (#%register-global "sift-within")
 (#%register-global "smart-paste-after")
 (#%register-global "smart-paste-before")

@@ -42,6 +42,28 @@ pub(in crate::editor) mod store;
 use hume_treesitter::registry::LanguageId;
 use hume_treesitter::syntax::Syntax;
 
+/// A read-only view the editor itself opens. Its label is reserved:
+/// `show-read-only-buffer!` refuses every name in [`Self::ALL`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) enum EditorView {
+    Messages,
+    PluginStatus,
+    LspStatus,
+}
+
+impl EditorView {
+    pub(in crate::editor) const ALL: [Self; 3] =
+        [Self::Messages, Self::PluginStatus, Self::LspStatus];
+
+    pub(in crate::editor) fn label(self) -> &'static str {
+        match self {
+            Self::Messages => "[messages]",
+            Self::PluginStatus => "[plugin-status]",
+            Self::LspStatus => "[lsp-status]",
+        }
+    }
+}
+
 // ── Buffer ────────────────────────────────────────────────────────────────────
 
 /// What one composed undo/redo walk hands back. See

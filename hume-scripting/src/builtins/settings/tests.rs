@@ -324,6 +324,14 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     ) -> Result<(), String> {
         self.inner.switch_to_buffer(pane, target)
     }
+    fn show_read_only_buffer(
+        &mut self,
+        pane: crate::types::PaneHandle,
+        name: &str,
+        text: &str,
+    ) -> Result<(), String> {
+        self.inner.show_read_only_buffer(pane, name, text)
+    }
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         self.inner.buffer_generation(id)
     }
