@@ -12,18 +12,6 @@ use super::*;
 use hume_engine::pipeline::RenderContext;
 use test_fixtures::require_grammars;
 
-/// Attach the real `markdown` grammar fixture, no injections. These tests
-/// only check that top-level spans reach the popup, not fenced-code
-/// injection (already covered end-to-end for buffers by `injections_editor.rs`).
-fn register_markdown(ed: &mut Editor) {
-    ed.state
-        .config
-        .languages
-        .register_identity("markdown", &["md"], &[], &[])
-        .unwrap();
-    attach_fixture_grammar(ed, "markdown", "tree_sitter_markdown");
-}
-
 fn styled_rows(ed: &Editor) -> Option<Vec<hume_ui::popup::StyledRow>> {
     ed.state
         .views

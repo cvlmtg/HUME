@@ -269,7 +269,7 @@ fn load_theme_by_name_fails_gracefully() {
         &mut ed.state.shown_theme,
         &mut ed.state.message_log,
         &mut ed.state.status_msg,
-        ed.state.input.popup_mut(),
+        &mut ed.state.input,
         &ed.state.dirs,
         "no_such_theme_xyz",
     );

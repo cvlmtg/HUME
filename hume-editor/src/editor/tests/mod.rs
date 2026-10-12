@@ -230,6 +230,18 @@ pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor 
     ed
 }
 
+/// Attach the real `markdown` grammar fixture, no injections. Its callers
+/// only check that top-level spans reach a popup, not fenced-code
+/// injection (covered end-to-end for buffers by `injections_editor.rs`).
+fn register_markdown(ed: &mut Editor) {
+    ed.state
+        .config
+        .languages
+        .register_identity("markdown", &["md"], &[], &[])
+        .unwrap();
+    attach_fixture_grammar(ed, "markdown", "tree_sitter_markdown");
+}
+
 /// Attach `name`'s compiled grammar fixture to `ed`, with its own
 /// `highlights.scm` and no other query.
 ///

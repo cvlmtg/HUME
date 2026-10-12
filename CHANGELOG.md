@@ -29,6 +29,10 @@
 - New `read-data-file`, `data-file` and `data-file-names` read a plugin's Scheme data files: one value per file, with an error naming the file when it doesn't parse.
 - New `stdlib/report-section` and `stdlib/show-report!` in `core:stdlib` lay out a list as titled, counted sections and show it in a read-only buffer.
 - `call!` can pass a pattern to `search-forward`, `search-backward` and `sift-within`, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add`.
+- A completion item's `documentation` shows in the box beside the completion menu.
+
+### Language servers
+- A box beside the completion menu shows the highlighted completion's details and documentation, asking the server for them when the completion came without. `:set global completion-docs=false` turns it off.
 
 ### Fixes
 - The search and sift prompts report an invalid or unmatched pattern the same way scripts do. An invalid search pattern is not stored.

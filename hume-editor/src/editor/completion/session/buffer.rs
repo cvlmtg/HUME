@@ -19,7 +19,7 @@ use crate::editor::lsp::wire_range_to_chars;
 
 use super::super::item::CompletionItem;
 use super::super::registry::{BufferSourceId, SourceRegistry};
-use super::slots::{Invocation, SlotSet, SlotTokens};
+use super::slots::{Invocation, ItemKey, SlotSet, SlotTokens};
 
 /// The coordinate system one invocation's answer was computed in: the rope
 /// at invoke time (an O(1) clone, since ropey is structurally shared) and every
@@ -200,7 +200,18 @@ pub(in crate::editor) struct BufferSession {
     /// changes (an answer lands, a slot is dropped), not every keystroke;
     /// [`Self::rank`] only ever reads it.
     dedup_hidden: rustc_hash::FxHashSet<(u32, u32)>,
+    /// The item whose documentation `completionItem/resolve` is in flight.
+    /// At most one is: each new request supersedes the last, whose reply is
+    /// then never delivered.
+    doc_inflight: Option<ItemKey>,
     core: SlotSet<BufferSourceId, BufferSpan>,
+}
+
+/// A `completionItem/resolve` to send for the selected item's documentation.
+pub(in crate::editor) struct DocRequest {
+    pub(in crate::editor) key: ItemKey,
+    pub(in crate::editor) server: hume_lsp::backend::ServerId,
+    pub(in crate::editor) params: serde_json::Value,
 }
 
 impl BufferSession {
@@ -221,6 +232,7 @@ impl BufferSession {
             explicit: false,
             menu_anchor: None,
             dedup_hidden: rustc_hash::FxHashSet::default(),
+            doc_inflight: None,
             core: SlotSet::new(),
         }
     }
@@ -515,6 +527,61 @@ impl BufferSession {
 
     pub(in crate::editor) fn step_selection(&mut self, forward: bool) -> bool {
         self.core.step_selection(forward)
+    }
+
+    pub(in crate::editor) fn selected_item(&self) -> Option<&CompletionItem> {
+        self.core.selected_item(self.core.selected())
+    }
+
+    pub(in crate::editor) fn selected_key(&self) -> Option<ItemKey> {
+        self.core.key_at(self.core.selected())
+    }
+
+    /// The resolve that would fetch the selected item's documentation, and
+    /// marks it in flight. `None` when the item is already resolved or in
+    /// flight, its source did not declare `#:resolve`, or it has no server
+    /// item to resolve.
+    pub(in crate::editor) fn doc_request(
+        &mut self,
+        sources: &SourceRegistry,
+    ) -> Option<DocRequest> {
+        let idx = self.core.selected();
+        let key = self.core.key_at(idx)?;
+        let (source, _, item) = self.core.ranked(idx)?;
+        if item.resolved || self.doc_inflight == Some(key) || !sources.buffer_get(source).resolve {
+            return None;
+        }
+        let raw = item.raw.as_ref()?;
+        let hume_scripting::json::WireOrigin::Server { id: server, .. } = raw.origin() else {
+            return None;
+        };
+        let params = raw.value().clone();
+        self.doc_inflight = Some(key);
+        Some(DocRequest {
+            key,
+            server,
+            params,
+        })
+    }
+
+    /// Records the server's reply to the [`DocRequest`] for `key`, `None`
+    /// for a failed one. The item counts as resolved either way, so a
+    /// server that cannot answer is not asked again.
+    pub(in crate::editor) fn finish_doc_request(
+        &mut self,
+        key: ItemKey,
+        reply: Option<&serde_json::Value>,
+    ) {
+        if self.doc_inflight == Some(key) {
+            self.doc_inflight = None;
+        }
+        let Some(item) = self.core.item_mut(key) else {
+            return;
+        };
+        match reply {
+            Some(reply) => item.apply_resolved(reply),
+            None => item.resolved = true,
+        }
     }
 
     pub(in crate::editor) fn top(

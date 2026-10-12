@@ -2,13 +2,55 @@
 //! grammar's capture spans into the flat run sequence
 //! `hume_ui::popup::wrap_styled` wraps.
 //!
-//! Built once at `show-popup!` time (`Editor::build_markup_syntax`). There
-//! is nothing to incrementally reparse, since the content never changes
-//! after this.
+//! Built once per content (`EditorState::build_markup_syntax`): at
+//! `show-popup!` time, or when the completion documentation box first shows
+//! an item's docs. There is nothing to incrementally reparse, since the
+//! content never changes after this.
 
 use hume_engine::providers::SyntaxSpans;
 use hume_engine::theme::Theme;
-use hume_engine::types::ResolvedStyle;
+use hume_engine::theme::ui_scopes;
+use hume_engine::types::{ResolvedStyle, Scope};
+
+use crate::editor::EditorState;
+
+impl EditorState {
+    /// Synchronously parses `text` through the grammar named `lang`, if one
+    /// is registered, `None` otherwise (no such grammar), which leaves the
+    /// popup rendering plain.
+    pub(in crate::editor) fn build_markup_syntax(
+        &self,
+        lang: &str,
+        text: &str,
+    ) -> Option<MarkupSyntax> {
+        let lang_id = self.config.languages.id_of(lang)?;
+        let bundle = std::sync::Arc::clone(self.config.languages.grammar(lang_id)?);
+        let text = hume_editing::text::BufferText::from(text);
+        let syntax = hume_treesitter::syntax::Syntax::attach_sync(
+            bundle,
+            &text,
+            &self.config.languages.grammar_snapshot(),
+        );
+        Some(MarkupSyntax { syntax, text })
+    }
+}
+
+/// A `ui.popup` box's content for `text`: highlighted through `syntax` when
+/// there is one, plain otherwise. Its styled runs bake `theme`'s colors in,
+/// so a holder rebuilds it when the theme changes (`theme::set_theme`).
+pub(in crate::editor) fn popup_content(
+    text: &str,
+    syntax: Option<&MarkupSyntax>,
+    theme: &Theme,
+) -> hume_ui::popup::PopupContent {
+    match syntax {
+        Some(syntax) => {
+            let base_style = theme.resolve_by_name(Scope(ui_scopes::POPUP));
+            hume_ui::popup::PopupContent::styled(syntax.styled_runs(text, theme, base_style))
+        }
+        None => hume_ui::popup::PopupContent::plain(text),
+    }
+}
 
 /// Synchronously-parsed highlight state for a popup's read-only text, keyed
 /// by grammar name (`#:lang`). `None` where `PopupLayer::syntax` would go

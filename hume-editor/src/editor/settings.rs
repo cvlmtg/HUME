@@ -944,6 +944,11 @@ define_settings! {
         "popup-border" => popup_border: bool = true,
             scope: [Scope::Global],
             parser: bool;
+        // Read by the completion menu's documentation box and by the
+        // selection-time `completionItem/resolve` that fills it.
+        "completion-docs" => completion_docs: bool = true,
+            scope: [Scope::Global],
+            parser: bool;
         "pane-dividers" => pane_dividers: bool = true,
             scope: [Scope::Global],
             parser: bool;

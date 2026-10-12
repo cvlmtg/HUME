@@ -43,9 +43,11 @@ fn initialize_params_advertise_the_v1_capability_set() {
     );
     let td = caps.text_document.unwrap();
     let completion = td.completion.unwrap();
+    let completion_item = completion.completion_item.unwrap();
+    assert_eq!(completion_item.snippet_support, Some(false));
     assert_eq!(
-        completion.completion_item.unwrap().snippet_support,
-        Some(false)
+        completion_item.documentation_format,
+        Some(vec![MarkupKind::Markdown, MarkupKind::PlainText])
     );
     // Without this a conforming server never sends a list-wide `editRange`.
     assert_eq!(

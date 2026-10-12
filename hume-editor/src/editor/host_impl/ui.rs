@@ -13,27 +13,6 @@ use hume_scripting::host::{
     PickerSourceOpts, PopupKind, UiHost,
 };
 
-impl<'a> EditorHostImpl<'a> {
-    /// Synchronously parses `text` through the grammar named `lang`, if one
-    /// is registered, `None` otherwise (no such grammar), which leaves the
-    /// popup rendering plain.
-    fn build_markup_syntax(
-        &self,
-        lang: &str,
-        text: &str,
-    ) -> Option<crate::editor::popup_syntax::MarkupSyntax> {
-        let lang_id = self.state.config.languages.id_of(lang)?;
-        let bundle = std::sync::Arc::clone(self.state.config.languages.grammar(lang_id)?);
-        let text = hume_editing::text::BufferText::from(text);
-        let syntax = hume_treesitter::syntax::Syntax::attach_sync(
-            bundle,
-            &text,
-            &self.state.config.languages.grammar_snapshot(),
-        );
-        Some(crate::editor::popup_syntax::MarkupSyntax { syntax, text })
-    }
-}
-
 impl<'a> UiHost for EditorHostImpl<'a> {
     // ── Minibuffer prompt ────────────────────────────────────────────────
     fn on_next_char(&mut self, callback: steel::rvals::SteelVal) -> Result<(), String> {
@@ -85,7 +64,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         } else {
             hume_ui::popup::PopupLayout::Cursor
         };
-        let syntax = lang.and_then(|lang| self.build_markup_syntax(&lang, &text));
+        let syntax = lang.and_then(|lang| self.state.build_markup_syntax(&lang, &text));
         let model = PopupLayer::new(text, syntax, layout);
         let token = model.token();
         match kind {

@@ -24,6 +24,12 @@ pub(in crate::editor) struct CompletionItem {
     /// Display-only (icon choice): no v1 reader maps it to a name.
     pub(super) kind: Option<lsp_types::CompletionItemKind>,
     pub(super) detail: Option<String>,
+    pub(super) documentation: Option<Documentation>,
+    /// Whether `detail`/`documentation` are final: true once the server
+    /// sent `documentation` with the item or answered a
+    /// `completionItem/resolve` for it, even with an error, so the
+    /// selection-time resolve asks a server at most once per item.
+    pub(super) resolved: bool,
     pub(super) sort_text: String,
     pub(super) filter_text: String,
     pub(super) insert_text: String,
@@ -69,6 +75,8 @@ impl CompletionItem {
             insert_text,
             kind: None,
             detail: None,
+            documentation: None,
+            resolved: false,
             text_edit: None,
             additional_text_edits: Vec::new(),
             has_additional_text_edits: false,
@@ -109,6 +117,7 @@ impl CompletionItem {
             .get("kind")
             .and_then(|k| lsp_types::CompletionItemKind::deserialize(k).ok());
         let detail = v.get("detail").and_then(|x| x.as_str()).map(str::to_string);
+        let documentation = v.get("documentation").and_then(Documentation::from_json);
         let string_or_label = |key: &str| -> String {
             v.get(key)
                 .and_then(|x| x.as_str())
@@ -146,6 +155,8 @@ impl CompletionItem {
             label,
             kind,
             detail,
+            resolved: documentation.is_some(),
+            documentation,
             sort_text,
             filter_text,
             insert_text,
@@ -155,6 +166,24 @@ impl CompletionItem {
             token_group: None,
             raw: Some(raw_item),
         })
+    }
+
+    /// Takes `detail`/`documentation` from a `completionItem/resolve`
+    /// answer where this item has none, and marks it resolved. A field the
+    /// item already carries wins: it is what the menu row has been showing.
+    pub(super) fn apply_resolved(&mut self, resolved: &serde_json::Value) {
+        if self.detail.is_none() {
+            self.detail = resolved
+                .get("detail")
+                .and_then(|x| x.as_str())
+                .map(str::to_string);
+        }
+        if self.documentation.is_none() {
+            self.documentation = resolved
+                .get("documentation")
+                .and_then(Documentation::from_json);
+        }
+        self.resolved = true;
     }
 
     /// The encoding this item's wire positions were counted in. A
@@ -195,6 +224,40 @@ impl CompletionItem {
     /// (`Buffer`-target only).
     pub(in crate::editor) fn insert_text(&self) -> &str {
         &self.insert_text
+    }
+
+    #[cfg(test)]
+    pub(in crate::editor) fn documentation(&self) -> Option<&Documentation> {
+        self.documentation.as_ref()
+    }
+
+    pub(in crate::editor) fn is_resolved(&self) -> bool {
+        self.resolved
+    }
+
+    /// What the documentation box shows for this item: `detail`, a blank
+    /// line, then `documentation`. Markdown documentation fences `detail`
+    /// as `fence_lang` code, so the whole text reads as markdown. `None`
+    /// with neither.
+    pub(in crate::editor) fn doc_box_text(&self, fence_lang: &str) -> Option<Documentation> {
+        let detail = self.detail.as_deref().filter(|d| !d.is_empty());
+        let docs = self.documentation.as_ref().filter(|d| !d.text.is_empty());
+        Some(match (detail, docs) {
+            (None, None) => return None,
+            (Some(detail), None) => Documentation {
+                text: detail.to_string(),
+                markdown: false,
+            },
+            (None, Some(docs)) => docs.clone(),
+            (Some(detail), Some(docs)) if docs.markdown => Documentation {
+                text: format!("```{fence_lang}\n{detail}\n```\n\n{}", docs.text),
+                markdown: true,
+            },
+            (Some(detail), Some(docs)) => Documentation {
+                text: format!("{detail}\n\n{}", docs.text),
+                markdown: false,
+            },
+        })
     }
 
     /// Whether accepting this item would change nothing beyond leaving
@@ -254,6 +317,28 @@ impl CompletionItem {
             main: self.label.clone(),
             trailing: self.detail.clone().filter(|d| !d.is_empty()),
         }
+    }
+}
+
+/// An item's `documentation`, either LSP shape: a bare string is plaintext,
+/// a `MarkupContent` is markdown unless its `kind` is `plaintext`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::editor) struct Documentation {
+    pub(in crate::editor) text: String,
+    pub(in crate::editor) markdown: bool,
+}
+
+impl Documentation {
+    fn from_json(v: &serde_json::Value) -> Option<Self> {
+        if let Some(text) = v.as_str() {
+            return Some(Self {
+                text: text.to_string(),
+                markdown: false,
+            });
+        }
+        let text = v.get("value")?.as_str()?.to_string();
+        let markdown = v.get("kind").and_then(|k| k.as_str()) != Some("plaintext");
+        Some(Self { text, markdown })
     }
 }
 

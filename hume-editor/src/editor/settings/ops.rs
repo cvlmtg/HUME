@@ -100,7 +100,7 @@ pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut Engin
     theme::set_theme(
         view,
         &mut state.shown_theme,
-        state.input.popup_mut(),
+        &mut state.input,
         crate::editor::theme::fallback_theme(),
         "",
     );
@@ -128,7 +128,7 @@ pub(in crate::editor) fn apply_pending_theme(state: &mut EditorState, view: &mut
         &mut state.shown_theme,
         &mut state.message_log,
         &mut state.status_msg,
-        state.input.popup_mut(),
+        &mut state.input,
         &state.dirs,
         &wanted,
     );
@@ -194,7 +194,7 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: Resy
             &mut state.shown_theme,
             &mut state.message_log,
             &mut state.status_msg,
-            state.input.popup_mut(),
+            &mut state.input,
             &state.dirs,
             &state.settings.theme,
         ),
@@ -203,7 +203,7 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: Resy
             theme::set_theme(
                 view,
                 &mut state.shown_theme,
-                state.input.popup_mut(),
+                &mut state.input,
                 crate::editor::theme::fallback_theme(),
                 "",
             );

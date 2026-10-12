@@ -25,6 +25,7 @@ use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{
     BufferCompletionLayer, InsertLayer, LayerRef, MinibufCompletionLayer,
 };
+use crate::editor::lsp::{RustDelivery, RustResponder};
 use crate::editor::registry::CommandRegistry;
 use crate::editor::replay::Interactive;
 use crate::editor::settings::{CommandCompletion, EditorSettings};
@@ -125,7 +126,7 @@ impl EditorState {
             self.report(Severity::Info, "no completions".to_string());
             return;
         }
-        self.push_layer(view, BufferCompletionLayer { session });
+        self.push_layer(view, BufferCompletionLayer { session, doc: None });
     }
 
     /// Brings the open `Buffer` session in line with the buffer's current
@@ -187,6 +188,48 @@ impl EditorState {
                 self.settle_buffer_completion(view, false);
             }
         }
+        self.request_selected_completion_doc();
+    }
+
+    /// Asks the selected candidate's server for its documentation, through
+    /// `completionItem/resolve`, unless it has it already or the request is
+    /// in flight ([`BufferSession::doc_request`]). Docs carry no buffer
+    /// position, so the reply is delivered even after further typing.
+    fn request_selected_completion_doc(&mut self) {
+        if !self.settings.completion_docs {
+            return;
+        }
+        let Some(session) = self.input.buffer_completion_mut() else {
+            return;
+        };
+        let bid = session.bid();
+        let Some(request) = session.doc_request(&self.config.completion_sources) else {
+            return;
+        };
+        let key = request.key;
+        let respond: RustResponder = Box::new(move |state, _view, result| {
+            let Some(session) = state.input.buffer_completion_mut() else {
+                return;
+            };
+            match result {
+                Ok(reply) => session.finish_doc_request(key, Some(&reply)),
+                Err(message) => {
+                    session.finish_doc_request(key, None);
+                    state.report(Severity::Trace, format!("lsp completion docs: {message}"));
+                }
+            }
+        });
+        self.lsp_request_json(
+            bid,
+            request.server,
+            "completionItem/resolve",
+            request.params,
+            RustDelivery {
+                allow_stale: true,
+                supersede: Some("completion-doc"),
+            },
+            respond,
+        );
     }
 
     // ── Minibuffer target ────────────────────────────────────────────────────

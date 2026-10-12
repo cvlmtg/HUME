@@ -51,6 +51,13 @@ impl<S> Invocation<S> {
         }
     }
 
+    fn items_mut(&mut self) -> Option<&mut [CompletionItem]> {
+        match &mut self.state {
+            InvocationState::Shown { items, .. } => Some(items),
+            InvocationState::Pending => None,
+        }
+    }
+
     pub(super) fn incomplete(&self) -> bool {
         matches!(
             self.state,
@@ -60,6 +67,15 @@ impl<S> Invocation<S> {
             }
         )
     }
+}
+
+/// Names one item of one source's answer. A ranked index moves on every
+/// re-rank; this stays put while that answer is shown, and names nothing
+/// once it is replaced, since every invocation id is unique.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::editor) struct ItemKey {
+    invocation: u64,
+    item: u32,
 }
 
 /// One participating source: the answer currently ranked (`shown`) and, if
@@ -380,6 +396,26 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     pub(super) fn selected_item(&self, idx: usize) -> Option<&CompletionItem> {
         let (s, i) = self.ranked_indices(idx)?;
         Some(self.item(s, i))
+    }
+
+    /// The key of the item behind ranked position `idx`.
+    pub(super) fn key_at(&self, idx: usize) -> Option<ItemKey> {
+        let (s, i) = self.ranked_indices(idx)?;
+        let inv = self.slots[s as usize].shown.as_ref()?;
+        Some(ItemKey {
+            invocation: inv.id,
+            item: i,
+        })
+    }
+
+    /// The item `key` names, while the answer holding it is still shown.
+    pub(super) fn item_mut(&mut self, key: ItemKey) -> Option<&mut CompletionItem> {
+        self.slots
+            .iter_mut()
+            .filter_map(|slot| slot.shown.as_mut())
+            .find(|inv| inv.id == key.invocation)?
+            .items_mut()?
+            .get_mut(key.item as usize)
     }
 
     /// The source/invocation/item behind ranked position `idx`. Readers

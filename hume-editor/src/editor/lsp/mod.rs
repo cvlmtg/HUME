@@ -39,7 +39,7 @@ use hume_scripting::ServerName;
 use super::Editor;
 use super::async_source::AsyncSource;
 use bridge::Deliveries;
-pub(in crate::editor) use bridge::RustResponder;
+pub(in crate::editor) use bridge::{RustDelivery, RustResponder};
 use instances::Instances;
 use progress::SpinnerClock;
 use registry::Registry;

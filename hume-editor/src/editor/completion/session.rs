@@ -24,7 +24,7 @@ use std::ops::Range;
 
 pub(in crate::editor) use buffer::{BufferSession, LiveDoc, Reconciled};
 pub(in crate::editor) use minibuf::MinibufSession;
-pub(in crate::editor) use slots::Invocation;
+pub(in crate::editor) use slots::{Invocation, ItemKey};
 
 /// How a source's items are matched against its token's typed text. Declared
 /// per source (`registry.rs`), since one session mixes sources.

@@ -48,6 +48,7 @@ pub struct OverlayViews {
     pub popup_band: SharedSlot<Option<popup::PopupBandState>>,
     pub menu: SharedSlot<Option<popup::PopupState>>,
     pub completion_menu: SharedSlot<Option<popup::PopupState>>,
+    pub completion_doc: SharedSlot<Option<popup::PopupState>>,
     pub drawer: SharedSlot<Option<drawer::DrawerViewState>>,
     pub picker: SharedSlot<Option<picker_panel::PickerViewState>>,
 }
@@ -69,14 +70,16 @@ impl OverlayViews {
 }
 
 /// Register every overlay provider (minibuffer completion, hover/hint
-/// popup, selection menu, LSP completion menu, fuzzy picker) into `providers`
+/// popup, selection menu, LSP completion menu and its documentation box,
+/// fuzzy picker) into `providers`
 /// as the overlay half of pane construction. Sibling of
 /// `hume_decorations::build_providers`; together the two calls populate one
 /// pane's `ProviderSet`. Registration order is z-order (last registered
 /// paints on top): completion overlay, then the hover/signature-help popup,
 /// then the selection menu, then the LSP completion menu (an in-progress
 /// completion is the most action-relevant overlay when more than one could
-/// theoretically be visible), then the picker last, since it's full-modal
+/// theoretically be visible) and the box beside it with the selected
+/// candidate's documentation, then the picker last, since it's full-modal
 /// and every other opener clears or truncates it before landing above it.
 /// `show-popup!`'s own `'scrollable` arm refuses to push above an open
 /// picker for exactly this reason, so this registration order and input
@@ -97,6 +100,10 @@ pub fn register_overlays(providers: &mut ProviderSet, views: &OverlayViews) {
     providers.add_overlay(Box::new(PopupOverlay {
         data: views.completion_menu.clone(),
         scope: ui_scopes::MENU,
+    }));
+    providers.add_overlay(Box::new(PopupOverlay {
+        data: views.completion_doc.clone(),
+        scope: ui_scopes::POPUP,
     }));
     providers.add_overlay(Box::new(PickerOverlay {
         data: views.picker.clone(),

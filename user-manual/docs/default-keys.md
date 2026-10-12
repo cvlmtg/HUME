@@ -254,6 +254,8 @@ While a completion menu is open, typing narrows it and these keys drive it; any 
 | `Enter` | Accept the highlighted entry |
 | `Esc` | Close the menu, stay in Insert mode |
 
+A box beside the menu shows the highlighted entry's details and documentation, when it has any and there is room to the right or left of the menu. Turn it off with `:set global completion-docs=false`.
+
 Rebinding one of these keys replaces its behaviour outright. A plugin command can fall back to it with `insert-key!` (see [Editing & navigation](plugin-api.md#editing-navigation)), letting a binding decide per keypress whether to override the key or leave it as-is.
 
 ## Extend mode

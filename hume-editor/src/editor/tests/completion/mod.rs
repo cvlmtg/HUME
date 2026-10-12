@@ -10,7 +10,8 @@
 //! - `accept.rs`: what accepting a candidate writes, single- and
 //!   multi-cursor, with and without server edits.
 //! - `minibuf.rs`: the `:` line's Tab completion.
-//! - `render.rs`: the menu's geometry and the two render snapshots.
+//! - `render.rs`: the menu's geometry, its documentation box, and the
+//!   three render snapshots.
 //!
 //! The real-server end-to-end flow (a fake `rust-analyzer` answering
 //! `textDocument/completion`, resolve, `additionalTextEdits`) lives in

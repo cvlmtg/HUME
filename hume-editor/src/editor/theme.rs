@@ -4,15 +4,15 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::theme::error::ThemeError;
 use hume_engine::theme::loader::{LoadedTheme, load_theme};
 
-use crate::editor::input_stack::PopupLayer;
+use crate::editor::input_stack::InputStack;
 use crate::editor::message_log::{MessageLog, Severity};
 
 /// Replace `view.theme`, record the name it came from in `shown_theme` (empty
 /// for the fallback), and invalidate everything that caches against its baked
-/// colors: currently just an open popup's per-width/style cache
-/// (`PopupLayer::content`), the one input to that cache besides `text`/
-/// `syntax` (which never change during a popup's lifetime) that can change
-/// out from under it. The single chokepoint for replacing a *live*
+/// colors: an open popup's per-width/style cache (`PopupLayer::content`), the
+/// one input to that cache besides `text`/`syntax` (which never change during
+/// a popup's lifetime) that can change out from under it, and the completion
+/// documentation box's content (`BufferCompletionLayer::doc`). The single chokepoint for replacing a *live*
 /// `view.theme`, so a future third replacement site can't forget the
 /// invalidation the way a hand-placed `popup.content = None` next to each
 /// write site could. `Editor::open`'s initial construction bypasses this on
@@ -20,15 +20,16 @@ use crate::editor::message_log::{MessageLog, Severity};
 pub(in crate::editor) fn set_theme(
     view: &mut EngineView,
     shown_theme: &mut String,
-    popup: Option<&mut PopupLayer>,
+    input: &mut InputStack,
     theme: hume_engine::theme::Theme,
     name: &str,
 ) {
     view.theme = theme;
     name.clone_into(shown_theme);
-    if let Some(popup) = popup {
+    if let Some(popup) = input.popup_mut() {
         popup.content = None;
     }
+    input.forget_completion_doc();
 }
 
 /// Load a theme by name and apply it to the engine view.
@@ -44,7 +45,7 @@ pub(in crate::editor) fn set_theme(
 ///
 /// Each warning goes to `message_log`, with a one-line count in `status_msg`.
 /// A document-level failure writes its own message to `status_msg` and
-/// leaves `popup` untouched. Returns `true` unless the load failed outright.
+/// leaves `input` untouched. Returns `true` unless the load failed outright.
 ///
 /// The `Editor` fields are passed separately so the caller can borrow
 /// `&editor.settings.theme` for `name` without cloning.
@@ -53,7 +54,7 @@ pub(in crate::editor) fn load_theme_by_name(
     shown_theme: &mut String,
     message_log: &mut MessageLog,
     status_msg: &mut Option<String>,
-    popup: Option<&mut PopupLayer>,
+    input: &mut InputStack,
     dirs: &hume_platform::dirs::Dirs,
     name: &str,
 ) -> bool {
@@ -64,7 +65,7 @@ pub(in crate::editor) fn load_theme_by_name(
         shown_theme,
         message_log,
         status_msg,
-        popup,
+        input,
         name,
     )
 }
@@ -78,7 +79,7 @@ pub(in crate::editor) fn load_default_theme(
     shown_theme: &mut String,
     message_log: &mut MessageLog,
     status_msg: &mut Option<String>,
-    popup: Option<&mut PopupLayer>,
+    input: &mut InputStack,
     dirs: &hume_platform::dirs::Dirs,
     name: &str,
 ) {
@@ -96,7 +97,7 @@ pub(in crate::editor) fn load_default_theme(
                 shown_theme,
                 message_log,
                 status_msg,
-                popup,
+                input,
                 name,
             );
         }
@@ -109,12 +110,12 @@ fn install_load_result(
     shown_theme: &mut String,
     message_log: &mut MessageLog,
     status_msg: &mut Option<String>,
-    popup: Option<&mut PopupLayer>,
+    input: &mut InputStack,
     name: &str,
 ) -> bool {
     match result {
         Ok(loaded) => {
-            set_theme(engine_view, shown_theme, popup, loaded.theme, name);
+            set_theme(engine_view, shown_theme, input, loaded.theme, name);
             if !loaded.warnings.is_empty() {
                 let count = loaded.warnings.len();
                 for warning in &loaded.warnings {

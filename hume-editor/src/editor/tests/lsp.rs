@@ -39,6 +39,7 @@ fn request(ed: &mut Editor, sid: ServerId, method: &str) -> Answers {
         sid,
         method,
         serde_json::Value::Null,
+        crate::editor::lsp::RustDelivery::default(),
         Box::new(move |_state, _view, answer| sink.borrow_mut().push(answer)),
     );
     answers

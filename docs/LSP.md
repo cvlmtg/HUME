@@ -138,7 +138,7 @@ Compact model of the protocol as HUME uses it. Full spec: <https://microsoft.git
 | Diagnostics (C9) | `textDocument/diagnostic`, only to a server that has not pushed | server pushes `textDocument/publishDiagnostics` notification; a pull-only server is asked, see "Pull diagnostics" |
 | Hover (F1) | `textDocument/hover` | `Hover { contents: MarkupContent \| … }` or null |
 | Goto (F2) | `textDocument/definition`, `declaration`, `typeDefinition`, `implementation` | result: `Location`, `Location[]`, `LocationLink[]`, or null |
-| Completion (F3) | `textDocument/completion`, then `completionItem/resolve` | result: `CompletionItem[]` or `CompletionList { isIncomplete, items }` |
+| Completion (F3) | `textDocument/completion`, then `completionItem/resolve` (on selection for `documentation`/`detail`, on accept for `additionalTextEdits`) | result: `CompletionItem[]` or `CompletionList { isIncomplete, items }` |
 | Diag nav (F4) | — | reads C9 store, no request |
 | Rename (F5) | `textDocument/rename` | result: `WorkspaceEdit` (`changes` **or** `documentChanges` — handle both) |
 | References (F6) | `textDocument/references` | params include `context.includeDeclaration` |

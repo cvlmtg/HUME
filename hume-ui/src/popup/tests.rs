@@ -315,3 +315,53 @@ fn band_visible_rows_reserves_the_frame_row_pair_below_the_cap() {
         "well under the cap: all 3 lines fit"
     );
 }
+
+// ── Side popup ───────────────────────────────────────────────────────────────
+
+fn side(text: &str, beside: Rect, pane: Rect) -> Option<PopupState> {
+    resolve_side_popup(&mut PopupContent::plain(text), beside, pane, true)
+}
+
+#[test]
+fn side_popup_sits_right_of_the_box_with_its_top_edge_level() {
+    let state =
+        side("hello world", rect(10, 5, 20, 6), rect(0, 0, 80, 24)).expect("room on the right");
+    assert_eq!(state.rect, rect(30, 5, 13, 3));
+}
+
+#[test]
+fn side_popup_flips_left_when_the_right_is_too_narrow() {
+    let state =
+        side("hello world", rect(50, 5, 25, 6), rect(0, 0, 80, 24)).expect("room on the left");
+    assert_eq!(state.rect, rect(37, 5, 13, 3));
+}
+
+#[test]
+fn side_popup_is_absent_when_neither_side_has_room() {
+    assert!(side("hello world", rect(12, 5, 20, 6), rect(0, 0, 40, 24)).is_none());
+}
+
+#[test]
+fn side_popup_wraps_to_the_room_beside_the_box() {
+    let text = "word ".repeat(20);
+    let state = side(&text, rect(0, 0, 55, 6), rect(0, 0, 80, 24)).expect("25 cells on the right");
+    assert_eq!(state.rect.x, 55);
+    assert!(
+        state.rect.width <= 25,
+        "width {} exceeds the room",
+        state.rect.width
+    );
+    assert!(
+        state.total_rows > 1,
+        "the text wraps instead of overflowing"
+    );
+}
+
+#[test]
+fn side_popup_height_stops_at_the_pane_bottom() {
+    let text = "line\n".repeat(10);
+    let state = side(&text, rect(0, 8, 20, 4), rect(0, 0, 80, 12)).expect("room on the right");
+    assert_eq!(state.rect.y, 8);
+    assert_eq!(state.rect.bottom(), 12);
+    assert_eq!(state.visible, 0..2);
+}

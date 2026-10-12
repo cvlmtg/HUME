@@ -932,6 +932,8 @@ fn build_client_capabilities() -> ClientCapabilities {
                 completion_item: Some(CompletionItemCapability {
                     // v1 strips snippet placeholders to plain text.
                     snippet_support: Some(false),
+                    // Markdown first: the documentation box highlights it.
+                    documentation_format: Some(vec![MarkupKind::Markdown, MarkupKind::PlainText]),
                     ..Default::default()
                 }),
                 completion_list: Some(CompletionListCapability {

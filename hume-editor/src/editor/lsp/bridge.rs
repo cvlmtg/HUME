@@ -133,6 +133,17 @@ enum Responder {
 pub(in crate::editor) type RustResponder =
     Box<dyn FnOnce(&mut EditorState, &EngineView, Result<serde_json::Value, String>)>;
 
+/// How [`EditorState::lsp_request_json`] delivers its answer.
+#[derive(Default)]
+pub(in crate::editor) struct RustDelivery {
+    /// Deliver the answer even after the buffer's text changed: for a reply
+    /// that carries no buffer position.
+    pub(in crate::editor) allow_stale: bool,
+    /// A later request under the same key cancels this one, whose
+    /// responder is then never called.
+    pub(in crate::editor) supersede: Option<&'static str>,
+}
+
 /// What a delivery needs beyond its members, whoever asked for it.
 struct DeliverySpec {
     anchor: ResponseAnchor,
@@ -288,14 +299,15 @@ impl EditorState {
     /// Sends `method` with wire-form `params` to `server` alone, and calls
     /// `responder` with its answer. A server that [`route`] would not send
     /// `method` to for `bid` (not attached, not running, its list entry
-    /// excluding the feature, or lacking the capability) sends nothing and
-    /// never calls back.
+    /// excluding the feature, or lacking the capability) sends nothing,
+    /// cancels nothing under `delivery.supersede`, and never calls back.
     pub(in crate::editor) fn lsp_request_json(
         &mut self,
         bid: BufferId,
         server: hume_lsp::backend::ServerId,
         method: &str,
         params: serde_json::Value,
+        delivery: RustDelivery,
         responder: RustResponder,
     ) {
         let Some(server) = self.lsp.instances.server_ref(server) else {
@@ -309,17 +321,22 @@ impl EditorState {
             return;
         };
         self.lsp_flush_pending();
+        if let Some(key) = delivery.supersede
+            && let Some(old) = self.lsp.deliveries.in_flight_under(key)
+        {
+            self.cancel_delivery(old);
+        }
         let spec = DeliverySpec {
             anchor: ResponseAnchor {
                 bid,
                 version: self.buffers.get(bid).text().version(),
-                allow_stale: false,
+                allow_stale: delivery.allow_stale,
                 require_focus: None,
                 tracked: None,
             },
             method: method.to_string(),
             mode: RequestMode::Single,
-            supersede: None,
+            supersede: delivery.supersede.map(str::to_string),
             responder: Responder::Rust(responder),
         };
         let members = vec![Member::Send(routed.remove(0), params)];

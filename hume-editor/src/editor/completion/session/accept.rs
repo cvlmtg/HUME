@@ -12,7 +12,7 @@ use super::super::item::CompletionItem;
 use super::buffer::{BufferSession, BufferSpan};
 use super::contains_cursor;
 use crate::editor::event::EditorEvent;
-use crate::editor::lsp::{RustResponder, edits, wire_range_to_chars};
+use crate::editor::lsp::{RustDelivery, RustResponder, edits, wire_range_to_chars};
 use crate::editor::replay::Interactive;
 use crate::editor::{EditorState, Severity};
 use hume_ops::edit::replace_span_around_cursors;
@@ -502,6 +502,7 @@ impl BufferSession {
             server_id,
             "completionItem/resolve",
             raw.value().clone(),
+            RustDelivery::default(),
             respond,
         );
     }

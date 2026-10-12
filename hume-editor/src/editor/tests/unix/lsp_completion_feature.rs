@@ -19,6 +19,13 @@ fn full_completion_caps() -> serde_json::Value {
     })
 }
 
+/// Turns off the selection-time docs resolve, for a test that counts or
+/// scripts the accept-time one: the scripted backend answers resolves in
+/// order, so a docs request would take the reply meant for accept.
+fn without_completion_docs(ed: &mut Editor) {
+    ed.state.settings.completion_docs = false;
+}
+
 fn settle(ed: &mut Editor) {
     ed.settle();
     ed.drain_lsp();
@@ -420,6 +427,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
     );
     set_cursor(&mut ed, 5);
 
+    without_completion_docs(&mut ed);
     ed.feed_key(key('i'));
     ed.settle();
     ed.feed_key(key_ctrl(' '));
@@ -471,6 +479,7 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
     );
     set_cursor(&mut ed, 1);
 
+    without_completion_docs(&mut ed);
     ed.feed_key(key('i'));
     ed.settle();
     ed.feed_key(key_ctrl(' '));
@@ -515,6 +524,7 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
     );
     set_cursor(&mut ed, 1);
 
+    without_completion_docs(&mut ed);
     ed.feed_key(key('i'));
     ed.settle();
     ed.feed_key(key_ctrl(' '));
@@ -573,6 +583,7 @@ fn completion_resolve_goes_to_the_items_origin_server() {
     );
     rig.ed.settle();
 
+    without_completion_docs(&mut rig.ed);
     rig.ed.feed_key(key('i'));
     rig.ed.settle();
     rig.ed.feed_key(key_ctrl(' '));
@@ -603,6 +614,7 @@ fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_
                 serde_json::json!({"label": "bar"}),
             );
         });
+    without_completion_docs(&mut ed);
     ed.feed_key(key('i'));
     ed.settle();
     ed.feed_key(key_ctrl(' '));
@@ -641,6 +653,7 @@ fn null_resolve_response_is_a_clean_no_op() {
             );
             backend.respond_to("completionItem/resolve", serde_json::Value::Null);
         });
+    without_completion_docs(&mut ed);
     ed.feed_key(key('i'));
     ed.settle();
     ed.feed_key(key_ctrl(' '));
@@ -679,6 +692,7 @@ fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
                 serde_json::json!({"label": "bar"}),
             );
         });
+    without_completion_docs(&mut ed);
     ed.feed_key(key('i'));
     ed.settle();
     ed.feed_key(key_ctrl(' '));
@@ -847,4 +861,178 @@ fn snippet_item_lands_as_stripped_plain_text() {
         "for x in iter {\n    \n}foo\n",
         "snippet placeholders must be stripped to their default text before insertion"
     );
+}
+
+// ── Selection-time documentation resolve ─────────────────────────────────────
+
+/// The selected candidate's documentation text, as the menu's open session
+/// holds it.
+fn selected_doc(ed: &Editor) -> Option<String> {
+    ed.state
+        .input
+        .buffer_completion()?
+        .selected_item()?
+        .documentation()
+        .map(|d| d.text.clone())
+}
+
+fn resolve_params(requests: &RequestLog) -> Vec<serde_json::Value> {
+    requests
+        .borrow()
+        .iter()
+        .filter(|(_, m, _)| m == "completionItem/resolve")
+        .map(|(_, _, params)| params.clone())
+        .collect()
+}
+
+#[test]
+fn selecting_a_candidate_resolves_its_docs_once() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, requests) =
+        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([
+                    {"label": "bar", "sortText": "1"},
+                    {"label": "baz", "sortText": "2"},
+                ]),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "bar", "documentation": "Bar docs."}),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "baz", "documentation": "Baz docs."}),
+            );
+        });
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    // The first pass lands the completion answer and sends the docs
+    // request, the second drains its reply.
+    settle(&mut ed);
+    settle(&mut ed);
+    assert_eq!(
+        resolve_params(&requests),
+        vec![serde_json::json!({"label": "bar", "sortText": "1"})]
+    );
+    assert_eq!(selected_doc(&ed).as_deref(), Some("Bar docs."));
+
+    ed.feed_key(key_tab());
+    settle(&mut ed);
+    assert_eq!(resolve_params(&requests).len(), 2);
+    assert_eq!(selected_doc(&ed).as_deref(), Some("Baz docs."));
+
+    ed.feed_key(key_tab());
+    settle(&mut ed);
+    assert_eq!(
+        resolve_params(&requests).len(),
+        2,
+        "a resolved candidate is not asked for again"
+    );
+    assert_eq!(selected_doc(&ed).as_deref(), Some("Bar docs."));
+}
+
+#[test]
+fn a_candidate_that_arrives_with_docs_is_not_resolved() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, requests) =
+        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar", "documentation": "Bar docs."}]),
+            );
+        });
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    assert_eq!(request_count(&requests, "completionItem/resolve"), 0);
+    assert_eq!(selected_doc(&ed).as_deref(), Some("Bar docs."));
+}
+
+#[test]
+fn a_docs_reply_after_further_typing_still_fills_the_docs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, _requests) =
+        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar"}]),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "bar", "documentation": "Bar docs."}),
+            );
+        });
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    ed.settle();
+    ed.drain_lsp();
+    // The completion answer lands and the docs request goes out; typing
+    // before its reply is drained moves the text past the request's version.
+    ed.settle();
+    ed.feed_key(key('b'));
+    settle(&mut ed);
+    assert_eq!(selected_doc(&ed).as_deref(), Some("Bar docs."));
+}
+
+#[test]
+fn a_docs_reply_for_a_dismissed_menu_is_not_applied_to_a_new_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, _requests) =
+        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+            for _ in 0..2 {
+                backend.respond_to(
+                    "textDocument/completion",
+                    serde_json::json!([{"label": "bar"}]),
+                );
+            }
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "bar", "documentation": "First."}),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "bar", "documentation": "Second."}),
+            );
+        });
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    ed.settle();
+    ed.drain_lsp();
+    ed.settle();
+    ed.feed_key(key_esc());
+    ed.settle();
+    assert!(
+        ed.state.input.buffer_completion().is_none(),
+        "sanity: Esc dismissed the menu"
+    );
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    settle(&mut ed);
+    assert_eq!(selected_doc(&ed).as_deref(), Some("Second."));
+}
+
+#[test]
+fn completion_docs_off_sends_no_selection_time_resolve() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, requests) =
+        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar"}, {"label": "baz"}]),
+            );
+        });
+    ed.state.settings.completion_docs = false;
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    ed.feed_key(key_tab());
+    settle(&mut ed);
+    assert_eq!(request_count(&requests, "completionItem/resolve"), 0);
 }

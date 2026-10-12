@@ -116,7 +116,7 @@ fn load_theme_by_name_loads_despite_a_malformed_key_and_warns() {
         &mut ed.state.shown_theme,
         &mut ed.state.message_log,
         &mut ed.state.status_msg,
-        ed.state.input.popup_mut(),
+        &mut ed.state.input,
         &ed.state.dirs,
         "flawed",
     );

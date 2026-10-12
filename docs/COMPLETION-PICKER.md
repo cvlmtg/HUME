@@ -220,6 +220,19 @@ flag (`core:lsp` sets it, `core:buffer-words` doesn't) keeps a second
 `Buffer` source sharing the same LSP-attached buffer from having a resolve
 request sent for an item the server never produced.
 
+A second resolve runs on selection, for documentation. Every
+`reconcile_completion` pass (each settle, each Insert keystroke) asks the
+session for the selected item's `DocRequest`, sent under one supersede key:
+it is skipped for an item already resolved (its `documentation` came with
+it, or a resolve answered, even with an error), for the item already in
+flight, and under the same source and server gates as accept's. The reply
+carries no buffer position, so it is delivered after further typing too; it
+finds its item by `ItemKey` (the invocation id plus the item's index in
+it), so a reply whose answer is off the menu lands nowhere. A resolve that
+a newer one superseded is never answered, which is why the session holds
+the one in-flight key rather than marking items pending. The setting
+`completion-docs` turns this off with the box below.
+
 ### The `:` line
 
 `trigger_minibuf_completion` resolves the one source the input shape names
@@ -245,11 +258,19 @@ scrolled out of view cannot inflate the box: the property is unwritable,
 not merely untested-for. The menu anchors at the leftmost token start among
 the sources with a ranked candidate.
 
+The Insert-mode menu has a documentation box beside it
+(`OverlayViews::completion_doc`), placed by
+`hume_ui::popup::resolve_side_popup`: right of the menu, else left, top
+edges level, else not drawn. It shows the selected item's `detail` and
+`documentation` (`CompletionItem::doc_box_text`), highlighted as markdown
+when the documentation is markdown, built once per item and resolve state
+(`BufferCompletionLayer::doc`) and dropped on a theme change.
+
 ## Steel surface
 
 | Builtin | Notes |
 |---|---|
-| `(register-completion-source! name proc #:target #:match ['fuzzy] #:priority [0] #:resolve [#f])` | config-time; crosses as `Effect::RegisterCompletionSource`, so a failed activation's registration is never applied (the `Effect::BindKey` rationale); `#:target` picks one of two separate namespaces (`'buffer`, `'minibuf`) — re-registering a name replaces it, natives included, *within that namespace*; the same name in the other namespace is a second, unrelated source, since there is no shared id space between them to collide in. `#:resolve #t` (`'buffer` only) claims this source's items are wire items from the buffer's attached server, licensing `completionItem/resolve` on accept |
+| `(register-completion-source! name proc #:target #:match ['fuzzy] #:priority [0] #:resolve [#f])` | config-time; crosses as `Effect::RegisterCompletionSource`, so a failed activation's registration is never applied (the `Effect::BindKey` rationale); `#:target` picks one of two separate namespaces (`'buffer`, `'minibuf`) — re-registering a name replaces it, natives included, *within that namespace*; the same name in the other namespace is a second, unrelated source, since there is no shared id space between them to collide in. `#:resolve #t` (`'buffer` only) claims this source's items are wire items from the buffer's attached server, licensing `completionItem/resolve` on selection and on accept |
 | `(completion-emit! id items #:incomplete [#f])` | the one way items enter a session; `#f` once `id` is stale. `items` is a list whose entries are an LSP `CompletionItem` hashmap, a bare string (`"foo"` decodes the same as `(hash "label" "foo")`, for a source with nothing but a label, e.g. `core:buffer-words`'s word list), or a whole `textDocument/completion` response handle (a `CompletionItem[]` or a `CompletionList`) whose items join the rest, decoded in Rust rather than per item, so several servers' answers become one. The answer is incomplete when `#:incomplete` is set or any `CompletionList` says so; any other entry shape errors |
 | `(completion-top n)`, `(completion-accept! idx)`, `(completion-dismiss!)` | unchanged |
 | `(set-hook-triggers! source language chars)` + `on-trigger-char` | shared, listener-agnostic table (signature help uses it) — *not* how a `'buffer` completion source's own trigger chars are joined. `(set-attachment-hook-triggers! source pane server feature chars)` keys the same table to one buffer's attachment to a server, gone when it detaches |

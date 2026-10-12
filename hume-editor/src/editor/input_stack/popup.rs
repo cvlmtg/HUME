@@ -7,8 +7,7 @@ use termina::event::{KeyCode, Modifiers};
 
 use hume_engine::pipeline::RenderContext;
 use hume_engine::theme::Theme;
-use hume_engine::theme::ui_scopes;
-use hume_engine::types::{EditorMode, Scope};
+use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
 
 use super::super::Editor;
@@ -91,17 +90,9 @@ impl PopupLayer {
         &mut self,
         theme: &Theme,
     ) -> &mut hume_ui::popup::PopupContent {
-        if self.content.is_none() {
-            self.content = Some(match self.syntax.as_ref() {
-                Some(syntax) => {
-                    let base_style = theme.resolve_by_name(Scope(ui_scopes::POPUP));
-                    let runs = syntax.styled_runs(&self.text, theme, base_style);
-                    hume_ui::popup::PopupContent::styled(runs)
-                }
-                None => hume_ui::popup::PopupContent::plain(&self.text),
-            });
-        }
-        self.content.as_mut().expect("populated above")
+        self.content.get_or_insert_with(|| {
+            super::super::popup_syntax::popup_content(&self.text, self.syntax.as_ref(), theme)
+        })
     }
 }
 

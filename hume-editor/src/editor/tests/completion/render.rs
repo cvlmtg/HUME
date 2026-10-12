@@ -1,6 +1,7 @@
 //! The menu's geometry (`sync_completion_menu_view`/
 //! `sync_minibuf_completion_view` through `hume_ui::popup::menu_window` +
-//! `resolve_menu`) and the two full-frame snapshots.
+//! `resolve_menu`), the documentation box beside it, and the three
+//! full-frame snapshots.
 
 use super::*;
 use crate::editor::{commands, cursor};
@@ -92,6 +93,155 @@ fn minibuf_completion_popup_renders_above_the_statusline() {
 
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 10));
     insta::assert_snapshot!(snap);
+}
+
+// ── Documentation box ────────────────────────────────────────────────────────
+
+const DOCUMENTED: &str = r#"(list (hash "label" "foo" "detail" "fn foo()" "documentation" "Does foo.")
+                                (hash "label" "foobar" "documentation" "Does foobar."))"#;
+
+fn doc_box(ed: &Editor) -> Option<(Rect, Vec<String>)> {
+    let view = ed.state.views.completion_doc.read();
+    let state = view.as_ref()?;
+    Some((state.rect, state.lines[state.visible.clone()].to_vec()))
+}
+
+fn menu_rect(ed: &Editor) -> Rect {
+    ed.state
+        .views
+        .completion_menu
+        .read()
+        .as_ref()
+        .expect("menu showing")
+        .rect
+}
+
+/// The selected candidate's `detail`, then its documentation, in a box to
+/// the right of the menu.
+#[test]
+fn doc_box_appears_right_of_the_menu_for_the_selected_candidate() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    ed.view.theme = crate::testing::build_snapshot_theme();
+    insert_with_source(&mut ed, tmp.path(), DOCUMENTED);
+
+    frame(&mut ed, 60, 16);
+    let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 60, 16));
+    insta::assert_snapshot!(snap);
+}
+
+#[test]
+fn doc_box_follows_the_selection() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(&mut ed, tmp.path(), DOCUMENTED);
+    frame(&mut ed, 60, 16);
+    let (_, lines) = doc_box(&ed).expect("doc box showing");
+    assert_eq!(lines, ["fn foo()", "", "Does foo."]);
+
+    ed.feed_key(key_tab());
+    frame(&mut ed, 60, 16);
+    let (_, lines) = doc_box(&ed).expect("doc box showing");
+    assert_eq!(lines, ["Does foobar."]);
+}
+
+#[test]
+fn doc_box_flips_left_of_a_menu_near_the_right_edge() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    run(
+        &mut ed,
+        tmp.path(),
+        &completion_source("test", DOCUMENTED, ""),
+    );
+    ed.feed_key(key('i'));
+    type_chars(&mut ed, &format!("{} ", "x".repeat(40)));
+    trigger(&mut ed);
+
+    frame(&mut ed, 60, 8);
+    let (rect, _) = doc_box(&ed).expect("doc box showing");
+    assert_eq!(rect.right(), menu_rect(&ed).x);
+    assert_eq!(rect.y, menu_rect(&ed).y);
+}
+
+#[test]
+fn no_doc_box_without_room_beside_the_menu() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(&mut ed, tmp.path(), DOCUMENTED);
+
+    frame(&mut ed, 30, 8);
+    assert!(
+        ed.state.views.completion_menu.read().is_some(),
+        "sanity: menu showing"
+    );
+    assert_eq!(doc_box(&ed), None);
+}
+
+#[test]
+fn no_doc_box_for_a_candidate_without_detail_or_documentation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(&mut ed, tmp.path(), r#"(list (hash "label" "foo"))"#);
+
+    frame(&mut ed, 60, 8);
+    assert!(
+        ed.state.views.completion_menu.read().is_some(),
+        "sanity: menu showing"
+    );
+    assert_eq!(doc_box(&ed), None);
+}
+
+#[test]
+fn no_doc_box_with_completion_docs_off() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    ed.state.settings.completion_docs = false;
+    insert_with_source(&mut ed, tmp.path(), DOCUMENTED);
+
+    frame(&mut ed, 60, 8);
+    assert!(
+        ed.state.views.completion_menu.read().is_some(),
+        "sanity: menu showing"
+    );
+    assert_eq!(doc_box(&ed), None);
+}
+
+#[test]
+fn doc_box_closes_with_the_menu() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(&mut ed, tmp.path(), DOCUMENTED);
+    frame(&mut ed, 60, 8);
+    assert!(doc_box(&ed).is_some(), "sanity: doc box showing");
+
+    ed.feed_key(key_esc());
+    frame(&mut ed, 60, 8);
+    assert_eq!(doc_box(&ed), None);
+}
+
+/// Markdown documentation is highlighted, its `detail` fenced above it.
+#[test]
+fn markdown_documentation_is_highlighted_below_a_fenced_detail() {
+    test_fixtures::require_grammars(&["markdown"]);
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    register_markdown(&mut ed);
+    insert_with_source(
+        &mut ed,
+        tmp.path(),
+        r##"(list (hash "label" "foo" "detail" "fn foo()"
+                        "documentation" (hash "kind" "markdown" "value" "# Foo")))"##,
+    );
+
+    frame(&mut ed, 60, 10);
+    let view = ed.state.views.completion_doc.read();
+    let state = view.as_ref().expect("doc box showing");
+    assert_eq!(
+        state.lines.as_slice(),
+        ["```", "fn foo()", "```", "", "# Foo"]
+    );
+    assert!(state.styled_rows.is_some(), "markdown content is styled");
 }
 
 // ── The anchor reuses the scroll pass's cached cursor cell ──────────────────

@@ -256,3 +256,85 @@ fn a_malformed_own_text_edit_does_not_take_the_default_range() {
     assert_eq!(item.text_edit, None);
     assert_eq!(item.insert_text, "foo_insert");
 }
+
+// ── documentation ────────────────────────────────────────────────────────────
+
+#[test]
+fn a_string_documentation_decodes_as_plaintext() {
+    let item = from_json(serde_json::json!({"label": "foo", "documentation": "Does foo."}))
+        .expect("well-formed item");
+    assert_eq!(
+        item.documentation,
+        Some(Documentation {
+            text: "Does foo.".to_string(),
+            markdown: false,
+        })
+    );
+}
+
+#[test]
+fn a_markup_documentation_decodes_as_markdown_unless_its_kind_is_plaintext() {
+    let markdown = from_json(serde_json::json!({
+        "label": "foo",
+        "documentation": {"kind": "markdown", "value": "Does `foo`."},
+    }))
+    .expect("well-formed item");
+    assert_eq!(
+        markdown.documentation,
+        Some(Documentation {
+            text: "Does `foo`.".to_string(),
+            markdown: true,
+        })
+    );
+
+    let plaintext = from_json(serde_json::json!({
+        "label": "foo",
+        "documentation": {"kind": "plaintext", "value": "Does foo."},
+    }))
+    .expect("well-formed item");
+    assert_eq!(plaintext.documentation.map(|d| d.markdown), Some(false));
+}
+
+#[test]
+fn an_item_without_documentation_is_unresolved_and_one_with_it_is_resolved() {
+    let bare = from_json(serde_json::json!({"label": "foo"})).expect("well-formed item");
+    assert_eq!(bare.documentation, None);
+    assert!(!bare.resolved);
+
+    let documented = from_json(serde_json::json!({"label": "foo", "documentation": "Does foo."}))
+        .expect("well-formed item");
+    assert!(documented.resolved);
+}
+
+#[test]
+fn a_malformed_documentation_is_dropped_not_the_item() {
+    let item =
+        from_json(serde_json::json!({"label": "foo", "documentation": 42})).expect("label present");
+    assert_eq!(item.documentation, None);
+}
+
+#[test]
+fn apply_resolved_fills_only_the_missing_fields_and_marks_the_item_resolved() {
+    let mut item = from_json(serde_json::json!({"label": "foo", "detail": "fn foo()"}))
+        .expect("well-formed item");
+    item.apply_resolved(&serde_json::json!({
+        "label": "foo",
+        "detail": "fn foo() -> u8",
+        "documentation": {"kind": "markdown", "value": "Does foo."},
+    }));
+    assert_eq!(item.detail.as_deref(), Some("fn foo()"));
+    assert_eq!(
+        item.documentation,
+        Some(Documentation {
+            text: "Does foo.".to_string(),
+            markdown: true,
+        })
+    );
+    assert!(item.resolved);
+
+    let mut bare = from_json(serde_json::json!({"label": "bar"})).expect("well-formed item");
+    bare.apply_resolved(&serde_json::json!({"label": "bar", "detail": "fn bar()"}));
+    assert_eq!(bare.detail.as_deref(), Some("fn bar()"));
+    assert_eq!(bare.documentation, None);
+    assert!(bare.resolved);
+}

@@ -10,6 +10,8 @@
 //!   Taller content is the caller's problem (hover overflows to the drawer).
 //! - 1-cell frame themed `ui.popup` (`ui.menu` for menus), box-drawn when
 //!   `popup-border` is on. Rendering lives in [`super::menu_box`].
+//! - A side popup ([`resolve_side_popup`]) sits beside another box rather
+//!   than below or above an anchor cell.
 //!
 //! [`resolve_popup`]/[`resolve_menu`]/[`resolve_band`] resolve geometry and
 //! the scroll window every frame, against the focused pane's current rect, so
@@ -369,6 +371,58 @@ pub fn resolve_popup(
         styled_rows: wrapped.styled_rows.clone(),
         border,
     }
+}
+
+/// Narrowest side popup worth drawing, frame included.
+const MIN_SIDE_POPUP_WIDTH: u16 = 20;
+
+/// Resolve a popup placed beside `beside`, another box's outer rect in
+/// `pane_rect` (the completion menu's): to its right when at least
+/// `MIN_SIDE_POPUP_WIDTH` cells fit there, else to its left, else `None`.
+/// Its top edge is level with `beside`'s; it grows to the taller of
+/// `beside` and a third of the pane, and stops at the pane's bottom.
+pub fn resolve_side_popup(
+    content: &mut PopupContent,
+    beside: Rect,
+    pane_rect: Rect,
+    border: bool,
+) -> Option<PopupState> {
+    let room_right = pane_rect.right().saturating_sub(beside.right());
+    let room_left = beside.x.saturating_sub(pane_rect.x);
+    let (room, right) = if room_right >= MIN_SIDE_POPUP_WIDTH {
+        (room_right, true)
+    } else if room_left >= MIN_SIDE_POPUP_WIDTH {
+        (room_left, false)
+    } else {
+        return None;
+    };
+    let max_outer_h = beside
+        .height
+        .max(pane_rect.height / 3)
+        .min(pane_rect.bottom().saturating_sub(beside.y));
+    if max_outer_h < 3 {
+        return None;
+    }
+
+    let wrapped = content.wrapped(room.min(MAX_POPUP_WIDTH) - 2);
+    let total_rows = wrapped.lines.len();
+    let (outer_w, outer_h) =
+        super::menu_box::outer_dims_from_width(wrapped.inner_width, total_rows, max_outer_h - 2);
+    let x = if right {
+        beside.right()
+    } else {
+        beside.x - outer_w
+    };
+    Some(PopupState {
+        lines: Arc::clone(&wrapped.lines),
+        visible: super::menu_box::window_range(total_rows, 0, (outer_h - 2) as usize),
+        rect: Rect::new(x, beside.y, outer_w, outer_h),
+        selected: None,
+        total_rows,
+        scroll: 0,
+        styled_rows: wrapped.styled_rows.clone(),
+        border,
+    })
 }
 
 /// Resolve a docked popup's content for this frame: the [`PopupLayout::

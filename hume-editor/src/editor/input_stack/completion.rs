@@ -14,7 +14,7 @@ use termina::event::KeyCode;
 use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::types::EditorMode;
 
-use super::super::completion::{BufferSession, CompletionItem, MinibufSession};
+use super::super::completion::{BufferSession, CompletionItem, ItemKey, MinibufSession};
 use super::super::keymap::WalkResult;
 use super::super::{Editor, EditorState, Severity};
 use super::placement::popup_placement;
@@ -28,6 +28,19 @@ use super::stack::{
 /// beneath).
 pub(in crate::editor) struct BufferCompletionLayer {
     pub(in crate::editor) session: BufferSession,
+    /// The documentation box's content for the selected item, built on the
+    /// first frame that shows it, since its styled runs need the baked
+    /// theme (`theme::set_theme` drops it).
+    pub(in crate::editor) doc: Option<DocView>,
+}
+
+/// [`BufferCompletionLayer::doc`]: the content built for one item in one
+/// resolve state. `content` is `None` for an item with nothing to show, so
+/// that item isn't re-checked every frame either.
+pub(in crate::editor) struct DocView {
+    key: ItemKey,
+    resolved: bool,
+    content: Option<hume_ui::popup::PopupContent>,
 }
 
 /// [`BufferCompletionLayer`]'s `:` command-line counterpart.
@@ -68,6 +81,7 @@ impl Layer for BufferCompletionLayer {
     }
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         state.views.completion_menu.set(None);
+        state.views.completion_doc.set(None);
     }
 }
 
@@ -122,7 +136,7 @@ impl Editor {
         // `self.state.input`: the session's shared borrow has to end
         // before `popup_placement` takes `&mut self`.
         let border = self.state.settings.popup_border;
-        let resolved = (|| -> Option<hume_ui::popup::PopupState> {
+        let resolved = (|| -> Option<(hume_ui::popup::PopupState, hume_grid::Rect)> {
             let session = self.state.input.buffer_completion()?;
             if session.bid() != self.focused_buffer_id() {
                 return None;
@@ -137,12 +151,73 @@ impl Editor {
                 placement.pane_rect,
             );
             let rows = session.rows_in(window.range.clone());
-            Some(hume_ui::popup::resolve_menu(
-                &rows, window, placement, border,
-            ))
+            let menu = hume_ui::popup::resolve_menu(&rows, window, placement, border);
+            Some((menu, placement.pane_rect))
         })();
 
-        self.state.views.completion_menu.set(resolved);
+        let doc = resolved
+            .as_ref()
+            .filter(|(menu, _)| !menu.lines.is_empty())
+            .and_then(|(menu, pane_rect)| self.resolve_completion_doc(menu.rect, *pane_rect));
+        self.state.views.completion_doc.set(doc);
+        self.state
+            .views
+            .completion_menu
+            .set(resolved.map(|(menu, _)| menu));
+    }
+
+    /// The documentation box beside the menu at `menu_rect`, for the
+    /// selected item: `None` with `completion-docs` off, nothing to show,
+    /// or no room beside the menu.
+    fn resolve_completion_doc(
+        &mut self,
+        menu_rect: hume_grid::Rect,
+        pane_rect: hume_grid::Rect,
+    ) -> Option<hume_ui::popup::PopupState> {
+        if !self.state.settings.completion_docs {
+            return None;
+        }
+        let layer = self.state.input.find::<BufferCompletionLayer>()?;
+        let session = &layer.session;
+        let key = session.selected_key()?;
+        let item = session.selected_item()?;
+        let resolved = item.is_resolved();
+        let fresh = layer
+            .doc
+            .as_ref()
+            .is_some_and(|doc| doc.key == key && doc.resolved == resolved);
+        if !fresh {
+            let buffer = self.state.buffers.get(session.bid());
+            let fence_lang = buffer
+                .language
+                .map_or("", |id| self.state.config.languages.name_of(id));
+            let content = item.doc_box_text(fence_lang).map(|docs| {
+                let syntax = docs
+                    .markdown
+                    .then(|| self.state.build_markup_syntax("markdown", &docs.text))
+                    .flatten();
+                super::super::popup_syntax::popup_content(
+                    &docs.text,
+                    syntax.as_ref(),
+                    &self.view.theme,
+                )
+            });
+            self.state.input.find_mut::<BufferCompletionLayer>()?.doc = Some(DocView {
+                key,
+                resolved,
+                content,
+            });
+        }
+        let border = self.state.settings.popup_border;
+        let content = self
+            .state
+            .input
+            .find_mut::<BufferCompletionLayer>()?
+            .doc
+            .as_mut()?
+            .content
+            .as_mut()?;
+        hume_ui::popup::resolve_side_popup(content, menu_rect, pane_rect, border)
     }
 }
 
@@ -155,6 +230,14 @@ impl super::stack::InputStack {
     pub(in crate::editor) fn buffer_completion_mut(&mut self) -> Option<&mut BufferSession> {
         self.find_mut::<BufferCompletionLayer>()
             .map(|l| &mut l.session)
+    }
+
+    /// Drops the documentation box's built content, rebuilt on the next
+    /// frame: for a theme change, whose colors it baked in.
+    pub(in crate::editor) fn forget_completion_doc(&mut self) {
+        if let Some(layer) = self.find_mut::<BufferCompletionLayer>() {
+            layer.doc = None;
+        }
     }
 
     pub(in crate::editor) fn minibuf_completion(&self) -> Option<&MinibufSession> {

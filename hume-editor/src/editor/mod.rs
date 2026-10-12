@@ -715,9 +715,9 @@ impl EditorState {
     /// carried through text changes: the caller edits with it in hand only
     /// to drop it, or puts it back before the next edit.
     /// [`Self::take_layer`] handles the truncate-and-pull-out; this clears
-    /// the menu view directly rather than through the layer's own
-    /// `tear_down` (`take_layer` never runs it, only whatever was pushed
-    /// above it). `Buffer`-target only: both accept paths only ever act on
+    /// the menu and documentation box views directly rather than through
+    /// the layer's own `tear_down` (`take_layer` never runs it, only
+    /// whatever was pushed above it). `Buffer`-target only: both accept paths only ever act on
     /// one. `None` when no `Buffer` session is open.
     pub(in crate::editor) fn take_buffer_completion(
         &mut self,
@@ -727,6 +727,7 @@ impl EditorState {
         let r = self.input.ref_of::<input_stack::BufferCompletionLayer>()?;
         let completion = self.take_layer::<input_stack::BufferCompletionLayer>(view, r);
         self.views.completion_menu.set(None);
+        self.views.completion_doc.set(None);
         Some(completion.session)
     }
 
