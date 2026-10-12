@@ -177,8 +177,7 @@ pub(in crate::editor) fn resolve(
         }
         (CharThen::Macro(MacroRead::Record), Some(ch)) => {
             let reg = if ch == 'Q' { MACRO_REGISTER } else { ch };
-            state.macro_recording = Some((reg, Vec::new()));
-            state.skip_macro_record = true;
+            state.macros.start_recording(reg);
             Resolved::Nothing
         }
         (CharThen::Macro(MacroRead::Replay { count }), Some(ch)) => {

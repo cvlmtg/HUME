@@ -1061,15 +1061,8 @@ impl EditorState {
     /// Queue the keys of the macro in `reg` for replay, `count` times over.
     /// No-op when the register is empty or holds text rather than a macro.
     pub(in crate::editor) fn enqueue_macro_replay(&mut self, reg: char, count: usize) {
-        if let Some(keys) = self
-            .registers
-            .read(reg)
-            .and_then(|r| r.as_macro())
-            .map(|k| k.to_vec())
-        {
-            for _ in 0..count {
-                self.replay_queue.extend(keys.iter().copied());
-            }
+        if let Some(keys) = self.registers.read(reg).and_then(|r| r.as_macro()) {
+            self.macros.enqueue(keys, count);
         }
     }
 }
@@ -1380,11 +1373,10 @@ impl Editor {
     /// Drain the macro replay queue, executing each key in order and settling
     /// after each one.
     ///
-    /// Sets `is_replaying` for the duration so that `Q`/`q` intercepts inside
-    /// replayed keys cannot start nested recording or replay sessions,
-    /// including when the macro's last key is `Q`, where
-    /// `replay_queue.is_empty()` would already be `true` and would fail to
-    /// suppress it.
+    /// Marks a replay in progress for the duration so that `Q`/`q` intercepts
+    /// inside replayed keys cannot start nested recording or replay sessions,
+    /// including when the macro's last key is `Q` and the queue is already
+    /// empty.
     ///
     /// Replayed keys record changes as typed keys do: `.` inside a macro
     /// repeats the latest change, the one made before the macro included,
@@ -1394,7 +1386,7 @@ impl Editor {
     /// macro's own hooks in the loop: a plugin that reconfigures the buffer on
     /// `on-buffer-open` (indent width, a language keymap) has that reaction run
     /// before the macro's remaining keys type into the buffer, as it would for
-    /// keys typed by hand. `is_replaying` stays `true` across these settles,
+    /// keys typed by hand. The replay mark stays set across these settles,
     /// so `confirm_permit` still holds back a confirm no queued key could
     /// answer; it waits for the next real buffer-enter.
     ///
@@ -1402,12 +1394,8 @@ impl Editor {
     /// stale-buffer warning from a later key's settle doesn't lose an earlier
     /// message's shadowing guard.
     pub(in crate::editor) fn drain_replay_queue(&mut self) {
-        if self.state.replay_queue.is_empty() {
-            return;
-        }
         let message_already_logged = self.state.message_logged_this_input;
-        self.state.is_replaying = true;
-        while let Some(key) = self.state.replay_queue.pop_front() {
+        while let Some(key) = self.state.macros.next_replay_key() {
             self.handle_input(TerminalEvent::Key(key));
             self.state.message_logged_this_input |= message_already_logged;
             self.settle();
@@ -1415,7 +1403,7 @@ impl Editor {
                 break;
             }
         }
-        self.state.is_replaying = false;
+        self.state.macros.end_replay();
     }
 }
 

@@ -1471,7 +1471,7 @@ fn a_second_confirm_never_replaces_a_live_one() {
 /// layer on top would consume the next replayed key, silently truncating
 /// the macro. Blocked during replay, deferred prompt still honoured afterward.
 ///
-/// Without `!self.state.is_replaying` in `confirm_permit`, the confirm
+/// Without the replay check in `confirm_permit`, the confirm
 /// would open partway through `drain_replay_queue` and could eat the macro's
 /// remaining keys before focus reached B.
 #[test]
@@ -1628,14 +1628,14 @@ fn message_logged_before_a_macro_replay_survives_its_trailing_settle() {
     rewrite_externally(&tmp_b, "world, externally changed!\n");
 
     // Simulate a dispatch that both logged its own message and populated
-    // `replay_queue`: the effect a hypothetical mapping doing both in one
+    // replay queue: the effect a hypothetical mapping doing both in one
     // `handle_input` call would leave behind.
     ed.report(Severity::Warning, "sentinel message".to_string());
     ed.state.message_logged_this_input = true;
     for ch in ":b #".chars() {
-        ed.state.replay_queue.push_back(key(ch));
+        ed.state.macros.enqueue(&[key(ch)], 1);
     }
-    ed.state.replay_queue.push_back(key_enter());
+    ed.state.macros.enqueue(&[key_enter()], 1);
 
     let (_, warnings_before) = ed.state.message_log.totals();
     ed.drain_replay_queue();

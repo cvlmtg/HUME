@@ -12,7 +12,7 @@ impl StatuslineElement for MacroRecordingElement {
     type Data = Option<char>;
 
     fn read(editor: &HumeStatusline<'_>) -> Self::Data {
-        editor.state.macro_recording.as_ref().map(|(reg, _)| *reg)
+        editor.state.macros.recording_register()
     }
 
     fn format(reg: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {

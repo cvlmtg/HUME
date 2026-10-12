@@ -3,8 +3,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 
-use termina::event::KeyEvent;
-
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use self::registry::CommandRegistry;
@@ -49,6 +47,7 @@ mod host_token;
 mod jump_list;
 mod keymap;
 pub(crate) mod lsp;
+mod macros;
 mod mappings;
 mod message_log;
 mod minibuf;
@@ -410,14 +409,7 @@ pub(crate) struct EditorState {
     pub(in crate::editor) active_session: Option<edit_session::EditSession>,
     /// Whether the user explicitly typed a count prefix before the current command.
     pub(super) explicit_count: bool,
-    /// Active macro recording session.
-    pub(super) macro_recording: Option<(char, Vec<KeyEvent>)>,
-    /// Queue of keys to replay before reading the next terminal event.
-    pub(super) replay_queue: VecDeque<KeyEvent>,
-    /// Single-frame flag: skip recording the current key.
-    pub(super) skip_macro_record: bool,
-    /// `true` while draining the replay queue.
-    pub(super) is_replaying: bool,
+    pub(super) macros: macros::MacroState,
     /// Set by `Editor::handle_input` right after dispatch whenever that
     /// input logged a new warning or error, cleared by `Editor::settle` once
     /// its drain (including the buffer-enter disk check) has run. The
@@ -530,10 +522,7 @@ impl Default for EditorState {
             dot_replay: None,
             active_session: None,
             explicit_count: false,
-            macro_recording: None,
-            replay_queue: VecDeque::new(),
-            skip_macro_record: false,
-            is_replaying: false,
+            macros: macros::MacroState::default(),
             message_logged_this_input: false,
             last_entered_buffer: None,
             last_observed_mode: Mode::Normal,

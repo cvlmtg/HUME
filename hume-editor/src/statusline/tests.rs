@@ -93,7 +93,12 @@ fn macro_recording_element_idle_renders_empty() {
 fn macro_recording_element_active_renders_label() {
     // While recording into register 'q', MacroRecording renders its label.
     let mut ed = test_editor();
-    ed.state.macro_recording = Some(('q', vec![]));
+    for ch in ['Q', 'q'] {
+        ed.step(termina::event::KeyEvent::new(
+            termina::event::KeyCode::Char(ch),
+            termina::event::Modifiers::NONE,
+        ));
+    }
     let colors = crate::statusline::colors::EditorColors::default();
     let (text, _) = render_element(
         &StatusElement::MacroRecording,
@@ -108,7 +113,12 @@ fn macro_recording_element_active_renders_label() {
 fn macro_recording_element_named_register() {
     // Same but for a named register '3'.
     let mut ed = test_editor();
-    ed.state.macro_recording = Some(('3', vec![]));
+    for ch in ['Q', '3'] {
+        ed.step(termina::event::KeyEvent::new(
+            termina::event::KeyCode::Char(ch),
+            termina::event::Modifiers::NONE,
+        ));
+    }
     let colors = crate::statusline::colors::EditorColors::default();
     let (text, _) = render_element(
         &StatusElement::MacroRecording,

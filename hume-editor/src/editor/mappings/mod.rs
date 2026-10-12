@@ -44,13 +44,7 @@ impl Editor {
         // Runs after the whole `dispatch_input` stack walk, so a key captured
         // into the macro is whatever the topmost layer actually consumed:
         // Insert, Command, Search, or any overlay layer above them.
-        // `skip_macro_record` excludes the stop `Q` itself.
-        if let Some((_, ref mut keys)) = self.state.macro_recording
-            && !self.state.skip_macro_record
-        {
-            keys.push(key);
-        }
-        self.state.skip_macro_record = false;
+        self.state.macros.record(key);
 
         // Replay a pending dot-repeat action, if cmd_repeat set one.
         // Runs after macro recording so the `.` key itself is captured,

@@ -194,11 +194,11 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     if ed.state.pending.keys().is_empty() && key.modifiers == Modifiers::NONE {
         match key.code {
             KeyCode::Char('Q') => {
-                if let Some((reg, keys)) = ed.state.macro_recording.take() {
+                if let Some((reg, keys)) = ed.state.macros.stop_recording() {
                     // Always allow stopping an in-progress recording, even if
                     // the user has navigated to a read-only buffer since starting.
                     ed.state.registers.write_macro(reg, keys);
-                } else if !ed.state.is_replaying && !ed.focused_buffer_read_only() {
+                } else if !ed.state.macros.is_replaying() && !ed.focused_buffer_read_only() {
                     // A count before `Q<reg>` has no meaning for recording,
                     // and would otherwise reach the first recorded key.
                     ed.state.count = None;
@@ -212,8 +212,8 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                 return;
             }
             KeyCode::Char('q') => {
-                if !ed.state.is_replaying
-                    && ed.state.macro_recording.is_none()
+                if !ed.state.macros.is_replaying()
+                    && ed.state.macros.recording_register().is_none()
                     && !ed.focused_buffer_read_only()
                 {
                     let count = ed.state.count.take().unwrap_or(1);
