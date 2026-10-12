@@ -15,6 +15,7 @@
 //! facts unrelated to session ownership, and this module reaches into it
 //! rather than owning it.
 
+use crate::editor::registry::Count;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use hume_editing::selection::{Selection, SelectionSet};
@@ -391,7 +392,7 @@ pub(in crate::editor) fn cmd_paste_after(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     do_normal_paste(state, view, fp, false)
@@ -402,7 +403,7 @@ pub(in crate::editor) fn cmd_paste_before(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     do_normal_paste(state, view, fp, true)
@@ -414,7 +415,7 @@ pub(in crate::editor) fn cmd_smart_paste_after(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     do_smart_paste(state, view, fp, false)
@@ -426,7 +427,7 @@ pub(in crate::editor) fn cmd_smart_paste_before(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     do_smart_paste(state, view, fp, true)
@@ -491,7 +492,7 @@ pub(in crate::editor) fn cmd_paste_ring_older(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     do_paste_cycle(state, view, fp, true)
@@ -502,7 +503,7 @@ pub(in crate::editor) fn cmd_paste_ring_newer(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     do_paste_cycle(state, view, fp, false)

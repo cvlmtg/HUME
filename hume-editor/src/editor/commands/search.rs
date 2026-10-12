@@ -1,3 +1,4 @@
+use crate::editor::registry::Count;
 use std::sync::Arc;
 
 use super::super::search::SearchPattern;
@@ -96,7 +97,7 @@ pub(in crate::editor) fn cmd_search_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     mode: MotionMode,
     pattern: &str,
 ) -> Result<(), CommandError> {
@@ -108,7 +109,7 @@ pub(in crate::editor) fn cmd_search_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     mode: MotionMode,
     pattern: &str,
 ) -> Result<(), CommandError> {
@@ -238,7 +239,7 @@ pub(in crate::editor) fn cmd_clear_search(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let bid = t.bid(view);
@@ -250,19 +251,19 @@ pub(in crate::editor) fn cmd_search_next(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    search_jump(state, view, t, count, SearchDirection::Forward, mode)
+    search_jump(state, view, t, count.get(), SearchDirection::Forward, mode)
 }
 pub(in crate::editor) fn cmd_search_prev(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    search_jump(state, view, t, count, SearchDirection::Backward, mode)
+    search_jump(state, view, t, count.get(), SearchDirection::Backward, mode)
 }
 
 // ── Select all matches ────────────────────────────────────────────────────────
@@ -271,7 +272,7 @@ pub(in crate::editor) fn cmd_select_all_matches(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     if !ensure_search_regex(state, view, t) {
@@ -308,7 +309,7 @@ pub(in crate::editor) fn cmd_sift_within(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
     pattern: &str,
 ) -> Result<(), CommandError> {
@@ -346,7 +347,7 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf_id = t.bid(view);
@@ -389,7 +390,7 @@ pub(in crate::editor) fn cmd_search_selection(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let selected = pane_view(state, view, t).primary().slice().to_string();

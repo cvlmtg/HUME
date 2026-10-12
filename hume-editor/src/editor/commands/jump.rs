@@ -1,3 +1,4 @@
+use crate::editor::registry::Count;
 use hume_engine::pipeline::{Direction, EngineView};
 use hume_ops::MotionMode;
 
@@ -34,7 +35,7 @@ pub(in crate::editor) fn cmd_jump_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let current = current_jump_entry(state, view, t);
@@ -49,7 +50,7 @@ pub(in crate::editor) fn cmd_jump_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let nav = state.panes.jumps[t.pid()]
@@ -75,7 +76,7 @@ pub(in crate::editor) fn cmd_goto_alternate_buffer(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     match state.buffers.second_most_recent() {
@@ -127,7 +128,7 @@ pub(in crate::editor) fn cmd_goto_next_buffer(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     goto_buffer_in_order(state, view, t, BufferStep::Next);
@@ -139,7 +140,7 @@ pub(in crate::editor) fn cmd_goto_prev_buffer(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     goto_buffer_in_order(state, view, t, BufferStep::Prev);
@@ -218,7 +219,7 @@ pub(in crate::editor) fn cmd_pane_focus_next(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let rects = view.pane_rects();
@@ -236,7 +237,7 @@ pub(in crate::editor) fn cmd_pane_focus_left(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     focus_in_direction(state, view, fp, Dir::Left)
@@ -246,7 +247,7 @@ pub(in crate::editor) fn cmd_pane_focus_right(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     focus_in_direction(state, view, fp, Dir::Right)
@@ -256,7 +257,7 @@ pub(in crate::editor) fn cmd_pane_focus_up(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     focus_in_direction(state, view, fp, Dir::Up)
@@ -266,7 +267,7 @@ pub(in crate::editor) fn cmd_pane_focus_down(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     focus_in_direction(state, view, fp, Dir::Down)
@@ -281,7 +282,7 @@ pub(in crate::editor) fn cmd_split_pane(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let bid = fp.bid(view);
@@ -294,7 +295,7 @@ pub(in crate::editor) fn cmd_vsplit_pane(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let bid = fp.bid(view);
@@ -308,7 +309,7 @@ pub(in crate::editor) fn cmd_close_pane(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     if view.layout().is_single_pane() {

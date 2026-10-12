@@ -9,6 +9,31 @@ use hume_ops::search::SearchDirection;
 use hume_ops::{MotionMode, WordCtx};
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 
+// ── Native command count ─────────────────────────────────────────────────────
+
+/// A native command body's repeat count: one the user typed (or a script
+/// passed), or the default of one. Vertical moves read the difference: `9j`
+/// moves nine buffer lines, a bare `j` one visual line.
+#[derive(Clone, Copy)]
+pub(in crate::editor) struct Count(Option<usize>);
+
+impl Count {
+    /// `typed` is [`CmdCtx::count`](crate::editor::dispatch::CmdCtx::count):
+    /// `None` when no count was given.
+    pub(in crate::editor) fn new(typed: Option<usize>) -> Self {
+        Self(typed)
+    }
+
+    /// The repeat count, at least one.
+    pub(in crate::editor) fn get(self) -> usize {
+        self.0.unwrap_or(1).max(1)
+    }
+
+    pub(in crate::editor) fn is_typed(self) -> bool {
+        self.0.is_some()
+    }
+}
+
 // ── Native command target shape ──────────────────────────────────────────────
 
 /// Function pointer for an [`EditorCmdBody::Pane`] handler: acts through `t`,
@@ -18,7 +43,7 @@ pub(in crate::editor) type PaneCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
     CommandPane,
-    usize,
+    Count,
     MotionMode,
 ) -> Result<(), CommandError>;
 
@@ -29,7 +54,7 @@ pub(in crate::editor) type FocusedCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
     FocusedPane,
-    usize,
+    Count,
     MotionMode,
 ) -> Result<(), CommandError>;
 
@@ -42,7 +67,7 @@ pub(in crate::editor) type PaneCharCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
     CommandPane,
-    usize,
+    Count,
     MotionMode,
     char,
 ) -> Result<(), CommandError>;
@@ -56,7 +81,7 @@ pub(in crate::editor) type PaneTextCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
     CommandPane,
-    usize,
+    Count,
     MotionMode,
     &str,
 ) -> Result<(), CommandError>;

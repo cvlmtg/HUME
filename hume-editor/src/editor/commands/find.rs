@@ -1,3 +1,4 @@
+use crate::editor::registry::Count;
 use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
@@ -44,7 +45,7 @@ pub(in crate::editor) fn cmd_find_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     mode: MotionMode,
     ch: char,
 ) -> Result<(), CommandError> {
@@ -52,7 +53,7 @@ pub(in crate::editor) fn cmd_find_forward(
         state,
         view,
         t,
-        count,
+        count.get(),
         mode,
         FindChar {
             ch,
@@ -66,7 +67,7 @@ pub(in crate::editor) fn cmd_find_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     mode: MotionMode,
     ch: char,
 ) -> Result<(), CommandError> {
@@ -74,7 +75,7 @@ pub(in crate::editor) fn cmd_find_backward(
         state,
         view,
         t,
-        count,
+        count.get(),
         mode,
         FindChar {
             ch,
@@ -88,7 +89,7 @@ pub(in crate::editor) fn cmd_till_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     mode: MotionMode,
     ch: char,
 ) -> Result<(), CommandError> {
@@ -96,7 +97,7 @@ pub(in crate::editor) fn cmd_till_forward(
         state,
         view,
         t,
-        count,
+        count.get(),
         mode,
         FindChar {
             ch,
@@ -110,7 +111,7 @@ pub(in crate::editor) fn cmd_till_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     mode: MotionMode,
     ch: char,
 ) -> Result<(), CommandError> {
@@ -118,7 +119,7 @@ pub(in crate::editor) fn cmd_till_backward(
         state,
         view,
         t,
-        count,
+        count.get(),
         mode,
         FindChar {
             ch,
@@ -148,19 +149,19 @@ pub(in crate::editor) fn cmd_repeat_find_forward(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    repeat_find(state, view, t, count, mode, repeat_find_char_forward);
+    repeat_find(state, view, t, count.get(), mode, repeat_find_char_forward);
     Ok(())
 }
 pub(in crate::editor) fn cmd_repeat_find_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    repeat_find(state, view, t, count, mode, repeat_find_char_backward);
+    repeat_find(state, view, t, count.get(), mode, repeat_find_char_backward);
     Ok(())
 }

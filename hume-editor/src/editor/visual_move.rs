@@ -7,6 +7,7 @@
 //! (`C`), which needs the same display-column authority to land a duplicated
 //! selection under a tab or wide grapheme without wrap in play at all.
 
+use crate::editor::registry::Count;
 use hume_editing::selection::{Selection, StickyDisplayCol};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
@@ -387,25 +388,25 @@ fn visual_move_vertical(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     down: bool,
     mode: MotionMode,
 ) {
     // A count typed by the user (e.g. `9j`) means "9 buffer lines" (matching
     // relative-line-number gutters) even when soft-wrap is on.
-    let unit = if state.explicit_count {
+    let unit = if count.is_typed() {
         VerticalMove::BufferLine
     } else {
         VerticalMove::ContentDisplayLine
     };
-    apply_visual_vertical(state, view, t.pid(), count, down, mode, unit);
+    apply_visual_vertical(state, view, t.pid(), count.get(), down, mode, unit);
 }
 
 pub(super) fn cmd_visual_move_down(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     visual_move_vertical(state, view, t, count, true, mode);
@@ -416,7 +417,7 @@ pub(super) fn cmd_visual_move_up(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     visual_move_vertical(state, view, t, count, false, mode);
@@ -428,10 +429,10 @@ pub(super) fn cmd_copy_selection_on_next_line(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    copy_selection_on_line(state, view, t, count, true);
+    copy_selection_on_line(state, view, t, count.get(), true);
     Ok(())
 }
 
@@ -440,10 +441,10 @@ pub(super) fn cmd_copy_selection_on_prev_line(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    copy_selection_on_line(state, view, t, count, false);
+    copy_selection_on_line(state, view, t, count.get(), false);
     Ok(())
 }
 
@@ -462,7 +463,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf_id = t.bid(view);

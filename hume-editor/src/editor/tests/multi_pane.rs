@@ -1,5 +1,6 @@
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
+use crate::editor::registry::Count;
 use hume_engine::providers::HighlightTier;
 use hume_grid::Rect;
 use hume_scripting::host::NativeCall;
@@ -1647,7 +1648,14 @@ fn close_then_focus_next_without_reframe_lands_on_live_pane() {
     ed.execute_typed("quit", None).unwrap();
     assert_eq!(ed.view.panes.len(), 1, "sanity: B is closed");
     let fp = FocusedPane::current(&ed.state);
-    cmd_pane_focus_next(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
+    cmd_pane_focus_next(
+        &mut ed.state,
+        &mut ed.view,
+        fp,
+        Count::new(Some(1)),
+        MotionMode::Move,
+    )
+    .unwrap();
 
     assert_eq!(
         ed.state.focus.id(),
@@ -1681,7 +1689,14 @@ fn split_then_focus_left_without_reframe_reaches_new_pane() {
     assert_ne!(pid_a, pid_b);
 
     let fp = FocusedPane::current(&ed.state);
-    cmd_pane_focus_left(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
+    cmd_pane_focus_left(
+        &mut ed.state,
+        &mut ed.view,
+        fp,
+        Count::new(Some(1)),
+        MotionMode::Move,
+    )
+    .unwrap();
     assert_eq!(
         ed.state.focus.id(),
         pid_a,

@@ -1,20 +1,13 @@
 use super::*;
-use crate::editor::EditorState;
 use crate::editor::commands::{
     FocusedPane, cmd_pane_focus_down, cmd_pane_focus_left, cmd_pane_focus_next,
     cmd_pane_focus_right, cmd_pane_focus_up, open_pane_in_layout,
 };
-use crate::editor::error::CommandError;
-use hume_engine::pipeline::{Direction, EngineView, LayoutTree, PaneId, RenderContext};
+use crate::editor::registry::Count;
+use hume_engine::pipeline::{Direction, LayoutTree, PaneId, RenderContext};
 use hume_ops::MotionMode;
 
-type Cmd = fn(
-    &mut EditorState,
-    &mut EngineView,
-    FocusedPane,
-    usize,
-    MotionMode,
-) -> Result<(), CommandError>;
+type Cmd = crate::editor::registry::FocusedCmdFn;
 
 // Build a deterministic 2x2 pane grid in `editor_from`'s scratch buffer.
 //
@@ -55,7 +48,14 @@ fn build_2x2() -> (Editor, [PaneId; 4]) {
 fn expect_focus(ed: &mut Editor, start: PaneId, expected: PaneId, cmd: Cmd) {
     ed.state.focus.set_for_test(start);
     let fp = FocusedPane::current(&ed.state);
-    cmd(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
+    cmd(
+        &mut ed.state,
+        &mut ed.view,
+        fp,
+        Count::new(Some(1)),
+        MotionMode::Move,
+    )
+    .unwrap();
     assert_eq!(ed.state.focus.id(), expected);
     assert!(ed.state.status_msg.is_none());
 }
@@ -152,7 +152,14 @@ fn t4_tie_break_uses_center_distance_not_origin() {
 
     ed.state.focus.set_for_test(pid_a);
     let fp = FocusedPane::current(&ed.state);
-    cmd_pane_focus_right(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
+    cmd_pane_focus_right(
+        &mut ed.state,
+        &mut ed.view,
+        fp,
+        Count::new(Some(1)),
+        MotionMode::Move,
+    )
+    .unwrap();
     assert_eq!(ed.state.focus.id(), pid_c);
 }
 
@@ -169,7 +176,14 @@ fn t4_pane_focus_next_cycles_dfs_order_and_wraps() {
     ] {
         ed.state.focus.set_for_test(start);
         let fp = FocusedPane::current(&ed.state);
-        cmd_pane_focus_next(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
+        cmd_pane_focus_next(
+            &mut ed.state,
+            &mut ed.view,
+            fp,
+            Count::new(Some(1)),
+            MotionMode::Move,
+        )
+        .unwrap();
         assert_eq!(ed.state.focus.id(), expected);
         assert!(ed.state.status_msg.is_none());
     }
@@ -180,7 +194,14 @@ fn t4_pane_focus_next_single_pane_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
     let before = ed.state.focus.id();
     let fp = FocusedPane::current(&ed.state);
-    cmd_pane_focus_next(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
+    cmd_pane_focus_next(
+        &mut ed.state,
+        &mut ed.view,
+        fp,
+        Count::new(Some(1)),
+        MotionMode::Move,
+    )
+    .unwrap();
     assert_eq!(ed.state.focus.id(), before);
     assert!(ed.state.status_msg.is_none());
 }
@@ -196,7 +217,14 @@ fn t4_directional_no_neighbour_is_noop() {
         cmd_pane_focus_up as Cmd,
         cmd_pane_focus_down as Cmd,
     ] {
-        cmd(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
+        cmd(
+            &mut ed.state,
+            &mut ed.view,
+            fp,
+            Count::new(Some(1)),
+            MotionMode::Move,
+        )
+        .unwrap();
         assert_eq!(ed.state.focus.id(), before);
         assert!(ed.state.status_msg.is_none());
     }

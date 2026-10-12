@@ -161,8 +161,14 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
         // Esc exits Extend mode; Normal is the reset state.
         ed.state.input.set_extend(false);
         let t = crate::editor::commands::FocusedPane::current(&ed.state).pane();
-        cmd_clear_search(&mut ed.state, &mut ed.view, t, 0, MotionMode::Move)
-            .expect("clear-search is infallible");
+        cmd_clear_search(
+            &mut ed.state,
+            &mut ed.view,
+            t,
+            crate::editor::registry::Count::new(None),
+            MotionMode::Move,
+        )
+        .expect("clear-search is infallible");
         return;
     }
 

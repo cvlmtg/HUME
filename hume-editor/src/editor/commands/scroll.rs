@@ -1,3 +1,4 @@
+use crate::editor::registry::Count;
 use hume_engine::display_lines::{DisplayColTarget, carry};
 use hume_engine::pipeline::{EngineView, PaneId};
 use hume_ops::MotionMode;
@@ -113,7 +114,7 @@ pub(in crate::editor) fn cmd_page_down(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     scroll_page(state, view, t.pid(), mode, false, true)
@@ -122,7 +123,7 @@ pub(in crate::editor) fn cmd_page_up(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     scroll_page(state, view, t.pid(), mode, false, false)
@@ -131,7 +132,7 @@ pub(in crate::editor) fn cmd_half_page_down(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     scroll_page(state, view, t.pid(), mode, true, true)
@@ -140,7 +141,7 @@ pub(in crate::editor) fn cmd_half_page_up(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     scroll_page(state, view, t.pid(), mode, true, false)
@@ -200,7 +201,7 @@ pub(in crate::editor) fn cmd_view_center(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     view_center(state, view, t.pid());
@@ -211,7 +212,7 @@ pub(in crate::editor) fn cmd_view_top(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     view_top(state, view, t.pid());
@@ -222,7 +223,7 @@ pub(in crate::editor) fn cmd_view_bottom(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let target = (viewport(view, t.pid()).height as usize).saturating_sub(1);

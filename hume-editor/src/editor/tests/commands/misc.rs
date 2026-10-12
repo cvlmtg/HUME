@@ -1,6 +1,7 @@
 //! misc.rs: everything left: extend-mode exit rules, undo grouping, line text objects, typed-command arity, and case transforms.
 
 use super::super::*;
+use crate::editor::registry::Count;
 use hume_platform::dirs::Dirs;
 use pretty_assertions::assert_eq;
 
@@ -63,7 +64,14 @@ fn toggle_extend_from_insert_is_a_no_op() {
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open");
 
     let fp = FocusedPane::current(&ed.state);
-    cmd_toggle_extend(&mut ed.state, &mut ed.view, fp, 0, MotionMode::Move).unwrap();
+    cmd_toggle_extend(
+        &mut ed.state,
+        &mut ed.view,
+        fp,
+        Count::new(None),
+        MotionMode::Move,
+    )
+    .unwrap();
 
     ed.handle_key(key_esc());
     assert_eq!(
@@ -100,7 +108,14 @@ fn toggle_extend_closes_a_sticky_popup_shown_from_normal() {
     assert!(ed.state.input.popup().is_some(), "sanity: popup open");
 
     let fp = FocusedPane::current(&ed.state);
-    cmd_toggle_extend(&mut ed.state, &mut ed.view, fp, 0, MotionMode::Move).unwrap();
+    cmd_toggle_extend(
+        &mut ed.state,
+        &mut ed.view,
+        fp,
+        Count::new(None),
+        MotionMode::Move,
+    )
+    .unwrap();
 
     assert_eq!(
         ed.state.mode(),

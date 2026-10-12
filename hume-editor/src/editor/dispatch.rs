@@ -18,7 +18,8 @@ use super::{Editor, Severity, commands, replay};
 pub(in crate::editor) struct CmdCtx {
     /// Numeric count prefix. `None` means "no count was typed": a bare
     /// keyboard press, which visual-move commands read as one visual line
-    /// (`state.explicit_count`, set from this by `run_body`). Producible
+    /// (through the [`Count`](super::registry::Count) `run_body` builds from
+    /// this). Producible
     /// by the keymap trie leaves, and also by Steel: a script
     /// passes a count of `0` (`parse_native_args` decodes it to `None`) to ask
     /// for the same "as if no count was typed" behavior. `Some(n)` is every

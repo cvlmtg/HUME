@@ -90,7 +90,6 @@ fn editor_state_fields_are_classified() {
             // preserved: never live across a reload (a keymap dispatch
             // never re-enters `init.scm`)
             active_session: _, // preserved: end_focus_sessions already emptied it
-            explicit_count: _, // preserved
             macros: _,         // preserved
             message_logged_this_input: _, // preserved
             // config: resync_config_state clears this so

@@ -16,7 +16,7 @@ use crate::editor::pane_state::PaneBufferState;
 use crate::editor::dispatch::CmdCtx;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::registry::{
-    CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, NativeCommand, PaneCharCmdFn, PaneCmdFn,
+    CmdMeta, Count, EditFn, EditorCmdBody, FocusedCmdFn, NativeCommand, PaneCharCmdFn, PaneCmdFn,
     PaneTextCmdFn, PatternPrompt, SelectionBody, SelectionTracking,
 };
 use crate::editor::replay::{InputOpener, NewChange, SelectionStep, record_change};
@@ -660,24 +660,13 @@ impl BoundCommand {
 /// an I/O failure is logged; see `CommandError::new` vs `::transient`), and
 /// every `Err` counts as a refusal regardless of severity: rollback is about
 /// whether an edit happened, not about how loudly the failure is recorded.
-///
-/// The single writer of `state.explicit_count`: `ctx.count` is `None` for a
-/// bare keyboard press (no count typed) or for a Steel `call!` that explicitly
-/// asked for the same treatment (a script-side count of `0`, decoded by
-/// `parse_native_args`). Visual-move commands (`move-down`/`move-up`) read
-/// `explicit_count == false` as "move by visual line" rather than buffer line.
-/// Save/restore (not a plain set) so a Steel command's body dispatching its own
-/// native command via `call!` (which nests inside this same function while the
-/// outer call's stack frame is still live) gets its own value instead of
-/// leaking the outer command's.
 pub(in crate::editor) fn run_body(
     state: &mut EditorState,
     view: &mut EngineView,
     bound: BoundCommand,
     ctx: &CmdCtx,
 ) -> bool {
-    let prev_explicit_count = std::mem::replace(&mut state.explicit_count, ctx.count.is_some());
-    let count = ctx.count.unwrap_or(1).max(1);
+    let count = Count::new(ctx.count);
     let motion_mode = if ctx.extend {
         MotionMode::Extend
     } else {
@@ -689,7 +678,7 @@ pub(in crate::editor) fn run_body(
             let buf = t.bid(view);
             match fun {
                 SelectionBody::Plain(fun) => {
-                    apply_pane_motion(state, view, t, |st| fun(st, count, motion_mode));
+                    apply_pane_motion(state, view, t, |st| fun(st, count.get(), motion_mode));
                 }
                 SelectionBody::Word(fun) => {
                     let doc = state.buffers.get(buf);
@@ -712,7 +701,7 @@ pub(in crate::editor) fn run_body(
                         &mut state.panes.state,
                         t.pid(),
                         buf,
-                        |st| fun(st, count, ctx),
+                        |st| fun(st, count.get(), ctx),
                     );
                 }
                 SelectionBody::Structural(body) => {
@@ -730,7 +719,7 @@ pub(in crate::editor) fn run_body(
                     // ends here, before that call.
                     let spans = object_spans(state.buffers.get(buf), body);
                     apply_pane_motion(state, view, t, |st| {
-                        body.apply(st, count, motion_mode, &spans)
+                        body.apply(st, count.get(), motion_mode, &spans)
                     });
                 }
             }
@@ -754,7 +743,6 @@ pub(in crate::editor) fn run_body(
             f(state, view, target.pane(), count, motion_mode, &text)
         }
     };
-    state.explicit_count = prev_explicit_count;
     match outcome {
         Ok(()) => true,
         Err(e) => {

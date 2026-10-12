@@ -794,18 +794,15 @@ fn no_wrap_bare_j_and_view_scroll_agree_on_display_column() {
     );
 }
 
-/// Scroll commands (page/half-page) always move by display lines, regardless of
-/// `explicit_count`. The buffer-vs-visual choice is a parameter passed by the
-/// caller (`unit`), not a global-state read inside the shared core. This
-/// guards against `apply_visual_vertical` accidentally reading
-/// `state.explicit_count` itself instead of trusting its parameter.
+/// Scroll commands (page/half-page) always move by display lines: the
+/// buffer-vs-visual choice is the caller's `unit`, so `ContentDisplayLine`
+/// moves one display line.
 #[test]
-fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
+fn apply_visual_vertical_content_display_line_moves_one_display_line() {
     use crate::editor::visual_move::{VerticalMove, apply_visual_vertical};
     use hume_ops::MotionMode;
 
     let mut ed = visual_test_editor(0);
-    ed.state.explicit_count = true; // simulate "a count was typed"
     let pid = ed.state.focus.id();
     apply_visual_vertical(
         &mut ed.state,
@@ -819,7 +816,7 @@ fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
     assert_eq!(
         ed.current_view().primary().head().offset(),
         co(76),
-        "VerticalMove::ContentDisplayLine must move one display line even with explicit_count=true"
+        "VerticalMove::ContentDisplayLine must move one display line"
     );
 }
 
@@ -1336,9 +1333,7 @@ fn run_command_sync_some_count_moves_buffer_line() {
 /// A Steel command's own internal `(call! "move-down" bid)` always moves by
 /// buffer line regardless of the *outer* key's typed count. The two are
 /// dispatched separately, each through its own `run_body` call, so
-/// the inner one can't inherit the outer's explicitness. This also proves
-/// `state.explicit_count` is restored (not left `true`) once the whole
-/// dispatch (outer Steel command plus its nested native call) completes.
+/// the inner one can't inherit the outer's explicitness.
 #[test]
 fn steel_call_move_down_ignores_outer_keystrokes_count() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -1377,11 +1372,6 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
         co(81),
         "inner (call! \"move-down\") must move one buffer line, not one visual display line \
          and not the outer key's count of 5 buffer lines"
-    );
-    assert!(
-        !ed.state.explicit_count,
-        "explicit_count must be restored to its pre-dispatch value (false) after \
-         the outer Steel command and its nested native call both complete"
     );
 }
 
@@ -1468,8 +1458,6 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
 /// `(call! "move-down" bid 0)` from inside a Steel command body moves by visual
 /// display line regardless of the *outer* dispatch's count: a script can ask for
 /// visual-display-line movement explicitly, not just by forwarding a bare keypress.
-/// Also confirms `explicit_count` is restored afterward (mirrors
-/// `steel_call_move_down_ignores_outer_keystrokes_count`).
 #[test]
 fn steel_call_move_down_zero_count_moves_visual_display_line() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -1494,11 +1482,6 @@ fn steel_call_move_down_zero_count_moves_visual_display_line() {
         co(76),
         "(call! \"move-down\" 0) must move one visual display line (char 76), not one \
          buffer line (char 81)"
-    );
-    assert!(
-        !ed.state.explicit_count,
-        "explicit_count must be restored to its pre-dispatch value (false) \
-         after the command completes"
     );
 }
 

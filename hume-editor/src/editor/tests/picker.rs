@@ -7,6 +7,7 @@
 use super::*;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{PickerItem, PickerSession};
+use crate::editor::registry::Count;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
 use hume_scripting::host::PickerOpts;
@@ -407,7 +408,14 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
 
     // Lands above the picker the same ungated way a timer would.
     let fp = FocusedPane::current(&ed.state);
-    cmd_insert_before(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
+    cmd_insert_before(
+        &mut ed.state,
+        &mut ed.view,
+        fp,
+        Count::new(Some(1)),
+        MotionMode::Move,
+    )
+    .unwrap();
     assert_eq!(
         ed.state.mode(),
         Mode::Insert,

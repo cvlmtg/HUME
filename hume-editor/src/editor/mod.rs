@@ -390,8 +390,6 @@ pub(crate) struct EditorState {
     /// [`edit_session::EditSession`]'s own doc, including its own
     /// `dot_capture` field.
     pub(in crate::editor) active_session: Option<edit_session::EditSession>,
-    /// Whether the user explicitly typed a count prefix before the current command.
-    pub(super) explicit_count: bool,
     pub(super) macros: macros::MacroState,
     /// Set by `Editor::handle_input` right after dispatch whenever that
     /// input logged a new warning or error, cleared by `Editor::settle` once
@@ -503,7 +501,6 @@ impl Default for EditorState {
             sift_scans: 0,
             dot_replay: None,
             active_session: None,
-            explicit_count: false,
             macros: macros::MacroState::default(),
             message_logged_this_input: false,
             last_entered_buffer: None,

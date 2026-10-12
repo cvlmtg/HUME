@@ -16,6 +16,7 @@
 //! `-up`/`-down` (which also change `state.focus`) carry no `.jump()`
 //! either, while buffer-switch commands (which keep the same pane) do.
 
+use crate::editor::registry::Count;
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_ops::MotionMode;
 
@@ -101,7 +102,7 @@ pub(crate) fn cmd_tab_new(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let bid = fp.bid(view);
@@ -114,7 +115,7 @@ pub(crate) fn cmd_goto_next_tab(
     state: &mut EditorState,
     view: &mut EngineView,
     _fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     goto_tab_in_order(state, view, TabStep::Next);
@@ -126,7 +127,7 @@ pub(crate) fn cmd_goto_prev_tab(
     state: &mut EditorState,
     view: &mut EngineView,
     _fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     goto_tab_in_order(state, view, TabStep::Prev);

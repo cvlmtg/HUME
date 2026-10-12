@@ -1,3 +1,4 @@
+use crate::editor::registry::Count;
 use hume_editing::selection::Selection;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
@@ -24,7 +25,7 @@ pub(in crate::editor) fn cmd_insert_before(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     apply_pane_motion(state, view, fp.pane(), |st| {
@@ -39,7 +40,7 @@ pub(in crate::editor) fn cmd_insert_after(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     apply_pane_motion(state, view, fp.pane(), |st| {
@@ -54,7 +55,7 @@ pub(in crate::editor) fn cmd_insert_at_line_start(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     apply_pane_motion(state, view, fp.pane(), |st| {
@@ -69,7 +70,7 @@ pub(in crate::editor) fn cmd_insert_at_line_end(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     // A cursor on the head line's `\n`, where appended text goes. On an
@@ -88,7 +89,7 @@ pub(in crate::editor) fn cmd_insert_at_selection_start(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     apply_pane_motion(state, view, fp.pane(), |st| {
@@ -113,7 +114,7 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     apply_pane_motion(state, view, fp.pane(), |st| {
@@ -139,7 +140,7 @@ pub(in crate::editor) fn cmd_open_line_below(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     begin_insert_session(state, view, fp)?;
@@ -161,7 +162,7 @@ pub(in crate::editor) fn cmd_open_line_above(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     begin_insert_session(state, view, fp)?;
@@ -180,7 +181,7 @@ pub(in crate::editor) fn cmd_command_mode(
     state: &mut EditorState,
     view: &mut EngineView,
     _fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let input = state
@@ -195,7 +196,7 @@ pub(in crate::editor) fn cmd_exit_insert(
     state: &mut EditorState,
     view: &mut EngineView,
     _fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     end_insert_session(state, view);
@@ -215,7 +216,7 @@ pub(in crate::editor) fn cmd_completion_trigger(
     state: &mut EditorState,
     view: &mut EngineView,
     _fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let input = state
@@ -239,7 +240,7 @@ pub(in crate::editor) fn cmd_toggle_extend(
     state: &mut EditorState,
     _view: &mut EngineView,
     _fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     if state.input.is::<BaseLayer>(state.input.mode_layer()) {
@@ -269,7 +270,7 @@ pub(in crate::editor) fn cmd_collapse_to_head_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     do_collapse_and_exit_extend(state, view, fp.pane(), |st| {
@@ -288,7 +289,7 @@ pub(in crate::editor) fn cmd_collapse_to_anchor_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     do_collapse_and_exit_extend(state, view, fp.pane(), |st| {
@@ -322,7 +323,7 @@ pub(in crate::editor) fn cmd_repeat(
     state: &mut EditorState,
     _view: &mut EngineView,
     _fp: FocusedPane,
-    count: usize,
+    count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     // Peek without taking: replay_dot owns the take so it can
@@ -331,8 +332,8 @@ pub(in crate::editor) fn cmd_repeat(
         return Ok(());
     };
     // Prefer an explicit user count; fall back to the count from the original action.
-    let effective = if state.explicit_count {
-        count
+    let effective = if count.is_typed() {
+        count.get()
     } else {
         orig_count
     };

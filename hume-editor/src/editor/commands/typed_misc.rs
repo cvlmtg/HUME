@@ -6,14 +6,13 @@ use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
 use super::super::{EditorState, Severity};
-use super::{CommandPane, FocusedPane, cmd_redo, cmd_undo};
+use super::{CommandPane, FocusedPane, redo_steps, undo_steps};
 use crate::editor::buffer::{Buffer, EditorView, ViewLabel};
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
 use crate::editor::input_stack::DrawerLayer;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::settings::THEME_KEY;
-use hume_ops::MotionMode;
 use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 
 // ── Message log ──────────────────────────────────────────────────────────────
@@ -615,16 +614,11 @@ fn parse_travel_spec(raw: &str) -> Result<TravelSpec, CommandError> {
     })
 }
 
-/// `cmd_undo`/`cmd_redo` themselves, the same function `u`/`Ctrl-r` dispatch
-/// to, read-only refusal and exhaustion report included, rather than a second
-/// hand-copied `(walk, exhausted_msg)` pair.
-type TravelStepFn = fn(
-    &mut EditorState,
-    &mut EngineView,
-    CommandPane,
-    usize,
-    MotionMode,
-) -> Result<(), CommandError>;
+/// [`undo_steps`]/[`redo_steps`] themselves, the same walk `u`/`Ctrl-r`
+/// dispatch to, read-only refusal and exhaustion report included, rather
+/// than a second hand-copied `(walk, exhausted_msg)` pair.
+type TravelStepFn =
+    fn(&mut EditorState, &EngineView, CommandPane, usize) -> Result<(), CommandError>;
 
 /// `Buffer::undo_steps_older_than`/`redo_steps_newer_than`: resolves a
 /// `TravelSpec::Age` to the step count [`TravelStepFn`] takes. `Err(n)` means
@@ -646,14 +640,14 @@ impl TravelDir {
     /// command word, for the `!`-rejection error message below.
     fn parts(self) -> (&'static str, TravelStepFn, TravelResolveAgeFn) {
         match self {
-            TravelDir::Earlier => ("earlier", cmd_undo, Buffer::undo_steps_older_than),
-            TravelDir::Later => ("later", cmd_redo, Buffer::redo_steps_newer_than),
+            TravelDir::Earlier => ("earlier", undo_steps, Buffer::undo_steps_older_than),
+            TravelDir::Later => ("later", redo_steps, Buffer::redo_steps_newer_than),
         }
     }
 }
 
 /// Shared `:earlier`/`:later` body: resolve the spec to a step count, then
-/// travel through the same `cmd_undo`/`cmd_redo` `u`/`Ctrl-r` dispatch to, so
+/// travel through the same `undo_steps`/`redo_steps` `u`/`Ctrl-r` dispatch to, so
 /// the whole walk (however many revisions an age spans) propagates to panes,
 /// tree-sitter, LSP, decorations, and jumps as one composed change (see
 /// `Buffer::apply_transactions`), a read-only buffer is refused identically
@@ -683,7 +677,7 @@ fn travel(
             resolve_age(ed.state.buffers.get(buf), age).unwrap_or_else(|avail| avail + 1)
         }
     };
-    step(&mut ed.state, &mut ed.view, t, steps, MotionMode::Move)
+    step(&mut ed.state, &ed.view, t, steps)
 }
 
 /// `:earlier [N|age]`: step back `N` revisions (default 1), or back to the

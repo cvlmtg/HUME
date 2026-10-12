@@ -1,3 +1,4 @@
+use crate::editor::registry::Count;
 use hume_engine::pipeline::EngineView;
 
 use crate::editor::buffer::{Buffer, HistoryWalkResult};
@@ -33,7 +34,7 @@ pub(in crate::editor) fn cmd_delete(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     super::ensure_writable(state, view, t)?;
@@ -59,7 +60,7 @@ pub(in crate::editor) fn cmd_change(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     super::ensure_writable(state, view, fp.pane())?;
@@ -108,7 +109,7 @@ pub(in crate::editor) fn cmd_select_last_insertion(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf = doc(state, view, t);
@@ -159,7 +160,7 @@ pub(in crate::editor) fn cmd_yank(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let text = super::doc(state, view, t).text();
@@ -256,25 +257,45 @@ pub(in crate::editor) fn goto_revision(
     })
 }
 
+/// Undo `steps` revisions of `t`'s buffer: the walk `u` and `:earlier` share.
+/// `steps` is exact, so zero takes no step.
+pub(in crate::editor) fn undo_steps(
+    state: &mut EditorState,
+    view: &EngineView,
+    t: CommandPane,
+    steps: usize,
+) -> Result<(), CommandError> {
+    history_step(state, view, t, steps, Buffer::undo_n, UNDO_EXHAUSTED_MSG)
+}
+
+/// [`undo_steps`] in the redo direction: `Ctrl-r` and `:later`.
+pub(in crate::editor) fn redo_steps(
+    state: &mut EditorState,
+    view: &EngineView,
+    t: CommandPane,
+    steps: usize,
+) -> Result<(), CommandError> {
+    history_step(state, view, t, steps, Buffer::redo_n, REDO_EXHAUSTED_MSG)
+}
+
 pub(in crate::editor) fn cmd_undo(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    history_step(state, view, t, count, Buffer::undo_n, UNDO_EXHAUSTED_MSG)
+    undo_steps(state, view, t, count.get())
 }
 
-/// See [`cmd_undo`]'s doc: same sharing, redo direction.
 pub(in crate::editor) fn cmd_redo(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    history_step(state, view, t, count, Buffer::redo_n, REDO_EXHAUSTED_MSG)
+    redo_steps(state, view, t, count.get())
 }
 
 // ── Replace / surround ────────────────────────────────────────────────────────
@@ -284,7 +305,7 @@ pub(in crate::editor) fn cmd_replace(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
     ch: char,
 ) -> Result<(), CommandError> {
@@ -297,7 +318,7 @@ pub(in crate::editor) fn cmd_join_lines_select_spaces(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     apply_pane_edit(state, view, t, join_lines_select_spaces)?;
@@ -309,7 +330,7 @@ pub(in crate::editor) fn cmd_align_selections(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf_id = t.bid(view);
@@ -329,13 +350,13 @@ pub(in crate::editor) fn cmd_indent(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf_id = t.bid(view);
     let (style, tab_width) = tab_format(state.buffers.get(buf_id), &state.settings);
     apply_pane_edit(state, view, t, move |sels| {
-        indent_lines(sels, style, tab_width, count)
+        indent_lines(sels, style, tab_width, count.get())
     })?;
     Ok(())
 }
@@ -345,13 +366,13 @@ pub(in crate::editor) fn cmd_unindent(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    count: usize,
+    count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf_id = t.bid(view);
     let (style, tab_width) = tab_format(state.buffers.get(buf_id), &state.settings);
     apply_pane_edit(state, view, t, move |sels| {
-        unindent_lines(sels, style, tab_width, count)
+        unindent_lines(sels, style, tab_width, count.get())
     })?;
     Ok(())
 }
@@ -368,7 +389,7 @@ pub(in crate::editor) fn cmd_delete_word_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf_id = t.bid(view);
@@ -385,7 +406,7 @@ pub(in crate::editor) fn cmd_surround_add(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: usize,
+    _count: Count,
     _mode: MotionMode,
     ch: char,
 ) -> Result<(), CommandError> {
