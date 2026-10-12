@@ -178,9 +178,6 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
 /// call replaces its text in place, so the buffer list never holds two
 /// views with one label. The cursor lands on `cursor_line` (clamped to the
 /// last content line), or on the last content line when `None`.
-///
-/// The `Editor` view commands (`:messages`, `:plugin-status`,
-/// `:lsp-status`) and `show-read-only-buffer!` all open their views here.
 pub(in crate::editor) fn show_read_only_view(
     state: &mut EditorState,
     ev: &mut EngineView,

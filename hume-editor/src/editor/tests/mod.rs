@@ -206,12 +206,17 @@ pub(crate) fn editor_with_language(content: &str, lang_name: &str) -> Editor {
     ed
 }
 
+/// The label `[name]`, for a `name` known to be accepted.
+fn view_label(name: &str) -> ViewLabel {
+    ViewLabel::named(name).expect("view name")
+}
+
 /// `statusline::tests`' other cross-boundary shape: a read-only view
 /// buffer, without handing that suite `Buffer::read_only_view` itself.
 pub(crate) fn editor_with_read_only_view(content: &str, name: &str) -> Editor {
     Editor::for_testing(Buffer::read_only_view(
         BufferText::from(content),
-        ViewLabel::named(name).expect("view name"),
+        view_label(name),
     ))
 }
 

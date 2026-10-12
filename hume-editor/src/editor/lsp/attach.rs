@@ -19,6 +19,7 @@ use super::LspState;
 use super::ReconcilePhase;
 use super::document::{Attachment, OpenedAs};
 use super::registry::{LspServerConfig, RootCache};
+use crate::editor::buffer::{EditorView, ViewLabel};
 use crate::editor::event::EditorEvent;
 use crate::editor::{Editor, EditorState, Severity};
 
@@ -546,9 +547,7 @@ impl Editor {
                 let fp = crate::editor::commands::FocusedPane::current(&self.state);
                 self.open_read_only_view(
                     fp,
-                    &crate::editor::buffer::ViewLabel::editor(
-                        crate::editor::buffer::EditorView::LspStatus,
-                    ),
+                    &ViewLabel::editor(EditorView::LspStatus),
                     &content,
                     Some(hume_rope::line::ContentLine::new(0)),
                 );

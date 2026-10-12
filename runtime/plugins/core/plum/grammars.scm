@@ -103,8 +103,8 @@
 (define (plum/no-grammar? name)
   (not (bundled-language-grammar name)))
 
-(define (plum/orphan-grammars)
-  (filter plum/no-grammar? (installed-grammars)))
+(define (plum/orphan-grammars installed)
+  (filter plum/no-grammar? installed))
 
 ;;; A string argument wins; otherwise falls back to the current buffer's language.
 (define (plum/resolve-grammar-arg pane cmd arg)
@@ -182,18 +182,19 @@
 (define-typed-command! "plum-list-grammars"
   "Show the installed grammars and the orphan ones."
   (lambda (pane)
-    (let ((known (map (lambda (name) (cons name (bundled-language-grammar name)))
-                      (installed-grammars))))
+    (let* ((installed (installed-grammars))
+           (orphans (plum/orphan-grammars installed)))
       (plum/show-report! pane "plum-grammars"
-        (list (plum/report-section "Installed grammars" (map car (filter cdr known)) #f)
-              (plum/report-section "Orphan grammars"
-                (map car (filter (lambda (entry) (not (cdr entry))) known))
+        (list (plum/report-section "Installed grammars"
+                (filter (lambda (name) (not (member name orphans))) installed)
+                #f)
+              (plum/report-section "Orphan grammars" orphans
                 "remove with :plum-cleanup-grammars"))))))
 
 (define-typed-command! "plum-cleanup-grammars"
   "Delete compiled grammar files that are no longer in the declared source list."
   (lambda ()
-    (let ((orphans (plum/orphan-grammars)))
+    (let ((orphans (plum/orphan-grammars (installed-grammars))))
       (if (null? orphans)
           (log! 'info "PLUM: no orphan grammars to remove")
           (plum/batch-run! "removed grammar" orphans

@@ -73,15 +73,9 @@ fn messages_reuses_existing_view_buffer() {
     ed.report(Severity::Warning, "msg2".to_string());
     ed.execute_typed("messages", None).unwrap();
 
-    // Count buffers with the [messages] label: must be exactly 1.
-    let count = ed
-        .state
-        .buffers
-        .iter()
-        .filter(|(_, buf)| buf.label.as_ref().map(ViewLabel::as_str) == Some("[messages]"))
-        .count();
     assert_eq!(
-        count, 1,
+        labelled_count(&ed, "[messages]"),
+        1,
         ":messages must reuse the existing [messages] buffer"
     );
 }
@@ -532,8 +526,7 @@ fn show_read_only_buffer_refuses_editor_view_names() {
         assert_eq!(ed.focused_buffer_id(), before, "{name:?}");
         assert_eq!(labelled_count(&ed, &format!("[{name}]")), 0, "{name:?}");
         assert!(
-            ed.state.message_log.entries().any(|e| e.severity == Severity::Error
-                && e.text.contains("show-read-only-buffer!")),
+            has_error(&ed, "show-read-only-buffer!"),
             "{name:?} must raise"
         );
     }

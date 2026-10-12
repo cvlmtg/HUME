@@ -226,7 +226,9 @@ those finish at once and keep their summary `log!` line.
 The list commands (`plum-list-plugins`, `plum-list-grammars`, `plum-list-themes`) build
 their report with `plum/report-section` and show it with `plum/show-report!`, in a
 read-only buffer named after the command (`[plum-plugins]`, `[plum-grammars]`,
-`[plum-themes]`). A list does not fit the one status-line slot `log!` writes to.
+`[plum-themes]`). A list does not fit the one status-line slot `log!` writes to. Each
+section is a `title (count)` header, followed by `, hint` when the section has items
+(`hint` may be `#f`), then one indented line per item, or `none`.
 `:plum-list-grammars` leaves out the languages with no compiled grammar: that list is
 nearly the whole bundled catalog, which `:plum-install-grammar`'s Tab completion already
 offers.

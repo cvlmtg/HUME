@@ -414,7 +414,7 @@ fn colon_q_view_buffer_with_real_buffer_switches_not_quits() {
     // Open a read-only view buffer (simulates :messages).
     ed.open_read_only_view(
         FocusedPane::current(&ed.state),
-        &ViewLabel::named("test-view").expect("view name"),
+        &view_label("test-view"),
         "log line\n",
         Some(hume_rope::line::ContentLine::new(0)),
     );
@@ -518,7 +518,7 @@ fn colon_q_real_buffer_with_only_view_buffer_remaining_quits() {
     let file_buf = ed.focused_buffer_id();
     ed.open_read_only_view(
         FocusedPane::current(&ed.state),
-        &ViewLabel::named("test-view").expect("view name"),
+        &view_label("test-view"),
         "log line\n",
         Some(hume_rope::line::ContentLine::new(0)),
     );

@@ -106,7 +106,7 @@ fn rows_mark_current_alternate_and_dirty() {
 #[test]
 fn a_buffers_label_shows_in_the_name_column() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.doc_mut().label = Some(ViewLabel::named("custom").expect("view name"));
+    ed.doc_mut().label = Some(view_label("custom"));
     ed.execute_typed("ls", None).unwrap();
     insta::assert_snapshot!(rows(&ed).join("\n"), @"   1  %   [custom]");
 }

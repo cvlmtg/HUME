@@ -48,8 +48,6 @@
 ;; ── Listing reports ───────────────────────────────────────────────────────────
 ;; See README.md's "Output model".
 
-;;; A `title (count)` header, `, hint` appended when `items` is non-empty
-;;; (`hint` may be #f), then one indented line per item or `none`.
 (define (plum/report-section title items hint)
   (string-append
     title " (" (number->string (length items)) ")"
