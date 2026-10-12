@@ -5,6 +5,7 @@
 use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
 use crate::editor::buffer::Buffer;
+use crate::editor::lsp::edits::apply_edit_request_response;
 use hume_lsp::test_util::RecordingLspBackend;
 
 /// `marked` in a file attached to a `Running` scripted server negotiated on
@@ -991,7 +992,7 @@ fn server_initiated_apply_edit_into_unopened_file_uses_the_requesting_servers_en
             }
         }
     });
-    let result = ed.apply_edit_request_response(&params, sid).unwrap();
+    let result = apply_edit_request_response(&mut ed.state, &mut ed.view, &params, sid).unwrap();
     assert_eq!(result["applied"], serde_json::json!(true));
 
     let bid = ed
@@ -1027,7 +1028,7 @@ fn server_initiated_apply_edit_actually_applies_and_answers_true() {
             }
         }
     });
-    let result = ed.apply_edit_request_response(&params, sid).unwrap();
+    let result = apply_edit_request_response(&mut ed.state, &mut ed.view, &params, sid).unwrap();
     assert_eq!(result["applied"], serde_json::json!(true));
 
     let bid = ed
@@ -1067,7 +1068,7 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
             }
         }
     });
-    let result = ed.apply_edit_request_response(&params, sid).unwrap();
+    let result = apply_edit_request_response(&mut ed.state, &mut ed.view, &params, sid).unwrap();
     assert_eq!(result["applied"], serde_json::json!(true));
     ed.settle();
 
@@ -1092,7 +1093,7 @@ fn server_initiated_apply_edit_answers_false_with_a_reason_on_bad_uri() {
     let params = serde_json::json!({
         "edit": { "changes": { "not-a-uri": [] } }
     });
-    let result = ed.apply_edit_request_response(&params, sid).unwrap();
+    let result = apply_edit_request_response(&mut ed.state, &mut ed.view, &params, sid).unwrap();
     assert_eq!(result["applied"], serde_json::json!(false));
     assert!(result["failureReason"].is_string());
 }

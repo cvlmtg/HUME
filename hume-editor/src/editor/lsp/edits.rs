@@ -1,9 +1,9 @@
 //! Edit + navigation primitives: `apply-text-edits!`,
 //! `apply-workspace-edit!`, `goto-location!`.
 //!
-//! The primitives are state/view-only (no `&mut Editor` needed) so they are
+//! Everything here is state/view-only (no `&mut Editor` needed), so it is
 //! callable directly from `EditorHostImpl`, the same discipline as the
-//! decoration setters. `Editor::apply_edit_request_response` answers a
+//! decoration setters. `apply_edit_request_response` answers a
 //! server-initiated request. It lives here rather than in `drain.rs` because
 //! it shares the edit-application path with `apply-workspace-edit!` and
 //! belongs next to it.
@@ -558,54 +558,53 @@ pub(in crate::editor) fn goto_location(
     Ok(())
 }
 
-impl Editor {
-    /// Answers a server-initiated `workspace/applyEdit` request by actually
-    /// applying it. Per spec this never fails at the JSON-RPC level: a rejected or
-    /// malformed edit still gets a 200 response, just with `applied: false`.
-    ///
-    /// `server_id` is the requesting server (this
-    /// answers a message that arrived *from* it): its own negotiated
-    /// encoding is what every position in `params` is counted in, same as
-    /// any other response it sends.
-    pub(in crate::editor) fn apply_edit_request_response(
-        &mut self,
-        params: &serde_json::Value,
-        server_id: hume_lsp::backend::ServerId,
-    ) -> Result<serde_json::Value, ResponseError> {
-        let Some(edit_json) = params.get("edit").cloned() else {
+/// Answers a server-initiated `workspace/applyEdit` request by actually
+/// applying it. Per spec this never fails at the JSON-RPC level: a rejected or
+/// malformed edit still gets a 200 response, just with `applied: false`.
+///
+/// `server_id` is the requesting server (this
+/// answers a message that arrived *from* it): its own negotiated
+/// encoding is what every position in `params` is counted in, same as
+/// any other response it sends.
+pub(in crate::editor) fn apply_edit_request_response(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    params: &serde_json::Value,
+    server_id: hume_lsp::backend::ServerId,
+) -> Result<serde_json::Value, ResponseError> {
+    let Some(edit_json) = params.get("edit").cloned() else {
+        return Ok(serde_json::json!({
+            "applied": false,
+            "failureReason": "missing edit",
+        }));
+    };
+    let we: lsp_types::WorkspaceEdit = match serde_json::from_value(edit_json) {
+        Ok(we) => we,
+        Err(e) => {
             return Ok(serde_json::json!({
                 "applied": false,
-                "failureReason": "missing edit",
+                "failureReason": format!("malformed edit: {e}"),
             }));
-        };
-        let we: lsp_types::WorkspaceEdit = match serde_json::from_value(edit_json) {
-            Ok(we) => we,
-            Err(e) => {
-                return Ok(serde_json::json!({
-                    "applied": false,
-                    "failureReason": format!("malformed edit: {e}"),
-                }));
-            }
-        };
-        let Some(encoding) = introspect::server_encoding(&self.state.lsp, server_id) else {
-            return Ok(serde_json::json!({
-                "applied": false,
-                "failureReason": "lsp server no longer tracked",
-            }));
-        };
-        // Server-initiated, no Steel invocation pane to resolve: the
-        // focused pane is the only sensible "current" pane to seed selection
-        // state through for a file this edit newly opens.
-        let pid = self.state.focus.id();
-        // No request-time buffer to check staleness against: this answers a
-        // server-initiated request, not a Steel round-trip with its own
-        // captured generation.
-        match apply_workspace_edit(&mut self.state, &mut self.view, pid, we, encoding, None) {
-            Ok(_summary) => Ok(serde_json::json!({ "applied": true })),
-            Err(e) => Ok(serde_json::json!({
-                "applied": false,
-                "failureReason": e,
-            })),
         }
+    };
+    let Some(encoding) = introspect::server_encoding(&state.lsp, server_id) else {
+        return Ok(serde_json::json!({
+            "applied": false,
+            "failureReason": "lsp server no longer tracked",
+        }));
+    };
+    // Server-initiated, no Steel invocation pane to resolve: the
+    // focused pane is the only sensible "current" pane to seed selection
+    // state through for a file this edit newly opens.
+    let pid = state.focus.id();
+    // No request-time buffer to check staleness against: this answers a
+    // server-initiated request, not a Steel round-trip with its own
+    // captured generation.
+    match apply_workspace_edit(state, view, pid, we, encoding, None) {
+        Ok(_summary) => Ok(serde_json::json!({ "applied": true })),
+        Err(e) => Ok(serde_json::json!({
+            "applied": false,
+            "failureReason": e,
+        })),
     }
 }
