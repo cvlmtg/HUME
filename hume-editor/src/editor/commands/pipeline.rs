@@ -24,7 +24,7 @@ use crate::editor::settings::ObjectJumpAlign;
 use crate::editor::{EditorState, Severity};
 use hume_ops::{MotionMode, WordCtx};
 
-use crate::editor::syntax::ensure_syntax_current;
+use crate::editor::syntax::{SyntaxUse, ensure_syntax_current};
 
 use super::structural::object_spans;
 use super::{apply_pane_edit, apply_pane_motion, effective_word_chars, pane_selections};
@@ -712,7 +712,7 @@ pub(in crate::editor) fn run_body(
                     // key faster than tree-sitter finishes), so a stale tree
                     // would yield wrong spans (or a panic on an out-of-range
                     // byte offset).
-                    ensure_syntax_current(state, buf);
+                    ensure_syntax_current(state, buf, SyntaxUse::TextObjects);
                     // Collected before `apply_pane_motion`'s call below, which
                     // needs `&state.buffers` and `&mut state.panes.state` at
                     // once. `ObjectSpans` is owned precisely so its tree borrow

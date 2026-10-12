@@ -328,6 +328,87 @@ fn a_language_with_no_layer_stays_unloaded() {
     assert!(!bundled_loaded(&ed, "rust"));
 }
 
+#[test]
+fn a_layer_from_a_synchronous_parse_loads_at_the_next_install() {
+    require_fixtures();
+    let (mut ed, bid) = markdown_editor_with("x\n", &repo_runtime_dirs());
+    ed.feed_key(key('i'));
+    for ch in "~~~rust".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_enter());
+    ed.feed_key(key('f'));
+    ed.feed_key(key_enter());
+    for ch in "~~~".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_enter());
+    ed.feed_key(key_esc());
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        "~~~rust\nf\n~~~\nx\n",
+        "premise: the typed fence"
+    );
+
+    crate::editor::syntax::ensure_syntax_current(
+        &mut ed.state,
+        bid,
+        crate::editor::syntax::SyntaxUse::InjectedLanguages,
+    );
+    assert!(
+        has_rust_layer(&ed, bid),
+        "premise: the synchronous parse made a rust layer"
+    );
+    assert!(!bundled_loaded(&ed, "rust"));
+
+    ed.install_parse_results();
+
+    assert!(bundled_loaded(&ed, "rust"));
+}
+
+#[test]
+fn a_cursor_in_a_rust_fence_takes_rusts_line_comment() {
+    require_fixtures();
+    let (mut ed, bid) =
+        markdown_editor_with("# T\n\n```rust\nfn f() {}\n```\n", &repo_runtime_dirs());
+    ed.feed_keys([key('j'), key('j'), key('j')]);
+
+    ed.feed_keys([key('G'), key('G')]);
+
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        "# T\n\n```rust\n// fn f() {}\n```\n"
+    );
+}
+
+#[test]
+fn a_cursor_on_a_paragraph_takes_markdowns_block_comment() {
+    require_fixtures();
+    let (mut ed, bid) = markdown_editor_with("some *text*\n", &repo_runtime_dirs());
+
+    ed.feed_keys([key('G'), key('G')]);
+
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        "<!-- some *text* -->\n"
+    );
+}
+
+#[test]
+fn a_selection_crossing_a_fence_takes_the_outer_language() {
+    require_fixtures();
+    let (mut ed, bid) = markdown_editor_with("```rust\nfn f() {}\n```\n", &repo_runtime_dirs());
+    ed.state.input.set_extend(true);
+    ed.feed_key(key('j'));
+
+    ed.feed_keys([key('G'), key('G')]);
+
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        "<!-- ```rust\nfn f() {} -->\n```\n"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // PLUM pipeline syntax smoke test
 // ---------------------------------------------------------------------------

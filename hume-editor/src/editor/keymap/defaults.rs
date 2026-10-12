@@ -216,7 +216,7 @@ fn build_goto_trie() -> KeyTrie {
     t
 }
 
-/// Build the `G` sub-trie: the commands Vim files under `g` that are *not*
+/// Build the `G` sub-trie: edits of the selected text, where `g` holds
 /// gotos. `G L`/`G U`/`G C` are Vim's `gu`/`gU`/`g~`; `core:lsp` adds `G R`
 /// (rename) on the same reasoning, since nvim's own LSP-rename default
 /// (`grn`) is no more a goto than a case transform is. `g` stays reserved
@@ -226,6 +226,7 @@ fn build_transform_trie() -> KeyTrie {
     t.bind_leaf(key!('L'), cmd!("make-text-lowercase"));
     t.bind_leaf(key!('U'), cmd!("make-text-uppercase"));
     t.bind_leaf(key!('C'), cmd!("make-text-capitalized"));
+    t.bind_leaf(key!('G'), cmd!("toggle-comment"));
     t
 }
 

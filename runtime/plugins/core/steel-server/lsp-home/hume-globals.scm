@@ -344,6 +344,7 @@
 (#%register-global "tab-new")
 (#%register-global "till-backward")
 (#%register-global "till-forward")
+(#%register-global "toggle-comment")
 (#%register-global "toggle-extend")
 (#%register-global "top-view-on-cursor")
 (#%register-global "track-position!")

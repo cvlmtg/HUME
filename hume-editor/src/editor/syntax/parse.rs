@@ -249,8 +249,18 @@ impl Editor {
     }
 }
 
+/// What a caller of [`ensure_syntax_current`] reads from the layers, which
+/// decides whether a blocking parse can change its answer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) enum SyntaxUse {
+    /// Structural text objects and navigation.
+    TextObjects,
+    /// The language of each injected layer.
+    InjectedLanguages,
+}
+
 /// Bring `bid`'s committed tree up to date with its current text,
-/// synchronously, before a structural command reads it.
+/// synchronously, before a command reads it.
 ///
 /// The on-demand twin of [`Editor::reparse_stale_buffers`]: it shares that
 /// function's byte cap ([`EditorState::syntax_size_ok`]) and chain-break
@@ -267,10 +277,16 @@ impl Editor {
 ///   the worker's identical one;
 /// - over the byte cap: a paste can outgrow it before the next frame detaches
 ///   syntax;
-/// - no layer has a textobjects query: `object_spans` would return nothing
-///   anyway. An edit that adds a new injected layer with one is missed for
-///   that one keypress.
-pub(in crate::editor) fn ensure_syntax_current(state: &mut EditorState, bid: BufferId) {
+/// - for [`SyntaxUse::TextObjects`], no layer has a textobjects query:
+///   `object_spans` would return nothing anyway. An edit that adds a new
+///   injected layer with one is missed for that one keypress;
+/// - for [`SyntaxUse::InjectedLanguages`], the root grammar has no
+///   injections query, so there is no layer but the root.
+pub(in crate::editor) fn ensure_syntax_current(
+    state: &mut EditorState,
+    bid: BufferId,
+    use_: SyntaxUse,
+) {
     let size_ok = state.syntax_size_ok(bid);
     let buf = state.buffers.get(bid);
     let generation = buf.text().generation();
@@ -289,11 +305,14 @@ pub(in crate::editor) fn ensure_syntax_current(state: &mut EditorState, bid: Buf
     if !size_ok {
         return;
     }
-    let has_textobjects = layers
-        .layers
-        .iter()
-        .any(|layer| layer.bundle.textobjects.is_some());
-    if !has_textobjects {
+    let can_change = match use_ {
+        SyntaxUse::TextObjects => layers
+            .layers
+            .iter()
+            .any(|layer| layer.bundle.textobjects.is_some()),
+        SyntaxUse::InjectedLanguages => syn.bundle().injections.is_some(),
+    };
+    if !can_change {
         return;
     }
 

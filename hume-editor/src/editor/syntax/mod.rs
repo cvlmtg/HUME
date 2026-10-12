@@ -7,7 +7,7 @@
 
 mod parse;
 
-pub(in crate::editor) use parse::ensure_syntax_current;
+pub(in crate::editor) use parse::{SyntaxUse, ensure_syntax_current};
 
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_scripting::{ConfigOrigin, GrammarReg, LanguageFields};

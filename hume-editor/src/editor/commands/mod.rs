@@ -353,6 +353,7 @@ pub(super) fn set_primary_selection(
 }
 
 mod collect;
+mod comment;
 mod edit;
 mod find;
 mod insert_keys;
@@ -370,6 +371,7 @@ mod typed_buffer;
 mod typed_file;
 mod typed_misc;
 
+pub(super) use comment::*;
 pub(super) use edit::*;
 pub(super) use find::*;
 pub(super) use insert_keys::*;

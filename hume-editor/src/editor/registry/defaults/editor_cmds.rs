@@ -204,6 +204,14 @@ impl CommandRegistry {
         .repeatable()
         .clears_extend()
         .reg(self);
+        ecmd_pane(
+            "toggle-comment",
+            "Comment or uncomment the lines of each selection.",
+            cmd_toggle_comment,
+        )
+        .repeatable()
+        .clears_extend()
+        .reg(self);
         ecmd_pane("undo", "Undo the last change.", cmd_undo).reg(self);
         ecmd_pane("redo", "Redo the last undone change.", cmd_redo).reg(self);
 

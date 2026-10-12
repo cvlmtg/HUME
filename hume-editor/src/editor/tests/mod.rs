@@ -1466,6 +1466,7 @@ mod command_arg;
 mod command_exists;
 mod command_mode;
 mod commands;
+mod comment;
 mod completion;
 mod copy_selection;
 mod count_prefix;
