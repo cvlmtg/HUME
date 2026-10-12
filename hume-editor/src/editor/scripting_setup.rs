@@ -822,14 +822,14 @@ impl Editor {
         // Post-init lint: warn on #:languages activation entries whose language name
         // is not in the final LanguageRegistry.  Runs after the message flush above
         // so both languages.scm and init.scm's own define-language! calls are visible.
-        // Uses by_name() (identity registered), not has_grammar() (grammar attached):
+        // Uses defined_id() (identity registered), not has_grammar() (grammar attached):
         // an activation entry is valid for any known language identity even without a
         // grammar.  Not a hard error: inert but harmless, and language sets are
         // open/dynamic (a future define-language! + reload may make the name valid).
         for (lang, plugins) in &lang_activations {
             // "*" is the any-language wildcard (manifest.scm can't enumerate every
             // language it might ever support), not a language identity to look up.
-            if lang != "*" && self.state.config.languages.by_name(lang).is_none() {
+            if lang != "*" && self.state.config.languages.defined_id(lang).is_none() {
                 for plugin in plugins {
                     self.report(
                         Severity::Warning,

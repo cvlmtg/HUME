@@ -315,7 +315,7 @@ def load_sha256_cache(directory: Path) -> dict[str, str]:
 
     cache: dict[str, str] = {}
     for name, body in bodies.items():
-        fields = fields_of([name, *body])
+        fields = fields_of(body)
         kind = fields.get("kind")
         if kind not in DOWNLOAD_KINDS:
             continue
@@ -638,7 +638,7 @@ def assert_no_unresolved_templates(rows: list[str]) -> None:
         )
 
 
-def emit_lsp_source(name: str, r: dict) -> list[str]:
+def emit_lsp_source(r: dict) -> list[str]:
     """One server's sources file body: its install record."""
     if r["kind"] == "github":
         # build_github_record never returns a "github" record with an
@@ -776,7 +776,7 @@ def download_target(kind: str, row: list) -> tuple | None:
 def fields_of(record: list) -> dict:
     """A record's `(key . value)` and `(key item ...)` fields by key."""
     fields = {}
-    for field in record[1:]:
+    for field in record:
         if isinstance(field, tuple):
             fields[str(field[0])] = field[1]
         elif isinstance(field, list) and field:
@@ -826,7 +826,7 @@ def package_rows(kind: str, platforms: list | None) -> list[str]:
 
 def emit_requirement(name: str, body: list) -> list[str]:
     """One server's requirements file body, derived from its sources body."""
-    fields = fields_of([name, *body])
+    fields = fields_of(body)
     kind = str(fields["kind"])
     if kind in DOWNLOAD_KINDS:
         targets = download_rows(name, kind, fields["targets"])
@@ -1022,7 +1022,7 @@ def main() -> None:
                 f"error: invariant violated: emitted server '{name}' has no registrations/ file"
             )
 
-    source_bodies = {name: emit_lsp_source(name, records[name]) for name in sorted(records)}
+    source_bodies = {name: emit_lsp_source(records[name]) for name in sorted(records)}
     assert_no_unresolved_templates([row for rows in source_bodies.values() for row in rows])
 
     write_named_files(

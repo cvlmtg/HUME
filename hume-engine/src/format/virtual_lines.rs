@@ -34,7 +34,7 @@ pub(crate) fn format_virtual_lines(
             provider_id: vl.provider_id,
             anchor_line,
         };
-        let mut wrap = WrapState::start(
+        let mut state = WrapState::start(
             owner,
             wrap,
             || hume_rope::width::indent_depth(&vl.text, tab_width),
@@ -59,7 +59,7 @@ pub(crate) fn format_virtual_lines(
                 .scope_at(ByteCol::new(byte_offset))
                 .or(vl.base_scope);
             cells.push_wrapping(
-                &mut wrap,
+                &mut state,
                 &mut out.display_lines,
                 byte_offset,
                 cluster,
@@ -69,7 +69,7 @@ pub(crate) fn format_virtual_lines(
 
         close_display_line_at(
             &mut out.display_lines,
-            wrap.line_g_start,
+            state.line_g_start,
             out.graphemes.len(),
         );
         out.base_scopes

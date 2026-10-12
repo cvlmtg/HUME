@@ -130,7 +130,7 @@ fn attach_grammar_with_broken_injections_fails_whole_attach() {
         "broken injections.scm must surface as InjectionsQueryBuild, got: {err:?}"
     );
     assert!(
-        reg.by_name("rust").is_none(),
+        reg.defined_id("rust").is_none(),
         "a failed attach must not leave a partial identity behind"
     );
 }
@@ -230,7 +230,7 @@ fn attach_grammar_with_broken_textobjects_fails_whole_attach() {
         "broken textobjects.scm must surface as TextObjectsQueryBuild, got: {err:?}"
     );
     assert!(
-        reg.by_name("rust").is_none(),
+        reg.defined_id("rust").is_none(),
         "a failed attach must not leave a partial identity behind"
     );
 }
@@ -248,14 +248,12 @@ fn language_registry_remove_is_idempotent() {
 }
 
 #[test]
-fn register_identity_then_by_name_returns_entry() {
+fn register_identity_then_defined_id_returns_its_id() {
     let mut reg = LanguageRegistry::new();
     reg.register_identity("toml", &["toml"], &[], &[]).unwrap();
-    assert!(
-        reg.by_name("toml").is_some(),
-        "identity should be registered"
-    );
-    let id = reg.id_of("toml").expect("toml must be interned");
+    let id = reg
+        .defined_id("toml")
+        .expect("identity should be registered");
     assert_eq!(reg.name_of(id), "toml");
     assert!(
         reg.by_extension("toml").is_some(),

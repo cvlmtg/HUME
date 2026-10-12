@@ -202,14 +202,14 @@ fn lazy_plugin_defined_language_is_registered_on_activation() {
     );
 
     assert!(
-        ed.state.config.languages.by_name("foo").is_none(),
+        ed.state.config.languages.defined_id("foo").is_none(),
         "precondition: 'foo' must not be registered before activation"
     );
 
     type_cmd(&mut ed, ":bar");
 
     assert!(
-        ed.state.config.languages.by_name("foo").is_some(),
+        ed.state.config.languages.defined_id("foo").is_some(),
         "a define-language! from a lazily-activated plugin body must be applied \
          in the same activation call, not stranded until :reload-config"
     );

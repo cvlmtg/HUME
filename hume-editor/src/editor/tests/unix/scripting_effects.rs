@@ -113,7 +113,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
     ed.apply_script_effects(effects);
 
     assert!(
-        ed.state.config.languages.by_name("widget").is_some(),
+        ed.state.config.languages.defined_id("widget").is_some(),
         "language identity must be registered"
     );
     assert_eq!(

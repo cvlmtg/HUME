@@ -486,10 +486,12 @@ impl LanguageRegistry {
         self.by_ext.get(ext).copied()
     }
 
-    /// Look up a language's identity by name (e.g. `"rust"`).
-    pub fn by_name(&self, name: &str) -> Option<&LanguageIdentity> {
+    /// The id of `name` when it has a registered identity (e.g. `"rust"`
+    /// after its `define-language!`), unlike [`Self::id_of`], which answers
+    /// for any interned name.
+    pub fn defined_id(&self, name: &str) -> Option<LanguageId> {
         let id = self.id_of(name)?;
-        self.entry(id).identity.as_ref()
+        self.entry(id).identity.is_some().then_some(id)
     }
 
     /// Iterator over registered language names (those with an identity), in

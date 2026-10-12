@@ -77,7 +77,7 @@ impl Editor {
     /// share.
     pub(super) fn set_buffer_language_by_name(&mut self, bid: BufferId, name: Option<&str>) {
         let new_lang = name.map(|name| {
-            if self.state.config.languages.by_name(name).is_none() {
+            if self.state.config.languages.defined_id(name).is_none() {
                 self.report(
                     super::Severity::Info,
                     format!("language '{name}' is not registered"),
@@ -345,10 +345,7 @@ impl Editor {
         by: ConfiguredBy,
     ) {
         let languages = &mut self.state.config.languages;
-        let Some(id) = languages
-            .id_of(name)
-            .filter(|_| languages.by_name(name).is_some())
-        else {
+        let Some(id) = languages.defined_id(name) else {
             self.report(
                 super::Severity::Error,
                 format!("configure-language!: language '{name}' is not defined"),

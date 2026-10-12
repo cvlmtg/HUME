@@ -77,7 +77,7 @@ pub fn format_buffer_line(
     let virtual_texts_out = &mut out.virtual_texts;
 
     let mut insert_idx = 0usize;
-    let mut wrap = WrapState::start(
+    let mut state = WrapState::start(
         WrapOwner::Buffer(line_idx),
         wrap,
         || indent_depth,
@@ -102,13 +102,13 @@ pub fn format_buffer_line(
         {
             if h_window
                 .as_ref()
-                .is_some_and(|w| wrap.current_display_col >= w.end)
+                .is_some_and(|w| state.current_display_col >= w.end)
             {
                 clipped = true;
                 break 'lines;
             }
             let ins = &inline_inserts[insert_idx];
-            if wrap.wrap_width.is_none() && h_window.is_none() {
+            if state.wrap_width.is_none() && h_window.is_none() {
                 // No wrapping and no horizontal window: `maybe_wrap` below
                 // would be a no-op and the visibility check would
                 // short-circuit on `h_window`'s own `None`. The only thing
@@ -126,7 +126,7 @@ pub fn format_buffer_line(
                             indent_depth,
                         },
                         tab_width,
-                        &mut wrap.current_display_col,
+                        &mut state.current_display_col,
                         |_| Some(ins.scope),
                     );
                 }
@@ -143,14 +143,15 @@ pub fn format_buffer_line(
                 // column it's later used against; nothing here can go stale.
                 let ins_width = hume_rope::width::str_width(
                     &ins.text,
-                    wrap.current_display_col.get() as usize,
+                    state.current_display_col.get() as usize,
                     tab_width,
                 )
                 .min(255) as u8;
                 if ins_width > 0 {
-                    wrap.maybe_wrap(ins_width, indent_depth, lines_out, graphemes_out);
+                    state.maybe_wrap(ins_width, indent_depth, lines_out, graphemes_out);
                     let visible = h_window.as_ref().is_none_or(|w| {
-                        wrap.current_display_col
+                        state
+                            .current_display_col
                             .advance_saturating(ins_width as u32)
                             > w.start
                     });
@@ -165,11 +166,11 @@ pub fn format_buffer_line(
                                 indent_depth,
                             },
                             tab_width,
-                            &mut wrap.current_display_col,
+                            &mut state.current_display_col,
                             |_| Some(ins.scope),
                         );
                     } else {
-                        wrap.current_display_col = wrap
+                        state.current_display_col = state
                             .current_display_col
                             .advance_saturating(ins_width as u32);
                     }
@@ -180,7 +181,7 @@ pub fn format_buffer_line(
 
         if h_window
             .as_ref()
-            .is_some_and(|w| wrap.current_display_col >= w.end)
+            .is_some_and(|w| state.current_display_col >= w.end)
         {
             clipped = true;
             break 'lines;
@@ -198,7 +199,7 @@ pub fn format_buffer_line(
         // ── Compute display width and content ─────────────────────────────
         let (width, content) = grapheme_display(
             grapheme_str,
-            wrap.current_display_col,
+            state.current_display_col,
             tab_width,
             whitespace,
             is_trailing,
@@ -206,7 +207,7 @@ pub fn format_buffer_line(
         );
 
         // ── Wrap if necessary ─────────────────────────────────────────────
-        wrap.maybe_wrap(width, indent_depth, lines_out, graphemes_out);
+        state.maybe_wrap(width, indent_depth, lines_out, graphemes_out);
 
         // A tab deferred whole to a continuation display line expands from its new
         // (post-wrap) column, not the one `grapheme_display` computed it at:
@@ -214,7 +215,7 @@ pub fn format_buffer_line(
         let width = if grapheme_str == "\t" {
             hume_rope::width::grapheme_width(
                 "\t",
-                wrap.current_display_col.get() as usize,
+                state.current_display_col.get() as usize,
                 tab_width,
             ) as u8
         } else {
@@ -225,7 +226,7 @@ pub fn format_buffer_line(
         // Read after `maybe_wrap`, which rewrites `current_display_col` when it moves
         // this grapheme to a continuation display line. Shared by the pushed cell and
         // the `bound` check below so the two cannot disagree.
-        let start_display_col = wrap.current_display_col;
+        let start_display_col = state.current_display_col;
         let byte_range = cluster.bytes;
         let visible = h_window
             .as_ref()
@@ -241,7 +242,7 @@ pub fn format_buffer_line(
                 scope: None,
             });
         }
-        wrap.current_display_col = wrap.current_display_col.advance_saturating(width as u32);
+        state.current_display_col = state.current_display_col.advance_saturating(width as u32);
 
         // For CJK (width == 2): emit a WidthContinuation placeholder so the
         // render stage knows not to write anything to the second cell.
@@ -252,7 +253,7 @@ pub fn format_buffer_line(
                 byte_range,
                 // Same cluster as the primary cell; not a distinct buffer position.
                 pos: Some(cluster.start),
-                display_col: wrap.current_display_col,
+                display_col: state.current_display_col,
                 width: 0, // zero: does not consume columns
                 content: CellContent::WidthContinuation,
                 indent_depth,
@@ -270,7 +271,7 @@ pub fn format_buffer_line(
         // a split at this boundary stranding the continuation as the next
         // display line's first cell while the tab itself stayed on the
         // previous display line.
-        wrap.note_ws(is_ws, graphemes_out.len());
+        state.note_ws(is_ws, graphemes_out.len());
 
         // Checked here, at the very end of the iteration, so the grapheme that
         // satisfies the bound is emitted whole, with any inline inserts that
@@ -312,11 +313,11 @@ pub fn format_buffer_line(
             // column past the pane's own right edge, where the cursor it
             // stands in for would render invisible or bleed into the divider
             // seam.
-            wrap.maybe_wrap(1, indent_depth, lines_out, graphemes_out);
+            state.maybe_wrap(1, indent_depth, lines_out, graphemes_out);
             graphemes_out.push(Grapheme {
                 byte_range: eol_bytes,
                 pos: break_pos,
-                display_col: wrap.current_display_col,
+                display_col: state.current_display_col,
                 width: 1,
                 content: CellContent::Empty,
                 indent_depth: 0,
@@ -336,7 +337,7 @@ pub fn format_buffer_line(
                     indent_depth,
                 },
                 tab_width,
-                &mut wrap.current_display_col,
+                &mut state.current_display_col,
                 |_| Some(ins.scope),
             );
         }
@@ -354,7 +355,7 @@ pub fn format_buffer_line(
                 // which is the EOL sentinel pushed earlier in this function.
                 // The indicator itself is never the cursor-cell match.
                 pos: break_pos,
-                display_col: wrap.current_display_col,
+                display_col: state.current_display_col,
                 width: 1,
                 content: CellContent::Whitespace { start, len },
                 indent_depth,
@@ -364,7 +365,7 @@ pub fn format_buffer_line(
     }
 
     // Close the last display line.
-    close_display_line_at(lines_out, wrap.line_g_start, graphemes_out.len());
+    close_display_line_at(lines_out, state.line_g_start, graphemes_out.len());
 }
 
 // ---------------------------------------------------------------------------

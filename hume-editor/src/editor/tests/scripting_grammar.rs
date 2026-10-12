@@ -179,7 +179,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
     );
     // Identity survives detach: grammar is gone, language definition is not.
     assert!(
-        ed.state.config.languages.by_name("json").is_some(),
+        ed.state.config.languages.defined_id("json").is_some(),
         "identity must survive grammar detach"
     );
 }
