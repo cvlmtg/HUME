@@ -300,6 +300,24 @@ fn list_themes_reports_installed_repo() {
     ");
 }
 
+/// An installed repo with no `.toml` themes reads `no themes`.
+#[test]
+fn list_themes_reports_repo_without_themes() {
+    let _path = path_reader();
+    let (data_tmp, _origin_tmp, _origin) = installed_fixture(&[("themes/README.md", "x\n")]);
+
+    let mut ed = plum_editor(data_tmp.path());
+    type_cmd(&mut ed, ":plum-list-themes");
+
+    insta::assert_snapshot!(ed.doc().text().to_string(), @"
+    Installed theme repos (1)
+      acme/theme.hume: no themes
+
+    Unmanaged themes (0)
+      none
+    ");
+}
+
 /// An unmanaged `.toml` with no installed repos at all.
 #[test]
 fn list_themes_reports_unmanaged_file() {

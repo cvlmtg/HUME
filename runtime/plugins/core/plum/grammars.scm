@@ -111,7 +111,7 @@
   (let ((name (call! "stdlib/resolve-lang-arg" pane cmd arg)))
     (cond ((not name) #f)
           ((not (bundled-language-grammar name))
-           (log! 'info (string-append cmd ": no grammar for language \"" name "\" — see :plum-list-grammars"))
+           (log! 'info (string-append cmd ": no grammar for language \"" name "\"; Tab after :plum-install-grammar lists the languages that have one"))
            #f)
           (else name))))
 
@@ -182,11 +182,13 @@
 (define-typed-command! "plum-list-grammars"
   "Show the installed grammars and the orphan ones."
   (lambda (pane)
-    (plum/show-report! pane "plum-grammars"
-      (list (plum/report-section "Installed grammars"
-              (filter bundled-language-grammar (installed-grammars)) #f)
-            (plum/report-section "Orphan grammars" (plum/orphan-grammars)
-              "remove with :plum-cleanup-grammars")))))
+    (let ((known (map (lambda (name) (cons name (bundled-language-grammar name)))
+                      (installed-grammars))))
+      (plum/show-report! pane "plum-grammars"
+        (list (plum/report-section "Installed grammars" (map car (filter cdr known)) #f)
+              (plum/report-section "Orphan grammars"
+                (map car (filter (lambda (entry) (not (cdr entry))) known))
+                "remove with :plum-cleanup-grammars"))))))
 
 (define-typed-command! "plum-cleanup-grammars"
   "Delete compiled grammar files that are no longer in the declared source list."

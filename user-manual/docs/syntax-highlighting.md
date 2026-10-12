@@ -185,7 +185,7 @@ See [Configuration](configuration.md) for the full settings reference.
 
 ## Troubleshooting
 
-**The file opens with no colors.** No compiled grammar for the language. Run `:plum-list-grammars`. If the language isn't under **Installed grammars**, run `:plum-install-grammar <name>` (or just `:plum-install-grammar` while that buffer is focused). If `:plum-install-grammar` doesn't offer the language when you press `Tab`, HUME doesn't recognize the file. Set it with `:set buffer language=<name>` or define it in your `init.scm`.
+**The file opens with no colors.** No compiled grammar for the language. Run `:plum-list-grammars`. If the language isn't under **Installed grammars**, run `:plum-install-grammar <name>` (or just `:plum-install-grammar` while that buffer is focused). If `:plum-install-grammar` doesn't offer the language when you press `Tab`, HUME has no grammar to install for it. Check the language name on the status line and fix a wrong detection with `:set buffer language=<name>`. For a language HUME ships no grammar for, register one by hand (see [Teach HUME a new language](#teach-hume-a-new-language)).
 
 **`:plum-install-grammar` fails.** The message names the missing piece. Usually a missing tool on your `PATH`; check the [prerequisites](#prerequisites). A bad source tree recovers by running `:plum-install-grammar` again.
 

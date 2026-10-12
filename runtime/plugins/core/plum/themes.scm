@@ -115,7 +115,10 @@
                               (stems-with-suffix (plum/themes-dir) ".toml"))))
       (plum/show-report! pane "plum-themes"
         (list (plum/report-section "Installed theme repos"
-                (map (lambda (p) (string-append (car p) ": " (string-join (cdr p) ", "))) per-repo)
+                (map (lambda (p)
+                       (string-append (car p) ": "
+                         (if (null? (cdr p)) "no themes" (string-join (cdr p) ", "))))
+                     per-repo)
                 #f)
               (plum/report-section "Unmanaged themes" unmanaged #f))))))
 

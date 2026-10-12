@@ -18,23 +18,20 @@
 ;; ── Set operations ────────────────────────────────────────────────────────────
 
 ;;; core:* plugins excluded — they're bundled, never installed by PLUM.
-(define (plum/missing-plugins)
-  (let ((installed (plum/installed-plugins)))
-    (filter (lambda (name) (and (not (starts-with? name "core:"))
-                                 (not (member name installed))))
-            (declared-plugins))))
+(define (plum/missing-plugins declared installed)
+  (filter (lambda (name) (and (not (starts-with? name "core:"))
+                               (not (member name installed))))
+          declared))
 
-(define (plum/orphan-plugins)
-  (let ((declared (declared-plugins)))
-    (filter (lambda (name) (not (member name declared)))
-            (plum/installed-plugins))))
+(define (plum/orphan-plugins declared installed)
+  (filter (lambda (name) (not (member name declared))) installed))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
 (define-typed-command! "plum-install-plugins"
   "Install all declared plugins that are not yet on disk."
   (lambda ()
-    (let ((missing (plum/missing-plugins)))
+    (let ((missing (plum/missing-plugins (declared-plugins) (plum/installed-plugins))))
       (if (null? missing)
           (log! 'info "PLUM: nothing to install")
           (let ((n (plum/batch-run! "installed" missing
@@ -46,7 +43,7 @@
 (define-typed-command! "plum-cleanup-plugins"
   "Remove on-disk plugins that are no longer declared in init.scm."
   (lambda ()
-    (let ((orphans (plum/orphan-plugins)))
+    (let ((orphans (plum/orphan-plugins (declared-plugins) (plum/installed-plugins))))
       (if (null? orphans)
           (log! 'info "PLUM: nothing to remove")
           (plum/batch-run! "removed" orphans
@@ -67,10 +64,12 @@
 (define-typed-command! "plum-list-plugins"
   "Show the declared, installed, orphan, and missing plugin lists."
   (lambda (pane)
-    (plum/show-report! pane "plum-plugins"
-      (list (plum/report-section "Declared plugins" (declared-plugins) #f)
-            (plum/report-section "Installed plugins" (plum/installed-plugins) #f)
-            (plum/report-section "Orphan plugins" (plum/orphan-plugins)
-              "remove with :plum-cleanup-plugins")
-            (plum/report-section "Missing plugins" (plum/missing-plugins)
-              "install with :plum-install-plugins")))))
+    (let ((declared (declared-plugins))
+          (installed (plum/installed-plugins)))
+      (plum/show-report! pane "plum-plugins"
+        (list (plum/report-section "Declared plugins" declared #f)
+              (plum/report-section "Installed plugins" installed #f)
+              (plum/report-section "Orphan plugins" (plum/orphan-plugins declared installed)
+                "remove with :plum-cleanup-plugins")
+              (plum/report-section "Missing plugins" (plum/missing-plugins declared installed)
+                "install with :plum-install-plugins"))))))

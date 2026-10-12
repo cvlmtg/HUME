@@ -59,7 +59,6 @@
         "  none\n"
         (string-join (map (lambda (item) (string-append "  " item "\n")) items) ""))))
 
-;;; Shows `sections` in the read-only buffer `[name]` on `pane`.
 (define (plum/show-report! pane name sections)
   (show-read-only-buffer! pane name (string-join sections "\n")))
 
