@@ -19,13 +19,13 @@ Idempotent: running twice produces byte-identical files.
 from __future__ import annotations
 
 import json
-import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sync_common import (  # noqa: E402
+    check_file_names,
     fetch_bytes,
     read_pin,
     read_sexpr,
@@ -64,11 +64,6 @@ LANGUAGE_DATA_HEADER = """\
 ;;; Generated — do not hand-edit. Record format: README.md, parent directory.
 ;;; Source: helix-editor/helix languages.toml @ {sha}
 """
-
-# A language or server name names its data file: lowercase so it stays
-# distinct on case-insensitive file systems, no leading dot so it is never a
-# dotfile.
-FILE_NAME = re.compile(r"[a-z0-9_-][a-z0-9._-]*")
 
 LANGUAGE_SERVERS_HEADER = """\
 ;;; runtime/plugins/core/lsp-install/data/language-servers.scm — each language's ordered LSP server list.
@@ -240,14 +235,6 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
             print(f"  {n}", file=sys.stderr)
 
     return langs
-
-
-def check_file_names(what: str, names) -> None:
-    """Fatal unless every name matches FILE_NAME; `what` names the kind in the
-    error."""
-    for name in names:
-        if not FILE_NAME.fullmatch(name):
-            sys.exit(f"error: {what} name '{name}' does not match {FILE_NAME.pattern}")
 
 
 def emit_language_identities(langs: list[dict]) -> list[str]:
@@ -459,7 +446,7 @@ def emit_lsp_registration(name: str, server: dict) -> list[str]:
     if server["command"] != name:
         fields.append("(command . {})".format(scheme_str(server["command"])))
     if server["args"]:
-        fields.append("(args {})".format(" ".join(scheme_str(a) for a in server["args"])))
+        fields.append("(args {})".format(scheme_str_list(server["args"])))
     if server["config"]:
         fields.append(
             "(config . {})".format(scheme_str(json.dumps(server["config"], sort_keys=True)))
@@ -478,7 +465,7 @@ def emit_language_servers(
             if feature_filter:
                 kind, features = feature_filter
                 parts.append(
-                    "({}-features {})".format(kind, " ".join(scheme_str(f) for f in features))
+                    "({}-features {})".format(kind, scheme_str_list(features))
                 )
             entries.append("({})".format(" ".join(parts)))
         rows.append(" ({} (servers {}))".format(scheme_str(lang_name), " ".join(entries)))

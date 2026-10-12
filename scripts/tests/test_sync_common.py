@@ -62,6 +62,30 @@ class WriteNamedFiles(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.write(Path(tmp), {"bad": ["((a"]})
 
+    def test_a_name_outside_the_charset_is_fatal_before_any_file_is_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "named"
+
+            with self.assertRaises(SystemExit):
+                self.write(directory, {"ok": ["()"], "../escape": ["()"]})
+
+            self.assertFalse((Path(tmp) / "escape.scm").exists())
+            self.assertFalse((directory / "ok.scm").exists())
+
+
+class FileNames(unittest.TestCase):
+    def test_a_name_outside_the_charset_or_with_a_leading_dot_is_fatal(self):
+        for name in ("Nix", "C:x", "a/b", "", ".", "..", ".x"):
+            with self.subTest(name=name), self.assertRaises(SystemExit):
+                sync_common.check_file_names("language", [name])
+
+    def test_a_server_name_outside_the_charset_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            sync_common.check_file_names("server", ["ok-ls", "Foo-LS"])
+
+    def test_dotted_names_are_accepted(self):
+        sync_common.check_file_names("language", ["markdown.inline", "robots.txt"])
+
 
 class ReadNamedFiles(unittest.TestCase):
     def test_reads_each_body_by_name_sorted_skipping_dotfiles(self):

@@ -70,38 +70,55 @@ def write_generated_file(path: Path, header: str, rows: list[str]) -> None:
     write_atomic(path, generated_file_text(header, rows))
 
 
-def write_named_files(directory: Path, header, bodies: dict[str, list[str]]) -> None:
-    """Write `<directory>/<name>.scm` for each `name` in `bodies`, headed by
-    `header(name)`, and delete the file of any name not in `bodies`. The
-    directory holds generated files only, so anything other than a `.scm` file
-    there is fatal. Dotfiles (Finder's `.DS_Store`) are left alone."""
-    directory.mkdir(parents=True, exist_ok=True)
-    entries = [p for p in directory.iterdir() if not p.name.startswith(".")]
-    foreign = sorted(p.name for p in entries if p.suffix != ".scm")
+# A language or server name names its data file: lowercase so it stays
+# distinct on case-insensitive file systems, no leading dot so it is never a
+# dotfile.
+FILE_NAME = re.compile(r"[a-z0-9_-][a-z0-9._-]*")
+
+
+def check_file_names(what: str, names) -> None:
+    """Fatal unless every name matches FILE_NAME; `what` names the kind in the
+    error."""
+    for name in names:
+        if not FILE_NAME.fullmatch(name):
+            sys.exit(f"error: {what} name '{name}' does not match {FILE_NAME.pattern}")
+
+
+def named_files(directory: Path) -> dict[str, Path]:
+    """`{name: path}` for each `<directory>/<name>.scm`, sorted by name. A
+    missing directory has none. Dotfiles (Finder's `.DS_Store`) are skipped.
+    The directory holds generated files only, so any other entry is fatal."""
+    if not directory.is_dir():
+        return {}
+    entries = sorted(p for p in directory.iterdir() if not p.name.startswith("."))
+    foreign = [p.name for p in entries if p.suffix != ".scm"]
     if foreign:
         sys.exit(f"error: {directory} holds files that are not generated: {foreign}")
+    return {p.stem: p for p in entries}
 
-    written = set()
+
+def write_named_files(directory: Path, header, bodies: dict[str, list[str]]) -> None:
+    """Write `<directory>/<name>.scm` for each `name` in `bodies`, headed by
+    `header(name)`, and delete the file of any name not in `bodies`. Every
+    name is checked against FILE_NAME before anything is written."""
+    check_file_names(f"{directory} file", bodies)
+    directory.mkdir(parents=True, exist_ok=True)
+    existing = named_files(directory)
+
     for name, rows in bodies.items():
         path = directory / f"{name}.scm"
         write_generated_file(path, header(name), rows)
         read_sexpr(path)  # self-check: emitted file must re-parse
-        written.add(path.name)
 
-    for path in sorted(entries):
-        if path.name not in written:
+    for name, path in existing.items():
+        if name not in bodies:
             path.unlink()
             print(f"removed {path}", file=sys.stderr)
 
 
 def read_named_files(directory: Path) -> dict:
-    """`{name: body}` for each `<directory>/<name>.scm` that `write_named_files`
-    writes, sorted by name. A missing directory has no files."""
-    return {
-        path.name[: -len(".scm")]: read_sexpr(path)
-        for path in sorted(directory.glob("*.scm"))
-        if not path.name.startswith(".")
-    }
+    """`{name: body}` for each file `named_files` lists."""
+    return {name: read_sexpr(path) for name, path in named_files(directory).items()}
 
 
 def fetch_bytes(url: str, *, timeout: int) -> bytes:

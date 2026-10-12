@@ -47,6 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sync_common import (  # noqa: E402
     fetch_bytes,
     generated_file_text,
+    named_files,
     read_named_files,
     read_pin,
     scheme_str,
@@ -848,18 +849,10 @@ def write_requirements(sources: Path, out: Path, *, check: bool) -> None:
     bodies = {name: emit_requirement(name, body) for name, body in read_named_files(sources).items()}
     if check:
         expected = {
-            f"{name}.scm": generated_file_text(requirement_header(name), rows)
+            name: generated_file_text(requirement_header(name), rows)
             for name, rows in bodies.items()
         }
-        actual = (
-            {
-                p.name: p.read_text(encoding="utf-8")
-                for p in out.glob("*.scm")
-                if not p.name.startswith(".")
-            }
-            if out.is_dir()
-            else {}
-        )
+        actual = {name: path.read_text(encoding="utf-8") for name, path in named_files(out).items()}
         if actual != expected:
             sys.exit(
                 f"error: {out} is stale — run scripts/sync-lsp-sources.py --requirements-only"

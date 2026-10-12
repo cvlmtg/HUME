@@ -304,20 +304,6 @@ class LanguageGrammar(unittest.TestCase):
         self.assertIsNone(self.grammar_of({"name": "cabal"}))
 
 
-class FileNames(unittest.TestCase):
-    def test_a_name_outside_the_charset_or_with_a_leading_dot_is_fatal(self):
-        for name in ("Nix", "C:x", "a/b", "", ".", "..", ".x"):
-            with self.subTest(name=name), self.assertRaises(SystemExit):
-                sync.check_file_names("language", [name])
-
-    def test_a_server_name_outside_the_charset_is_fatal(self):
-        with self.assertRaises(SystemExit):
-            sync.check_file_names("server", ["ok-ls", "Foo-LS"])
-
-    def test_dotted_names_are_accepted(self):
-        sync.check_file_names("language", ["markdown.inline", "robots.txt"])
-
-
 def parsed_language(**overrides):
     """A parsed language with no values, plus `overrides`."""
     return {

@@ -13,7 +13,7 @@ Each one-file-per-name directory (`runtime/scheme/languages/`, and `registration
 `sources/` and `requirements/` under `lsp-install/data/`) is owned by the script that writes
 it: the script deletes the file of every name it does not emit, and stops with an error
 if the directory holds anything other than `.scm` files, so nothing hand-written belongs
-there. Language and server names must match `FILE_NAME` in `sync-grammars.py`, so each stays
+there. Language and server names must match `FILE_NAME` in `sync_common.py`, so each stays
 distinct on a case-insensitive file system.
 
 Shared helpers (pin reading, sexpr emission, atomic writes, the one-file-per-name writer and

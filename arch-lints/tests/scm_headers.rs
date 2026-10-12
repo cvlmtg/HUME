@@ -166,6 +166,15 @@ fn generated_scm_headers_match_their_generator_templates() {
         let mut files: Vec<_> = std::fs::read_dir(&dir)
             .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()))
             .map(|entry| entry.expect("readable directory entry").path())
+            // Only `<name>.scm` is generated: a dotfile (Finder's `.DS_Store`)
+            // or a leftover `.scm.tmp` is not.
+            .filter(|path| {
+                let dotfile = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with('.'));
+                !dotfile && path.extension().is_some_and(|ext| ext == "scm")
+            })
             .collect();
         files.sort();
         assert!(
