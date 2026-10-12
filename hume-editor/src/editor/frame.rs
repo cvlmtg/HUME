@@ -131,16 +131,18 @@ impl Editor {
         view.render(
             area,
             grid,
-            |bid| buffers.try_get(bid).map(|b| b.text().rope()),
-            |bid| {
-                buffers
-                    .try_get(bid)
-                    .and_then(|b| b.syntax.as_ref())
-                    .map(|s| s as &dyn hume_engine::providers::SyntaxSpans)
+            hume_engine::pipeline::FrameInputs {
+                get_rope: |bid| buffers.try_get(bid).map(|b| b.text().rope()),
+                get_syntax: |bid| {
+                    buffers
+                        .try_get(bid)
+                        .and_then(|b| b.syntax.as_ref())
+                        .map(|s| s as &dyn hume_engine::providers::SyntaxSpans)
+                },
+                statusline: &statusline,
+                focused_pane_id,
+                draw_dividers,
             },
-            &statusline,
-            focused_pane_id,
-            draw_dividers,
             ctx,
         );
     }

@@ -72,6 +72,26 @@ impl Default for FrameScratch {
     }
 }
 
+/// What one [`EngineView::render`] call draws from, built by the caller for
+/// that frame alone.
+pub struct FrameInputs<'a, R, S> {
+    /// Resolves a `BufferId` to the authoritative `&Rope` owned by the caller
+    /// (typically the editor's `Document`). The borrow is used only inside
+    /// the render call; no rope is stored in `EngineView`.
+    pub get_rope: R,
+    /// Resolves a `BufferId` to its syntax highlight span source, if any.
+    /// Same per-frame-borrow contract as `get_rope`.
+    pub get_syntax: S,
+    pub statusline: &'a dyn StatuslineProvider,
+    /// Drives seam-accent styling and non-focused dimming.
+    pub focused_pane_id: PaneId,
+    /// The `pane-dividers` setting: `true` reserves and paints a 1-cell seam
+    /// between sibling panes; `false` tiles panes edge-to-edge with no
+    /// reserved gap. Non-focused panes are dimmed either way: dimming is the
+    /// focus cue, the seam glyph is a separate cosmetic choice.
+    pub draw_dividers: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Render context: all per-frame scratch in one place
 // ---------------------------------------------------------------------------
@@ -443,37 +463,28 @@ impl EngineView {
 
     /// Render all panes into `buf` for the given terminal area.
     ///
-    /// `get_rope` resolves a `BufferId` to the authoritative `&Rope` owned by
-    /// the caller (typically the editor's `Document`). The borrow is used only
-    /// inside this call; no rope is stored in `EngineView`.
-    ///
-    /// `get_syntax` resolves a `BufferId` to its syntax highlight span
-    /// source, if any. Same per-frame-borrow contract as `get_rope`.
-    ///
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// always occupies the bottom row. Panes fill the remaining area.
     ///
     /// `ctx`'s [`pane_settings`](RenderContext::set_pane_settings) must carry
     /// an entry for every pane this call will draw.
-    ///
-    /// `focused_pane_id` drives seam-accent styling and non-focused dimming.
-    /// `draw_dividers` mirrors the `pane-dividers` setting: `true` reserves
-    /// and paints a 1-cell seam between sibling panes; `false` tiles panes
-    /// edge-to-edge with no reserved gap. Non-focused panes are dimmed
-    /// either way: dimming is the focus cue, the seam glyph is a separate
-    /// cosmetic choice.
-    #[allow(clippy::too_many_arguments)]
-    pub fn render<'rope>(
+    pub fn render<'rope, R, S>(
         &mut self,
         area: Rect,
         grid: &mut Grid,
-        get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
-        get_syntax: impl Fn(BufferId) -> Option<&'rope dyn SyntaxSpans>,
-        statusline: &dyn StatuslineProvider,
-        focused_pane_id: PaneId,
-        draw_dividers: bool,
+        input: FrameInputs<'_, R, S>,
         ctx: &mut RenderContext,
-    ) {
+    ) where
+        R: Fn(BufferId) -> Option<&'rope ropey::Rope>,
+        S: Fn(BufferId) -> Option<&'rope dyn SyntaxSpans>,
+    {
+        let FrameInputs {
+            get_rope,
+            get_syntax,
+            statusline,
+            focused_pane_id,
+            draw_dividers,
+        } = input;
         let scratch = &mut ctx.frame;
         let pane_settings = &ctx.pane_settings;
         let pane_rects = &mut ctx.pane_rects;
