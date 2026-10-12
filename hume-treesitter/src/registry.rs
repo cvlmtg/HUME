@@ -160,20 +160,22 @@ impl<'a> QueryPaths<'a> {
     }
 }
 
+/// Everything the registry holds for one interned language.
+struct LanguageEntry {
+    name: Arc<str>,
+    /// `None` = interned but no identity registered.
+    identity: Option<LanguageIdentity>,
+    config: LanguageConfig,
+    grammar: Option<Arc<GrammarBundle>>,
+}
+
 /// Global registry of configured language identities. Lives on `Editor`.
 ///
-/// `ids`/`names`/`identities`/`configs`/`grammars` are the interner: dense,
-/// append-only, all index-aligned by `LanguageId.0`. `identities.len() ==
-/// configs.len() == grammars.len() == names.len()` always: `intern` pushes one
-/// entry to each.
+/// `ids` and `entries` are the interner: dense and append-only, with
+/// `entries[id.0]` holding the language `id` names.
 pub struct LanguageRegistry {
     ids: FxHashMap<Arc<str>, LanguageId>,
-    names: Vec<Arc<str>>,
-    /// `None` = interned but no identity registered.
-    identities: Vec<Option<LanguageIdentity>>,
-    configs: Vec<LanguageConfig>,
-    /// The `LanguageId -> GrammarBundle` map.
-    grammars: Vec<Option<Arc<GrammarBundle>>>,
+    entries: Vec<LanguageEntry>,
     /// Detection indices, never rebuilt on `attach_grammar`, only on
     /// identity (re-)registration or removal.
     by_ext: FxHashMap<String, LanguageId>,
@@ -251,10 +253,7 @@ impl Default for LanguageRegistry {
     fn default() -> Self {
         Self {
             ids: FxHashMap::default(),
-            names: Vec::new(),
-            identities: Vec::new(),
-            configs: Vec::new(),
-            grammars: Vec::new(),
+            entries: Vec::new(),
             by_ext: FxHashMap::default(),
             compiled_globs: GlobSet::empty(),
             glob_lang_ids: Vec::new(),
@@ -286,17 +285,27 @@ impl LanguageRegistry {
         if let Some(&id) = self.ids.get(name) {
             return id;
         }
-        let id = LanguageId(self.names.len() as u32);
-        // One allocation, shared via Arc: `names` and `ids` both need their
+        let id = LanguageId(self.entries.len() as u32);
+        // One allocation, shared via Arc: the entry and `ids` both need their
         // own owned key, but they can point at the same heap string instead
         // of each holding an independent copy.
         let owned: Arc<str> = Arc::from(name);
-        self.names.push(Arc::clone(&owned));
-        self.identities.push(None);
-        self.configs.push(LanguageConfig::default());
-        self.grammars.push(None);
+        self.entries.push(LanguageEntry {
+            name: Arc::clone(&owned),
+            identity: None,
+            config: LanguageConfig::default(),
+            grammar: None,
+        });
         self.ids.insert(owned, id);
         id
+    }
+
+    fn entry(&self, id: LanguageId) -> &LanguageEntry {
+        &self.entries[id.0 as usize]
+    }
+
+    fn entry_mut(&mut self, id: LanguageId) -> &mut LanguageEntry {
+        &mut self.entries[id.0 as usize]
     }
 
     /// The id for `name`, if it has been interned.
@@ -307,7 +316,7 @@ impl LanguageRegistry {
     /// The name `id` was interned with. `id` must have been minted by this
     /// registry; an out-of-range id is a caller bug.
     pub fn name_of(&self, id: LanguageId) -> &str {
-        &self.names[id.0 as usize]
+        &self.entry(id).name
     }
 
     /// The `languageId` LSP servers expect for `id`: the language name
@@ -315,7 +324,8 @@ impl LanguageRegistry {
     /// Helix's, which diverge from the LSP spec's well-known identifiers for a
     /// handful of languages (`tsx` → `typescriptreact`).
     pub fn lsp_language_id_of(&self, id: LanguageId) -> &str {
-        self.configs[id.0 as usize]
+        self.entry(id)
+            .config
             .lsp_language_id
             .as_ref()
             .map_or_else(|| self.name_of(id), |s| s.value.as_str())
@@ -324,7 +334,8 @@ impl LanguageRegistry {
     /// The workspace root markers configured or bundled for `id`; empty when
     /// there are none.
     pub fn roots_of(&self, id: LanguageId) -> &[String] {
-        self.configs[id.0 as usize]
+        self.entry(id)
+            .config
             .roots
             .as_ref()
             .map_or(&[], |s| s.value.as_slice())
@@ -339,7 +350,7 @@ impl LanguageRegistry {
         roots: Vec<String>,
         by: ConfiguredBy,
     ) -> ConfigureOutcome {
-        configure(&mut self.configs[id.0 as usize].roots, roots, by)
+        configure(&mut self.entry_mut(id).config.roots, roots, by)
     }
 
     /// Set `id`'s wire `languageId` from configuration.
@@ -350,7 +361,7 @@ impl LanguageRegistry {
         by: ConfiguredBy,
     ) -> ConfigureOutcome {
         configure(
-            &mut self.configs[id.0 as usize].lsp_language_id,
+            &mut self.entry_mut(id).config.lsp_language_id,
             lsp_language_id,
             by,
         )
@@ -358,7 +369,7 @@ impl LanguageRegistry {
 
     /// Whether `id`'s bundled data file has been read.
     pub fn bundled_loaded(&self, id: LanguageId) -> bool {
-        self.configs[id.0 as usize].bundled_loaded
+        self.entry(id).config.bundled_loaded
     }
 
     /// Record that `id`'s bundled data file has been read, filling each field
@@ -369,7 +380,7 @@ impl LanguageRegistry {
         roots: Option<Vec<String>>,
         lsp_language_id: Option<String>,
     ) {
-        let config = &mut self.configs[id.0 as usize];
+        let config = &mut self.entry_mut(id).config;
         config.bundled_loaded = true;
         if let Some(roots) = roots {
             fill(&mut config.roots, roots);
@@ -418,7 +429,7 @@ impl LanguageRegistry {
         shebangs: &[&str],
     ) -> LanguageId {
         let id = self.intern(name);
-        if let Some(old) = self.identities[id.0 as usize].take() {
+        if let Some(old) = self.entry_mut(id).identity.take() {
             self.deindex(id, &old);
         }
         let new_identity = LanguageIdentity {
@@ -432,7 +443,7 @@ impl LanguageRegistry {
         for shebang in &new_identity.shebangs {
             self.shebang_to_id.insert(shebang.clone(), id);
         }
-        self.identities[id.0 as usize] = Some(new_identity);
+        self.entry_mut(id).identity = Some(new_identity);
         self.lang_order.retain(|&i| i != id);
         self.lang_order.push(id);
         id
@@ -464,8 +475,7 @@ impl LanguageRegistry {
     /// Returns `Err` if the NFA size limit is exceeded; on error the prior
     /// compiled set is preserved.
     pub fn rebuild_glob_set(&mut self) -> Result<(), RegisterError> {
-        let (compiled, ids) = Self::build_globs(&self.identities, &self.lang_order)
-            .map_err(RegisterError::GlobBuild)?;
+        let (compiled, ids) = self.build_globs().map_err(RegisterError::GlobBuild)?;
         self.compiled_globs = compiled;
         self.glob_lang_ids = ids;
         Ok(())
@@ -479,16 +489,16 @@ impl LanguageRegistry {
     /// Look up a language's identity by name (e.g. `"rust"`).
     pub fn by_name(&self, name: &str) -> Option<&LanguageIdentity> {
         let id = self.id_of(name)?;
-        self.identities[id.0 as usize].as_ref()
+        self.entry(id).identity.as_ref()
     }
 
     /// Iterator over registered language names (those with an identity), in
     /// arbitrary order.
     pub fn iter_names(&self) -> impl Iterator<Item = &str> {
-        self.identities
+        self.entries
             .iter()
-            .enumerate()
-            .filter_map(|(i, ident)| ident.as_ref().map(|_| &*self.names[i]))
+            .filter(|entry| entry.identity.is_some())
+            .map(|entry| &*entry.name)
     }
 
     /// The compiled glob matcher for path-based detection. Index-aligned with
@@ -514,9 +524,9 @@ impl LanguageRegistry {
     #[cfg(any(test, feature = "test-util"))]
     pub fn remove(&mut self, name: &str) -> Option<LanguageIdentity> {
         let id = self.id_of(name)?;
-        let identity = self.identities[id.0 as usize].take()?;
+        let identity = self.entry_mut(id).identity.take()?;
         self.deindex(id, &identity);
-        self.grammars[id.0 as usize] = None;
+        self.entry_mut(id).grammar = None;
         self.lang_order.retain(|&i| i != id);
         // Only reachable if the set already failed to compile before this remove:
         // `rebuild_glob_set` is fail-soft in production (see `apply_pending_language_regs`),
@@ -595,9 +605,9 @@ impl LanguageRegistry {
             .transpose()?;
 
         let id = self.intern(name);
-        if self.identities[id.0 as usize].is_none() {
-            self.identities[id.0 as usize] = Some(LanguageIdentity::default());
-        }
+        self.entry_mut(id)
+            .identity
+            .get_or_insert_with(LanguageIdentity::default);
         let config_gen = self.next_gen();
         let bundle = Arc::new(GrammarBundle {
             grammar,
@@ -606,7 +616,7 @@ impl LanguageRegistry {
             textobjects,
             config_gen,
         });
-        self.grammars[id.0 as usize] = Some(Arc::clone(&bundle));
+        self.entry_mut(id).grammar = Some(Arc::clone(&bundle));
         self.rebuild_grammar_snapshot();
         Ok(bundle)
     }
@@ -614,12 +624,12 @@ impl LanguageRegistry {
     /// Returns `true` if `name` has an attached tree-sitter grammar.
     pub fn has_grammar(&self, name: &str) -> bool {
         self.id_of(name)
-            .is_some_and(|id| self.grammars[id.0 as usize].is_some())
+            .is_some_and(|id| self.entry(id).grammar.is_some())
     }
 
     /// The grammar bundle attached to `id`, if any.
     pub fn grammar(&self, id: LanguageId) -> Option<&Arc<GrammarBundle>> {
-        self.grammars.get(id.0 as usize)?.as_ref()
+        self.entry(id).grammar.as_ref()
     }
 
     /// Snapshot of grammared languages, keyed by name. Handed to the parse
@@ -632,25 +642,23 @@ impl LanguageRegistry {
 
     fn rebuild_grammar_snapshot(&mut self) {
         self.grammar_snapshot = Arc::new(
-            self.grammars
+            self.entries
                 .iter()
-                .enumerate()
-                .filter_map(|(i, g)| {
-                    g.as_ref()
-                        .map(|b| (self.names[i].to_string(), Arc::clone(b)))
+                .filter_map(|entry| {
+                    entry
+                        .grammar
+                        .as_ref()
+                        .map(|b| (entry.name.to_string(), Arc::clone(b)))
                 })
                 .collect(),
         );
     }
 
-    fn build_globs(
-        identities: &[Option<LanguageIdentity>],
-        lang_order: &[LanguageId],
-    ) -> Result<(GlobSet, Vec<LanguageId>), globset::Error> {
+    fn build_globs(&self) -> Result<(GlobSet, Vec<LanguageId>), globset::Error> {
         let mut builder = GlobSetBuilder::new();
         let mut ids = Vec::new();
-        for &lang_id in lang_order {
-            if let Some(Some(identity)) = identities.get(lang_id.0 as usize) {
+        for &lang_id in &self.lang_order {
+            if let Some(identity) = &self.entry(lang_id).identity {
                 for glob in &identity.globs {
                     builder.add(glob.clone());
                     ids.push(lang_id);
