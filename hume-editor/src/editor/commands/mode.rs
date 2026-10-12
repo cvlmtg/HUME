@@ -1,5 +1,6 @@
 use crate::editor::registry::Count;
 use hume_editing::selection::Selection;
+use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
@@ -21,6 +22,20 @@ use crate::editor::error::CommandError;
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
 
+/// Enter Insert with the cursors placed by `place`, the shared body of the
+/// `i`/`a`/`I`/`A` family. `exit` is what Esc does with an empty typed run.
+fn enter_insert(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    fp: FocusedPane,
+    exit: ExitCursor,
+    place: impl FnOnce(EditState) -> EditState,
+) -> Result<(), CommandError> {
+    begin_insert_session(state, view, fp, place)?;
+    begin_typed_run(state, view, fp, exit);
+    Ok(())
+}
+
 pub(in crate::editor) fn cmd_insert_before(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -28,12 +43,9 @@ pub(in crate::editor) fn cmd_insert_before(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.pane(), |st| {
+    enter_insert(state, view, fp, ExitCursor::StayPut, |st| {
         st.map(|s| Selection::cursor(s.start()))
-    });
-    begin_insert_session(state, view, fp)?;
-    begin_typed_run(state, view, fp, ExitCursor::StayPut);
-    Ok(())
+    })
 }
 
 pub(in crate::editor) fn cmd_insert_after(
@@ -43,12 +55,9 @@ pub(in crate::editor) fn cmd_insert_after(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.pane(), |st| {
+    enter_insert(state, view, fp, ExitCursor::StayPut, |st| {
         cmd_move_right(st, 1, MotionMode::Move)
-    });
-    begin_insert_session(state, view, fp)?;
-    begin_typed_run(state, view, fp, ExitCursor::StayPut);
-    Ok(())
+    })
 }
 
 pub(in crate::editor) fn cmd_insert_at_line_start(
@@ -58,12 +67,9 @@ pub(in crate::editor) fn cmd_insert_at_line_start(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.pane(), |st| {
+    enter_insert(state, view, fp, ExitCursor::StayPut, |st| {
         cmd_goto_first_nonblank(st, 1, MotionMode::Move)
-    });
-    begin_insert_session(state, view, fp)?;
-    begin_typed_run(state, view, fp, ExitCursor::StayPut);
-    Ok(())
+    })
 }
 
 pub(in crate::editor) fn cmd_insert_at_line_end(
@@ -75,12 +81,9 @@ pub(in crate::editor) fn cmd_insert_at_line_end(
 ) -> Result<(), CommandError> {
     // A cursor on the head line's `\n`, where appended text goes. On an
     // empty line that is the line itself, so `A` equals `i` there.
-    apply_pane_motion(state, view, fp.pane(), |st| {
+    enter_insert(state, view, fp, ExitCursor::StepBack, |st| {
         st.map(|sel| Selection::cursor(sel.text().lines().newline(sel.head_line())))
-    });
-    begin_insert_session(state, view, fp)?;
-    begin_typed_run(state, view, fp, ExitCursor::StepBack);
-    Ok(())
+    })
 }
 
 /// Enter insert mode at the start of each selection (min of anchor and head).
@@ -92,12 +95,9 @@ pub(in crate::editor) fn cmd_insert_at_selection_start(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.pane(), |st| {
+    enter_insert(state, view, fp, ExitCursor::StayPut, |st| {
         st.map(|sel| Selection::cursor(sel.start()))
-    });
-    begin_insert_session(state, view, fp)?;
-    begin_typed_run(state, view, fp, ExitCursor::StayPut);
-    Ok(())
+    })
 }
 
 /// Enter insert mode after the end of each selection (one past max of anchor and head).
@@ -117,12 +117,9 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.pane(), |st| {
+    enter_insert(state, view, fp, ExitCursor::StepBack, |st| {
         st.map(|sel| Selection::cursor(sel.append_point()))
-    });
-    begin_insert_session(state, view, fp)?;
-    begin_typed_run(state, view, fp, ExitCursor::StepBack);
-    Ok(())
+    })
 }
 
 /// Open a new line below the cursor, carrying over its indent, and enter
@@ -143,7 +140,7 @@ pub(in crate::editor) fn cmd_open_line_below(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    begin_insert_session(state, view, fp)?;
+    begin_insert_session(state, view, fp, std::convert::identity)?;
     apply_pane_motion(state, view, fp.pane(), |st| {
         cmd_goto_line_newline(st, 1, MotionMode::Move)
     });
@@ -165,7 +162,7 @@ pub(in crate::editor) fn cmd_open_line_above(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    begin_insert_session(state, view, fp)?;
+    begin_insert_session(state, view, fp, std::convert::identity)?;
     apply_pane_motion(state, view, fp.pane(), |st| {
         cmd_goto_line_start(st, 1, MotionMode::Move)
     });

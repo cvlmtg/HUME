@@ -63,11 +63,10 @@ pub(in crate::editor) fn cmd_change(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    super::ensure_writable(state, view, fp.pane())?;
     // Preserving, not `begin_insert_session`: `c` is itself a register-
     // consuming operator (see `state.route_kill` below), so clearing the
     // prefix here would consume it a step too early.
-    begin_insert_session_preserving_register(state, view, fp)?;
+    begin_insert_session_preserving_register(state, view, fp, std::convert::identity)?;
     let mut yanked = Vec::new();
     apply_focused_edit_grouped(state, view, fp, |s| {
         let removal = delete_selection_content(s);

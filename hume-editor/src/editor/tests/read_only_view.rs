@@ -113,6 +113,65 @@ fn view_buffer_blocks_insert_mode() {
     );
 }
 
+/// Every Insert entry that places the cursor first is refused on a
+/// read-only buffer before it moves anything.
+#[test]
+fn insert_entry_on_a_read_only_buffer_leaves_the_selection_in_place() {
+    for cmd in [
+        "insert-before",
+        "insert-after",
+        "insert-at-line-start",
+        "insert-at-line-end",
+        "insert-at-selection-start",
+        "insert-at-selection-end",
+    ] {
+        let mut ed = editor_from("  he-[ll]>o world\n");
+        ed.doc_mut().read_only = true;
+        let before = state(&ed);
+
+        ed.execute_keymap_command(cmd.to_string().into(), None, false);
+
+        assert_eq!(state(&ed), before, "{cmd}");
+        assert_ne!(ed.state.mode(), Mode::Insert, "{cmd}");
+        assert_eq!(status(&ed), "Buffer is read-only", "{cmd}");
+    }
+}
+
+/// An Insert entry refused because another pane holds an Insert session on
+/// the same buffer leaves this pane's selection where it was.
+#[test]
+fn insert_entry_beside_another_panes_insert_session_leaves_the_selection_in_place() {
+    let mut ed = editor_from("he-[ll]>o world\n");
+    let pid_a = ed.state.focus.id();
+    let bid = ed.focused_buffer_id();
+    live_host!(ed)
+        .run_command_sync(
+            "pane-vsplit",
+            hume_scripting::PaneHandle::with_pane(bid, pid_a),
+            hume_scripting::host::NativeCall {
+                count: Some(1),
+                ..Default::default()
+            },
+        )
+        .expect("pane-vsplit must succeed");
+    let pid_b = ed.state.focus.id();
+    assert_ne!(pid_a, pid_b, "setup: the split must focus a new pane");
+    ed.state.focus.set_for_test(pid_a);
+    ed.feed_key(key('i'));
+    assert_eq!(ed.state.mode(), Mode::Insert, "setup: pane A is in Insert");
+    ed.state.focus.set_for_test(pid_b);
+    let before = state(&ed);
+
+    ed.execute_keymap_command("insert-after".to_string().into(), None, false);
+
+    assert_eq!(state(&ed), before);
+    assert!(
+        status(&ed).contains("open insert/paste session"),
+        "got {:?}",
+        status(&ed)
+    );
+}
+
 // ── Post-review fixes ─────────────────────────────────────────────────────────
 
 /// `u` and `Ctrl-r` on a read-only buffer leave the text alone, report why,

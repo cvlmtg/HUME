@@ -3,6 +3,7 @@
 //! entails. What `.` replays is recorded elsewhere (`replay.rs`).
 
 use hume_editing::selection::{EditView, Facing, Selection, SelectionView};
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::tracked::Tracked;
 use hume_engine::pipeline::EngineView;
@@ -11,6 +12,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::EditorState;
 use crate::editor::doc_ops;
+use crate::editor::edit_session;
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::{PaneBufferState, TypedRun};
 use hume_ops::edit::clear_blank_line_indent;
@@ -181,19 +183,26 @@ pub(super) fn begin_insert_session(
     state: &mut EditorState,
     view: &EngineView,
     fp: FocusedPane,
+    place: impl FnOnce(EditState) -> EditState,
 ) -> Result<(), CommandError> {
     state.register_prefix = None;
-    begin_insert_session_preserving_register(state, view, fp)
+    begin_insert_session_preserving_register(state, view, fp, place)
 }
 
 /// [`begin_insert_session`] without clearing `register_prefix` first, for a
 /// caller that is itself about to consume it. Do not call this for a plain
 /// `i`/`a`/`o` entry; use [`begin_insert_session`], which clears the prefix
 /// as those commands require.
+///
+/// `place` moves the cursors to where typing starts. It runs after every
+/// refusal (read-only, another pane's session) and before the undo group
+/// opens, so a refused entry moves nothing and undo restores the placed
+/// selections.
 pub(super) fn begin_insert_session_preserving_register(
     state: &mut EditorState,
     view: &EngineView,
     fp: FocusedPane,
+    place: impl FnOnce(EditState) -> EditState,
 ) -> Result<(), CommandError> {
     ensure_writable(state, view, fp.pane())?;
     let (pid, bid) = (fp.pid(), fp.bid(view));
@@ -207,6 +216,10 @@ pub(super) fn begin_insert_session_preserving_register(
         .active_session
         .as_ref()
         .is_some_and(|s| s.is_insert_at(pid, bid));
+    if !already_insert {
+        edit_session::check_can_open(&state.active_session, pid, bid)?;
+    }
+    super::apply_pane_motion(state, view, fp.pane(), place);
     if !already_insert {
         // Keep the change whose code opened this session alive for the
         // whole session, so its keystrokes record and a repeatable command

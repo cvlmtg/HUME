@@ -37,6 +37,7 @@
 - `.` after an Insert session that ended at a key bound to a search, sift or `:` prompt repeats the text typed before that key, without an error or a prompt.
 - `.` inside a macro repeats the last change, including one made before the macro ran. After a macro, `.` repeats the last change the macro made.
 - `n`, `N` and `m/` with no search pattern report it. `.` of a change whose selection step finds no pattern or no match leaves the text alone.
+- `i`, `a`, `I`, `A` and the other Insert entries leave the selection where it was when they are refused: on a read-only buffer, or while another pane is in Insert mode on the same buffer.
 - `:e!` restores a file's line ending even when its text is unchanged.
 - With soft wrap, `select-word-nearest-on-line` on a word that fills its display line no longer selects the space that starts the next display line.
 - In Extend mode, `w` after a backward extend moves the selection's start forward by one word instead of doing nothing.
