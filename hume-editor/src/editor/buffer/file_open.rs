@@ -187,9 +187,10 @@ impl Editor {
         self.resolve_open_path(&path.to_string_lossy())
     }
 
-    /// Allocate a new buffer slot (engine + BufferStore) and return the
-    /// allocated `BufferId`; see `lifecycle::open_buffer`'s own doc for why
-    /// no pane is seeded yet.
+    /// Tests' entry point to [`lifecycle::open_buffer_and_notify`], the
+    /// production open chokepoint: allocates the buffer slot and queues its
+    /// open announcement, which the next `settle` delivers. See
+    /// `lifecycle::open_buffer`'s doc for why no pane is seeded yet.
     #[cfg(test)]
     pub(in crate::editor) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
         lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc)

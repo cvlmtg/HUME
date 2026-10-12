@@ -86,8 +86,7 @@ pub(in crate::editor::buffer) fn open_buffer_and_notify(
 /// exist yet; see `Buffer::from_file_or_new`) and allocates via
 /// [`open_buffer_and_notify`] (which seeds the `undo-levels` cap from
 /// `state.settings`), returning `(new_id, true)`. Dedup-opening an
-/// already-open path enqueues no hook and detects no language, matching
-/// `Editor::open_buffer`'s "every call opens a new buffer" contract.
+/// already-open path enqueues no hook and detects no language.
 /// The caller is responsible for any other post-open work (pane switching).
 pub(in crate::editor) fn open_or_dedup_and_notify(
     ev: &mut EngineView,
