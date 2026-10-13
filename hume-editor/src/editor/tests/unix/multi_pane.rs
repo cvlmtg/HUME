@@ -206,7 +206,7 @@ fn split_path_arg_does_not_inherit_source_panes_view() {
     assert_eq!(
         test_fixtures::testing::serialize_state(
             text,
-            ed.state.panes.entries[pid_b].buffers[bid_b].selections()
+            ed.state.panes.entries.seeded(pid_b, bid_b).selections()
         ),
         test_fixtures::testing::serialize_state(text, &ed.state.buffers.get(bid_b).initial_sels()),
         "new pane starts at the opened file's initial selection, not A's cursor"

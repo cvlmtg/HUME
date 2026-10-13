@@ -323,7 +323,11 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, opened: &Inse
     // `has_blank_line_cursor` also skips the edit in the common case
     // (cursor not on a line this session owns) rather than running an
     // identity one on every Insert-mode exit.
-    let sels = state.panes.entries[pid].buffers[bid].view(state.buffers.get(bid).text());
+    let sels = state
+        .panes
+        .entries
+        .seeded(pid, bid)
+        .view(state.buffers.get(bid).text());
     let insert = state
         .active_session
         .as_ref()
@@ -355,7 +359,10 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, opened: &Inse
             insert.kill_opened_session,
         )
     };
-    let sel_count = state.panes.entries[pid].buffers[bid]
+    let sel_count = state
+        .panes
+        .entries
+        .seeded(pid, bid)
         .view(state.buffers.get(bid).text())
         .len();
     doc_ops::commit_edit_group(

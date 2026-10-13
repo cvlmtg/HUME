@@ -252,11 +252,11 @@ fn call_bang_count_arg_dispatches_synchronously() {
     );
     ed.execute_keymap_command("move-right-5".into(), Some(1), false);
 
-    let idx = ed.state.panes.entries[ed.view.focused_pane()]
-        .buffers
-        .values()
-        .next()
-        .unwrap()
+    let idx = ed
+        .state
+        .panes
+        .entries
+        .shown(&ed.view.panes, ed.view.focused_pane())
         .view(ed.doc().text())
         .primary()
         .head()
@@ -788,11 +788,11 @@ fn steel_lambda_receives_bid_count_and_extend() {
 
     // Dispatch with count=4: cursor must land at position 4.
     ed.execute_keymap_command("step-right".into(), Some(4), false);
-    let idx = ed.state.panes.entries[ed.view.focused_pane()]
-        .buffers
-        .values()
-        .next()
-        .unwrap()
+    let idx = ed
+        .state
+        .panes
+        .entries
+        .shown(&ed.view.panes, ed.view.focused_pane())
         .view(ed.doc().text())
         .primary()
         .head()
@@ -806,11 +806,11 @@ fn steel_lambda_receives_bid_count_and_extend() {
     // If injection were disabled, the cursor would be at 1 (count defaults to 1).
     // Restate with count=1 to prove the assert is live.
     ed.execute_keymap_command("step-right".into(), Some(1), false);
-    let idx2 = ed.state.panes.entries[ed.view.focused_pane()]
-        .buffers
-        .values()
-        .next()
-        .unwrap()
+    let idx2 = ed
+        .state
+        .panes
+        .entries
+        .shown(&ed.view.panes, ed.view.focused_pane())
         .view(ed.doc().text())
         .primary()
         .head()
@@ -840,21 +840,21 @@ fn steel_zero_arity_lambda_ignores_injection() {
     );
 
     // Dispatch with count=5: the 0-arg lambda ignores count, moves exactly 1.
-    let before = ed.state.panes.entries[ed.view.focused_pane()]
-        .buffers
-        .values()
-        .next()
-        .unwrap()
+    let before = ed
+        .state
+        .panes
+        .entries
+        .shown(&ed.view.panes, ed.view.focused_pane())
         .view(ed.doc().text())
         .primary()
         .head()
         .offset();
     ed.execute_keymap_command("fixed-right".into(), Some(5), false);
-    let after = ed.state.panes.entries[ed.view.focused_pane()]
-        .buffers
-        .values()
-        .next()
-        .unwrap()
+    let after = ed
+        .state
+        .panes
+        .entries
+        .shown(&ed.view.panes, ed.view.focused_pane())
         .view(ed.doc().text())
         .primary()
         .head()
@@ -894,21 +894,21 @@ fn steel_arity_1_lambda_receives_bid_only() {
 
     // Dispatch with count=5: an arity-1 lambda ignores count (it isn't
     // injected), so the cursor moves exactly 1.
-    let before = ed.state.panes.entries[ed.view.focused_pane()]
-        .buffers
-        .values()
-        .next()
-        .unwrap()
+    let before = ed
+        .state
+        .panes
+        .entries
+        .shown(&ed.view.panes, ed.view.focused_pane())
         .view(ed.doc().text())
         .primary()
         .head()
         .offset();
     ed.execute_keymap_command("step-bid-only".into(), Some(5), false);
-    let after = ed.state.panes.entries[ed.view.focused_pane()]
-        .buffers
-        .values()
-        .next()
-        .unwrap()
+    let after = ed
+        .state
+        .panes
+        .entries
+        .shown(&ed.view.panes, ed.view.focused_pane())
         .view(ed.doc().text())
         .primary()
         .head()
@@ -944,11 +944,11 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
 
     // Dispatch with count=3: cursor must land 3 positions to the right.
     ed.execute_keymap_command("step-count-only".into(), Some(3), false);
-    let idx = ed.state.panes.entries[ed.view.focused_pane()]
-        .buffers
-        .values()
-        .next()
-        .unwrap()
+    let idx = ed
+        .state
+        .panes
+        .entries
+        .shown(&ed.view.panes, ed.view.focused_pane())
         .view(ed.doc().text())
         .primary()
         .head()

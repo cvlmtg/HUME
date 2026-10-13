@@ -573,7 +573,7 @@ impl Buffer {
             "replace: the line diff must reproduce the new text"
         );
         let recorded =
-            |stores: &PositionStores<'_>| stores.panes[focused].buffers[id].selections().clone();
+            |stores: &PositionStores<'_>| stores.panes.seeded(focused, id).selections().clone();
         let pre_sels = recorded(stores);
         self.install(
             id,

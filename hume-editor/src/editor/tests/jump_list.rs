@@ -838,7 +838,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     assert_eq!(
         test_fixtures::testing::serialize_state(
             text,
-            ed.state.panes.entries[pid_b].buffers[bid].selections()
+            ed.state.panes.entries.seeded(pid_b, bid).selections()
         ),
         test_fixtures::testing::serialize_state(text, &ed.state.buffers.get(bid).initial_sels()),
         "a sibling pane's selection must be reseeded on a view-buffer refresh, not left stale"

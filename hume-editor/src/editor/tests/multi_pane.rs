@@ -70,12 +70,12 @@ fn d4a_search_pattern_is_per_buffer() {
 
     // Both panes see Buffer.search_pattern: it's a single field on `doc`.
     // Verify independence of search_cursor: write distinct values per pane.
-    ed.state.panes.entries[pid_a].buffers[bid].search_cursor = SearchCursor {
+    ed.state.panes.entries.seeded_mut(pid_a, bid).search_cursor = SearchCursor {
         match_count: Some((1, 3)),
         wrapped: false,
         ..SearchCursor::default()
     };
-    ed.state.panes.entries[pid_b].buffers[bid].search_cursor = SearchCursor {
+    ed.state.panes.entries.seeded_mut(pid_b, bid).search_cursor = SearchCursor {
         match_count: Some((2, 3)),
         wrapped: true,
         ..SearchCursor::default()
@@ -83,25 +83,37 @@ fn d4a_search_pattern_is_per_buffer() {
 
     // Pane A and pane B see different cursors even though they share the buffer.
     assert_eq!(
-        ed.state.panes.entries[pid_a].buffers[bid]
+        ed.state
+            .panes
+            .entries
+            .seeded(pid_a, bid)
             .search_cursor
             .match_count,
         Some((1, 3))
     );
     assert!(
-        !ed.state.panes.entries[pid_a].buffers[bid]
+        !ed.state
+            .panes
+            .entries
+            .seeded(pid_a, bid)
             .search_cursor
             .wrapped
     );
 
     assert_eq!(
-        ed.state.panes.entries[pid_b].buffers[bid]
+        ed.state
+            .panes
+            .entries
+            .seeded(pid_b, bid)
             .search_cursor
             .match_count,
         Some((2, 3))
     );
     assert!(
-        ed.state.panes.entries[pid_b].buffers[bid]
+        ed.state
+            .panes
+            .entries
+            .seeded(pid_b, bid)
             .search_cursor
             .wrapped
     );
@@ -299,7 +311,11 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
         ed.state.buffers.get(bid_a).search_pattern.is_some(),
         "sanity: live search armed on A"
     );
-    let head_during_preview = ed.state.panes.entries[pid_a].buffers[bid_a]
+    let head_during_preview = ed
+        .state
+        .panes
+        .entries
+        .seeded(pid_a, bid_a)
         .view(ed.state.buffers.get(bid_a).text())
         .primary()
         .head()
@@ -333,7 +349,10 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
     ed.feed_key(key_esc());
 
     assert_eq!(
-        ed.state.panes.entries[pid_a].buffers[bid_a]
+        ed.state
+            .panes
+            .entries
+            .seeded(pid_a, bid_a)
             .view(ed.state.buffers.get(bid_a).text())
             .primary()
             .head()
@@ -1848,8 +1867,8 @@ fn split_inherits_focused_panes_selection_and_scroll() {
     assert_ne!(pid_a, pid_b);
 
     assert_eq!(
-        ed.state.panes.entries[pid_b].buffers[bid].selections(),
-        ed.state.panes.entries[pid_a].buffers[bid].selections(),
+        ed.state.panes.entries.seeded(pid_b, bid).selections(),
+        ed.state.panes.entries.seeded(pid_a, bid).selections(),
         "new pane inherits the source pane's selection"
     );
     assert_eq!(

@@ -165,7 +165,7 @@ fn cmd_view_scroll_to_display_line(
     let cursor_char = state
         .panes
         .entries
-        .shown(pid, buf_id)
+        .shown(&view.panes, pid)
         .view(state.buffers.get(buf_id).text())
         .primary()
         .head();

@@ -195,7 +195,11 @@ fn update_live_sift(ed: &mut Editor, r: LayerRef) {
         Ok(new_state) => {
             let text = new_state.text().clone();
             let sifted = new_state.into_selections();
-            ed.state.panes.entries[pane].buffers[bid].set_selections(sifted.clone(), &text);
+            ed.state
+                .panes
+                .entries
+                .seeded_mut(pane, bid)
+                .set_selections(sifted.clone(), &text);
             if let Some(sift) = ed.state.input.at_mut::<SiftLayer>(r) {
                 sift.preview = Some(SiftPreview {
                     pattern,

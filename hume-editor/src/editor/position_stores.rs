@@ -112,7 +112,7 @@ impl<'a> PositionStores<'a> {
         let acting = acting.filter(|_| !change.changes().is_identity());
         for (pane, entry) in self.panes.iter_mut() {
             if Some(pane) != acting
-                && let Some(state) = entry.buffers.get_mut(buffer)
+                && let Some(state) = entry.buffer_mut(buffer)
             {
                 state.carry_selections(change);
             }
@@ -150,7 +150,7 @@ impl<'a> PositionStores<'a> {
         fresh: impl Fn() -> PaneBufferState,
     ) {
         for entry in self.panes.values_mut() {
-            if let Some(state) = entry.buffers.get_mut(buffer) {
+            if let Some(state) = entry.buffer_mut(buffer) {
                 *state = fresh();
             }
         }
@@ -162,7 +162,7 @@ impl<'a> PositionStores<'a> {
     /// panes goes with it.
     pub(in crate::editor) fn forget_buffer(&mut self, buffer: BufferId) {
         for entry in self.panes.values_mut() {
-            entry.buffers.remove(buffer);
+            entry.forget_buffer(buffer);
         }
         self.drop_shared(buffer);
     }
@@ -258,8 +258,6 @@ impl DetachedStores {
         pane: PaneId,
         buffer: BufferId,
     ) -> hume_editing::selection::SelectionSet {
-        self.panes.entries[pane].buffers[buffer]
-            .selections()
-            .clone()
+        self.panes.entries.seeded(pane, buffer).selections().clone()
     }
 }

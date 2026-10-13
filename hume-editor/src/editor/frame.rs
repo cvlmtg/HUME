@@ -122,7 +122,7 @@ impl Editor {
             kitty_enabled,
             ..
         } = self;
-        let focused_state = state.panes.entries.shown(focused_pid, focused_bid);
+        let focused_state = state.panes.entries.shown(&view.panes, focused_pid);
         let statusline = crate::statusline::HumeStatusline {
             state,
             kitty_enabled: *kitty_enabled,
@@ -160,7 +160,7 @@ impl Editor {
             .state
             .panes
             .entries
-            .shown(self.view.focused_pane(), focused_bid);
+            .shown(&self.view.panes, self.view.focused_pane());
         crate::statusline::HumeStatusline {
             state: &self.state,
             kitty_enabled: self.kitty_enabled,
@@ -540,7 +540,7 @@ impl Editor {
             let format_key = layout_key.format_key();
             // Per (pane, buffer) state: a pane that just switched buffers
             // reads a fresh entry whose `last_layout_key` is `None`.
-            let pbs = &mut self.state.panes.entries[pid].buffers[buf_id];
+            let pbs = self.state.panes.entries.shown_mut(&self.view.panes, pid);
             let cursor = pbs
                 .view(self.state.buffers.get(buf_id).text())
                 .primary()
@@ -560,7 +560,11 @@ impl Editor {
                 scroll_margin,
                 reveal,
             );
-            self.state.panes.entries[pid].buffers[buf_id].parked = outcome.parked;
+            self.state
+                .panes
+                .entries
+                .shown_mut(&self.view.panes, pid)
+                .parked = outcome.parked;
             if pid == self.view.focused_pane() {
                 ctx.cursor_content_pos = outcome.cursor_screen;
             }
@@ -608,13 +612,10 @@ impl Editor {
         let state = &self.state;
         let view = &mut self.view;
         for &pid in active {
+            let selections = state.panes.entries.shown(&view.panes, pid).selections();
             let pane = &mut view.panes[pid];
             let bid = pane.buffer_id();
-            write_pane_mirror(
-                pane,
-                state.buffers.get(bid).text(),
-                state.panes.entries[pid].buffers[bid].selections(),
-            );
+            write_pane_mirror(pane, state.buffers.get(bid).text(), selections);
         }
     }
 

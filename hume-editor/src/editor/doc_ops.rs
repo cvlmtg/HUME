@@ -56,13 +56,17 @@ fn finish_edit(
     // edit. Selections are still written: a no-op edit can still move
     // cursors.
     if cs.is_identity() {
-        pane_state[pane_id].buffers[buf_id].set_selections(new_sels, buffers.get(buf_id).text());
+        pane_state
+            .seeded_mut(pane_id, buf_id)
+            .set_selections(new_sels, buffers.get(buf_id).text());
         return;
     }
     // A real edit reveals the acting pane even when it didn't move the
     // primary head (`r` replacing the character under the cursor). `install`
     // left this pane's selections for the new ones to replace.
-    pane_state[pane_id].buffers[buf_id].set_selections_after_edit(new_sels);
+    pane_state
+        .seeded_mut(pane_id, buf_id)
+        .set_selections_after_edit(new_sels);
     buffers.bump_edit_seq();
 }
 
@@ -149,7 +153,7 @@ pub(in crate::editor) fn apply_doc_edit(
     {
         commit_paste_group(buffers, stores.panes, stores.session);
     }
-    let sels = stores.panes[pane_id].buffers[buf_id].selections().clone();
+    let sels = stores.panes.seeded(pane_id, buf_id).selections().clone();
     let (new_sels, cs) = buffers
         .get_mut(buf_id)
         .apply_edit(buf_id, stores, pane_id, sels, cmd);
@@ -181,7 +185,7 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
         return ChangeSet::identity(buffers.get(buf_id).text().len_chars());
     }
     let text_pre = buffers.get(buf_id).text().clone();
-    let sels = stores.panes[pane_id].buffers[buf_id].selections().clone();
+    let sels = stores.panes.seeded(pane_id, buf_id).selections().clone();
     assert!(
         stores
             .session
@@ -336,9 +340,11 @@ pub(in crate::editor) fn apply_doc_motion(
     f: impl FnOnce(EditState) -> EditState,
 ) {
     let text = buffers.get(buf_id).text();
-    let sels = pane_state[pane_id].buffers[buf_id].selections().clone();
+    let sels = pane_state.seeded(pane_id, buf_id).selections().clone();
     let new_sels = f(EditState::bind(text, sels)).into_selections();
-    pane_state[pane_id].buffers[buf_id].set_selections(new_sels, text);
+    pane_state
+        .seeded_mut(pane_id, buf_id)
+        .set_selections(new_sels, text);
 }
 
 /// Open an Insert-kind session on `(pane_id, buf_id)`, always the focused
@@ -363,7 +369,7 @@ pub(in crate::editor) fn begin_edit_group(
     recording: Option<SourceTicket>,
 ) -> Result<InsertOpened, CommandError> {
     edit_session::open_insert(active_session, pane_id, buf_id, recording, || {
-        let sels = pane_state[pane_id].buffers[buf_id].selections();
+        let sels = pane_state.seeded(pane_id, buf_id).selections();
         buffers
             .get(buf_id)
             .begin_edit_group(sels.clone(), sels.clone())
@@ -408,11 +414,7 @@ fn commit_session(
     };
     let (pane, buffer) = (session.pane(), session.buffer());
     let group = session.into_group();
-    let post_sels = pane_state
-        .get(pane)
-        .and_then(|entry| entry.buffers.get(buffer))
-        .map(|pbs| pbs.selections().clone())
-        .expect("an open session's (pane, buffer) state outlives it");
+    let post_sels = pane_state.seeded(pane, buffer).selections().clone();
     buffers.get_mut(buffer).commit_edit_group(group, post_sels);
 }
 

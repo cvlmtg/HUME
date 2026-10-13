@@ -91,7 +91,7 @@ impl EditorState {
         let head = self
             .panes
             .entries
-            .shown(pid, bid)
+            .shown(&view.panes, pid)
             .view(self.buffers.get(bid).text())
             .primary()
             .head();
@@ -153,7 +153,7 @@ impl EditorState {
         let head = self
             .panes
             .entries
-            .shown(pid, bid)
+            .seeded(pid, bid)
             .view(buf.text())
             .primary()
             .head()
@@ -458,7 +458,7 @@ impl EditorState {
         // focus move or buffer switch ends Insert and the layer above it.
         let live = self.input.buffer_completion().map(|s| {
             let bid = s.bid();
-            let pbs = self.panes.entries.shown(s.pane_id(), bid);
+            let pbs = self.panes.entries.seeded(s.pane_id(), bid);
             (bid, pbs.view(self.buffers.get(bid).text()).primary().head())
         });
         let Some(session) = self.input.buffer_completion_mut() else {

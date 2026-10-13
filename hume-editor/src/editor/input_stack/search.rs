@@ -290,7 +290,11 @@ pub(in crate::editor) fn preview_search(
         return Ok(false);
     };
     let text = moved.text().clone();
-    state.panes.entries[pane].buffers[bid].set_selections(moved.into_selections(), &text);
+    state
+        .panes
+        .entries
+        .seeded_mut(pane, bid)
+        .set_selections(moved.into_selections(), &text);
     Ok(true)
 }
 

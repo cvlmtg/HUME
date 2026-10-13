@@ -166,7 +166,11 @@ fn do_paste(
     let ResolvedPaste { values, from, bare } = resolved;
 
     let base = sels.clone();
-    state.panes.entries[focused].buffers[buf].set_selections(sels, state.buffers.get(buf).text());
+    state
+        .panes
+        .entries
+        .seeded_mut(focused, buf)
+        .set_selections(sels, state.buffers.get(buf).text());
     edit_session::open_or_retarget(
         &mut state.active_session,
         focused,
@@ -363,7 +367,12 @@ fn do_normal_paste(
     edit_session::check_can_open(&state.active_session, pid, buf)?;
     super::ensure_writable(state, view, fp.pane())?;
     let resolved = resolve_plain(state)?;
-    let sels = state.panes.entries[pid].buffers[buf].selections().clone();
+    let sels = state
+        .panes
+        .entries
+        .shown(&view.panes, pid)
+        .selections()
+        .clone();
     do_paste(state, pid, buf, before, resolved, sels.clone(), sels)
 }
 
@@ -382,7 +391,7 @@ fn do_smart_paste(
     edit_session::check_can_open(&state.active_session, pid, buf)?;
     super::ensure_writable(state, view, fp.pane())?;
     let resolved = resolve_smart(state)?;
-    let pbs = &state.panes.entries[pid].buffers[buf];
+    let pbs = state.panes.entries.shown(&view.panes, pid);
     let sels = pbs.selections().clone();
     let base = if resolved.bare {
         collapse_if_repeat(

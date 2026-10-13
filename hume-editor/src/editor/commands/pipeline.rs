@@ -87,7 +87,7 @@ impl CommandPane {
         pane_state: &'a PaneEntries,
         view: &EngineView,
     ) -> &'a PaneBufferState {
-        pane_state.shown(self.0, self.bid(view))
+        pane_state.shown(&view.panes, self.0)
     }
 
     /// [`Self::state`]'s mutable counterpart.
@@ -96,7 +96,7 @@ impl CommandPane {
         pane_state: &'a mut PaneEntries,
         view: &EngineView,
     ) -> &'a mut PaneBufferState {
-        pane_state.shown_mut(self.0, self.bid(view))
+        pane_state.shown_mut(&view.panes, self.0)
     }
 }
 

@@ -181,7 +181,7 @@ pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
     }
 }
 
-/// Ensure `pane_state[pid].buffers[bid]` exists, seeding with [`fresh_from_buf`] if absent.
+/// Ensure `pid` has state for `bid`, seeding with [`fresh_from_buf`] if absent.
 /// Idempotent: safe to call even if the entry was already seeded.
 ///
 /// Panics if `pid` or `bid` is not a live key; that is a caller-contract
@@ -222,14 +222,10 @@ pub(in crate::editor) fn try_ensure<'a>(
     if !panes.contains_key(pid) {
         return Err(super::commands::TargetError::PaneClosed.to_string());
     }
-    Ok(pane_state[pid]
-        .buffers
-        .entry(bid)
-        .expect("bid must be a live BufferId")
-        .or_insert_with(|| fresh_from_buf(buffers.get(bid))))
+    Ok(pane_state[pid].ensure(bid, buffers))
 }
 
-/// Collapse `pane_state[pid].buffers[bid]`'s selection onto `pos`, without
+/// Collapse `pid`'s selection in `bid` onto `pos`, without
 /// switching focus or recording a jump entry. The primitive every cursor
 /// placement outside the focused-buffer fast path (`set_current_selections`)
 /// reduces to: [`park_cursor_at`] is its line/grapheme-column convenience for
@@ -257,7 +253,7 @@ pub(in crate::editor) fn line_grapheme_to_cluster(
     text.columns().place_grapheme(line.into(), grapheme_col0)
 }
 
-/// Collapse `pane_state[pid].buffers[bid]`'s selection onto a 0-based
+/// Collapse `pid`'s selection in `bid` onto a 0-based
 /// `(line, grapheme_col)`, clamping the line to the buffer's last content
 /// line. Shared by every caller that parks a cursor at a line/column pair
 /// with no char position yet.
@@ -276,8 +272,10 @@ pub(in crate::editor) fn park_cursor_at(
 
 /// One pane's editor-side state.
 pub(in crate::editor) struct PaneEntry {
-    /// The pane's state for each buffer it has shown.
-    pub(in crate::editor) buffers: SecondaryMap<BufferId, PaneBufferState>,
+    /// The pane's state for each buffer it has shown. Read through
+    /// [`PaneEntries::shown`] for the buffer the pane shows, and
+    /// [`PaneEntries::seeded`] for a recorded `(pane, buffer)` pair.
+    buffers: SecondaryMap<BufferId, PaneBufferState>,
     /// The pane's cursor history.
     pub(in crate::editor) jumps: JumpList,
     /// The handles feeding the pane's highlight, sign, inlay-hint and
@@ -285,7 +283,39 @@ pub(in crate::editor) struct PaneEntry {
     pub(in crate::editor) render: hume_decorations::PaneDecorationHandles,
 }
 
+impl PaneEntry {
+    /// The pane's state for `bid`, if it has ever shown it.
+    #[cfg(test)]
+    pub(in crate::editor) fn buffer(&self, bid: BufferId) -> Option<&PaneBufferState> {
+        self.buffers.get(bid)
+    }
+
+    /// [`Self::buffer`], mutably.
+    pub(in crate::editor) fn buffer_mut(&mut self, bid: BufferId) -> Option<&mut PaneBufferState> {
+        self.buffers.get_mut(bid)
+    }
+
+    /// The pane's state for `bid`, seeded with [`fresh_from_buf`] if the pane
+    /// has never shown it. Panics if `bid` is not a live key.
+    pub(in crate::editor) fn ensure(
+        &mut self,
+        bid: BufferId,
+        buffers: &BufferStore,
+    ) -> &mut PaneBufferState {
+        self.buffers
+            .entry(bid)
+            .expect("bid must be a live BufferId")
+            .or_insert_with(|| fresh_from_buf(buffers.get(bid)))
+    }
+
+    /// Drop the pane's state for the closed buffer `bid`.
+    pub(in crate::editor) fn forget_buffer(&mut self, bid: BufferId) {
+        self.buffers.remove(bid);
+    }
+}
+
 const SHOWN_UNSEEDED: &str = "a pane has state for the buffer it shows";
+const PAIR_UNSEEDED: &str = "a recorded (pane, buffer) pair's state outlives it";
 
 /// Every pane's [`PaneEntry`]. An entry is added only by [`PaneView::open`]
 /// and removed only by [`PaneView::remove`], so a pane has all of its state
@@ -294,26 +324,46 @@ const SHOWN_UNSEEDED: &str = "a pane has state for the buffer it shows";
 pub(in crate::editor) struct PaneEntries(SecondaryMap<PaneId, PaneEntry>);
 
 impl PaneEntries {
+    #[cfg(test)]
     pub(in crate::editor) fn get(&self, pid: PaneId) -> Option<&PaneEntry> {
         self.0.get(pid)
     }
 
-    /// `bid`'s state in `pid`, where `bid` is the buffer `pid` is showing,
-    /// so absence is a violated invariant rather than a case to handle: a
-    /// pane's entry is opened with state for the buffer it shows, and
+    /// `pid`'s state for the buffer it shows, read from `panes`. Absence is a
+    /// violated invariant rather than a case to handle: a pane's entry is
+    /// opened with state for the buffer it shows, and
     /// `focus::switch_pane_to_buffer`, the only way to change that buffer,
     /// seeds the new one.
-    pub(in crate::editor) fn shown(&self, pid: PaneId, bid: BufferId) -> &PaneBufferState {
+    pub(in crate::editor) fn shown(&self, panes: &PanePool, pid: PaneId) -> &PaneBufferState {
+        let bid = panes[pid].buffer_id();
         self.0[pid].buffers.get(bid).expect(SHOWN_UNSEEDED)
     }
 
     /// [`Self::shown`]'s mutable counterpart.
     pub(in crate::editor) fn shown_mut(
         &mut self,
+        panes: &PanePool,
+        pid: PaneId,
+    ) -> &mut PaneBufferState {
+        let bid = panes[pid].buffer_id();
+        self.0[pid].buffers.get_mut(bid).expect(SHOWN_UNSEEDED)
+    }
+
+    /// `pid`'s state for `bid`, a pair recorded while `pid` showed `bid` (an
+    /// open session's, a prompt snapshot's) or one a caller just seeded
+    /// through [`try_ensure`]. A pane keeps its state for every buffer it
+    /// has shown until the buffer closes, which ends what recorded the pair.
+    pub(in crate::editor) fn seeded(&self, pid: PaneId, bid: BufferId) -> &PaneBufferState {
+        self.0[pid].buffers.get(bid).expect(PAIR_UNSEEDED)
+    }
+
+    /// [`Self::seeded`]'s mutable counterpart.
+    pub(in crate::editor) fn seeded_mut(
+        &mut self,
         pid: PaneId,
         bid: BufferId,
     ) -> &mut PaneBufferState {
-        self.0[pid].buffers.get_mut(bid).expect(SHOWN_UNSEEDED)
+        self.0[pid].buffers.get_mut(bid).expect(PAIR_UNSEEDED)
     }
 
     pub(in crate::editor) fn iter_mut(&mut self) -> impl Iterator<Item = (PaneId, &mut PaneEntry)> {
@@ -386,7 +436,7 @@ impl PaneView {
         pid: PaneId,
         bid: BufferId,
     ) -> Option<&PaneBufferState> {
-        self.entries.get(pid)?.buffers.get(bid)
+        self.entries.get(pid)?.buffer(bid)
     }
 }
 

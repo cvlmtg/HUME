@@ -172,10 +172,16 @@ pub(in crate::editor) fn split_pane_onto(
     // file regardless of where the source pane was scrolled to. `:split
     // <path>` (a different buffer) intentionally starts fresh.
     if bid == old_buffer_id {
-        let selections = state.panes.entries[old_focused].buffers[bid]
+        let selections = state
+            .panes
+            .entries
+            .shown(&view.panes, old_focused)
             .selections()
             .clone();
-        state.panes.entries[new_pid].buffers[bid]
+        state
+            .panes
+            .entries
+            .shown_mut(&view.panes, new_pid)
             .set_selections(selections, state.buffers.get(bid).text());
         // A same-buffer split inherits the source pane's live view state
         // (viewport, scroll memory, wrap mode) so the new pane matches where

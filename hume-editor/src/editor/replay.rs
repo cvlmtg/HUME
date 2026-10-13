@@ -982,7 +982,10 @@ impl EditorState {
             return Err("no Insert session to apply the recorded result to".to_string());
         }
         let (pid, bid) = (fp.pid(), fp.bid(view));
-        if !self.panes.entries[pid].buffers[bid]
+        if !self
+            .panes
+            .entries
+            .shown(&view.panes, pid)
             .view(self.buffers.get(bid).text())
             .all_cursors()
         {
@@ -1172,7 +1175,11 @@ impl Editor {
         // `Err` here means a real session is already open, not expected given
         // `step_paste_commit` just ran; defer rather than steal it.
         if !meta.manages_own_session {
-            let sels = self.state.panes.entries[pid].buffers[bid]
+            let sels = self
+                .state
+                .panes
+                .entries
+                .shown(&self.view.panes, pid)
                 .selections()
                 .clone();
             let opened = edit_session::open_or_retarget(
@@ -1198,7 +1205,11 @@ impl Editor {
         // `Untracked`, native entries can never be unregistered, so the lookup
         // and bind always succeed. A refused step cancels the replay before
         // the edit runs, with the selections put back as they were.
-        let pre_recipe = self.state.panes.entries[pid].buffers[bid]
+        let pre_recipe = self
+            .state
+            .panes
+            .entries
+            .shown(&self.view.panes, pid)
             .selections()
             .clone();
         for step in &action.selection_recipe {
@@ -1226,7 +1237,10 @@ impl Editor {
                 },
             );
             if !ran {
-                self.state.panes.entries[pid].buffers[bid]
+                self.state
+                    .panes
+                    .entries
+                    .seeded_mut(pid, bid)
                     .set_selections(pre_recipe, self.state.buffers.get(bid).text());
                 self.finish_replay_session();
                 return;

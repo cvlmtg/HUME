@@ -85,7 +85,11 @@ fn focused_pane_category_errors_on_a_non_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let (pid_a, bid_a, pid_b, bid_b) = split_two_buffers(&mut ed, "bbb\n");
     let mode_before = ed.state.mode();
-    let sels_before = ed.state.panes.entries[pid_a].buffers[bid_a]
+    let sels_before = ed
+        .state
+        .panes
+        .entries
+        .seeded(pid_a, bid_a)
         .selections()
         .clone();
 
@@ -108,7 +112,10 @@ fn focused_pane_category_errors_on_a_non_focused_pane() {
         "A must be untouched"
     );
     assert_eq!(
-        &ed.state.panes.entries[pid_a].buffers[bid_a]
+        &ed.state
+            .panes
+            .entries
+            .seeded(pid_a, bid_a)
             .selections()
             .clone(),
         &sels_before,

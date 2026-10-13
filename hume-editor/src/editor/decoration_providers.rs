@@ -88,7 +88,10 @@ impl Editor {
                     .as_ref()
                     .is_some_and(|s| s.is_insert_at(pid, bid))
                     .then(|| {
-                        self.state.panes.entries[pid].buffers[bid]
+                        self.state
+                            .panes
+                            .entries
+                            .shown(&self.view.panes, pid)
                             .view(text)
                             .primary()
                             .head_line()
@@ -173,7 +176,7 @@ impl Editor {
         let focused = self.view.focused_pane();
         if !in_insert {
             let text = self.doc().text();
-            let pbs = &self.state.panes.entries[focused].buffers[self.focused_buffer_id()];
+            let pbs = self.state.panes.entries.shown(&self.view.panes, focused);
             if let Some(match_pos) = matching_bracket(pbs.view(text).primary()) {
                 let (line, byte) = text.columns().byte_position(match_pos.offset());
                 // The whole cluster holding the partner bracket.

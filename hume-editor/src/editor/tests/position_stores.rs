@@ -171,7 +171,11 @@ fn a_net_identity_undo_walk_keeps_another_panes_selections_paired() {
     let text = ed.doc().text();
     assert_eq!(text.to_string(), "hello\n");
     assert_eq!(text.version(), root);
-    let away_head = ed.state.panes.entries[away].buffers[bid]
+    let away_head = ed
+        .state
+        .panes
+        .entries
+        .seeded(away, bid)
         .view(text)
         .primary()
         .head();

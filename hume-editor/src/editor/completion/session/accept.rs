@@ -135,7 +135,7 @@ impl BufferSession {
         // below it.
         let pid = self.pane_id;
         let (head_now, heads_now) = {
-            let pbs = state.panes.entries.shown(pid, bid);
+            let pbs = state.panes.entries.seeded(pid, bid);
             // The "as if typed at each cursor" model has no meaning for a
             // real selection. Typing over one is a different edit than
             // completing at it, and `replace_*_cursors` force-collapses
