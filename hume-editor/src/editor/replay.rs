@@ -855,6 +855,7 @@ impl EditorState {
             proc,
             args: vec![arg],
             anchor: None,
+            tracked: None,
             answer: ticket,
         }
     }
@@ -1319,6 +1320,7 @@ impl Editor {
                     proc,
                     args: vec![arg],
                     anchor: None,
+                    tracked: None,
                     answer: None,
                 }),
             };

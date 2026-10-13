@@ -16,6 +16,7 @@ use hume_lsp::client::{Outcome, RequestMeta};
 use hume_lsp::codec::RequestId;
 use hume_rope::offset::ExclusiveRange;
 use hume_rope::position_encoding::{PositionEncoding, char_range_to_wire_range, char_to_wire};
+use hume_scripting::host::HostToken;
 use hume_scripting::json::{WireOrigin, to_steel_handle};
 use hume_scripting::{
     DocSpan, Params, PendingLspNotify, PendingLspRequest, RequestMode, RequestParams, RouteSpec,
@@ -122,8 +123,13 @@ impl Slot {
 
 /// What a delivery calls back once its last slot is filled.
 enum Responder {
-    /// A Steel callback, given `(err result)` or `(err results)` by mode.
-    Steel(SteelVal),
+    /// A Steel callback, given `(err result)` or `(err results)` by mode,
+    /// and the `#:tracked` position the request holds until the callback
+    /// has run or will never run.
+    Steel {
+        callback: SteelVal,
+        tracked: Option<HostToken>,
+    },
     /// A Rust closure, given the one server's answer or why it has none.
     Rust(RustResponder),
 }
@@ -271,8 +277,7 @@ impl EditorState {
         let members = match self.request_members(&req) {
             Ok(members) => members,
             Err(reason) => {
-                self.fail_request(&req, reason);
-                self.release_request_position(req.tracked);
+                self.fail_request(req, reason);
                 return;
             }
         };
@@ -282,12 +287,14 @@ impl EditorState {
                 version: self.buffers.get(req.bid).text().version(),
                 allow_stale: req.allow_stale,
                 require_focus: req.require_focus,
-                tracked: req.tracked,
             },
             method: req.method,
             mode: req.mode,
             supersede: req.supersede,
-            responder: Responder::Steel(req.callback),
+            responder: Responder::Steel {
+                callback: req.callback,
+                tracked: req.tracked,
+            },
         };
         if let Some(did) = self.begin_delivery(spec, members) {
             self.finish_delivery(view, did);
@@ -328,7 +335,6 @@ impl EditorState {
                 version: self.buffers.get(bid).text().version(),
                 allow_stale: delivery.allow_stale,
                 require_focus: None,
-                tracked: None,
             },
             method: method.to_string(),
             mode: RequestMode::Single,
@@ -481,8 +487,10 @@ impl EditorState {
 
     /// Calls `req`'s callback for a request that reached no server: with an
     /// `'unavailable` error saying `reason` and no result, or with no error
-    /// and an empty answer when it asked for `#:unavailable 'empty`.
-    fn fail_request(&mut self, req: &PendingLspRequest, reason: String) {
+    /// and an empty answer when it asked for `#:unavailable 'empty`. The
+    /// call carries no anchor, so a focus move or an edit before it runs
+    /// cannot drop the answer.
+    fn fail_request(&mut self, req: PendingLspRequest, reason: String) {
         let args = match (req.when_unavailable, req.mode) {
             (WhenUnavailable::Error, RequestMode::Single) => {
                 vec![
@@ -502,7 +510,7 @@ impl EditorState {
                 SteelVal::ListV(Vec::<SteelVal>::new().into()),
             ],
         };
-        self.queue_steel_call(req.callback.clone(), args);
+        self.queue_lsp_callback(req.callback, args, None, req.tracked);
     }
 
     /// Hands `server`'s answer to `request` to the delivery waiting for it,
@@ -538,11 +546,11 @@ impl EditorState {
             return;
         };
         if !self.anchor_admits(view, &delivery.anchor) {
-            self.release_request_position(delivery.anchor.tracked);
+            self.drop_delivery(delivery);
             return;
         }
-        let callback = match delivery.responder {
-            Responder::Steel(callback) => callback,
+        let (callback, tracked) = match delivery.responder {
+            Responder::Steel { callback, tracked } => (callback, tracked),
             Responder::Rust(respond) => {
                 let slot = delivery
                     .slots
@@ -582,7 +590,7 @@ impl EditorState {
                 ]
             }
         };
-        self.queue_steel_call_anchored(callback, args, delivery.anchor);
+        self.queue_lsp_callback(callback, args, Some(delivery.anchor), tracked);
     }
 
     /// Drops the delivery in flight under supersede `key`, if any, without
@@ -593,12 +601,17 @@ impl EditorState {
         }
     }
 
-    /// Drops `did` without calling it back: every request it still has in
-    /// flight is cancelled, and the position it holds released.
+    /// Drops `did` without calling it back.
     fn cancel_delivery(&mut self, did: DeliveryId) {
-        let Some(delivery) = self.lsp.deliveries.map.remove(&did) else {
-            return;
-        };
+        if let Some(delivery) = self.lsp.deliveries.map.remove(&did) {
+            self.drop_delivery(delivery);
+        }
+    }
+
+    /// Ends a delivery whose responder will never be called: every request
+    /// it still has in flight is cancelled, and the position it holds
+    /// released.
+    fn drop_delivery(&mut self, delivery: Delivery) {
         for slot in delivery.slots {
             let SlotState::Waiting { request, .. } = slot.state else {
                 continue;
@@ -607,7 +620,9 @@ impl EditorState {
                 client.cancel(backend, request);
             }
         }
-        self.release_request_position(delivery.anchor.tracked);
+        if let Responder::Steel { tracked, .. } = delivery.responder {
+            self.release_request_position(tracked);
+        }
     }
 
     /// Sends one queued `lsp-notify!` to every server its route admits.

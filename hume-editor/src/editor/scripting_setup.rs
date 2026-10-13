@@ -505,9 +505,10 @@ impl Editor {
                     proc,
                     args,
                     anchor,
+                    tracked,
                     answer,
                 } => {
-                    if let Some(anchor) = anchor {
+                    if anchor.is_some() || tracked.is_some() {
                         // Never grouped into a multi-item batch with a
                         // sibling call: `anchor_admits` must run immediately
                         // before *this* call, not before some earlier
@@ -516,13 +517,15 @@ impl Editor {
                         // `switch-to-buffer!`, an edit), so batching first and
                         // checking every anchor up front would defeat the
                         // re-check, since all the checks would still land
-                        // before any of the calls actually ran. One call,
-                        // one session, one check, one run; see
-                        // `PendingWork::Call`'s own doc.
-                        if self.state.anchor_admits(&self.view, &anchor) {
+                        // before any of the calls actually ran. The tracked
+                        // position is released right after this call alone,
+                        // for the same reason. One call, one session, one
+                        // check, one run; see `PendingWork::Call`'s own doc.
+                        if anchor.is_none_or(|anchor| self.state.anchor_admits(&self.view, &anchor))
+                        {
                             self.run_call_batch(vec![(proc, args)]);
                         }
-                        self.state.release_request_position(anchor.tracked);
+                        self.state.release_request_position(tracked);
                         continue;
                     }
                     if let Some(ticket) = answer {
@@ -539,13 +542,14 @@ impl Editor {
                         items.front(),
                         Some(PendingWork::Call {
                             anchor: None,
+                            tracked: None,
                             answer: None,
                             ..
                         })
                     ) {
                         let Some(PendingWork::Call { proc, args, .. }) = items.pop_front() else {
                             unreachable!(
-                                "front() just confirmed an unanchored, unclaimed Call variant"
+                                "front() just confirmed an unanchored, untracked, unclaimed Call variant"
                             )
                         };
                         calls.push((proc, args));

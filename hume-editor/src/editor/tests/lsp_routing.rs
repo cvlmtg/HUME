@@ -823,6 +823,48 @@ fn tracked_position_params_needs_no_server() {
     assert_eq!(rig.warnings(), vec!["yes".to_string()]);
 }
 
+/// Sends `request` (`lsp-request!` or `lsp-request-all!`) holding a tracked
+/// position on a buffer no server takes, and returns what its callback saw of
+/// the position followed by what a later probe sees.
+fn unavailable_tracked_lifetime(request: &str) -> Vec<String> {
+    let tmp = tempfile::tempdir().unwrap();
+    let (backend, _, _) = RecordingLspBackend::new();
+    let mut rig = LspRig::open(
+        tmp.path(),
+        RigSpec::rust("fn -[m]>ain() {}\n").with_init(""),
+        backend,
+    );
+    rig.eval("(define *tok* #f)");
+
+    rig.probe(&format!(
+        r#"(begin
+             (set! *tok* (track-position! pane))
+             ({request} pane "custom/ping" (hash)
+               (lambda (err res)
+                 (log! 'warn (if (tracked-position-params *tok*) "held" "released")))
+               #:tracked *tok*))"#
+    ));
+    rig.probe(r#"(log! 'warn (if (tracked-position-params *tok*) "held" "released"))"#);
+
+    rig.warnings()
+}
+
+#[test]
+fn unavailable_callback_sees_its_tracked_position() {
+    assert_eq!(
+        unavailable_tracked_lifetime("lsp-request!"),
+        vec!["held".to_string(), "released".to_string()]
+    );
+}
+
+#[test]
+fn unavailable_all_callback_sees_its_tracked_position() {
+    assert_eq!(
+        unavailable_tracked_lifetime("lsp-request-all!"),
+        vec!["held".to_string(), "released".to_string()]
+    );
+}
+
 #[test]
 fn notification_hook_receives_server_handle() {
     let tmp = tempfile::tempdir().unwrap();

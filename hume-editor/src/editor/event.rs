@@ -457,17 +457,21 @@ pub(in crate::editor) enum PendingWork {
     /// callback. Delivered to exactly that closure, not to every handler for
     /// a name.
     ///
-    /// `anchor`: `Some` only for an `lsp-request!` callback, carrying the same
-    /// `ResponseAnchor` already checked once at LSP drain time
-    /// (`Editor::anchor_admits`), re-checked here, at dequeue, because
-    /// arbitrary other queued work (an earlier `Call` in the same batch, a
-    /// hook) can run first and change the state the drain-time check saw.
-    /// `None` for every other source (a timer thunk, a picker callback, …),
-    /// which never had an anchor to begin with.
+    /// `anchor`: `Some` only for an `lsp-request!` callback a server
+    /// answered, carrying the same `ResponseAnchor` already checked once at
+    /// LSP drain time (`Editor::anchor_admits`), re-checked here, at dequeue,
+    /// because arbitrary other queued work (an earlier `Call` in the same
+    /// batch, a hook) can run first and change the state the drain-time
+    /// check saw. `None` for every other source (a timer thunk, a picker
+    /// callback, a request no server took, …).
     Call {
         proc: SteelVal,
         args: Vec<SteelVal>,
         anchor: Option<super::lsp::ResponseAnchor>,
+        /// The `#:tracked` position an `lsp-request!` callback holds,
+        /// released once the call has run, raised or been dropped by its
+        /// anchor, unless the callback kept it.
+        tracked: Option<hume_scripting::host::HostToken>,
         /// The ticket of the interactive input this call answers (a read,
         /// picker, prompt or menu callback), when that input belongs to a
         /// recorded change; see [`super::replay::AnswerTicket`]. Keeps the

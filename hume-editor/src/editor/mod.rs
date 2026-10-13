@@ -758,28 +758,31 @@ impl EditorState {
                 proc,
                 args,
                 anchor: None,
+                tracked: None,
                 answer: None,
             });
     }
 
     /// [`Self::queue_steel_call`]'s counterpart for an `lsp-request!`
-    /// callback: carries the `ResponseAnchor` already checked once at LSP
-    /// drain time, so `Editor::run_pending_batch` can re-check it at
-    /// dequeue. See `PendingWork::Call`'s own doc for why the drain-time
-    /// check alone isn't enough. Never carries an answer ticket: an LSP
-    /// response resolves no waiting input.
-    pub(in crate::editor) fn queue_steel_call_anchored(
+    /// callback: carries the delivery's `ResponseAnchor` (`None` for a
+    /// request no server took) and the `#:tracked` position the request
+    /// holds, which `Editor::run_pending_batch` releases once the call has
+    /// run or been dropped. Never carries an answer ticket: an LSP response
+    /// resolves no waiting input.
+    pub(in crate::editor) fn queue_lsp_callback(
         &mut self,
         proc: steel::rvals::SteelVal,
         args: Vec<steel::rvals::SteelVal>,
-        anchor: lsp::ResponseAnchor,
+        anchor: Option<lsp::ResponseAnchor>,
+        tracked: Option<hume_scripting::host::HostToken>,
     ) {
         self.config
             .pending_work
             .push_back(event::PendingWork::Call {
                 proc,
                 args,
-                anchor: Some(anchor),
+                anchor,
+                tracked,
                 answer: None,
             });
     }
