@@ -1828,15 +1828,12 @@ fn fits_split_allows_before_first_frame() {
     use hume_engine::pipeline::Direction;
 
     let ed = editor_from("-[h]>ello\n");
-    let fp = FocusedPane::current(&ed.view);
     assert!(crate::editor::commands::fits_split(
         &ed.view,
-        fp,
         Direction::Vertical
     ));
     assert!(crate::editor::commands::fits_split(
         &ed.view,
-        fp,
         Direction::Horizontal
     ));
 }

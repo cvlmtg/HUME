@@ -191,11 +191,7 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
 fn wrap_earlier_line_fixture() -> (Editor, BufferId, hume_rope::offset::CharOffset) {
     let mut ed = open_headless(None);
     ed.state.settings.scroll_margin = 0;
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Soft { width: 10 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 10 });
     let mut content = String::new();
     for i in 0..40 {
         if i == 19 {
@@ -308,11 +304,7 @@ fn a_tab_width_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     let sels = sels_at(&text, &[(0, 0)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.state.settings.scroll_margin = 0;
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Soft { width: 10 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 10 });
     seek_to_line(&mut ed, 20);
 
     assert!(

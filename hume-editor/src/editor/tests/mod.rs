@@ -18,7 +18,7 @@ use crate::editor::settings::EditorSettings;
 use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_engine::pane::Pane;
-use hume_engine::pipeline::{BufferId, EngineView, FocusedLayout, PaneId};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::ScopeId;
 use hume_treesitter::parse_worker::InlineParseBackend;
 use hume_treesitter::registry::{GrammarBundle, QueryPaths};
@@ -103,9 +103,14 @@ fn focused_pane(ed: &Editor) -> hume_scripting::PaneHandle {
 /// `hume-engine/src/pane.rs`). Shared by every test that reasons about
 /// buffer-line columns or viewport rows rather than display-line wrapping.
 fn pin_no_wrap(ed: &mut Editor) {
+    pin_wrap(ed, hume_engine::pane::WrapMode::None);
+}
+
+/// Pin the focused pane to `mode`, leaving no saved mode to restore.
+fn pin_wrap(ed: &mut Editor, mode: hume_engine::pane::WrapMode) {
     let focused_pid = ed.view.focused_pane();
     ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
+        mode: Some(mode),
         saved: None,
     });
 }
@@ -886,11 +891,7 @@ impl Editor {
         let pane = Pane::new(buffer_id);
         let unattached = engine_view.insert_pane(pane);
         let pane_id = unattached.pane_id();
-        let layout = FocusedLayout::new(unattached);
-        let tabs = super::tab::TabStore::new(layout.clone()).0;
-        // Discards the placeholder EngineView::new seeded: no real pane
-        // behind it to leak.
-        let _ = engine_view.replace_layout(&focus_key, layout);
+        let focus = super::focus::Focus::new(&mut engine_view, focus_key, unattached);
 
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
@@ -928,7 +929,7 @@ impl Editor {
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
                 tabline_view,
                 cwd: std::env::temp_dir(),
-                ..EditorState::base(super::focus::Focus::new(focus_key), tabs)
+                ..EditorState::base(focus)
             },
             view: engine_view,
             kitty_enabled: false,

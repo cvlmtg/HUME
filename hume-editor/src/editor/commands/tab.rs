@@ -22,7 +22,7 @@ use hume_ops::MotionMode;
 
 use crate::editor::EditorState;
 use crate::editor::error::CommandError;
-use crate::editor::tab::{TabId, install_live, switch_to_tab, take_live};
+use crate::editor::tab::{TabId, install_live, switch_to_tab};
 
 use super::FocusedPane;
 use super::pane::{drop_pane_state, open_pane_as_new_tab};
@@ -56,14 +56,10 @@ pub(in crate::editor) fn open_tab(
 /// assert `len() > 1`, so checking that precondition before anything is
 /// destroyed keeps `view`/`state` consistent at every point in between.
 ///
-/// Routes the closing tab's own layout through `tab::take_live` rather than
-/// reading `view.layout` directly: `take_live` ends the closing tab's open
-/// Insert/paste session while `view` still holds that tab's layout, before
-/// `install_live` swaps it for the survivor.
+/// `install_live` ends the closing tab's open Insert/paste session while
+/// `view` still holds that tab's layout, before swapping in the survivor's.
 /// Left any later, the teardown's per-(pane, buffer) writes would land after
 /// `drop_pane_state` has already removed the closing pane's own state below.
-/// `close_current` only mutates `TabStore`, not `view`, so running it after
-/// `take_live` is safe.
 ///
 /// `into_detached()` on the closing tree is what makes discarding the closing
 /// tab's tree and freeing every pane it reached a single step. There is no
@@ -71,9 +67,9 @@ pub(in crate::editor) fn open_tab(
 /// or a token exists for a pane no tree ever named.
 pub(in crate::editor) fn close_tab(state: &mut EditorState, view: &mut EngineView) {
     let survivor = state.tabs.adjacent();
-    let closing = take_live(state, view);
-    let layout = state.tabs.close_current(survivor);
-    install_live(state, view, layout);
+    let incoming = state.tabs.take(survivor);
+    let closing = install_live(state, view, incoming);
+    state.tabs.close_current(survivor);
     for detached in closing.into_tree().into_detached() {
         drop_pane_state(state, view, detached);
     }

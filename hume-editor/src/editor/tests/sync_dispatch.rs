@@ -723,8 +723,7 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     ));
 
     // Give the pane a viewport big enough that a click at row=0,col=0 lands in content.
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].viewport = hume_engine::pane::Viewport::new(80, 24);
+    *ed.viewport_mut() = hume_engine::pane::Viewport::new(80, 24);
 
     // Seed a pending hook (OnBufferSave, no handler registered, so
     // settle() skips the Steel call but still removes it from the queue).

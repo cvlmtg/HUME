@@ -33,9 +33,15 @@ pub enum Rotation {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SinglePane;
 
-/// Refusal to focus a pane that is not a leaf of the layout.
+/// A side of the focused pane, for
+/// [`EngineView::focused_neighbor`](super::EngineView::focused_neighbor).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct NotInLayout;
+pub enum Side {
+    Left,
+    Right,
+    Up,
+    Down,
+}
 
 /// A single 1-cell divider segment drawn between two sibling panes at one
 /// split node.
@@ -86,7 +92,7 @@ pub enum LayoutTree {
         /// sharing a split axis stays equal-sized regardless of split order.
         /// Kept as stored (not derived-on-read) state because `LayoutTree`
         /// is `pub` and constructible directly with an arbitrary ratio (see
-        /// the tie-break test in `hume-editor`'s `pane_focus` tests); a
+        /// `focused_neighbor_tie_breaks_on_center_distance`); a
         /// derived-on-read field couldn't hold a ratio nothing equalized.
         /// `equalize` currently rewrites every ratio in the whole tree on
         /// every split/close; a future manual pane resize will need to keep
@@ -218,38 +224,16 @@ impl LayoutTree {
         }
     }
 
-    /// Splice a freshly inserted, not-yet-attached pane in beside
-    /// `target`: replace `Leaf(target)` with a `Split` of `(Leaf(target),
-    /// Leaf(new_pane))`, then re-derive every split ratio in the tree so
-    /// panes sharing a split axis stay equal-sized (see `equalize`). Takes
-    /// the [`UnattachedPane`] token by value and hands it back on `Err` when
-    /// `target` isn't found. The token is consumed only on the success
-    /// path, so a caller can never end up with a pane the tree lost track
-    /// of.
-    pub(crate) fn split_leaf(
-        &mut self,
-        target: PaneId,
-        new_pane: UnattachedPane,
-        direction: Direction,
-    ) -> Result<PaneId, UnattachedPane> {
-        let new_id = new_pane.pane_id();
-        if self.insert_split(target, new_id, direction) {
-            self.equalize();
-            Ok(new_id)
-        } else {
-            Err(new_pane)
-        }
-    }
-
-    /// The recursive body of [`Self::split_leaf`], without the equalize pass,
-    /// kept separate so equalization runs once at the root instead of once
-    /// per level of recursion.
+    /// Replace `Leaf(target)` with a `Split` of `(Leaf(target),
+    /// Leaf(new_pane))`: `false` when `target` is not a leaf below `self`.
+    /// Leaves the ratios to the caller's single `equalize` at the root, so
+    /// equalization doesn't run once per level of recursion.
     fn insert_split(&mut self, target: PaneId, new_pane: PaneId, direction: Direction) -> bool {
         match self {
             LayoutTree::Leaf(id) if *id == target => {
                 *self = LayoutTree::Split {
                     direction,
-                    // Overwritten by the `equalize()` call in `split_leaf`.
+                    // Overwritten by the caller's `equalize()`.
                     ratio: 0.5,
                     children: Box::new((LayoutTree::Leaf(target), LayoutTree::Leaf(new_pane))),
                 };
@@ -374,34 +358,6 @@ impl LayoutTree {
         }
     }
 
-    /// Predicts the rect `target` would end up with after a real
-    /// `split_leaf(target, _, direction)` call, without mutating this tree or
-    /// requiring a real `new_pane` id. `equalize` runs whole-tree, so the two
-    /// panes a split produces are not simply half of `target`'s current rect
-    /// (anything else sharing the split axis may resize too); this simulates
-    /// the actual insert-then-equalize sequence to get the real answer
-    /// instead of approximating it. `None` when `target` isn't in this tree.
-    ///
-    /// `target`'s side of the new split is always this method's answer or
-    /// smaller: `insert_split` makes `target` the first child, and
-    /// `split_rect`'s integer truncation always rounds the first child's
-    /// share down, so checking only `target`'s predicted rect against a
-    /// minimum is the conservative (never-too-generous) choice.
-    pub fn predicted_split_rect(
-        &self,
-        target: PaneId,
-        area: Rect,
-        reserve_seam: bool,
-        direction: Direction,
-    ) -> Option<Rect> {
-        let mut probe = self.clone();
-        if !probe.insert_split(target, PaneId::default(), direction) {
-            return None;
-        }
-        probe.equalize();
-        probe.find_rect(target, area, reserve_seam)
-    }
-
     /// The recursive body of [`FocusedLayout::rotate_focused`]: `false`
     /// when `target` is not a leaf below `self`.
     fn rotate_run(&mut self, target: PaneId, rotation: Rotation, steps: usize) -> bool {
@@ -492,8 +448,9 @@ impl LayoutTree {
 
 /// A tab's layout together with its focused pane, which is always a leaf of
 /// the tree. Every method that changes either one keeps that true, so a
-/// focus outside the layout cannot be represented.
-#[derive(Clone, Debug, PartialEq)]
+/// focus outside the layout cannot be represented, and every query about
+/// the focused pane answers without a miss case.
+#[derive(Debug, PartialEq)]
 pub struct FocusedLayout {
     tree: LayoutTree,
     focus: PaneId,
@@ -509,14 +466,11 @@ impl FocusedLayout {
         }
     }
 
-    /// `tree` focused on `focus`, refused when `focus` is not one of its
-    /// leaves.
-    pub fn from_parts(tree: LayoutTree, focus: PaneId) -> Result<Self, NotInLayout> {
-        if tree.contains_leaf(focus) {
-            Ok(Self { tree, focus })
-        } else {
-            Err(NotInLayout)
-        }
+    /// `tree` focused on `focus`, which must be one of its leaves.
+    #[cfg(test)]
+    pub(crate) fn from_parts(tree: LayoutTree, focus: PaneId) -> Self {
+        assert!(tree.contains_leaf(focus), "focus is a leaf of the tree");
+        Self { tree, focus }
     }
 
     /// The layout `EngineView::new` holds until the editor installs the
@@ -540,20 +494,121 @@ impl FocusedLayout {
         self.tree
     }
 
-    pub(crate) fn focus(&mut self, pid: PaneId) -> Result<(), NotInLayout> {
-        if !self.tree.contains_leaf(pid) {
-            return Err(NotInLayout);
-        }
+    /// Focus `pid`, which must be a leaf of the tree.
+    pub(crate) fn focus(&mut self, pid: PaneId) {
+        assert!(
+            self.tree.contains_leaf(pid),
+            "a focus target is a leaf of the tree"
+        );
         self.focus = pid;
-        Ok(())
     }
 
-    /// Split the focused pane, placing `pane` after it along `direction`.
-    /// Focus stays where it was.
-    pub(crate) fn split_focused(&mut self, pane: UnattachedPane, direction: Direction) -> PaneId {
+    /// The focused pane's rect within `area`.
+    pub(crate) fn focused_rect(&self, area: Rect, reserve_seam: bool) -> Rect {
         self.tree
-            .split_leaf(self.focus, pane, direction)
+            .find_rect(self.focus, area, reserve_seam)
             .expect("the focused pane is a leaf of the tree")
+    }
+
+    /// The pane after the focused one in leaf order, wrapping to the first;
+    /// `None` when the focused pane is the only one.
+    pub(crate) fn pane_after_focused(&self) -> Option<PaneId> {
+        let leaves = self.tree.leaves();
+        let idx = leaves
+            .iter()
+            .position(|&p| p == self.focus)
+            .expect("the focused pane is a leaf of the tree");
+        (leaves.len() > 1).then(|| leaves[(idx + 1) % leaves.len()])
+    }
+
+    /// The nearest pane on `side` of the focused one within `area`, or
+    /// `None` when no pane lies that way.
+    ///
+    /// Nearest by gap along `side`'s axis among panes overlapping the
+    /// focused one on the other axis (a purely diagonal pane never
+    /// qualifies), tie-broken on the distance between the two panes'
+    /// centers on that other axis.
+    pub(crate) fn focused_neighbor(
+        &self,
+        area: Rect,
+        reserve_seam: bool,
+        side: Side,
+    ) -> Option<PaneId> {
+        let mut rects = Vec::new();
+        self.tree.collect_rects_into(area, reserve_seam, &mut rects);
+        let &(_, cur) = rects
+            .iter()
+            .find(|(p, _)| *p == self.focus)
+            .expect("the focused pane is a leaf of the tree");
+        let cur_cx = cur.x + cur.width / 2;
+        let cur_cy = cur.y + cur.height / 2;
+        // Gap in the high 16 bits and the center distance in the low 16, so
+        // one `min_by_key` orders by gap, then distance. Both are u16, so
+        // neither can spill into the other.
+        rects
+            .into_iter()
+            .filter(|&(p, _)| p != self.focus)
+            .filter_map(|(pid, r)| {
+                let overlaps_v = r.y < cur.y + cur.height && cur.y < r.y + r.height;
+                let overlaps_h = r.x < cur.x + cur.width && cur.x < r.x + r.width;
+                let (gap, perp): (u16, u16) = match side {
+                    Side::Left if overlaps_v && r.x + r.width <= cur.x => {
+                        (cur.x - (r.x + r.width), cur_cy.abs_diff(r.y + r.height / 2))
+                    }
+                    Side::Right if overlaps_v && r.x >= cur.x + cur.width => (
+                        r.x - (cur.x + cur.width),
+                        cur_cy.abs_diff(r.y + r.height / 2),
+                    ),
+                    Side::Up if overlaps_h && r.y + r.height <= cur.y => {
+                        (cur.y - (r.y + r.height), cur_cx.abs_diff(r.x + r.width / 2))
+                    }
+                    Side::Down if overlaps_h && r.y >= cur.y + cur.height => (
+                        r.y - (cur.y + cur.height),
+                        cur_cx.abs_diff(r.x + r.width / 2),
+                    ),
+                    _ => return None,
+                };
+                Some(((gap as u32) << 16 | (perp as u32), pid))
+            })
+            .min_by_key(|(score, _)| *score)
+            .map(|(_, pid)| pid)
+    }
+
+    /// The rect the focused pane would have within `area` after
+    /// [`Self::split_focused`] on `direction`, leaving this layout unchanged.
+    /// `equalize` runs whole-tree, so a split can shrink every pane sharing
+    /// its axis, not only the focused one; this simulates the real
+    /// insert-then-equalize sequence instead of halving the current rect.
+    ///
+    /// The focused pane's side of the new split is never larger than the
+    /// new pane's: `insert_split` makes the focused pane the first child,
+    /// and `split_rect`'s integer truncation rounds the first child's share
+    /// down, so a minimum-size check against this rect alone is
+    /// conservative.
+    pub(crate) fn predicted_split_rect(
+        &self,
+        area: Rect,
+        reserve_seam: bool,
+        direction: Direction,
+    ) -> Rect {
+        let mut probe = self.tree.clone();
+        let inserted = probe.insert_split(self.focus, PaneId::default(), direction);
+        assert!(inserted, "the focused pane is a leaf of the tree");
+        probe.equalize();
+        probe
+            .find_rect(self.focus, area, reserve_seam)
+            .expect("the focused pane is a leaf of the tree")
+    }
+
+    /// Split the focused pane, placing `pane` after it along `direction`,
+    /// then re-derive every split ratio so panes sharing a split axis stay
+    /// equal-sized (see `equalize`). Focus stays where it was.
+    pub(crate) fn split_focused(&mut self, pane: UnattachedPane, direction: Direction) -> PaneId {
+        let new_id = pane.pane_id();
+        let inserted = self.tree.insert_split(self.focus, new_id, direction);
+        assert!(inserted, "the focused pane is a leaf of the tree");
+        self.tree.equalize();
+        new_id
     }
 
     /// Rotate the row or column the focused pane sits in by `steps` places.

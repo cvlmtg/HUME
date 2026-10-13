@@ -13,14 +13,12 @@ fn make_layout(ev: &mut EngineView) -> FocusedLayout {
 }
 
 #[test]
-fn new_seeds_a_single_tab_wrapping_the_initial_pane() {
-    let (mut ev, _) = EngineView::new(Theme::default());
-    let l1 = make_layout(&mut ev);
-    let (store, id) = TabStore::new(l1);
+fn new_seeds_a_single_tab_with_nothing_stashed() {
+    let store = TabStore::new();
 
-    assert_eq!(store.current(), id);
-    assert_eq!(store.order(), &[id]);
+    assert_eq!(store.order(), &[store.current()]);
     assert_eq!(store.len(), 1);
+    assert_eq!(store.inactive_layouts().count(), 0);
 }
 
 #[test]
@@ -28,82 +26,80 @@ fn open_after_current_inserts_right_after_current_and_switches() {
     let (mut ev, _) = EngineView::new(Theme::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
-    let (mut store, t1) = TabStore::new(l1.clone());
+    let mut store = TabStore::new();
+    let t1 = store.current();
+    let t2 = store.open_after_current(l1);
+    // Back on t1, a new tab lands between t1 and t2.
+    let l1 = store.take(t1);
+    store.switch(l2, t1);
 
-    let t2 = store.open_after_current(l1.clone(), l2.clone());
+    let t3 = store.open_after_current(l1);
 
-    assert_eq!(store.order(), &[t1, t2]);
-    assert_eq!(store.current(), t2);
-    assert_ne!(t1, t2);
+    assert_eq!(store.order(), &[t1, t3, t2]);
+    assert_eq!(store.current(), t3);
 }
 
 #[test]
-fn switch_round_trips_layout_and_focus_across_three_tabs() {
+fn switch_round_trips_each_tab_s_layout_across_three_tabs() {
     let (mut ev, _) = EngineView::new(Theme::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
     let l3 = make_layout(&mut ev);
-    let (mut store, t1) = TabStore::new(l1.clone());
-    let t2 = store.open_after_current(l1.clone(), l2.clone());
-    let t3 = store.open_after_current(l2.clone(), l3.clone());
+    let [p1, p2, p3] = [&l1, &l2, &l3].map(FocusedLayout::focused);
+    let mut store = TabStore::new();
+    let t1 = store.current();
+    let t2 = store.open_after_current(l1);
+    let t3 = store.open_after_current(l2);
     assert_eq!(store.order(), &[t1, t2, t3]);
 
-    // Currently on t3 (layout live at l3, per open_after_current's own
-    // return). Switch back to t1.
-    let layout = store.switch(l3.clone(), t1);
-    assert_eq!(layout, l1);
+    // Live: l3. Each step installs the taken layout and stashes the live one.
+    let live = store.take(t1);
+    assert_eq!(live.focused(), p1);
+    store.switch(l3, t1);
     assert_eq!(store.current(), t1);
 
-    // t3's own state must have been stashed correctly by that switch. Jump
-    // straight to it from t1 and confirm it comes back unchanged.
-    let layout = store.switch(l1.clone(), t3);
-    assert_eq!(layout, l3);
-    assert_eq!(store.current(), t3);
+    let next = store.take(t3);
+    assert_eq!(next.focused(), p3);
+    store.switch(live, t3);
 
-    // t2 (never re-visited since its own open_after_current call) must
-    // still hold what it was opened with.
-    let layout = store.switch(l3.clone(), t2);
-    assert_eq!(layout, l2);
+    let last = store.take(t2);
+    assert_eq!(last.focused(), p2);
+    store.switch(next, t2);
+    assert_eq!(store.current(), t2);
 }
 
 #[test]
-fn switch_to_current_tab_is_reachable_but_a_noop_for_the_store() {
-    // TabStore::switch itself has no early-return; that's `tab::switch_to_tab`'s
-    // job (the chokepoint callers actually use). Called directly here it
-    // still behaves correctly: stashing then immediately re-loading the
-    // same tab is idempotent.
-    let (mut ev, _) = EngineView::new(Theme::default());
-    let l1 = make_layout(&mut ev);
-    let (mut store, t1) = TabStore::new(l1.clone());
+#[should_panic(expected = "only an inactive tab is taken, and only once")]
+fn take_panics_on_the_active_tab() {
+    let mut store = TabStore::new();
+    let t1 = store.current();
 
-    let layout = store.switch(l1.clone(), t1);
-    assert_eq!(layout, l1);
-    assert_eq!(store.current(), t1);
+    store.take(t1);
 }
 
 #[test]
 fn close_current_removes_from_order_and_promotes_survivor() {
     let (mut ev, _) = EngineView::new(Theme::default());
     let l1 = make_layout(&mut ev);
-    let l2 = make_layout(&mut ev);
-    let (mut store, t1) = TabStore::new(l1.clone());
-    let t2 = store.open_after_current(l1.clone(), l2.clone());
-    assert_eq!(store.current(), t2);
+    let p1 = l1.focused();
+    let mut store = TabStore::new();
+    let t1 = store.current();
+    store.open_after_current(l1);
 
-    let layout = store.close_current(t1);
+    let incoming = store.take(t1);
+    store.close_current(t1);
 
+    assert_eq!(incoming.focused(), p1);
     assert_eq!(store.order(), &[t1]);
-    assert_eq!(store.len(), 1);
     assert_eq!(store.current(), t1);
-    assert_eq!(layout, l1);
+    assert_eq!(store.inactive_layouts().count(), 0);
 }
 
 #[test]
 #[should_panic(expected = "close_current requires more than one tab")]
 fn close_current_panics_on_the_last_tab() {
-    let (mut ev, _) = EngineView::new(Theme::default());
-    let l1 = make_layout(&mut ev);
-    let (mut store, t1) = TabStore::new(l1.clone());
+    let mut store = TabStore::new();
+    let t1 = store.current();
 
     store.close_current(t1);
 }
@@ -113,10 +109,10 @@ fn next_and_prev_wrap_around() {
     let (mut ev, _) = EngineView::new(Theme::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
-    let l3 = make_layout(&mut ev);
-    let (mut store, t1) = TabStore::new(l1.clone());
-    let t2 = store.open_after_current(l1.clone(), l2.clone());
-    let _t3 = store.open_after_current(l2.clone(), l3.clone());
+    let mut store = TabStore::new();
+    let t1 = store.current();
+    let t2 = store.open_after_current(l1);
+    store.open_after_current(l2);
     // current() == t3 here.
 
     assert_eq!(store.next(), t1, "wraps from the last tab to the first");
@@ -125,25 +121,22 @@ fn next_and_prev_wrap_around() {
 
 #[test]
 fn next_and_prev_are_noops_with_one_tab() {
-    let (mut ev, _) = EngineView::new(Theme::default());
-    let l1 = make_layout(&mut ev);
-    let (store, t1) = TabStore::new(l1.clone());
+    let store = TabStore::new();
+    let t1 = store.current();
 
     assert_eq!(store.next(), t1);
     assert_eq!(store.prev(), t1);
 }
 
 #[test]
-fn adjacent_prefers_the_left_neighbour() {
+fn adjacent_of_the_rightmost_tab_is_its_left_neighbour() {
     let (mut ev, _) = EngineView::new(Theme::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
-    let l3 = make_layout(&mut ev);
-    let (mut store, t1) = TabStore::new(l1.clone());
-    let t2 = store.open_after_current(l1.clone(), l2.clone());
-    let t3 = store.open_after_current(l2.clone(), l3.clone());
-    assert_eq!(store.order(), &[t1, t2, t3]);
-    // current() == t3 here, so its left neighbour is t2.
+    let mut store = TabStore::new();
+    store.open_after_current(l1);
+    let t2 = store.current();
+    store.open_after_current(l2);
 
     assert_eq!(store.adjacent(), t2);
 }
@@ -153,32 +146,34 @@ fn adjacent_of_the_leftmost_tab_is_its_right_neighbour() {
     let (mut ev, _) = EngineView::new(Theme::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
-    let (mut store, t1) = TabStore::new(l1.clone());
-    let _t2 = store.open_after_current(l1.clone(), l2.clone());
-    // Switch back onto the leftmost tab, t1, which has no left neighbour.
-    store.switch(l2.clone(), t1);
+    let mut store = TabStore::new();
+    let t1 = store.current();
+    let t2 = store.open_after_current(l1);
+    store.take(t1);
+    store.switch(l2, t1);
 
-    assert_eq!(store.adjacent(), store.order()[1]);
+    assert_eq!(store.adjacent(), t2);
 }
 
 #[test]
 #[should_panic(expected = "adjacent requires more than one tab")]
 fn adjacent_panics_on_the_last_tab() {
-    let (mut ev, _) = EngineView::new(Theme::default());
-    let l1 = make_layout(&mut ev);
-    let (store, _t1) = TabStore::new(l1.clone());
+    let store = TabStore::new();
 
     store.adjacent();
 }
 
 #[test]
-fn stashed_focus_reads_an_inactive_tab_s_last_focused_pane() {
+fn focused_panes_reads_the_active_tab_s_focus_from_the_live_layout() {
     let (mut ev, _) = EngineView::new(Theme::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
-    let (mut store, t1) = TabStore::new(l1.clone());
-    let _t2 = store.open_after_current(l1.clone(), l2.clone());
+    let [p1, p2] = [&l1, &l2].map(FocusedLayout::focused);
+    let mut store = TabStore::new();
+    let t1 = store.current();
+    let t2 = store.open_after_current(l1);
 
-    // t1 is now inactive; its stash entry was written by open_after_current.
-    assert_eq!(store.stashed_focus(t1), l1.focused());
+    let panes: Vec<_> = store.focused_panes(p2).collect();
+
+    assert_eq!(panes, vec![(t1, p1), (t2, p2)]);
 }

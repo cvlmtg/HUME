@@ -440,7 +440,7 @@ pub(crate) struct EditorState {
 
 impl EditorState {
     /// The trivial-field baseline both `EditorState` constructors build on,
-    /// around the `focus` and `tabs` they seeded with the first pane.
+    /// around the `focus` they seeded with the first pane.
     ///
     /// Not a usable editor on its own: no buffers, an OSC 52 clipboard, and
     /// a no-op waker. It exists so the fields that are identical at both
@@ -451,7 +451,7 @@ impl EditorState {
     /// production value is inherited by accident. A field added later whose
     /// production value must differ from its baseline needs the same
     /// treatment; the compiler will not ask for it.
-    pub(in crate::editor) fn base(focus: focus::Focus, tabs: tab::TabStore) -> Self {
+    pub(in crate::editor) fn base(focus: focus::Focus) -> Self {
         let settings = EditorSettings::default();
         let history_capacity = settings.history_capacity;
         Self {
@@ -481,7 +481,7 @@ impl EditorState {
             shown_theme: String::new(),
             last_find: None,
             focus,
-            tabs,
+            tabs: tab::TabStore::new(),
             panes: PaneView::default(),
             history: minibuf::history::HistoryStore::new(history_capacity),
             force_full_redraw: false,

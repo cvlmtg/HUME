@@ -83,11 +83,7 @@ fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
     // the tinted line. This test isolates wrap-row persistence from the
     // cursorline-precedence case covered separately below.
     type_text(&mut ed, "aaaaaaaaaaaaaaaaaaaa\nb");
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 0 });
     run(
         &mut ed,
         tmp.path(),

@@ -1,5 +1,5 @@
 use crate::editor::registry::Count;
-use hume_engine::pipeline::{Direction, EngineView, Rotation};
+use hume_engine::pipeline::{Direction, EngineView, Rotation, Side};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
@@ -149,88 +149,24 @@ pub(in crate::editor) fn cmd_goto_prev_buffer(
 
 // ── Pane focus ───────────────────────────────────────────────────────────────
 
-/// Directional neighbour selection for pane focus.
-enum Dir {
-    Left,
-    Right,
-    Up,
-    Down,
-}
-
-/// Move focus to the nearest pane in `dir`, reading geometry recomputed from
-/// the layout tree and the terminal area cached by `prepare_frame` (see
-/// `EngineView::pane_rects`). Silent no-op (`Ok`) when no pane lies in that
-/// direction. Focus switch routes through `focus_pane`, which ends the
-/// outgoing pane's Insert session first. `open_pane` already seeded
-/// per-pane maps for every existing pane, so nothing else needs seeding here.
-fn focus_in_direction(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    fp: FocusedPane,
-    dir: Dir,
-) -> Result<(), CommandError> {
-    let focused = fp.pid();
-    let rects = view.pane_rects();
-    let &(_, cur) = rects
-        .iter()
-        .find(|(p, _)| *p == focused)
-        .expect("the focused pane is a leaf of the layout");
-    let cur_cx = cur.x + cur.width / 2;
-    let cur_cy = cur.y + cur.height / 2;
-    // Nearest by primary-axis gap among panes that overlap on the perpendicular
-    // axis (excludes purely-diagonal neighbours); tie-break on perpendicular
-    // center distance. Pack gap into the high 16 bits and perp into the low 16
-    // bits so a single `min_by_key` orders by gap then perp. Both are u16 so
-    // neither can contaminate the other.
-    let target = rects
-        .iter()
-        .copied()
-        .filter(|(p, _)| p != &focused)
-        .filter_map(|(pid, r)| {
-            let overlaps_v = r.y < cur.y + cur.height && cur.y < r.y + r.height;
-            let overlaps_h = r.x < cur.x + cur.width && cur.x < r.x + r.width;
-            let (gap, perp): (u16, u16) = match dir {
-                Dir::Left if overlaps_v && r.x + r.width <= cur.x => {
-                    (cur.x - (r.x + r.width), cur_cy.abs_diff(r.y + r.height / 2))
-                }
-                Dir::Right if overlaps_v && r.x >= cur.x + cur.width => (
-                    r.x - (cur.x + cur.width),
-                    cur_cy.abs_diff(r.y + r.height / 2),
-                ),
-                Dir::Up if overlaps_h && r.y + r.height <= cur.y => {
-                    (cur.y - (r.y + r.height), cur_cx.abs_diff(r.x + r.width / 2))
-                }
-                Dir::Down if overlaps_h && r.y >= cur.y + cur.height => (
-                    r.y - (cur.y + cur.height),
-                    cur_cx.abs_diff(r.x + r.width / 2),
-                ),
-                _ => return None,
-            };
-            Some(((gap as u32) << 16 | (perp as u32), pid))
-        })
-        .min_by_key(|(score, _)| *score)
-        .map(|(_, pid)| pid);
-    if let Some(pid) = target {
+/// Move focus to the nearest pane on `side`, a silent no-op when none lies
+/// that way. Geometry comes from the terminal area cached by `prepare_frame`
+/// (see `EngineView::focused_neighbor`).
+fn focus_toward(state: &mut EditorState, view: &mut EngineView, side: Side) {
+    if let Some(pid) = view.focused_neighbor(side) {
         focus_pane(state, view, pid);
     }
-    Ok(())
 }
 
 pub(in crate::editor) fn cmd_pane_focus_next(
     state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
+    _fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let rects = view.pane_rects();
-    let idx = rects
-        .iter()
-        .position(|(p, _)| *p == fp.pid())
-        .expect("the focused pane is a leaf of the layout");
-    let n = rects.len();
-    if n > 1 {
-        focus_pane(state, view, rects[(idx + 1) % n].0);
+    if let Some(pid) = view.pane_after_focused() {
+        focus_pane(state, view, pid);
     }
     Ok(())
 }
@@ -238,41 +174,45 @@ pub(in crate::editor) fn cmd_pane_focus_next(
 pub(in crate::editor) fn cmd_pane_focus_left(
     state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
+    _fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    focus_in_direction(state, view, fp, Dir::Left)
+    focus_toward(state, view, Side::Left);
+    Ok(())
 }
 
 pub(in crate::editor) fn cmd_pane_focus_right(
     state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
+    _fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    focus_in_direction(state, view, fp, Dir::Right)
+    focus_toward(state, view, Side::Right);
+    Ok(())
 }
 
 pub(in crate::editor) fn cmd_pane_focus_up(
     state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
+    _fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    focus_in_direction(state, view, fp, Dir::Up)
+    focus_toward(state, view, Side::Up);
+    Ok(())
 }
 
 pub(in crate::editor) fn cmd_pane_focus_down(
     state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
+    _fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    focus_in_direction(state, view, fp, Dir::Down)
+    focus_toward(state, view, Side::Down);
+    Ok(())
 }
 
 // ── Pane split (keymap-bound, no path argument) ─────────────────────────────

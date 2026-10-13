@@ -68,7 +68,6 @@ impl Editor {
         use crate::editor::pane_state::{PaneBufferState, PaneView};
         use crate::editor::settings::EditorSettings;
         use hume_editing::text::BufferText;
-        use hume_engine::pipeline::FocusedLayout;
         use slotmap::SecondaryMap;
 
         let mut doc = match file_path {
@@ -118,11 +117,7 @@ impl Editor {
         let (pane, render_handles) = build_pane(&mut engine_view.registry, &views, buffer_id);
         let unattached = engine_view.insert_pane(pane);
         let pane_id = unattached.pane_id();
-        let layout = FocusedLayout::new(unattached);
-        let tabs = super::tab::TabStore::new(layout.clone()).0;
-        // Discards the placeholder EngineView::new seeded: no real pane
-        // behind it to leak.
-        let _ = engine_view.replace_layout(&focus_key, layout);
+        let focus = super::focus::Focus::new(&mut engine_view, focus_key, unattached);
 
         let jump_list_capacity = settings.jump_list_capacity;
         let history_capacity = settings.history_capacity;
@@ -163,7 +158,7 @@ impl Editor {
                 views,
                 tabline_view,
                 wake: Arc::clone(&wake),
-                ..super::EditorState::base(super::focus::Focus::new(focus_key), tabs)
+                ..super::EditorState::base(focus)
             },
             view: engine_view,
             kitty_enabled: false,
@@ -496,15 +491,9 @@ impl Editor {
                     //
                     // `prepare_frame` ran earlier this iteration and stored the
                     // terminal area; recompute the focused pane's origin from it
-                    // so the cursor lands inside the pane, not at the origin. The
-                    // focused pane is always a leaf of the active layout
-                    // (`FocusedLayout`), so this can't miss.
-                    let focused = self.view.focused_pane();
-                    let gutter_w = self.pane_gutter_width(focused);
-                    let pane_rect = self
-                        .view
-                        .pane_rect(focused)
-                        .expect("focused pane must have a rect after prepare_frame");
+                    // so the cursor lands inside the pane, not at the origin.
+                    let gutter_w = self.pane_gutter_width(self.view.focused_pane());
+                    let pane_rect = self.view.focused_rect();
                     ctx.cursor_content_pos.map(|(content_x, row)| {
                         let (x, y) = super::mouse::content_pos_to_screen(
                             content_x, row, gutter_w, pane_rect,

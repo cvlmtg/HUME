@@ -130,11 +130,7 @@ fn select_word_nearest_on_line_follows_word_chars() {
 fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_display_line() {
     let mut ed = editor_from("hello world foo-b-[a]>r\n");
     ed.state.settings.word_chars = "-".into();
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Indent { width: 12 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 12 });
     ed.execute_keymap_command(
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),

@@ -139,11 +139,7 @@ impl Editor {
         if self.state.mouse_drag != Some(pid) {
             return;
         }
-        let Some((pane_x, pane_y)) = self
-            .view
-            .pane_rect(pid)
-            .and_then(|rect| rect_relative(rect, x, y))
-        else {
+        let Some((pane_x, pane_y)) = rect_relative(self.view.focused_rect(), x, y) else {
             return;
         };
 
@@ -215,7 +211,7 @@ impl Editor {
             .map(|i| guard.tabs[guard.scroll + i].id);
         drop(guard);
         if let Some(id) = target {
-            // `switch_to_tab` -> `take_live` exits Insert (if active) against
+            // `switch_to_tab` -> `install_live` exits Insert (if active) against
             // the outgoing tab's own pane while its tab is still live, before
             // the new tab is installed: the teardown's indent trim edits a
             // buffer the outgoing tab's panes may show.

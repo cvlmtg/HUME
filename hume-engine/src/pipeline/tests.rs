@@ -982,10 +982,6 @@ fn column_of_two(top: PaneId, bottom: PaneId) -> LayoutTree {
     )
 }
 
-fn focused_on(tree: LayoutTree, focus: PaneId) -> FocusedLayout {
-    FocusedLayout::from_parts(tree, focus).expect("focus is a leaf of the tree")
-}
-
 #[test]
 fn a_new_layout_is_its_pane_alone_and_focused() {
     let [a] = pane_ids();
@@ -995,24 +991,66 @@ fn a_new_layout_is_its_pane_alone_and_focused() {
 }
 
 #[test]
-fn from_parts_refuses_a_focus_outside_the_tree() {
-    let [a, b, missing] = pane_ids();
-    assert_eq!(
-        FocusedLayout::from_parts(column_of_two(a, b), missing),
-        Err(NotInLayout)
-    );
+fn focus_moves_to_a_leaf() {
+    let [a, b] = pane_ids();
+    let mut layout = FocusedLayout::from_parts(column_of_two(a, b), a);
+
+    layout.focus(b);
+
+    assert_eq!(layout.focused(), b);
 }
 
 #[test]
-fn focus_moves_to_a_leaf_and_refuses_a_pane_outside_the_tree() {
+#[should_panic(expected = "a focus target is a leaf of the tree")]
+fn focus_refuses_a_pane_outside_the_tree() {
     let [a, b, missing] = pane_ids();
-    let mut layout = focused_on(column_of_two(a, b), a);
+    let mut layout = FocusedLayout::from_parts(column_of_two(a, b), a);
 
-    assert_eq!(layout.focus(b), Ok(()));
-    assert_eq!(layout.focused(), b);
+    layout.focus(missing);
+}
 
-    assert_eq!(layout.focus(missing), Err(NotInLayout));
-    assert_eq!(layout.focused(), b);
+#[test]
+fn pane_after_focused_follows_leaf_order_and_wraps() {
+    let [a, b, c] = pane_ids();
+    let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), a);
+    assert_eq!(layout.pane_after_focused(), Some(b));
+
+    layout.focus(c);
+
+    assert_eq!(layout.pane_after_focused(), Some(a));
+}
+
+#[test]
+fn pane_after_focused_is_none_for_a_sole_pane() {
+    let [a] = pane_ids();
+    let layout = FocusedLayout::new(UnattachedPane::for_test(a));
+    assert_eq!(layout.pane_after_focused(), None);
+}
+
+/// `a` fills the left half; the right half stacks a short `b` (center row 7)
+/// over a tall `c` (center row 32). Both touch `a`'s right edge, so they tie
+/// on gap, and `a`'s center row 25 is nearer `c`'s center. Ranking by the
+/// panes' top rows instead (0 for `b`, 15 for `c`) would pick `b`.
+#[test]
+fn focused_neighbor_tie_breaks_on_center_distance() {
+    let [a, b, c] = pane_ids();
+    let tree = split(
+        Direction::Horizontal,
+        0.5,
+        LayoutTree::Leaf(a),
+        split(
+            Direction::Vertical,
+            0.3,
+            LayoutTree::Leaf(b),
+            LayoutTree::Leaf(c),
+        ),
+    );
+    let layout = FocusedLayout::from_parts(tree, a);
+
+    assert_eq!(
+        layout.focused_neighbor(rect(0, 0, 100, 50), true, Side::Right),
+        Some(c)
+    );
 }
 
 #[test]
@@ -1022,8 +1060,7 @@ fn a_focus_key_from_another_view_is_refused() {
     let (_, other_key) = EngineView::new(Theme::default());
     let pid = view.focused_pane();
 
-    view.focus(&other_key, pid)
-        .expect("pid is the view's own focused pane");
+    view.focus(&other_key, pid);
 }
 
 #[test]
@@ -1041,7 +1078,7 @@ fn split_focused_adds_the_pane_beside_the_focus_and_keeps_focus() {
 #[test]
 fn rotate_forward_moves_each_pane_one_place_along_its_row() {
     let [a, b, c] = pane_ids();
-    let mut layout = focused_on(row_of_three(a, b, c), b);
+    let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), b);
     let area = rect(0, 0, 100, 50);
     let mut before = Vec::new();
     layout.tree().collect_rects_into(area, true, &mut before);
@@ -1059,7 +1096,7 @@ fn rotate_forward_moves_each_pane_one_place_along_its_row() {
 #[test]
 fn rotate_backward_moves_each_pane_one_place_back_along_its_row() {
     let [a, b, c] = pane_ids();
-    let mut layout = focused_on(row_of_three(a, b, c), b);
+    let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), b);
     assert_eq!(layout.rotate_focused(Rotation::Backward, 1), Ok(()));
     assert_eq!(layout.tree(), &row_of_three(b, c, a));
 }
@@ -1067,11 +1104,11 @@ fn rotate_backward_moves_each_pane_one_place_back_along_its_row() {
 #[test]
 fn rotate_by_a_count_moves_each_pane_that_many_places() {
     let [a, b, c, d] = pane_ids();
-    let mut forward = focused_on(row_of_four(a, b, c, d), a);
+    let mut forward = FocusedLayout::from_parts(row_of_four(a, b, c, d), a);
     assert_eq!(forward.rotate_focused(Rotation::Forward, 2), Ok(()));
     assert_eq!(forward.tree(), &row_of_four(c, d, a, b));
 
-    let mut backward = focused_on(row_of_four(a, b, c, d), a);
+    let mut backward = FocusedLayout::from_parts(row_of_four(a, b, c, d), a);
     assert_eq!(backward.rotate_focused(Rotation::Backward, 3), Ok(()));
     assert_eq!(backward.tree(), &row_of_four(d, a, b, c));
 }
@@ -1079,7 +1116,7 @@ fn rotate_by_a_count_moves_each_pane_that_many_places() {
 #[test]
 fn rotate_by_the_member_count_leaves_the_row_unchanged() {
     let [a, b, c] = pane_ids();
-    let mut layout = focused_on(row_of_three(a, b, c), a);
+    let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), a);
     assert_eq!(layout.rotate_focused(Rotation::Forward, 3), Ok(()));
     assert_eq!(layout.tree(), &row_of_three(a, b, c));
 }
@@ -1100,7 +1137,7 @@ fn rotate_treats_a_left_nested_chain_as_one_row() {
             LayoutTree::Leaf(z),
         )
     };
-    let mut layout = focused_on(left_nested(a, b, c), c);
+    let mut layout = FocusedLayout::from_parts(left_nested(a, b, c), c);
 
     assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
 
@@ -1110,7 +1147,7 @@ fn rotate_treats_a_left_nested_chain_as_one_row() {
 #[test]
 fn rotate_moves_a_perpendicular_split_as_one_member() {
     let [a, b, c] = pane_ids();
-    let mut layout = focused_on(
+    let mut layout = FocusedLayout::from_parts(
         split(
             Direction::Horizontal,
             0.5,
@@ -1136,7 +1173,7 @@ fn rotate_moves_a_perpendicular_split_as_one_member() {
 #[test]
 fn rotate_inside_a_perpendicular_split_rotates_only_that_column() {
     let [a, b, c] = pane_ids();
-    let mut layout = focused_on(
+    let mut layout = FocusedLayout::from_parts(
         split(
             Direction::Horizontal,
             0.5,
@@ -1180,7 +1217,7 @@ fn rotate_two_levels_below_a_perpendicular_split_rotates_only_the_innermost_row(
             ),
         )
     };
-    let mut layout = focused_on(nested(c, d), c);
+    let mut layout = FocusedLayout::from_parts(nested(c, d), c);
 
     assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
 
@@ -1474,49 +1511,22 @@ fn junction_glyph_at_t_and_cross_scenarios_matches_collect_seam_arms() {
 }
 
 #[test]
-fn split_leaf_on_root() {
-    let [a, b] = pane_ids();
-    let mut tree = LayoutTree::Leaf(a);
-    assert!(
-        tree.split_leaf(a, UnattachedPane::for_test(b), Direction::Vertical)
-            .is_ok()
-    );
-    assert_eq!(
-        tree,
-        LayoutTree::Split {
-            direction: Direction::Vertical,
-            ratio: 0.5,
-            children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
-        }
-    );
-}
-
-#[test]
-fn split_leaf_missing_target_is_noop() {
-    let [a, b, missing] = pane_ids();
-    let mut tree = LayoutTree::Leaf(a);
-    assert!(
-        tree.split_leaf(missing, UnattachedPane::for_test(b), Direction::Vertical)
-            .is_err()
-    );
-    assert_eq!(tree, LayoutTree::Leaf(a));
-}
-
-#[test]
-fn split_leaf_on_nested_target() {
+fn split_focused_on_a_nested_leaf() {
     let [a, b, c] = pane_ids();
-    let mut tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
-    };
-    assert!(
-        tree.split_leaf(b, UnattachedPane::for_test(c), Direction::Vertical)
-            .is_ok()
+    let mut layout = FocusedLayout::from_parts(
+        split(
+            Direction::Horizontal,
+            0.5,
+            LayoutTree::Leaf(a),
+            LayoutTree::Leaf(b),
+        ),
+        b,
     );
+    layout.split_focused(UnattachedPane::for_test(c), Direction::Vertical);
+    let tree = layout.tree();
     assert_eq!(
         tree,
-        LayoutTree::Split {
+        &LayoutTree::Split {
             direction: Direction::Horizontal,
             ratio: 0.5,
             children: Box::new((
@@ -1536,17 +1546,12 @@ fn split_leaf_on_nested_target() {
 }
 
 #[test]
-fn split_leaf_thrice_gives_equal_thirds() {
+fn split_focused_twice_gives_equal_thirds() {
     let [a, b, c] = pane_ids();
-    let mut tree = LayoutTree::Leaf(a);
-    assert!(
-        tree.split_leaf(a, UnattachedPane::for_test(b), Direction::Horizontal)
-            .is_ok()
-    );
-    assert!(
-        tree.split_leaf(a, UnattachedPane::for_test(c), Direction::Horizontal)
-            .is_ok()
-    );
+    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
+    layout.split_focused(UnattachedPane::for_test(b), Direction::Horizontal);
+    layout.split_focused(UnattachedPane::for_test(c), Direction::Horizontal);
+    let tree = layout.tree();
 
     // `a` is split again, so it (now paired with `c`) occupies 2 of the 3
     // slots on the horizontal axis (hence 2/3, not 1/3), with the nested
@@ -1554,7 +1559,7 @@ fn split_leaf_thrice_gives_equal_thirds() {
     // apiece, checked below against rendered widths.
     assert_eq!(
         tree,
-        LayoutTree::Split {
+        &LayoutTree::Split {
             direction: Direction::Horizontal,
             ratio: 2.0 / 3.0,
             children: Box::new((
@@ -1582,25 +1587,20 @@ fn split_leaf_thrice_gives_equal_thirds() {
 }
 
 #[test]
-fn split_leaf_counts_perpendicular_subtree_as_one_share() {
+fn split_focused_counts_perpendicular_subtree_as_one_share() {
     let [a, b, c, d] = pane_ids();
-    let mut tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((
+    let mut layout = FocusedLayout::from_parts(
+        split(
+            Direction::Horizontal,
+            0.5,
             LayoutTree::Leaf(a),
-            LayoutTree::Split {
-                direction: Direction::Vertical,
-                ratio: 0.5,
-                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
-            },
-        )),
-    };
-    assert!(
-        tree.split_leaf(a, UnattachedPane::for_test(d), Direction::Horizontal)
-            .is_ok()
+            column_of_two(b, c),
+        ),
+        a,
     );
-    let LayoutTree::Split { ratio, .. } = &tree else {
+    layout.split_focused(UnattachedPane::for_test(d), Direction::Horizontal);
+    let tree = layout.tree();
+    let LayoutTree::Split { ratio, .. } = tree else {
         panic!("root must still be a split");
     };
     assert_eq!(*ratio, 2.0 / 3.0);
@@ -1619,7 +1619,7 @@ fn split_leaf_counts_perpendicular_subtree_as_one_share() {
 #[test]
 fn close_focused_collapses_the_parent_onto_the_sibling() {
     let [a, b] = pane_ids();
-    let mut layout = focused_on(column_of_two(a, b), a);
+    let mut layout = FocusedLayout::from_parts(column_of_two(a, b), a);
     let detached = layout.close_focused().expect("two panes");
     assert_eq!(detached.pane_id(), a);
     assert_eq!(layout.tree(), &LayoutTree::Leaf(b));
@@ -1629,7 +1629,7 @@ fn close_focused_collapses_the_parent_onto_the_sibling() {
 #[test]
 fn close_focused_moves_focus_to_the_promoted_subtree_leftmost_leaf() {
     let [a, b, c] = pane_ids();
-    let mut layout = focused_on(
+    let mut layout = FocusedLayout::from_parts(
         split(
             Direction::Horizontal,
             0.5,
@@ -1659,18 +1659,19 @@ fn close_focused_equalizes_survivors() {
     let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
     layout.split_focused(UnattachedPane::for_test(b), Direction::Horizontal);
     let new_pane = layout.split_focused(UnattachedPane::for_test(c), Direction::Horizontal);
-    assert_eq!(layout.focus(new_pane), Ok(()));
+    layout.focus(new_pane);
 
     let detached = layout.close_focused().expect("three panes");
     assert_eq!(detached.pane_id(), c);
     assert_eq!(layout.focused(), a);
     assert_eq!(
         layout.tree(),
-        &LayoutTree::Split {
-            direction: Direction::Horizontal,
-            ratio: 0.5,
-            children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
-        }
+        &split(
+            Direction::Horizontal,
+            0.5,
+            LayoutTree::Leaf(a),
+            LayoutTree::Leaf(b)
+        )
     );
 }
 
@@ -1727,15 +1728,10 @@ fn into_detached_yields_one_token_per_leaf() {
 #[test]
 fn leaves_collects_every_pane_in_a_split_tree() {
     let [a, b, c] = pane_ids();
-    let mut tree = LayoutTree::Leaf(a);
-    assert!(
-        tree.split_leaf(a, UnattachedPane::for_test(b), Direction::Horizontal)
-            .is_ok()
-    );
-    assert!(
-        tree.split_leaf(a, UnattachedPane::for_test(c), Direction::Vertical)
-            .is_ok()
-    );
+    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
+    layout.split_focused(UnattachedPane::for_test(b), Direction::Horizontal);
+    layout.split_focused(UnattachedPane::for_test(c), Direction::Vertical);
+    let tree = layout.tree();
 
     // Order-independent: `leaves` promises a depth-first walk, not a
     // specific one, and `PaneId` has no `Ord` to sort by.

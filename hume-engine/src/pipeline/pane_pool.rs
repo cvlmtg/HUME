@@ -34,7 +34,7 @@ impl UnattachedPane {
     /// the layout unit tests (`pipeline::tests`) exercise tree shape in
     /// isolation from `PanePool`, off ids minted by a throwaway `SlotMap`
     /// (see that module's own `pane_ids` helper), and need a token to hand
-    /// `split_leaf`/`FocusedLayout::new` without building a real
+    /// `FocusedLayout::new`/`split_focused` without building a real
     /// `EngineView`.
     pub(crate) fn for_test(id: PaneId) -> Self {
         Self(id)

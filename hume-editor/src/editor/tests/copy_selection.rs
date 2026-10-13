@@ -296,11 +296,7 @@ fn copy_next_line_preserves_display_column_across_a_wrapped_source_line() {
     let text = BufferText::from(content.as_str());
     let sels = sels_at(&text, &[(79, 79)], 0); // last 'a', buffer-line col 79
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 76 });
 
     run_copy(&mut ed, true, 1);
     assert_eq!(ed.current_view().len(), 2);

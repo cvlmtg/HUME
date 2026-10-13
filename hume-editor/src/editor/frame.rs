@@ -289,7 +289,7 @@ impl Editor {
 
         // Stored before the write below runs. `resync_viewport_dims` reads
         // these three fields to do the actual per-pane partition and write,
-        // the same partition `EngineView::pane_rects`/`pane_rect` recompute
+        // the same partition `EngineView::pane_rects`/`focused_rect` recompute
         // from for pane-focus/split commands with no terminal handle between
         // frames. One partition, one write loop, shared with
         // `resync_viewport_dims`'s other caller (`tab::install_live`).
@@ -336,13 +336,8 @@ impl Editor {
             let bar = self.view.tabbar_area(self.view.last_terminal_area);
             bar.x.hash(&mut hasher);
             bar.width.hash(&mut hasher);
-            for &id in self.state.tabs.order() {
+            for (id, pid) in self.state.tabs.focused_panes(self.view.focused_pane()) {
                 id.hash(&mut hasher);
-                let pid = if id == current {
-                    self.view.focused_pane()
-                } else {
-                    self.state.tabs.stashed_focus(id)
-                };
                 pid.hash(&mut hasher);
                 let bid = self.view.panes[pid].buffer_id;
                 bid.hash(&mut hasher);
@@ -394,18 +389,13 @@ impl Editor {
             return;
         }
 
-        let order = self.state.tabs.order();
-        let current = self.state.tabs.current();
         let active_index = self.state.tabs.current_pos();
 
-        let tabs: Vec<crate::tabline::TabEntry> = order
-            .iter()
-            .map(|&id| {
-                let pid = if id == current {
-                    self.view.focused_pane()
-                } else {
-                    self.state.tabs.stashed_focus(id)
-                };
+        let tabs: Vec<crate::tabline::TabEntry> = self
+            .state
+            .tabs
+            .focused_panes(self.view.focused_pane())
+            .map(|(id, pid)| {
                 let bid = self.view.panes[pid].buffer_id;
                 let buf = self.state.buffers.get(bid);
                 let mut label = buf.display_name();

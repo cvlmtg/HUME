@@ -60,11 +60,7 @@ fn visual_test_editor(head: usize) -> Editor {
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     // Pin to 76-column indent-wrap so the char-offset expectations in the tests
     // are stable regardless of terminal size.
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 76 });
     ed
 }
 
@@ -708,11 +704,7 @@ fn wrapped_j_then_count_2_rederives_instead_of_reading_the_display_line_latch_as
     let text = BufferText::from(content.as_str());
     let sels = sels_at(&text, &[(40, 40)], 0); // display line 0, display col 40
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 76 });
 
     ed.handle_key(key('j')); // bare j: display line 0 -> display line 1, clamped to col 3
     assert_eq!(ed.current_view().primary().head().offset(), co(79));
@@ -840,11 +832,7 @@ fn visual_move_per_selection_sticky_display_col() {
     // A at col 0, B at col 3 (primary).
     let sels = sels_at(&text, &[(76, 76), (79, 79)], 1);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 76 });
 
     // j: each cursor should use its own column, not the primary's.
     ed.handle_key(key('j'));
@@ -922,11 +910,7 @@ fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     // Wide enough that nothing actually wraps: only `is_wrapping()` matters,
     // to force bare `j` to tag `DisplayLine` instead of `BufferLine`.
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Soft { width: 200 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 200 });
     let focused_pid = ed.view.focused_pane();
     ed.view.panes[focused_pid]
         .providers
@@ -1065,11 +1049,7 @@ fn word_wrap_editor() -> Editor {
     let text = BufferText::from(content.as_str());
     let sels = sels_at(&text, &[(0, 0)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 76 });
     ed
 }
 
@@ -1202,11 +1182,7 @@ fn nearest_on_wrapped(
     let sels = sels_at(&text, &[(cursor, cursor)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.state.settings.word_selects_whitespace = side;
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Indent { width: 6 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 6 });
 
     ed.execute_keymap_command(
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
@@ -1258,11 +1234,7 @@ fn select_word_absorbs_previous_display_line_whitespace_unlike_nearest_on_line()
     let text = BufferText::from("hello wordB\n");
     let sels = sels_at(&text, &[(8, 8)], 0); // 'r' inside "wordB"
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Indent { width: 6 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 6 });
 
     ed.execute_keymap_command(std::borrow::Cow::Borrowed("select-word"), Some(1), false);
 
@@ -1439,11 +1411,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
     let text = BufferText::from(content.as_str());
     let sels = sels_at(&text, &[(0, 0)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 76 });
 
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);

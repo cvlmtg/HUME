@@ -23,7 +23,7 @@ use layout::{
     junction_glyph,
 };
 pub use layout::{
-    DetachedPane, Direction, FocusedLayout, LayoutTree, NotInLayout, Rotation, Seam, SinglePane,
+    DetachedPane, Direction, FocusedLayout, LayoutTree, Rotation, Seam, Side, SinglePane,
 };
 pub use pane_pool::{PanePool, UnattachedPane};
 use pane_render::render_pane;
@@ -189,10 +189,6 @@ pub struct EngineView {
     /// which is `#[must_use]`: an outgoing layout dropped here unnoticed
     /// would leak every pane it still reaches, since a pooled pane no tree
     /// names is never freed.
-    /// In-place changes go through [`Self::split_focused`],
-    /// [`Self::close_focused`], [`Self::rotate_focused`] and
-    /// [`Self::focus`]. The two that add or remove a pane consume or mint a
-    /// pool token, and the ones that move focus take the [`FocusKey`].
     layout: FocusedLayout,
     /// The id of the [`FocusKey`] this view accepts.
     focus_key: u64,
@@ -219,7 +215,7 @@ pub struct EngineView {
     /// Terminal area available to panes as of the last `prepare_frame`.
     /// Pane-focus/split commands run between frames with no terminal handle
     /// of their own, so they recompute geometry from this plus `layout`
-    /// (see `pane_rects`/`pane_rect`) rather than trusting a stored rect
+    /// (see `pane_rects`/`focused_rect`) rather than trusting a stored rect
     /// list. A handful of panes makes the DFS cheap enough that there is no
     /// cache to go stale when a command mutates `layout` mid-frame. Zero
     /// area until the first `prepare_frame`.
@@ -282,12 +278,31 @@ impl EngineView {
         out
     }
 
-    /// The current on-screen rect of `pid`, or `None` if `last_pane_area` has
-    /// no area yet (before the first `prepare_frame`).
-    pub fn pane_rect(&self, pid: PaneId) -> Option<Rect> {
+    /// The focused pane's current on-screen rect: zero-sized before the
+    /// first `prepare_frame`.
+    pub fn focused_rect(&self) -> Rect {
         self.layout
-            .tree()
-            .find_rect(pid, self.last_pane_area, self.reserve_seam)
+            .focused_rect(self.last_pane_area, self.reserve_seam)
+    }
+
+    /// The focused pane's rect after [`Self::split_focused`] on `direction`,
+    /// without splitting (see `FocusedLayout::predicted_split_rect`).
+    pub fn focused_split_rect(&self, direction: Direction) -> Rect {
+        self.layout
+            .predicted_split_rect(self.last_pane_area, self.reserve_seam, direction)
+    }
+
+    /// The nearest pane on `side` of the focused one on screen, or `None`
+    /// when no pane lies that way (see `FocusedLayout::focused_neighbor`).
+    pub fn focused_neighbor(&self, side: Side) -> Option<PaneId> {
+        self.layout
+            .focused_neighbor(self.last_pane_area, self.reserve_seam, side)
+    }
+
+    /// The pane after the focused one in layout order, wrapping to the
+    /// first; `None` when the focused pane is the only one.
+    pub fn pane_after_focused(&self) -> Option<PaneId> {
+        self.layout.pane_after_focused()
     }
 
     /// Re-partition `last_pane_area` against the *current* `layout` and
@@ -355,28 +370,20 @@ impl EngineView {
         self.layout.focused()
     }
 
-    /// The active tab's layout and focus as one value, for stashing a tab
-    /// that is about to be replaced.
-    pub fn focused_layout(&self) -> &FocusedLayout {
-        &self.layout
-    }
-
     /// Replace the whole active-tab layout, returning what was there before.
     /// `#[must_use]`: the outgoing layout may still reach live panes, which
-    /// would leak once no tree names them. A caller that means to discard it
-    /// outright (installing a layout over one with nothing real left in
-    /// it, or one that names the exact same pool entries) must say so
-    /// explicitly with `let _ = `.
+    /// would leak once no tree names them. A caller discarding one with no
+    /// real pane in it says so explicitly with `let _ = `.
     #[must_use]
     pub fn replace_layout(&mut self, key: &FocusKey, layout: FocusedLayout) -> FocusedLayout {
         self.check_key(key);
         std::mem::replace(&mut self.layout, layout)
     }
 
-    /// Focus `pid`, refused when it is not a leaf of the active tab's tree.
-    pub fn focus(&mut self, key: &FocusKey, pid: PaneId) -> Result<(), NotInLayout> {
+    /// Focus `pid`, which must be a leaf of the active tab's tree.
+    pub fn focus(&mut self, key: &FocusKey, pid: PaneId) {
         self.check_key(key);
-        self.layout.focus(pid)
+        self.layout.focus(pid);
     }
 
     /// Splice a freshly inserted, not-yet-attached pane into the active

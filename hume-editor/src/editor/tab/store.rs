@@ -1,16 +1,16 @@
-//! Per-editor tab store: the display order and stashed window layout of
-//! every open tab page.
+//! Per-editor tab store: the display order of every open tab page and the
+//! stashed window layout of every inactive one.
 //!
 //! A "tab" here is Vim's sense: a saved window layout (its own
 //! [`FocusedLayout`]: a tree and its focused pane), not a per-buffer strip. Panes are
 //! never shared across tabs, but all live in the single global pool
 //! (`EngineView::panes`) regardless of which tab is active. Only which
 //! panes a tab's `LayoutTree` *reaches* differs.
-//! **Never mutate `stash`/`order`/`current` directly outside this file**:
+//! **Never mutate `ids`/`stash`/`order`/`current` directly outside this file**:
 //! go through `TabStore`'s own methods, mirroring `BufferStore`'s own
 //! module-doc convention.
 
-use slotmap::{SlotMap, new_key_type};
+use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use hume_engine::pipeline::{FocusedLayout, LayoutTree, PaneId};
 
@@ -25,35 +25,35 @@ new_key_type! {
     pub(crate) struct TabId;
 }
 
-/// Display/cycle order and stashed layout for every open tab.
+/// Display/cycle order for every open tab, and the layout of each one not
+/// on screen. The active tab's layout lives in `EngineView` instead, so
+/// every layout exists once.
 ///
-/// `stash` holds one entry per id in `order`, including `current`, but the
-/// entry for `current` is stale (superseded by the live `EngineView::layout`,
-/// never read from here while its tab is active) until the next switch
-/// overwrites it. Every method below either writes
-/// that entry immediately before changing `current` (so it's never stale
-/// for longer than one call), or documents that it reads the stale entry.
+/// A switch moves layouts rather than copying them: the caller installs the
+/// incoming layout in `EngineView` (an existing tab's comes out of here
+/// through [`Self::take`]), which hands back the outgoing one, then finishes
+/// with [`Self::switch`], [`Self::open_after_current`] or
+/// [`Self::close_current`]. Between `take` and that call, the taken tab has
+/// a layout in neither place.
 pub(in crate::editor) struct TabStore {
     order: Vec<TabId>,
     current: TabId,
-    stash: SlotMap<TabId, FocusedLayout>,
+    ids: SlotMap<TabId, ()>,
+    stash: SecondaryMap<TabId, FocusedLayout>,
 }
 
 impl TabStore {
-    /// Seed a single-tab store around `initial`, a copy of the layout the
-    /// caller makes live in `EngineView`. This only allocates the first
-    /// `TabId` to name it.
-    pub(in crate::editor) fn new(initial: FocusedLayout) -> (Self, TabId) {
-        let mut stash = SlotMap::with_key();
-        let id = stash.insert(initial);
-        (
-            Self {
-                order: vec![id],
-                current: id,
-                stash,
-            },
-            id,
-        )
+    /// A single-tab store whose one tab is the layout already live in
+    /// `EngineView`.
+    pub(in crate::editor) fn new() -> Self {
+        let mut ids = SlotMap::with_key();
+        let id = ids.insert(());
+        Self {
+            order: vec![id],
+            current: id,
+            ids,
+            stash: SecondaryMap::new(),
+        }
     }
 
     pub(in crate::editor) fn current(&self) -> TabId {
@@ -61,6 +61,7 @@ impl TabStore {
     }
 
     /// Display/cycle order: every tab, including the active one.
+    #[cfg(test)]
     pub(in crate::editor) fn order(&self) -> &[TabId] {
         &self.order
     }
@@ -69,23 +70,25 @@ impl TabStore {
         self.order.len()
     }
 
-    /// The `PaneId` a tab last focused. For `id == current()` this is the
-    /// stale entry (see the struct doc). Callers wanting the *live*
-    /// focused pane of the active tab must read `EngineView::focused_pane`
-    /// instead. Panics on an unknown id (a `tab` module bug, not a
-    /// user-reachable state).
-    pub(in crate::editor) fn stashed_focus(&self, id: TabId) -> PaneId {
-        self.stash[id].focused()
+    /// Every tab in display order with its focused pane, reading the active
+    /// tab's from `live_focus` (`EngineView::focused_pane`).
+    pub(in crate::editor) fn focused_panes(
+        &self,
+        live_focus: PaneId,
+    ) -> impl Iterator<Item = (TabId, PaneId)> {
+        self.order.iter().map(move |&id| {
+            let pid = if id == self.current {
+                live_focus
+            } else {
+                self.stash[id].focused()
+            };
+            (id, pid)
+        })
     }
 
-    /// Every *inactive* tab's own `LayoutTree`. `stash[current]` is
-    /// excluded (see this struct's own doc: it's stale while `current` is
-    /// live).
+    /// Every inactive tab's `LayoutTree`.
     pub(in crate::editor) fn inactive_layouts(&self) -> impl Iterator<Item = &LayoutTree> {
-        self.stash
-            .iter()
-            .filter(|&(id, _)| id != self.current)
-            .map(|(_, layout)| layout.tree())
+        self.stash.values().map(FocusedLayout::tree)
     }
 
     /// `current`'s index in `order`. Every method below that needs it reads
@@ -109,53 +112,37 @@ impl TabStore {
             .expect("current tab is always present in order")
     }
 
-    /// Snapshot `current`'s live layout/focus into its stash slot: the
-    /// shared first half of every op that displaces the live tab.
-    fn stash_current(&mut self, layout: FocusedLayout) {
-        self.stash[self.current] = layout;
+    /// Move inactive tab `id`'s layout out, for the caller to install in
+    /// `EngineView` before finishing the switch (see the struct doc).
+    pub(in crate::editor) fn take(&mut self, id: TabId) -> FocusedLayout {
+        self.stash
+            .remove(id)
+            .expect("only an inactive tab is taken, and only once")
     }
 
-    /// `id`'s stashed layout, for the caller to make live in `EngineView`.
-    ///
-    /// A clone of the stash entry rather than a `mem::replace`-out: the
-    /// entry stays valid for the *next* switch away from `id` (see the
-    /// struct doc: `stash[current]` is defined-stale, never removed, until
-    /// the next switch away overwrites it), and the tree is small enough (a
-    /// handful of panes at most) that cloning it is simpler than threading
-    /// a placeholder through every caller that would otherwise need one.
-    fn load(&self, id: TabId) -> FocusedLayout {
-        self.stash[id].clone()
-    }
-
-    /// Snapshot the *currently active* tab's live layout into its stash
-    /// slot, make `target` current, and return `target`'s stashed layout for
-    /// the caller to make live in `EngineView`. `outgoing` is the live
-    /// layout being displaced. The caller reads it out of `EngineView`
-    /// before calling, since `TabStore` never borrows `EngineView`.
-    pub(in crate::editor) fn switch(
-        &mut self,
-        outgoing: FocusedLayout,
-        target: TabId,
-    ) -> FocusedLayout {
+    /// Stash `outgoing`, the layout `EngineView` displaced, as the current
+    /// tab's, and make `target` current. `target`'s layout was taken first.
+    pub(in crate::editor) fn switch(&mut self, outgoing: FocusedLayout, target: TabId) {
         self.stash_current(outgoing);
         self.current = target;
-        self.load(target)
     }
 
-    /// Stash the outgoing tab (same as [`Self::switch`]'s first half),
-    /// allocate a fresh id wrapping `layout`, insert it into `order` right
-    /// after `current` (Vim's `:tabnew` placement), and make it current.
-    pub(in crate::editor) fn open_after_current(
-        &mut self,
-        outgoing: FocusedLayout,
-        layout: FocusedLayout,
-    ) -> TabId {
+    /// Stash `outgoing` as the current tab's (same as [`Self::switch`]),
+    /// allocate a fresh id for the new tab whose layout `EngineView` now
+    /// holds, insert it into `order` right after `current` (Vim's `:tabnew`
+    /// placement), and make it current.
+    pub(in crate::editor) fn open_after_current(&mut self, outgoing: FocusedLayout) -> TabId {
         let pos = self.current_pos() + 1;
         self.stash_current(outgoing);
-        let id = self.stash.insert(layout);
+        let id = self.ids.insert(());
         self.order.insert(pos, id);
         self.current = id;
         id
+    }
+
+    fn stash_current(&mut self, outgoing: FocusedLayout) {
+        let replaced = self.stash.insert(self.current, outgoing);
+        assert!(replaced.is_none(), "the active tab has no stashed layout");
     }
 
     /// The tab that should gain focus once `current` closes: its right
@@ -174,20 +161,18 @@ impl TabStore {
         self.order[neighbor]
     }
 
-    /// Remove `current` from the store (`order` + `stash`), promote
-    /// `survivor` as the new current, and return its stashed layout for the
-    /// caller to make live in `EngineView`. Panics if `current` is the only
-    /// tab; callers check `len() > 1` first.
-    pub(in crate::editor) fn close_current(&mut self, survivor: TabId) -> FocusedLayout {
+    /// Remove `current` from the store and make `survivor`, whose layout
+    /// was taken first, current. Panics if `current` is the only tab;
+    /// callers check `len() > 1` first.
+    pub(in crate::editor) fn close_current(&mut self, survivor: TabId) {
         assert!(
             self.order.len() > 1,
             "close_current requires more than one tab"
         );
         let closed = self.current;
         self.order.retain(|&t| t != closed);
-        self.stash.remove(closed);
+        self.ids.remove(closed);
         self.current = survivor;
-        self.load(survivor)
     }
 
     /// Next tab in display order (wraps around). Returns `current()` if

@@ -18,14 +18,14 @@ pub(in crate::editor) fn focused_cursor(ed: &Editor) -> ClusterStart {
 /// Screen anchor (absolute cell) + containing pane + text-column budget for
 /// the focused pane, given an arbitrary buffer position (each caller
 /// passes a different `anchor`). `None`
-/// when the pane has no rect yet or `anchor` isn't currently visible.
+/// when `anchor` isn't currently visible.
 pub(in crate::editor) fn popup_placement(
     ed: &mut Editor,
     ctx: &mut RenderContext,
     anchor: ClusterStart,
 ) -> Option<hume_ui::popup::PopupPlacement> {
     let focused = ed.view.focused_pane();
-    let pane_rect = ed.view.pane_rect(focused)?;
+    let pane_rect = ed.view.focused_rect();
     let gutter_w = ed.pane_gutter_width(focused);
     let content_width = ed.view.panes[focused]
         .viewport

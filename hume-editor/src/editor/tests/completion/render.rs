@@ -25,7 +25,7 @@ fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
 
     frame(&mut ed, 40, 6);
 
-    let pane_rect = ed.view.pane_rect(ed.view.focused_pane()).expect("rect");
+    let pane_rect = ed.view.focused_rect();
     let view = ed.state.views.completion_menu.read();
     let state = view
         .as_ref()
@@ -44,7 +44,7 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
 
     frame(&mut ed, 20, 8);
 
-    let pane_rect = ed.view.pane_rect(ed.view.focused_pane()).expect("rect");
+    let pane_rect = ed.view.focused_rect();
     let view = ed.state.views.completion_menu.read();
     let state = view
         .as_ref()
@@ -516,7 +516,7 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
         .unwrap()
         .menu_anchor(ed.doc().text())
         .unwrap();
-    let pane_rect = ed.view.pane_rect(pid).expect("rect");
+    let pane_rect = ed.view.focused_rect();
     let buf = ed.state.buffers.get(bid);
     let gutter_w = cursor::gutter_width(
         ed.view.panes[pid].providers.gutter_columns(),

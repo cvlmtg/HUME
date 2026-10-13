@@ -11,7 +11,7 @@ use crate::editor::EditorState;
 use crate::editor::commands::FocusedPane;
 use crate::editor::error::CommandError;
 use crate::editor::focus::{self, focus_pane};
-use crate::editor::tab::{TabId, install_live, take_live};
+use crate::editor::tab::{TabId, install_live};
 
 /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its
 /// id, but leave it outside every tab's layout (see `TabStore`'s own doc:
@@ -77,10 +77,6 @@ pub(in crate::editor) fn open_pane_in_layout(
 /// split-beside-an-existing-pane one: a new tab isn't beside anything, and
 /// its graft touches `TabStore` (stash the outgoing tab, allocate the new
 /// one), not just `view.layout`, so it can't share that function's body.
-///
-/// Before `take_live`: `open_pane` never reads `view.layout`, so the new
-/// pane exists before the live layout is displaced, and `take_live`'s own
-/// placeholder never needs to appear here at all.
 pub(in crate::editor) fn open_pane_as_new_tab(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -88,9 +84,8 @@ pub(in crate::editor) fn open_pane_as_new_tab(
 ) -> (PaneId, TabId) {
     let layout = FocusedLayout::new(open_pane(state, view, bid));
     let new_pid = layout.focused();
-    let outgoing = take_live(state, view);
-    let tab_id = state.tabs.open_after_current(outgoing, layout.clone());
-    install_live(state, view, layout);
+    let outgoing = install_live(state, view, layout);
+    let tab_id = state.tabs.open_after_current(outgoing);
     (new_pid, tab_id)
 }
 
@@ -139,7 +134,7 @@ const MIN_PANE_WIDTH: u16 = 10;
 /// size, including the 1-cell seam divider drawn between siblings (see
 /// `hume_engine::pipeline::split_rect`).
 ///
-/// Simulates the split via `LayoutTree::predicted_split_rect` rather than
+/// Simulates the split via `EngineView::focused_split_rect` rather than
 /// halving the focused pane's current rect: since `equalize` resizes every
 /// pane on the split's axis, not just the pair being split, a pane deep in a
 /// row of several can be pushed under the minimum by a split that never
@@ -150,22 +145,11 @@ const MIN_PANE_WIDTH: u16 = 10;
 /// earlier in the same replay batch always sees current geometry. Before the
 /// first `prepare_frame` there is no real terminal area yet: allow the
 /// split; `prepare_frame` sizes it correctly on the next frame regardless.
-pub(in crate::editor) fn fits_split(
-    view: &EngineView,
-    fp: FocusedPane,
-    direction: Direction,
-) -> bool {
+pub(in crate::editor) fn fits_split(view: &EngineView, direction: Direction) -> bool {
     if view.last_pane_area.area() == 0 {
         return true;
     }
-    let Some(rect) = view.layout().predicted_split_rect(
-        fp.pid(),
-        view.last_pane_area,
-        view.reserve_seam,
-        direction,
-    ) else {
-        return true;
-    };
+    let rect = view.focused_split_rect(direction);
     match direction {
         Direction::Vertical => rect.height >= MIN_PANE_HEIGHT,
         Direction::Horizontal => rect.width >= MIN_PANE_WIDTH,
@@ -190,7 +174,7 @@ pub(in crate::editor) fn split_pane_onto(
     bid: BufferId,
     direction: Direction,
 ) -> Result<(), CommandError> {
-    if !fits_split(view, fp, direction) {
+    if !fits_split(view, direction) {
         return Err(CommandError::transient(SPLIT_TOO_SMALL_MSG));
     }
     let old_focused = fp.pid();

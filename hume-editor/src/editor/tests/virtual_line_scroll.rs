@@ -96,8 +96,7 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     // notch alone already reaches.
     let mut ed = editor_with_before_line();
     ed.state.settings.mouse_scroll_lines = 1;
-    let focused_pid = ed.view.focused_pane();
-    ed.view.panes[focused_pid].viewport.height = 2;
+    ed.viewport_mut().height = 2;
 
     let scroll_down = || mouse_wheel(true);
 

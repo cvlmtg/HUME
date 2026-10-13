@@ -13,7 +13,7 @@
 //! so this can't be caught by auditing dispatch call sites alone).
 
 use hume_engine::pipeline::{
-    DetachedPane, EngineView, FocusKey, FocusedLayout, PaneId, SinglePane,
+    DetachedPane, EngineView, FocusKey, FocusedLayout, PaneId, SinglePane, UnattachedPane,
 };
 
 use super::{EditorState, doc_ops};
@@ -23,7 +23,15 @@ use super::{EditorState, doc_ops};
 pub(in crate::editor) struct Focus(FocusKey);
 
 impl Focus {
-    pub(in crate::editor) fn new(key: FocusKey) -> Self {
+    /// Take `view`'s key and make `first` its sole, focused pane.
+    pub(in crate::editor) fn new(
+        view: &mut EngineView,
+        key: FocusKey,
+        first: UnattachedPane,
+    ) -> Self {
+        // Discards the placeholder `EngineView::new` seeded: no real pane
+        // behind it to leak.
+        let _ = view.replace_layout(&key, FocusedLayout::new(first));
         Self(key)
     }
 
@@ -32,19 +40,7 @@ impl Focus {
     /// the active layout.
     #[cfg(test)]
     pub(in crate::editor) fn set_for_test(&self, view: &mut EngineView, pid: PaneId) {
-        view.focus(&self.0, pid)
-            .expect("test focus target is a pane of the active layout");
-    }
-
-    /// Test-only escape hatch for a hand-built layout, bypassing
-    /// `install_layout`'s session teardown.
-    #[cfg(test)]
-    pub(in crate::editor) fn replace_layout_for_test(
-        &self,
-        view: &mut EngineView,
-        layout: FocusedLayout,
-    ) -> FocusedLayout {
-        view.replace_layout(&self.0, layout)
+        view.focus(&self.0, pid);
     }
 }
 
@@ -86,8 +82,7 @@ pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &Engi
 /// displacement happens and no earlier teardown has run.
 pub(in crate::editor) fn focus_pane(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
     end_focus_sessions(state, view);
-    view.focus(&state.focus.0, pid)
-        .expect("a focus target is picked from the active layout");
+    view.focus(&state.focus.0, pid);
     touch_focused_mru(state, view);
 }
 
@@ -106,11 +101,10 @@ pub(in crate::editor) fn close_focused(
 
 /// Make `layout` the active tab's, returning the layout it replaces.
 ///
-/// Every caller reaches this through `tab::install_live`, after
-/// `tab::take_live` has already ended the outgoing pane's sessions while
-/// its tab was still live, so the `end_focus_sessions` call here is a
-/// no-op for them. It stays so that every focus move in this module runs
-/// the teardown, whoever calls it.
+/// Ends the outgoing pane's sessions before the swap: their teardown can
+/// edit the outgoing pane's buffer (the blank-line indent trim), which
+/// propagates to every pane showing it, so it runs while the outgoing tab's
+/// panes are still the live ones.
 #[must_use]
 pub(in crate::editor) fn install_layout(
     state: &mut EditorState,

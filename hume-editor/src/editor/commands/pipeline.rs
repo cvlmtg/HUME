@@ -123,8 +123,10 @@ impl CommandPane {
 /// typed command, or a helper they call receives the pane instead of
 /// minting it.
 ///
-/// `Copy`, and valid only until the next focus change (a function of the
-/// `focus` module); never held across one.
+/// `Copy`. It names the pane focused when it was minted, and a focus change
+/// (a function of the `focus` module) does not update it. Holding one
+/// across a command body that can move focus, as [`run`] does for its
+/// after-body steps, means "the pane focused at entry", not current focus.
 #[derive(Clone, Copy, Debug)]
 pub(in crate::editor) struct FocusedPane(CommandPane);
 
