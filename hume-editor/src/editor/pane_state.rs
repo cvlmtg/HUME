@@ -208,16 +208,10 @@ pub(in crate::editor) fn ensure<'a>(
 /// contract still holds; only `pid`'s liveness crosses the boundary
 /// unchecked.
 ///
-/// Checked against `panes` (the engine's own [`PanePool`]), not inferred
-/// from `pane_state.entry(pid)`: `SecondaryMap::remove` (`drop_pane_state`)
-/// drops a closed pane's slot back to vacant at version 0, and
-/// `SecondaryMap::entry` returns the same `Vacant` variant for that as it
-/// does for a `pid` that simply never touched this map. The two are
-/// indistinguishable from `pane_state` alone unless the slot has since been
-/// reused by a *newer* pane (whose version the closed `pid` no longer
-/// matches). `PanePool` is the actual liveness source of truth; asking it
-/// first means a closed pane errors here every time, not only once its slot
-/// happens to be recycled.
+/// Checked against `panes` (the engine's own [`PanePool`]), the source of
+/// truth for pane liveness. A pane's entry is opened and removed together
+/// with the pane ([`PaneView::open`], `drop_pane_state`), so a live `pid`
+/// always has one to index.
 pub(in crate::editor) fn try_ensure<'a>(
     pane_state: &'a mut PaneEntries,
     buffers: &BufferStore,
