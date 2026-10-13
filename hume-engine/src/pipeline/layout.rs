@@ -428,12 +428,20 @@ impl LayoutTree {
         rotation: Rotation,
         steps: usize,
     ) -> Result<(), LayoutRefusal> {
-        if matches!(self, LayoutTree::Leaf(id) if *id == target) {
-            return Err(LayoutRefusal::SinglePane);
+        self.refuse_sole_leaf(target)?;
+        if self.rotate_run(target, rotation, steps) {
+            Ok(())
+        } else {
+            Err(LayoutRefusal::MissingTarget)
         }
-        self.rotate_run(target, rotation, steps)
-            .then_some(())
-            .ok_or(LayoutRefusal::MissingTarget)
+    }
+
+    /// [`LayoutRefusal::SinglePane`] when the whole tree is `Leaf(target)`.
+    fn refuse_sole_leaf(&self, target: PaneId) -> Result<(), LayoutRefusal> {
+        match self {
+            LayoutTree::Leaf(id) if *id == target => Err(LayoutRefusal::SinglePane),
+            _ => Ok(()),
+        }
     }
 
     /// The recursive body of [`Self::rotate`]: `false` when `target` is not
@@ -496,9 +504,7 @@ impl LayoutTree {
     /// (see `equalize`). Returns the detached pane plus the leftmost leaf of
     /// the promoted sibling (the new focus target).
     pub fn remove_leaf(&mut self, target: PaneId) -> Result<Pruned, LayoutRefusal> {
-        if matches!(self, LayoutTree::Leaf(id) if *id == target) {
-            return Err(LayoutRefusal::SinglePane);
-        }
+        self.refuse_sole_leaf(target)?;
         let survivor = self
             .prune_leaf(target)
             .ok_or(LayoutRefusal::MissingTarget)?;

@@ -1860,6 +1860,20 @@ fn fits_split_allows_before_first_frame() {
     ));
 }
 
+/// A split active tab whose focus names a pane the active layout does not
+/// reach. The desync goes through a real pane: the focus is set to the pane
+/// of a second tab, which is attached to that tab's layout, so no pane ever
+/// exists that was never attached to any tab.
+fn editor_with_focus_missing_from_split_layout() -> Editor {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("vsplit", None).unwrap();
+    ed.execute_typed("tabnew", None).unwrap();
+    let other_tab_pid = ed.state.focus.id();
+    ed.execute_typed("tabprev", None).unwrap();
+    ed.state.focus.set_for_test(other_tab_pid);
+    ed
+}
+
 /// If the focused pane isn't reachable in the active layout tree (an
 /// invariant violation that should never happen), `split_pane_onto` must
 /// refuse before creating anything: `open_pane_in_layout` checks
@@ -1870,20 +1884,8 @@ fn fits_split_allows_before_first_frame() {
 fn split_pane_onto_refuses_when_focused_pane_missing_from_layout() {
     use hume_engine::pipeline::Direction;
 
-    let mut ed = editor_from("-[h]>ello\n");
+    let mut ed = editor_with_focus_missing_from_split_layout();
     let bid = ed.focused_buffer_id();
-
-    // Fabricate the desync directly, but through a real pane: open
-    // a second tab (a real, properly-attached pane, just attached to *that*
-    // tab's own layout, not the active one), then reuse its id as the active
-    // tab's `focus`. That reproduces the same condition
-    // `contains_leaf` must defend against (a focused pane the active layout
-    // doesn't reach) without ever constructing a pane that was never
-    // attached to any tab at all.
-    ed.execute_typed("tabnew", None).unwrap();
-    let other_tab_pid = ed.state.focus.id();
-    ed.execute_typed("tabprev", None).unwrap();
-    ed.state.focus.set_for_test(other_tab_pid);
     let fp = FocusedPane::current(&ed.state);
     let panes_before = ed.view.panes.len();
 
@@ -1904,19 +1906,6 @@ fn split_pane_onto_refuses_when_focused_pane_missing_from_layout() {
         panes_before,
         "no pane is created at all when the split target is unreachable"
     );
-}
-
-/// A split active tab whose focus names a pane attached to another tab's
-/// layout, built the same way as in
-/// `split_pane_onto_refuses_when_focused_pane_missing_from_layout`.
-fn editor_with_focus_missing_from_split_layout() -> Editor {
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.execute_typed("vsplit", None).unwrap();
-    ed.execute_typed("tabnew", None).unwrap();
-    let other_tab_pid = ed.state.focus.id();
-    ed.execute_typed("tabprev", None).unwrap();
-    ed.state.focus.set_for_test(other_tab_pid);
-    ed
 }
 
 #[test]
