@@ -363,23 +363,12 @@ impl Editor {
                 {
                     self.state.last_entered_buffer = None;
                 }
-                self.abandon_pending(batch);
+                // Dropped unrun: a callback's hold on its tracked position
+                // releases it, as running the callback would.
+                drop(batch);
                 return false;
             }
             self.run_pending_batch(batch);
-        }
-    }
-
-    /// Drops `batch` without running it, ending what each item holds: a
-    /// callback's `#:tracked` position is released, as running it would. A
-    /// callback answering an interactive input (a picker's own queued
-    /// `on_select`) needs nothing here: its answer was recorded when the input
-    /// resolved, and its ticket closes as it drops.
-    fn abandon_pending(&mut self, batch: std::collections::VecDeque<PendingWork>) {
-        for work in batch {
-            if let PendingWork::Call { tracked, .. } = work {
-                self.state.release_request_position(tracked);
-            }
         }
     }
 
@@ -526,15 +515,15 @@ impl Editor {
                         // `switch-to-buffer!`, an edit), so batching first and
                         // checking every anchor up front would defeat the
                         // re-check, since all the checks would still land
-                        // before any of the calls actually ran. The tracked
-                        // position is released right after this call alone,
-                        // for the same reason. One call, one session, one
+                        // before any of the calls actually ran. The hold on
+                        // the tracked position drops right after this call
+                        // alone, for the same reason. One call, one session, one
                         // check, one run; see `PendingWork::Call`'s own doc.
                         if anchor.is_none_or(|anchor| self.state.anchor_admits(&self.view, &anchor))
                         {
                             self.run_call_batch(vec![(proc, args)]);
                         }
-                        self.state.release_request_position(tracked);
+                        drop(tracked);
                         continue;
                     }
                     if let Some(ticket) = answer {

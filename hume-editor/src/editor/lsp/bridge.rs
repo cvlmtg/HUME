@@ -16,7 +16,7 @@ use hume_lsp::client::{Outcome, RequestMeta};
 use hume_lsp::codec::RequestId;
 use hume_rope::offset::ExclusiveRange;
 use hume_rope::position_encoding::{PositionEncoding, char_range_to_wire_range, char_to_wire};
-use hume_scripting::host::HostToken;
+use hume_scripting::host::TrackedHold;
 use hume_scripting::json::{WireOrigin, to_steel_handle};
 use hume_scripting::{
     DocSpan, Params, PendingLspNotify, PendingLspRequest, RequestMode, RequestParams, RouteSpec,
@@ -124,11 +124,11 @@ impl Slot {
 /// What a delivery calls back once its last slot is filled.
 enum Responder {
     /// A Steel callback, given `(err result)` or `(err results)` by mode,
-    /// and the `#:tracked` position the request holds until the callback
-    /// has run or will never run.
+    /// and the request's hold on its `#:tracked` position, dropped once the
+    /// callback has run or will never run.
     Steel {
         callback: SteelVal,
-        tracked: Option<HostToken>,
+        tracked: Option<TrackedHold>,
     },
     /// A Rust closure, given the one server's answer or why it has none.
     Rust(RustResponder),
@@ -271,13 +271,14 @@ impl EditorState {
         req: PendingLspRequest,
     ) {
         self.lsp_flush_pending();
+        let tracked = req.tracked.and_then(|token| self.panes.tracked.hold(token));
         if let Some(key) = &req.supersede {
             self.cancel_superseded(key);
         }
         let members = match self.request_members(&req) {
             Ok(members) => members,
             Err(reason) => {
-                self.fail_request(req, reason);
+                self.fail_request(req, tracked, reason);
                 return;
             }
         };
@@ -293,7 +294,7 @@ impl EditorState {
             supersede: req.supersede,
             responder: Responder::Steel {
                 callback: req.callback,
-                tracked: req.tracked,
+                tracked,
             },
         };
         if let Some(did) = self.begin_delivery(spec, members) {
@@ -489,8 +490,14 @@ impl EditorState {
     /// `'unavailable` error saying `reason` and no result, or with no error
     /// and an empty answer when it asked for `#:unavailable 'empty`. The
     /// call carries no anchor, so a focus move or an edit before it runs
-    /// cannot drop the answer.
-    fn fail_request(&mut self, req: PendingLspRequest, reason: String) {
+    /// cannot drop the answer, and `tracked`, the request's hold on its
+    /// tracked position.
+    fn fail_request(
+        &mut self,
+        req: PendingLspRequest,
+        tracked: Option<TrackedHold>,
+        reason: String,
+    ) {
         let args = match (req.when_unavailable, req.mode) {
             (WhenUnavailable::Error, RequestMode::Single) => {
                 vec![
@@ -510,7 +517,7 @@ impl EditorState {
                 SteelVal::ListV(Vec::<SteelVal>::new().into()),
             ],
         };
-        self.queue_lsp_callback(req.callback, args, None, req.tracked);
+        self.queue_lsp_callback(req.callback, args, None, tracked);
     }
 
     /// Hands `server`'s answer to `request` to the delivery waiting for it,
@@ -609,8 +616,8 @@ impl EditorState {
     }
 
     /// Ends a delivery whose responder will never be called: every request
-    /// it still has in flight is cancelled, and the position it holds
-    /// released.
+    /// it still has in flight is cancelled, and its hold on a tracked
+    /// position drops with it.
     fn drop_delivery(&mut self, delivery: Delivery) {
         for slot in delivery.slots {
             let SlotState::Waiting { request, .. } = slot.state else {
@@ -619,9 +626,6 @@ impl EditorState {
             if let Some((client, backend)) = self.lsp.client_and_backend(slot.server.id) {
                 client.cancel(backend, request);
             }
-        }
-        if let Responder::Steel { tracked, .. } = delivery.responder {
-            self.release_request_position(tracked);
         }
     }
 

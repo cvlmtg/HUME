@@ -468,11 +468,11 @@ pub(in crate::editor) enum PendingWork {
         proc: SteelVal,
         args: Vec<SteelVal>,
         anchor: Option<super::lsp::ResponseAnchor>,
-        /// The `#:tracked` position an `lsp-request!` callback holds,
-        /// released once the call has run, raised, or been dropped by its
-        /// anchor or the drain cap (`Editor::abandon_pending`), unless the
+        /// An `lsp-request!` callback's hold on its `#:tracked` position,
+        /// dropped once the call has run, raised, or been dropped by its
+        /// anchor or the drain cap, which releases the position unless the
         /// callback kept it.
-        tracked: Option<hume_scripting::host::HostToken>,
+        tracked: Option<hume_scripting::host::TrackedHold>,
         /// The ticket of the interactive input this call answers (a read,
         /// picker, prompt or menu callback), when that input belongs to a
         /// recorded change; see [`super::replay::AnswerTicket`]. Keeps the

@@ -753,16 +753,15 @@ impl EditorState {
 
     /// [`Self::queue_steel_call`]'s counterpart for an `lsp-request!`
     /// callback: carries the delivery's `ResponseAnchor` (`None` for a
-    /// request no server took) and the `#:tracked` position the request
-    /// holds, which `Editor::run_pending_batch` releases once the call has
-    /// run or been dropped. Never carries an answer ticket: an LSP response
-    /// resolves no waiting input.
+    /// request no server took) and the request's hold on its `#:tracked`
+    /// position, dropped once the call has run or been dropped. Never
+    /// carries an answer ticket: an LSP response resolves no waiting input.
     pub(in crate::editor) fn queue_lsp_callback(
         &mut self,
         proc: steel::rvals::SteelVal,
         args: Vec<steel::rvals::SteelVal>,
         anchor: Option<lsp::ResponseAnchor>,
-        tracked: Option<hume_scripting::host::HostToken>,
+        tracked: Option<hume_scripting::host::TrackedHold>,
     ) {
         self.config
             .pending_work

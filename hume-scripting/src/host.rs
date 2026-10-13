@@ -39,7 +39,7 @@ pub use output::OutputHost;
 pub use registers::RegisterHost;
 pub use settings::{BufferIntrinsicOption, OptionValue, SettingsHost, language_option_value};
 pub use timers::TimerHost;
-pub use token::HostToken;
+pub use token::{HostToken, TrackedFate, TrackedHold};
 pub use ui::{
     DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
 };

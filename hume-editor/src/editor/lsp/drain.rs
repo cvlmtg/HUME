@@ -335,20 +335,6 @@ impl EditorState {
         }
     }
 
-    /// Releases the position a request holds through `#:tracked`, unless its
-    /// callback kept it. Called where the token's holder ends: a delivery
-    /// dropped without calling back, and its queued callback once that has
-    /// run or been dropped (`Editor::run_pending_batch`,
-    /// `Editor::abandon_pending`).
-    pub(in crate::editor) fn release_request_position(
-        &mut self,
-        tracked: Option<hume_scripting::host::HostToken>,
-    ) {
-        if let Some(token) = tracked {
-            self.panes.tracked.release_unless_kept(token);
-        }
-    }
-
     /// Whether a completed request's callback should actually fire, per its
     /// `ResponseAnchor`: the one place both of a callback's drop conditions
     /// are checked, so a caller only has to gather the anchor at send time

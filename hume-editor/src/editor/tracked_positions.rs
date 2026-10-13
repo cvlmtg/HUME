@@ -2,6 +2,8 @@
 //! text change like the rest of the positions the editor stores against a
 //! buffer (see `position_stores`).
 
+use std::rc::Rc;
+
 use rustc_hash::FxHashMap;
 
 use hume_editing::edit::TextChange;
@@ -11,14 +13,16 @@ use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::CharOffset;
-use hume_scripting::host::HostToken;
+use hume_scripting::host::{HostToken, TrackedFate, TrackedHold};
 
 use super::buffer::store::BufferStore;
 use super::host_token;
 
 /// The positions scripts are tracking, each a cursor in one buffer under a
 /// token the script holds. A token nobody minted, or one already released,
-/// answers absent, like every other widget token.
+/// answers absent, like every other widget token. A position a request's
+/// hold released stays in the map until the next carry sweeps it, absent
+/// to every query.
 #[derive(Default)]
 pub(in crate::editor) struct TrackedPositions {
     entries: FxHashMap<HostToken, Tracked>,
@@ -27,8 +31,14 @@ pub(in crate::editor) struct TrackedPositions {
 struct Tracked {
     bid: BufferId,
     cursor: SelectionSet,
-    /// Kept past the callback of an `lsp-request!` that held it.
-    kept: bool,
+    /// Shared with the holds of the `lsp-request!`s holding it.
+    fate: Rc<TrackedFate>,
+}
+
+impl Tracked {
+    fn live(&self) -> bool {
+        !self.fate.is_released()
+    }
 }
 
 impl TrackedPositions {
@@ -46,7 +56,7 @@ impl TrackedPositions {
             Tracked {
                 bid,
                 cursor,
-                kept: false,
+                fate: Rc::default(),
             },
         );
         token
@@ -60,7 +70,7 @@ impl TrackedPositions {
         token: HostToken,
         buffers: &BufferStore,
     ) -> Option<(BufferId, CharOffset)> {
-        let tracked = self.entries.get(&token)?;
+        let tracked = self.entries.get(&token).filter(|t| t.live())?;
         let text = buffers.try_get(tracked.bid)?.text();
         Some((
             tracked.bid,
@@ -77,25 +87,24 @@ impl TrackedPositions {
 
     /// Keep `token` past the callback of the request that holds it.
     pub(in crate::editor) fn keep(&mut self, token: HostToken) {
-        if let Some(tracked) = self.entries.get_mut(&token) {
-            tracked.kept = true;
+        if let Some(tracked) = self.entries.get(&token).filter(|t| t.live()) {
+            tracked.fate.keep();
         }
     }
 
-    /// Release `token` for a request that is done with it, unless its
-    /// callback kept it.
-    pub(in crate::editor) fn release_unless_kept(&mut self, token: HostToken) {
-        if self
-            .entries
+    /// A request's hold on `token`'s position, `None` for a token that names
+    /// none.
+    pub(in crate::editor) fn hold(&self, token: HostToken) -> Option<TrackedHold> {
+        self.entries
             .get(&token)
-            .is_some_and(|tracked| !tracked.kept)
-        {
-            self.entries.remove(&token);
-        }
+            .filter(|t| t.live())
+            .map(|t| TrackedHold::new(Rc::clone(&t.fate)))
     }
 
-    /// Carry every position tracked in `buffer` through `change`.
+    /// Carry every position tracked in `buffer` through `change`, dropping
+    /// the ones a hold released.
     pub(in crate::editor) fn carry(&mut self, buffer: BufferId, change: &TextChange<'_>) {
+        self.entries.retain(|_, tracked| tracked.live());
         for tracked in self.entries.values_mut() {
             if tracked.bid == buffer {
                 tracked.cursor.translate(change);
@@ -112,7 +121,7 @@ impl TrackedPositions {
     /// How many positions are being tracked, for tests of a script's cleanup.
     #[cfg(test)]
     pub(in crate::editor) fn len(&self) -> usize {
-        self.entries.len()
+        self.entries.values().filter(|t| t.live()).count()
     }
 
     /// Drop every position: the scripts that held the tokens are gone.
