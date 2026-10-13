@@ -164,7 +164,7 @@ use crate::layers::{SyntaxLayer, SyntaxLayers};
 /// `textobjects.scm` match and merged with every other match across a
 /// buffer's syntax layers: a sorted, deduplicated list of cluster ranges.
 /// Owned rather than an iterator over the tree: `hume-editor` needs
-/// `&state.buffers` and `&mut state.panes.state` at once when it applies the
+/// `&state.buffers` and `&mut state.panes.entries` at once when it applies the
 /// resulting selection, so the tree borrow this collects from must end
 /// before that, and N cursors × `count` navigation steps then probe a
 /// vector instead of re-running the query per step.

@@ -1,16 +1,16 @@
 //! Per-(pane, buffer) and per-pane editor state bundles.
 //!
-//! [`PaneBufferState`] holds all per-(pane, buffer) mutable facts: selections,
-//! search cursor, and the in-progress insert session's typed-run/autoindent
-//! bookkeeping. Adding a new per-(pane, buffer) field later requires changing
+//! [`PaneBufferState`] holds all per-(pane, buffer) mutable facts: selections
+//! and search cursor. Adding a new per-(pane, buffer) field later requires changing
 //! exactly one struct and one Default impl, not four parallel maps.
 //!
 //! [`PaneEntry`] is one pane's whole editor-side state: its per-buffer
 //! state, jump list and render handles. [`PaneView`] holds every pane's
 //! entry, added and removed only as a whole.
 //!
-//! The in-progress insert/paste undo group itself is not here; see
-//! [`super::edit_session::EditSession`], `EditorState::active_session`.
+//! The in-progress insert/paste session is not here, typed-run and
+//! autoindent records included; see [`super::edit_session::EditSession`],
+//! `EditorState::active_session`.
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool};
 use slotmap::SecondaryMap;

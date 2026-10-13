@@ -124,7 +124,7 @@ pub(in crate::editor) fn switch_pane_to_buffer(
 }
 
 /// Move focus to `pid`, a pane of the active layout, first calling
-/// [`end_focus_sessions`]. `focus_in_direction`/`cmd_pane_focus_next`/
+/// [`end_focus_sessions`]. `focus_toward`/`cmd_pane_focus_next`/
 /// `mouse_left_down` switch focus *within* a tab this way, where no layout
 /// displacement happens and no earlier teardown has run.
 pub(in crate::editor) fn focus_pane(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
@@ -146,12 +146,8 @@ pub(in crate::editor) fn close_focused(
     Ok(detached)
 }
 
-/// Make `layout` the active tab's, returning the layout it replaces.
-///
-/// Ends the outgoing pane's sessions before the swap: their teardown can
-/// edit the outgoing pane's buffer (the blank-line indent trim), which
-/// propagates to every pane showing it, so it runs while the outgoing tab's
-/// panes are still the live ones.
+/// Make `layout` the active tab's, returning the layout it replaces, after
+/// ending the outgoing focused pane's sessions ([`end_focus_sessions`]).
 #[must_use]
 pub(in crate::editor) fn install_layout(
     state: &mut EditorState,

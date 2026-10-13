@@ -49,9 +49,9 @@ use signs::{SharedSignSource, SignMap};
 use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 
 /// A pane's six render-decoration handles, allocated together by
-/// [`build_providers`] and stored as one `SecondaryMap` entry on
-/// `EditorState.panes.render`. They are always seeded and dropped as a
-/// unit (never independently), and every read site borrows the map
+/// [`build_providers`] and stored as the `render` field of the pane's one
+/// `hume-editor` `PaneEntry`. They are always seeded and dropped as a
+/// unit (never independently), and every read site borrows the entry
 /// shared, so bundling them costs nothing and removes the "added a new
 /// per-pane provider, forgot to drop it in `drop_pane_state`" bug class.
 /// Fields are private: `hume-editor`'s per-frame sync writes through the
