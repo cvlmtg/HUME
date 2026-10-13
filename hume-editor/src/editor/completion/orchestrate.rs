@@ -14,7 +14,7 @@
 //! (`rank`) stays here in Rust and only a source flagged `isIncomplete` is
 //! called again as the user types.
 
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::offset::CharOffset;
 use steel::rvals::SteelVal;
 
@@ -22,9 +22,7 @@ use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegist
 use super::session::{BufferSession, Invocation, LiveDoc, MinibufSession, Reconciled};
 use super::{CompletionCtx, CompletionItem, arg_span};
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::input_stack::{
-    BufferCompletionLayer, InsertLayer, LayerRef, MinibufCompletionLayer,
-};
+use crate::editor::input_stack::{BufferCompletionLayer, LayerRef, MinibufCompletionLayer};
 use crate::editor::lsp::{RustDelivery, RustResponder};
 use crate::editor::registry::CommandRegistry;
 use crate::editor::replay::Interactive;
@@ -66,13 +64,14 @@ impl EditorState {
         view: &EngineView,
         trigger: Trigger,
     ) {
-        if !self.input.is::<InsertLayer>(self.input.mode_layer()) {
+        let Some(insert) = self.input.insert_session() else {
             self.report(
                 Severity::Info,
                 "completion-trigger: only in Insert mode".to_string(),
             );
             return;
-        }
+        };
+        let (pid, bid) = (insert.pane(), insert.buffer());
         let (ids, explicit) = match trigger {
             Trigger::Explicit(_) => (self.config.completion_sources.buffer_sources(), true),
             Trigger::Sources(ids) => (ids, false),
@@ -86,23 +85,16 @@ impl EditorState {
             }
             return;
         }
-        let pid = view.focused_pane();
-        let bid = view.panes[pid].buffer_id();
         let head = self
             .panes
             .entries
-            .shown(&view.panes, pid)
+            .seeded(pid, bid)
             .view(self.buffers.get(bid).text())
             .primary()
             .head();
         let mut session = match self.take_buffer_completion(view) {
             Some(open) => open,
-            None => BufferSession::open(
-                bid,
-                pid,
-                self.buffers.get(bid).text().version(),
-                head.offset(),
-            ),
+            None => BufferSession::open(self.buffers.get(bid).text().version(), head.offset()),
         };
         if explicit {
             session.mark_explicit_trigger();
@@ -113,7 +105,7 @@ impl EditorState {
             &self.settings,
             &mut session,
             &ids,
-            bid,
+            (pid, bid),
             head.offset(),
         );
         self.queue_steel_calls(calls);
@@ -133,7 +125,7 @@ impl EditorState {
 
     /// Brings the open `Buffer` session in line with the buffer's current
     /// text and the primary cursor, whatever changed them: dismisses it when
-    /// its pane or buffer is gone or its text was replaced, drops the
+    /// its text was replaced or its buffer closed, drops the
     /// answers whose token the cursor has left, calls again every source
     /// that flagged its last answer `isIncomplete` (or is still pending
     /// against an older document) once the text changed, and re-ranks.
@@ -141,15 +133,10 @@ impl EditorState {
     /// without coordinating with the others: the Insert keystroke handler,
     /// each settle pass, and taking the session out of the input stack.
     pub(in crate::editor) fn reconcile_completion(&mut self, view: &EngineView) {
-        let Some(session) = self.input.buffer_completion() else {
+        let Some((pid, bid)) = self.input.completion_owner() else {
             return;
         };
-        let (bid, pid) = (session.bid(), session.pane_id());
-        let shown = view.focused_pane() == pid && view.panes[pid].buffer_id() == bid;
-        let Some(buf) = self.buffers.try_get(bid).filter(|_| shown) else {
-            self.dismiss_completion(view);
-            return;
-        };
+        let buf = self.buffers.get(bid);
         let head = self
             .panes
             .entries
@@ -181,7 +168,7 @@ impl EditorState {
                         &self.settings,
                         session,
                         &to_reinvoke,
-                        bid,
+                        (pid, bid),
                         head,
                     );
                     self.queue_steel_calls(calls);
@@ -213,6 +200,9 @@ impl EditorState {
         if !self.settings.completion_docs {
             return;
         }
+        let Some((_, bid)) = self.input.completion_owner() else {
+            return;
+        };
         let Some(session) = self
             .input
             .find_mut::<BufferCompletionLayer>()
@@ -221,7 +211,6 @@ impl EditorState {
         else {
             return;
         };
-        let bid = session.bid();
         let Some(request) = session.doc_request(&self.config.completion_sources) else {
             return;
         };
@@ -454,11 +443,8 @@ impl EditorState {
             .input
             .buffer_completion()
             .is_some_and(BufferSession::is_explicit);
-        // The session's pane is the focused one, showing its buffer: a
-        // focus move or buffer switch ends Insert and the layer above it.
-        let live = self.input.buffer_completion().map(|s| {
-            let bid = s.bid();
-            let pbs = self.panes.entries.seeded(s.pane_id(), bid);
+        let live = self.input.completion_owner().map(|(pid, bid)| {
+            let pbs = self.panes.entries.seeded(pid, bid);
             (bid, pbs.view(self.buffers.get(bid).text()).primary().head())
         });
         let Some(session) = self.input.buffer_completion_mut() else {
@@ -501,13 +487,13 @@ fn invoke_buffer_sources(
     settings: &EditorSettings,
     session: &mut BufferSession,
     ids: &[BufferSourceId],
-    bid: BufferId,
+    (pid, bid): (PaneId, BufferId),
     head: CharOffset,
 ) -> Vec<SteelCall> {
     let buf = buffers.get(bid);
     let text = buf.text();
     let word_chars = buf.overrides.word_chars(settings);
-    let pane = hume_scripting::PaneHandle::with_pane(bid, session.pane_id());
+    let pane = hume_scripting::PaneHandle::with_pane(bid, pid);
     ids.iter()
         .map(|&id| {
             let entry = sources.buffer_get(id);

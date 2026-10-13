@@ -102,6 +102,49 @@ fn typing_a_token_char_keeps_the_menu_open_and_narrows_it() {
     assert_eq!(labels(&ed), vec!["foo-bar", "foo-baz"]);
 }
 
+/// An edit to another buffer, while the menu is open, shifts none of the
+/// session's tokens: typing on still narrows from the token's own start.
+#[test]
+fn an_edit_to_another_buffer_leaves_the_open_menu_alone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        &completion_source(
+            "test",
+            &completion_labels(&["foobar", "fobaz", "other"]),
+            "",
+        ),
+    );
+    type_chars(&mut ed, "fo");
+    assert_eq!(
+        labels(&ed),
+        vec!["fobaz", "foobar"],
+        "setup: `fo` narrows the menu"
+    );
+
+    let other = ed.open_buffer(Buffer::at_start(BufferText::from("abc\n")));
+    let pid = ed.view.focused_pane();
+    crate::editor::pane_state::try_ensure(
+        &mut ed.state.panes.entries,
+        &ed.state.buffers,
+        &ed.view.panes,
+        pid,
+        other,
+    )
+    .expect("the focused pane is live");
+    let (buffers, mut stores) = ed.state.edit_parts();
+    crate::editor::doc_ops::apply_doc_edit(buffers, &mut stores, pid, other, |s| {
+        hume_ops::edit::insert_str(s, "zzz")
+    })
+    .expect("the other buffer has no session open on it");
+    assert_eq!(ed.state.buffers.get(other).text().to_string(), "zzzabc\n");
+
+    ed.feed_key(key('o'));
+    assert_eq!(labels(&ed), vec!["foobar"]);
+}
+
 #[test]
 fn ctrl_space_outside_insert_mode_only_reports() {
     let tmp = tempfile::tempdir().unwrap();

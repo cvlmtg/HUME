@@ -154,13 +154,13 @@ impl<'a> PositionStores<'a> {
         }
         if let Some(insert) = self.insert.as_deref_mut().filter(|s| s.buffer() == buffer) {
             insert.carry_marks(change);
+            if let Some(session) = self.layers.buffer_completion_mut() {
+                session.carry(change);
+            }
         }
         self.tracked.carry(buffer, change);
         for snapshot in self.layers.snapshots_mut() {
             snapshot.carry(buffer, change);
-        }
-        if let Some(session) = self.layers.buffer_completion_mut() {
-            session.carry(buffer, change);
         }
         self.buffers.carry(buffer, change);
         self.decorations.remap_through(buffer, change.changes());
@@ -209,8 +209,10 @@ impl<'a> PositionStores<'a> {
         for snapshot in self.layers.snapshots_mut() {
             snapshot.forget(buffer);
         }
-        if let Some(session) = self.layers.buffer_completion_mut() {
-            session.forget(buffer);
+        if self.insert.as_deref().is_some_and(|s| s.buffer() == buffer)
+            && let Some(session) = self.layers.buffer_completion_mut()
+        {
+            session.forget();
         }
         self.buffers.diagnostics.remove_buffer(buffer);
         self.decorations.remove_buffer(buffer);

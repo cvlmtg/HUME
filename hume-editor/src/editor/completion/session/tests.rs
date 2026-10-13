@@ -11,7 +11,6 @@ use super::*;
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::CharOffset;
 use steel::rvals::SteelVal;
@@ -68,17 +67,10 @@ fn text(s: &str) -> BufferText {
     BufferText::from(s)
 }
 
-/// A `Buffer` session over `content` with the cursor at its start. The
-/// store never consults the buffer/pane ids beyond matching a carried
-/// change to its own buffer, so the null keys do.
+/// A `Buffer` session over `content` with the cursor at its start.
 fn buffer_session(content: &str) -> (BufferSession, BufferText) {
     let text = text(content);
-    let session = BufferSession::open(
-        BufferId::default(),
-        PaneId::default(),
-        text.version(),
-        CharOffset::new(0),
-    );
+    let session = BufferSession::open(text.version(), CharOffset::new(0));
     (session, text)
 }
 
@@ -140,7 +132,7 @@ fn change(
     head: usize,
 ) -> (BufferText, Reconciled) {
     let (cs, after) = edit(&text, from, to, with);
-    session.carry(BufferId::default(), &TextChange::new(&text, &after, &cs));
+    session.carry(&TextChange::new(&text, &after, &cs));
     let outcome = session.reconcile(reg, &after, CharOffset::new(head), "");
     (after, outcome)
 }
@@ -700,25 +692,9 @@ fn a_replaced_text_dismisses_the_session() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("fo\n");
     invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 0, &["foo"]);
-    session.forget(BufferId::default());
+    session.forget();
     let outcome = session.reconcile(&reg, &text, CharOffset::new(2), "");
     assert!(matches!(outcome, Reconciled::Dismiss));
-}
-
-/// A change to another buffer is none of the session's business.
-#[test]
-fn a_change_to_another_buffer_is_not_carried() {
-    let reg = registry(&[("s", 0)]);
-    let (mut session, text) = buffer_session("fo\n");
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 0, &["foo"]);
-    session.reconcile(&reg, &text, CharOffset::new(2), "");
-    let mut buffers = slotmap::SlotMap::<BufferId, ()>::with_key();
-    let other = buffers.insert(());
-    let (cs, after) = edit(&text, 0, 0, "zzz");
-    session.carry(other, &TextChange::new(&text, &after, &cs));
-    let outcome = session.reconcile(&reg, &text, CharOffset::new(2), "");
-    assert!(matches!(outcome, Reconciled::Unchanged));
-    assert!(session.has_live_sources());
 }
 
 /// A source's own token characters extend the token: `-` typed at its end

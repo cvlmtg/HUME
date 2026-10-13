@@ -271,43 +271,6 @@ fn a_buffer_edit_outside_the_token_does_not_invalidate_the_session() {
     assert_eq!(ed.doc().text().to_string(), "zabcdefQ\n");
 }
 
-#[test]
-fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_zero() {
-    use crate::editor::commands::open_pane_in_layout;
-
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    let bid_a = ed.focused_buffer_id();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        bid_a,
-        hume_engine::pipeline::Direction::Horizontal,
-    );
-    insert_with_source_and(
-        &mut ed,
-        tmp.path(),
-        r#"(list (hash "label" "x" "insertText" "z"))"#,
-        ACCEPT_0,
-    );
-    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
-
-    // No synchronous dismiss runs on a focused-pane change:
-    // `pane_state::ensure` would otherwise fabricate a cursor at char 0 for
-    // pane B. A raw `set_for_test`: `switch_focused_pane`'s Normal-mode
-    // precondition doesn't hold here on purpose. Taking the session for
-    // accept reconciles it first, which dismisses it.
-    ed.state.focus.set_for_test(&mut ed.view, pid_b);
-
-    accept_via_steel(&mut ed);
-    assert_eq!(ed.doc().text().to_string(), "abcdef\n");
-    assert!(
-        status(&ed).contains("no active completion session"),
-        "got {:?}",
-        status(&ed)
-    );
-}
-
 /// A *real* Insert entry (`i`, pairing the session with an open edit group)
 /// ends in full (Insert layer, edit group, and the completion session
 /// riding on top of it) the moment `switch_to_buffer_without_jump` swaps

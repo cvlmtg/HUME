@@ -62,20 +62,21 @@ impl BufferSession {
         idx: usize,
         _input: Interactive,
     ) -> Result<(), String> {
+        // The session was taken off the stack, leaving the Insert layer it
+        // completes in, whose session the edits compose into.
+        let insert = state
+            .input
+            .insert_session()
+            .expect("a buffer completion session is accepted over its Insert session");
+        let (pid, bid) = (insert.pane(), insert.buffer());
         let AcceptPlan {
             item,
             may_resolve,
             encoding,
             rope_pre,
             edits,
-        } = self.plan(state, idx)?;
-        let (pid, bid) = (self.pane_id, self.bid());
-
-        // The session's layer sits above the Insert layer whose session owns
-        // this (pane, buffer): only Insert opens one, and every focus move or
-        // buffer switch truncates Insert and everything above it. The edits
-        // compose into that session's group.
-        let accept_cs = self.apply(state, view, edits)?;
+        } = self.plan(state, (pid, bid), idx)?;
+        let accept_cs = self.apply(state, view, (pid, bid), edits)?;
 
         // Fire on-completion-accept with the raw (pristine) item after the
         // edit lands: an extension point for anything this store doesn't
@@ -113,12 +114,16 @@ impl BufferSession {
     /// Every check and computation `accept` needs, against an `EditorState`
     /// it cannot change: an accept that fails any check leaves the buffer
     /// untouched.
-    fn plan<'a>(&'a self, state: &EditorState, idx: usize) -> Result<AcceptPlan<'a>, String> {
+    fn plan<'a>(
+        &'a self,
+        state: &EditorState,
+        (pid, bid): (PaneId, BufferId),
+        idx: usize,
+    ) -> Result<AcceptPlan<'a>, String> {
         let (source, invocation, item) = self
             .ranked(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
         let BufferSpan { doc, start, .. } = &invocation.span;
-        let bid = self.bid();
         let may_resolve = state.config.completion_sources.buffer_get(source).resolve;
         let buf = edits::checked_buffer(state, bid, None)?;
         if buf.text().version() != self.version {
@@ -128,12 +133,6 @@ impl BufferSession {
         }
         let encoding = item.wire_encoding(may_resolve, "completion-accept!")?;
 
-        // The session's pane is focused and shows its buffer: every caller
-        // takes the session through `take_buffer_completion`, whose
-        // reconcile dismisses one that isn't, and a focus move or buffer
-        // switch removes the session's layer along with the Insert layer
-        // below it.
-        let pid = self.pane_id;
         let (head_now, heads_now) = {
             let pbs = state.panes.entries.seeded(pid, bid);
             // The "as if typed at each cursor" model has no meaning for a
@@ -323,9 +322,9 @@ impl BufferSession {
         &self,
         state: &mut EditorState,
         view: &EngineView,
+        (pid, bid): (PaneId, BufferId),
         edits: AcceptEdits<'_>,
     ) -> Result<hume_editing::changeset::ChangeSet, String> {
-        let (pid, bid) = (self.pane_id, self.bid());
         let AcceptEdits {
             additional,
             per_cursor_back,

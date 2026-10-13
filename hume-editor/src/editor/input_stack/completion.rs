@@ -11,7 +11,7 @@
 
 use termina::event::KeyCode;
 
-use hume_engine::pipeline::{EngineView, RenderContext};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId, RenderContext};
 use hume_engine::theme::Theme;
 use hume_engine::types::EditorMode;
 use hume_treesitter::registry::LanguageRegistry;
@@ -206,11 +206,9 @@ impl Editor {
         let border = self.state.settings.popup_border;
         let completion_docs = self.state.settings.completion_docs;
         let resolved = (|| -> Option<(hume_ui::popup::PopupState, Option<SideSlot>)> {
+            let (_, bid) = self.state.input.completion_owner()?;
             let session = self.state.input.buffer_completion()?;
-            if session.bid() != self.focused_buffer_id() {
-                return None;
-            }
-            let anchor = session.menu_anchor(self.state.buffers.get(session.bid()).text())?;
+            let anchor = session.menu_anchor(self.state.buffers.get(bid).text())?;
             let placement = popup_placement(self, ctx, anchor)?;
 
             let session = self.state.input.buffer_completion()?;
@@ -254,6 +252,7 @@ impl Editor {
         slot: Option<SideSlot>,
     ) -> Option<hume_ui::popup::PopupState> {
         let languages = &self.state.config.languages;
+        let (_, bid) = self.state.input.completion_owner()?;
         let BufferCompletionLayer { session, doc } =
             self.state.input.find_mut::<BufferCompletionLayer>()?;
         doc.fits = Some(slot.is_some());
@@ -264,7 +263,7 @@ impl Editor {
             let fence_lang = self
                 .state
                 .buffers
-                .get(session.bid())
+                .get(bid)
                 .language
                 .map_or("", |id| languages.name_of(id));
             doc.current = item
@@ -296,6 +295,18 @@ impl super::stack::OtherLayers<'_> {
 impl super::stack::InputStack {
     pub(in crate::editor) fn buffer_completion(&self) -> Option<&BufferSession> {
         self.find::<BufferCompletionLayer>().map(|l| &l.session)
+    }
+
+    /// The pane and buffer of the open `Buffer` completion session: those of
+    /// the Insert session under it, the only layer that opens one. Every
+    /// focus move or buffer switch ends that Insert session and everything
+    /// above it.
+    pub(in crate::editor) fn completion_owner(&self) -> Option<(PaneId, BufferId)> {
+        self.buffer_completion()?;
+        let insert = self
+            .insert_session()
+            .expect("a buffer completion layer sits above the Insert layer");
+        Some((insert.pane(), insert.buffer()))
     }
 
     pub(in crate::editor) fn buffer_completion_mut(&mut self) -> Option<&mut BufferSession> {

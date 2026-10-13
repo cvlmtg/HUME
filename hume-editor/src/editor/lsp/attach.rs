@@ -370,8 +370,8 @@ impl EditorState {
             .remove_source_for_buffer(sid, bid);
         if self
             .input
-            .buffer_completion()
-            .is_some_and(|session| session.bid() == bid)
+            .completion_owner()
+            .is_some_and(|(_, owner)| owner == bid)
         {
             self.dismiss_completion(view);
         }

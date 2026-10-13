@@ -11,7 +11,6 @@ use hume_editing::edit::TextChange;
 use hume_editing::text::{BufferText, TextVersion};
 use hume_editing::tracked::Tracked;
 use hume_editing::word::{CharClass, WordChars};
-use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
@@ -163,15 +162,10 @@ pub(in crate::editor) enum Reconciled {
     Changed { text_changed: bool },
 }
 
-/// The Insert-mode completion session: one per open menu, on one buffer.
+/// The Insert-mode completion session: one per open menu, on the buffer
+/// and pane of the Insert session under it
+/// (`InputStack::completion_owner`).
 pub(in crate::editor) struct BufferSession {
-    bid: BufferId,
-    /// Pane the session began in: `accept` only proceeds while this pane is
-    /// still focused. A completion resolved against a pane the user has
-    /// since navigated away from has no well-defined live cursor to land at,
-    /// and `PaneBufferState`'s own `ensure` would otherwise silently
-    /// fabricate one (see `accept`'s pane precondition).
-    pub(super) pane_id: PaneId,
     /// Text version and primary head as of the last [`Self::reconcile`]:
     /// `accept` rejects if the buffer changed since.
     pub(super) version: TextVersion,
@@ -218,17 +212,10 @@ pub(in crate::editor) struct DocRequest {
 }
 
 impl BufferSession {
-    /// A session on `bid`, shown in `pane_id`, opened with the primary
-    /// cursor at `head` in the text at `version`.
-    pub(in crate::editor) fn open(
-        bid: BufferId,
-        pane_id: PaneId,
-        version: TextVersion,
-        head: CharOffset,
-    ) -> Self {
+    /// A session opened with the primary cursor at `head` in the text at
+    /// `version`.
+    pub(in crate::editor) fn open(version: TextVersion, head: CharOffset) -> Self {
         Self {
-            bid,
-            pane_id,
             version,
             head,
             replaced: false,
@@ -238,14 +225,6 @@ impl BufferSession {
             doc_asked: None,
             core: SlotSet::new(),
         }
-    }
-
-    pub(in crate::editor) fn bid(&self) -> BufferId {
-        self.bid
-    }
-
-    pub(in crate::editor) fn pane_id(&self) -> PaneId {
-        self.pane_id
     }
 
     /// Whether an explicit `Trigger::Explicit` (Ctrl-Space) has touched
@@ -350,13 +329,13 @@ impl BufferSession {
 
     // ── Edits ────────────────────────────────────────────────────────────────
 
-    /// Carries every invocation's snapshot and token start through `change`
-    /// when it landed on this session's buffer: every keystroke, not just
-    /// ones at the primary cursor (a keystroke at a cursor *before* the
+    /// Carries every invocation's snapshot and token start through
+    /// `change`, a change to this session's buffer: every keystroke, not
+    /// just ones at the primary cursor (a keystroke at a cursor *before* the
     /// primary shifts every token). Called by `PositionStores::carry` for
-    /// every text change, so no edit path can skip it.
-    pub(in crate::editor) fn carry(&mut self, buffer: BufferId, change: &TextChange<'_>) {
-        if buffer != self.bid || self.replaced {
+    /// every text change to the buffer, so no edit path can skip it.
+    pub(in crate::editor) fn carry(&mut self, change: &TextChange<'_>) {
+        if self.replaced {
             return;
         }
         let cs = change.changes();
@@ -367,12 +346,10 @@ impl BufferSession {
         }
     }
 
-    /// Marks the session dead: `buffer`'s text was replaced with no change
-    /// to carry the session's positions through, or `buffer` closed.
-    pub(in crate::editor) fn forget(&mut self, buffer: BufferId) {
-        if buffer == self.bid {
-            self.replaced = true;
-        }
+    /// Marks the session dead: its buffer's text was replaced with no change
+    /// to carry the session's positions through, or the buffer closed.
+    pub(in crate::editor) fn forget(&mut self) {
+        self.replaced = true;
     }
 
     /// Decides what the buffer's current `text` and primary `head` mean for
