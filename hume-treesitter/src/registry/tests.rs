@@ -3,7 +3,7 @@ use std::path::Path;
 use globset::Glob;
 
 use super::{
-    BundledConfig, ConfigureOutcome, ConfiguredBy, LanguageId, LanguageRegistry, QueryPaths,
+    ConfigureOutcome, ConfiguredBy, LanguageFields, LanguageId, LanguageRegistry, QueryPaths,
     detect_language,
 };
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
@@ -326,10 +326,10 @@ fn set_id(
 fn fill_tsx_bundled(reg: &mut LanguageRegistry, id: LanguageId) {
     reg.fill_bundled(
         id,
-        BundledConfig {
+        LanguageFields {
             roots: Some(strings(&["package.json"])),
             lsp_language_id: Some("typescriptreact".to_string()),
-            ..BundledConfig::default()
+            ..LanguageFields::default()
         },
     );
 }
@@ -498,7 +498,7 @@ fn an_empty_bundled_fill_still_marks_the_language_loaded() {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity_no_rebuild("plain", &[], &[], &[]);
 
-    reg.fill_bundled(id, BundledConfig::default());
+    reg.fill_bundled(id, LanguageFields::default());
 
     assert!(reg.bundled_loaded(id));
     assert!(reg.roots_of(id).is_empty());
@@ -522,10 +522,10 @@ fn block_tokens(pairs: &[(&str, &str)]) -> BlockCommentTokens {
 fn fill_comment_tokens(reg: &mut LanguageRegistry, id: LanguageId) {
     reg.fill_bundled(
         id,
-        BundledConfig {
-            line_comment_tokens: Some(line_tokens(&["//"])),
+        LanguageFields {
+            comment_tokens: Some(line_tokens(&["//"])),
             block_comment_tokens: Some(block_tokens(&[("/*", "*/")])),
-            ..BundledConfig::default()
+            ..LanguageFields::default()
         },
     );
 }
@@ -533,7 +533,7 @@ fn fill_comment_tokens(reg: &mut LanguageRegistry, id: LanguageId) {
 #[test]
 fn a_language_without_comment_tokens_has_none() {
     let (reg, id) = tsx();
-    assert!(reg.comment_tokens_of(id).is_empty());
+    assert_eq!(reg.comment_tokens_of(id), None);
 }
 
 #[test]
@@ -542,9 +542,9 @@ fn bundled_comment_tokens_fill_both_kinds() {
 
     fill_comment_tokens(&mut reg, id);
 
-    let tokens = reg.comment_tokens_of(id);
-    assert_eq!(tokens.line, Some(&line_tokens(&["//"])));
-    assert_eq!(tokens.block, Some(&block_tokens(&[("/*", "*/")])));
+    let tokens = reg.comment_tokens_of(id).expect("comment tokens");
+    assert_eq!(tokens.line(), Some(&line_tokens(&["//"])));
+    assert_eq!(tokens.block(), Some(&block_tokens(&[("/*", "*/")])));
 }
 
 #[test]
@@ -557,9 +557,9 @@ fn configured_line_tokens_keep_the_bundled_block_tokens() {
 
     fill_comment_tokens(&mut reg, id);
 
-    let tokens = reg.comment_tokens_of(id);
-    assert_eq!(tokens.line, Some(&line_tokens(&["#"])));
-    assert_eq!(tokens.block, Some(&block_tokens(&[("/*", "*/")])));
+    let tokens = reg.comment_tokens_of(id).expect("comment tokens");
+    assert_eq!(tokens.line(), Some(&line_tokens(&["#"])));
+    assert_eq!(tokens.block(), Some(&block_tokens(&[("/*", "*/")])));
 }
 
 #[test]
@@ -577,9 +577,9 @@ fn configured_comment_tokens_replace_bundled_ones() {
         ConfigureOutcome::Applied
     );
 
-    let tokens = reg.comment_tokens_of(id);
-    assert_eq!(tokens.line, Some(&line_tokens(&["#"])));
-    assert_eq!(tokens.block, Some(&block_tokens(&[("<!--", "-->")])));
+    let tokens = reg.comment_tokens_of(id).expect("comment tokens");
+    assert_eq!(tokens.line(), Some(&line_tokens(&["#"])));
+    assert_eq!(tokens.block(), Some(&block_tokens(&[("<!--", "-->")])));
 }
 
 #[test]
@@ -607,9 +607,9 @@ fn comment_tokens_follow_the_configurer_tiers() {
         ConfigureOutcome::Ignored
     );
 
-    let tokens = reg.comment_tokens_of(id);
-    assert_eq!(tokens.line, Some(&line_tokens(&["--"])));
-    assert_eq!(tokens.block, Some(&block_tokens(&[("/*", "*/")])));
+    let tokens = reg.comment_tokens_of(id).expect("comment tokens");
+    assert_eq!(tokens.line(), Some(&line_tokens(&["--"])));
+    assert_eq!(tokens.block(), Some(&block_tokens(&[("/*", "*/")])));
 }
 
 #[test]

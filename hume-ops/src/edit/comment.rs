@@ -3,13 +3,12 @@
 //! Selections sharing a line form one unit. A unit is commented when its
 //! trimmed text is wrapped in one block comment pair, or when every line
 //! that is not blank starts with a line token after its indent. The primary
-//! selection's unit decides for all: when it is commented, every unit is
+//! selection's unit decides for all, or the first unit that is not blank when
+//! the primary's lines are all blank: when it is commented, every unit is
 //! uncommented, whichever kind it holds; otherwise every unit is commented
 //! in its preferred kind.
 
-use hume_editing::comment::{
-    BlockCommentPair, BlockCommentTokens, CommentTokens, LineCommentTokens,
-};
+use hume_editing::comment::{BlockCommentPair, CommentTokens};
 use hume_editing::edit::{Edited, Landing, Landings, edit};
 use hume_editing::selection::EditView;
 use hume_editing::state::EditState;
@@ -25,6 +24,17 @@ use hume_rope::offset::InclusiveRange;
 pub enum MultiLineComments {
     Block,
     Line,
+}
+
+/// Why [`plan_comment_toggle`] made no plan.
+#[derive(Debug, PartialEq, Eq)]
+pub enum CommentPlanError<E> {
+    /// The resolver's error.
+    Tokens(E),
+    /// A unit's text holds the end token of the block comment it would
+    /// take, which would close the comment early, and its language has no
+    /// line comment.
+    BlockEndInside(String),
 }
 
 /// The edits [`plan_comment_toggle`] computed, for the text it read.
@@ -49,61 +59,22 @@ enum Commented {
     No,
 }
 
-/// A language's comment tokens, at least one kind present.
-#[derive(Clone, Copy)]
-enum Tokens<'t> {
-    Line(&'t LineCommentTokens),
-    Block(&'t BlockCommentTokens),
-    Both(&'t LineCommentTokens, &'t BlockCommentTokens),
-}
-
-impl<'t> Tokens<'t> {
-    fn new(tokens: CommentTokens<'t>) -> Option<Self> {
-        match (tokens.line, tokens.block) {
-            (Some(line), Some(block)) => Some(Self::Both(line, block)),
-            (Some(line), None) => Some(Self::Line(line)),
-            (None, Some(block)) => Some(Self::Block(block)),
-            (None, None) => None,
-        }
-    }
-
-    fn line(self) -> Option<&'t LineCommentTokens> {
-        match self {
-            Self::Line(line) | Self::Both(line, _) => Some(line),
-            Self::Block(_) => None,
-        }
-    }
-
-    fn block(self) -> Option<&'t BlockCommentTokens> {
-        match self {
-            Self::Block(block) | Self::Both(_, block) => Some(block),
-            Self::Line(_) => None,
-        }
-    }
-}
-
 /// Plan the toggle for `view`'s selections. `tokens_at` gives the tokens of
 /// the language at a unit's trimmed text (its first line for a unit with
-/// only blank lines), and must give at least one kind; its error is
-/// returned as is.
-///
-/// # Panics
-/// Panics if `tokens_at` returns tokens of neither kind.
+/// only blank lines).
 pub fn plan_comment_toggle<'t, E>(
     view: EditView<'_>,
     multi_line: MultiLineComments,
     tab_width: u8,
     mut tokens_at: impl FnMut(ClusterRange) -> Result<CommentTokens<'t>, E>,
-) -> Result<CommentPlan, E> {
+) -> Result<CommentPlan, CommentPlanError<E>> {
     let text = view.text();
     let primary_line = view.primary().lines().start;
     let mut units = Vec::new();
     for lines in merged_lines(view) {
         let span = trimmed_span(text, lines);
-        let tokens = Tokens::new(tokens_at(
-            span.unwrap_or_else(|| text.lines().range(lines.start)),
-        )?)
-        .expect("plan_comment_toggle: a resolver gave no comment tokens");
+        let tokens = tokens_at(span.unwrap_or_else(|| text.lines().range(lines.start)))
+            .map_err(CommentPlanError::Tokens)?;
         units.push(Unit {
             lines,
             span,
@@ -116,14 +87,19 @@ pub fn plan_comment_toggle<'t, E>(
         .iter()
         .find(|unit| unit.lines.contains(primary_line))
         .expect("the primary selection's lines are in a unit");
-    let uncomment = !matches!(primary.commented, Commented::No);
+    let has_text = |unit: &&Unit<'_>| unit.span.is_some();
+    let decider = Some(primary)
+        .filter(has_text)
+        .or_else(|| units.iter().find(has_text));
+    let uncomment = decider.is_some_and(|unit| !matches!(unit.commented, Commented::No));
 
     let mut ops = Vec::new();
     for unit in &units {
         if uncomment {
             unit.uncomment(text, &mut ops);
         } else {
-            unit.comment(text, multi_line, tab_width, &mut ops);
+            unit.comment(text, multi_line, tab_width, &mut ops)
+                .map_err(CommentPlanError::BlockEndInside)?;
         }
     }
     Ok(CommentPlan {
@@ -178,7 +154,7 @@ struct Unit<'t> {
     /// From the first cluster that is not blank to the last; `None` when
     /// every line is blank.
     span: Option<ClusterRange>,
-    tokens: Tokens<'t>,
+    tokens: CommentTokens<'t>,
     commented: Commented,
 }
 
@@ -199,36 +175,70 @@ impl Unit<'_> {
         }
     }
 
+    /// A unit whose text holds the end token of the block comment it would
+    /// take gets line comments instead; `Err` carries that end token when
+    /// its language has none.
     fn comment(
         &self,
         text: &BufferText,
         multi_line: MultiLineComments,
         tab_width: u8,
         ops: &mut Vec<CommentOp>,
-    ) {
+    ) -> Result<(), String> {
         let Some(span) = self.span else {
-            return;
+            return Ok(());
         };
         let single = self.lines.start == self.lines.end;
         let prefer_block = !single && multi_line == MultiLineComments::Block;
+        let fits = |pair: &BlockCommentPair| {
+            !occurs_between(text, span.start().into(), span.end(), pair.end())
+        };
         match self.tokens {
-            Tokens::Block(block) => block_comment(span, block.primary(), ops),
-            Tokens::Both(_, block) if prefer_block => block_comment(span, block.primary(), ops),
-            Tokens::Line(line) | Tokens::Both(line, _) => {
+            CommentTokens::Block(block) => {
+                let pair = block.primary();
+                if !fits(pair) {
+                    return Err(pair.end().to_owned());
+                }
+                block_comment(span, pair, ops);
+            }
+            CommentTokens::Both(_, block) if prefer_block && fits(block.primary()) => {
+                block_comment(span, block.primary(), ops);
+            }
+            CommentTokens::Line(line) | CommentTokens::Both(line, _) => {
                 let token = format!("{} ", line.primary());
                 let content: Vec<ContentLine> =
                     self.lines.iter().filter(|&l| !is_blank(text, l)).collect();
-                let column = content
+                // The least indent can fall inside another line's tab, so it
+                // is lowered to a column every line has a cluster boundary at.
+                let reach = |column| {
+                    content
+                        .iter()
+                        .map(|&l| {
+                            let at = text.columns().pos_at_display_col(l, column, tab_width);
+                            text.columns().display_col(l, at.offset(), tab_width)
+                        })
+                        .min()
+                        .expect("a unit with a span has a line that is not blank")
+                };
+                let mut column = content
                     .iter()
                     .map(|&l| text.columns().indent(l, tab_width).1)
                     .min()
                     .expect("a unit with a span has a line that is not blank");
+                loop {
+                    let lowered = reach(column);
+                    if lowered == column {
+                        break;
+                    }
+                    column = lowered;
+                }
                 ops.extend(content.into_iter().map(|l| {
                     let at = text.columns().pos_at_display_col(l, column, tab_width);
                     CommentOp::Insert(at.into(), token.clone())
                 }));
             }
         }
+        Ok(())
     }
 }
 
@@ -272,7 +282,7 @@ fn commented(
     text: &BufferText,
     lines: InclusiveRange<ContentLine>,
     span: Option<ClusterRange>,
-    tokens: Tokens<'_>,
+    tokens: CommentTokens<'_>,
 ) -> Commented {
     let Some(span) = span else {
         return Commented::No;
@@ -309,7 +319,7 @@ fn block_deletions<'p>(
             let open_end = match_forward(text, span.start(), pair.start())?;
             let close_start = match_backward(text, span.end(), pair.end())?;
             let inner_ok = open_end.offset() <= close_start.offset()
-                && !occurs_between(text, open_end, close_start, pair.end());
+                && !occurs_between(text, open_end, close_start.into(), pair.end());
             inner_ok.then_some((open_end, close_start))
         })
         .max_by_key(|(open_end, close_start)| {
@@ -335,7 +345,7 @@ fn block_deletions<'p>(
 fn line_token_deletion(
     text: &BufferText,
     line: ContentLine,
-    tokens: Tokens<'_>,
+    tokens: CommentTokens<'_>,
 ) -> Option<ClusterRange> {
     let start = text.lines().indent_end(line);
     let token_end = tokens
@@ -373,7 +383,7 @@ fn single_space_before(
 }
 
 /// Whether `token` starts at a cluster in `[from, to)` and ends by `to`.
-fn occurs_between(text: &BufferText, from: ClusterBound, to: ClusterStart, token: &str) -> bool {
+fn occurs_between(text: &BufferText, from: ClusterBound, to: ClusterBound, token: &str) -> bool {
     text.clusters()
         .graphemes_at(from)
         .take_while(|cluster| cluster.start().offset() < to.offset())

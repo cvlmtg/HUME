@@ -10,9 +10,9 @@ mod parse;
 pub(in crate::editor) use parse::{SyntaxUse, ensure_syntax_current};
 
 use hume_engine::pipeline::{BufferId, EngineView};
-use hume_scripting::{ConfigOrigin, GrammarReg, LanguageFields};
+use hume_scripting::{ConfigOrigin, GrammarReg};
 use hume_treesitter::registry::{
-    BundledConfig, ConfigureOutcome, ConfiguredBy, LanguageId, QueryPaths, detect_language,
+    ConfigureOutcome, ConfiguredBy, LanguageFields, LanguageId, QueryPaths, detect_language,
 };
 
 use super::Editor;
@@ -154,8 +154,8 @@ impl Editor {
     }
 
     /// Read `id`'s bundled data file (`<runtime>/scheme/languages/<name>.scm`)
-    /// the first time a buffer or an injected layer uses the language in this
-    /// configuration, and fill each field configuration left unset. A missing file or runtime
+    /// the first time a buffer uses the language or its grammar is attached in
+    /// this configuration, and fill each field configuration left unset. A missing file or runtime
     /// directory leaves the language without bundled data; a malformed file
     /// is reported and does the same. Either way the file is not read again
     /// until `:reload-config` rebuilds the registry.
@@ -177,21 +177,7 @@ impl Editor {
                 LanguageFields::default()
             }
         };
-        let LanguageFields {
-            roots,
-            lsp_language_id,
-            comment_tokens,
-            block_comment_tokens,
-        } = lang;
-        self.state.config.languages.fill_bundled(
-            id,
-            BundledConfig {
-                roots,
-                lsp_language_id,
-                line_comment_tokens: comment_tokens,
-                block_comment_tokens,
-            },
-        );
+        self.state.config.languages.fill_bundled(id, lang);
     }
 
     pub(super) fn detect_and_set_language(&mut self, bid: BufferId) {

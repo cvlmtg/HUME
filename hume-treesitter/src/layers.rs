@@ -101,27 +101,26 @@ impl SyntaxLayers {
 /// True if `layer` was parsed over the byte range `[line_start, line_end)`.
 /// The root layer (empty `ranges`) always covers every line.
 pub(crate) fn layer_covers_line(layer: &SyntaxLayer, line_start: usize, line_end: usize) -> bool {
-    if layer.ranges.is_empty() {
-        return true;
-    }
-    // `ranges` is sorted by start and non-overlapping, so end bytes ascend
-    // too, so the only candidate for intersection is the last range starting
-    // before `line_end`. Binary search keeps this O(log n) per line even for
-    // combined layers with one range per paragraph (markdown.inline).
-    let idx = layer.ranges.partition_point(|r| r.start_byte < line_end);
-    idx > 0 && line_start < layer.ranges[idx - 1].end_byte
+    layer.ranges.is_empty()
+        || last_range_starting_before(layer, line_end).is_some_and(|r| line_start < r.end_byte)
 }
 
 /// True if one of `layer`'s included ranges holds all of `bytes`. The root
 /// layer (empty `ranges`) holds every span.
 fn layer_contains(layer: &SyntaxLayer, bytes: &Range<usize>) -> bool {
-    if layer.ranges.is_empty() {
-        return true;
-    }
-    let idx = layer
-        .ranges
-        .partition_point(|r| r.start_byte <= bytes.start);
-    idx > 0 && bytes.end <= layer.ranges[idx - 1].end_byte
+    layer.ranges.is_empty()
+        || last_range_starting_before(layer, bytes.start + 1)
+            .is_some_and(|r| bytes.end <= r.end_byte)
+}
+
+/// The last of `layer`'s ranges starting before byte `end`. `ranges` is
+/// sorted by start and non-overlapping, so end bytes ascend too, and it is
+/// the only range that can reach a byte before `end`. Binary search keeps
+/// this O(log n) for combined layers with one range per paragraph
+/// (markdown.inline).
+fn last_range_starting_before(layer: &SyntaxLayer, end: usize) -> Option<&tree_sitter::Range> {
+    let idx = layer.ranges.partition_point(|r| r.start_byte < end);
+    idx.checked_sub(1).and_then(|i| layer.ranges.get(i))
 }
 
 #[cfg(test)]

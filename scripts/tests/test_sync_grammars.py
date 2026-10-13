@@ -272,6 +272,22 @@ class CommentTokens(unittest.TestCase):
             self.tokens({"block-comment-tokens": ["/*", "*/", "x"]})
 
 
+    def test_graphqls_block_string_delimiter_is_not_a_block_comment(self):
+        (lang,) = parse_langs(
+            [{"name": "graphql", "comment-token": "#", "block-comment-tokens": ['"""', '"""']}]
+        )
+        self.assertEqual((lang["comment_tokens"], lang["block_comment_tokens"]), (["#"], []))
+
+    def test_another_language_keeps_the_same_pair(self):
+        self.assertEqual(
+            self.tokens({"block-comment-tokens": ['"""', '"""']}), ([], [('"""', '"""')])
+        )
+
+    def test_an_exclusion_its_language_no_longer_has_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            parse_langs([{"name": "graphql", "comment-token": "#"}])
+
+
 class LanguageGrammar(unittest.TestCase):
     GRAMMARS = {
         "javascript": {"url": "https://js", "rev": "r1", "subpath": ""},

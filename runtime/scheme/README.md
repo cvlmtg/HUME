@@ -10,7 +10,7 @@ regeneration run order, not repeated here). The LSP server catalogs live with th
 |---|---|---|
 | `prelude.scm` | hand-written: `syntax-rules` sugar over the raw builtins | startup, see below |
 | `languages.scm` | generated: language detection data | startup, see below |
-| `languages/<name>.scm` | generated: one language's data file | when the language is first used |
+| `languages/<name>.scm` | generated: one language's data file | when the language is first used or its grammar is attached |
 | `grammars.scm` | hand-written: registers already-compiled grammars | startup, see below |
 | `helix-pin.scm` | hand-written: pinned `helix-editor/helix` commit SHA | input to `sync-grammars.py` |
 
@@ -31,9 +31,9 @@ silent no-op, not an error. Only a file that exists but fails to parse is report
 
 The files in `languages/` are never evaluated. They are parsed as data by one reader in
 `builtins/bootstrap.scm`, which also checks the record format below. The editor calls it when a
-buffer is first assigned a language, and the `bundled-language-grammar` and
-`bundled-grammar-languages` functions are built on it, so a plugin reads the files through those
-functions rather than opening them itself.
+buffer is first assigned a language or the language's grammar is attached, and the
+`bundled-language-grammar` and `bundled-grammar-languages` functions are built on it, so a plugin
+reads the files through those functions rather than opening them itself.
 
 ## `languages.scm`
 

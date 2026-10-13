@@ -77,11 +77,11 @@ You can align to the left or the right depending on which end of the selection i
 
 On a cursor, or a selection within one line, `G G` puts a line comment (`//` in Rust) in front of the line's text. In a language with only block comments (`<!-- -->` in HTML), it wraps the line's text instead.
 
-A selection over several lines is wrapped in one block comment, from its first non-blank character to its last. In a language with only line comments, each line gets one, all at the same column, and blank lines are left alone. `:set prefer-line-comments=true` gives several lines line comments even where the language has block comments.
+A selection over several lines is wrapped in one block comment, from its first non-blank character to its last. When that text already holds the end of a block comment (`*/` in Rust), wrapping it would end the comment early, so its lines get line comments instead; in a language with only block comments, `G G` leaves the text alone and says why. In a language with only line comments, each line gets one, all at the same column, and blank lines are left alone. `:set prefer-line-comments=true` gives several lines line comments even where the language has block comments.
 
 `G G` on a commented line removes the comment, whichever kind it is: a line comment with the space after it, or a block comment's start and end with the space inside each.
 
-With several selections, the primary selection decides. When its lines are commented, `G G` uncomments every selection; otherwise it comments every selection, including lines that already have a comment.
+With several selections, the primary selection decides, or the first selection with text when the primary's lines are all blank. When its lines are commented, `G G` uncomments every selection; otherwise it comments every selection, including lines that already have a comment.
 
 The comment follows the language at the cursor: in a Markdown file, a fenced Rust block gets `//` and the text around it gets `<!-- -->`. To change a language's comments, see `configure-language!` in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).
 

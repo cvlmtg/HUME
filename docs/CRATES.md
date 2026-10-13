@@ -95,6 +95,7 @@ LSP transport, JSON-RPC codec, client lifecycle state, and protocol-level wire d
 - hume-ops
 - hume-platform
 - hume-rope
+- hume-treesitter
 ### Used by
 - hume-editor
 ## Description
@@ -107,6 +108,7 @@ Steel (Scheme) scripting host: runs plugins and configuration, and exposes edito
 - hume-rope
 - test-fixtures *(dev-only)*
 ### Used by
+- hume-scripting
 - hume-editor
 ## Description
 Tree-sitter integration: grammar registry, incremental parsing, syntax highlighting, and structural text-object queries.

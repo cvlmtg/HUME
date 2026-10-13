@@ -123,16 +123,40 @@ impl BlockCommentTokens {
     }
 }
 
-/// The comment tokens one language has, either kind possibly absent.
+/// The comment tokens one language has, at least one kind present.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CommentTokens<'a> {
-    pub line: Option<&'a LineCommentTokens>,
-    pub block: Option<&'a BlockCommentTokens>,
+pub enum CommentTokens<'a> {
+    Line(&'a LineCommentTokens),
+    Block(&'a BlockCommentTokens),
+    Both(&'a LineCommentTokens, &'a BlockCommentTokens),
 }
 
-impl CommentTokens<'_> {
-    pub fn is_empty(self) -> bool {
-        self.line.is_none() && self.block.is_none()
+impl<'a> CommentTokens<'a> {
+    /// `None` when the language has neither kind.
+    pub fn new(
+        line: Option<&'a LineCommentTokens>,
+        block: Option<&'a BlockCommentTokens>,
+    ) -> Option<Self> {
+        match (line, block) {
+            (Some(line), Some(block)) => Some(Self::Both(line, block)),
+            (Some(line), None) => Some(Self::Line(line)),
+            (None, Some(block)) => Some(Self::Block(block)),
+            (None, None) => None,
+        }
+    }
+
+    pub fn line(self) -> Option<&'a LineCommentTokens> {
+        match self {
+            Self::Line(line) | Self::Both(line, _) => Some(line),
+            Self::Block(_) => None,
+        }
+    }
+
+    pub fn block(self) -> Option<&'a BlockCommentTokens> {
+        match self {
+            Self::Block(block) | Self::Both(_, block) => Some(block),
+            Self::Line(_) => None,
+        }
     }
 }
 

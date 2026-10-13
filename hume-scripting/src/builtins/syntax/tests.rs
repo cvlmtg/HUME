@@ -1,7 +1,8 @@
 use super::super::args::cons_pair;
 use super::*;
-use crate::{ConfigOrigin, LanguageFields, PendingLanguageReg, test_support::SteelCtxTestHarness};
+use crate::{ConfigOrigin, PendingLanguageReg, test_support::SteelCtxTestHarness};
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
+use hume_treesitter::registry::LanguageFields;
 use steel::rvals::IntoSteelVal as _;
 
 fn str_val(s: &str) -> SteelVal {

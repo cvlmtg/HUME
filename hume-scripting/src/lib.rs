@@ -56,10 +56,10 @@ pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
     CapabilityQuery, ConfigOrigin, DocSpan, Effect, EvalError, FeatureFilter, GrammarReg,
-    LanguageFields, ListEntry, ListLayer, LspFeature, LspServerStatusEntry, LspServerTarget,
-    PaneHandle, Params, PendingLanguageReg, PendingLspNotify, PendingLspRequest,
-    PendingLspServerOp, PendingLspServerReg, RequestMode, RequestParams, RouteSpec, ServerName,
-    SteelCmdDef, SteelTypedCmdDef, TriggerKind, TriggerScope, VirtualLineSpec, WhenUnavailable,
+    ListEntry, ListLayer, LspFeature, LspServerStatusEntry, LspServerTarget, PaneHandle, Params,
+    PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
+    PendingLspServerReg, RequestMode, RequestParams, RouteSpec, ServerName, SteelCmdDef,
+    SteelTypedCmdDef, TriggerKind, TriggerScope, VirtualLineSpec, WhenUnavailable,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than
@@ -784,7 +784,7 @@ impl ScriptingHost {
         &mut self,
         name: &str,
         host: &mut dyn EditorHost,
-    ) -> Result<Option<LanguageFields>, String> {
+    ) -> Result<Option<hume_treesitter::registry::LanguageFields>, String> {
         const CONFIG: &str = "%bundled-language-config";
         let config = self.read_only_call(host, |steel| {
             steel.call_function_by_name_with_args(CONFIG, vec![SteelVal::StringV(name.into())])

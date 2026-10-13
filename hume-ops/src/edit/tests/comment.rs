@@ -3,7 +3,7 @@ use hume_editing::comment::{BlockCommentTokens, CommentTokens, LineCommentTokens
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use test_fixtures::assert_state;
-use test_fixtures::testing::{parse_state, state};
+use test_fixtures::testing::{IntoTestResult, parse_state, state};
 
 struct Lang {
     line: Option<LineCommentTokens>,
@@ -12,10 +12,8 @@ struct Lang {
 
 impl Lang {
     fn tokens(&self) -> CommentTokens<'_> {
-        CommentTokens {
-            line: self.line.as_ref(),
-            block: self.block.as_ref(),
-        }
+        CommentTokens::new(self.line.as_ref(), self.block.as_ref())
+            .expect("a test language has comment tokens")
     }
 }
 
@@ -119,6 +117,15 @@ fn tab_and_space_indents_of_one_width_take_the_token_at_one_column() {
 }
 
 #[test]
+fn a_tab_wider_than_the_least_indent_moves_every_token_to_a_column_all_lines_reach() {
+    assert_state!(
+        "-[  a\n\tb]>\n",
+        toggle(&rust(), MultiLineComments::Line),
+        "// -[  a\n// \tb]>\n"
+    );
+}
+
+#[test]
 fn a_line_already_commented_gets_a_second_token_when_another_line_is_not() {
     assert_state!(
         "-[// a\nb]>\n",
@@ -165,6 +172,38 @@ fn a_span_holding_the_end_token_inside_is_not_a_block_comment() {
         "-[/]>* a */ x /* b */\n",
         rust_block(),
         "// -[/]>* a */ x /* b */\n"
+    );
+}
+
+#[test]
+fn a_span_holding_the_block_end_takes_line_comments() {
+    assert_state!(
+        "-[a(); /* x */\nb();]>\n",
+        rust_block(),
+        "// -[a(); /* x */\n// b();]>\n"
+    );
+}
+
+#[test]
+fn toggling_a_span_holding_the_block_end_twice_restores_it() {
+    assert_state!(
+        "-[a(); /* x */\nb();]>\n",
+        |input| rust_block()(rust_block()(input).into_test_result()),
+        "-[a(); /* x */\nb();]>\n"
+    );
+}
+
+#[test]
+fn a_span_holding_the_block_end_with_no_line_tokens_is_refused() {
+    let html = html();
+    let (text, sels) = parse_state("-[a <!-- x -->\nb]>\n");
+    let state = state(text, sels);
+    let result = plan_comment_toggle(state.view(), MultiLineComments::Block, 4, |_| {
+        Ok::<_, ()>(html.tokens())
+    });
+    assert_eq!(
+        result.err(),
+        Some(CommentPlanError::BlockEndInside("-->".to_owned()))
     );
 }
 
@@ -220,6 +259,20 @@ fn an_uncommented_primary_comments_every_selection() {
 }
 
 #[test]
+fn a_blank_primary_leaves_the_choice_to_the_first_unit_that_is_not_blank() {
+    assert_state!(
+        "// -[a]>\n// -[b]>\n-{\n}>",
+        rust_block(),
+        "-[a]>\n-[b]>\n-{\n}>"
+    );
+}
+
+#[test]
+fn selections_on_blank_lines_only_change_nothing() {
+    assert_state!("-{\n}>-[\n]>", rust_block(), "-{\n}>-[\n]>");
+}
+
+#[test]
 fn two_cursors_on_one_line_comment_it_once() {
     assert_state!("-{a}> -[b]>\n", rust_block(), "// -{a}> -[b]>\n");
 }
@@ -255,7 +308,7 @@ fn a_resolver_error_is_returned() {
     let result = plan_comment_toggle(state.view(), MultiLineComments::Block, 4, |_| {
         Err::<CommentTokens<'_>, _>("no tokens")
     });
-    assert_eq!(result.err(), Some("no tokens"));
+    assert_eq!(result.err(), Some(CommentPlanError::Tokens("no tokens")));
 }
 
 #[test]

@@ -1,5 +1,5 @@
-use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_engine::pipeline::{BufferId, PaneId};
+use hume_treesitter::registry::LanguageFields;
 use steel::rvals::SteelVal;
 
 /// A buffer paired with the pane it was invoked/observed through, if any:
@@ -101,19 +101,6 @@ pub struct SteelTypedCmdDef {
     /// completes this command's `:` argument on Tab. Resolved by name at
     /// completion time, same as a built-in's declared completer.
     pub completer: Option<String>,
-}
-
-/// The per-language values the registry stores, as one `configure-language!`
-/// call or one `<runtime>/scheme/languages/<name>.scm` file gives them;
-/// `None` where it gives none.
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct LanguageFields {
-    /// Workspace root markers.
-    pub roots: Option<Vec<String>>,
-    /// The wire `languageId`, when it differs from the name.
-    pub lsp_language_id: Option<String>,
-    pub comment_tokens: Option<LineCommentTokens>,
-    pub block_comment_tokens: Option<BlockCommentTokens>,
 }
 
 /// Who called `configure-language!`: `init.scm`'s top level or a plugin body.

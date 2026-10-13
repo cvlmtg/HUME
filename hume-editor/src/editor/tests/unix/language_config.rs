@@ -245,11 +245,11 @@ const TSX_COMMENTS_BUNDLED: (&str, &str) = (
 fn comment_tokens(ed: &Editor) -> (Vec<String>, Vec<(String, String)>) {
     let tokens = ed.state.config.languages.comment_tokens_of(tsx(ed));
     let line = tokens
-        .line
+        .and_then(|t| t.line())
         .map(|l| l.iter().map(str::to_owned).collect())
         .unwrap_or_default();
     let block = tokens
-        .block
+        .and_then(|t| t.block())
         .map(|b| {
             b.iter()
                 .map(|p| (p.start().to_owned(), p.end().to_owned()))

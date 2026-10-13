@@ -174,6 +174,31 @@ def block_comment_tokens(entry: dict) -> list[tuple[str, str]]:
     sys.exit(f"error: language '{name}': malformed block-comment-tokens {value!r}")
 
 
+# Helix block comment pairs dropped before emission, by language. GraphQL's
+# `"""` delimits a block string (a field description), not a comment: GraphQL
+# comments are `#` only, and `G G` would strip a description's quotes as if
+# uncommenting it.
+BLOCK_COMMENT_EXCLUSIONS: dict[str, set[tuple[str, str]]] = {
+    "graphql": {('"""', '"""')},
+}
+
+
+def kept_block_comment_tokens(entry: dict) -> list[tuple[str, str]]:
+    """`block_comment_tokens(entry)` without the language's excluded pairs.
+    Fatal when an excluded pair is missing from them, so the table does
+    not outlive the upstream data it corrects."""
+    name = entry["name"]
+    pairs = block_comment_tokens(entry)
+    excluded = BLOCK_COMMENT_EXCLUSIONS.get(name, set())
+    stale = excluded - set(pairs)
+    if stale:
+        sys.exit(
+            f"error: language '{name}': excluded block-comment-tokens "
+            f"{sorted(stale)!r} not in languages.toml"
+        )
+    return [p for p in pairs if p not in excluded]
+
+
 def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
     """Return one dict per language: detection data (name, extensions, globs,
     shebangs) and per-language data (comment_tokens, block_comment_tokens,
@@ -218,7 +243,7 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
                 "globs": globs,
                 "shebangs": shebangs,
                 "comment_tokens": comment_tokens(entry),
-                "block_comment_tokens": block_comment_tokens(entry),
+                "block_comment_tokens": kept_block_comment_tokens(entry),
                 "language_id": entry.get("language-id"),
                 "roots": entry.get("roots", []),
                 "grammar": grammar,

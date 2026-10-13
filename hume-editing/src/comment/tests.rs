@@ -96,26 +96,20 @@ fn block_pairs_keep_their_order_and_the_first_is_primary() {
 }
 
 #[test]
-fn comment_tokens_are_empty_only_without_either_kind() {
+fn comment_tokens_need_at_least_one_kind() {
     let line = LineCommentTokens::new(strings(&["#"])).expect("valid");
     let block = BlockCommentTokens::new(pairs(&[("<!--", "-->")])).expect("valid");
-    let none = CommentTokens {
-        line: None,
-        block: None,
-    };
-    assert!(none.is_empty());
-    assert!(
-        !CommentTokens {
-            line: Some(&line),
-            block: None
-        }
-        .is_empty()
+    assert_eq!(CommentTokens::new(None, None), None);
+    assert_eq!(
+        CommentTokens::new(Some(&line), None),
+        Some(CommentTokens::Line(&line))
     );
-    assert!(
-        !CommentTokens {
-            line: None,
-            block: Some(&block)
-        }
-        .is_empty()
+    assert_eq!(
+        CommentTokens::new(None, Some(&block)),
+        Some(CommentTokens::Block(&block))
+    );
+    assert_eq!(
+        CommentTokens::new(Some(&line), Some(&block)),
+        Some(CommentTokens::Both(&line, &block))
     );
 }

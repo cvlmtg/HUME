@@ -6,7 +6,8 @@ use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use steel::rerrs::SteelErr;
 
 use crate::context::EvalMode;
-use crate::{ConfigOrigin, Effect, GrammarReg, LanguageFields, PendingLanguageReg, SteelCtx};
+use crate::{ConfigOrigin, Effect, GrammarReg, PendingLanguageReg, SteelCtx};
+use hume_treesitter::registry::LanguageFields;
 
 use super::SteelResult;
 use super::args::{

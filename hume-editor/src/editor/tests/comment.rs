@@ -142,3 +142,16 @@ fn a_language_without_comment_tokens_refuses_the_toggle() {
         Some("No comment tokens for language 'plain'")
     );
 }
+
+#[test]
+fn a_span_holding_the_block_end_refuses_the_toggle_without_line_comments() {
+    let mut ed = editor_in("-[a <!-- x -->\nb]>\n", "html", &[], &[("<!--", "-->")]);
+
+    toggle(&mut ed);
+
+    assert_eq!(state(&ed), "-[a <!-- x -->\nb]>\n");
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Cannot comment: the text already holds the block comment end '-->'")
+    );
+}

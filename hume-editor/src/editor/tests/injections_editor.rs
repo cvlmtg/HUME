@@ -286,7 +286,7 @@ fn line_comment_primary(ed: &Editor, name: &str) -> Option<String> {
     let id = languages.id_of(name).expect("a registered language");
     languages
         .comment_tokens_of(id)
-        .line
+        .and_then(|tokens| tokens.line())
         .map(|tokens| tokens.primary().to_owned())
 }
 
@@ -320,16 +320,17 @@ fn an_injected_layer_loads_its_languages_bundled_data() {
 }
 
 #[test]
-fn a_language_with_no_layer_stays_unloaded() {
+fn an_attached_grammar_loads_its_languages_bundled_data_before_any_layer() {
     require_fixtures();
     let (ed, bid) = markdown_editor_with("# Title\n\nprose\n", &repo_runtime_dirs());
 
-    assert!(!has_rust_layer(&ed, bid));
-    assert!(!bundled_loaded(&ed, "rust"));
+    assert!(!has_rust_layer(&ed, bid), "premise: no rust layer");
+    assert!(bundled_loaded(&ed, "rust"));
+    assert_eq!(line_comment_primary(&ed, "rust").as_deref(), Some("//"));
 }
 
 #[test]
-fn a_layer_from_a_synchronous_parse_loads_at_the_next_install() {
+fn a_fence_typed_just_before_toggling_takes_its_languages_comment() {
     require_fixtures();
     let (mut ed, bid) = markdown_editor_with("x\n", &repo_runtime_dirs());
     ed.feed_key(key('i'));
@@ -344,26 +345,14 @@ fn a_layer_from_a_synchronous_parse_loads_at_the_next_install() {
     }
     ed.feed_key(key_enter());
     ed.feed_key(key_esc());
+    ed.feed_keys([key(';'), key('k')]);
+
+    ed.feed_keys([key('G'), key('G')]);
+
     assert_eq!(
         ed.state.buffers.get(bid).text().to_string(),
-        "~~~rust\nf\n~~~\nx\n",
-        "premise: the typed fence"
+        "~~~rust\n// f\n~~~\nx\n"
     );
-
-    crate::editor::syntax::ensure_syntax_current(
-        &mut ed.state,
-        bid,
-        crate::editor::syntax::SyntaxUse::InjectedLanguages,
-    );
-    assert!(
-        has_rust_layer(&ed, bid),
-        "premise: the synchronous parse made a rust layer"
-    );
-    assert!(!bundled_loaded(&ed, "rust"));
-
-    ed.install_parse_results();
-
-    assert!(bundled_loaded(&ed, "rust"));
 }
 
 #[test]

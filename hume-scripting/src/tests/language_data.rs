@@ -2,10 +2,11 @@
 //! built on it, through `ScriptingHost::bundled_language` and the two grammar
 //! functions plugins call.
 
+use crate::ScriptingHost;
 use crate::null_host::NullHost;
-use crate::{LanguageFields, ScriptingHost};
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_platform::dirs::Dirs;
+use hume_treesitter::registry::LanguageFields;
 use std::path::Path;
 
 const HEADER: &str = ";;; generated header\n\n";

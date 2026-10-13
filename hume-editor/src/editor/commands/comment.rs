@@ -4,7 +4,9 @@
 use hume_editing::comment::CommentTokens;
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
-use hume_ops::edit::{MultiLineComments, apply_comment_plan, plan_comment_toggle};
+use hume_ops::edit::{
+    CommentPlanError, MultiLineComments, apply_comment_plan, plan_comment_toggle,
+};
 use hume_rope::cluster::ClusterRange;
 use hume_treesitter::registry::LanguageRegistry;
 
@@ -35,6 +37,12 @@ pub(in crate::editor) fn cmd_toggle_comment(
     let tab_width = buf.overrides.tab_width(&state.settings);
     let plan = plan_comment_toggle(pane_view(state, view, t), multi_line, tab_width, |span| {
         comment_tokens_at(buf, &state.config.languages, span)
+    })
+    .map_err(|e| match e {
+        CommentPlanError::Tokens(e) => e,
+        CommentPlanError::BlockEndInside(end) => CommandError::transient(format!(
+            "Cannot comment: the text already holds the block comment end '{end}'"
+        )),
     })?;
     apply_pane_edit(state, view, t, move |edit| apply_comment_plan(edit, plan))
 }
@@ -58,8 +66,7 @@ fn comment_tokens_at<'a>(
             layers
                 .languages_containing(bytes)
                 .into_iter()
-                .map(|id| languages.comment_tokens_of(id))
-                .find(|tokens| !tokens.is_empty())
+                .find_map(|id| languages.comment_tokens_of(id))
         });
     if let Some(tokens) = layered {
         return Ok(tokens);
@@ -69,12 +76,10 @@ fn comment_tokens_at<'a>(
             "No comment tokens: buffer has no language",
         ));
     };
-    let tokens = languages.comment_tokens_of(id);
-    if tokens.is_empty() {
-        return Err(CommandError::transient(format!(
+    languages.comment_tokens_of(id).ok_or_else(|| {
+        CommandError::transient(format!(
             "No comment tokens for language '{}'",
             languages.name_of(id)
-        )));
-    }
-    Ok(tokens)
+        ))
+    })
 }

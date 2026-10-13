@@ -75,13 +75,16 @@ struct LanguageConfig {
     bundled_loaded: bool,
 }
 
-/// The values a language's bundled data file gives; `None` where the file
-/// has no entry.
-#[derive(Debug, Default)]
-pub struct BundledConfig {
+/// The per-language values the registry stores, as one `configure-language!`
+/// call or one `<runtime>/scheme/languages/<name>.scm` file gives them;
+/// `None` where it gives none.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct LanguageFields {
+    /// Workspace root markers.
     pub roots: Option<Vec<String>>,
+    /// The wire `languageId`, when it differs from the name.
     pub lsp_language_id: Option<String>,
-    pub line_comment_tokens: Option<LineCommentTokens>,
+    pub comment_tokens: Option<LineCommentTokens>,
     pub block_comment_tokens: Option<BlockCommentTokens>,
 }
 
@@ -209,6 +212,10 @@ pub struct LanguageRegistry {
     /// Source of `GrammarBundle::config_gen`, incremented on every grammar
     /// attach so each attached bundle gets a unique identity.
     next_config_gen: u32,
+    /// Languages given a grammar whose bundled data file has not been read.
+    /// A syntax layer exists only for a language with a grammar, so reading
+    /// these before any parse means every layer's language has its data.
+    bundled_pending: Vec<LanguageId>,
 }
 
 #[derive(Debug)]
@@ -275,6 +282,7 @@ impl Default for LanguageRegistry {
             lang_order: Vec::new(),
             grammar_snapshot: Arc::new(FxHashMap::default()),
             next_config_gen: 0,
+            bundled_pending: Vec::new(),
         }
     }
 }
@@ -346,12 +354,12 @@ impl LanguageRegistry {
     }
 
     /// The comment tokens configured or bundled for `id`.
-    pub fn comment_tokens_of(&self, id: LanguageId) -> CommentTokens<'_> {
+    pub fn comment_tokens_of(&self, id: LanguageId) -> Option<CommentTokens<'_>> {
         let config = &self.entry(id).config;
-        CommentTokens {
-            line: config.line_comment_tokens.as_ref().map(|s| &s.value),
-            block: config.block_comment_tokens.as_ref().map(|s| &s.value),
-        }
+        CommentTokens::new(
+            config.line_comment_tokens.as_ref().map(|s| &s.value),
+            config.block_comment_tokens.as_ref().map(|s| &s.value),
+        )
     }
 
     /// The workspace root markers configured or bundled for `id`; empty when
@@ -423,13 +431,19 @@ impl LanguageRegistry {
         self.entry(id).config.bundled_loaded
     }
 
+    /// The languages given a grammar since the last call whose bundled data
+    /// file has not been read, for the caller to read.
+    pub fn take_bundled_pending(&mut self) -> Vec<LanguageId> {
+        std::mem::take(&mut self.bundled_pending)
+    }
+
     /// Record that `id`'s bundled data file has been read, filling each field
     /// it gives a value for that is still unset.
-    pub fn fill_bundled(&mut self, id: LanguageId, bundled: BundledConfig) {
-        let BundledConfig {
+    pub fn fill_bundled(&mut self, id: LanguageId, bundled: LanguageFields) {
+        let LanguageFields {
             roots,
             lsp_language_id,
-            line_comment_tokens,
+            comment_tokens,
             block_comment_tokens,
         } = bundled;
         let config = &mut self.entry_mut(id).config;
@@ -440,7 +454,7 @@ impl LanguageRegistry {
         if let Some(lsp_language_id) = lsp_language_id {
             fill(&mut config.lsp_language_id, lsp_language_id);
         }
-        if let Some(tokens) = line_comment_tokens {
+        if let Some(tokens) = comment_tokens {
             fill(&mut config.line_comment_tokens, tokens);
         }
         if let Some(tokens) = block_comment_tokens {
@@ -679,6 +693,9 @@ impl LanguageRegistry {
         });
         self.entry_mut(id).grammar = Some(Arc::clone(&bundle));
         self.rebuild_grammar_snapshot();
+        if !self.bundled_loaded(id) && !self.bundled_pending.contains(&id) {
+            self.bundled_pending.push(id);
+        }
         Ok(bundle)
     }
 
