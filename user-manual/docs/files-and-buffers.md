@@ -74,6 +74,8 @@ A **pane** is a viewport onto a buffer. A buffer is the open file itself; a pane
 | `Ctrl-p p` | Focus next pane |
 | `Ctrl-p h` / `j` / `k` / `l` | Focus the pane to the left / below / above / to the right |
 | `Ctrl-p c` | Close the focused pane (does nothing if it's the only pane) |
+| `Ctrl-p r` | Move each pane in the focused pane's row or column one place right or down (that many places with a count); the last one wraps to the first |
+| `Ctrl-p R` | Move each pane in the focused pane's row or column one place left or up (that many places with a count); the first one wraps to the last |
 
 Splitting is refused with a message when the pane is already too small to divide. Every pane sharing a split axis is kept an equal size (three `:vsplit`s in a row give three equal columns, not one half and two quarters), and closing a pane redistributes its space equally between the survivors.
 

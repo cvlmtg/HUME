@@ -20,10 +20,19 @@ pub enum Direction {
 /// Which way [`LayoutTree::rotate`] moves the members of a row or column.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Rotation {
-    /// Each member moves one slot right or down; the last wraps to the first.
+    /// Each member moves right or down; the last wraps to the first.
     Forward,
-    /// Each member moves one slot left or up; the first wraps to the last.
+    /// Each member moves left or up; the first wraps to the last.
     Backward,
+}
+
+/// Why [`LayoutTree::rotate`] moved nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoRotation {
+    /// The tree is the target's own leaf, so it has no row or column.
+    SinglePane,
+    /// The target is not a leaf of the tree.
+    MissingTarget,
 }
 
 /// A single 1-cell divider segment drawn between two sibling panes at one
@@ -415,14 +424,29 @@ impl LayoutTree {
         probe.find_rect(target, area, reserve_seam)
     }
 
-    /// Rotate the row or column `target` sits in by one slot. That row is
-    /// the largest run of same-direction splits holding `Leaf(target)` as a
-    /// direct member; a split on the other axis inside it is one member and
+    /// Rotate the row or column `target` sits in by `steps` places. That row
+    /// is the largest run of same-direction splits holding `Leaf(target)` as
+    /// a direct member; a split on the other axis inside it is one member and
     /// moves whole. The tree's shape and ratios are kept: every member is one
-    /// share along the run's axis (see `shares_along`), so the slots keep
-    /// their sizes and only their contents move. `false` when `target` is
-    /// absent or `self` is a single leaf.
-    pub fn rotate(&mut self, target: PaneId, rotation: Rotation) -> bool {
+    /// share along the run's axis (see `shares_along`), so each place keeps
+    /// its size and only its contents move.
+    pub fn rotate(
+        &mut self,
+        target: PaneId,
+        rotation: Rotation,
+        steps: usize,
+    ) -> Result<(), NoRotation> {
+        if matches!(self, LayoutTree::Leaf(id) if *id == target) {
+            return Err(NoRotation::SinglePane);
+        }
+        self.rotate_run(target, rotation, steps)
+            .then_some(())
+            .ok_or(NoRotation::MissingTarget)
+    }
+
+    /// The recursive body of [`Self::rotate`]: `false` when `target` is not
+    /// a leaf below `self`.
+    fn rotate_run(&mut self, target: PaneId, rotation: Rotation, steps: usize) -> bool {
         let LayoutTree::Split { direction, .. } = self else {
             return false;
         };
@@ -433,22 +457,28 @@ impl LayoutTree {
             .iter()
             .any(|m| matches!(m, LayoutTree::Leaf(id) if *id == target))
         {
-            return members.into_iter().any(|m| m.rotate(target, rotation));
+            return members
+                .into_iter()
+                .any(|m| m.rotate_run(target, rotation, steps));
         }
-        // Adjacent swaps carry one end member across the run to the other end.
-        let n = members.len();
-        let mut swap_at = |i: usize| {
-            let (head, tail) = members.split_at_mut(i);
-            std::mem::swap(&mut *head[i - 1], &mut *tail[0]);
-        };
+        // Each placeholder leaf is overwritten when the rotated trees are
+        // written back below.
+        let mut trees: Vec<LayoutTree> = members
+            .iter_mut()
+            .map(|m| std::mem::replace(&mut **m, LayoutTree::Leaf(PaneId::default())))
+            .collect();
+        let shift = steps % trees.len();
         match rotation {
-            Rotation::Forward => (1..n).rev().for_each(&mut swap_at),
-            Rotation::Backward => (1..n).for_each(&mut swap_at),
+            Rotation::Forward => trees.rotate_right(shift),
+            Rotation::Backward => trees.rotate_left(shift),
+        }
+        for (member, tree) in members.into_iter().zip(trees) {
+            *member = tree;
         }
         true
     }
 
-    /// The members of the same-direction run rooted at `self`, in slot order:
+    /// The members of the same-direction run rooted at `self`, in order:
     /// every descendant reached through splits on `direction` only.
     fn collect_run_members<'a>(
         &'a mut self,

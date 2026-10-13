@@ -21,7 +21,7 @@
 - `:set word-selects-whitespace=after` makes `w`/`b`, `mm` and `maw` take the whitespace after the word, falling back to the whitespace before it at the end of a line. On whitespace, `mm` and `maw` select the word before it.
 
 ### Panes & interface
-- `Ctrl-p r` rotates the panes in the focused pane's row or column one place forward, and `Ctrl-p R` one place back. Focus stays on the same pane. Panes split the other way inside that row or column move together.
+- `Ctrl-p r` rotates the panes in the focused pane's row or column one place forward, and `Ctrl-p R` one place back. A count rotates that many places. Focus stays on the same pane. Panes split the other way inside that row or column move together.
 
 ### Theming
 - With no `theme` set, HUME loads `sand` from `themes/`, so edits to `sand.toml` apply. The built-in copy is the fallback.

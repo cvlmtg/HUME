@@ -1,5 +1,5 @@
 use crate::editor::registry::Count;
-use hume_engine::pipeline::{Direction, EngineView, Rotation};
+use hume_engine::pipeline::{Direction, EngineView, NoRotation, Rotation};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
@@ -319,16 +319,16 @@ pub(in crate::editor) fn cmd_close_pane(
     Ok(())
 }
 
-/// `Ctrl-p r`: rotate the focused pane's row or column forward, focus staying
-/// on the pane it was on.
+/// `Ctrl-p r`: rotate the focused pane's row or column forward by `count`
+/// places, focus staying on the pane it was on.
 pub(in crate::editor) fn cmd_pane_rotate_forward(
     _state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: Count,
+    count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    rotate_focused(view, fp, Rotation::Forward)
+    rotate_focused(view, fp, Rotation::Forward, count)
 }
 
 /// `Ctrl-p R`: the reverse of `Ctrl-p r`.
@@ -336,25 +336,24 @@ pub(in crate::editor) fn cmd_pane_rotate_backward(
     _state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
-    _count: Count,
+    count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    rotate_focused(view, fp, Rotation::Backward)
+    rotate_focused(view, fp, Rotation::Backward, count)
 }
 
 fn rotate_focused(
     view: &mut EngineView,
     fp: FocusedPane,
     rotation: Rotation,
+    count: Count,
 ) -> Result<(), CommandError> {
-    if view.layout().is_single_pane() {
-        return Err(CommandError::transient("no other pane to rotate"));
-    }
     let pid = fp.pid();
-    if !view.rotate_layout(pid, rotation) {
-        return Err(CommandError::new(format!(
-            "internal error: focused pane {pid:?} missing from pane layout"
-        )));
-    }
-    Ok(())
+    view.rotate_layout(pid, rotation, count.get())
+        .map_err(|why| match why {
+            NoRotation::SinglePane => CommandError::transient("no other pane to rotate"),
+            NoRotation::MissingTarget => CommandError::new(format!(
+                "internal error: focused pane {pid:?} missing from pane layout"
+            )),
+        })
 }

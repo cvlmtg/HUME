@@ -962,57 +962,112 @@ fn row_of_three(a: PaneId, b: PaneId, c: PaneId) -> LayoutTree {
     )
 }
 
+/// `a | b | c | d` as the nested chain `a | (b | (c | d))`.
+fn row_of_four(a: PaneId, b: PaneId, c: PaneId, d: PaneId) -> LayoutTree {
+    split(
+        Direction::Horizontal,
+        0.25,
+        LayoutTree::Leaf(a),
+        row_of_three(b, c, d),
+    )
+}
+
+/// `top` stacked above `bottom`.
+fn column_of_two(top: PaneId, bottom: PaneId) -> LayoutTree {
+    split(
+        Direction::Vertical,
+        0.5,
+        LayoutTree::Leaf(top),
+        LayoutTree::Leaf(bottom),
+    )
+}
+
 #[test]
-fn rotate_forward_moves_each_pane_one_slot_along_its_row() {
+fn rotate_forward_moves_each_pane_one_place_along_its_row() {
     let [a, b, c] = pane_ids();
     let mut tree = row_of_three(a, b, c);
     let area = rect(0, 0, 100, 50);
     let mut before = Vec::new();
     tree.collect_rects_into(area, true, &mut before);
 
-    assert!(tree.rotate(b, Rotation::Forward));
+    assert_eq!(tree.rotate(b, Rotation::Forward, 1), Ok(()));
 
     assert_eq!(tree, row_of_three(c, a, b));
     let mut after = Vec::new();
     tree.collect_rects_into(area, true, &mut after);
-    let slot_rects = |v: &[(PaneId, Rect)]| v.iter().map(|&(_, r)| r).collect::<Vec<_>>();
-    assert_eq!(slot_rects(&after), slot_rects(&before));
+    let member_rects = |v: &[(PaneId, Rect)]| v.iter().map(|&(_, r)| r).collect::<Vec<_>>();
+    assert_eq!(member_rects(&after), member_rects(&before));
 }
 
 #[test]
-fn rotate_backward_moves_each_pane_one_slot_back_along_its_row() {
+fn rotate_backward_moves_each_pane_one_place_back_along_its_row() {
     let [a, b, c] = pane_ids();
     let mut tree = row_of_three(a, b, c);
-    assert!(tree.rotate(b, Rotation::Backward));
+    assert_eq!(tree.rotate(b, Rotation::Backward, 1), Ok(()));
     assert_eq!(tree, row_of_three(b, c, a));
+}
+
+#[test]
+fn rotate_by_a_count_moves_each_pane_that_many_places() {
+    let [a, b, c, d] = pane_ids();
+    let mut forward = row_of_four(a, b, c, d);
+    assert_eq!(forward.rotate(a, Rotation::Forward, 2), Ok(()));
+    assert_eq!(forward, row_of_four(c, d, a, b));
+
+    let mut backward = row_of_four(a, b, c, d);
+    assert_eq!(backward.rotate(a, Rotation::Backward, 3), Ok(()));
+    assert_eq!(backward, row_of_four(d, a, b, c));
+}
+
+#[test]
+fn rotate_by_the_member_count_leaves_the_row_unchanged() {
+    let [a, b, c] = pane_ids();
+    let mut tree = row_of_three(a, b, c);
+    assert_eq!(tree.rotate(a, Rotation::Forward, 3), Ok(()));
+    assert_eq!(tree, row_of_three(a, b, c));
+}
+
+#[test]
+fn rotate_treats_a_left_nested_chain_as_one_row() {
+    let [a, b, c] = pane_ids();
+    let left_nested = |x, y, z| {
+        split(
+            Direction::Horizontal,
+            2.0 / 3.0,
+            split(
+                Direction::Horizontal,
+                0.5,
+                LayoutTree::Leaf(x),
+                LayoutTree::Leaf(y),
+            ),
+            LayoutTree::Leaf(z),
+        )
+    };
+    let mut tree = left_nested(a, b, c);
+
+    assert_eq!(tree.rotate(c, Rotation::Forward, 1), Ok(()));
+
+    assert_eq!(tree, left_nested(c, a, b));
 }
 
 #[test]
 fn rotate_moves_a_perpendicular_split_as_one_member() {
     let [a, b, c] = pane_ids();
-    let stacked = |top, bottom| {
-        split(
-            Direction::Vertical,
-            0.5,
-            LayoutTree::Leaf(top),
-            LayoutTree::Leaf(bottom),
-        )
-    };
     let mut tree = split(
         Direction::Horizontal,
         0.5,
         LayoutTree::Leaf(a),
-        stacked(b, c),
+        column_of_two(b, c),
     );
 
-    assert!(tree.rotate(a, Rotation::Forward));
+    assert_eq!(tree.rotate(a, Rotation::Forward, 1), Ok(()));
 
     assert_eq!(
         tree,
         split(
             Direction::Horizontal,
             0.5,
-            stacked(b, c),
+            column_of_two(b, c),
             LayoutTree::Leaf(a)
         )
     );
@@ -1021,22 +1076,14 @@ fn rotate_moves_a_perpendicular_split_as_one_member() {
 #[test]
 fn rotate_inside_a_perpendicular_split_rotates_only_that_column() {
     let [a, b, c] = pane_ids();
-    let stacked = |top, bottom| {
-        split(
-            Direction::Vertical,
-            0.5,
-            LayoutTree::Leaf(top),
-            LayoutTree::Leaf(bottom),
-        )
-    };
     let mut tree = split(
         Direction::Horizontal,
         0.5,
         LayoutTree::Leaf(a),
-        stacked(b, c),
+        column_of_two(b, c),
     );
 
-    assert!(tree.rotate(b, Rotation::Forward));
+    assert_eq!(tree.rotate(b, Rotation::Forward, 1), Ok(()));
 
     assert_eq!(
         tree,
@@ -1044,20 +1091,58 @@ fn rotate_inside_a_perpendicular_split_rotates_only_that_column() {
             Direction::Horizontal,
             0.5,
             LayoutTree::Leaf(a),
-            stacked(c, b)
+            column_of_two(c, b)
         )
     );
+}
+
+#[test]
+fn rotate_two_levels_below_a_perpendicular_split_rotates_only_the_innermost_row() {
+    let [a, b, c, d] = pane_ids();
+    let nested = |x, y| {
+        split(
+            Direction::Horizontal,
+            0.5,
+            LayoutTree::Leaf(a),
+            split(
+                Direction::Vertical,
+                0.5,
+                LayoutTree::Leaf(b),
+                split(
+                    Direction::Horizontal,
+                    0.5,
+                    LayoutTree::Leaf(x),
+                    LayoutTree::Leaf(y),
+                ),
+            ),
+        )
+    };
+    let mut tree = nested(c, d);
+
+    assert_eq!(tree.rotate(c, Rotation::Forward, 1), Ok(()));
+
+    assert_eq!(tree, nested(d, c));
 }
 
 #[test]
 fn rotate_refuses_a_single_leaf_and_a_missing_target() {
     let [a, b, c, missing] = pane_ids();
     let mut single = LayoutTree::Leaf(a);
-    assert!(!single.rotate(a, Rotation::Forward));
+    assert_eq!(
+        single.rotate(a, Rotation::Forward, 1),
+        Err(NoRotation::SinglePane)
+    );
+    assert_eq!(
+        single.rotate(b, Rotation::Forward, 1),
+        Err(NoRotation::MissingTarget)
+    );
     assert_eq!(single, LayoutTree::Leaf(a));
 
     let mut tree = row_of_three(a, b, c);
-    assert!(!tree.rotate(missing, Rotation::Forward));
+    assert_eq!(
+        tree.rotate(missing, Rotation::Forward, 1),
+        Err(NoRotation::MissingTarget)
+    );
     assert_eq!(tree, row_of_three(a, b, c));
 }
 

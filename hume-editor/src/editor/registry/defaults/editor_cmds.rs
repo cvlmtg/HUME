@@ -534,13 +534,13 @@ impl CommandRegistry {
         ecmd_focused("pane-close", "Close the focused pane.", cmd_close_pane).reg(self);
         ecmd_focused(
             "pane-rotate-forward",
-            "Rotate the panes in the focused pane's row or column forward.",
+            "Rotate the panes in the focused pane's row or column forward (that many places with a count).",
             cmd_pane_rotate_forward,
         )
         .reg(self);
         ecmd_focused(
             "pane-rotate-backward",
-            "Rotate the panes in the focused pane's row or column backward.",
+            "Rotate the panes in the focused pane's row or column backward (that many places with a count).",
             cmd_pane_rotate_backward,
         )
         .reg(self);

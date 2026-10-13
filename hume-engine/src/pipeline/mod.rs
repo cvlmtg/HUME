@@ -21,7 +21,7 @@ use layout::{
     ARM_E, ARM_N, ARM_S, ARM_W, collect_seam_arms, focused_pane_corners, focused_seam_segment,
     junction_glyph,
 };
-pub use layout::{DetachedPane, Direction, LayoutTree, Pruned, Rotation, Seam};
+pub use layout::{DetachedPane, Direction, LayoutTree, NoRotation, Pruned, Rotation, Seam};
 pub use pane_pool::{PanePool, UnattachedPane};
 use pane_render::render_pane;
 
@@ -356,8 +356,13 @@ impl EngineView {
 
     /// Rotate the row or column `target` sits in within the active tab's
     /// tree. See [`LayoutTree::rotate`].
-    pub fn rotate_layout(&mut self, target: PaneId, rotation: Rotation) -> bool {
-        self.layout.rotate(target, rotation)
+    pub fn rotate_layout(
+        &mut self,
+        target: PaneId,
+        rotation: Rotation,
+        steps: usize,
+    ) -> Result<(), NoRotation> {
+        self.layout.rotate(target, rotation, steps)
     }
 
     /// Insert a pane into the pool, returning the [`UnattachedPane`] token
