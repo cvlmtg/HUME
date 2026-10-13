@@ -261,10 +261,11 @@ impl CompletionItem {
             .or_else(|| self.resolution.as_ref()?.documentation.as_ref())
     }
 
-    /// Whether this item's documentation is final: the server sent it with
-    /// the item, or answered a `completionItem/resolve` for it.
+    /// Whether this item's `detail` and `documentation` are final: the
+    /// server sent both with the item, or answered a `completionItem/resolve`
+    /// for it.
     pub(in crate::editor) fn docs_known(&self) -> bool {
-        self.documentation.is_some() || self.resolution.is_some()
+        self.resolution.is_some() || (self.detail.is_some() && self.documentation.is_some())
     }
 
     /// What the documentation box shows for this item: `detail`, a blank

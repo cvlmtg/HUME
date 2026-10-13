@@ -98,7 +98,7 @@ impl Wrapped {
     /// `scroll` clamped to what its inner height leaves scrollable.
     fn popup_state(&self, rect: Rect, scroll: usize, border: bool) -> PopupState {
         let total_rows = self.lines.len();
-        let inner_h = rect.height.saturating_sub(2) as usize;
+        let inner_h = inner_rows(rect.height);
         let scroll = scroll.min(total_rows.saturating_sub(inner_h));
         PopupState {
             lines: Arc::clone(&self.lines),
@@ -216,6 +216,18 @@ pub struct PopupState {
     pub styled_rows: Option<Arc<Vec<StyledRow>>>,
 }
 
+impl PopupState {
+    /// Rows of content `rect` shows inside its frame.
+    pub fn inner_height(&self) -> usize {
+        inner_rows(self.rect.height)
+    }
+}
+
+/// Rows of content a box `outer_h` rows tall shows inside its frame.
+fn inner_rows(outer_h: u16) -> usize {
+    outer_h.saturating_sub(POPUP_FRAME_ROWS) as usize
+}
+
 /// Generic overlay that paints a `PopupState` snapshot. Used directly for
 /// hover-style popups (`show-popup!`) and, via a second registration with
 /// its own `Arc`, for the selection menu and completion menu.
@@ -302,8 +314,8 @@ const POPUP_FRAME_ROWS: u16 = 2;
 /// Rows a docked popup shows at once, given `lines` wrapped lines and the
 /// band's row ceiling `max` (35% of the last-rendered *terminal* height,
 /// mirroring `PopupBandWidget::height`'s own `max`): the number
-/// `Editor::scroll_popup` pages against, agreeing with what the engine will
-/// next paint since both derive from
+/// Ctrl-d/Ctrl-u page a docked popup against, agreeing with what the engine
+/// will next paint since both derive from
 /// `super::menu_box::band_capacity`.
 pub fn band_visible_rows(lines: usize, max: u16) -> usize {
     super::menu_box::band_visible_rows(lines, POPUP_FRAME_ROWS, max)
@@ -384,23 +396,26 @@ pub fn resolve_popup(
 /// Narrowest side popup worth drawing, frame included.
 const MIN_SIDE_POPUP_WIDTH: u16 = 20;
 
-/// Resolve a popup placed beside `beside`, another box's outer rect in
+/// Where a popup beside another box goes, from [`side_slot`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SideSlot {
+    beside: Rect,
+    /// Columns free on the chosen side, frame included.
+    room: u16,
+    right: bool,
+    above: bool,
+    max_outer_h: u16,
+}
+
+/// Room for a popup beside `beside`, another box's outer rect in
 /// `pane_rect` (the completion menu's): to its right when at least
 /// `MIN_SIDE_POPUP_WIDTH` cells fit there, else to its left, else `None`.
-/// It grows to the taller of `beside` and a third of the pane, away from
+/// It may grow to the taller of `beside` and a third of the pane, away from
 /// `anchor_row`, the row `beside` was placed against: below it, its top
 /// edge is level with `beside`'s and it stops at the pane's bottom; above
 /// it, its bottom edge is, and it stops at the pane's top. Either way it
-/// never covers the anchor row. `scroll` is clamped the same way
-/// [`resolve_popup`] clamps it.
-pub fn resolve_side_popup(
-    content: &mut PopupContent,
-    beside: Rect,
-    anchor_row: u16,
-    pane_rect: Rect,
-    scroll: usize,
-    border: bool,
-) -> Option<PopupState> {
+/// never covers the anchor row. `None` too when that leaves no content row.
+pub fn side_slot(beside: Rect, anchor_row: u16, pane_rect: Rect) -> Option<SideSlot> {
     let room_right = pane_rect.right().saturating_sub(beside.right());
     let room_left = beside.x.saturating_sub(pane_rect.x);
     let (room, right) = if room_right >= MIN_SIDE_POPUP_WIDTH {
@@ -417,14 +432,40 @@ pub fn resolve_side_popup(
         pane_rect.bottom().saturating_sub(beside.y)
     };
     let max_outer_h = beside.height.max(pane_rect.height / 3).min(vertical_room);
-    if max_outer_h < 3 {
+    if inner_rows(max_outer_h) == 0 {
         return None;
     }
+    Some(SideSlot {
+        beside,
+        room,
+        right,
+        above,
+        max_outer_h,
+    })
+}
 
+/// Resolve a popup in `slot`, wrapped to the room there. `scroll` is
+/// clamped the same way [`resolve_popup`] clamps it.
+pub fn resolve_side_popup(
+    content: &mut PopupContent,
+    slot: &SideSlot,
+    scroll: usize,
+    border: bool,
+) -> PopupState {
+    let SideSlot {
+        beside,
+        room,
+        right,
+        above,
+        max_outer_h,
+    } = *slot;
     let wrapped = content.wrapped(room.min(MAX_POPUP_WIDTH) - 2);
     let total_rows = wrapped.lines.len();
-    let (outer_w, outer_h) =
-        super::menu_box::outer_dims_from_width(wrapped.inner_width, total_rows, max_outer_h - 2);
+    let (outer_w, outer_h) = super::menu_box::outer_dims_from_width(
+        wrapped.inner_width,
+        total_rows,
+        max_outer_h - POPUP_FRAME_ROWS,
+    );
     let x = if right {
         beside.right()
     } else {
@@ -435,7 +476,7 @@ pub fn resolve_side_popup(
     } else {
         beside.y
     };
-    Some(wrapped.popup_state(Rect::new(x, y, outer_w, outer_h), scroll, border))
+    wrapped.popup_state(Rect::new(x, y, outer_w, outer_h), scroll, border)
 }
 
 /// Resolve a docked popup's content for this frame: the [`PopupLayout::
@@ -534,7 +575,7 @@ pub struct MenuWindow {
 pub fn menu_window(total_rows: usize, selected: Option<usize>, pane_rect: Rect) -> MenuWindow {
     let raw_outer_h = super::menu_box::outer_rows(total_rows, super::menu_box::MAX_MENU_ROWS);
     let outer_h = raw_outer_h.min(pane_rect.height);
-    let inner_h = outer_h.saturating_sub(2) as usize;
+    let inner_h = inner_rows(outer_h);
     let (selected_rel, range) = if total_rows == 0 {
         (None, 0..0)
     } else {

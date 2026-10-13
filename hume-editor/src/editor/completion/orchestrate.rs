@@ -204,15 +204,21 @@ impl EditorState {
 
     /// Asks the selected candidate's server for its documentation, through
     /// `completionItem/resolve`, unless it has it already or was asked since it
-    /// was selected ([`BufferSession::doc_request`]). Docs carry no buffer
-    /// position, so the reply is delivered even after further typing. Sent
-    /// from the settle pass only: accepting or reusing a session takes it
-    /// out before its reply could matter.
+    /// was selected ([`BufferSession::doc_request`]), or the last frame found
+    /// no room for the box. Docs carry no buffer position, so the reply is
+    /// delivered even after further typing. Sent from the settle pass only:
+    /// accepting or reusing a session takes it out before its reply could
+    /// matter.
     pub(in crate::editor) fn request_selected_completion_doc(&mut self) {
         if !self.settings.completion_docs {
             return;
         }
-        let Some(session) = self.input.buffer_completion_mut() else {
+        let Some(session) = self
+            .input
+            .find_mut::<BufferCompletionLayer>()
+            .filter(|layer| layer.doc_box_fits())
+            .map(|layer| &mut layer.session)
+        else {
             return;
         };
         let bid = session.bid();

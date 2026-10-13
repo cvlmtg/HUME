@@ -227,6 +227,23 @@ fn no_doc_box_without_room_beside_the_menu() {
     assert_eq!(doc_box(&ed), None);
 }
 
+/// With no room for the box, the menu keeps `detail` rather than drop it.
+#[test]
+fn menu_shows_detail_when_the_doc_box_has_no_room() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(&mut ed, tmp.path(), DOCUMENTED);
+
+    frame(&mut ed, 30, 8);
+    assert_eq!(doc_box(&ed), None);
+    let menu = ed.state.views.completion_menu.read();
+    let lines = &menu.as_ref().expect("menu showing").lines;
+    assert!(
+        lines.iter().any(|line| line.contains("fn foo()")),
+        "menu lines: {lines:?}"
+    );
+}
+
 /// With `completion-docs` on, `detail` shows in the box, never in the menu.
 #[test]
 fn menu_leaves_detail_to_the_doc_box() {
@@ -310,8 +327,13 @@ fn long_doc_items() -> String {
 }
 
 fn doc_box_inner_height(ed: &Editor) -> usize {
-    let (rect, _) = doc_box(ed).expect("doc box showing");
-    usize::from(rect.height - 2)
+    ed.state
+        .views
+        .completion_doc
+        .read()
+        .as_ref()
+        .expect("doc box showing")
+        .inner_height()
 }
 
 #[test]
@@ -392,6 +414,36 @@ fn ctrl_d_on_a_doc_box_that_fits_changes_nothing() {
     assert_eq!(lines, ["fn foo()", "", "Does foo."]);
     assert_eq!(selected_row(&ed), 0);
     assert_eq!(state(&ed), before);
+}
+
+/// The fence around `detail` names the buffer's language, so the markdown
+/// grammar highlights it as that language's code.
+#[test]
+fn doc_box_fences_detail_in_the_buffers_language() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    let rust = ed
+        .state
+        .config
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .unwrap();
+    insert_with_source(
+        &mut ed,
+        tmp.path(),
+        r#"(list (hash "label" "foo" "detail" "fn foo()"
+                        "documentation" (hash "kind" "markdown" "value" "Does foo.")))"#,
+    );
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language_explicit(bid, Some(rust));
+
+    frame(&mut ed, 60, 10);
+    let view = ed.state.views.completion_doc.read();
+    let state = view.as_ref().expect("doc box showing");
+    assert_eq!(
+        state.lines.as_slice(),
+        ["```rust", "fn foo()", "```", "", "Does foo."]
+    );
 }
 
 /// Markdown documentation is highlighted, its `detail` fenced above it.

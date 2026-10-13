@@ -1026,7 +1026,9 @@ fn a_candidate_that_arrives_with_docs_is_not_resolved() {
         setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
-                serde_json::json!([{"label": "bar", "documentation": "Bar docs."}]),
+                serde_json::json!([
+                    {"label": "bar", "detail": "fn bar()", "documentation": "Bar docs."}
+                ]),
             );
         });
     ed.feed_key(key('i'));
@@ -1225,4 +1227,77 @@ fn a_re_requested_answer_keeps_the_docs_resolved_for_a_repeated_candidate() {
     assert_eq!(request_count(&requests, "textDocument/completion"), 2);
     assert_eq!(resolve_params(&requests).len(), 1);
     assert_eq!(selected_doc(&ed).as_deref(), Some("Foo docs."));
+}
+
+/// Before the first frame the box's room is unknown, so the first candidate
+/// is asked. Once a frame finds no room beside the menu, the next one is not.
+#[test]
+fn a_doc_box_without_room_asks_no_docs_for_the_next_candidate() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, requests) =
+        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([
+                    {"label": "bar", "sortText": "1"},
+                    {"label": "baz", "sortText": "2"},
+                ]),
+            );
+        });
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    assert_eq!(resolve_params(&requests).len(), 1);
+
+    frame(&mut ed, 25, 8);
+    assert!(
+        ed.state.views.completion_menu.read().is_some(),
+        "sanity: menu showing"
+    );
+    assert!(
+        ed.state.views.completion_doc.read().is_none(),
+        "sanity: no room for the box"
+    );
+    ed.feed_key(key_tab());
+    settle(&mut ed);
+    assert_eq!(resolve_params(&requests).len(), 1);
+}
+
+/// The box shows what the item came with until the docs resolve answers,
+/// then the resolved documentation below it.
+#[test]
+fn the_doc_box_shows_resolved_docs_once_the_reply_lands() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, _requests) =
+        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar", "detail": "fn bar()"}]),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({"label": "bar", "documentation": "Bar docs."}),
+            );
+        });
+    let doc_lines = |ed: &Editor| {
+        let view = ed.state.views.completion_doc.read();
+        let state = view.as_ref().expect("doc box showing");
+        state.lines[state.visible.clone()].to_vec()
+    };
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    ed.settle();
+    ed.drain_lsp();
+    // The completion answer lands and the docs request goes out. The frame
+    // is prepared without `frame`'s own settle, which would drain the reply.
+    ed.settle();
+    ed.sync_viewport_dims(60, 16);
+    ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
+    assert_eq!(doc_lines(&ed), ["fn bar()"]);
+
+    settle(&mut ed);
+    frame(&mut ed, 60, 16);
+    assert_eq!(doc_lines(&ed), ["fn bar()", "", "Bar docs."]);
 }

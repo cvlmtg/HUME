@@ -743,8 +743,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     let max_scroll_before_key = {
         let guard = ed.state.views.popup.read();
         let view = guard.as_ref().expect("popup still open");
-        let inner_h = view.rect.height.saturating_sub(2) as usize;
-        view.total_rows.saturating_sub(inner_h)
+        view.total_rows.saturating_sub(view.inner_height())
     };
     assert!(
         max_scroll_before_key < 30,

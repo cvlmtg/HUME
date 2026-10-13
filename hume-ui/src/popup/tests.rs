@@ -320,14 +320,13 @@ fn band_visible_rows_reserves_the_frame_row_pair_below_the_cap() {
 
 /// `beside` sits below its anchor row, as a menu opening downward does.
 fn side(text: &str, beside: Rect, pane: Rect) -> Option<PopupState> {
-    resolve_side_popup(
+    let slot = side_slot(beside, beside.y.saturating_sub(1), pane)?;
+    Some(resolve_side_popup(
         &mut PopupContent::plain(text),
-        beside,
-        beside.y.saturating_sub(1),
-        pane,
+        &slot,
         0,
         true,
-    )
+    ))
 }
 
 #[test]
@@ -338,15 +337,8 @@ fn side_popup_beside_a_box_above_its_anchor_grows_upward_from_its_bottom_edge() 
         .join("\n");
     let beside = rect(10, 10, 20, 6);
     let anchor_row = beside.bottom();
-    let state = resolve_side_popup(
-        &mut PopupContent::plain(&text),
-        beside,
-        anchor_row,
-        rect(0, 0, 80, 24),
-        0,
-        true,
-    )
-    .expect("room on the right");
+    let slot = side_slot(beside, anchor_row, rect(0, 0, 80, 24)).expect("room on the right");
+    let state = resolve_side_popup(&mut PopupContent::plain(&text), &slot, 0, true);
     assert_eq!(state.rect.bottom(), beside.bottom());
     assert_eq!(
         state.rect.height, 8,
@@ -370,7 +362,7 @@ fn side_popup_flips_left_when_the_right_is_too_narrow() {
 
 #[test]
 fn side_popup_is_absent_when_neither_side_has_room() {
-    assert!(side("hello world", rect(12, 5, 20, 6), rect(0, 0, 40, 24)).is_none());
+    assert_eq!(side_slot(rect(12, 5, 20, 6), 4, rect(0, 0, 40, 24)), None);
 }
 
 #[test]

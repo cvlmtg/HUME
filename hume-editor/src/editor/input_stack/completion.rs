@@ -15,6 +15,7 @@ use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::theme::Theme;
 use hume_engine::types::EditorMode;
 use hume_treesitter::registry::LanguageRegistry;
+use hume_ui::popup::SideSlot;
 
 use super::super::completion::{
     BufferSession, CompletionItem, Documentation, ItemKey, MinibufSession,
@@ -47,13 +48,20 @@ impl BufferCompletionLayer {
         }
     }
 
+    /// Whether the documentation box has room beside the menu, as the last
+    /// frame found; true before the first frame, when it is not known yet.
+    pub(in crate::editor) fn doc_box_fits(&self) -> bool {
+        self.doc.fits != Some(false)
+    }
+
     #[cfg(test)]
     pub(in crate::editor) fn doc_builds(&self) -> usize {
         self.doc.built.len()
     }
 }
 
-/// [`BufferCompletionLayer::doc`].
+/// The documentation box's per-session content cache, placement and scroll
+/// position.
 #[derive(Default)]
 struct DocView {
     /// The item the box last showed, and whether its docs were known then:
@@ -72,6 +80,9 @@ struct DocView {
     /// changes. Rendering clamps a copy; [`scroll_box_on_key`] clamps
     /// it before each step.
     scroll: usize,
+    /// Whether the last frame found room beside the menu, `None` before the
+    /// first frame.
+    fits: Option<bool>,
 }
 
 impl DocView {
@@ -189,32 +200,45 @@ impl Editor {
         // Sequential borrows rather than one closure over
         // `self.state.input`: the session's shared borrow has to end
         // before `popup_placement` takes `&mut self`.
+        //
+        // With `completion-docs` on, the rows leave `detail` to the box, and
+        // keep it when the box finds no room beside the narrower menu.
         let border = self.state.settings.popup_border;
-        let with_detail = !self.state.settings.completion_docs;
-        let resolved =
-            (|| -> Option<(hume_ui::popup::PopupState, hume_ui::popup::PopupPlacement)> {
-                let session = self.state.input.buffer_completion()?;
-                if session.bid() != self.focused_buffer_id() {
-                    return None;
-                }
-                let anchor = session.menu_anchor(self.state.buffers.get(session.bid()).text())?;
-                let placement = popup_placement(self, ctx, anchor)?;
+        let completion_docs = self.state.settings.completion_docs;
+        let resolved = (|| -> Option<(hume_ui::popup::PopupState, Option<SideSlot>)> {
+            let session = self.state.input.buffer_completion()?;
+            if session.bid() != self.focused_buffer_id() {
+                return None;
+            }
+            let anchor = session.menu_anchor(self.state.buffers.get(session.bid()).text())?;
+            let placement = popup_placement(self, ctx, anchor)?;
 
-                let session = self.state.input.buffer_completion()?;
+            let session = self.state.input.buffer_completion()?;
+            let menu = |with_detail| {
                 let window = hume_ui::popup::menu_window(
                     session.len(),
                     Some(session.selected()),
                     placement.pane_rect,
                 );
                 let rows = session.rows_in(window.range.clone(), with_detail);
-                let menu = hume_ui::popup::resolve_menu(&rows, window, placement, border);
-                Some((menu, placement))
-            })();
+                hume_ui::popup::resolve_menu(&rows, window, placement, border)
+            };
+            if !completion_docs {
+                return Some((menu(true), None));
+            }
+            let lean = menu(false);
+            match hume_ui::popup::side_slot(lean.rect, placement.anchor.1, placement.pane_rect) {
+                Some(slot) => Some((lean, Some(slot))),
+                None => Some((menu(true), None)),
+            }
+        })();
 
-        let doc = resolved
-            .as_ref()
-            .filter(|(menu, _)| !menu.lines.is_empty())
-            .and_then(|(menu, placement)| self.resolve_completion_doc(menu.rect, *placement));
+        let doc = match &resolved {
+            Some((menu, slot)) if completion_docs && !menu.lines.is_empty() => {
+                self.resolve_completion_doc(*slot)
+            }
+            _ => None,
+        };
         self.state.views.completion_doc.set(doc);
         self.state
             .views
@@ -222,21 +246,18 @@ impl Editor {
             .set(resolved.map(|(menu, _)| menu));
     }
 
-    /// The documentation box beside the menu at `menu_rect`, placed with
-    /// `placement`, for the selected item: `None` with `completion-docs`
-    /// off, nothing to show, or no room beside the menu.
+    /// The documentation box in `slot` for the selected item, recording
+    /// whether there was room for it: `None` with nothing to show or no
+    /// room beside the menu.
     fn resolve_completion_doc(
         &mut self,
-        menu_rect: hume_grid::Rect,
-        placement: hume_ui::popup::PopupPlacement,
+        slot: Option<SideSlot>,
     ) -> Option<hume_ui::popup::PopupState> {
-        let settings = &self.state.settings;
-        if !settings.completion_docs {
-            return None;
-        }
         let languages = &self.state.config.languages;
         let BufferCompletionLayer { session, doc } =
             self.state.input.find_mut::<BufferCompletionLayer>()?;
+        doc.fits = Some(slot.is_some());
+        let slot = slot?;
         let (key, item) = session.selected_keyed()?;
         let shown = Some((key, item.docs_known()));
         if doc.shown != shown {
@@ -253,14 +274,12 @@ impl Editor {
             doc.scroll = 0;
         }
         let (_, content) = doc.built.get_mut(doc.current?)?;
-        hume_ui::popup::resolve_side_popup(
+        Some(hume_ui::popup::resolve_side_popup(
             content,
-            menu_rect,
-            placement.anchor.1,
-            placement.pane_rect,
+            &slot,
             doc.scroll,
-            settings.popup_border,
-        )
+            self.state.settings.popup_border,
+        ))
     }
 }
 
@@ -301,8 +320,8 @@ impl super::stack::InputStack {
 /// documentation box also has content past what it shows. A session
 /// narrowed to empty (continued typing, or a source still pending) shows
 /// no menu, so nothing here should intercept a key: Esc must leave
-/// Insert in one press and Enter must insert a newline, exactly as if no
-/// session were open. Every other key resolves through the Insert keymap:
+/// Insert in one press and Enter must insert a newline, as if no session
+/// were open. Every other key resolves through the Insert keymap:
 /// a bound command (a motion or an edit command) dismisses the session
 /// outright; anything else falls through and the session is reconciled
 /// with the buffer's new state.

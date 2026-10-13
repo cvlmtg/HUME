@@ -572,7 +572,7 @@ A bare string is shorthand for an item with only a label. For more control, pass
   #:target 'buffer)
 ```
 
-The documentation box only appears in Insert mode, for an item that has a `detail` or `documentation`. It is drawn to the right of the menu, or to the left when there is no room on the right, and not at all when neither side fits. Turn it off with `:set global completion-docs=false`: each item's `detail` then shows next to its label in the menu instead. Give each item its documentation along with the rest of the item: only a language server's items can have theirs fetched later, when highlighted.
+The documentation box only appears in Insert mode, for an item that has a `detail` or `documentation`. It is drawn to the right of the menu, or to the left when there is no room on the right, and not at all when neither side fits, in which case each item's `detail` shows next to its label in the menu. Turn it off with `:set global completion-docs=false`: each item's `detail` then shows next to its label in the menu instead. Give each item its documentation along with the rest of the item: only a language server's items can have theirs fetched later, when highlighted.
 
 ```scheme
 (register-completion-source! "todo-markers"

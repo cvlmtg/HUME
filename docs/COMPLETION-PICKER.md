@@ -229,9 +229,11 @@ after `reconcile_completion`, asks the session for the selected item's
 `DocRequest`, sent under one supersede key. Accepting takes the session
 out without one, and dismissing or accepting cancels the one in flight,
 since nothing would read its reply. The request is skipped for an
-item whose docs are known (its `documentation` came with it, or a resolve
-answered), for the item already asked since it was selected, and under the
-same source and server gates as accept's. The session holds that one asked
+item whose docs are known (its `detail` and `documentation` both came with
+it, or a resolve answered), for the item already asked since it was
+selected, while the last frame found no room for the box
+(`BufferCompletionLayer::doc_box_fits`), and under the same source and
+server gates as accept's. The session holds that one asked
 key rather than marking items pending: a superseded resolve is never
 answered, and a failed one (`ContentModified` mid-edit, a timeout) or one
 that never went out leaves the item unresolved, asked again on its next
@@ -271,16 +273,16 @@ not merely untested-for. The menu anchors at the leftmost token start among
 the sources with a ranked candidate.
 
 The Insert-mode menu has a documentation box beside it
-(`OverlayViews::completion_doc`), placed by
-`hume_ui::popup::resolve_side_popup`: right of the menu, else left, else
-not drawn. It grows away from the cursor row as the menu does: top edges
+(`OverlayViews::completion_doc`), placed by `hume_ui::popup::side_slot`
+and `resolve_side_popup`: right of the menu, else left, else not drawn. It grows away from the cursor row as the menu does: top edges
 level when the menu opens below the cursor, bottom edges level when it opens
 above, so it never covers the line being typed. It shows the selected item's `detail` and
 `documentation` (`CompletionItem::doc_box_text`), each the item's own or
 else a resolve's answer, and is not drawn for an item with neither. With
 `completion-docs` on, the box is where `detail` shows: menu rows leave it
-out (`CompletionItem::menu_row`); with it off, rows carry it and no box is
-drawn. The `:` line has no box, so its rows always carry `detail`. A
+out (`CompletionItem::menu_row`), unless the box finds no room beside the
+menu so laid out, when the rows carry it and no box is drawn; with it off,
+rows carry it and no box is drawn. The `:` line has no box, so its rows always carry `detail`. A
 resolve's answer is kept apart
 from the item's own fields (`CompletionItem::resolution`), so it never
 changes the menu row. Markdown documentation is highlighted. The box's
@@ -403,8 +405,8 @@ instead, at the same per-keystroke, Rust-side cost as `core:lsp`'s own
 matching.
 
 **Q-A7 — kind display.** `kind: i64` is display-unused (`menu_row` puts
-`label` in the main column and, with `completion-docs` off, `detail`
-right-aligned in a trailing one).
+`label` in the main column and, when the documentation box is not drawn,
+`detail` right-aligned in a trailing one).
 *Default: a static Rust map (LSP kind numbers as the universal enum), a
 single-char column, no per-kind theming — a separate task from the
 two-column layout `resolve_menu` already gives every menu.*

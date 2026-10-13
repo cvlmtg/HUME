@@ -60,7 +60,7 @@ pub(in crate::editor) struct BufferSourceEntry {
     /// `#:resolve`: this source's own claim that its items are wire
     /// `CompletionItem`s from the buffer's attached LSP server, so
     /// `completionItem/resolve` may be sent for a selected or accepted one
-    /// on its behalf (`BufferSession::doc_request`, `session/accept.rs`.s
+    /// on its behalf (`BufferSession::doc_request`, `session/accept.rs`'s
     /// `ResolveBase::request`). `false` by
     /// default: a source that didn't ask for this (`core:buffer-words`, any
     /// other synthetic-item source) never has a resolve request sent for

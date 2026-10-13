@@ -49,8 +49,9 @@ pub(in crate::editor) struct PopupLayer {
     /// internal wrap cache is then keyed by width, so an unchanged width
     /// across frames is O(1), not a re-wrap. Reset to `None` by
     /// [`Layer::theme_changed`] (reached from `theme::set_theme`, the one
-    /// chokepoint every `view.theme` write goes through), since the baked styles are the one input here that *can*
-    /// change out from under an open popup, unlike `text`/`syntax`.
+    /// chokepoint every `view.theme` write goes through), since the baked
+    /// styles are the one input here that can change out from under an open
+    /// popup, unlike `text`/`syntax`.
     content: Option<hume_ui::popup::PopupContent>,
     /// Identifies which `show-popup!` call opened this popup; see
     /// [`Self::token`]'s doc.
@@ -270,10 +271,7 @@ fn popup_rows(
 /// A boxed popup's visible content height and total row count, read from
 /// its resolved view.
 pub(super) fn boxed_popup_rows(state: &hume_ui::popup::PopupState) -> (usize, usize) {
-    (
-        state.rect.height.saturating_sub(2) as usize,
-        state.total_rows,
-    )
+    (state.inner_height(), state.total_rows)
 }
 
 /// Ctrl-d/Ctrl-u on a scrollable text box (a hover popup, the completion

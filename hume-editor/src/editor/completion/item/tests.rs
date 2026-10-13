@@ -300,7 +300,7 @@ fn a_markup_documentation_decodes_as_markdown_unless_its_kind_is_plaintext() {
 }
 
 #[test]
-fn an_items_docs_are_known_once_sent_with_it_or_resolved() {
+fn an_items_docs_are_known_once_both_fields_came_with_it_or_resolved() {
     let mut bare = from_json(serde_json::json!({"label": "foo"})).expect("well-formed item");
     assert_eq!(bare.documentation, None);
     assert!(!bare.docs_known());
@@ -309,7 +309,18 @@ fn an_items_docs_are_known_once_sent_with_it_or_resolved() {
 
     let documented = from_json(serde_json::json!({"label": "foo", "documentation": "Does foo."}))
         .expect("well-formed item");
-    assert!(documented.docs_known());
+    assert!(
+        !documented.docs_known(),
+        "a resolve may still supply the missing detail"
+    );
+
+    let complete = from_json(serde_json::json!({
+        "label": "foo",
+        "detail": "fn foo()",
+        "documentation": "Does foo.",
+    }))
+    .expect("well-formed item");
+    assert!(complete.docs_known());
 }
 
 #[test]
