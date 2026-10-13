@@ -349,7 +349,7 @@ impl EngineView {
         self.write_viewport_dims(&rects);
     }
 
-    /// [`Self::resync_viewport_dims`], generalized to any `LayoutTree`. Call
+    /// The active-layout resize, generalized to any `LayoutTree`. Call
     /// this once per *inactive* tab, on every resize, so a background-tab
     /// pane's viewport stays current continuously instead of only catching
     /// up the moment its tab becomes active. An inactive tab's
@@ -405,7 +405,7 @@ impl EngineView {
     }
 
     /// Make pooled pane `pid`, active or in a background tab, show `target`
-    /// (see [`Pane::show_buffer`]).
+    /// (see `Pane::show_buffer`).
     pub fn show_buffer(
         &mut self,
         key: &FocusKey,

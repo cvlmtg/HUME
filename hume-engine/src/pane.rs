@@ -366,7 +366,7 @@ pub struct Pane {
     /// Scroll and size state.
     pub viewport: Viewport,
     /// Per-buffer scroll memory: where this pane was when it last viewed each buffer.
-    /// Saved and restored by [`Pane::show_buffer`].
+    /// Saved and restored by `Pane::show_buffer`.
     pub saved_scrolls: SecondaryMap<BufferId, ScrollPosition>,
     /// All active selections as the renderer paints them. `None` until the
     /// host writes the first frame's mirror.
