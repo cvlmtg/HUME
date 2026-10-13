@@ -277,10 +277,9 @@ impl Editor {
                     flatten_priority_overlaps(raw)
                 };
 
-                self.state.panes.entries[pid]
-                    .render
-                    .set_diagnostics(diag_spans);
-                self.state.panes.entries[pid].render.set_extra(extra_spans);
+                let render = &self.state.panes.entries[pid].render;
+                render.set_diagnostics(diag_spans);
+                render.set_extra(extra_spans);
             }
         }
     }

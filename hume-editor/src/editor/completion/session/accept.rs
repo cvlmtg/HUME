@@ -364,15 +364,10 @@ impl BufferSession {
         // pin-tracking bug: the accept's own edit rewrote that whole span,
         // so every character in it was written by this session, and
         // selecting the freshly completed token is the useful outcome.
+        let (buffers, mut stores) = state.edit_parts();
         let cs_cursors = crate::editor::doc_ops::apply_doc_edit_grouped(
-            &mut state.buffers,
-            &mut crate::editor::position_stores::PositionStores::new(
-                &mut state.panes,
-                &mut state.active_session,
-                &mut state.input,
-                &mut state.buffer_positions,
-                &mut state.config.decorations,
-            ),
+            buffers,
+            &mut stores,
             pid,
             bid,
             move |s| {

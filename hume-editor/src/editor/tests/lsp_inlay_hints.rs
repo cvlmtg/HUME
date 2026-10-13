@@ -86,10 +86,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     let bid = ed.focused_buffer_id();
     select(&mut ed, &[(4, 4)], 0);
     let pid = ed.view.focused_pane();
-    ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Soft { width: 3 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 3 });
     ed.state.config.decorations.set_inlay_hints(
         "test".to_string(),
         bid,

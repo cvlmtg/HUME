@@ -175,19 +175,8 @@ fn do_paste(
         || state.buffers.get(buf).begin_edit_group(base, undo_sels),
     )?;
     let paste_fn = if before { paste_before } else { paste_after };
-    doc_ops::apply_doc_edit_regrouped(
-        &mut state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut state.panes,
-            &mut state.active_session,
-            &mut state.input,
-            &mut state.buffer_positions,
-            &mut state.config.decorations,
-        ),
-        focused,
-        buf,
-        |s| paste_fn(s, &values),
-    );
+    let (buffers, mut stores) = state.edit_parts();
+    doc_ops::apply_doc_edit_regrouped(buffers, &mut stores, focused, buf, |s| paste_fn(s, &values));
 
     // An explicit register prefix opts out of the stamp entirely; see
     // PasteStamp's doc for why.
@@ -490,19 +479,8 @@ fn do_paste_cycle(
         })
     })?;
     let paste_fn = if before { paste_before } else { paste_after };
-    doc_ops::apply_doc_edit_regrouped(
-        &mut state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut state.panes,
-            &mut state.active_session,
-            &mut state.input,
-            &mut state.buffer_positions,
-            &mut state.config.decorations,
-        ),
-        focused,
-        buf,
-        |s| paste_fn(s, &values),
-    );
+    let (buffers, mut stores) = state.edit_parts();
+    doc_ops::apply_doc_edit_regrouped(buffers, &mut stores, focused, buf, |s| paste_fn(s, &values));
     // Cycling always lands on a ring slot, so reflect it in the stamp so a
     // following bare paste (of either variant) continues from here.
     if let Some(slot) = state.kill_ring.cycle_position() {

@@ -170,22 +170,11 @@ fn commit_changeset(
 ) -> Result<ChangeSet, String> {
     pane_state::try_ensure(&mut state.panes.entries, &state.buffers, panes, pid, bid)?;
     let cs_for_return = cs.clone();
-    doc_ops::apply_doc_edit(
-        &mut state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut state.panes,
-            &mut state.active_session,
-            &mut state.input,
-            &mut state.buffer_positions,
-            &mut state.config.decorations,
-        ),
-        pid,
-        bid,
-        move |s| {
-            hume_editing::edit::Edited::from_changes(s, cs)
-                .expect("cs built for this buffer's text, keeping its final newline")
-        },
-    )
+    let (buffers, mut stores) = state.edit_parts();
+    doc_ops::apply_doc_edit(buffers, &mut stores, pid, bid, move |s| {
+        hume_editing::edit::Edited::from_changes(s, cs)
+            .expect("cs built for this buffer's text, keeping its final newline")
+    })
     .map_err(|e| e.to_string())?;
     Ok(cs_for_return)
 }

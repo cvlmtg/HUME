@@ -571,10 +571,7 @@ fn resize_invalidates_a_display_line_latch_measured_at_the_old_wrap_width() {
     let sels = sels_at(&text, &[(2, 2)], 0); // '2', display line 0 col 2
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     let pid = ed.view.focused_pane();
-    ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 0 });
     ed.view.panes[pid].viewport.width = 10; // content_width 10 (no gutter in this harness)
     ed.view.panes[pid].viewport.height = 24;
 

@@ -549,23 +549,21 @@ impl FocusedLayout {
             .into_iter()
             .filter(|&(p, _)| p != self.focus)
             .filter_map(|(pid, r)| {
-                let overlaps_v = r.y < cur.y + cur.height && cur.y < r.y + r.height;
-                let overlaps_h = r.x < cur.x + cur.width && cur.x < r.x + r.width;
+                let overlaps_v = r.top() < cur.bottom() && cur.top() < r.bottom();
+                let overlaps_h = r.left() < cur.right() && cur.left() < r.right();
                 let (gap, perp): (u16, u16) = match side {
-                    Side::Left if overlaps_v && r.x + r.width <= cur.x => {
-                        (cur.x - (r.x + r.width), cur_cy.abs_diff(r.y + r.height / 2))
+                    Side::Left if overlaps_v && r.right() <= cur.left() => {
+                        (cur.left() - r.right(), cur_cy.abs_diff(r.y + r.height / 2))
                     }
-                    Side::Right if overlaps_v && r.x >= cur.x + cur.width => (
-                        r.x - (cur.x + cur.width),
-                        cur_cy.abs_diff(r.y + r.height / 2),
-                    ),
-                    Side::Up if overlaps_h && r.y + r.height <= cur.y => {
-                        (cur.y - (r.y + r.height), cur_cx.abs_diff(r.x + r.width / 2))
+                    Side::Right if overlaps_v && r.left() >= cur.right() => {
+                        (r.left() - cur.right(), cur_cy.abs_diff(r.y + r.height / 2))
                     }
-                    Side::Down if overlaps_h && r.y >= cur.y + cur.height => (
-                        r.y - (cur.y + cur.height),
-                        cur_cx.abs_diff(r.x + r.width / 2),
-                    ),
+                    Side::Up if overlaps_h && r.bottom() <= cur.top() => {
+                        (cur.top() - r.bottom(), cur_cx.abs_diff(r.x + r.width / 2))
+                    }
+                    Side::Down if overlaps_h && r.top() >= cur.bottom() => {
+                        (r.top() - cur.bottom(), cur_cx.abs_diff(r.x + r.width / 2))
+                    }
                     _ => return None,
                 };
                 Some(((gap as u32) << 16 | (perp as u32), pid))

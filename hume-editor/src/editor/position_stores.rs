@@ -14,6 +14,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::cluster::ClusterRange;
 use slotmap::SecondaryMap;
 
+use super::buffer::store::BufferStore;
 use super::edit_session::EditSession;
 use super::input_stack::InputStack;
 use super::lsp::diagnostics::DiagnosticsStore;
@@ -188,6 +189,23 @@ impl<'a> PositionStores<'a> {
         self.buffers.diagnostics.remove_buffer(buffer);
         self.decorations.remove_buffer(buffer);
         self.buffers.last_inserts.remove(buffer);
+    }
+}
+
+impl super::EditorState {
+    /// The buffers, and every position stored against their text, borrowed
+    /// apart so a `Buffer` method that changes text can carry them.
+    pub(in crate::editor) fn edit_parts(&mut self) -> (&mut BufferStore, PositionStores<'_>) {
+        (
+            &mut self.buffers,
+            PositionStores::new(
+                &mut self.panes,
+                &mut self.active_session,
+                &mut self.input,
+                &mut self.buffer_positions,
+                &mut self.config.decorations,
+            ),
+        )
     }
 }
 

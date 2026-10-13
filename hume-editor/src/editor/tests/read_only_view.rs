@@ -236,15 +236,10 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
 
     let focused = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
+    let (buffers, mut stores) = ed.state.edit_parts();
     let result = doc_ops::apply_doc_history_walk(
-        &mut ed.state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.active_session,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
+        buffers,
+        &mut stores,
         focused,
         bid,
         |b, id, stores, pane| Ok(b.undo_n(id, stores, pane, 1)),

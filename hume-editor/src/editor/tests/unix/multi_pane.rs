@@ -158,12 +158,8 @@ fn new_file_split_has_no_override_and_reads_the_global_default() {
     let (path, _tmp_path) = temp_file("other file\n");
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.view.focused_pane();
     let bid_a = ed.focused_buffer_id();
-    ed.view.panes[pid_a].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::None);
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Soft { width: 40 };
 
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))

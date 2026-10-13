@@ -750,15 +750,7 @@ impl EditorState {
         proc: steel::rvals::SteelVal,
         args: Vec<steel::rvals::SteelVal>,
     ) {
-        self.config
-            .pending_work
-            .push_back(event::PendingWork::Call {
-                proc,
-                args,
-                anchor: None,
-                tracked: None,
-                answer: None,
-            });
+        self.queue_lsp_callback(proc, args, None, None);
     }
 
     /// [`Self::queue_steel_call`]'s counterpart for an `lsp-request!`

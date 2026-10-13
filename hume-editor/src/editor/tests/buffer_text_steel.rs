@@ -582,7 +582,7 @@ fn selections_charwise_true_for_a_lone_collapsed_selection_on_a_blank_line() {
 /// A buffer's linewise selection must still resolve through
 /// `selections-linewise?` when the buffer is shown only in a *non-focused*
 /// pane, the same pane-resolution policy `symbol-under-cursor` and the
-/// `lsp-*-params` builders share (see `shown_buffer_state`).
+/// `lsp-*-params` builders share (see `EditorState::buffer_panes`).
 #[test]
 fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
     let tmp = tempfile::tempdir().unwrap();

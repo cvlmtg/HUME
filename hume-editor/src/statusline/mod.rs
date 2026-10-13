@@ -8,7 +8,7 @@ use hume_engine::render::Canvas;
 
 use crate::editor::EditorState;
 use colors::EditorColors;
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::BufferId;
 use hume_ui::width::text_width;
 
 pub(crate) mod colors;
@@ -316,13 +316,15 @@ fn draw_section(
 ///
 /// Narrow on purpose: `EngineView::render` takes `&mut self`, so a provider
 /// holding `&Editor` would keep the whole editor (`view` included) borrowed
-/// across it. The things here that come from `view` are the focused pane and
-/// its buffer, read out once up front as `Copy` ids.
+/// across it. The things here that come from `view` are the focused buffer's
+/// id and the focused pane's selections and search cursor for it, read out
+/// once up front.
 pub(crate) struct HumeStatusline<'a> {
     pub(crate) state: &'a EditorState,
     pub(crate) kitty_enabled: bool,
-    pub(crate) focused_pid: PaneId,
     pub(crate) focused_bid: BufferId,
+    pub(crate) focused_view: hume_editing::selection::EditView<'a>,
+    pub(crate) focused_search_cursor: &'a crate::editor::search::SearchCursor,
 }
 
 impl HumeStatusline<'_> {
@@ -336,19 +338,14 @@ impl HumeStatusline<'_> {
         self.state.buffers.get(self.focused_bid)
     }
 
-    pub(in crate::statusline) fn current_view(&self) -> hume_editing::selection::EditView<'_> {
-        self.state
-            .shown_buffer_state(self.focused_pid, self.focused_bid)
-            .view(self.doc().text())
+    pub(in crate::statusline) fn current_view(&self) -> &hume_editing::selection::EditView<'_> {
+        &self.focused_view
     }
 
     pub(in crate::statusline) fn current_search_cursor(
         &self,
     ) -> &crate::editor::search::SearchCursor {
-        &self
-            .state
-            .shown_buffer_state(self.focused_pid, self.focused_bid)
-            .search_cursor
+        self.focused_search_cursor
     }
 
     pub(in crate::statusline) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {

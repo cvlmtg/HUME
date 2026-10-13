@@ -340,10 +340,7 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     let mut ed = open_headless(None);
     ed.state.settings.scroll_margin = 0;
     let pid_a = ed.view.focused_pane();
-    ed.view.panes[pid_a].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 0 });
     let mut content = String::new();
     for i in 0..97 {
         if i == 19 {

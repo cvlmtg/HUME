@@ -234,22 +234,10 @@ fn p6_e_bang_inverse_is_fine_grained() {
     // `Delete(whole new) | Insert(whole old)`; the line-diff path produces a
     // small `Insert("beta\n")` instead.
     let bid = ed.focused_buffer_id();
-    let (_, inv_cs, _steps) = ed
-        .state
-        .buffers
+    let (buffers, mut stores) = ed.state.edit_parts();
+    let (_, inv_cs, _steps) = buffers
         .get_mut(bid)
-        .undo_n(
-            bid,
-            &mut crate::editor::position_stores::PositionStores::new(
-                &mut ed.state.panes,
-                &mut ed.state.active_session,
-                &mut ed.state.input,
-                &mut ed.state.buffer_positions,
-                &mut ed.state.config.decorations,
-            ),
-            PaneId::default(),
-            1,
-        )
+        .undo_n(bid, &mut stores, PaneId::default(), 1)
         .expect("undo returns the inverse CS");
     let has_small_insert = inv_cs
         .ops()

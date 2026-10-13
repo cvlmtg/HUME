@@ -482,10 +482,7 @@ fn markdown_documentation_is_highlighted_below_a_fenced_detail() {
 fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped() {
     let mut ed = open_headless(None);
     let pid = ed.view.focused_pane();
-    ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(WrapMode::Soft { width: 6 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, WrapMode::Soft { width: 6 });
 
     ed.feed_key(key('i'));
     type_chars(&mut ed, "abcdefghijklmnopqrstuvwxyz0123456789");

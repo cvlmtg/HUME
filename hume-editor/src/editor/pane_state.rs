@@ -432,12 +432,6 @@ pub(in crate::editor) fn build_pane(
 }
 
 impl super::EditorState {
-    /// [`PaneEntries::shown`], for the statusline, which lives outside
-    /// `editor` and cannot name `PaneEntries`.
-    pub(crate) fn shown_buffer_state(&self, pid: PaneId, bid: BufferId) -> &PaneBufferState {
-        self.panes.entries.shown(pid, bid)
-    }
-
     /// Every pane currently showing `bid`, in the order `(buffer-panes
     /// pane)` hands back to Steel: the focused pane first (if it shows
     /// `bid`), then the rest of the active tab (`view.active_pane_ids`'s own

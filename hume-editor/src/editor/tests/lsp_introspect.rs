@@ -822,7 +822,7 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
     );
 }
 
-/// `shown_buffer_state`'s resolution has no active-tab restriction: none of
+/// `buffer_panes`' resolution has no active-tab restriction: none of
 /// its callers (`lsp-position-params` among them) reads a viewport, only a
 /// cursor, which stays live no matter which tab is active. A buffer shown
 /// only in a *background* tab's pane must still resolve via `buffer-panes`,

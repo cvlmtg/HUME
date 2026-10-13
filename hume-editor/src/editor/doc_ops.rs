@@ -432,7 +432,7 @@ pub(in crate::editor) fn commit_paste_group(
     if !is_paste {
         return;
     }
-    commit_open_session(buffers, pane_state, active_session);
+    commit_session(buffers, pane_state, active_session);
 }
 
 /// Close the open Insert-kind session and record it as a single undo step:

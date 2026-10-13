@@ -112,19 +112,14 @@ impl EditSession {
     }
 
     /// `true` if this is an Insert-kind session on `(pane, buffer)`: the
-    /// check every caller composing an edit into an *Insert* session (as
-    /// opposed to a Paste one, which has its own `group` but a different
-    /// commit lifecycle) must make before touching it. A caller that only
-    /// checked `pane`/`buffer` and skipped `kind` could silently compose an
-    /// Insert-mode edit into an open Paste session's group instead of
-    /// panicking on the mismatch. This is the one place that three-way
-    /// check is spelled out, so it can't be forgotten at a new call site.
+    /// check a caller composing an edit into an Insert session makes, since
+    /// a Paste session also has a `group` but commits differently.
     pub(in crate::editor) fn is_insert_at(&self, pane: PaneId, buffer: BufferId) -> bool {
-        self.owned_by(pane, buffer) && matches!(self.kind, EditSessionKind::Insert(_))
+        self.insert_at(pane, buffer).is_some()
     }
 
     /// The Insert session's own state, when this is an Insert-kind session
-    /// on `(pane, buffer)` ([`Self::is_insert_at`]).
+    /// on `(pane, buffer)`.
     pub(in crate::editor) fn insert_at(
         &self,
         pane: PaneId,

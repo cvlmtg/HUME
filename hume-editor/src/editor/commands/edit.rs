@@ -197,19 +197,8 @@ fn walk_history(
     ) -> Result<HistoryWalkResult, CommandError>,
 ) -> Result<doc_ops::HistoryWalk, CommandError> {
     let buf = t.bid(view);
-    doc_ops::apply_doc_history_walk(
-        &mut state.buffers,
-        &mut PositionStores::new(
-            &mut state.panes,
-            &mut state.active_session,
-            &mut state.input,
-            &mut state.buffer_positions,
-            &mut state.config.decorations,
-        ),
-        t.pid(),
-        buf,
-        walk,
-    )
+    let (buffers, mut stores) = state.edit_parts();
+    doc_ops::apply_doc_history_walk(buffers, &mut stores, t.pid(), buf, walk)
 }
 
 /// Walk the undo/redo history `count` steps as one composed transform,

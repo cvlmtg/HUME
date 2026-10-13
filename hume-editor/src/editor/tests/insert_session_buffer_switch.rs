@@ -423,39 +423,16 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
         "A (the session's own pane) must select what was typed on exit"
     );
 
-    ed.state
-        .buffers
+    let (buffers, mut stores) = ed.state.edit_parts();
+    buffers
         .get_mut(bid)
-        .undo_n(
-            bid,
-            &mut crate::editor::position_stores::PositionStores::new(
-                &mut ed.state.panes,
-                &mut ed.state.active_session,
-                &mut ed.state.input,
-                &mut ed.state.buffer_positions,
-                &mut ed.state.config.decorations,
-            ),
-            PaneId::default(),
-            1,
-        )
+        .undo_n(bid, &mut stores, PaneId::default(), 1)
         .expect("the session must have recorded one revision");
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "abc\n");
-    let (redo_sels, _, _) = ed
-        .state
-        .buffers
+    let (buffers, mut stores) = ed.state.edit_parts();
+    let (redo_sels, _, _) = buffers
         .get_mut(bid)
-        .redo_n(
-            bid,
-            &mut crate::editor::position_stores::PositionStores::new(
-                &mut ed.state.panes,
-                &mut ed.state.active_session,
-                &mut ed.state.input,
-                &mut ed.state.buffer_positions,
-                &mut ed.state.config.decorations,
-            ),
-            PaneId::default(),
-            1,
-        )
+        .redo_n(bid, &mut stores, PaneId::default(), 1)
         .expect("redo must replay the revision");
     let buf = ed.state.buffers.get(bid);
     assert_eq!(

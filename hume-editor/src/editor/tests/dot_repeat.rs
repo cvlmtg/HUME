@@ -2190,19 +2190,10 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
     // the pick.
     let fp = FocusedPane::current(&ed.view);
     let (pid, bid) = (fp.pid(), fp.bid(&ed.view));
-    crate::editor::doc_ops::apply_doc_edit_grouped(
-        &mut ed.state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.active_session,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
-        pid,
-        bid,
-        |s| hume_ops::edit::insert_char(s, 'Z'),
-    );
+    let (buffers, mut stores) = ed.state.edit_parts();
+    crate::editor::doc_ops::apply_doc_edit_grouped(buffers, &mut stores, pid, bid, |s| {
+        hume_ops::edit::insert_char(s, 'Z')
+    });
     assert_eq!(ed.doc().text().to_string(), "abc Zdef\nuvw xyz\n");
 
     ed.feed_key(key_enter());
@@ -2262,19 +2253,10 @@ fn dot_repeat_keeps_a_pick_when_a_foreign_edit_follows_the_bindings_own_edit() {
     // standing in for a timer/LSP edit unrelated to the pick.
     let fp = FocusedPane::current(&ed.view);
     let (pid, bid) = (fp.pid(), fp.bid(&ed.view));
-    crate::editor::doc_ops::apply_doc_edit_grouped(
-        &mut ed.state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.active_session,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
-        pid,
-        bid,
-        |s| hume_ops::edit::insert_char(s, 'Z'),
-    );
+    let (buffers, mut stores) = ed.state.edit_parts();
+    crate::editor::doc_ops::apply_doc_edit_grouped(buffers, &mut stores, pid, bid, |s| {
+        hume_ops::edit::insert_char(s, 'Z')
+    });
 
     ed.feed_key(key_enter()); // picks "alpha", runs delete-word-backward
     ed.settle();

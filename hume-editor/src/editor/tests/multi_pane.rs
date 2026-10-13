@@ -932,12 +932,7 @@ fn half_page_after_split_scrolls_by_the_new_pane_height() {
     let mut ed = sized_editor(&format!("-[l]>{}", &text[1..]));
     ed.execute_typed("split", None).unwrap();
     let pid = ed.view.focused_pane();
-    let height = ed
-        .view
-        .pane_rects()
-        .into_iter()
-        .find_map(|(p, rect)| (p == pid).then_some(rect.height))
-        .expect("the focused pane has a rect");
+    let height = ed.view.focused_rect().height;
 
     ed.execute_keymap_command("half-page-down".into(), None, false);
 
@@ -1656,11 +1651,7 @@ fn quit_in_grid_promotes_correct_sibling() {
 #[test]
 fn same_buffer_split_inherits_source_panes_wrap_override() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.view.focused_pane();
-    ed.view.panes[pid_a].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Soft { width: 40 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 40 });
     // Global default differs, to prove it is NOT the source.
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
 

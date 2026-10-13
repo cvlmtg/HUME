@@ -1,6 +1,5 @@
 use super::*;
 use crate::editor::doc_ops;
-use crate::editor::position_stores::PositionStores;
 use hume_scripting::host::CommandHost;
 use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
@@ -11,15 +10,10 @@ fn undo_through_funnel(
 ) -> Result<doc_ops::HistoryWalk, crate::editor::error::CommandError> {
     let pane = ed.view.focused_pane();
     let buffer = ed.focused_buffer_id();
+    let (buffers, mut stores) = ed.state.edit_parts();
     doc_ops::apply_doc_history_walk(
-        &mut ed.state.buffers,
-        &mut PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.active_session,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
+        buffers,
+        &mut stores,
         pane,
         buffer,
         |b, id, stores, acting| Ok(b.undo_n(id, stores, acting, 1)),

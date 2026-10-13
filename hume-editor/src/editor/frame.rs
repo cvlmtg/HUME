@@ -122,11 +122,13 @@ impl Editor {
             kitty_enabled,
             ..
         } = self;
+        let focused_state = state.panes.entries.shown(focused_pid, focused_bid);
         let statusline = crate::statusline::HumeStatusline {
             state,
             kitty_enabled: *kitty_enabled,
-            focused_pid,
             focused_bid,
+            focused_view: focused_state.view(state.buffers.get(focused_bid).text()),
+            focused_search_cursor: &focused_state.search_cursor,
         };
         let buffers = &state.buffers;
         view.render(
@@ -153,11 +155,18 @@ impl Editor {
     /// bother splitting.
     #[cfg(test)]
     pub(crate) fn statusline(&self) -> crate::statusline::HumeStatusline<'_> {
+        let focused_bid = self.focused_buffer_id();
+        let focused_state = self
+            .state
+            .panes
+            .entries
+            .shown(self.view.focused_pane(), focused_bid);
         crate::statusline::HumeStatusline {
             state: &self.state,
             kitty_enabled: self.kitty_enabled,
-            focused_pid: self.view.focused_pane(),
-            focused_bid: self.focused_buffer_id(),
+            focused_bid,
+            focused_view: focused_state.view(self.state.buffers.get(focused_bid).text()),
+            focused_search_cursor: &focused_state.search_cursor,
         }
     }
 

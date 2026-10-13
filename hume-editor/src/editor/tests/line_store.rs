@@ -24,17 +24,10 @@ use hume_grid::{Grid, Rect};
 fn many_lines_editor() -> Editor {
     let mut ed = open_headless(None);
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).set_view_content(
-        bid,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.active_session,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
-        &"a\n".repeat(50),
-    );
+    let (buffers, mut stores) = ed.state.edit_parts();
+    buffers
+        .get_mut(bid)
+        .set_view_content(bid, &mut stores, &"a\n".repeat(50));
     set_cursor(&mut ed, 0);
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
     ed
@@ -76,17 +69,10 @@ fn buffer_tag_changes_across_a_set_view_content_refresh() {
     let bid = ed.focused_buffer_id();
     let before = ed.state.format_key(&ed.view.panes[pid]).buffer_tag;
 
-    ed.state.buffers.get_mut(bid).set_view_content(
-        bid,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.active_session,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
-        "refreshed\n",
-    );
+    let (buffers, mut stores) = ed.state.edit_parts();
+    buffers
+        .get_mut(bid)
+        .set_view_content(bid, &mut stores, "refreshed\n");
 
     let after = ed.state.format_key(&ed.view.panes[pid]).buffer_tag;
     assert_ne!(
@@ -244,10 +230,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.state.settings.scroll_margin = 0;
     let pid = ed.view.focused_pane();
-    ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
-        saved: None,
-    });
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 0 });
     let hint_on = Rc::new(Cell::new(true));
     ed.view.panes[pid].providers.add_decoration_source(Box::new(
         InlineHint::new(0, 0, "HHHHHH").gated(Rc::clone(&hint_on)),

@@ -142,19 +142,10 @@ impl Editor {
     pub(in crate::editor) fn apply_insert_mode_paste(&mut self, text: &str) {
         let focused = self.view.focused_pane();
         let buf = self.focused_buffer_id();
-        doc_ops::apply_doc_edit_grouped(
-            &mut self.state.buffers,
-            &mut crate::editor::position_stores::PositionStores::new(
-                &mut self.state.panes,
-                &mut self.state.active_session,
-                &mut self.state.input,
-                &mut self.state.buffer_positions,
-                &mut self.state.config.decorations,
-            ),
-            focused,
-            buf,
-            |s| hume_ops::edit::insert_str(s, text),
-        );
+        let (buffers, mut stores) = self.state.edit_parts();
+        doc_ops::apply_doc_edit_grouped(buffers, &mut stores, focused, buf, |s| {
+            hume_ops::edit::insert_str(s, text)
+        });
         self.state.dismiss_completion(&self.view);
     }
 }

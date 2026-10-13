@@ -331,19 +331,10 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, opened: &Inse
         .expect("checked open above");
     let allowed = autoindent_owned(insert, &sels);
     if has_blank_line_cursor(sels, &allowed) {
-        doc_ops::apply_doc_edit_grouped(
-            &mut state.buffers,
-            &mut crate::editor::position_stores::PositionStores::new(
-                &mut state.panes,
-                &mut state.active_session,
-                &mut state.input,
-                &mut state.buffer_positions,
-                &mut state.config.decorations,
-            ),
-            pid,
-            bid,
-            move |s| clear_blank_line_indent(s, &allowed),
-        );
+        let (buffers, mut stores) = state.edit_parts();
+        doc_ops::apply_doc_edit_grouped(buffers, &mut stores, pid, bid, move |s| {
+            clear_blank_line_indent(s, &allowed)
+        });
     }
     // Every insert entry pins one typed run via `begin_typed_run`, so
     // reconstruct each selection's typed span here via `typed_span`. A count

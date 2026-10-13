@@ -23,7 +23,6 @@ use crate::editor::event::EditorEvent;
 use crate::editor::focus::switch_pane_to_buffer;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::pane_state;
-use crate::editor::position_stores::PositionStores;
 
 // ── open_or_dedup / open_buffer ───────────────────────────────────────────────
 
@@ -143,17 +142,10 @@ pub(in crate::editor) fn show_read_only_view(
         // `set_view_content` resets history and every position stored for
         // the buffer: the new content shares only the buffer id with the
         // text it overwrites.
-        state.buffers.get_mut(existing).set_view_content(
-            existing,
-            &mut PositionStores::new(
-                &mut state.panes,
-                &mut state.active_session,
-                &mut state.input,
-                &mut state.buffer_positions,
-                &mut state.config.decorations,
-            ),
-            content,
-        );
+        let (buffers, mut stores) = state.edit_parts();
+        buffers
+            .get_mut(existing)
+            .set_view_content(existing, &mut stores, content);
         forget_saved_views(ev, existing);
         existing
     } else {
@@ -287,12 +279,6 @@ fn forget_closed_buffer(state: &mut EditorState, ev: &mut EngineView, id: Buffer
     state.config.statusline_text.remove(&id);
     state.retire_stale_confirm(ev, |c| c.targets_buffer(id));
     forget_saved_views(ev, id);
-    PositionStores::new(
-        &mut state.panes,
-        &mut state.active_session,
-        &mut state.input,
-        &mut state.buffer_positions,
-        &mut state.config.decorations,
-    )
-    .forget_buffer(id);
+    let (_, mut stores) = state.edit_parts();
+    stores.forget_buffer(id);
 }

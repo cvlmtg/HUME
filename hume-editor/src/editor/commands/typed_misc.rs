@@ -177,7 +177,7 @@ pub(in crate::editor) fn typed_tabnew(
         Some(path) => open_path_arg(ed, path)?,
         None => fp.bid(&ed.view),
     };
-    super::open_pane_as_new_tab(&mut ed.state, &mut ed.view, bid);
+    super::pane::open_pane_as_new_tab(&mut ed.state, &mut ed.view, bid);
     Ok(())
 }
 

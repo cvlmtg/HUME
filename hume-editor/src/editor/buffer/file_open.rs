@@ -10,7 +10,6 @@ use crate::editor::commands::FocusedPane;
 use crate::editor::event::EditorEvent;
 
 use super::lifecycle;
-use crate::editor::position_stores::PositionStores;
 use crate::editor::{Editor, EditorState, Severity};
 
 /// Where the text that replaces a buffer's content comes from, for
@@ -235,14 +234,8 @@ impl Editor {
         // session whose group no longer matches the buffer.
         crate::editor::focus::end_focus_sessions(&mut self.state, &self.view);
 
-        let buf = self.state.buffers.get_mut(id);
-        let mut stores = PositionStores::new(
-            &mut self.state.panes,
-            &mut self.state.active_session,
-            &mut self.state.input,
-            &mut self.state.buffer_positions,
-            &mut self.state.config.decorations,
-        );
+        let (buffers, mut stores) = self.state.edit_parts();
+        let buf = buffers.get_mut(id);
         let mutated = match source {
             ReplaceSource::Disk { text, file_meta } => {
                 let mutated = buf.replace_text_recorded(id, &mut stores, text, fp.pid());

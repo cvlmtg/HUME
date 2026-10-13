@@ -103,19 +103,10 @@ fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
     // Bracketed-paste terminal events bypass the dispatch pipeline entirely
     // (no `commands::run` to report a refusal), so a refusal here
     // has nowhere to report to but the statusline directly.
-    if let Err(e) = super::super::doc_ops::apply_doc_edit(
-        &mut ed.state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.active_session,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
-        focused,
-        buf,
-        |s| hume_ops::edit::insert_str(s, text),
-    ) {
+    let (buffers, mut stores) = ed.state.edit_parts();
+    if let Err(e) = super::super::doc_ops::apply_doc_edit(buffers, &mut stores, focused, buf, |s| {
+        hume_ops::edit::insert_str(s, text)
+    }) {
         ed.state.report(e.severity(), e.message().to_owned());
     }
 }

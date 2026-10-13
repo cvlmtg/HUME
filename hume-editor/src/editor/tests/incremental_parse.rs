@@ -377,7 +377,6 @@ fn grammar_swap_clears_pending_and_full_reparses() {
 /// current one, so no full reparse is forced.
 #[test]
 fn an_edit_spanning_several_text_versions_keeps_the_pending_edit_chain_linked() {
-    use crate::editor::position_stores::PositionStores;
     use hume_engine::pipeline::PaneId;
     use hume_ops::edit::insert_str;
 
@@ -386,19 +385,12 @@ fn an_edit_spanning_several_text_versions_keeps_the_pending_edit_chain_linked() 
     let gen_before = ed.state.buffers.get(bid).text().generation();
     let sels = ed.current_selections().clone();
 
-    ed.state.buffers.get_mut(bid).apply_edit(
-        bid,
-        &mut PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.active_session,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
-        PaneId::default(),
-        sels,
-        |state| insert_str(state, " ").then(|state| insert_str(state, " ")),
-    );
+    let (buffers, mut stores) = ed.state.edit_parts();
+    buffers
+        .get_mut(bid)
+        .apply_edit(bid, &mut stores, PaneId::default(), sels, |state| {
+            insert_str(state, " ").then(|state| insert_str(state, " "))
+        });
 
     let gen_after = ed.state.buffers.get(bid).text().generation();
     assert!(

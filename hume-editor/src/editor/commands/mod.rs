@@ -105,19 +105,8 @@ pub(in crate::editor::commands) fn apply_pane_edit(
     cmd: impl FnOnce(hume_editing::state::EditState) -> hume_editing::edit::Edited,
 ) -> Result<(), CommandError> {
     let buf = t.bid(view);
-    doc_ops::apply_doc_edit(
-        &mut state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut state.panes,
-            &mut state.active_session,
-            &mut state.input,
-            &mut state.buffer_positions,
-            &mut state.config.decorations,
-        ),
-        t.pid(),
-        buf,
-        cmd,
-    )
+    let (buffers, mut stores) = state.edit_parts();
+    doc_ops::apply_doc_edit(buffers, &mut stores, t.pid(), buf, cmd)
 }
 
 /// Apply a grouped edit (inside an open insert/paste session) to the focused
@@ -139,19 +128,8 @@ pub(in crate::editor) fn apply_focused_edit_grouped(
     cmd: impl FnOnce(hume_editing::state::EditState) -> hume_editing::edit::Edited,
 ) {
     let buf = fp.bid(view);
-    doc_ops::apply_doc_edit_grouped(
-        &mut state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut state.panes,
-            &mut state.active_session,
-            &mut state.input,
-            &mut state.buffer_positions,
-            &mut state.config.decorations,
-        ),
-        fp.pid(),
-        buf,
-        cmd,
-    );
+    let (buffers, mut stores) = state.edit_parts();
+    doc_ops::apply_doc_edit_grouped(buffers, &mut stores, fp.pid(), buf, cmd);
 }
 
 /// `Err` for an edit-mode command on a read-only buffer, so the caller bails
@@ -402,12 +380,6 @@ pub(in crate::editor) use insert_session::{
 };
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
 pub(in crate::editor) use pane::{fits_split, split_pane_onto};
-// `open_pane` itself (the raw, unspliced constructor) is private to
-// `pane.rs`, not re-exported here or anywhere. `open_pane_in_layout` and
-// `open_pane_as_new_tab` are the only two ways, anywhere in the crate, to
-// create a pane. `open_pane_as_new_tab`'s callers are `:tabnew` and
-// `tab-new`, both inside `commands`.
-use pane::open_pane_as_new_tab;
 // `open_pane_in_layout` has no non-test caller outside `pane.rs` itself
 // (which reaches it directly too). Only `editor::tests` calls it through
 // this path, so the re-export is test-only to avoid an "unused import"

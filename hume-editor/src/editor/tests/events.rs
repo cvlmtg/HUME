@@ -1636,19 +1636,10 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
 
     let focused = ed.view.focused_pane();
     let before_gen = ed.state.buffers.get(bid).text().generation();
-    doc_ops::apply_doc_edit(
-        &mut ed.state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.active_session,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
-        focused,
-        bid,
-        |sels| hume_ops::edit::insert_char(sels, 'z'),
-    )
+    let (buffers, mut stores) = ed.state.edit_parts();
+    doc_ops::apply_doc_edit(buffers, &mut stores, focused, bid, |sels| {
+        hume_ops::edit::insert_char(sels, 'z')
+    })
     .unwrap();
     ed.settle();
 
@@ -1913,15 +1904,10 @@ fn identity_edit_fires_no_on_text_changed() {
     let focused = ed.view.focused_pane();
     let before_gen = ed.state.buffers.get(bid).text().generation();
     let before_edit_seq = ed.state.buffers.edit_seq();
+    let (buffers, mut stores) = ed.state.edit_parts();
     doc_ops::apply_doc_edit(
-        &mut ed.state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.active_session,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
+        buffers,
+        &mut stores,
         focused,
         bid,
         hume_editing::edit::Edited::unchanged,
@@ -1975,15 +1961,10 @@ fn identity_edit_records_no_undo_revision() {
 
     // An identity edit: no-op, must not land on the undo stack.
     let focused = ed.view.focused_pane();
+    let (buffers, mut stores) = ed.state.edit_parts();
     doc_ops::apply_doc_edit(
-        &mut ed.state.buffers,
-        &mut crate::editor::position_stores::PositionStores::new(
-            &mut ed.state.panes,
-            &mut ed.state.active_session,
-            &mut ed.state.input,
-            &mut ed.state.buffer_positions,
-            &mut ed.state.config.decorations,
-        ),
+        buffers,
+        &mut stores,
         focused,
         bid,
         hume_editing::edit::Edited::unchanged,

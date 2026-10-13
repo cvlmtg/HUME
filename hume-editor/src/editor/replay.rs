@@ -1376,8 +1376,7 @@ impl Editor {
             .state
             .active_session
             .as_mut()
-            .filter(|s| s.is_insert_at(pane, buffer))
-            .and_then(EditSession::insert_mut)
+            .and_then(|s| s.insert_at_mut(pane, buffer))
             .and_then(InsertState::take_dot_capture)
         {
             self.state.finalize_dot_capture(cap);
