@@ -309,9 +309,9 @@ pub trait DecorationSource {
 pub trait OverlayProvider {
     fn is_active(&self) -> bool;
 
-    /// Paint into `pane_area`, the area every pane shares, which the
-    /// overlay's own geometry was placed within this frame.
-    fn render(&self, pane_area: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
+    /// Paint at the geometry the overlay's own state was placed at this
+    /// frame.
+    fn render(&self, theme: &crate::theme::Theme, canvas: &mut Canvas);
 }
 
 // ---------------------------------------------------------------------------

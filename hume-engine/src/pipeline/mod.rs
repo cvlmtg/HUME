@@ -755,7 +755,7 @@ impl EngineView {
         let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
         for overlay in &self.overlays {
             if overlay.is_active() {
-                overlay.render(pane_area, &self.theme, &mut canvas);
+                overlay.render(&self.theme, &mut canvas);
             }
         }
     }

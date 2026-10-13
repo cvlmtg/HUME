@@ -244,7 +244,7 @@ impl OverlayProvider for PopupOverlay {
         self.data.read().is_some()
     }
 
-    fn render(&self, _pane_area: Rect, theme: &Theme, canvas: &mut Canvas) {
+    fn render(&self, theme: &Theme, canvas: &mut Canvas) {
         let guard = self.data.read();
         let Some(state) = guard.as_ref() else { return };
         if state.lines.is_empty() {
