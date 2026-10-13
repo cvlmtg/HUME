@@ -1130,18 +1130,18 @@ fn rotate_refuses_a_single_leaf_and_a_missing_target() {
     let mut single = LayoutTree::Leaf(a);
     assert_eq!(
         single.rotate(a, Rotation::Forward, 1),
-        Err(NoRotation::SinglePane)
+        Err(LayoutRefusal::SinglePane)
     );
     assert_eq!(
         single.rotate(b, Rotation::Forward, 1),
-        Err(NoRotation::MissingTarget)
+        Err(LayoutRefusal::MissingTarget)
     );
     assert_eq!(single, LayoutTree::Leaf(a));
 
     let mut tree = row_of_three(a, b, c);
     assert_eq!(
         tree.rotate(missing, Rotation::Forward, 1),
-        Err(NoRotation::MissingTarget)
+        Err(LayoutRefusal::MissingTarget)
     );
     assert_eq!(tree, row_of_three(a, b, c));
 }
@@ -1610,15 +1610,19 @@ fn remove_leaf_promotes_subtree_and_returns_its_leftmost_leaf() {
 }
 
 #[test]
-fn remove_leaf_sole_leaf_returns_none() {
-    let [a] = pane_ids();
+fn remove_leaf_refuses_a_sole_leaf() {
+    let [a, b] = pane_ids();
     let mut tree = LayoutTree::Leaf(a);
-    assert!(tree.remove_leaf(a).is_none());
+    assert_eq!(tree.remove_leaf(a).err(), Some(LayoutRefusal::SinglePane));
+    assert_eq!(
+        tree.remove_leaf(b).err(),
+        Some(LayoutRefusal::MissingTarget)
+    );
     assert_eq!(tree, LayoutTree::Leaf(a));
 }
 
 #[test]
-fn remove_leaf_missing_target_is_noop() {
+fn remove_leaf_refuses_a_missing_target() {
     let [a, b, missing] = pane_ids();
     let mut tree = LayoutTree::Split {
         direction: Direction::Horizontal,
@@ -1626,7 +1630,10 @@ fn remove_leaf_missing_target_is_noop() {
         children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
     };
     let before = tree.clone();
-    assert!(tree.remove_leaf(missing).is_none());
+    assert_eq!(
+        tree.remove_leaf(missing).err(),
+        Some(LayoutRefusal::MissingTarget)
+    );
     assert_eq!(tree, before);
 }
 
@@ -1731,19 +1738,6 @@ fn leaves_of_a_sole_leaf_is_just_itself() {
     let tree = LayoutTree::Leaf(a);
 
     assert_eq!(tree.leaves(), vec![a]);
-}
-
-#[test]
-fn is_single_pane_true_for_a_leaf_false_for_a_split() {
-    let [a, b] = pane_ids();
-    let mut tree = LayoutTree::Leaf(a);
-    assert!(tree.is_single_pane());
-
-    assert!(
-        tree.split_leaf(a, UnattachedPane::for_test(b), Direction::Horizontal)
-            .is_ok()
-    );
-    assert!(!tree.is_single_pane());
 }
 
 // ── Bottom band partition ──────────────────────────────────────────────

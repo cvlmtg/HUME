@@ -2,7 +2,8 @@
 //! tearing down a pane's per-pane state maps.
 
 use hume_engine::pipeline::{
-    BufferId, DetachedPane, Direction, EngineView, LayoutTree, PaneId, Pruned, UnattachedPane,
+    BufferId, DetachedPane, Direction, EngineView, LayoutRefusal, LayoutTree, PaneId, Pruned,
+    UnattachedPane,
 };
 use slotmap::SecondaryMap;
 
@@ -71,9 +72,7 @@ pub(in crate::editor) fn open_pane_in_layout(
     direction: Direction,
 ) -> Result<PaneId, CommandError> {
     if !view.layout().contains_leaf(target) {
-        return Err(CommandError::new(format!(
-            "internal error: split target {target:?} missing from pane layout"
-        )));
+        return Err(pane_missing_from_layout(target));
     }
     let unattached = open_pane(state, view, bid);
     let new_pid = view
@@ -125,21 +124,27 @@ pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pa
     state.panes.render.remove(pid);
 }
 
-/// Close the focused pane: prune it from the layout tree, move focus to the
-/// promoted sibling, and drop all its per-pane state.
-///
-/// Precondition: the active tab's layout is split; callers check
-/// `!view.layout().is_single_pane()` before calling. `view.panes.len() > 1` is
-/// NOT the right count: panes are a global pool shared by every tab, so it
-/// stays true whenever any other tab holds a pane, even when the active tab
-/// has only this one. `remove_leaf` returning `None` here is a bug.
-pub(super) fn close_focused_pane(state: &mut EditorState, view: &mut EngineView, fp: FocusedPane) {
-    let old = fp.pid();
-    let Pruned { detached, survivor } = view
-        .remove_leaf(old)
-        .expect("close_focused_pane requires the active tab's layout to be split");
+/// Close the focused pane: prune it from the active tab's layout, move focus
+/// to the promoted sibling, and drop all its per-pane state. Refused, with
+/// nothing changed, when it is the tab's only pane or the layout does not
+/// reach it.
+pub(super) fn close_focused_pane(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    fp: FocusedPane,
+) -> Result<(), LayoutRefusal> {
+    let Pruned { detached, survivor } = view.remove_leaf(fp.pid())?;
     focus_pane(state, view, survivor);
     drop_pane_state(state, view, detached);
+    Ok(())
+}
+
+/// The error for a pane the active tab's layout does not reach, which is an
+/// invariant violation.
+pub(super) fn pane_missing_from_layout(pid: PaneId) -> CommandError {
+    CommandError::new(format!(
+        "internal error: pane {pid:?} missing from pane layout"
+    ))
 }
 
 /// Status message reported when a split is rejected for being too small.

@@ -1865,8 +1865,7 @@ fn fits_split_allows_before_first_frame() {
 /// refuse before creating anything: `open_pane_in_layout` checks
 /// `contains_leaf` up front, so there is never a speculatively created pane
 /// to roll back, and no window where one exists with no layout leaf (which
-/// would later violate `close_focused_pane`'s precondition on
-/// `remove_leaf`).
+/// closing it would later report as missing from the layout).
 #[test]
 fn split_pane_onto_refuses_when_focused_pane_missing_from_layout() {
     use hume_engine::pipeline::Direction;
@@ -1905,6 +1904,52 @@ fn split_pane_onto_refuses_when_focused_pane_missing_from_layout() {
         panes_before,
         "no pane is created at all when the split target is unreachable"
     );
+}
+
+/// A split active tab whose focus names a pane attached to another tab's
+/// layout, built the same way as in
+/// `split_pane_onto_refuses_when_focused_pane_missing_from_layout`.
+fn editor_with_focus_missing_from_split_layout() -> Editor {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("vsplit", None).unwrap();
+    ed.execute_typed("tabnew", None).unwrap();
+    let other_tab_pid = ed.state.focus.id();
+    ed.execute_typed("tabprev", None).unwrap();
+    ed.state.focus.set_for_test(other_tab_pid);
+    ed
+}
+
+#[test]
+fn close_pane_reports_a_focused_pane_missing_from_the_layout() {
+    let mut ed = editor_with_focus_missing_from_split_layout();
+    let layout_before = ed.view.layout().clone();
+
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('c'));
+
+    assert_eq!(*ed.view.layout(), layout_before);
+    assert!(
+        ed.state
+            .status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("missing from pane layout")),
+        "status: {:?}",
+        ed.state.status_msg
+    );
+}
+
+#[test]
+fn quit_reports_a_focused_pane_missing_from_the_layout() {
+    let mut ed = editor_with_focus_missing_from_split_layout();
+    let layout_before = ed.view.layout().clone();
+
+    let err = ed.execute_typed("q", None).unwrap_err();
+
+    assert!(
+        err.to_string().contains("missing from pane layout"),
+        "{err}"
+    );
+    assert_eq!(*ed.view.layout(), layout_before);
 }
 
 /// `pane-dividers=false` reclaims the seam column: sibling panes tile

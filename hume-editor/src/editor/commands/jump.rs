@@ -1,5 +1,5 @@
 use crate::editor::registry::Count;
-use hume_engine::pipeline::{Direction, EngineView, NoRotation, Rotation};
+use hume_engine::pipeline::{Direction, EngineView, LayoutRefusal, Rotation};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
@@ -312,11 +312,10 @@ pub(in crate::editor) fn cmd_close_pane(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if view.layout().is_single_pane() {
-        return Err(CommandError::transient("cannot close last pane"));
-    }
-    super::close_focused_pane(state, view, fp);
-    Ok(())
+    super::close_focused_pane(state, view, fp).map_err(|why| match why {
+        LayoutRefusal::SinglePane => CommandError::transient("cannot close last pane"),
+        LayoutRefusal::MissingTarget => super::pane_missing_from_layout(fp.pid()),
+    })
 }
 
 /// `Ctrl-p r`: rotate the focused pane's row or column forward by `count`
@@ -351,9 +350,7 @@ fn rotate_focused(
     let pid = fp.pid();
     view.rotate_layout(pid, rotation, count.get())
         .map_err(|why| match why {
-            NoRotation::SinglePane => CommandError::transient("no other pane to rotate"),
-            NoRotation::MissingTarget => CommandError::new(format!(
-                "internal error: focused pane {pid:?} missing from pane layout"
-            )),
+            LayoutRefusal::SinglePane => CommandError::transient("no other pane to rotate"),
+            LayoutRefusal::MissingTarget => super::pane_missing_from_layout(pid),
         })
 }

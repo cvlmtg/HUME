@@ -26,10 +26,11 @@ pub enum Rotation {
     Backward,
 }
 
-/// Why [`LayoutTree::rotate`] moved nothing.
+/// Why an operation on one pane's leaf ([`LayoutTree::rotate`],
+/// [`LayoutTree::remove_leaf`]) changed nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NoRotation {
-    /// The tree is the target's own leaf, so it has no row or column.
+pub enum LayoutRefusal {
+    /// The tree is the target's own leaf, with no other pane beside it.
     SinglePane,
     /// The target is not a leaf of the tree.
     MissingTarget,
@@ -308,15 +309,6 @@ impl LayoutTree {
         }
     }
 
-    /// Whether this subtree is a single, unsplit pane. The count callers need
-    /// when deciding whether a pane can be closed: `EngineView::panes` is a
-    /// global pool shared by every tab, so `panes.len() > 1` does not mean
-    /// "this window has another pane to fall back to". This reads the one
-    /// tree scoped to the active tab.
-    pub fn is_single_pane(&self) -> bool {
-        matches!(self, LayoutTree::Leaf(_))
-    }
-
     /// Leftmost leaf, found by descending into the first child at each split.
     fn first_leaf(&self) -> PaneId {
         match self {
@@ -435,13 +427,13 @@ impl LayoutTree {
         target: PaneId,
         rotation: Rotation,
         steps: usize,
-    ) -> Result<(), NoRotation> {
+    ) -> Result<(), LayoutRefusal> {
         if matches!(self, LayoutTree::Leaf(id) if *id == target) {
-            return Err(NoRotation::SinglePane);
+            return Err(LayoutRefusal::SinglePane);
         }
         self.rotate_run(target, rotation, steps)
             .then_some(())
-            .ok_or(NoRotation::MissingTarget)
+            .ok_or(LayoutRefusal::MissingTarget)
     }
 
     /// The recursive body of [`Self::rotate`]: `false` when `target` is not
@@ -502,14 +494,16 @@ impl LayoutTree {
     /// Prune `Leaf(target)`, collapsing its parent `Split` onto the sibling,
     /// then re-derive every split ratio so the survivors stay equal-sized
     /// (see `equalize`). Returns the detached pane plus the leftmost leaf of
-    /// the promoted sibling (the new focus target), or `None` if `target`
-    /// wasn't found or `self` is the sole leaf.
-    pub fn remove_leaf(&mut self, target: PaneId) -> Option<Pruned> {
-        let survivor = self.prune_leaf(target);
-        if survivor.is_some() {
-            self.equalize();
+    /// the promoted sibling (the new focus target).
+    pub fn remove_leaf(&mut self, target: PaneId) -> Result<Pruned, LayoutRefusal> {
+        if matches!(self, LayoutTree::Leaf(id) if *id == target) {
+            return Err(LayoutRefusal::SinglePane);
         }
-        survivor.map(|survivor| Pruned {
+        let survivor = self
+            .prune_leaf(target)
+            .ok_or(LayoutRefusal::MissingTarget)?;
+        self.equalize();
+        Ok(Pruned {
             detached: DetachedPane(target),
             survivor,
         })

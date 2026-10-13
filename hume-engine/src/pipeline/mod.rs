@@ -21,7 +21,7 @@ use layout::{
     ARM_E, ARM_N, ARM_S, ARM_W, collect_seam_arms, focused_pane_corners, focused_seam_segment,
     junction_glyph,
 };
-pub use layout::{DetachedPane, Direction, LayoutTree, NoRotation, Pruned, Rotation, Seam};
+pub use layout::{DetachedPane, Direction, LayoutRefusal, LayoutTree, Pruned, Rotation, Seam};
 pub use pane_pool::{PanePool, UnattachedPane};
 use pane_render::render_pane;
 
@@ -350,7 +350,7 @@ impl EngineView {
 
     /// Prune `target` from the active tab's tree. See
     /// [`LayoutTree::remove_leaf`].
-    pub fn remove_leaf(&mut self, target: PaneId) -> Option<Pruned> {
+    pub fn remove_leaf(&mut self, target: PaneId) -> Result<Pruned, LayoutRefusal> {
         self.layout.remove_leaf(target)
     }
 
@@ -361,7 +361,7 @@ impl EngineView {
         target: PaneId,
         rotation: Rotation,
         steps: usize,
-    ) -> Result<(), NoRotation> {
+    ) -> Result<(), LayoutRefusal> {
         self.layout.rotate(target, rotation, steps)
     }
 
