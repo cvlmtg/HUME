@@ -248,9 +248,9 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     }
 }
 
-/// Overlay provider painting the picker panel, registered per-pane (last,
-/// for top z-order, since the picker is full-modal and must sit above every
-/// other overlay). See [`super::register_overlays`].
+/// Overlay provider painting the picker panel, last in
+/// [`OverlayViews::overlays`](super::OverlayViews::overlays) so it sits above
+/// every other overlay: the picker is full-modal.
 pub(crate) struct PickerOverlay {
     pub(crate) data: SharedSlot<Option<PickerViewState>>,
 }
@@ -260,17 +260,11 @@ impl OverlayProvider for PickerOverlay {
         self.data.read().is_some()
     }
 
-    fn render(&self, pane_rect: Rect, theme: &Theme, canvas: &mut Canvas) {
+    fn render(&self, _pane_area: Rect, theme: &Theme, canvas: &mut Canvas) {
         let guard = self.data.read();
         let Some(state) = guard.as_ref() else {
             return;
         };
-
-        // Defensive clip: the write side computed this rect against this
-        // same pane's region this same frame; see `fits_inside`'s doc.
-        if !super::menu_box::fits_inside(state.rect, pane_rect) {
-            return;
-        }
 
         let styles = picker_styles(theme);
         draw_picker_panel(canvas, state, styles);

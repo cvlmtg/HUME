@@ -506,32 +506,6 @@ fn overlay_is_inactive_when_data_is_none() {
     assert!(!overlay.is_active());
 }
 
-#[test]
-fn overlay_clips_state_outside_pane_rect() {
-    let geo = PanelGeometry {
-        rect: rect(100, 100, 10, 6),
-        list_rows: 3,
-    };
-    let s = state("q", &["item0"], Some(0), &geo);
-    let overlay = PickerOverlay {
-        data: SharedSlot::new(Some(s)),
-    };
-    assert!(overlay.is_active());
-
-    let mut buf = Grid::new(20, 20);
-    let before = buf.clone();
-    let theme = Theme::new(HashMap::new(), ResolvedStyle::default());
-    overlay.render(
-        Rect::new(0, 0, 20, 20),
-        &theme,
-        &mut Canvas::new(&mut buf, theme.ui.invisible, None),
-    );
-    assert_eq!(
-        buf, before,
-        "state positioned outside pane_rect must not paint"
-    );
-}
-
 // ── picker_styles: direct Helix-scope resolution ────────────────────────────
 
 fn resolved(fg: Rgb) -> ResolvedStyle {

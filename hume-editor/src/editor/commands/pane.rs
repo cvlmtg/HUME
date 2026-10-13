@@ -30,14 +30,13 @@ fn open_pane(
     buffer_id: BufferId,
 ) -> UnattachedPane {
     // Every pane gets the same providers (sign column + gutter + bracket/
-    // search/diagnostic/extra highlight + inlay hints + virtual lines +
-    // completion overlay + popup overlay + menu overlay + LSP
-    // completion-menu overlay) as the initial pane; see `build_pane`. Each
-    // pane's Arcs are freshly allocated here, never shared with any other
-    // pane (see `PaneHighlights`/`SignMap`), so per-pane decoration data
-    // can never bleed across panes.
+    // search/diagnostic/extra highlight + inlay hints + virtual lines) as
+    // the initial pane; see `build_pane`. Each pane's Arcs are freshly
+    // allocated here, never shared with any other pane (see
+    // `PaneHighlights`/`SignMap`), so per-pane decoration data can never
+    // bleed across panes.
     let (pane, render_handles) =
-        crate::editor::pane_state::build_pane(&mut view.registry, &state.views, buffer_id);
+        crate::editor::pane_state::build_pane(&mut view.registry, buffer_id);
     let unattached = view.insert_pane(pane);
     let pid = unattached.pane_id();
     state.panes.state.insert(pid, SecondaryMap::new());

@@ -150,7 +150,7 @@ fn show_popup_rejects_an_unknown_anchor() {
 
 /// `show-popup! #:kind 'scrollable` must not land above a full-modal picker:
 /// it would own the next Ctrl-u/Ctrl-d without ever being visible
-/// (`register_overlays`' fixed z-order paints the picker on top).
+/// (`OverlayViews::overlays`' fixed z-order paints the picker on top).
 #[test]
 fn show_popup_scrollable_does_not_land_above_an_open_picker() {
     use crate::editor::host_impl::EditorHostImpl;

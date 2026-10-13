@@ -10,8 +10,8 @@ use hume_grid::Rect;
 
 // ── Pane-fit clamp: the menu renders clamped, never vanishes ────────────────
 //
-// `PopupOverlay`'s defensive bounds check silently drops the *entire* popup
-// whenever the box doesn't fit, so the write side must clamp first.
+// `PopupOverlay` paints the rect the write side placed, so the write side
+// clamps the box into the pane.
 
 #[test]
 fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {

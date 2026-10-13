@@ -6,7 +6,8 @@ use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use crate::pane::Pane;
 use crate::providers::{
-    BottomBandProvider, DEFAULT_GUTTER_SCOPE, StatuslineProvider, SyntaxSpans, TabBarProvider,
+    BottomBandProvider, DEFAULT_GUTTER_SCOPE, OverlayProvider, StatuslineProvider, SyntaxSpans,
+    TabBarProvider,
 };
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
@@ -212,6 +213,10 @@ pub struct EngineView {
     /// is ever non-empty in practice, but the list carries both rather than
     /// special-casing which one "owns" the band.
     pub bottom_bands: Vec<Box<dyn BottomBandProvider>>,
+    /// Floating overlays (popups, menus, the picker) painted once over the
+    /// whole pane area after every pane and seam. List order is z-order: the
+    /// last one paints on top.
+    pub overlays: Vec<Box<dyn OverlayProvider>>,
     /// Terminal area available to panes as of the last `prepare_frame`.
     /// Pane-focus/split commands run between frames with no terminal handle
     /// of their own, so they recompute geometry from this plus `layout`
@@ -256,6 +261,7 @@ impl EngineView {
             default_gutter_scope,
             tabbar: None,
             bottom_bands: Vec::new(),
+            overlays: Vec::new(),
             last_pane_area: Rect::default(),
             last_terminal_area: Rect::default(),
             reserve_seam: true,
@@ -747,14 +753,9 @@ impl EngineView {
         // One canvas for all of them, for the same reason chrome shares one:
         // an overlay is never dimmed either.
         let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
-        for (pane_id, _rect) in pane_rects.iter().copied() {
-            let Some(pane) = self.panes.get(pane_id) else {
-                continue;
-            };
-            for (_, overlay) in &pane.providers.overlays {
-                if overlay.is_active() {
-                    overlay.render(pane_area, &self.theme, &mut canvas);
-                }
+        for overlay in &self.overlays {
+            if overlay.is_active() {
+                overlay.render(pane_area, &self.theme, &mut canvas);
             }
         }
     }

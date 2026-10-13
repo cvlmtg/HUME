@@ -168,18 +168,6 @@ pub fn clamp_scroll_to_window(selected: usize, scroll: usize, visible_rows: usiz
     }
 }
 
-/// Whether `outer` fits entirely inside `pane_rect`. Shared by every overlay
-/// that positions itself against a pane rect resolved earlier in the frame
-/// as a defensive backstop: the write side already computed `outer` against
-/// this same rect this same frame, so this should never return `false`, but
-/// painting outside the pane is worse than a dropped frame of content.
-pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
-    outer.left() >= pane_rect.left()
-        && outer.top() >= pane_rect.top()
-        && outer.right() <= pane_rect.right()
-        && outer.bottom() <= pane_rect.bottom()
-}
-
 /// Overdraws `outer`'s 1-cell frame with box-drawing glyphs (`┌─┐└┘│`).
 pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedStyle) {
     let inner = outer.inset(1, 1);

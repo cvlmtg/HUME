@@ -244,17 +244,10 @@ impl OverlayProvider for PopupOverlay {
         self.data.read().is_some()
     }
 
-    fn render(&self, pane_rect: Rect, theme: &Theme, canvas: &mut Canvas) {
+    fn render(&self, _pane_area: Rect, theme: &Theme, canvas: &mut Canvas) {
         let guard = self.data.read();
         let Some(state) = guard.as_ref() else { return };
         if state.lines.is_empty() {
-            return;
-        }
-
-        // Defensive clip: the write side computed this rect against this
-        // same pane's rect this same frame, so this should never trigger;
-        // see `fits_inside`'s doc.
-        if !super::menu_box::fits_inside(state.rect, pane_rect) {
             return;
         }
         draw_menu_box(

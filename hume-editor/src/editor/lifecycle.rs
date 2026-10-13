@@ -93,11 +93,13 @@ impl Editor {
         // Every overlay view shared between the per-frame write side and the
         // engine's render side; see `hume_ui::OverlayViews`'s own doc. The
         // drawer and the docked popup are chrome (like the tab bar/
-        // statusline), not per-pane: one instance of each, registered
-        // directly on `engine_view.bottom_bands` rather than through
-        // `build_pane`. Only one is ever non-empty at a time in practice.
+        // statusline), and the floating overlays paint over every pane:
+        // none of them is per-pane, so each is registered once on
+        // `engine_view`. Only one band is ever non-empty at a time in
+        // practice.
         let views = hume_ui::OverlayViews::default();
         engine_view.bottom_bands = views.bottom_bands();
+        engine_view.overlays = views.overlays();
 
         // The tab bar: chrome, not per-pane, same as the bands above. One
         // instance, registered directly on `engine_view.tabbar`.
@@ -114,7 +116,7 @@ impl Editor {
         // Build the initial pane. Every later split-created pane goes through
         // the same `build_pane` (see `commands::pane::open_pane`, reached
         // only through `open_pane_in_layout`/`open_pane_as_new_tab`).
-        let (pane, render_handles) = build_pane(&mut engine_view.registry, &views, buffer_id);
+        let (pane, render_handles) = build_pane(&mut engine_view.registry, buffer_id);
         let unattached = engine_view.insert_pane(pane);
         let pane_id = unattached.pane_id();
         let focus = super::focus::Focus::new(&mut engine_view, focus_key, unattached);

@@ -409,9 +409,9 @@ impl PaneView {
 }
 
 /// Build a new pane viewing `buffer_id`, with its decoration providers
-/// ([`hume_decorations::build_providers`]) and overlays
-/// ([`hume_ui::register_overlays`]). Every pane creation site goes through
-/// here; `Pane::new` alone has an empty `ProviderSet`.
+/// ([`hume_decorations::build_providers`]) and line-number column. Every
+/// pane creation site goes through here; `Pane::new` alone has an empty
+/// `ProviderSet`.
 ///
 /// Returns the pane with its own `PaneDecorationHandles` (never shared
 /// between panes), which the caller stores in `EditorState.panes.render`.
@@ -420,7 +420,6 @@ impl PaneView {
 /// frame, since `prepare_frame` syncs `line-number-style` before each render.
 pub(in crate::editor) fn build_pane(
     registry: &mut hume_engine::theme::ScopeRegistry,
-    views: &hume_ui::OverlayViews,
     buffer_id: BufferId,
 ) -> (
     hume_engine::pane::Pane,
@@ -444,7 +443,6 @@ pub(in crate::editor) fn build_pane(
             linenr_selected_scope,
         ),
     ));
-    hume_ui::register_overlays(&mut providers, views);
 
     let pane = hume_engine::pane::Pane {
         providers,

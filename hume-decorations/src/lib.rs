@@ -179,10 +179,9 @@ impl PaneDecorationHandles {
 /// line-number column's row-fill fallback would silently disagree on
 /// styling.
 ///
-/// Sibling of `hume_ui::register_overlays`: together the two calls populate
-/// one pane's `ProviderSet`. Single source of truth for the decoration half
-/// of pane construction, so every pane's decoration providers render
-/// identically regardless of which creation site built it.
+/// Single source of truth for the decoration half of pane construction, so
+/// every pane's decoration providers render identically regardless of which
+/// creation site built it.
 pub fn build_providers(
     providers: &mut ProviderSet,
     linenr_scope: ScopeId,

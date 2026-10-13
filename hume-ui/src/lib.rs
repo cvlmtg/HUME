@@ -8,8 +8,6 @@
 //! reads editor state directly, live in `hume-editor`.
 //!
 //! Plugin decoration stores and their providers live in `hume-decorations`.
-//! `hume-editor`'s pane construction calls [`register_overlays`] and
-//! `hume_decorations::build_providers` to populate one pane's `ProviderSet`.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 
@@ -20,7 +18,7 @@ pub mod popup;
 pub mod width;
 
 use hume_engine::lock::SharedSlot;
-use hume_engine::providers::{BottomBandProvider, ProviderSet};
+use hume_engine::providers::{BottomBandProvider, OverlayProvider};
 use hume_engine::theme::ui_scopes;
 
 use picker_panel::PickerOverlay;
@@ -29,7 +27,7 @@ use popup::PopupOverlay;
 /// Every overlay view shared between the editor's per-frame write side and
 /// the engine's render side. One owner, so a new overlay is one field
 /// instead of a seventh hand-allocated `Arc` threaded through `Editor::
-/// open`, `EditorState`, and [`register_overlays`]'s parameter list.
+/// open`, `EditorState`, and [`OverlayViews::overlays`].
 /// Bundling as one struct with distinctly-named fields (not loose
 /// same-typed `Arc` parameters) is what stops two different slots (same
 /// `SharedSlot<Option<PopupState>>` type for `minibuf_completion`/`popup`/
@@ -67,47 +65,48 @@ impl OverlayViews {
             }),
         ]
     }
-}
 
-/// Register every overlay provider (minibuffer completion, hover/hint
-/// popup, selection menu, LSP completion menu and its documentation box,
-/// fuzzy picker) into `providers`
-/// as the overlay half of pane construction. Sibling of
-/// `hume_decorations::build_providers`; together the two calls populate one
-/// pane's `ProviderSet`. Registration order is z-order (last registered
-/// paints on top): completion overlay, then the hover/signature-help popup,
-/// then the selection menu, then the LSP completion menu (an in-progress
-/// completion is the most action-relevant overlay when more than one could
-/// theoretically be visible) and the box beside it with the selected
-/// candidate's documentation, then the picker last, since it's full-modal
-/// and every other opener clears or truncates it before landing above it.
-/// `show-popup!`'s own `'scrollable` arm refuses to push above an open
-/// picker for exactly this reason, so this registration order and input
-/// precedence (push order on `InputStack`, decided per event) always agree.
-pub fn register_overlays(providers: &mut ProviderSet, views: &OverlayViews) {
-    providers.add_overlay(Box::new(PopupOverlay {
-        data: views.minibuf_completion.clone(),
-        scope: ui_scopes::MENU,
-    }));
-    providers.add_overlay(Box::new(PopupOverlay {
-        data: views.popup.clone(),
-        scope: ui_scopes::POPUP,
-    }));
-    providers.add_overlay(Box::new(PopupOverlay {
-        data: views.menu.clone(),
-        scope: ui_scopes::MENU,
-    }));
-    providers.add_overlay(Box::new(PopupOverlay {
-        data: views.completion_menu.clone(),
-        scope: ui_scopes::MENU,
-    }));
-    providers.add_overlay(Box::new(PopupOverlay {
-        data: views.completion_doc.clone(),
-        scope: ui_scopes::POPUP,
-    }));
-    providers.add_overlay(Box::new(PickerOverlay {
-        data: views.picker.clone(),
-    }));
+    /// Every floating overlay reading this set's slots, for
+    /// `EngineView::overlays`. **Call once**: a second call paints each
+    /// overlay twice.
+    ///
+    /// List order is z-order (last paints on top): minibuffer completion,
+    /// then the hover/signature-help popup, then the selection menu, then
+    /// the LSP completion menu (an in-progress completion is the most
+    /// action-relevant overlay when more than one could theoretically be
+    /// visible) and the box beside it with the selected candidate's
+    /// documentation, then the picker last, since it's full-modal and every
+    /// other opener clears or truncates it before landing above it.
+    /// `show-popup!`'s own `'scrollable` arm refuses to push above an open
+    /// picker for this reason, so this order and input precedence (push
+    /// order on `InputStack`, decided per event) always agree.
+    pub fn overlays(&self) -> Vec<Box<dyn OverlayProvider>> {
+        vec![
+            Box::new(PopupOverlay {
+                data: self.minibuf_completion.clone(),
+                scope: ui_scopes::MENU,
+            }),
+            Box::new(PopupOverlay {
+                data: self.popup.clone(),
+                scope: ui_scopes::POPUP,
+            }),
+            Box::new(PopupOverlay {
+                data: self.menu.clone(),
+                scope: ui_scopes::MENU,
+            }),
+            Box::new(PopupOverlay {
+                data: self.completion_menu.clone(),
+                scope: ui_scopes::MENU,
+            }),
+            Box::new(PopupOverlay {
+                data: self.completion_doc.clone(),
+                scope: ui_scopes::POPUP,
+            }),
+            Box::new(PickerOverlay {
+                data: self.picker.clone(),
+            }),
+        ]
+    }
 }
 
 /// Rows of `area` as plain symbols, trailing spaces trimmed per row.

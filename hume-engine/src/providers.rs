@@ -304,12 +304,14 @@ pub trait DecorationSource {
 // Overlay provider
 // ---------------------------------------------------------------------------
 
-/// An overlay rendered on top of the content area after the main pipeline.
-/// Last registration wins z-order.
+/// An overlay rendered on top of the content area after the main pipeline
+/// (see `EngineView::overlays`).
 pub trait OverlayProvider {
     fn is_active(&self) -> bool;
 
-    fn render(&self, pane_rect: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
+    /// Paint into `pane_area`, the area every pane shares, which the
+    /// overlay's own geometry was placed within this frame.
+    fn render(&self, pane_area: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
 }
 
 // ---------------------------------------------------------------------------
@@ -372,7 +374,6 @@ pub trait BottomBandProvider {
 pub struct ProviderSet {
     pub(crate) decorations: Vec<(ProviderId, DecorationKinds, Box<dyn DecorationSource>)>,
     pub(crate) gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)>,
-    pub(crate) overlays: Vec<(ProviderId, Box<dyn OverlayProvider>)>,
     next_id: ProviderId,
 }
 
@@ -398,12 +399,6 @@ impl ProviderSet {
     pub fn add_gutter_column(&mut self, p: Box<dyn GutterColumn>) -> ProviderId {
         let id = self.alloc_id();
         self.gutter_columns.push((id, p));
-        id
-    }
-
-    pub fn add_overlay(&mut self, p: Box<dyn OverlayProvider>) -> ProviderId {
-        let id = self.alloc_id();
-        self.overlays.push((id, p));
         id
     }
 

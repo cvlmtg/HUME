@@ -92,7 +92,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             }
             PopupKind::Scrollable => {
                 // A picker is full-modal (owns every key) and paints over
-                // everything else (`register_overlays`'s fixed z-order), so
+                // everything else (`OverlayViews::overlays`' fixed z-order), so
                 // a popup landing above it would own Ctrl-u/d without ever
                 // being visible. Dropped the same way a stale
                 // show-menu!/show-drawer-list! response is: the user moved
