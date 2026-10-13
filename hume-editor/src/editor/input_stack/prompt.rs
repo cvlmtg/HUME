@@ -123,7 +123,7 @@ impl Layer for PromptLayer {
     /// cancel path (`finish_steel_prompt`) never runs this: it takes the
     /// layer *by value* via `EditorState::take_layer`, firing its own
     /// callback explicitly instead.
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+    fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         state.history.begin_session_all();
         self.fire(state, None);
     }

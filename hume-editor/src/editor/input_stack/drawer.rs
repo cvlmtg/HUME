@@ -210,7 +210,7 @@ impl Layer for DrawerLayer {
     /// say) must stay silent; `drawer_input`'s own `Esc` arm takes the layer
     /// *by value* via `EditorState::take_firing_false` and fires its own
     /// callback explicitly instead.
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, why: Removal) {
+    fn tear_down(self: Box<Self>, state: &mut EditorState, _view: &EngineView, why: Removal) {
         if let (Removal::Incidental, DrawerSelect::Steel(callback)) = (why, &self.select) {
             state.queue_steel_call(callback.clone(), self.call_args(SteelVal::BoolV(false)));
         }

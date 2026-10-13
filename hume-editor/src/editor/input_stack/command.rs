@@ -37,7 +37,7 @@ impl Layer for CommandLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Command)
     }
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+    fn tear_down(self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         state.history.begin_session_all();
     }
     fn minibuf(&self) -> Option<&MiniBuffer> {

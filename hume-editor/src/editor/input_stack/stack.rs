@@ -128,7 +128,8 @@ pub(in crate::editor) trait Layer: Any {
     fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
 
     /// What happens when this layer leaves the stack, for any reason:
-    /// teardown of a mode layer *is* its cancel. Empty by default. Most
+    /// teardown of a mode layer *is* its cancel. Takes the layer by value,
+    /// so a teardown owns what the layer held. Empty by default. Most
     /// overrides never fire a Steel callback from here regardless of `why`:
     /// an explicit accept/cancel arm already queues one, before the
     /// truncate that reaches this, via `EditorState::take_layer` rather
@@ -141,7 +142,7 @@ pub(in crate::editor) trait Layer: Any {
     /// `PickerLayer`/`PromptLayer` fire unconditionally, ignoring `why`:
     /// both are only ever reached here when nothing has fired their
     /// callback yet, regardless of which reason applies.
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView, _why: Removal) {}
+    fn tear_down(self: Box<Self>, _state: &mut EditorState, _view: &EngineView, _why: Removal) {}
 
     /// The pane snapshot this layer restores on exit, so a text change can
     /// carry it. Every layer answers, so one that keeps a snapshot cannot
@@ -783,8 +784,8 @@ impl EditorState {
     /// just reading that order rather than folding it into one loop.
     pub(in crate::editor) fn truncate_layers(&mut self, view: &EngineView, r: LayerRef) {
         let mut removed = self.input.truncate(r);
-        if let Some(mut target) = removed.pop() {
-            for mut layer in removed {
+        if let Some(target) = removed.pop() {
+            for layer in removed {
                 layer.tear_down(self, view, Removal::Incidental);
             }
             target.tear_down(self, view, Removal::Explicit);
@@ -811,7 +812,7 @@ impl EditorState {
             .expect("r names a live layer, so truncate(r) removes at least one")
             .downcast::<L>()
             .expect("caller names r's own concrete type");
-        for mut layer in removed {
+        for layer in removed {
             layer.tear_down(self, view, Removal::Incidental);
         }
         taken
@@ -840,7 +841,7 @@ impl EditorState {
     /// [`Self::retire`] calls this itself for a [`RemovalScope::SelfOnly`]
     /// layer. A no-op when `r` is already stale.
     pub(in crate::editor) fn excise_layer(&mut self, view: &EngineView, r: LayerRef) {
-        if let Some(mut layer) = self.input.excise(r) {
+        if let Some(layer) = self.input.excise(r) {
             layer.tear_down(self, view, Removal::Explicit);
         }
     }

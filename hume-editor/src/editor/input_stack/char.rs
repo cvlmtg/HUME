@@ -239,7 +239,7 @@ impl Layer for CharLayer {
     }
     /// Ends every read still pending without a character. A Steel callback
     /// hears `#f`. A count typed before `"` stays for the next command.
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+    fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         for read in self.reads.drain(..) {
             if let Resolved::Call(call) = resolve(state, read, None) {
                 state.config.pending_work.push_back(call);

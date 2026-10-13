@@ -72,7 +72,7 @@ impl Layer for SearchLayer {
     fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
         self.snap.capture(state, view);
     }
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+    fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         self.end(state, None);
     }
     fn snapshot_mut(&mut self) -> Option<&mut PaneSnapshot> {

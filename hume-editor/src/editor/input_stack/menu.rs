@@ -189,7 +189,7 @@ impl Layer for MenuLayer {
     /// `show_menu`'s self-replace path all take the layer *by value* via
     /// `EditorState::take_layer` instead and fire their own callback
     /// explicitly, so neither ever reaches this at all.
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, why: Removal) {
+    fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, why: Removal) {
         if let Removal::Incidental = why {
             self.fire(state, None);
         }

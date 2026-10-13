@@ -47,7 +47,7 @@ impl Layer for InsertLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Insert)
     }
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+    fn tear_down(self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         commands::tear_down_insert(state, &self.opened);
     }
     fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {

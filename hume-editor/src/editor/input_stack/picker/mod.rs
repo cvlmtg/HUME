@@ -89,8 +89,8 @@ impl Layer for PickerLayer {
     /// its own callback explicitly instead. `truncate_to_base` (reload) is
     /// the one exit that still drops the callback: `EditorState::truncate_layers`
     /// (this method's only caller) never runs during a reload.
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        fire_callback(state, self, PickerCallback::OnSelect, None);
+    fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+        fire_callback(state, &mut self, PickerCallback::OnSelect, None);
     }
 }
 
