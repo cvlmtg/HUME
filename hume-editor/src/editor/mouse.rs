@@ -215,10 +215,10 @@ impl Editor {
             .map(|i| guard.tabs[guard.scroll + i].id);
         drop(guard);
         if let Some(id) = target {
-            // `switch_to_tab` -> `install_live` -> `focus_pane` exits Insert
-            // (if active) against the outgoing tab's own pane, still focused
-            // at this point, before moving focus to the new tab's pane. See
-            // `focus_pane`'s own doc for why that order matters.
+            // `switch_to_tab` -> `take_live` exits Insert (if active) against
+            // the outgoing tab's own pane while its tab is still live, before
+            // the new tab is installed: the teardown's indent trim edits a
+            // buffer the outgoing tab's panes may show.
             self.clear_pending_input();
             self.state.mouse_drag = None;
             crate::editor::tab::switch_to_tab(&mut self.state, &mut self.view, id);

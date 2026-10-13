@@ -422,8 +422,8 @@ fn ctrl_p_t_and_shift_t_cycle_tabs() {
 /// Steel hook or a custom Insert-mode keybinding reaches, not a keypress or
 /// mouse click) must leave the outgoing pane exactly the way
 /// `clicking_another_tab_while_in_insert_...` (`tests/mouse.rs`) proves the
-/// mouse path does: `focus_pane` is the one chokepoint every `focus` write
-/// goes through, so this isn't a per-caller special case.
+/// mouse path does: every tab switch ends the outgoing sessions in
+/// `take_live`, so this isn't a per-caller special case.
 #[test]
 fn goto_next_tab_via_call_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
     use hume_scripting::host::CommandHost;

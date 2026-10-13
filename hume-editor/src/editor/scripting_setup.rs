@@ -384,7 +384,7 @@ impl Editor {
     /// rather than once before it, so a pane-focus move and a buffer switch
     /// in the same pass coalesce into one event, and a handler that itself
     /// switches buffers is caught by the very next pass. `BufferStore.mru`
-    /// needs no promotion here: `focus_pane`/`switch_pane_to_buffer`
+    /// needs no promotion here: the `focus` moves/`switch_pane_to_buffer`
     /// already promote it synchronously, at the same two chokepoints this
     /// diffs.
     fn detect_buffer_enter(&mut self) {

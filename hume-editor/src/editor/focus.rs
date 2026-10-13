@@ -106,12 +106,11 @@ pub(in crate::editor) fn close_focused(
 
 /// Make `layout` the active tab's, returning the layout it replaces.
 ///
-/// Usually the session teardown is already done by the time this runs:
-/// `tab::take_live` calls `end_focus_sessions` itself before touching the
-/// layout (see its own doc), and this call is then a no-op. A tabline click
-/// (`mouse::tabline_click`) switches tabs by calling `tab::switch_to_tab`
-/// directly, bypassing dispatch (`step_paste_commit`'s own chokepoint);
-/// this closes that gap for it too.
+/// Every caller reaches this through `tab::install_live`, after
+/// `tab::take_live` has already ended the outgoing pane's sessions while
+/// its tab was still live, so the `end_focus_sessions` call here is a
+/// no-op for them. It stays so that every focus move in this module runs
+/// the teardown, whoever calls it.
 #[must_use]
 pub(in crate::editor) fn install_layout(
     state: &mut EditorState,
@@ -124,10 +123,12 @@ pub(in crate::editor) fn install_layout(
     outgoing
 }
 
-/// One of the two chokepoints `focused_buffer_id()` can change through; see
-/// `switch_pane_to_buffer`'s own doc for why this pair promotes
-/// `BufferStore.mru` synchronously instead of leaving it to
-/// `Editor::detect_buffer_enter`'s later, settle()-gated observation.
+/// Promote the focused pane's buffer in `BufferStore.mru` at the focus move
+/// itself, as `switch_pane_to_buffer` does for a buffer switch, rather than
+/// when `Editor::detect_buffer_enter` next observes the change after
+/// `settle()`. `goto-alternate-buffer` reads `mru`'s tail as the buffer on
+/// screen, so a command chained after the focus move in the same dispatch
+/// would otherwise read the previous one.
 fn touch_focused_mru(state: &mut EditorState, view: &EngineView) {
     state
         .buffers

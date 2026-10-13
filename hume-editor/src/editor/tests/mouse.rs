@@ -725,8 +725,8 @@ fn clicking_another_tab_while_in_insert_exits_insert_and_commits_the_outgoing_pa
 /// A click on another tab's label must commit an open paste session on the
 /// outgoing pane, same as every keyboard-dispatched focus switch does via
 /// `step_paste_commit`. `tabline_click` reaches `switch_to_tab` directly,
-/// bypassing dispatch entirely, so `focus_pane` is the only remaining place
-/// that can close the gap. Left uncommitted, `commit_paste_session`'s own
+/// bypassing dispatch entirely, so `take_live`'s session teardown is what
+/// closes the gap. Left uncommitted, `commit_paste_session`'s own
 /// debug assert fires on the very next dispatched command.
 #[test]
 fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {

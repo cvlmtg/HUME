@@ -22,9 +22,10 @@ use hume_engine::pipeline::{EngineView, FocusedLayout};
 
 use crate::editor::EditorState;
 
-/// Read the live layout out of `view`, leaving it unchanged. The caller's own [`install_live`] is what actually displaces
-/// it, via [`EngineView::replace_layout`]. Shared first half of every op
-/// that replaces the whole live tab.
+/// Read the live layout out of `view`, leaving it unchanged. The caller's
+/// own [`install_live`] is what actually displaces it, via
+/// [`EngineView::replace_layout`]. Shared first half of every op that
+/// replaces the whole live tab.
 ///
 /// Ends the outgoing pane's open Insert/paste session first, before
 /// reading: the session's teardown can edit the outgoing pane's buffer (the

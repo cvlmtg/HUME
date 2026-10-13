@@ -1,5 +1,6 @@
 use hume_grid::{Grid, Position, Rect, Rgb};
 use rustc_hash::FxHashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
@@ -171,24 +172,30 @@ impl Default for RenderContext {
 // Editor view: top-level owner
 // ---------------------------------------------------------------------------
 
-/// Permission to change which pane is focused. [`EngineView::new`] mints the
-/// only one, and every `EngineView` method that moves focus takes it. The
-/// editor keeps it beside the steps a focus change must run, so a focus
-/// change cannot skip them.
+/// Permission to change which pane is focused. [`EngineView::new`] mints
+/// one per view, and every `EngineView` method that moves focus takes it and
+/// panics on a key minted by another view. The editor keeps its view's key
+/// beside the steps a focus change must run, so a focus change cannot skip
+/// them.
 #[derive(Debug)]
-pub struct FocusKey(());
+pub struct FocusKey(u64);
+
+static NEXT_FOCUS_KEY: AtomicU64 = AtomicU64::new(0);
 
 /// The root of the editor's rendering state.
 pub struct EngineView {
     /// The active tab's layout and focused pane, private so every
     /// whole-layout replacement routes through [`Self::replace_layout`],
     /// which is `#[must_use]`: an outgoing layout dropped here unnoticed
-    /// would leak every pane it still reaches (see [`DetachedPane`]'s own doc).
+    /// would leak every pane it still reaches, since a pooled pane no tree
+    /// names is never freed.
     /// In-place changes go through [`Self::split_focused`],
     /// [`Self::close_focused`], [`Self::rotate_focused`] and
     /// [`Self::focus`]. The two that add or remove a pane consume or mint a
     /// pool token, and the ones that move focus take the [`FocusKey`].
     layout: FocusedLayout,
+    /// The id of the [`FocusKey`] this view accepts.
+    focus_key: u64,
     pub panes: PanePool,
     /// Pure `BufferId` allocator: a buffer's content, syntax, and rope all
     /// live in the editor's `Document`/`Buffer`; this slotmap only mints and
@@ -241,9 +248,11 @@ impl EngineView {
         let buffers = SlotMap::with_key();
         let mut registry = ScopeRegistry::new();
         let default_gutter_scope = registry.intern(DEFAULT_GUTTER_SCOPE.0);
+        let focus_key = NEXT_FOCUS_KEY.fetch_add(1, Ordering::Relaxed);
         let view = Self {
             // Replaced before the first render.
             layout: FocusedLayout::placeholder(),
+            focus_key,
             panes,
             buffers,
             theme,
@@ -255,7 +264,11 @@ impl EngineView {
             last_terminal_area: Rect::default(),
             reserve_seam: true,
         };
-        (view, FocusKey(()))
+        (view, FocusKey(focus_key))
+    }
+
+    fn check_key(&self, key: &FocusKey) {
+        assert_eq!(key.0, self.focus_key, "FocusKey from another EngineView");
     }
 
     /// Recompute the current pane partition from `layout` and
@@ -349,18 +362,20 @@ impl EngineView {
     }
 
     /// Replace the whole active-tab layout, returning what was there before.
-    /// `#[must_use]`: the outgoing layout may still reach live panes (see
-    /// [`DetachedPane`]'s own doc). A caller that means to discard it
+    /// `#[must_use]`: the outgoing layout may still reach live panes, which
+    /// would leak once no tree names them. A caller that means to discard it
     /// outright (installing a layout over one with nothing real left in
     /// it, or one that names the exact same pool entries) must say so
     /// explicitly with `let _ = `.
     #[must_use]
-    pub fn replace_layout(&mut self, _key: &FocusKey, layout: FocusedLayout) -> FocusedLayout {
+    pub fn replace_layout(&mut self, key: &FocusKey, layout: FocusedLayout) -> FocusedLayout {
+        self.check_key(key);
         std::mem::replace(&mut self.layout, layout)
     }
 
     /// Focus `pid`, refused when it is not a leaf of the active tab's tree.
-    pub fn focus(&mut self, _key: &FocusKey, pid: PaneId) -> Result<(), NotInLayout> {
+    pub fn focus(&mut self, key: &FocusKey, pid: PaneId) -> Result<(), NotInLayout> {
+        self.check_key(key);
         self.layout.focus(pid)
     }
 
@@ -372,7 +387,8 @@ impl EngineView {
 
     /// Prune the focused pane from the active tab's tree. Focus moves to the
     /// leftmost leaf of the sibling that takes its place.
-    pub fn close_focused(&mut self, _key: &FocusKey) -> Result<DetachedPane, SinglePane> {
+    pub fn close_focused(&mut self, key: &FocusKey) -> Result<DetachedPane, SinglePane> {
+        self.check_key(key);
         self.layout.close_focused()
     }
 

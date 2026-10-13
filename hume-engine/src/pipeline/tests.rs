@@ -1016,6 +1016,17 @@ fn focus_moves_to_a_leaf_and_refuses_a_pane_outside_the_tree() {
 }
 
 #[test]
+#[should_panic(expected = "FocusKey from another EngineView")]
+fn a_focus_key_from_another_view_is_refused() {
+    let (mut view, _) = EngineView::new(Theme::default());
+    let (_, other_key) = EngineView::new(Theme::default());
+    let pid = view.focused_pane();
+
+    view.focus(&other_key, pid)
+        .expect("pid is the view's own focused pane");
+}
+
+#[test]
 fn split_focused_adds_the_pane_beside_the_focus_and_keeps_focus() {
     let [a, b] = pane_ids();
     let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));

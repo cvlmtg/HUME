@@ -171,9 +171,10 @@ fn focus_in_direction(
 ) -> Result<(), CommandError> {
     let focused = fp.pid();
     let rects = view.pane_rects();
-    let Some(&(_, cur)) = rects.iter().find(|(p, _)| *p == focused) else {
-        return Ok(());
-    };
+    let &(_, cur) = rects
+        .iter()
+        .find(|(p, _)| *p == focused)
+        .expect("the focused pane is a leaf of the layout");
     let cur_cx = cur.x + cur.width / 2;
     let cur_cy = cur.y + cur.height / 2;
     // Nearest by primary-axis gap among panes that overlap on the perpendicular
@@ -223,9 +224,10 @@ pub(in crate::editor) fn cmd_pane_focus_next(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let rects = view.pane_rects();
-    let Some(idx) = rects.iter().position(|(p, _)| *p == fp.pid()) else {
-        return Ok(());
-    };
+    let idx = rects
+        .iter()
+        .position(|(p, _)| *p == fp.pid())
+        .expect("the focused pane is a leaf of the layout");
     let n = rects.len();
     if n > 1 {
         focus_pane(state, view, rects[(idx + 1) % n].0);
