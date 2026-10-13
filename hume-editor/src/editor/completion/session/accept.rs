@@ -71,44 +71,11 @@ impl BufferSession {
         } = self.plan(state, view, idx)?;
         let (pid, bid) = (self.pane_id, self.bid());
 
-        // Insert mode already has a group open on this exact (pane, buffer)
-        // (composing this accept into the ongoing session); a Steel-
-        // triggered accept outside Insert mode does not, so open one here:
-        // both edits then land as one undo step regardless of caller.
-        // Checked by kind and owner, not `state.active_session.is_none()`:
-        // a session open on a *different* (pane, buffer), or a non-Insert
-        // one here (e.g. a Paste session from an unrelated `p` keypress),
-        // is a real conflict. The fallible `begin_edit_group` call below
-        // reports it as an `Err` rather than this function silently
-        // treating "some session is open" as "the group I need is open."
-        let opened_group = !state
-            .active_session
-            .as_ref()
-            .is_some_and(|s| s.is_insert_at(pid, bid));
-        if opened_group {
-            crate::editor::doc_ops::begin_edit_group(
-                &state.buffers,
-                &mut state.panes.entries,
-                &mut state.active_session,
-                pid,
-                bid,
-                None,
-            )
-            .map_err(|e| e.message().to_owned())?;
-        }
-
-        // Committed on both outcomes: after a failed `apply` the group is
-        // still open and empty, and the next edit would wrongly compose into
-        // it. `commit_edit_group` skips recording when nothing was composed.
-        let applied = self.apply(state, view, edits);
-        if opened_group {
-            crate::editor::doc_ops::commit_edit_group(
-                &mut state.buffers,
-                &state.panes.entries,
-                &mut state.active_session,
-            );
-        }
-        let accept_cs = applied?;
+        // The session's layer sits above the Insert layer whose session owns
+        // this (pane, buffer): only Insert opens one, and every focus move or
+        // buffer switch truncates Insert and everything above it. The edits
+        // compose into that session's group.
+        let accept_cs = self.apply(state, view, edits)?;
 
         // Fire on-completion-accept with the raw (pristine) item after the
         // edit lands: an extension point for anything this store doesn't
@@ -378,7 +345,7 @@ impl BufferSession {
         })
     }
 
-    /// Lands `edits` in the group `accept` holds open: `additionalTextEdits`
+    /// Lands `edits` in the open Insert session's group: `additionalTextEdits`
     /// first, then the per-cursor replacement. Returns the composed
     /// pre-accept → post-accept transform.
     fn apply(

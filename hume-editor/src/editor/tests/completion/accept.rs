@@ -5,9 +5,8 @@
 //! that refuse, and every cursor of a multi-cursor session.
 //!
 //! Most tests drive `completion-accept!` from a Steel command dispatched
-//! through `execute_keymap_command` on a raw `push_mode_layer(Insert)`
-//! (see `raw_insert_with_source`), so `accept`'s *own* edit-group opening is
-//! what's under test, not `begin_insert_session`'s.
+//! through `execute_keymap_command` in a real Insert session (see
+//! `insert_with_source_and`).
 
 use super::*;
 use hume_rope::offset::CharOffset;
@@ -24,7 +23,7 @@ fn accept_via_steel(ed: &mut Editor) {
 fn accept_with_no_text_edit_replaces_the_token_with_insert_text() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("fo-[ ]>cdef\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "foobar" "insertText" "hello"))"#,
@@ -41,7 +40,7 @@ fn accept_with_no_text_edit_replaces_the_token_with_insert_text() {
 fn accept_normalizes_crlf_in_insert_text() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("fo-[ ]>cdef\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "foobar" "insertText" "hel\r\nlo"))"#,
@@ -58,7 +57,7 @@ fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("foo-ba-[ ]>bar\n");
     ed.state.settings.word_chars = "-".into();
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "foo-bar" "insertText" "foo-bar"))"#,
@@ -86,10 +85,8 @@ fn accept_with_no_text_edit_replaces_the_run_of_the_sources_token_chars() {
             )
         ),
     );
-    ed.state
-        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
-    ed.execute_keymap_command("completion-trigger".into(), None, false);
-    ed.settle();
+    ed.feed_key(key('i'));
+    trigger(&mut ed);
     accept_via_steel(&mut ed);
     assert_eq!(ed.doc().text().to_string(), "foo-bar bar\n");
 }
@@ -152,7 +149,7 @@ fn accept_over_a_list_default_edit_range() {
 fn accept_with_an_off_spec_text_edit_range_errors_and_leaves_the_buffer_untouched() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc-[d]>ef\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "bcx" "insertText" "ignored-fallback"
@@ -176,7 +173,7 @@ fn accept_with_an_off_spec_text_edit_range_errors_and_leaves_the_buffer_untouche
 fn insert_replace_text_edit_applies_the_narrower_insert_range() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("a-[b]>cdef\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "xa"
@@ -220,7 +217,7 @@ fn accept_is_one_undo_step() {
 fn dismiss_clears_the_session_so_a_later_accept_errors() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "x" "insertText" "z"))"#,
@@ -251,7 +248,7 @@ fn a_buffer_edit_outside_the_token_does_not_invalidate_the_session() {
         );
     });
     let mut ed = rig.ed;
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "x" "insertText" "z"))"#,
@@ -262,7 +259,7 @@ fn a_buffer_edit_outside_the_token_does_not_invalidate_the_session() {
              (apply-text-edits! bid (json-list (unbox stashed-edits)))
              (completion-accept! 0)))"#,
     );
-    // `raw_insert_with_source` already entered Insert mode with the
+    // `insert_with_source_and` already entered Insert mode with the
     // completion session open (`run_typed_steel_command`, not
     // `type_cmd`'s keystroke typing), so `:stash` dispatches as a command
     // (it's Steel-backed, unlike what `execute_typed` supports) instead of
@@ -287,7 +284,7 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
         bid_a,
         hume_engine::pipeline::Direction::Horizontal,
     );
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "x" "insertText" "z"))"#,
@@ -356,85 +353,21 @@ fn accept_after_the_pane_switched_buffers_errors() {
     );
 }
 
-/// A completion accept firing while a *Paste* session (not Insert) is open
-/// on this exact (pane, buffer) must refuse cleanly instead of panicking.
-/// That state is reachable only through a hook, timer, or async LSP callback
-/// bypassing the normal dispatch order, which always commits a stray paste
-/// session before an ordinary keypress runs (`Editor::dispatch`'s Steel
-/// branch unconditionally runs `step_paste_commit` before a command's own
-/// body, including `finish`'s). Calls the `CompletionHost::completion_accept`
-/// builtin directly (`live_host!`), the same way a hook's own `call!` or an
-/// async LSP callback reaches it, bypassing `Editor::dispatch` entirely so
-/// the injected session below survives to see it.
-///
-/// `opened_group` must look for an Insert-kind session on this (pane,
-/// buffer). If any open session counted as the needed group,
-/// `doc_ops::begin_edit_group` would be skipped and the later
-/// `apply_doc_edit_grouped` call would `.expect()`-panic on the kind mismatch.
-#[test]
-fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
-    use hume_scripting::host::CompletionHost;
-
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    raw_insert_with_source(
-        &mut ed,
-        tmp.path(),
-        r#"(list (hash "label" "x" "insertText" "z"))"#,
-        ACCEPT_0,
-    );
-    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
-
-    // `raw_insert_with_source` opens no group at all (see its own doc): a
-    // Paste session open here is not reachable through it directly, but is
-    // exactly the shape an out-of-band `completion-accept!` could observe.
-    let pid = ed.view.focused_pane();
-    let bid = ed.focused_buffer_id();
-    let text = ed.doc().text().clone();
-    let pre_sels = ed.state.panes.entries[pid].buffers[bid]
-        .selections()
-        .clone();
-    let mut group = ed
-        .state
-        .buffers
-        .get(bid)
-        .begin_edit_group(pre_sels.clone(), pre_sels);
-    group.cs = Some(hume_editing::changeset::ChangeSet::identity(
-        text.len_chars(),
-    ));
-    crate::editor::edit_session::open_or_retarget(
-        &mut ed.state.active_session,
-        pid,
-        bid,
-        crate::editor::edit_session::EditSessionKind::Paste { before: false },
-        || group,
-    )
-    .expect("no session open yet: open_or_retarget must succeed");
-
-    let result = live_host!(ed).completion_accept(0);
-
-    assert_eq!(
-        ed.doc().text().to_string(),
-        "abcdef\n",
-        "nothing must have been written: the buffer must be untouched"
-    );
-    let msg = result.expect_err("must refuse, not panic, while a foreign session is open");
-    assert!(msg.contains("open insert/paste session"), "got {msg:?}");
-}
-
 /// A real (non-collapsed) selection: typing over one is a different edit
 /// than completing at it, and `replace_around_cursors` would force-collapse
 /// it, so accept refuses instead of silently discarding the selection.
 #[test]
 fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("a-[bc]>def\n");
-    raw_insert_with_source(
+    let mut ed = editor_from("a-[b]>cdef\n");
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "ab" "insertText" "z"))"#,
         ACCEPT_0,
     );
+    // Extended over "bc" in Insert, head still on the token's end.
+    select(&mut ed, &[(2, 1)], 0);
     accept_via_steel(&mut ed);
     assert_eq!(ed.doc().text().to_string(), "abcdef\n");
     assert!(
@@ -450,7 +383,7 @@ fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it()
 fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "x" "insertText" "ignored-fallback"
@@ -473,13 +406,12 @@ fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
 }
 
 /// Two additional edits that overlap each other fail when the accept applies
-/// them. An accept outside Insert mode opened its own edit group, and that
-/// group is closed again with nothing recorded.
+/// them, before anything is written or composed into the Insert session.
 #[test]
-fn accept_whose_additional_text_edits_overlap_each_other_leaves_no_group_open() {
+fn accept_whose_additional_text_edits_overlap_each_other_leaves_the_buffer_untouched() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("ab-[c]>def\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "ab" "insertText" "abX"
@@ -492,11 +424,6 @@ fn accept_whose_additional_text_edits_overlap_each_other_leaves_no_group_open() 
                                  "newText" "Q"))))"#,
         ACCEPT_0,
     );
-    assert!(
-        ed.state.active_session.is_none(),
-        "setup: not in Insert mode"
-    );
-
     accept_via_steel(&mut ed);
 
     assert_eq!(ed.doc().text().to_string(), "abcdef\n");
@@ -505,8 +432,13 @@ fn accept_whose_additional_text_edits_overlap_each_other_leaves_no_group_open() 
         "got {:?}",
         status(&ed)
     );
-    assert!(ed.state.active_session.is_none());
-    assert!(!ed.doc().can_undo());
+    assert!(
+        ed.state
+            .active_session
+            .as_ref()
+            .is_some_and(|s| !s.has_edits()),
+        "the Insert session stays open with nothing composed into it"
+    );
 }
 
 /// A *zero-width* additional edit exactly at the textEdit's end counts as
@@ -517,7 +449,7 @@ fn accept_whose_additional_text_edits_overlap_each_other_leaves_no_group_open() 
 fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_text_edit_end() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("ab-[c]>def\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "ab" "insertText" "ignored-fallback"
@@ -547,7 +479,7 @@ fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_te
 fn accept_with_no_text_edit_lands_correctly_past_an_additional_text_edit_shift() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc-[ ]>def\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "abc" "insertText" "X"
@@ -568,7 +500,7 @@ fn accept_with_no_text_edit_lands_correctly_past_an_additional_text_edit_shift()
 fn accept_with_no_text_edit_never_eats_into_word_chars_an_additional_edit_inserted() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("abc-[ ]>def\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "abc" "insertText" "X"
@@ -616,7 +548,7 @@ fn additional_text_edits_track_a_real_edit_observed_since_the_invocation() {
 fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("fo-[ ]>cdef\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "foobar" "insertText" "hello" "extra" "e1"))"#,
@@ -643,7 +575,7 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
 fn accept_fires_on_completion_accept_with_a_synthesized_label_for_a_plain_item() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[ ]>cdef\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list "foobar")"#,
@@ -824,14 +756,13 @@ fn multi_cursor_accept_is_one_undo_step_in_insert_mode() {
     assert_eq!(ed.doc().text().to_string(), "foo bar\n");
 }
 
-/// Two cursors placed directly, entirely outside a real Insert session:
-/// no edit group is open going in, so `accept` opens its own, and one undo
-/// still reverts both cursors' edits and the additional edit together.
+/// An accept from Steel at two cursors with an additional edit: one undo
+/// reverts both cursors' edits and the additional edit together.
 #[test]
-fn multi_cursor_accept_is_one_undo_step_from_steel_outside_insert_mode() {
+fn multi_cursor_accept_from_steel_is_one_undo_step() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-{a}>bcdef gh-[i]>jkl\n");
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "std" "insertText" "X"
@@ -846,10 +777,8 @@ fn multi_cursor_accept_is_one_undo_step_from_steel_outside_insert_mode() {
     assert_eq!(text.matches('X').count(), 2, "both cursors: {text:?}");
     assert!(text.starts_with("// header\n"));
 
-    // By name rather than `u`: the raw-pushed Insert layer has no session
-    // bookkeeping to tear down, so it is never left. `undo` runs as the
-    // plain (no open group) command it is.
-    ed.execute_keymap_command("undo".into(), None, false);
+    ed.feed_key(key_esc());
+    ed.handle_key(key('u'));
     assert_eq!(ed.doc().text().to_string(), "abcdef ghijkl\n");
 }
 
@@ -912,7 +841,7 @@ fn accepting_never_retreats_a_shorter_cursor_across_a_line_boundary() {
         ],
         0,
     );
-    raw_insert_with_source(
+    insert_with_source_and(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "abstd" "insertText" "std"))"#,

@@ -19,7 +19,6 @@
 //! `completion/session/tests.rs`.
 
 use super::*;
-use crate::editor::input_stack::InsertLayer;
 
 mod accept;
 mod menu_keys;
@@ -74,20 +73,12 @@ fn insert_with_source(ed: &mut Editor, tmp: &std::path::Path, items: &str) {
     insert_with_script(ed, tmp, &completion_source("test", items, ""));
 }
 
-/// [`insert_with_source`] on a raw `push_mode_layer(Insert)` rather than a
-/// real `i` keypress (no edit group opened, no selection collapsed), for
-/// the tests pinning `accept`'s *own* group-opening/collapsed-selection
-/// logic, the path a Steel-triggered accept outside Insert mode takes.
-/// `script` runs beside the source registration (a `define-command!` the
-/// test then dispatches).
-fn raw_insert_with_source(ed: &mut Editor, tmp: &std::path::Path, items: &str, script: &str) {
-    run(
+/// [`insert_with_source`] with `script` run beside the source registration
+/// (a `define-command!` the test then dispatches).
+fn insert_with_source_and(ed: &mut Editor, tmp: &std::path::Path, items: &str, script: &str) {
+    insert_with_script(
         ed,
         tmp,
         &format!("{}\n{script}", completion_source("test", items, "")),
     );
-    ed.state
-        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
-    ed.execute_keymap_command("completion-trigger".into(), None, false);
-    ed.settle();
 }
