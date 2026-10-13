@@ -38,7 +38,7 @@ pub(in crate::editor) fn scroll_view(
     down: bool,
     mode: MotionMode,
 ) {
-    let buf_id = view.panes[pid].buffer_id;
+    let buf_id = view.panes[pid].buffer_id();
     let key = state.format_key(&view.panes[pid]);
     let scroll_margin = state.settings.scroll_margin;
     let (mut dlm, viewport) =
@@ -161,14 +161,11 @@ fn cmd_view_scroll_to_display_line(
     pid: PaneId,
     target_display_line: usize,
 ) {
-    let buf_id = view.panes[pid].buffer_id;
+    let buf_id = view.panes[pid].buffer_id();
     let cursor_char = state
         .panes
-        .buffer_state(pid, buf_id)
-        .expect(
-            "pane has no seeded state for the buffer it is showing: \
-             pane.buffer_id and its pane entry are out of sync",
-        )
+        .entries
+        .shown(pid, buf_id)
         .view(state.buffers.get(buf_id).text())
         .primary()
         .head();

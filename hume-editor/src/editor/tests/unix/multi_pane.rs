@@ -18,7 +18,7 @@ fn vsplit_path_opens_that_buffer() {
 
     let pid_b = ed.view.focused_pane();
     assert_ne!(pid_b, pid_a, "focus moves to the new pane");
-    let bid_b = ed.view.panes[pid_b].buffer_id;
+    let bid_b = ed.view.panes[pid_b].buffer_id();
     assert_ne!(
         bid_b, bid_a,
         "new pane views the opened file, not the original buffer"
@@ -169,7 +169,7 @@ fn new_file_split_has_no_override_and_reads_the_global_default() {
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
         .unwrap();
     let pid_b = ed.view.focused_pane();
-    let bid_b = ed.view.panes[pid_b].buffer_id;
+    let bid_b = ed.view.panes[pid_b].buffer_id();
     assert_ne!(bid_b, bid_a, "sanity: new pane views a different buffer");
 
     assert_eq!(
@@ -203,7 +203,7 @@ fn split_path_arg_does_not_inherit_source_panes_view() {
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
         .unwrap();
     let pid_b = ed.view.focused_pane();
-    let bid_b = ed.view.panes[pid_b].buffer_id;
+    let bid_b = ed.view.panes[pid_b].buffer_id();
     assert_ne!(bid_b, bid_a, "sanity: new pane views a different buffer");
 
     let text = ed.state.buffers.get(bid_b).text();
@@ -235,7 +235,8 @@ fn split_different_buffer_keeps_empty_jump_list() {
         .unwrap();
     let pid_b = ed.view.focused_pane();
     assert_ne!(
-        ed.view.panes[pid_b].buffer_id, ed.view.panes[pid_a].buffer_id,
+        ed.view.panes[pid_b].buffer_id(),
+        ed.view.panes[pid_a].buffer_id(),
         "sanity: new pane views a different buffer"
     );
     assert_eq!(
@@ -273,7 +274,8 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b, "sanity: split created a second pane");
     assert_ne!(
-        ed.view.panes[pid_b].buffer_id, ed.view.panes[pid_a].buffer_id,
+        ed.view.panes[pid_b].buffer_id(),
+        ed.view.panes[pid_a].buffer_id(),
         "sanity: new pane views a different buffer"
     );
 

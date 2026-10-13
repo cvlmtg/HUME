@@ -1,7 +1,7 @@
 //! An open Insert or paste session on the focused pane must be torn down
 //! before that pane's buffer changes (or its content is replaced) out from
 //! under it: `focus::end_focus_sessions`, called from
-//! `buffer::lifecycle::switch_pane_to_buffer` (gated to the focused pane and
+//! `focus::switch_pane_to_buffer` (gated to the focused pane and
 //! a genuine buffer change), `Editor::reset_config_state`, and
 //! `buffer::file_open::reload_buffer_in_place`. Left open, the session's
 //! `EditorState::active_session` stays keyed to a `(pane, buffer)` pair no
@@ -350,7 +350,8 @@ fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
         "a remote pane's own buffer switch must not end focus's own Insert session"
     );
     assert_eq!(
-        ed.view.panes[pid_b].buffer_id, bid_c,
+        ed.view.panes[pid_b].buffer_id(),
+        bid_c,
         "B must have redirected"
     );
     assert_eq!(ed.focused_buffer_id(), bid_a, "focus must be untouched");

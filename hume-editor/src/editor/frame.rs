@@ -65,7 +65,7 @@ impl Editor {
     /// the pool doesn't back).
     pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> PaneRenderSettings {
         let pane = &self.view.panes[pid];
-        let doc = self.state.buffers.get(pane.buffer_id);
+        let doc = self.state.buffers.get(pane.buffer_id());
         let indent_guides = doc.overrides.indent_guides(&self.state.settings);
         let is_focused = pid == self.view.focused_pane();
         let mode = if is_focused {
@@ -89,7 +89,7 @@ impl Editor {
     /// out rather than returned alongside it.
     pub(super) fn pane_gutter_width(&self, pid: PaneId) -> u16 {
         let pane = &self.view.panes[pid];
-        let doc = self.state.buffers.get(pane.buffer_id);
+        let doc = self.state.buffers.get(pane.buffer_id());
         let last_line_idx = doc.text().last_ropey_line();
         super::cursor::gutter_width(pane.providers.gutter_columns(), last_line_idx)
     }
@@ -327,7 +327,7 @@ impl Editor {
             for (id, pid) in self.state.tabs.focused_panes(self.view.focused_pane()) {
                 id.hash(&mut hasher);
                 pid.hash(&mut hasher);
-                let bid = self.view.panes[pid].buffer_id;
+                let bid = self.view.panes[pid].buffer_id();
                 bid.hash(&mut hasher);
                 let buf = self.state.buffers.get(bid);
                 self.state.has_unsaved_changes(bid).hash(&mut hasher);
@@ -384,7 +384,7 @@ impl Editor {
             .tabs
             .focused_panes(self.view.focused_pane())
             .map(|(id, pid)| {
-                let bid = self.view.panes[pid].buffer_id;
+                let bid = self.view.panes[pid].buffer_id();
                 let buf = self.state.buffers.get(bid);
                 let mut label = buf.display_name();
                 if self.state.has_unsaved_changes(bid) {
@@ -491,7 +491,7 @@ impl Editor {
 
         // Line-number style depends on each pane's current buffer overrides.
         for &pid in &active {
-            let buf_id = self.view.panes[pid].buffer_id;
+            let buf_id = self.view.panes[pid].buffer_id();
             let ln_style = self
                 .state
                 .buffers
@@ -526,7 +526,7 @@ impl Editor {
 
         let scroll_margin = self.state.settings.scroll_margin;
         for &pid in &active {
-            let buf_id = self.view.panes[pid].buffer_id;
+            let buf_id = self.view.panes[pid].buffer_id();
             let layout_key = self.state.layout_key(&self.view.panes[pid]);
             let format_key = layout_key.format_key();
             // Per (pane, buffer) state: a pane that just switched buffers
@@ -600,7 +600,7 @@ impl Editor {
         let view = &mut self.view;
         for &pid in active {
             let pane = &mut view.panes[pid];
-            let bid = pane.buffer_id;
+            let bid = pane.buffer_id();
             write_pane_mirror(
                 pane,
                 state.buffers.get(bid).text(),

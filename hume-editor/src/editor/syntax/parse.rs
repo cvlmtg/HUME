@@ -169,7 +169,7 @@ impl Editor {
             .view
             .panes
             .every_pane_across_all_tabs()
-            .map(|(_, p)| p.buffer_id)
+            .map(|(_, p)| p.buffer_id())
             .filter(|bid| seen.insert(*bid))
             .collect();
 

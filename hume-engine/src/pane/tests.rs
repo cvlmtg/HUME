@@ -87,49 +87,43 @@ fn pane_new_has_no_wrap_override_and_nothing_to_restore() {
     assert_eq!(wrap.saved, None);
 }
 
-// ── remember_scroll / recall_scroll ─────────────────────────────────────
+// ── show_buffer ─────────────────────────────────────────────────────────
 
-/// A real (non-null) `BufferId`. `BufferId::default()` is slotmap's null
-/// key, which `SecondaryMap::insert` silently no-ops on, so `saved_scrolls`
-/// (a `SecondaryMap`) needs a minted key for `remember_scroll` to actually
+/// Two distinct real (non-null) `BufferId`s. `BufferId::default()` is
+/// slotmap's null key, which `SecondaryMap::insert` ignores, so
+/// `saved_scrolls` (a `SecondaryMap`) needs minted keys for `show_buffer` to
 /// persist anything.
-fn fresh_buffer_id() -> BufferId {
+fn two_buffer_ids() -> (BufferId, BufferId) {
     let mut sm: slotmap::SlotMap<BufferId, ()> = slotmap::SlotMap::with_key();
-    sm.insert(())
+    (sm.insert(()), sm.insert(()))
 }
 
 #[test]
-fn recall_scroll_clamps_top_line_to_the_buffers_current_last_content_line() {
-    let bid = fresh_buffer_id();
+fn show_buffer_clamps_the_restored_top_line_to_the_buffers_current_last_content_line() {
+    let (bid, other) = two_buffer_ids();
     let mut pane = Pane::new(bid);
 
-    // Save a scroll position deep into a buffer that was, at the time, tall.
+    // Scrolled deep into a buffer that was, at the time, tall.
     pane.viewport
         .seed_top_for_test(DisplayLinePos::new(ContentLine::new(100), 0));
-    pane.remember_scroll();
+    pane.show_buffer(other, ContentLine::new(0));
 
-    // The pane moves elsewhere, then recalls the same buffer, which has
-    // since shrunk to a last content line of 3 (e.g. edited by another pane
-    // in the meantime).
-    pane.viewport
-        .seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 0));
-    pane.recall_scroll(bid, ContentLine::new(3));
+    // Back to the same buffer, which has since shrunk to a last content
+    // line of 3 (e.g. edited by another pane in the meantime).
+    pane.show_buffer(bid, ContentLine::new(3));
 
     assert_eq!(pane.viewport.top().line.index(), 3);
 }
 
 #[test]
-fn recall_scroll_leaves_an_in_range_top_line_untouched() {
-    let bid = fresh_buffer_id();
+fn show_buffer_restores_an_in_range_top_line_untouched() {
+    let (bid, other) = two_buffer_ids();
     let mut pane = Pane::new(bid);
 
     pane.viewport
         .seed_top_for_test(DisplayLinePos::new(ContentLine::new(4), 0));
-    pane.remember_scroll();
-
-    pane.viewport
-        .seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 0));
-    pane.recall_scroll(bid, ContentLine::new(100));
+    pane.show_buffer(other, ContentLine::new(0));
+    pane.show_buffer(bid, ContentLine::new(100));
 
     assert_eq!(pane.viewport.top().line.index(), 4);
 }

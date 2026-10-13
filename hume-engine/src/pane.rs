@@ -63,7 +63,7 @@ impl Viewport {
     ///
     /// A caller holding a `DisplayLineMap` must call `top_at` instead of this:
     /// nothing here validates the address against the map's current block
-    /// shape, so a write site that ran since the last resolve (`recall_scroll`,
+    /// shape, so a write site that ran since the last resolve (`show_buffer`,
     /// an LSP jump, `Pane::inherit_view_state`) can leave it stale. This
     /// accessor exists for readers that hold no map, plus test assertions.
     pub fn top(&self) -> DisplayLinePos {
@@ -117,9 +117,9 @@ impl Viewport {
     /// backs it).
     ///
     /// Production code never calls this. Every real write goes through a
-    /// scroll verb or `Pane::recall_scroll`. An unvalidated address left
+    /// scroll verb or `Pane::show_buffer`. An unvalidated address left
     /// here self-heals on the next `top_at` read, the same posture
-    /// `recall_scroll`'s own unvalidated slot write already has.
+    /// `show_buffer`'s own unvalidated slot write already has.
     pub fn seed_top_for_test(&mut self, top: DisplayLinePos) {
         self.top = top;
     }
@@ -167,7 +167,7 @@ pub struct ViewGeometry {
 /// Saved scroll position for one (pane, buffer) pair.
 ///
 /// Stored in `Pane::saved_scrolls` so each pane remembers where it was in a
-/// buffer when it switches away. Restored by `recall_scroll` on switch-back.
+/// buffer when it switches away. Restored by `Pane::show_buffer` on switch-back.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ScrollPosition {
     pub top: DisplayLinePos,
@@ -360,12 +360,13 @@ impl Default for WhitespaceConfig {
 
 /// A single editor pane: an independent view into a buffer.
 pub struct Pane {
-    /// Which buffer this pane views.
-    pub buffer_id: BufferId,
+    /// Which buffer this pane views. Changed only through
+    /// [`EngineView::show_buffer`](crate::pipeline::EngineView::show_buffer).
+    pub(crate) buffer_id: BufferId,
     /// Scroll and size state.
     pub viewport: Viewport,
     /// Per-buffer scroll memory: where this pane was when it last viewed each buffer.
-    /// Populated by `remember_scroll` on buffer switch; restored by `recall_scroll`.
+    /// Saved and restored by [`Pane::show_buffer`].
     pub saved_scrolls: SecondaryMap<BufferId, ScrollPosition>,
     /// All active selections as the renderer paints them. `None` until the
     /// host writes the first frame's mirror.
@@ -376,7 +377,7 @@ pub struct Pane {
     /// property, not a document one: two panes on the same buffer may wrap
     /// differently, and this pane may pin a different style per buffer. See
     /// [`WrapOverride`]. Read/written through [`Pane::wrap`]/[`Pane::set_wrap`]
-    /// rather than directly, mirroring `saved_scrolls`/`remember_scroll`.
+    /// rather than directly, as `saved_scrolls` is through `show_buffer`.
     pub wraps: SecondaryMap<BufferId, WrapOverride>,
     /// What every walk of this pane's display lines has learned about the
     /// lines it visited; see [`crate::display_lines::line_store`].
@@ -399,8 +400,6 @@ impl Pane {
     /// Create a new pane viewing `buffer_id`, with no wrap-mode override for
     /// any buffer. It inherits each buffer's/the global's effective mode
     /// until `:wrap` or `:set pane wrap-mode=…` pins one for that buffer.
-    ///
-    /// Callers that need custom providers should use `Pane { providers, ..Pane::new(bid) }`.
     pub fn new(buffer_id: BufferId) -> Self {
         Self {
             buffer_id,
@@ -467,8 +466,23 @@ impl Pane {
         ))
     }
 
-    /// Snapshot the current viewport scroll into `saved_scrolls` for `buffer_id`.
-    pub fn remember_scroll(&mut self) {
+    /// The buffer this pane shows.
+    pub fn buffer_id(&self) -> BufferId {
+        self.buffer_id
+    }
+
+    /// Show `target`, saving the scroll of the buffer shown until now and
+    /// restoring `target`'s (the top on a first visit).
+    ///
+    /// `last_content_line` is `target`'s *current* last content line index.
+    /// The buffer may have shrunk since its scroll was saved (edited
+    /// elsewhere while this pane showed another buffer), so `top`'s line is
+    /// clamped to it. `top`'s slot is restored verbatim, unvalidated against
+    /// the block it addresses: like every other write outside
+    /// `display_lines::scroll`'s verbs, it relies on the next
+    /// `Viewport::top_at` read, whichever pass gets there first, to
+    /// self-heal a stale address.
+    pub(crate) fn show_buffer(&mut self, target: BufferId, last_content_line: ContentLine) {
         self.saved_scrolls.insert(
             self.buffer_id,
             ScrollPosition {
@@ -476,20 +490,8 @@ impl Pane {
                 horizontal_offset: self.viewport.horizontal_offset,
             },
         );
-    }
-
-    /// Restore the saved scroll for `id`, or reset to top on first visit.
-    ///
-    /// `last_content_line` is `id`'s *current* last content line index. The
-    /// buffer may have shrunk since this scroll was saved (edited elsewhere
-    /// while this pane viewed a different buffer), so `top`'s line is
-    /// clamped to it. `top`'s slot is
-    /// restored verbatim, unvalidated against the block it addresses: like
-    /// every other write outside `display_lines::scroll`'s verbs, it relies
-    /// on the next `Viewport::top_at` read, whichever pass gets there first,
-    /// to self-heal a stale address.
-    pub fn recall_scroll(&mut self, id: BufferId, last_content_line: ContentLine) {
-        let sp = self.saved_scrolls.get(id).copied().unwrap_or_default();
+        self.buffer_id = target;
+        let sp = self.saved_scrolls.get(target).copied().unwrap_or_default();
         self.viewport.top = DisplayLinePos::new(sp.top.line.min(last_content_line), sp.top.slot);
         self.viewport.horizontal_offset = sp.horizontal_offset;
     }

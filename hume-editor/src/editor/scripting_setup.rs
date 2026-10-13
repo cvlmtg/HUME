@@ -226,7 +226,7 @@ impl Editor {
         let Some(pane) = self.view.panes.get(pane_id) else {
             return;
         };
-        let bid = pane.buffer_id;
+        let bid = pane.buffer_id();
         let content_lines = self.state.buffers.get(bid).text().content_line_count();
         let range = super::lsp::introspect::pane_visible_range(pane, content_lines);
         self.state.queue_event(EditorEvent::OnViewportChange {

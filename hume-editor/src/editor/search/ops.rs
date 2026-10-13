@@ -154,7 +154,9 @@ impl Editor {
     pub(in crate::editor) fn current_search_cursor(&self) -> &SearchCursor {
         &self
             .state
-            .shown_buffer_state(self.view.focused_pane(), self.focused_buffer_id())
+            .panes
+            .entries
+            .shown(self.view.focused_pane(), self.focused_buffer_id())
             .search_cursor
     }
 

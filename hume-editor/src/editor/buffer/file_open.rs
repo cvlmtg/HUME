@@ -277,7 +277,7 @@ impl Editor {
         self.detect_and_set_language(id);
 
         // Drop stale saved scrolls for the reloaded buffer on every pane:
-        // `recall_scroll` clamps the top's line to the buffer's current last
+        // `Pane::show_buffer` clamps the top's line to the buffer's current last
         // line, but a saved top slot/`horizontal_offset` for a
         // scroll position that no longer exists is still worth discarding
         // outright rather than recalling a clamped-but-arbitrary spot.
@@ -292,7 +292,12 @@ impl Editor {
         fp: FocusedPane,
         target: BufferId,
     ) {
-        lifecycle::switch_pane_to_buffer(&mut self.state, &mut self.view, fp.pid(), target);
+        crate::editor::focus::switch_pane_to_buffer(
+            &mut self.state,
+            &mut self.view,
+            fp.pid(),
+            target,
+        );
     }
 
     /// Redirect `fp` to `target`, recording the outgoing position in

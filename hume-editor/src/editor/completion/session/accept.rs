@@ -188,7 +188,7 @@ impl BufferSession {
         // refuse rather than silently edit a buffer this pane no longer
         // shows, the same discipline every other guard in this function
         // already follows.
-        if view.panes.get(self.pane_id).map(|p| p.buffer_id) != Some(bid) {
+        if view.panes.get(self.pane_id).map(|p| p.buffer_id()) != Some(bid) {
             return Err(
                 "completion-accept!: the session's pane no longer shows its buffer".to_string(),
             );

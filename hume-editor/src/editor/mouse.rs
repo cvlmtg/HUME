@@ -244,7 +244,7 @@ impl Editor {
         x: u16,
         y: u16,
     ) -> Option<hume_rope::cluster::ClusterStart> {
-        let buf_id = self.view.panes[pid].buffer_id;
+        let buf_id = self.view.panes[pid].buffer_id();
         let gutter_w = {
             let pane = &self.view.panes[pid];
             cursor::gutter_width(

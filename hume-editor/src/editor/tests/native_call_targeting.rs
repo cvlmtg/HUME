@@ -230,7 +230,7 @@ fn tab_new_opens_a_tab_on_the_focused_buffer() {
     assert!(ran);
 
     assert_eq!(ed.state.tabs.len(), tabs_before + 1);
-    assert_eq!(ed.view.panes[ed.view.focused_pane()].buffer_id, bid);
+    assert_eq!(ed.view.panes[ed.view.focused_pane()].buffer_id(), bid);
 }
 
 #[test]

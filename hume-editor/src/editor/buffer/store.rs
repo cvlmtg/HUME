@@ -24,7 +24,7 @@ pub(crate) struct BufferStore {
     /// Most-recently-*focused* list, tail = most recently focused. Seeded at
     /// open (see `open`'s own doc for why) and otherwise promoted by the two
     /// focus chokepoints, every focus move in [`crate::editor::focus`] and
-    /// [`crate::editor::buffer::lifecycle::switch_pane_to_buffer`] (focused
+    /// [`crate::editor::focus::switch_pane_to_buffer`] (focused
     /// switch only), plus `cmd_goto_alternate_buffer`'s own explicit touches
     /// for a remote-pane dispatch; see that function's doc for why it can't
     /// rely on the two chokepoints alone.

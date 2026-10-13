@@ -315,7 +315,7 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
 /// ends in full (Insert layer, edit group, and the completion session
 /// riding on top of it) the moment `switch_to_buffer_without_jump` swaps
 /// the focused pane's buffer out from under it
-/// (`buffer::lifecycle::switch_pane_to_buffer`'s teardown). Nothing survives
+/// (`focus::switch_pane_to_buffer`'s teardown). Nothing survives
 /// for a later `completion-accept!` to act on stale state; it errors on the
 /// earlier "no session at all" check rather than the pane/buffer liveness
 /// check below it.

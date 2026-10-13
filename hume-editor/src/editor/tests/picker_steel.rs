@@ -531,7 +531,7 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
 
     let pid = ed.view.focused_pane();
     let pane = &ed.view.panes[pid];
-    assert_eq!(pane.buffer_id, bid);
+    assert_eq!(pane.buffer_id(), bid);
     assert_eq!(
         pane.selections
             .as_ref()

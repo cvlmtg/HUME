@@ -23,7 +23,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         self.view
             .panes
             .every_pane_across_all_tabs()
-            .map(|(pid, p)| PaneHandle::with_pane(p.buffer_id, pid))
+            .map(|(pid, p)| PaneHandle::with_pane(p.buffer_id(), pid))
             .collect()
     }
 

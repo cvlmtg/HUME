@@ -14,7 +14,7 @@ fn focused_pane(ed: &Editor) -> &hume_engine::pane::Pane {
 /// the focused one.
 fn effective_wrap_mode(ed: &Editor, pid: hume_engine::pipeline::PaneId) -> WrapMode {
     let pane = &ed.view.panes[pid];
-    let doc = ed.state.buffers.get(pane.buffer_id);
+    let doc = ed.state.buffers.get(pane.buffer_id());
     crate::editor::commands::effective_wrap_mode(doc, &ed.state.settings, pane)
 }
 

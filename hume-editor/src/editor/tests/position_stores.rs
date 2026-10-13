@@ -20,7 +20,8 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
     ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
     ed.execute_typed("bn", None).unwrap();
     assert_ne!(
-        ed.view.panes[away].buffer_id, bid,
+        ed.view.panes[away].buffer_id(),
+        bid,
         "setup: the pane shows another buffer"
     );
 

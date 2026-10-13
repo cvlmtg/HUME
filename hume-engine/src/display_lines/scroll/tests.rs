@@ -449,7 +449,7 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
     }
 }
 
-/// [`Viewport::top_at`] must shrink an out-of-range offset (as `recall_scroll`
+/// [`Viewport::top_at`] must shrink an out-of-range offset (as `Pane::show_buffer`
 /// or an LSP jump could leave behind) down to the top line's actual current
 /// block size, in either wrap mode, and write the resolved value back to
 /// `top()`, not just return it.

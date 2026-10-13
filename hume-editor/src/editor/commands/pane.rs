@@ -166,7 +166,7 @@ pub(in crate::editor) fn split_pane_onto(
         return Err(CommandError::transient(SPLIT_TOO_SMALL_MSG));
     }
     let old_focused = fp.pid();
-    let old_buffer_id = view.panes[old_focused].buffer_id;
+    let old_buffer_id = view.panes[old_focused].buffer_id();
     let new_pid = open_pane_in_layout(state, view, bid, direction);
 
     // A bare split (same buffer as the source pane) inherits its cursor and

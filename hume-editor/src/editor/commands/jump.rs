@@ -4,9 +4,9 @@ use hume_ops::MotionMode;
 
 use super::super::EditorState;
 use super::{CommandPane, FocusedPane, set_pane_selections};
-use crate::editor::buffer::lifecycle::switch_pane_to_buffer;
 use crate::editor::error::CommandError;
 use crate::editor::focus::focus_pane;
+use crate::editor::focus::switch_pane_to_buffer;
 use crate::editor::jump_list::current_jump_entry;
 
 // ── Jump list navigation ─────────────────────────────────────────────────────

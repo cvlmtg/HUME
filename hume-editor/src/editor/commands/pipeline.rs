@@ -61,7 +61,7 @@ impl CommandPane {
         let Some(pane) = view.panes.get(pid) else {
             return Err(TargetError::PaneClosed);
         };
-        if pane.buffer_id != bid {
+        if pane.buffer_id() != bid {
             return Err(TargetError::PaneShowsOther);
         }
         Ok(Self(pid))
@@ -78,20 +78,16 @@ impl CommandPane {
     }
 
     pub(in crate::editor) fn bid(self, view: &EngineView) -> BufferId {
-        view.panes[self.0].buffer_id
+        view.panes[self.0].buffer_id()
     }
 
-    /// `t`'s own seeded state: the shared tail every
-    /// `pane_state[t.pid()].buffers[t.bid(view)]` hand-index reduces to. Panics with
-    /// slotmap's own message if unseeded, which never happens for a
-    /// resolved `CommandPane`: every pane creation or buffer switch seeds
-    /// its `PaneBufferState` first.
+    /// `t`'s state for the buffer it shows.
     pub(in crate::editor) fn state<'a>(
         self,
         pane_state: &'a PaneEntries,
         view: &EngineView,
     ) -> &'a PaneBufferState {
-        &pane_state[self.0].buffers[self.bid(view)]
+        pane_state.shown(self.0, self.bid(view))
     }
 
     /// [`Self::state`]'s mutable counterpart.
@@ -100,8 +96,7 @@ impl CommandPane {
         pane_state: &'a mut PaneEntries,
         view: &EngineView,
     ) -> &'a mut PaneBufferState {
-        let bid = self.bid(view);
-        &mut pane_state[self.0].buffers[bid]
+        pane_state.shown_mut(self.0, self.bid(view))
     }
 }
 

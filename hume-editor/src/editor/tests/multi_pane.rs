@@ -682,7 +682,8 @@ fn split_stacks_pane_on_same_buffer() {
     let pid_b = ed.view.focused_pane();
     assert_ne!(pid_b, pid_a, "focus moves to the new pane");
     assert_eq!(
-        ed.view.panes[pid_b].buffer_id, bid,
+        ed.view.panes[pid_b].buffer_id(),
+        bid,
         "new pane views the same buffer"
     );
 
@@ -1712,14 +1713,15 @@ fn wrap_toggle_affects_only_focused_pane() {
     let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b);
     assert_eq!(
-        ed.view.panes[pid_a].buffer_id, ed.view.panes[pid_b].buffer_id,
+        ed.view.panes[pid_a].buffer_id(),
+        ed.view.panes[pid_b].buffer_id(),
         "sanity: both panes view the same buffer"
     );
 
     // Focus is on B (the new pane) after :split; toggle wrap there.
     ed.execute_typed("wrap", None).unwrap();
 
-    let doc = ed.state.buffers.get(ed.view.panes[pid_a].buffer_id);
+    let doc = ed.state.buffers.get(ed.view.panes[pid_a].buffer_id());
     assert!(
         crate::editor::commands::effective_wrap_mode(
             doc,
@@ -1880,7 +1882,7 @@ fn same_buffer_split_inherits_saved_scrolls() {
 
     // A second buffer the source pane visited (and scrolled) before the
     // split, then switched away from. This is what populates
-    // `saved_scrolls` in real usage (see `remember_scroll`).
+    // `saved_scrolls` in real usage (see `Pane::show_buffer`).
     let bid2 = open_buffer(&mut ed.view, &mut ed.state.buffers, Buffer::scratch(), 0);
     ed.view.panes[pid_a].saved_scrolls.insert(
         bid2,

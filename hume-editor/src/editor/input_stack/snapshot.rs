@@ -56,7 +56,7 @@ impl PaneSnapshot {
     /// selections) instead of the mid-session preview a construction-time
     /// capture would have caught.
     pub(in crate::editor) fn capture(&mut self, state: &EditorState, view: &EngineView) {
-        let bid = view.panes[self.pane].buffer_id;
+        let bid = view.panes[self.pane].buffer_id();
         let sels = state.panes.entries[self.pane].buffers[bid]
             .selections()
             .clone();

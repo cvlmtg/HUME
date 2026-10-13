@@ -139,7 +139,7 @@ fn a_virtual_line_block_above_the_cursor_replaces_the_caret_even_when_the_cursor
 /// the buffer, so switching to a different one always differs from
 /// `PaneBufferState::last_layout_key`: this pane has never viewed the
 /// second buffer before, so that field reads `None` for it, which differs
-/// from anything. `Pane::recall_scroll` resets the viewport's own top to
+/// from anything. `Pane::show_buffer` resets the viewport's own top to
 /// the document's first line on a pane's first visit to a buffer, so the
 /// matching head (deep in a 60-line buffer here) is left far outside it
 /// unless something re-scrolls to find it.

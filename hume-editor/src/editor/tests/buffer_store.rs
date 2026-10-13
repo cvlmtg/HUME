@@ -314,11 +314,13 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
     );
 
     assert_eq!(
-        ed.view.panes[pid_1].buffer_id, bid_a,
+        ed.view.panes[pid_1].buffer_id(),
+        bid_a,
         "sanity: pid_1 views A"
     );
     assert_eq!(
-        ed.view.panes[pid_2].buffer_id, bid_a,
+        ed.view.panes[pid_2].buffer_id(),
+        bid_a,
         "sanity: pid_2 views A"
     );
 
@@ -326,11 +328,13 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
     ed.close_buffer(bid_a);
 
     assert_eq!(
-        ed.view.panes[pid_1].buffer_id, bid_b,
+        ed.view.panes[pid_1].buffer_id(),
+        bid_b,
         "focused pane redirected to B"
     );
     assert_eq!(
-        ed.view.panes[pid_2].buffer_id, bid_b,
+        ed.view.panes[pid_2].buffer_id(),
+        bid_b,
         "non-focused pane redirected to B"
     );
     assert!(

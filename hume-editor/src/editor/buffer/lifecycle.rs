@@ -20,6 +20,7 @@ use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{Buffer, ViewLabel};
 use crate::editor::commands::CommandPane;
 use crate::editor::event::EditorEvent;
+use crate::editor::focus::switch_pane_to_buffer;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::pane_state;
 use crate::editor::position_stores::PositionStores;
@@ -98,54 +99,6 @@ pub(in crate::editor) fn open_or_dedup_and_notify(
     }
     let doc = Buffer::from_file_or_new(resolved, &state.cwd)?;
     Ok((open_buffer_and_notify(ev, state, doc), true))
-}
-
-/// Redirect pane `pid` to `target` without recording a jump.
-///
-/// When `pid` is focused and `target` differs from its current buffer:
-/// - ends any open Insert/paste session first
-///   ([`crate::editor::focus::end_focus_sessions`]), before the `buffer_id`
-///   write it reads through. A stale session would make the next keystroke
-///   panic in `doc_ops::apply_doc_edit_grouped`.
-/// - promotes `target` in `BufferStore.mru`. With
-///   [`crate::editor::focus::focus_pane`], this keeps `mru`'s tail equal to
-///   the buffer on screen.
-///
-/// Saves the pane's scroll for the old buffer, restores `target`'s saved scroll
-/// (zero on first visit), and seeds `pane_state[pid][target]` if this pane has
-/// never viewed `target` before. Only the pane's own `buffer_id` is
-/// written; no denormalised copy of it is updated.
-pub(in crate::editor) fn switch_pane_to_buffer(
-    state: &mut EditorState,
-    ev: &mut EngineView,
-    pid: PaneId,
-    target: BufferId,
-) {
-    let is_focused_switch = pid == ev.focused_pane() && ev.panes[pid].buffer_id != target;
-    if is_focused_switch {
-        crate::editor::focus::end_focus_sessions(state, ev);
-    }
-    ev.panes[pid].remember_scroll();
-    ev.panes[pid].buffer_id = target;
-    if is_focused_switch {
-        state.buffers.touch_mru(target);
-    }
-    ev.panes[pid].recall_scroll(target, state.buffers.get(target).text().last_content_line());
-    // Seeds `pane_state[pid][target]` on this pane's first visit to
-    // `target`. Required regardless of reveal, since `frame.rs`'s scroll
-    // step indexes it directly. A different buffer's cursor/viewport pairing
-    // always needs re-settling, whether or not the recalled selection's head
-    // happens to equal the outgoing one: `EditorState::layout_key`'s
-    // `buffer_tag` names the buffer, so a switch to a different one always
-    // differs from `PaneBufferState::last_layout_key`: the very first read
-    // for a `(pane, buffer)` pair is `None`, which differs from anything.
-    pane_state::ensure(
-        &mut state.panes.entries,
-        &state.buffers,
-        &ev.panes,
-        pid,
-        target,
-    );
 }
 
 /// Redirect the focused pane to `target`, pushing the outgoing position onto
@@ -262,7 +215,7 @@ pub(in crate::editor) fn close_buffer(
     let panes_to_redirect: Vec<PaneId> = ev
         .panes
         .every_pane_across_all_tabs()
-        .filter(|(_, p)| p.buffer_id == id)
+        .filter(|(_, p)| p.buffer_id() == id)
         .map(|(pid, _)| pid)
         .collect();
     for pid in panes_to_redirect {

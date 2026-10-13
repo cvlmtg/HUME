@@ -1,4 +1,5 @@
 use hume_grid::{Grid, Position, Rect, Rgb};
+use hume_rope::line::ContentLine;
 use rustc_hash::FxHashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -173,11 +174,11 @@ impl Default for RenderContext {
 // Editor view: top-level owner
 // ---------------------------------------------------------------------------
 
-/// Permission to change which pane is focused. [`EngineView::new`] mints
-/// one per view, and every `EngineView` method that moves focus takes it and
-/// panics on a key minted by another view. The editor keeps its view's key
-/// beside the steps a focus change must run, so a focus change cannot skip
-/// them.
+/// Permission to change which pane is focused, or which buffer a pane
+/// shows. [`EngineView::new`] mints one per view, and every `EngineView`
+/// method that makes either change takes it and panics on a key minted by
+/// another view. The editor keeps its view's key beside the steps such a
+/// change must run, so the change cannot skip them.
 #[derive(Debug)]
 pub struct FocusKey(u64);
 
@@ -401,6 +402,19 @@ impl EngineView {
         self.resync_viewport_dims();
         self.begin_frame();
         outgoing
+    }
+
+    /// Make pooled pane `pid`, active or in a background tab, show `target`
+    /// (see [`Pane::show_buffer`]).
+    pub fn show_buffer(
+        &mut self,
+        key: &FocusKey,
+        pid: PaneId,
+        target: BufferId,
+        last_content_line: ContentLine,
+    ) {
+        self.check_key(key);
+        self.panes[pid].show_buffer(target, last_content_line);
     }
 
     /// Focus `pid`, which must be a leaf of the active tab's tree.

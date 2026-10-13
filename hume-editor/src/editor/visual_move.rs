@@ -145,7 +145,7 @@ pub(super) fn apply_visual_vertical(
     // when nothing wraps (see `StickyDisplayCol`'s own doc).
     let is_buffer_line = matches!(unit, VerticalMove::BufferLine);
 
-    let buf_id = view.panes[pid].buffer_id;
+    let buf_id = view.panes[pid].buffer_id();
     // Whether this call's own latches are `BufferLine`-family: always true
     // for `VerticalMove::BufferLine`, and also true with wrapping off
     // (display-line-relative and buffer-line-relative coincide there, so

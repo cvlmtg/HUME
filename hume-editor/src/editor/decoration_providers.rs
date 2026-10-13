@@ -74,7 +74,7 @@ impl Editor {
             .iter()
             .map(|&pid| {
                 let pane = &self.view.panes[pid];
-                let bid = pane.buffer_id;
+                let bid = pane.buffer_id();
                 let vp = &pane.viewport;
                 let text = self.state.buffers.get(bid).text();
                 let top_line =

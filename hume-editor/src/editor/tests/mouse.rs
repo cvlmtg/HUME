@@ -321,7 +321,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
     ed.execute_typed("vsplit", None).unwrap();
     let pid_b = ed.view.focused_pane(); // vsplit focuses the new pane
     assert_ne!(pid_a, pid_b);
-    let bid = ed.view.panes[pid_a].buffer_id; // vsplit shares the source buffer
+    let bid = ed.view.panes[pid_a].buffer_id(); // vsplit shares the source buffer
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(100, 25);
@@ -411,7 +411,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
     ed.execute_typed("vsplit", None).unwrap();
     let pid_b = ed.view.focused_pane(); // vsplit focuses the new (right) pane
     assert_ne!(pid_a, pid_b);
-    let bid = ed.view.panes[pid_a].buffer_id; // vsplit shares the source buffer
+    let bid = ed.view.panes[pid_a].buffer_id(); // vsplit shares the source buffer
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(100, 25);
@@ -497,7 +497,7 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
     let mut ed = unwrapped_editor(&numbered_lines(30), 0);
     ed.execute_typed("vsplit", None).unwrap();
     let pid_b = ed.view.focused_pane(); // vsplit focuses the new (right) pane
-    let bid = ed.view.panes[pid_b].buffer_id;
+    let bid = ed.view.panes[pid_b].buffer_id();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(100, 25);
@@ -550,7 +550,7 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
     let mut ed = editor_from("-[A]>\nBBBB\nCCCC\nDDDD\nEEEE\n");
     ed.execute_typed("split", None).unwrap();
     let pid_b = ed.view.focused_pane(); // split focuses the new (bottom) pane
-    let bid = ed.view.panes[pid_b].buffer_id;
+    let bid = ed.view.panes[pid_b].buffer_id();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(80, 25);

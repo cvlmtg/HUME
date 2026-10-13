@@ -541,7 +541,7 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
 /// `content_pos` must resolve a stale `top_slot` the same way
 /// `pane_render.rs`'s row walk resolves its own start address
 /// (`Viewport::top_at`) before drawing. A write site that never validates
-/// the offset against the block it addresses (`recall_scroll`, an LSP jump)
+/// the offset against the block it addresses (`Pane::show_buffer`, an LSP jump)
 /// can leave it pointing past a line's current block, e.g. after a `Before`
 /// block shrinks.
 ///

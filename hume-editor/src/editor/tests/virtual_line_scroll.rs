@@ -68,7 +68,7 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     let pid = ed.view.focused_pane();
     let mut vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_view().primary().head();
-    let bid = ed.view.panes[pid].buffer_id;
+    let bid = ed.view.panes[pid].buffer_id();
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
     let (mut dlm, _) = crate::editor::commands::pane_display_lines(
@@ -519,7 +519,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
 
     let mut vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_view().primary().head();
-    let bid = ed.view.panes[pid].buffer_id;
+    let bid = ed.view.panes[pid].buffer_id();
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
     let (mut dlm, _) = crate::editor::commands::pane_display_lines(

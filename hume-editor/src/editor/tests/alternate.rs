@@ -49,12 +49,7 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
     // sibling pane showing baz. Neither call changes `mru`: A's switch is a
     // focused-pane touch of `foo`, already the tail (no-op), and B's pane is
     // built via `open_pane`, which never touches `mru` at all.
-    crate::editor::buffer::lifecycle::switch_pane_to_buffer(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
-        foo_bid,
-    );
+    crate::editor::focus::switch_pane_to_buffer(&mut ed.state, &mut ed.view, pid_a, foo_bid);
     let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, baz_bid, Direction::Horizontal);
     assert_eq!(
         ed.focused_buffer_id(),
@@ -76,7 +71,8 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
         .expect("goto-alternate-buffer on B must not error");
     assert!(ran);
     assert_eq!(
-        ed.view.panes[pid_b].buffer_id, bar_bid,
+        ed.view.panes[pid_b].buffer_id(),
+        bar_bid,
         "B must switch to bar, the buffer before foo in the global history"
     );
     assert_eq!(
@@ -99,7 +95,8 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
         .expect("goto-alternate-buffer on B must not error");
     assert!(ran);
     assert_eq!(
-        ed.view.panes[pid_b].buffer_id, baz_bid,
+        ed.view.panes[pid_b].buffer_id(),
+        baz_bid,
         "a second remote call on B must toggle back to baz"
     );
     assert_eq!(

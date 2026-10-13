@@ -330,7 +330,7 @@ impl Editor {
         // `last_visible_range`, so that pane's first visible frame reads as a
         // change.
         for pane_id in self.view.active_pane_ids() {
-            if snapshot.survives(self.view.panes[pane_id].buffer_id, &self.state.buffers) {
+            if snapshot.survives(self.view.panes[pane_id].buffer_id(), &self.state.buffers) {
                 self.queue_viewport_change(pane_id);
             }
         }

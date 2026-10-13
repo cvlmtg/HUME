@@ -607,16 +607,16 @@ impl EditorState {
     /// rather than several independently-maintained call sites is what
     /// makes that true.
     pub(in crate::editor) fn layout_key(&self, pane: &hume_engine::pane::Pane) -> LayoutKey {
-        let doc = self.buffers.get(pane.buffer_id);
+        let doc = self.buffers.get(pane.buffer_id());
         let format = hume_engine::display_lines::line_store::FormatKey {
             buffer_tag: [
                 // Not `{:?}`-formatted: this is a value to compare, not one
                 // to show, and `as_ffi` folds the key's index and version
                 // (the two things that distinguish a reused slot from the
                 // buffer that held it before) into exactly that.
-                slotmap::Key::data(&pane.buffer_id).as_ffi(),
+                slotmap::Key::data(&pane.buffer_id()).as_ffi(),
                 doc.text().generation(),
-                self.config.decorations.generation(pane.buffer_id),
+                self.config.decorations.generation(pane.buffer_id()),
             ],
             wrap_mode: commands::effective_wrap_mode(doc, &self.settings, pane),
             tab_width: doc.overrides.tab_width(&self.settings),
@@ -900,7 +900,7 @@ impl Editor {
 
     /// The `BufferId` the focused pane is currently viewing.
     pub(crate) fn focused_buffer_id(&self) -> BufferId {
-        self.view.panes[self.view.focused_pane()].buffer_id
+        self.view.panes[self.view.focused_pane()].buffer_id()
     }
 
     /// Shared reference to the focused buffer.

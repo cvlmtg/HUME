@@ -380,6 +380,8 @@ pub(in crate::editor) struct PaneEntry {
     pub(in crate::editor) render: hume_decorations::PaneDecorationHandles,
 }
 
+const SHOWN_UNSEEDED: &str = "a pane has state for the buffer it shows";
+
 /// Every pane's [`PaneEntry`]. An entry is added only by [`PaneView::open`]
 /// and removed only by [`PaneView::remove`], so a pane has all of its state
 /// or none of it.
@@ -394,6 +396,24 @@ impl PaneEntries {
     #[cfg(test)]
     pub(in crate::editor) fn values(&self) -> impl Iterator<Item = &PaneEntry> {
         self.0.values()
+    }
+
+    /// `bid`'s state in `pid`, where `bid` is the buffer `pid` is showing,
+    /// so absence is a violated invariant rather than a case to handle: a
+    /// pane's entry is opened with state for the buffer it shows, and
+    /// `focus::switch_pane_to_buffer`, the only way to change that buffer,
+    /// seeds the new one.
+    pub(in crate::editor) fn shown(&self, pid: PaneId, bid: BufferId) -> &PaneBufferState {
+        self.0[pid].buffers.get(bid).expect(SHOWN_UNSEEDED)
+    }
+
+    /// [`Self::shown`]'s mutable counterpart.
+    pub(in crate::editor) fn shown_mut(
+        &mut self,
+        pid: PaneId,
+        bid: BufferId,
+    ) -> &mut PaneBufferState {
+        self.0[pid].buffers.get_mut(bid).expect(SHOWN_UNSEEDED)
     }
 
     pub(in crate::editor) fn iter_mut(&mut self) -> impl Iterator<Item = (PaneId, &mut PaneEntry)> {
@@ -505,10 +525,8 @@ pub(in crate::editor) fn build_pane(
         ),
     ));
 
-    let pane = hume_engine::pane::Pane {
-        providers,
-        ..hume_engine::pane::Pane::new(buffer_id)
-    };
+    let mut pane = hume_engine::pane::Pane::new(buffer_id);
+    pane.providers = providers;
     (pane, decoration_handles)
 }
 
@@ -528,21 +546,10 @@ impl super::EditorState {
         self.panes.buffer_state(view.focused_pane(), bid)
     }
 
-    /// `bid`'s state in `pid`, where `bid` is the buffer `pid` is currently
-    /// *showing*, so absence is a violated invariant rather than a case to
-    /// handle: opening or switching to a buffer seeds its state in that
-    /// pane, so an unseeded shown buffer means a pane and its state map
-    /// disagree.
-    ///
-    /// The one lookup behind every "the cursor/search state right now" reader
-    /// (`search::ops`, the statusline's own accessors), which would otherwise
-    /// each index `panes.entries[..].buffers[..]` and each panic with slotmap's own
-    /// message instead of naming what actually broke.
+    /// [`PaneEntries::shown`], for the statusline, which lives outside
+    /// `editor` and cannot name `PaneEntries`.
     pub(crate) fn shown_buffer_state(&self, pid: PaneId, bid: BufferId) -> &PaneBufferState {
-        self.panes.buffer_state(pid, bid).expect(
-            "pane has no seeded state for the buffer it is showing: \
-             pane.buffer_id and its pane entry are out of sync",
-        )
+        self.panes.entries.shown(pid, bid)
     }
 
     /// Every pane currently showing `bid`, in the order `(buffer-panes
@@ -557,19 +564,19 @@ impl super::EditorState {
         let focused = view.focused_pane();
         let active = view.active_pane_ids();
         let mut out = Vec::new();
-        if view.panes.get(focused).is_some_and(|p| p.buffer_id == bid) {
+        if view.panes[focused].buffer_id() == bid {
             out.push(focused);
         }
         out.extend(
             active
                 .iter()
                 .copied()
-                .filter(|&pid| pid != focused && view.panes[pid].buffer_id == bid),
+                .filter(|&pid| pid != focused && view.panes[pid].buffer_id() == bid),
         );
         let rest: Vec<PaneId> = view
             .panes
             .every_pane_across_all_tabs()
-            .filter(|&(pid, p)| p.buffer_id == bid && !out.contains(&pid))
+            .filter(|&(pid, p)| p.buffer_id() == bid && !out.contains(&pid))
             .map(|(pid, _)| pid)
             .collect();
         out.extend(rest);
@@ -590,7 +597,7 @@ impl Editor {
     /// `pid`'s effective wrap mode for the buffer it currently views.
     fn pane_wrap_mode(&self, pid: PaneId) -> hume_engine::pane::WrapMode {
         let pane = &self.view.panes[pid];
-        let doc = self.state.buffers.get(pane.buffer_id);
+        let doc = self.state.buffers.get(pane.buffer_id());
         super::commands::effective_wrap_mode(doc, &self.state.settings, pane)
     }
 

@@ -314,7 +314,7 @@ pub(super) fn jump_pane_to(
 ) {
     let pid = t.pid();
     with_jump(state, view, t, JumpRule::IfMoved, |state, view| {
-        crate::editor::buffer::lifecycle::switch_pane_to_buffer(state, view, pid, bid);
+        crate::editor::focus::switch_pane_to_buffer(state, view, pid, bid);
         crate::editor::pane_state::write_cursor(
             &mut state.panes.entries,
             &state.buffers,

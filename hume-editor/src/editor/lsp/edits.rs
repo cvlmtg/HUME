@@ -384,7 +384,7 @@ pub(in crate::editor) fn apply_workspace_edit(
     // guards. Per-file staleness (a `documentChanges` entry's own `version`)
     // is checked separately, per entry, below.
     if let Some(expect_gen) = expect_gen {
-        let requesting_bid = view.panes[pid].buffer_id;
+        let requesting_bid = view.panes[pid].buffer_id();
         let current_gen = state.buffers.get(requesting_bid).text().generation();
         if current_gen != expect_gen {
             return Err(

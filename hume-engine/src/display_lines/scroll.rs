@@ -26,7 +26,7 @@ impl Viewport {
     ///
     /// Single self-heal chokepoint for staleness, and the only way to obtain a
     /// `top` that is safe to walk: nothing validates a `top` write against the
-    /// block it addresses (`Pane::recall_scroll` restores a saved offset
+    /// block it addresses (`Pane::show_buffer` restores a saved offset
     /// verbatim; an LSP goto-definition jump moves `top` without re-deriving its
     /// slot; `Pane::inherit_view_state` clones one wholesale), and the block a
     /// stale address was valid for can shrink or vanish (wrap-width change, a

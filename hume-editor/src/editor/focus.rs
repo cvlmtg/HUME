@@ -1,19 +1,21 @@
-//! Every change of the focused pane: the pane that owns the terminal
-//! cursor, the live buffer, and any open Insert session. The engine stores
-//! it with the active tab's layout (`EngineView::focused_pane`), so it is
-//! always a pane of that layout. Every other open tab's own focused pane is
-//! stashed on `EditorState::tabs` instead (see `tab::store`'s module doc).
+//! Every change of the focused pane (the pane that owns the terminal
+//! cursor, the live buffer, and any open Insert session), and of the buffer
+//! a pane shows. The engine stores the focused pane with the active tab's
+//! layout (`EngineView::focused_pane`), so it is always a pane of that
+//! layout. Every other open tab's own focused pane is stashed on
+//! `EditorState::tabs` instead (see `tab::store`'s module doc).
 //!
-//! The engine methods that move focus take the [`FocusKey`], which [`Focus`]
-//! keeps in a field private to this module, so the functions here are the
-//! only way to move it. Each runs the Insert/paste session teardown a focus
-//! change needs; skipping it would leave a session open and pointed at a
-//! pane the user has already left (a custom keybinding or a Steel hook
-//! driving a pane-focus command can trigger a focus change from anywhere,
-//! so this can't be caught by auditing dispatch call sites alone).
+//! The engine methods that move focus or change a pane's buffer take the
+//! [`FocusKey`], which [`Focus`] keeps in a field private to this module, so
+//! the functions here are the only way to make either change. Each runs the
+//! Insert/paste session teardown the change needs; skipping it would leave a
+//! session open and pointed at a pane the user has already left (a custom
+//! keybinding or a Steel hook driving a pane-focus command can trigger a
+//! focus change from anywhere, so this can't be caught by auditing dispatch
+//! call sites alone).
 
 use hume_engine::pipeline::{
-    DetachedPane, EngineView, FocusKey, FocusedLayout, PaneId, SinglePane, UnattachedPane,
+    BufferId, DetachedPane, EngineView, FocusKey, FocusedLayout, PaneId, SinglePane, UnattachedPane,
 };
 
 use super::{EditorState, doc_ops};
@@ -45,8 +47,8 @@ impl Focus {
 }
 
 /// End the open Insert or paste session, if any: the shared teardown
-/// [`focus_pane`] and every pane-buffer switch (`buffer::lifecycle::
-/// switch_pane_to_buffer`, `Editor::reset_config_state`'s reload) run, so
+/// [`focus_pane`] and every pane-buffer switch ([`switch_pane_to_buffer`],
+/// `Editor::reset_config_state`'s reload) run, so
 /// that any command which moves focus or retargets the focused pane's buffer
 /// leaves Insert mode.
 ///
@@ -73,6 +75,51 @@ pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &Engi
         &mut state.buffers,
         &state.panes.entries,
         &mut state.active_session,
+    );
+}
+
+/// Redirect pane `pid` to `target` without recording a jump.
+///
+/// When `pid` is focused and `target` differs from its current buffer:
+/// - ends any open Insert/paste session first ([`end_focus_sessions`]),
+///   before the `buffer_id` write it reads through. A stale session would
+///   make the next keystroke panic in `doc_ops::apply_doc_edit_grouped`.
+/// - promotes `target` in `BufferStore.mru`. With [`focus_pane`], this keeps
+///   `mru`'s tail equal to the buffer on screen.
+///
+/// Saves the pane's scroll for the old buffer, restores `target`'s saved scroll
+/// (zero on first visit), and seeds the pane's state for `target` if it has
+/// never shown `target` before. Only the pane's own `buffer_id` is written;
+/// no denormalised copy of it is updated.
+pub(in crate::editor) fn switch_pane_to_buffer(
+    state: &mut EditorState,
+    ev: &mut EngineView,
+    pid: PaneId,
+    target: BufferId,
+) {
+    let is_focused_switch = pid == ev.focused_pane() && ev.panes[pid].buffer_id() != target;
+    if is_focused_switch {
+        end_focus_sessions(state, ev);
+    }
+    let last_content_line = state.buffers.get(target).text().last_content_line();
+    ev.show_buffer(&state.focus.0, pid, target, last_content_line);
+    if is_focused_switch {
+        state.buffers.touch_mru(target);
+    }
+    // Seeds the pane's state for `target` on its first visit to
+    // `target`. Required regardless of reveal, since `frame.rs`'s scroll
+    // step indexes it directly. A different buffer's cursor/viewport pairing
+    // always needs re-settling, whether or not the recalled selection's head
+    // happens to equal the outgoing one: `EditorState::layout_key`'s
+    // `buffer_tag` names the buffer, so a switch to a different one always
+    // differs from `PaneBufferState::last_layout_key`: the very first read
+    // for a `(pane, buffer)` pair is `None`, which differs from anything.
+    super::pane_state::ensure(
+        &mut state.panes.entries,
+        &state.buffers,
+        &ev.panes,
+        pid,
+        target,
     );
 }
 
@@ -126,5 +173,5 @@ pub(in crate::editor) fn install_layout(
 fn touch_focused_mru(state: &mut EditorState, view: &EngineView) {
     state
         .buffers
-        .touch_mru(view.panes[view.focused_pane()].buffer_id);
+        .touch_mru(view.panes[view.focused_pane()].buffer_id());
 }

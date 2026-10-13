@@ -107,7 +107,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
 
     let mut vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_view().primary().head();
-    let bid = ed.view.panes[pid].buffer_id;
+    let bid = ed.view.panes[pid].buffer_id();
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
     let (mut dlm, _) = crate::editor::commands::pane_display_lines(
