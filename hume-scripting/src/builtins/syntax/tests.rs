@@ -1,4 +1,4 @@
-use super::super::args::cons_pair;
+use super::super::args::{cons_pair, string_list, symbol_hash};
 use super::*;
 use crate::{ConfigOrigin, PendingLanguageReg, test_support::SteelCtxTestHarness};
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
@@ -112,21 +112,8 @@ fn define_language_accepts_symbol_name() {
     ));
 }
 
-fn sym_hash(pairs: Vec<(&'static str, SteelVal)>) -> SteelVal {
-    super::super::args::symbol_hash(pairs)
-}
-
-fn str_list(items: &[&str]) -> SteelVal {
-    items
-        .iter()
-        .map(|s| str_val(s))
-        .collect::<Vec<_>>()
-        .into_steelval()
-        .unwrap()
-}
-
 fn configure(ctx: &mut SteelCtx, name: &str, fields: Vec<(&'static str, SteelVal)>) -> SteelResult {
-    configure_language(ctx, str_val(name), sym_hash(fields))
+    configure_language(ctx, str_val(name), symbol_hash(fields))
 }
 
 fn configured_fields(h: &SteelCtxTestHarness) -> Vec<&LanguageFields> {
@@ -156,7 +143,10 @@ fn configure_language_decodes_each_field() {
             &mut ctx,
             "go",
             vec![
-                ("roots", str_list(&["go.work", "go.mod"])),
+                (
+                    "roots",
+                    string_list(["go.work", "go.mod"].map(String::from)),
+                ),
                 ("language-id", SteelVal::BoolV(false)),
             ],
         )
@@ -171,7 +161,10 @@ fn configure_language_decodes_each_field() {
             &mut ctx,
             "rust",
             vec![
-                ("comment-tokens", str_list(&["//", "///"])),
+                (
+                    "comment-tokens",
+                    string_list(["//", "///"].map(String::from)),
+                ),
                 ("block-comment-tokens", block),
             ],
         )
@@ -195,16 +188,11 @@ fn configure_language_decodes_each_field() {
     assert_eq!(
         *fields[2],
         LanguageFields {
-            comment_tokens: Some(
-                LineCommentTokens::new(vec!["//".to_string(), "///".to_string()]).unwrap()
-            ),
-            block_comment_tokens: Some(
-                BlockCommentTokens::new(vec![
-                    ("/*".to_string(), "*/".to_string()),
-                    ("/**".to_string(), "*/".to_string()),
-                ])
-                .unwrap()
-            ),
+            comment_tokens: Some(LineCommentTokens::from_strs(&["//", "///"])),
+            block_comment_tokens: Some(BlockCommentTokens::from_pairs(&[
+                ("/*", "*/"),
+                ("/**", "*/")
+            ])),
             ..LanguageFields::default()
         }
     );
@@ -256,7 +244,11 @@ fn configure_language_rejects_a_malformed_field() {
         .unwrap();
     for (key, value, problem) in [
         ("roots", str_val("go.mod"), "roots"),
-        ("comment-tokens", str_list(&[""]), "empty"),
+        (
+            "comment-tokens",
+            string_list([""].map(String::from)),
+            "empty",
+        ),
         ("comment-tokens", empty_list(), "at least one"),
         ("block-comment-tokens", not_a_pair, "block-comment-tokens"),
         ("block-comment-tokens", blank_edge, "blank"),
@@ -274,9 +266,13 @@ fn configure_language_rejects_a_malformed_field() {
 #[test]
 fn configure_language_rejects_an_unknown_key() {
     let mut h = SteelCtxTestHarness::new();
-    let err = configure(&mut h.ctx_init(), "go", vec![("grammar", str_list(&["x"]))])
-        .expect_err("an unknown key must be rejected")
-        .to_string();
+    let err = configure(
+        &mut h.ctx_init(),
+        "go",
+        vec![("grammar", string_list(["x"].map(String::from)))],
+    )
+    .expect_err("an unknown key must be rejected")
+    .to_string();
     assert!(err.contains("grammar"), "{err}");
 }
 

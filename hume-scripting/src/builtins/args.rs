@@ -325,20 +325,34 @@ pub(crate) fn list_to_i32s(val: SteelVal, ctx_name: &str) -> Result<Vec<i32>, St
         .collect()
 }
 
-/// A Steel list of `("KEY" . "VALUE")` dotted pairs, unpacked to
-/// `Vec<(String, String)>`: the wire shape for `register-lsp-server!`'s
-/// `#:env`.
-pub(crate) fn list_to_env_pairs(
+/// The entry shape of an `#:env` list, for [`list_to_string_pairs`].
+pub(crate) const ENV_PAIR_SHAPE: &str = "(\"KEY\" . \"VALUE\")";
+
+/// A Steel list of dotted string pairs, unpacked to `Vec<(String, String)>`.
+/// `shape` names an entry in the error for one that is not a pair.
+pub(crate) fn list_to_string_pairs(
     val: SteelVal,
     ctx_name: &str,
+    shape: &str,
 ) -> Result<Vec<(String, String)>, SteelErr> {
     list_items(val, ctx_name)?
         .into_iter()
         .map(|entry| {
-            let (key, value) = pair_fields(entry, ctx_name, "(\"KEY\" . \"VALUE\")")?;
-            Ok((string_arg(key, ctx_name)?, string_arg(value, ctx_name)?))
+            let (car, cdr) = pair_fields(entry, ctx_name, shape)?;
+            Ok((string_arg(car, ctx_name)?, string_arg(cdr, ctx_name)?))
         })
         .collect()
+}
+
+/// [`list_to_string_pairs`] for a value that may be `#f` (absent).
+pub(crate) fn optional_list_to_string_pairs(
+    val: SteelVal,
+    ctx_name: &str,
+    shape: &str,
+) -> Result<Option<Vec<(String, String)>>, SteelErr> {
+    optional(val, ctx_name, |val, ctx_name| {
+        list_to_string_pairs(val, ctx_name, shape)
+    })
 }
 
 /// A Steel list of single-character strings, unpacked to a `Vec<char>`.

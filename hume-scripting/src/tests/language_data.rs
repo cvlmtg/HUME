@@ -91,14 +91,11 @@ fn the_config_carries_every_field_but_the_grammar() {
         LanguageFields {
             roots: Some(strings(&["package.json", "tsconfig.json"])),
             lsp_language_id: Some("typescriptreact".to_string()),
-            comment_tokens: Some(LineCommentTokens::new(strings(&["//", "///"])).unwrap()),
-            block_comment_tokens: Some(
-                BlockCommentTokens::new(vec![
-                    ("/*".to_string(), "*/".to_string()),
-                    ("/**".to_string(), "*/".to_string()),
-                ])
-                .unwrap()
-            ),
+            comment_tokens: Some(LineCommentTokens::from_strs(&["//", "///"])),
+            block_comment_tokens: Some(BlockCommentTokens::from_pairs(&[
+                ("/*", "*/"),
+                ("/**", "*/")
+            ])),
         }
     );
 }

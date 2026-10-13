@@ -154,11 +154,12 @@ impl Editor {
     }
 
     /// Read `id`'s bundled data file (`<runtime>/scheme/languages/<name>.scm`)
-    /// the first time a buffer uses the language or its grammar is attached in
-    /// this configuration, and fill each field configuration left unset. A missing file or runtime
-    /// directory leaves the language without bundled data; a malformed file
-    /// is reported and does the same. Either way the file is not read again
-    /// until `:reload-config` rebuilds the registry.
+    /// the first time a buffer uses the language or its grammar is attached
+    /// in this configuration, and fill each field configuration left unset.
+    /// A missing file or runtime directory leaves the language without
+    /// bundled data; a malformed file is reported and does the same. Either
+    /// way the file is not read again until `:reload-config` rebuilds the
+    /// registry.
     fn load_bundled_language(&mut self, id: LanguageId) {
         if self.state.config.languages.bundled_loaded(id) {
             return;
@@ -334,12 +335,6 @@ impl Editor {
     /// value and the ignored write is logged as a warning; a plugin write
     /// under a user value is dropped quietly.
     fn configure_language(&mut self, name: &str, fields: LanguageFields, by: ConfiguredBy) {
-        let LanguageFields {
-            roots,
-            lsp_language_id,
-            comment_tokens,
-            block_comment_tokens,
-        } = fields;
         let languages = &mut self.state.config.languages;
         let Some(id) = languages.defined_id(name) else {
             self.report(
@@ -348,28 +343,12 @@ impl Editor {
             );
             return;
         };
-        let mut ignored = Vec::new();
-        if let Some(roots) = roots
-            && languages.configure_roots(id, roots, by) == ConfigureOutcome::Ignored
-        {
-            ignored.push("roots");
-        }
-        if let Some(lsp_language_id) = lsp_language_id
-            && languages.configure_lsp_language_id(id, lsp_language_id, by)
-                == ConfigureOutcome::Ignored
-        {
-            ignored.push("language-id");
-        }
-        if let Some(tokens) = comment_tokens
-            && languages.configure_line_comment_tokens(id, tokens, by) == ConfigureOutcome::Ignored
-        {
-            ignored.push("comment-tokens");
-        }
-        if let Some(tokens) = block_comment_tokens
-            && languages.configure_block_comment_tokens(id, tokens, by) == ConfigureOutcome::Ignored
-        {
-            ignored.push("block-comment-tokens");
-        }
+        let ignored: Vec<&str> = languages
+            .configure_fields(id, fields, by)
+            .into_iter()
+            .filter(|&(_, outcome)| outcome == ConfigureOutcome::Ignored)
+            .map(|(field, _)| field.key())
+            .collect();
         for field in ignored {
             self.report(
                 super::Severity::Warning,

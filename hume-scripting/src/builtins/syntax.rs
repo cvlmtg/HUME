@@ -7,13 +7,12 @@ use steel::rerrs::SteelErr;
 
 use crate::context::EvalMode;
 use crate::{ConfigOrigin, Effect, GrammarReg, PendingLanguageReg, SteelCtx};
-use hume_treesitter::registry::LanguageFields;
+use hume_treesitter::registry::{LanguageField, LanguageFields};
 
 use super::SteelResult;
 use super::args::{
-    HashEntry, hash_entry, list_to_strings, optional_hash_entry, optional_list_items,
-    optional_list_to_strings, optional_path_arg, optional_string_arg, pair_fields, path_arg,
-    string_arg,
+    HashEntry, hash_entry, list_to_strings, optional_hash_entry, optional_list_to_string_pairs,
+    optional_list_to_strings, optional_path_arg, optional_string_arg, path_arg, string_arg,
 };
 use super::errors::generic_err;
 
@@ -43,20 +42,14 @@ pub(crate) fn define_language(
     Ok(SteelVal::Void)
 }
 
-const LANGUAGE_FIELD_KEYS: &[&str] = &[
-    "roots",
-    "language-id",
-    "comment-tokens",
-    "block-comment-tokens",
-];
-
 /// Decodes a symbol-keyed hash of per-language values: `'roots` (strings),
 /// `'language-id` (a string), `'comment-tokens` (strings) and
 /// `'block-comment-tokens` (`(start . end)` string pairs). A missing key or
 /// `#f` is `None`; any other key is an error. The one decoder for both
 /// `%configure-language!` and a bundled data file.
 pub(crate) fn language_fields(val: SteelVal, ctx_name: &str) -> Result<LanguageFields, SteelErr> {
-    fields_of(&hash_entry(val, ctx_name, LANGUAGE_FIELD_KEYS)?)
+    let keys = LanguageField::ALL.map(LanguageField::key);
+    fields_of(&hash_entry(val, ctx_name, &keys)?)
 }
 
 /// [`language_fields`] for a value that may be `#f` (no data).
@@ -64,45 +57,39 @@ pub(crate) fn optional_language_fields(
     val: SteelVal,
     ctx_name: &str,
 ) -> Result<Option<LanguageFields>, SteelErr> {
-    optional_hash_entry(val, ctx_name, LANGUAGE_FIELD_KEYS)?
+    let keys = LanguageField::ALL.map(LanguageField::key);
+    optional_hash_entry(val, ctx_name, &keys)?
         .map(|entry| fields_of(&entry))
         .transpose()
 }
 
 fn fields_of(entry: &HashEntry) -> Result<LanguageFields, SteelErr> {
-    let field = |key| entry.optional(key).unwrap_or(SteelVal::BoolV(false));
-    let token_err = |key: &str, e| generic_err(format!("{}: {e}", entry.label(key)));
+    let field = |field: LanguageField| {
+        let key = field.key();
+        let val = entry.optional(key).unwrap_or(SteelVal::BoolV(false));
+        (val, entry.label(key))
+    };
+    let tokens_err = |label: &str, e| generic_err(format!("{label}: {e}"));
 
-    let block_label = entry.label("block-comment-tokens");
-    let block_pairs = optional_list_items(field("block-comment-tokens"), &block_label)?
-        .map(|items| {
-            items
-                .into_iter()
-                .map(|item| {
-                    let (start, end) = pair_fields(item, &block_label, "a (start . end) pair")?;
-                    Ok((
-                        string_arg(start, &block_label)?,
-                        string_arg(end, &block_label)?,
-                    ))
-                })
-                .collect::<Result<Vec<_>, SteelErr>>()
-        })
-        .transpose()?;
-
+    let (roots, roots_label) = field(LanguageField::Roots);
+    let (id, id_label) = field(LanguageField::LanguageId);
+    let (line, line_label) = field(LanguageField::CommentTokens);
+    let (block, block_label) = field(LanguageField::BlockCommentTokens);
     Ok(LanguageFields {
-        roots: optional_list_to_strings(field("roots"), &entry.label("roots"))?,
-        lsp_language_id: optional_string_arg(field("language-id"), &entry.label("language-id"))?,
-        comment_tokens: optional_list_to_strings(
-            field("comment-tokens"),
-            &entry.label("comment-tokens"),
-        )?
-        .map(LineCommentTokens::new)
-        .transpose()
-        .map_err(|e| token_err("comment-tokens", e))?,
-        block_comment_tokens: block_pairs
-            .map(BlockCommentTokens::new)
+        roots: optional_list_to_strings(roots, &roots_label)?,
+        lsp_language_id: optional_string_arg(id, &id_label)?,
+        comment_tokens: optional_list_to_strings(line, &line_label)?
+            .map(LineCommentTokens::new)
             .transpose()
-            .map_err(|e| token_err("block-comment-tokens", e))?,
+            .map_err(|e| tokens_err(&line_label, e))?,
+        block_comment_tokens: optional_list_to_string_pairs(
+            block,
+            &block_label,
+            "a (start . end) pair",
+        )?
+        .map(BlockCommentTokens::new)
+        .transpose()
+        .map_err(|e| tokens_err(&block_label, e))?,
     })
 }
 

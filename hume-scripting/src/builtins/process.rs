@@ -15,7 +15,8 @@ use crate::log::LogLevel;
 
 use super::SteelResult;
 use super::args::{
-    cwd_arg, list_to_env_pairs, list_to_strings, string_arg, symbol_hash, usize_arg,
+    ENV_PAIR_SHAPE, cwd_arg, list_to_string_pairs, list_to_strings, string_arg, symbol_hash,
+    usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -139,7 +140,7 @@ pub(crate) fn run_inline_output(
         &ctx.host.buffers().cwd(),
         "%run-inline-output! cwd",
     )?;
-    let env = list_to_env_pairs(env_val, "%run-inline-output! env")?;
+    let env = list_to_string_pairs(env_val, "%run-inline-output! env", ENV_PAIR_SHAPE)?;
 
     // The child inherits stdio, so this is a real terminal write: open the
     // bracket before spawning it.

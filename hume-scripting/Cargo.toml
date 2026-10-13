@@ -23,5 +23,6 @@ num-traits.workspace = true
 rustc-hash.workspace = true
 
 [dev-dependencies]
+hume-editing = { path = "../hume-editing", features = ["test-util"] }
 tempfile = "3"
 

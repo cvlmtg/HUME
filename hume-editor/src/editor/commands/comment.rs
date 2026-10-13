@@ -58,8 +58,7 @@ fn comment_tokens_at<'a>(
     let layered = buf
         .syntax
         .as_ref()
-        .filter(|syn| syn.is_current(text.generation()))
-        .and_then(|syn| syn.layers())
+        .and_then(|syn| syn.current_layers(text.generation()))
         .and_then(|layers| {
             let chars = span.chars();
             let bytes = text.char_to_byte(chars.start)..text.char_to_byte(chars.end);

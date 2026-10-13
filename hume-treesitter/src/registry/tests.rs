@@ -3,8 +3,8 @@ use std::path::Path;
 use globset::Glob;
 
 use super::{
-    ConfigureOutcome, ConfiguredBy, LanguageFields, LanguageId, LanguageRegistry, QueryPaths,
-    detect_language,
+    ConfigureOutcome, ConfiguredBy, LanguageField, LanguageFields, LanguageId, LanguageRegistry,
+    QueryPaths, detect_language,
 };
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
@@ -274,7 +274,7 @@ fn roots_of_returns_the_configured_markers() {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity_no_rebuild("go", &["go"], &[], &[]);
     assert_eq!(
-        reg.configure_roots(id, strings(&["go.work", "go.mod"]), ConfiguredBy::User),
+        set_roots(&mut reg, id, &["go.work", "go.mod"], ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
     assert_eq!(reg.roots_of(id), ["go.work", "go.mod"]);
@@ -292,7 +292,7 @@ fn reregistering_an_identity_keeps_its_configured_roots() {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity_no_rebuild("go", &[], &[], &[]);
     assert_eq!(
-        reg.configure_roots(id, strings(&["go.mod"]), ConfiguredBy::User),
+        set_roots(&mut reg, id, &["go.mod"], ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
     reg.register_identity_no_rebuild("go", &["go"], &[], &[]);
@@ -311,7 +311,11 @@ fn set_roots(
     roots: &[&str],
     by: ConfiguredBy,
 ) -> ConfigureOutcome {
-    reg.configure_roots(id, strings(roots), by)
+    let fields = LanguageFields {
+        roots: Some(strings(roots)),
+        ..LanguageFields::default()
+    };
+    configure_one(reg, id, fields, by)
 }
 
 fn set_id(
@@ -320,7 +324,49 @@ fn set_id(
     lsp_language_id: &str,
     by: ConfiguredBy,
 ) -> ConfigureOutcome {
-    reg.configure_lsp_language_id(id, lsp_language_id.to_string(), by)
+    let fields = LanguageFields {
+        lsp_language_id: Some(lsp_language_id.to_string()),
+        ..LanguageFields::default()
+    };
+    configure_one(reg, id, fields, by)
+}
+
+/// The outcome of a write that gives one field.
+fn configure_one(
+    reg: &mut LanguageRegistry,
+    id: LanguageId,
+    fields: LanguageFields,
+    by: ConfiguredBy,
+) -> ConfigureOutcome {
+    match reg.configure_fields(id, fields, by).as_slice() {
+        [(_, outcome)] => *outcome,
+        outcomes => panic!("one field given, outcomes {outcomes:?}"),
+    }
+}
+
+#[test]
+fn configure_fields_reports_each_given_field_in_order() {
+    let (mut reg, id) = tsx();
+    let all = || LanguageFields {
+        roots: Some(strings(&["package.json"])),
+        lsp_language_id: Some("typescriptreact".to_string()),
+        comment_tokens: Some(LineCommentTokens::from_strs(&["//"])),
+        block_comment_tokens: Some(BlockCommentTokens::from_pairs(&[("/*", "*/")])),
+    };
+    let tagged = |outcome| LanguageField::ALL.map(|field| (field, outcome)).to_vec();
+
+    assert_eq!(
+        reg.configure_fields(id, all(), ConfiguredBy::User),
+        tagged(ConfigureOutcome::Applied)
+    );
+    assert_eq!(
+        reg.configure_fields(id, all(), ConfiguredBy::User),
+        tagged(ConfigureOutcome::Ignored)
+    );
+    assert_eq!(
+        reg.configure_fields(id, LanguageFields::default(), ConfiguredBy::User),
+        []
+    );
 }
 
 fn fill_tsx_bundled(reg: &mut LanguageRegistry, id: LanguageId) {
@@ -505,26 +551,38 @@ fn an_empty_bundled_fill_still_marks_the_language_loaded() {
     assert_eq!(reg.lsp_language_id_of(id), "plain");
 }
 
-fn line_tokens(tokens: &[&str]) -> LineCommentTokens {
-    LineCommentTokens::new(strings(tokens)).expect("valid line tokens")
+fn set_line(
+    reg: &mut LanguageRegistry,
+    id: LanguageId,
+    tokens: &[&str],
+    by: ConfiguredBy,
+) -> ConfigureOutcome {
+    let fields = LanguageFields {
+        comment_tokens: Some(LineCommentTokens::from_strs(tokens)),
+        ..LanguageFields::default()
+    };
+    configure_one(reg, id, fields, by)
 }
 
-fn block_tokens(pairs: &[(&str, &str)]) -> BlockCommentTokens {
-    BlockCommentTokens::new(
-        pairs
-            .iter()
-            .map(|(s, e)| ((*s).to_owned(), (*e).to_owned()))
-            .collect(),
-    )
-    .expect("valid block tokens")
+fn set_block(
+    reg: &mut LanguageRegistry,
+    id: LanguageId,
+    pairs: &[(&str, &str)],
+    by: ConfiguredBy,
+) -> ConfigureOutcome {
+    let fields = LanguageFields {
+        block_comment_tokens: Some(BlockCommentTokens::from_pairs(pairs)),
+        ..LanguageFields::default()
+    };
+    configure_one(reg, id, fields, by)
 }
 
 fn fill_comment_tokens(reg: &mut LanguageRegistry, id: LanguageId) {
     reg.fill_bundled(
         id,
         LanguageFields {
-            comment_tokens: Some(line_tokens(&["//"])),
-            block_comment_tokens: Some(block_tokens(&[("/*", "*/")])),
+            comment_tokens: Some(LineCommentTokens::from_strs(&["//"])),
+            block_comment_tokens: Some(BlockCommentTokens::from_pairs(&[("/*", "*/")])),
             ..LanguageFields::default()
         },
     );
@@ -543,23 +601,29 @@ fn bundled_comment_tokens_fill_both_kinds() {
     fill_comment_tokens(&mut reg, id);
 
     let tokens = reg.comment_tokens_of(id).expect("comment tokens");
-    assert_eq!(tokens.line(), Some(&line_tokens(&["//"])));
-    assert_eq!(tokens.block(), Some(&block_tokens(&[("/*", "*/")])));
+    assert_eq!(tokens.line(), Some(&LineCommentTokens::from_strs(&["//"])));
+    assert_eq!(
+        tokens.block(),
+        Some(&BlockCommentTokens::from_pairs(&[("/*", "*/")]))
+    );
 }
 
 #[test]
 fn configured_line_tokens_keep_the_bundled_block_tokens() {
     let (mut reg, id) = tsx();
     assert_eq!(
-        reg.configure_line_comment_tokens(id, line_tokens(&["#"]), ConfiguredBy::User),
+        set_line(&mut reg, id, &["#"], ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
 
     fill_comment_tokens(&mut reg, id);
 
     let tokens = reg.comment_tokens_of(id).expect("comment tokens");
-    assert_eq!(tokens.line(), Some(&line_tokens(&["#"])));
-    assert_eq!(tokens.block(), Some(&block_tokens(&[("/*", "*/")])));
+    assert_eq!(tokens.line(), Some(&LineCommentTokens::from_strs(&["#"])));
+    assert_eq!(
+        tokens.block(),
+        Some(&BlockCommentTokens::from_pairs(&[("/*", "*/")]))
+    );
 }
 
 #[test]
@@ -569,17 +633,20 @@ fn configured_comment_tokens_replace_bundled_ones() {
     fill_comment_tokens(&mut reg, id);
 
     assert_eq!(
-        reg.configure_line_comment_tokens(id, line_tokens(&["#"]), user),
+        set_line(&mut reg, id, &["#"], user),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_block_comment_tokens(id, block_tokens(&[("<!--", "-->")]), user),
+        set_block(&mut reg, id, &[("<!--", "-->")], user),
         ConfigureOutcome::Applied
     );
 
     let tokens = reg.comment_tokens_of(id).expect("comment tokens");
-    assert_eq!(tokens.line(), Some(&line_tokens(&["#"])));
-    assert_eq!(tokens.block(), Some(&block_tokens(&[("<!--", "-->")])));
+    assert_eq!(tokens.line(), Some(&LineCommentTokens::from_strs(&["#"])));
+    assert_eq!(
+        tokens.block(),
+        Some(&BlockCommentTokens::from_pairs(&[("<!--", "-->")]))
+    );
 }
 
 #[test]
@@ -587,29 +654,32 @@ fn comment_tokens_follow_the_configurer_tiers() {
     let (mut reg, id) = tsx();
     let (user, plugin) = (ConfiguredBy::User, ConfiguredBy::Plugin);
     assert_eq!(
-        reg.configure_block_comment_tokens(id, block_tokens(&[("/*", "*/")]), user),
+        set_block(&mut reg, id, &[("/*", "*/")], user),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_block_comment_tokens(id, block_tokens(&[("(*", "*)")]), user),
+        set_block(&mut reg, id, &[("(*", "*)")], user),
         ConfigureOutcome::Ignored
     );
     assert_eq!(
-        reg.configure_block_comment_tokens(id, block_tokens(&[("{-", "-}")]), plugin),
+        set_block(&mut reg, id, &[("{-", "-}")], plugin),
         ConfigureOutcome::Shadowed
     );
     assert_eq!(
-        reg.configure_line_comment_tokens(id, line_tokens(&["--"]), plugin),
+        set_line(&mut reg, id, &["--"], plugin),
         ConfigureOutcome::Applied
     );
     assert_eq!(
-        reg.configure_line_comment_tokens(id, line_tokens(&[";"]), plugin),
+        set_line(&mut reg, id, &[";"], plugin),
         ConfigureOutcome::Ignored
     );
 
     let tokens = reg.comment_tokens_of(id).expect("comment tokens");
-    assert_eq!(tokens.line(), Some(&line_tokens(&["--"])));
-    assert_eq!(tokens.block(), Some(&block_tokens(&[("/*", "*/")])));
+    assert_eq!(tokens.line(), Some(&LineCommentTokens::from_strs(&["--"])));
+    assert_eq!(
+        tokens.block(),
+        Some(&BlockCommentTokens::from_pairs(&[("/*", "*/")]))
+    );
 }
 
 #[test]
@@ -763,7 +833,7 @@ fn lsp_language_id_of_returns_the_configured_override() {
     reg.register_identity("tsx", &["tsx"], &[], &[]).unwrap();
     let id = reg.id_of("tsx").unwrap();
     assert_eq!(
-        reg.configure_lsp_language_id(id, "typescriptreact".to_string(), ConfiguredBy::User),
+        set_id(&mut reg, id, "typescriptreact", ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
     assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
@@ -777,7 +847,7 @@ fn identity_re_registration_keeps_the_configured_lsp_language_id() {
     reg.register_identity("tsx", &["tsx"], &[], &[]).unwrap();
     let id = reg.id_of("tsx").unwrap();
     assert_eq!(
-        reg.configure_lsp_language_id(id, "typescriptreact".to_string(), ConfiguredBy::User),
+        set_id(&mut reg, id, "typescriptreact", ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
 

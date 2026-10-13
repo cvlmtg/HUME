@@ -115,8 +115,12 @@ impl Editor {
 
     /// Read the bundled data file of every language given a grammar since the
     /// last call. [`Self::install_parse_results`] runs it before each key's
-    /// dispatch and before each frame's parse requests, so a command's
-    /// synchronous parse finds every layer's language already filled.
+    /// dispatch and before each frame's parse requests. The read needs the
+    /// Steel engine, which a command does not have, and a command's own parse
+    /// (`ensure_syntax_current`) can build an injected layer: a language read
+    /// only once its layer appeared would reach that command without its data.
+    /// So every attached grammar's file is read, at startup for every
+    /// installed one.
     fn load_grammar_languages(&mut self) {
         for id in self.state.config.languages.take_bundled_pending() {
             self.load_bundled_language(id);

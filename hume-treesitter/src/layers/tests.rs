@@ -3,22 +3,20 @@ use test_fixtures::require_grammars;
 use super::{SyntaxLayer, SyntaxLayers, layer_covers_line};
 use crate::test_support::{make_bundle, open_grammar, range, test_language_id};
 
-// `layer_covers_line` only ever reads `ranges`. The tree's actual
-// content is irrelevant, so every test case shares one parsed layer and
-// just varies `ranges`/`line_start`/`line_end`.
-fn injected_layer(ranges: Vec<tree_sitter::Range>) -> SyntaxLayer {
-    let grammar = open_grammar("json", "tree_sitter_json");
+// `layer_covers_line` and `languages_containing` read only a layer's
+// `ranges`, `depth` and language, so every layer parses an empty text.
+fn layer_of(name: &str, ranges: Vec<tree_sitter::Range>, depth: u8) -> SyntaxLayer {
+    let symbol = format!("tree_sitter_{name}");
+    let grammar = open_grammar(name, &symbol);
     let mut parser = tree_sitter::Parser::new();
     parser
         .set_language(grammar.language())
         .expect("set language");
-    let tree = parser.parse("{}\n", None).expect("parse");
-    let bundle = make_bundle("json", "tree_sitter_json", "", None, None);
     SyntaxLayer {
-        tree,
-        bundle,
+        tree: parser.parse("", None).expect("parse"),
+        bundle: make_bundle(name, &symbol, "", None, None),
         ranges,
-        depth: 1, // an injected layer; depth 0 (root) always short-circuits on empty ranges
+        depth,
     }
 }
 
@@ -27,7 +25,7 @@ fn root_layer_with_empty_ranges_covers_every_line() {
     require_grammars(&["json"]);
     // depth 0 in practice, but the empty-ranges short-circuit doesn't
     // actually key off `depth`, so assert on the field it does check.
-    let layer = injected_layer(vec![]);
+    let layer = layer_of("json", vec![], 1);
     assert!(layer_covers_line(&layer, 0, 1));
     assert!(layer_covers_line(&layer, 10_000, 10_001));
 }
@@ -35,21 +33,21 @@ fn root_layer_with_empty_ranges_covers_every_line() {
 #[test]
 fn injected_layer_covers_a_line_inside_its_single_range() {
     require_grammars(&["json"]);
-    let layer = injected_layer(vec![range(10, 20)]);
+    let layer = layer_of("json", vec![range(10, 20)], 1);
     assert!(layer_covers_line(&layer, 12, 15));
 }
 
 #[test]
 fn injected_layer_does_not_cover_a_line_entirely_before_its_range() {
     require_grammars(&["json"]);
-    let layer = injected_layer(vec![range(10, 20)]);
+    let layer = layer_of("json", vec![range(10, 20)], 1);
     assert!(!layer_covers_line(&layer, 0, 5));
 }
 
 #[test]
 fn injected_layer_does_not_cover_a_line_entirely_after_its_range() {
     require_grammars(&["json"]);
-    let layer = injected_layer(vec![range(10, 20)]);
+    let layer = layer_of("json", vec![range(10, 20)], 1);
     assert!(!layer_covers_line(&layer, 25, 30));
 }
 
@@ -61,7 +59,7 @@ fn injected_layer_does_not_cover_a_line_entirely_after_its_range() {
 #[test]
 fn injected_layer_binary_search_finds_a_non_first_range() {
     require_grammars(&["json"]);
-    let layer = injected_layer(vec![range(0, 10), range(20, 30), range(40, 50)]);
+    let layer = layer_of("json", vec![range(0, 10), range(20, 30), range(40, 50)], 1);
     assert!(
         layer_covers_line(&layer, 22, 25),
         "must find the second range, not just check index 0"
@@ -75,7 +73,7 @@ fn injected_layer_binary_search_finds_a_non_first_range() {
 #[test]
 fn injected_layer_boundary_is_half_open() {
     require_grammars(&["json"]);
-    let layer = injected_layer(vec![range(10, 20)]);
+    let layer = layer_of("json", vec![range(10, 20)], 1);
     // A line starting exactly at the range's end is adjacent, not
     // overlapping: `line_start < end_byte` must be strict.
     assert!(!layer_covers_line(&layer, 20, 25));
@@ -86,93 +84,79 @@ fn injected_layer_boundary_is_half_open() {
     assert!(layer_covers_line(&layer, 5, 11));
 }
 
-fn layer_of(name: &str, symbol: &str, ranges: Vec<tree_sitter::Range>, depth: u8) -> SyntaxLayer {
-    let grammar = open_grammar(name, symbol);
-    let mut parser = tree_sitter::Parser::new();
-    parser
-        .set_language(grammar.language())
-        .expect("set language");
-    SyntaxLayer {
-        tree: parser.parse("", None).expect("parse"),
-        bundle: make_bundle(name, symbol, "", None, None),
-        ranges,
-        depth,
-    }
-}
-
-fn json() -> crate::registry::LanguageId {
-    test_language_id("json")
-}
-
-fn rust() -> crate::registry::LanguageId {
-    test_language_id("rust")
-}
-
-fn markdown() -> crate::registry::LanguageId {
-    test_language_id("markdown")
+/// A markdown root with rust injected at `10..20` and `30..40`.
+fn rust_in_markdown() -> SyntaxLayers {
+    SyntaxLayers::new(vec![
+        layer_of("markdown", vec![], 0),
+        layer_of("rust", vec![range(10, 20), range(30, 40)], 1),
+    ])
 }
 
 #[test]
 fn the_root_layer_contains_every_span() {
     require_grammars(&["markdown"]);
-    let layers = SyntaxLayers::new(vec![layer_of(
-        "markdown",
-        "tree_sitter_markdown",
-        vec![],
-        0,
-    )]);
+    let layers = SyntaxLayers::new(vec![layer_of("markdown", vec![], 0)]);
 
-    assert_eq!(layers.languages_containing(0..1), [markdown()]);
-    assert_eq!(layers.languages_containing(500..900), [markdown()]);
+    assert_eq!(
+        layers.languages_containing(0..1),
+        [test_language_id("markdown")]
+    );
+    assert_eq!(
+        layers.languages_containing(500..900),
+        [test_language_id("markdown")]
+    );
 }
 
 #[test]
 fn a_span_inside_one_included_range_is_in_that_layer() {
     require_grammars(&["markdown", "rust"]);
-    let layers = SyntaxLayers::new(vec![
-        layer_of("markdown", "tree_sitter_markdown", vec![], 0),
-        layer_of(
-            "rust",
-            "tree_sitter_rust",
-            vec![range(10, 20), range(30, 40)],
-            1,
-        ),
-    ]);
+    let layers = rust_in_markdown();
 
-    assert_eq!(layers.languages_containing(10..20), [rust(), markdown()]);
-    assert_eq!(layers.languages_containing(32..35), [rust(), markdown()]);
-    assert_eq!(layers.languages_containing(5..12), [markdown()]);
-    assert_eq!(layers.languages_containing(18..21), [markdown()]);
+    assert_eq!(
+        layers.languages_containing(10..20),
+        [test_language_id("rust"), test_language_id("markdown")]
+    );
+    assert_eq!(
+        layers.languages_containing(32..35),
+        [test_language_id("rust"), test_language_id("markdown")]
+    );
+    assert_eq!(
+        layers.languages_containing(5..12),
+        [test_language_id("markdown")]
+    );
+    assert_eq!(
+        layers.languages_containing(18..21),
+        [test_language_id("markdown")]
+    );
 }
 
 #[test]
 fn a_span_straddling_a_gap_between_ranges_is_not_in_that_layer() {
     require_grammars(&["markdown", "rust"]);
-    let layers = SyntaxLayers::new(vec![
-        layer_of("markdown", "tree_sitter_markdown", vec![], 0),
-        layer_of(
-            "rust",
-            "tree_sitter_rust",
-            vec![range(10, 20), range(30, 40)],
-            1,
-        ),
-    ]);
+    let layers = rust_in_markdown();
 
-    assert_eq!(layers.languages_containing(15..35), [markdown()]);
+    assert_eq!(
+        layers.languages_containing(15..35),
+        [test_language_id("markdown")]
+    );
 }
 
 #[test]
 fn deeper_layers_come_first_whatever_their_order_in_the_vector() {
     require_grammars(&["markdown", "rust", "json"]);
     let layers = SyntaxLayers::new(vec![
-        layer_of("markdown", "tree_sitter_markdown", vec![], 0),
-        layer_of("json", "tree_sitter_json", vec![range(12, 18)], 2),
-        layer_of("rust", "tree_sitter_rust", vec![range(10, 20)], 1),
+        layer_of("markdown", vec![], 0),
+        layer_of("json", vec![range(12, 18)], 2),
+        layer_of("rust", vec![range(10, 20)], 1),
     ]);
 
     assert_eq!(
         layers.languages_containing(13..15),
-        [json(), rust(), markdown()]
+        [
+            test_language_id("json"),
+            test_language_id("rust"),
+            test_language_id("markdown")
+        ]
     );
 }
 
@@ -180,13 +164,17 @@ fn deeper_layers_come_first_whatever_their_order_in_the_vector() {
 fn of_two_layers_at_one_depth_the_later_comes_first() {
     require_grammars(&["markdown", "rust", "json"]);
     let layers = SyntaxLayers::new(vec![
-        layer_of("markdown", "tree_sitter_markdown", vec![], 0),
-        layer_of("rust", "tree_sitter_rust", vec![range(10, 20)], 1),
-        layer_of("json", "tree_sitter_json", vec![range(10, 20)], 1),
+        layer_of("markdown", vec![], 0),
+        layer_of("rust", vec![range(10, 20)], 1),
+        layer_of("json", vec![range(10, 20)], 1),
     ]);
 
     assert_eq!(
         layers.languages_containing(11..12),
-        [json(), rust(), markdown()]
+        [
+            test_language_id("json"),
+            test_language_id("rust"),
+            test_language_id("markdown")
+        ]
     );
 }

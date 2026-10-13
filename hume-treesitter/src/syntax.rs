@@ -498,6 +498,12 @@ impl Syntax {
         self.parsed_gen == Some(generation) && self.tree_gen == generation
     }
 
+    /// The committed layers when they describe `generation` (see
+    /// [`Self::is_current`]), for a reader that must not see an older text's.
+    pub fn current_layers(&self, generation: u64) -> Option<&SyntaxLayers> {
+        self.layers().filter(|_| self.is_current(generation))
+    }
+
     #[cfg(any(test, feature = "test-util"))]
     pub fn tree_gen(&self) -> u64 {
         self.tree_gen

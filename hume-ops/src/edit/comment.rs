@@ -15,8 +15,9 @@ use hume_editing::state::EditState;
 use hume_editing::text::{BufferText, TextVersion};
 use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
 use hume_rope::line::ContentLine;
-use hume_rope::lines::is_space_char;
 use hume_rope::offset::InclusiveRange;
+
+use crate::word_unit::{next_nonblank, prev_nonblank};
 
 /// Which kind of comment a unit spanning several lines takes when its
 /// language has both.
@@ -267,15 +268,11 @@ fn is_blank(text: &BufferText, line: ContentLine) -> bool {
 }
 
 fn trimmed_span(text: &BufferText, lines: InclusiveRange<ContentLine>) -> Option<ClusterRange> {
-    let first = lines.iter().find(|&l| !is_blank(text, l))?;
-    let last = lines.iter().rev().find(|&l| !is_blank(text, l))?;
-    let start = text.lines().indent_end(first);
-    let last_cluster = text
-        .clusters()
-        .before(text.lines().newline(last).into())
-        .find(|cluster| !is_space_char(cluster.first()))
-        .expect("a line that is not blank has a cluster that is not blank");
-    ClusterRange::through(text.full_slice(), start, last_cluster.start())
+    let from = text.lines().start(lines.start).into();
+    let to = text.lines().newline(lines.end).into();
+    let start = next_nonblank(text, from, to)?;
+    let last = prev_nonblank(text, to, from)?;
+    ClusterRange::through(text.full_slice(), start, last)
 }
 
 fn commented(
@@ -293,11 +290,10 @@ fn commented(
     {
         return Commented::Block(deletions);
     }
-    let line_commented = tokens.line().is_some()
-        && lines
-            .iter()
-            .filter(|&l| !is_blank(text, l))
-            .all(|l| line_token_deletion(text, l, tokens).is_some());
+    let line_commented = lines
+        .iter()
+        .filter(|&l| !is_blank(text, l))
+        .all(|l| line_token_deletion(text, l, tokens).is_some());
     if line_commented {
         Commented::Line
     } else {
@@ -387,6 +383,7 @@ fn occurs_between(text: &BufferText, from: ClusterBound, to: ClusterBound, token
     text.clusters()
         .graphemes_at(from)
         .take_while(|cluster| cluster.start().offset() < to.offset())
+        .filter(|cluster| token.starts_with(cluster.first()))
         .any(|cluster| {
             match_forward(text, cluster.start(), token)
                 .is_some_and(|end| end.offset() <= to.offset())
@@ -401,8 +398,11 @@ fn match_forward(
     token: &str,
 ) -> Option<ClusterBound> {
     let at = at.into();
-    let mut chars = text.full_slice().chars_at(at.offset().index());
-    if !token.chars().all(|t| chars.next() == Some(t)) {
+    let mut chars = text.chars_at(at.offset());
+    if !token
+        .chars()
+        .all(|t| chars.next().is_some_and(|(_, c)| c == t))
+    {
         return None;
     }
     let len = token.chars().count();
@@ -416,8 +416,12 @@ fn match_forward(
 /// The cluster start where `token` begins when the text ending at `end`
 /// spells it and it starts on a cluster boundary.
 fn match_backward(text: &BufferText, end: ClusterBound, token: &str) -> Option<ClusterStart> {
-    let mut chars = text.full_slice().chars_at(end.offset().index());
-    if !token.chars().rev().all(|t| chars.prev() == Some(t)) {
+    let mut chars = text.chars_at(end.offset());
+    if !token
+        .chars()
+        .rev()
+        .all(|t| chars.prev().is_some_and(|(_, c)| c == t))
+    {
         return None;
     }
     let len = token.chars().count();

@@ -1,6 +1,7 @@
 use super::super::*;
 use hume_editing::comment::{BlockCommentTokens, CommentTokens, LineCommentTokens};
 use hume_editing::selection::SelectionSet;
+use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use test_fixtures::assert_state;
 use test_fixtures::testing::{IntoTestResult, parse_state, state};
@@ -18,19 +19,11 @@ impl Lang {
 }
 
 fn line(tokens: &[&str]) -> Option<LineCommentTokens> {
-    Some(LineCommentTokens::new(tokens.iter().map(|t| (*t).to_owned()).collect()).unwrap())
+    Some(LineCommentTokens::from_strs(tokens))
 }
 
 fn block(pairs: &[(&str, &str)]) -> Option<BlockCommentTokens> {
-    Some(
-        BlockCommentTokens::new(
-            pairs
-                .iter()
-                .map(|(s, e)| ((*s).to_owned(), (*e).to_owned()))
-                .collect(),
-        )
-        .unwrap(),
-    )
+    Some(BlockCommentTokens::from_pairs(pairs))
 }
 
 fn rust() -> Lang {
@@ -54,14 +47,23 @@ fn sh() -> Lang {
     }
 }
 
+/// [`plan_comment_toggle`] at tab width 4, with `tokens` for every unit.
+fn plan<'t, E: Copy>(
+    state: &EditState,
+    multi_line: MultiLineComments,
+    tokens: Result<CommentTokens<'t>, E>,
+) -> Result<CommentPlan, CommentPlanError<E>> {
+    plan_comment_toggle(state.view(), multi_line, 4, |_| tokens)
+}
+
 fn toggle(
     lang: &Lang,
     multi_line: MultiLineComments,
 ) -> impl Fn((BufferText, SelectionSet)) -> Edited + '_ {
     move |(text, sels)| {
         let state = state(text, sels);
-        let plan = plan_comment_toggle(state.view(), multi_line, 4, |_| Ok::<_, ()>(lang.tokens()))
-            .expect("the resolver never fails");
+        let plan =
+            plan(&state, multi_line, Ok::<_, ()>(lang.tokens())).expect("the resolver never fails");
         apply_comment_plan(state, plan)
     }
 }
@@ -198,9 +200,7 @@ fn a_span_holding_the_block_end_with_no_line_tokens_is_refused() {
     let html = html();
     let (text, sels) = parse_state("-[a <!-- x -->\nb]>\n");
     let state = state(text, sels);
-    let result = plan_comment_toggle(state.view(), MultiLineComments::Block, 4, |_| {
-        Ok::<_, ()>(html.tokens())
-    });
+    let result = plan(&state, MultiLineComments::Block, Ok::<_, ()>(html.tokens()));
     assert_eq!(
         result.err(),
         Some(CommentPlanError::BlockEndInside("-->".to_owned()))
@@ -305,9 +305,7 @@ fn a_space_carrying_a_combining_mark_is_not_removed() {
 fn a_resolver_error_is_returned() {
     let (text, sels) = parse_state("-[a]>\n");
     let state = state(text, sels);
-    let result = plan_comment_toggle(state.view(), MultiLineComments::Block, 4, |_| {
-        Err::<CommentTokens<'_>, _>("no tokens")
-    });
+    let result = plan(&state, MultiLineComments::Block, Err("no tokens"));
     assert_eq!(result.err(), Some(CommentPlanError::Tokens("no tokens")));
 }
 
@@ -317,9 +315,11 @@ fn applying_a_plan_to_another_text_panics() {
     let rust = rust();
     let (text, sels) = parse_state("-[a]>\n");
     let planned = state(text, sels);
-    let plan = plan_comment_toggle(planned.view(), MultiLineComments::Block, 4, |_| {
-        Ok::<_, ()>(rust.tokens())
-    })
+    let plan = plan(
+        &planned,
+        MultiLineComments::Block,
+        Ok::<_, ()>(rust.tokens()),
+    )
     .unwrap();
     let (other_text, other_sels) = parse_state("-[b]>\n");
     apply_comment_plan(state(other_text, other_sels), plan);

@@ -65,6 +65,13 @@ impl LineCommentTokens {
         Ok(Self(tokens))
     }
 
+    /// Tokens a test spells as literals. Panics on an invalid one.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn from_strs(tokens: &[&str]) -> Self {
+        Self::new(tokens.iter().map(|t| (*t).to_owned()).collect())
+            .expect("valid line comment tokens")
+    }
+
     /// The token written when commenting.
     pub fn primary(&self) -> &str {
         &self.0[0]
@@ -111,6 +118,18 @@ impl BlockCommentTokens {
             })
             .collect::<Result<_, _>>()
             .map(Self)
+    }
+
+    /// Pairs a test spells as literals. Panics on an invalid one.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn from_pairs(pairs: &[(&str, &str)]) -> Self {
+        Self::new(
+            pairs
+                .iter()
+                .map(|(start, end)| ((*start).to_owned(), (*end).to_owned()))
+                .collect(),
+        )
+        .expect("valid block comment tokens")
     }
 
     /// The pair written when commenting.

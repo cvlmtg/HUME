@@ -333,18 +333,7 @@ fn an_attached_grammar_loads_its_languages_bundled_data_before_any_layer() {
 fn a_fence_typed_just_before_toggling_takes_its_languages_comment() {
     require_fixtures();
     let (mut ed, bid) = markdown_editor_with("x\n", &repo_runtime_dirs());
-    ed.feed_key(key('i'));
-    for ch in "~~~rust".chars() {
-        ed.feed_key(key(ch));
-    }
-    ed.feed_key(key_enter());
-    ed.feed_key(key('f'));
-    ed.feed_key(key_enter());
-    for ch in "~~~".chars() {
-        ed.feed_key(key(ch));
-    }
-    ed.feed_key(key_enter());
-    ed.feed_key(key_esc());
+    type_text(&mut ed, "~~~rust\nf\n~~~\n");
     ed.feed_keys([key(';'), key('k')]);
 
     ed.feed_keys([key('G'), key('G')]);

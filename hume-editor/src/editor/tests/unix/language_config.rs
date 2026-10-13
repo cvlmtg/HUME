@@ -5,6 +5,7 @@
 use super::*;
 
 use super::super::scripting_grammar::{runtime_scheme_dir, shipped_grammar};
+use hume_editing::comment::{BlockCommentTokens, CommentTokens, LineCommentTokens};
 use hume_treesitter::registry::LanguageId;
 
 /// A session over a [`ReloadFixture`] whose runtime holds the real
@@ -240,27 +241,13 @@ const TSX_COMMENTS_BUNDLED: (&str, &str) = (
     r#"((comment-tokens "//") (block-comment-tokens ("/*" . "*/")))"#,
 );
 
-/// The line tokens and block pairs configured or bundled for `tsx`, as
-/// plain strings.
-fn comment_tokens(ed: &Editor) -> (Vec<String>, Vec<(String, String)>) {
+/// The line tokens and block pairs configured or bundled for `tsx`.
+fn comment_tokens(ed: &Editor) -> (Option<LineCommentTokens>, Option<BlockCommentTokens>) {
     let tokens = ed.state.config.languages.comment_tokens_of(tsx(ed));
-    let line = tokens
-        .and_then(|t| t.line())
-        .map(|l| l.iter().map(str::to_owned).collect())
-        .unwrap_or_default();
-    let block = tokens
-        .and_then(|t| t.block())
-        .map(|b| {
-            b.iter()
-                .map(|p| (p.start().to_owned(), p.end().to_owned()))
-                .collect()
-        })
-        .unwrap_or_default();
-    (line, block)
-}
-
-fn pair(start: &str, end: &str) -> (String, String) {
-    (start.to_owned(), end.to_owned())
+    (
+        tokens.and_then(CommentTokens::line).cloned(),
+        tokens.and_then(CommentTokens::block).cloned(),
+    )
 }
 
 #[test]
@@ -272,7 +259,10 @@ fn bundled_comment_tokens_are_applied_when_a_buffer_first_uses_the_language() {
     assert_no_errors(&ed);
     assert_eq!(
         comment_tokens(&ed),
-        (vec!["//".to_owned()], vec![pair("/*", "*/")])
+        (
+            Some(LineCommentTokens::from_strs(&["//"])),
+            Some(BlockCommentTokens::from_pairs(&[("/*", "*/")]))
+        )
     );
 }
 
@@ -291,8 +281,8 @@ fn comment_tokens_configured_in_init_beat_the_bundled_ones() {
     assert_eq!(
         comment_tokens(&ed),
         (
-            vec!["#".to_owned(), ";".to_owned()],
-            vec![pair("<!--", "-->")]
+            Some(LineCommentTokens::from_strs(&["#", ";"])),
+            Some(BlockCommentTokens::from_pairs(&[("<!--", "-->")]))
         )
     );
 }
@@ -312,7 +302,10 @@ fn a_second_init_comment_token_value_is_ignored_with_a_warning() {
 
     assert_eq!(
         comment_tokens(&ed),
-        (vec!["#".to_owned()], vec![pair("(*", "*)")])
+        (
+            Some(LineCommentTokens::from_strs(&["#"])),
+            Some(BlockCommentTokens::from_pairs(&[("(*", "*)")]))
+        )
     );
     let warnings = tsx_warnings(&ed);
     assert!(
@@ -341,7 +334,7 @@ fn a_malformed_comment_token_is_an_error_at_the_call() {
         errors.iter().any(|e| e.contains("comment-tokens")),
         "the malformed field must be named; errors: {errors:?}"
     );
-    assert_eq!(comment_tokens(&ed), (vec![], vec![]));
+    assert_eq!(comment_tokens(&ed), (None, None));
 }
 
 #[test]

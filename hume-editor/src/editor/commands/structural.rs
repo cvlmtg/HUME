@@ -15,7 +15,6 @@ use hume_ops::text_object::{
     apply_text_object_by_mode, around_argument, around_from_inner, inner_argument,
 };
 use hume_rope::cluster::ClusterStart;
-use hume_treesitter::syntax::Syntax;
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan, ObjectSpans, SpanSelector};
 
 use super::super::buffer::Buffer;
@@ -50,8 +49,7 @@ pub(super) fn object_spans(buf: &Buffer, body: StructuralBody) -> Arc<ObjectSpan
     let Some(layers) = buf
         .syntax
         .as_ref()
-        .filter(|syn| syn.is_current(generation))
-        .and_then(Syntax::layers)
+        .and_then(|syn| syn.current_layers(generation))
     else {
         return Arc::default();
     };

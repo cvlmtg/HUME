@@ -4,7 +4,7 @@
 use super::*;
 
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
-use hume_treesitter::registry::ConfiguredBy;
+use hume_treesitter::registry::{ConfigureOutcome, ConfiguredBy, LanguageFields};
 
 /// An editor over `src` whose buffer is a language named `name`, with
 /// `line` and `block` configured as its comment tokens.
@@ -13,19 +13,18 @@ fn editor_in(src: &str, name: &str, line: &[&str], block: &[(&str, &str)]) -> Ed
     super::language::attach_host(&mut ed, "");
     let languages = &mut ed.state.config.languages;
     let id = languages.register_identity_no_rebuild(name, &[], &[], &[]);
-    if !line.is_empty() {
-        let tokens = LineCommentTokens::new(line.iter().map(|t| (*t).to_owned()).collect())
-            .expect("valid line tokens");
-        let _ = languages.configure_line_comment_tokens(id, tokens, ConfiguredBy::User);
-    }
-    if !block.is_empty() {
-        let pairs = block
+    let fields = LanguageFields {
+        comment_tokens: (!line.is_empty()).then(|| LineCommentTokens::from_strs(line)),
+        block_comment_tokens: (!block.is_empty()).then(|| BlockCommentTokens::from_pairs(block)),
+        ..LanguageFields::default()
+    };
+    let outcomes = languages.configure_fields(id, fields, ConfiguredBy::User);
+    assert!(
+        outcomes
             .iter()
-            .map(|(s, e)| ((*s).to_owned(), (*e).to_owned()))
-            .collect();
-        let tokens = BlockCommentTokens::new(pairs).expect("valid block tokens");
-        let _ = languages.configure_block_comment_tokens(id, tokens, ConfiguredBy::User);
-    }
+            .all(|&(_, outcome)| outcome == ConfigureOutcome::Applied),
+        "{outcomes:?}"
+    );
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language(bid, Some(id));
     ed

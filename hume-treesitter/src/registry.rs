@@ -88,6 +88,34 @@ pub struct LanguageFields {
     pub block_comment_tokens: Option<BlockCommentTokens>,
 }
 
+/// One of [`LanguageFields`]' fields, named by its configuration key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LanguageField {
+    Roots,
+    LanguageId,
+    CommentTokens,
+    BlockCommentTokens,
+}
+
+impl LanguageField {
+    pub const ALL: [Self; 4] = [
+        Self::Roots,
+        Self::LanguageId,
+        Self::CommentTokens,
+        Self::BlockCommentTokens,
+    ];
+
+    /// The key `configure-language!` and a bundled data file spell it as.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Roots => "roots",
+            Self::LanguageId => "language-id",
+            Self::CommentTokens => "comment-tokens",
+            Self::BlockCommentTokens => "block-comment-tokens",
+        }
+    }
+}
+
 /// Result of a configured write.
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -374,56 +402,48 @@ impl LanguageRegistry {
 
     // ── Per-language configuration ────────────────────────────────────────────
 
-    /// Set `id`'s root markers from configuration.
-    pub fn configure_roots(
+    /// Set each field `fields` gives a value for from configuration, with the
+    /// outcome of each write.
+    #[must_use]
+    pub fn configure_fields(
         &mut self,
         id: LanguageId,
-        roots: Vec<String>,
+        fields: LanguageFields,
         by: ConfiguredBy,
-    ) -> ConfigureOutcome {
-        configure(&mut self.entry_mut(id).config.roots, roots, by)
-    }
-
-    /// Set `id`'s wire `languageId` from configuration.
-    pub fn configure_lsp_language_id(
-        &mut self,
-        id: LanguageId,
-        lsp_language_id: String,
-        by: ConfiguredBy,
-    ) -> ConfigureOutcome {
-        configure(
-            &mut self.entry_mut(id).config.lsp_language_id,
+    ) -> Vec<(LanguageField, ConfigureOutcome)> {
+        let LanguageFields {
+            roots,
             lsp_language_id,
-            by,
-        )
-    }
-
-    /// Set `id`'s line comment tokens from configuration.
-    pub fn configure_line_comment_tokens(
-        &mut self,
-        id: LanguageId,
-        tokens: LineCommentTokens,
-        by: ConfiguredBy,
-    ) -> ConfigureOutcome {
-        configure(
-            &mut self.entry_mut(id).config.line_comment_tokens,
-            tokens,
-            by,
-        )
-    }
-
-    /// Set `id`'s block comment pairs from configuration.
-    pub fn configure_block_comment_tokens(
-        &mut self,
-        id: LanguageId,
-        tokens: BlockCommentTokens,
-        by: ConfiguredBy,
-    ) -> ConfigureOutcome {
-        configure(
-            &mut self.entry_mut(id).config.block_comment_tokens,
-            tokens,
-            by,
-        )
+            comment_tokens,
+            block_comment_tokens,
+        } = fields;
+        let config = &mut self.entry_mut(id).config;
+        let mut outcomes = Vec::new();
+        if let Some(roots) = roots {
+            outcomes.push((
+                LanguageField::Roots,
+                configure(&mut config.roots, roots, by),
+            ));
+        }
+        if let Some(lsp_language_id) = lsp_language_id {
+            outcomes.push((
+                LanguageField::LanguageId,
+                configure(&mut config.lsp_language_id, lsp_language_id, by),
+            ));
+        }
+        if let Some(tokens) = comment_tokens {
+            outcomes.push((
+                LanguageField::CommentTokens,
+                configure(&mut config.line_comment_tokens, tokens, by),
+            ));
+        }
+        if let Some(tokens) = block_comment_tokens {
+            outcomes.push((
+                LanguageField::BlockCommentTokens,
+                configure(&mut config.block_comment_tokens, tokens, by),
+            ));
+        }
+        outcomes
     }
 
     /// Whether `id`'s bundled data file has been read.

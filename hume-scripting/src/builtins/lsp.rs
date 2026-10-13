@@ -16,8 +16,8 @@ use crate::{PendingLspServerReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, callable_arg, checked_params, hash_entry, json_arg, list_items, list_of,
-    list_to_env_pairs, list_to_strings, optional_json_arg, optional_list_items,
+    ENV_PAIR_SHAPE, bool_arg, callable_arg, checked_params, hash_entry, json_arg, list_items,
+    list_of, list_to_string_pairs, list_to_strings, optional_json_arg, optional_list_items,
     optional_server_arg, optional_string_arg, optional_symbol_arg, optional_token_arg, pair_fields,
     server_arg, string_arg, string_hash, string_list, symbol_enum_arg, symbol_hash, token_arg,
     wire_position, wire_range,
@@ -66,7 +66,7 @@ pub(crate) fn register_lsp_server(
     let args = list_to_strings(args_val, "register-lsp-server! args")?;
     let init_options = optional_json_arg(init_options, "register-lsp-server! init-options")?;
     let settings = optional_json_arg(settings, "register-lsp-server! settings")?;
-    let env = list_to_env_pairs(env_val, "register-lsp-server! env")?;
+    let env = list_to_string_pairs(env_val, "register-lsp-server! env", ENV_PAIR_SHAPE)?;
 
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Register(
         PendingLspServerReg {
