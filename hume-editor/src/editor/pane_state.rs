@@ -384,8 +384,9 @@ impl PaneView {
     }
 
     /// The seeded [`PaneBufferState`] for `(pid, bid)`, or `None` when the
-    /// pane has no map yet or never showed `bid`. Read-side counterpart of
+    /// pane is closed or never showed `bid`. Read-side counterpart of
     /// [`ensure`], which seeds rather than reporting absence.
+    #[cfg(test)]
     pub(in crate::editor) fn buffer_state(
         &self,
         pid: PaneId,

@@ -10,7 +10,6 @@ use crate::editor::EditorState;
 use crate::editor::commands::FocusedPane;
 use crate::editor::error::CommandError;
 use crate::editor::focus::{self, focus_pane};
-use crate::editor::tab::TabId;
 
 /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its
 /// id, but leave it outside every tab's layout (see `TabStore`'s own doc:
@@ -72,11 +71,9 @@ pub(in crate::editor) fn open_pane_as_new_tab(
     state: &mut EditorState,
     view: &mut EngineView,
     bid: BufferId,
-) -> (PaneId, TabId) {
+) {
     let layout = FocusedLayout::new(open_pane(state, view, bid));
-    let new_pid = layout.focused();
-    let tab_id = crate::editor::tab::open_tab(state, view, layout);
-    (new_pid, tab_id)
+    crate::editor::tab::open_tab(state, view, layout);
 }
 
 /// Remove every per-pane state map entry for a detached pane (`panes`,

@@ -40,9 +40,9 @@ pub(in crate::editor) fn open_tab(
     state: &mut EditorState,
     view: &mut EngineView,
     layout: FocusedLayout,
-) -> TabId {
+) {
     let outgoing = super::focus::install_layout(state, view, layout);
-    state.tabs.open_after_current(outgoing)
+    state.tabs.open_after_current(outgoing);
 }
 
 /// Close the current tab, switching to its neighbour (see

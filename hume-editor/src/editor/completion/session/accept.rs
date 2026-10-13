@@ -68,7 +68,7 @@ impl BufferSession {
             encoding,
             rope_pre,
             edits,
-        } = self.plan(state, view, idx)?;
+        } = self.plan(state, idx)?;
         let (pid, bid) = (self.pane_id, self.bid());
 
         // The session's layer sits above the Insert layer whose session owns
@@ -113,12 +113,7 @@ impl BufferSession {
     /// Every check and computation `accept` needs, against an `EditorState`
     /// it cannot change: an accept that fails any check leaves the buffer
     /// untouched.
-    fn plan<'a>(
-        &'a self,
-        state: &EditorState,
-        view: &EngineView,
-        idx: usize,
-    ) -> Result<AcceptPlan<'a>, String> {
+    fn plan<'a>(&'a self, state: &EditorState, idx: usize) -> Result<AcceptPlan<'a>, String> {
         let (source, invocation, item) = self
             .ranked(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
@@ -133,38 +128,14 @@ impl BufferSession {
         }
         let encoding = item.wire_encoding(may_resolve, "completion-accept!")?;
 
-        // The session's pane may no longer be live: the Steel
-        // `completion-accept!` builtin firing from a different pane than the
-        // session opened in. `pane_state::ensure`'s fallback (fabricate a
-        // fresh cursor at char 0 for a pane that never showed this buffer)
-        // is right for "a background buffer with no selection state yet",
-        // not for "this session's own point of reference is gone", so this
-        // errors instead of silently landing the edit at the top of the file.
-        if view.focused_pane() != self.pane_id {
-            return Err("completion-accept!: the session's pane is no longer focused".to_string());
-        }
-        // Focus alone doesn't prove the pane still *shows* this buffer in
-        // general, but a session's own pane can only ever leave its buffer
-        // via `switch_pane_to_buffer`, whose teardown (`focus::
-        // end_focus_sessions`, run before its own `buffer_id` write) already
-        // removes this session's `BufferCompletionLayer` first, since it
-        // always sits above the `InsertLayer` that teardown truncates. Kept
-        // as a real `Err`, not a debug-only assert: if that ordering ever
-        // breaks (a new close/switch path, a plugin-driven pane retarget
-        // that bypasses `switch_pane_to_buffer`), a release build must
-        // refuse rather than silently edit a buffer this pane no longer
-        // shows, the same discipline every other guard in this function
-        // already follows.
-        if view.panes.get(self.pane_id).map(|p| p.buffer_id()) != Some(bid) {
-            return Err(
-                "completion-accept!: the session's pane no longer shows its buffer".to_string(),
-            );
-        }
+        // The session's pane is focused and shows its buffer: every caller
+        // takes the session through `take_buffer_completion`, whose
+        // reconcile dismisses one that isn't, and a focus move or buffer
+        // switch removes the session's layer along with the Insert layer
+        // below it.
         let pid = self.pane_id;
         let (head_now, heads_now) = {
-            let pbs = state.panes.buffer_state(pid, bid).ok_or_else(|| {
-                "completion-accept!: buffer is no longer shown in the session's pane".to_string()
-            })?;
+            let pbs = state.panes.entries.shown(pid, bid);
             // The "as if typed at each cursor" model has no meaning for a
             // real selection. Typing over one is a different edit than
             // completing at it, and `replace_*_cursors` force-collapses

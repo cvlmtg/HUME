@@ -117,8 +117,6 @@ pub(in crate::editor) fn check_no_conflicting_session(
 ///
 /// `Err` when [`check_no_conflicting_session`] finds another pane's session on
 /// this buffer.
-// Same non-collapsible-params shape as `finish_edit`'s own allow, above.
-#[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_edit(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
@@ -169,8 +167,6 @@ pub(in crate::editor) fn apply_doc_edit(
 ///
 /// `stores.session` must hold an Insert-kind session on `(pane_id,
 /// buf_id)`, a caller contract. Panics otherwise.
-// Same non-collapsible-params shape as `finish_edit`'s own allow, above.
-#[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_edit_grouped(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
@@ -219,8 +215,6 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
 /// panes. `active_session` must hold a Paste-kind session on
 /// `(pane_id, buf_id)`. The caller must have opened it via
 /// `commands::paste`'s `do_paste` first. Panics otherwise.
-// Same non-collapsible-params shape as `finish_edit`'s own allow, above.
-#[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_edit_regrouped(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
@@ -283,8 +277,6 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
 /// requested at the root/leaf) or [`HistoryWalk::RefusedReadOnly`]. `Err`
 /// when [`check_no_conflicting_session`] finds another pane's session on this
 /// buffer, or this pane has an Insert or Replay session open on it.
-// Same non-collapsible-params shape as `finish_edit`'s own allow, above.
-#[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_history_walk(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
