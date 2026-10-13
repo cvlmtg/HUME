@@ -104,11 +104,10 @@ fn call_bang_to_inline_output_editor_command_opens_the_gate() {
 }
 
 /// A typed command is never reachable through `call!`. `%dispatch-command!`
-/// only ever resolves `command_table` (mappable names), never
-/// `typed_command_table`, so declaring one `#:inline-output` gives it no
-/// `call!` path to arm through. Pins the separation rather than assuming it:
-/// if it ever broke, `inner-typed-probe`'s body would silently start
-/// running from a `call!` site nothing should reach it from.
+/// only ever resolves mappable procs, never a typed one, so declaring one
+/// `#:inline-output` gives it no `call!` path to arm through. Pins the
+/// separation rather than assuming it: if it ever broke, `inner-typed-probe`'s
+/// body would start running from a `call!` site nothing should reach it from.
 #[test]
 fn call_bang_to_inline_output_typed_command_is_unreachable() {
     let ed = dispatch_backslash(
@@ -662,10 +661,9 @@ fn no_scripting_host_does_not_leak_a_pushed_frame() {
     );
     bind_backslash(&mut ed, "orphan");
     // Simulate the scripting host having gone away after the command was
-    // registered: dispatch still resolves `orphan` from the registry (a
-    // separate store from the host's own `command_table`), so it proceeds
-    // all the way to `call_steel_command_body` before finding out there is
-    // no host left to call.
+    // registered: dispatch still resolves `orphan` and its proc from the
+    // registry, so it proceeds all the way to `call_steel_command_body`
+    // before finding out there is no host left to call.
     ed.scripting = None;
     ed.feed_event(key('\\'));
 

@@ -299,6 +299,7 @@ fn is_extendable_steel_backed_always_true() {
         is_variadic: false,
         inline_output: false,
         repeatable: false,
+        proc: hume_scripting::MappableProc::for_test(),
     });
     assert!(cmd.is_extendable());
 }
@@ -428,6 +429,7 @@ fn steel_backed_names_filters_by_variant() {
         is_variadic: false,
         inline_output: false,
         repeatable: false,
+        proc: hume_scripting::MappableProc::for_test(),
     }));
     reg.register(MappableCommand::SteelBacked(SteelCommand {
         name: Cow::Owned("another-steel-cmd".to_string()),
@@ -436,6 +438,7 @@ fn steel_backed_names_filters_by_variant() {
         is_variadic: false,
         inline_output: false,
         repeatable: false,
+        proc: hume_scripting::MappableProc::for_test(),
     }));
     // An EditorCmd with a name that could be mistaken for a Steel proc:
     // the helper must still filter it out by variant, not by name shape.
@@ -485,6 +488,7 @@ fn unregister_removes_dynamic_but_not_native() {
         is_variadic: false,
         inline_output: false,
         repeatable: false,
+        proc: hume_scripting::MappableProc::for_test(),
     }));
     reg.register(MappableCommand::Lazy {
         name: Cow::Owned("lazy-cmd".to_string()),

@@ -238,7 +238,12 @@ impl Editor {
             }
         };
 
-        self.call_steel_command_body(name, effective_args, cmd.inline_output)
+        self.call_steel_command_body(
+            name,
+            hume_scripting::CommandProc::Mappable(cmd.proc.clone()),
+            effective_args,
+            cmd.inline_output,
+        )
     }
 
     /// Run the body of a Steel-backed or Lazy *typed* command, dispatched
@@ -263,7 +268,7 @@ impl Editor {
             return false;
         }
 
-        let (inline_output, cmd_arity, cmd_is_variadic) = match self
+        let (inline_output, cmd_arity, cmd_is_variadic, proc) = match self
             .state
             .config
             .registry
@@ -274,7 +279,8 @@ impl Editor {
                 inline_output,
                 arity,
                 is_variadic,
-            }) => (*inline_output, *arity, *is_variadic),
+                proc,
+            }) => (*inline_output, *arity, *is_variadic, proc.clone()),
             _ => return self.report_command_lost(name),
         };
 
@@ -317,10 +323,15 @@ impl Editor {
             }
         };
 
-        self.call_steel_command_body(name, effective_args, inline_output)
+        self.call_steel_command_body(
+            name,
+            hume_scripting::CommandProc::Typed(proc),
+            effective_args,
+            inline_output,
+        )
     }
 
-    /// Invoke a Steel command lambda by name with pre-marshalled positional
+    /// Invoke the Steel command `name`'s `proc` with pre-marshalled positional
     /// args, bracketing the call for `#:inline-output` commands.
     ///
     /// The Steel invocation, alt-screen bracket, and effect application are
@@ -328,6 +339,7 @@ impl Editor {
     fn call_steel_command_body(
         &mut self,
         name: &str,
+        proc: hume_scripting::CommandProc,
         effective_args: Vec<steel::rvals::SteelVal>,
         inline_output: bool,
     ) -> bool {
@@ -365,7 +377,7 @@ impl Editor {
                 self.tui.clone(),
                 self.kitty_enabled,
             );
-            scripting.call_steel_cmd(name, effective_args, &mut impl_host)
+            scripting.call_steel_cmd(proc, effective_args, &mut impl_host)
         };
 
         // Close the bracket only if a builtin actually opened it. This runs
@@ -401,10 +413,9 @@ impl Editor {
     /// (`hume_scripting::activation::run_steel_session`) does that
     /// unconditionally, including for the top-level dispatch's own frame,
     /// which nothing else ever truncates. Truncated to zero again here
-    /// regardless, as the backstop for the one caller
-    /// ([`Self::call_steel_command_body`]) that can reach this without ever
-    /// running a session at all: `call_steel_cmd`'s own registry/
-    /// `command_table` desync check fails before `run_steel_session` starts.
+    /// regardless: [`Self::call_steel_command_body`] pushes its frame before
+    /// handing off to `call_steel_cmd`, and this keeps that frame from
+    /// outliving the dispatch if a session never starts.
     /// `entered`/`ran` survive either drain (see `InlineOutput`'s own doc);
     /// reading them here, once, is this boundary's whole job.
     pub(super) fn close_inline_output_bracket(&mut self) {

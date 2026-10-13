@@ -10,6 +10,7 @@ use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
 
 use crate::attribution::EntryId;
+use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
     SelectionInfo, SettingsHost, UndoNode,
@@ -114,8 +115,11 @@ impl CommandHost for ReadOnlyHost<'_> {
     fn register_typed_command(&mut self, _def: SteelTypedCmdDef) -> Result<(), String> {
         Err(self.refuse("register_typed_command"))
     }
-    fn unregister_command(&mut self, _name: &str) {
-        self.refuse("unregister_command");
+    fn defined_command(&self, name: &str) -> Option<CommandProc> {
+        self.inner.borrow_mut().commands().defined_command(name)
+    }
+    fn unregister_commands_defined_by(&mut self, _plugin: &EntryId) {
+        self.refuse("unregister_commands_defined_by");
     }
     fn is_valid_register_name(&self, ch: char) -> bool {
         self.inner

@@ -262,6 +262,10 @@ fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) 
         let mut init_host = init_host!(ed);
         host.eval_source(src, &mut init_host).unwrap();
     }
+    let Some(hume_scripting::CommandProc::Typed(proc)) = ed.state.config.registry.steel_proc(name)
+    else {
+        panic!("`src` must define the typed command '{name}'");
+    };
     // Override arity/is_variadic so typed dispatch uses the test-supplied values.
     ed.state.config.registry.register_typed(TypedCommand {
         name: name.to_owned().into(),
@@ -271,6 +275,7 @@ fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) 
             arity,
             is_variadic,
             inline_output: false,
+            proc,
         },
         completer: None,
     });
@@ -470,6 +475,7 @@ fn typed_arity_rule_errors_on_arity_4() {
             arity: 4,
             is_variadic: false,
             inline_output: false,
+            proc: hume_scripting::TypedProc::for_test(),
         },
         completer: None,
     });

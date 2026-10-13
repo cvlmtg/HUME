@@ -113,10 +113,10 @@ impl CommandRegistry {
     /// Remove a single dynamic Steel-defined command by name: a mappable
     /// `SteelBacked`/`Lazy`, or a typed `TypedBody::Steel`/`TypedBody::Lazy`.
     ///
-    /// Native mappables and native typed commands are never removed: every
-    /// caller (Lazy-stub cleanup, failed-plugin rollback) only legitimately
-    /// owns dynamic entries, so refusing anything else keeps a buggy rollback
-    /// from deleting a built-in command for the rest of the session.
+    /// Native mappables and native typed commands are never removed: the
+    /// caller (Lazy-stub cleanup) only legitimately owns dynamic entries, so
+    /// refusing anything else keeps a buggy cleanup from deleting a built-in
+    /// command for the rest of the session.
     pub(in crate::editor) fn unregister(&mut self, name: &str) {
         let removable = match self.commands.get(name) {
             Some(Command::Mappable(mc)) => !mc.is_native(),
@@ -291,6 +291,38 @@ impl CommandRegistry {
                 })
             })
             .collect()
+    }
+
+    /// The proc of the Steel command registered under `name`
+    /// (case-sensitive), mappable or typed. `None` for a native command, a
+    /// `Lazy` stub, or an unknown name.
+    pub(in crate::editor) fn steel_proc(&self, name: &str) -> Option<hume_scripting::CommandProc> {
+        match self.commands.get(name)? {
+            Command::Mappable(MappableCommand::SteelBacked(cmd)) => {
+                Some(hume_scripting::CommandProc::Mappable(cmd.proc.clone()))
+            }
+            Command::Typed(TypedCommand {
+                body: TypedBody::Steel { proc, .. },
+                ..
+            }) => Some(hume_scripting::CommandProc::Typed(proc.clone())),
+            _ => None,
+        }
+    }
+
+    /// Remove every Steel command (mappable or typed) that `plugin`'s entry
+    /// file defined. Native commands and `Lazy` stubs are never matched.
+    pub(in crate::editor) fn unregister_defined_by(
+        &mut self,
+        plugin: &hume_scripting::attribution::EntryId,
+    ) {
+        self.commands.retain(|_, cmd| match cmd {
+            Command::Mappable(MappableCommand::SteelBacked(cmd)) => !cmd.proc.defined_by(plugin),
+            Command::Typed(TypedCommand {
+                body: TypedBody::Steel { proc, .. },
+                ..
+            }) => !proc.defined_by(plugin),
+            _ => true,
+        });
     }
 
     /// Remove every remaining `Lazy` stub owned by `plugin`, mappable and

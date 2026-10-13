@@ -57,6 +57,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 is_variadic: def.is_variadic,
                 inline_output: def.inline_output,
                 repeatable: def.repeatable,
+                proc: def.proc,
             }));
         Ok(())
     }
@@ -83,14 +84,19 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 arity: def.arity,
                 is_variadic: def.is_variadic,
                 inline_output: def.inline_output,
+                proc: def.proc,
             },
             completer: def.completer.map(std::borrow::Cow::Owned),
         });
         Ok(())
     }
 
-    fn unregister_command(&mut self, name: &str) {
-        self.state.config.registry.unregister(name);
+    fn defined_command(&self, name: &str) -> Option<hume_scripting::CommandProc> {
+        self.state.config.registry.steel_proc(name)
+    }
+
+    fn unregister_commands_defined_by(&mut self, plugin: &hume_scripting::attribution::EntryId) {
+        self.state.config.registry.unregister_defined_by(plugin);
     }
 
     fn register_lazy_command(

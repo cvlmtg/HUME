@@ -13,6 +13,7 @@ mod mock_host {
             is_variadic: false,
             inline_output: false,
             repeatable: false,
+            proc: hume_scripting::MappableProc::for_test(),
         }
     }
 

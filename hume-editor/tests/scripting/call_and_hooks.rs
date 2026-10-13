@@ -22,7 +22,7 @@ fn call_bang_passes_args_to_command() {
     )
     .unwrap();
 
-    h.call_steel_cmd(
+    h.call_steel_cmd_by_name(
         "echo-arg",
         vec![SteelVal::StringV("hello".into())],
         &mut mock,
@@ -51,7 +51,7 @@ fn call_bang_forwards_multiple_args_to_lambda() {
     )
     .unwrap();
 
-    h.call_steel_cmd(
+    h.call_steel_cmd_by_name(
         "route-three",
         vec![
             SteelVal::StringV("x".into()),
@@ -93,7 +93,7 @@ fn call_bang_arity_mismatch_surfaces_steel_error() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd(
+        .call_steel_cmd_by_name(
             "needs-two",
             vec![SteelVal::StringV("only-one".into())],
             &mut mock,
@@ -261,7 +261,9 @@ fn register_hook_errors_in_command_mode() {
         &mut mock,
     )
     .unwrap();
-    let err = h.call_steel_cmd("bad-cmd", vec![], &mut mock).unwrap_err();
+    let err = h
+        .call_steel_cmd_by_name("bad-cmd", vec![], &mut mock)
+        .unwrap_err();
     assert!(
         err.message
             .contains("only valid during init.scm or plugin load"),

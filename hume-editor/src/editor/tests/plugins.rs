@@ -4,9 +4,6 @@
 // strings embed OS paths) live in `unix/plugins.rs`.
 
 use super::*;
-use crate::editor::registry::{MappableCommand, SteelCommand};
-use hume_platform::dirs::Dirs;
-use hume_scripting::ScriptingHost;
 
 // ── CommandHost::register_lazy_command — collision rejection ─────────────────
 
@@ -43,58 +40,5 @@ fn lazy_stub_collision_rejected_and_stub_not_registered() {
             Some(crate::editor::registry::MappableCommand::Lazy { .. })
         ),
         "built-in must not be shadowed by a Lazy stub after collision"
-    );
-}
-
-/// Keypress dispatch of a `SteelBacked` command whose `command_table` entry
-/// is missing must fail loudly, naming the desync, never silently no-op or
-/// fall back to `%dispatch-command!`'s own miss handling (that dispatcher is
-/// reserved for `call!`/bare-name calls originating inside the VM).
-///
-/// This state (registry entry present, no `command_table` entry) cannot
-/// arise from `define-command!` in production; it simulates a desync
-/// directly to pin `call_steel_cmd`'s fail-fast guard.
-///
-/// A fallback to `%dispatch-command!` on a `command_table` miss would report
-/// a vague "unknown command" through the native/call! path instead of naming
-/// the desync.
-#[test]
-fn keypress_dispatch_command_table_desync_reports_error() {
-    let mut ed = editor_from("-[a]>b\n");
-    ed.state
-        .config
-        .registry
-        .register(MappableCommand::SteelBacked(SteelCommand {
-            name: "ghost-cmd".to_owned().into(),
-            doc: std::borrow::Cow::Borrowed(""),
-            arity: 0,
-            is_variadic: false,
-            inline_output: false,
-            repeatable: false,
-        }));
-    // A fresh scripting host's command_table has no entry for "ghost-cmd":
-    // it never went through define-command!, simulating a registry/table desync.
-    ed.scripting = Some(ScriptingHost::new(&Dirs::none()));
-
-    let before = state(&ed);
-    ed.execute_keymap_command("ghost-cmd".into(), Some(1), false);
-
-    assert_eq!(
-        state(&ed),
-        before,
-        "a desync must not silently execute anything"
-    );
-    assert!(
-        ed.state.message_log.entries().any(|e| {
-            e.severity == crate::editor::Severity::Error
-                && e.text.contains("ghost-cmd")
-                && e.text.contains("desync")
-        }),
-        "desync must be reported loudly; messages: {:?}",
-        ed.state
-            .message_log
-            .entries()
-            .map(|e| e.text.clone())
-            .collect::<Vec<_>>()
     );
 }

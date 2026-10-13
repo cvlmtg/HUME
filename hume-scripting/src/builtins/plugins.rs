@@ -11,7 +11,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 
 use crate::{
     SteelCtx,
-    attribution::{EntryFile, EntryId, Owner, PluginId},
+    attribution::{EntryFile, EntryId, PluginId},
     lazy::PluginState,
     plugin_record::Resolution,
 };
@@ -350,7 +350,7 @@ pub(crate) fn declare_plugin(
     // `register_lazy_command`/`register_lazy_typed_command` claims the name
     // in the same registry `define-command!`/`define-typed-command!` and
     // native commands live in, so this is the single check for "is this name
-    // available" across builtin, activation, and command-table names.
+    // available" across builtin, activation, and Steel-defined names.
     let cmd_list = filter_and_register_lazy(ctx, cmd_list, &entry_id, |c, name, entry| {
         c.register_lazy_command(name, entry)
     });
@@ -373,15 +373,6 @@ pub(crate) fn declare_plugin(
     }
 
     ctx.registries.plugin_records.note(plugin_id.clone(), None);
-
-    // Pre-seed cmd_owners so (command-plugin "cmd") resolves correctly before
-    // the plugin body is evaluated (before activation).  Only for accepted
-    // names: a filtered-out collision must not gain attribution here.
-    for cmd in cmd_list.iter().chain(typed_cmd_list.iter()) {
-        ctx.registries
-            .cmd_owners
-            .insert(cmd.clone(), Owner::Plugin(entry_id.clone()));
-    }
 
     ctx.registries
         .lazy_registry
@@ -655,9 +646,8 @@ pub(crate) fn begin_lazy_activation(
 /// a failing plugin never aborts the enclosing eval; `run_steel_session`
 /// reports it when the session ends.
 ///
-/// On failure the body's footprint is rolled back: its commands leave
-/// `command_table`/`typed_command_table`, `cmd_owners` and the
-/// `CommandRegistry`; its hooks are removed by owner; and
+/// On failure the body's footprint is rolled back: its commands leave the
+/// `CommandRegistry` by owner; its hooks are removed by owner; and
 /// `ctx.pop_effect_marks` drops its queued effects (key binds, LSP servers,
 /// languages), except those already committed by a nested activation.
 /// Hooks are removed by owner identity instead of queued as effects because
@@ -688,23 +678,7 @@ pub(crate) fn finish_lazy_activation(
     if let Some(err) = error {
         fail_plugin_activation(ctx, &id);
         // Roll back any commands the failed body partially registered.
-        let owned_by_this_plugin = Owner::Plugin(id.clone());
-        let orphans: Vec<String> = ctx
-            .registries
-            .cmd_owners
-            .iter()
-            .filter(|(_, owner)| **owner == owned_by_this_plugin)
-            .map(|(name, _)| name.clone())
-            .collect();
-        for name in orphans {
-            // Only one of the two ever has an entry for a given name (the
-            // other remove is a no-op), since command_table/typed_command_table
-            // are disjoint by kind (see typed_command_table's own doc).
-            ctx.registries.command_table.remove(&name);
-            ctx.registries.typed_command_table.remove(&name);
-            ctx.registries.cmd_owners.remove(&name);
-            ctx.host.commands().unregister_command(&name);
-        }
+        ctx.host.commands().unregister_commands_defined_by(&id);
 
         // Roll back hooks the failed body registered.
         ctx.registries.hooks.remove_owned_by(&id);
@@ -726,14 +700,13 @@ pub(crate) fn finish_lazy_activation(
 
 /// `(%lazy-command-owner name)`: return the owning entry as a `(plugin
 /// entry-file)` list if `name` is a registered *mappable* activation command,
-/// or `#f` if not.  Used by
-/// `%dispatch-command!` to decide whether a `command_table` miss should trigger
-/// inline activation.
+/// or `#f` if not. Used by `%dispatch-command!` to decide whether a
+/// mappable-proc miss should trigger inline activation.
 ///
-/// Mappable-only: `%dispatch-command!` backs `call!`, which can
-/// never reach a typed command (`typed_command_table` is a separate table;
-/// see its own doc). Reporting a typed-only stub as activatable here would
-/// load the plugin for a lookup that misses again right after and errors:
+/// Mappable-only: `%dispatch-command!` backs `call!`, which resolves a name
+/// inside the VM, where only mappable commands are reachable. Reporting a
+/// typed-only stub as activatable here would load the plugin for a lookup
+/// that misses again right after and errors:
 /// a permanent side effect for a call that could never succeed.
 pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResult {
     match ctx.host.commands().lazy_mappable_command_owner(&name) {

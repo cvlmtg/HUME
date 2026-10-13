@@ -1288,15 +1288,16 @@ fn plugin_calls_plugin_cursor_read_is_live() {
     );
 }
 
-/// Plugin commands registered via `define-command!` are entered into
-/// `ScriptingHost.registries.command_table` inline during eval (by `define_command`).
+/// `define-command!` stores each proc on the host inline during eval, owned
+/// by the user at init's top level.
 ///
-/// `command_table` is what `%lookup-plugin-proc` queries to decide whether to apply
-/// a command inline in Steel. This test confirms the table is populated after
-/// `eval_source`, the precondition for all in-Steel dispatch tests. With an
-/// empty table, `%lookup-plugin-proc` would always return `#f`.
+/// That proc is what `%lookup-plugin-proc` reads to decide whether to apply
+/// a command inline in Steel, so this is the precondition for all in-Steel
+/// dispatch tests.
 #[test]
-fn command_table_populated_after_define_command() {
+fn procs_recorded_after_define_command() {
+    use hume_scripting::host::CommandHost as _;
+
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
@@ -1306,19 +1307,23 @@ fn command_table_populated_after_define_command() {
     )
     .expect("define-command! must succeed");
 
-    let table = host.command_table_for_test();
+    for name in ["ping", "pong"] {
+        assert!(
+            matches!(
+                mock.defined_command(name),
+                Some(hume_scripting::CommandProc::Mappable(_))
+            ),
+            "{name} must be stored as a mappable proc"
+        );
+        let owner = host.eval_source_for_value(&format!(r#"(command-plugin "{name}")"#), &mut mock);
+        assert!(
+            matches!(&owner, Ok(steel::rvals::SteelVal::StringV(s)) if s.as_str() == "user"),
+            "{name} must be owned by the user; got {owner:?}"
+        );
+    }
     assert!(
-        table.contains_key("ping"),
-        "'ping' must be in command_table after define-command!"
-    );
-    assert!(
-        table.contains_key("pong"),
-        "'pong' must be in command_table after define-command!"
-    );
-    // Native command names must NOT appear in command_table; only plugin commands.
-    assert!(
-        !table.contains_key("move-right"),
-        "'move-right' (native) must not appear in command_table"
+        mock.defined_command("move-right").is_none(),
+        "a native command has no Steel proc"
     );
 }
 

@@ -446,10 +446,18 @@ fn manifest_collision_with_builtin_logs_error_continues() {
 // `CommandRegistry` collision detection (a real `Editor` + `EditorHostImpl`),
 // which `MockHost` (this file's host) does not reimplement.
 
-/// After a lazy declare, `cmd_owners["bar"]` maps to the plugin id (not to
-/// `"hume"`), even before the plugin body is evaluated.
+/// What `(command-plugin name)` returns.
+fn command_plugin(h: &mut ScriptingHost, mock: &mut MockHost, name: &str) -> String {
+    match h.eval_source_for_value(&format!(r#"(command-plugin "{name}")"#), mock) {
+        Ok(steel::rvals::SteelVal::StringV(s)) => s.to_string(),
+        other => panic!("command-plugin {name} must return a string: {other:?}"),
+    }
+}
+
+/// After a lazy declare, `(command-plugin "bar")` names the plugin, even
+/// before the plugin body is evaluated.
 #[test]
-fn cmd_owners_pre_seeded_before_activation() {
+fn command_plugin_names_lazy_stub_owner_before_activation() {
     let (dir, init_path) = plugin_fixture(
         r#"(declare-plugin! "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
@@ -460,19 +468,31 @@ fn cmd_owners_pre_seeded_before_activation() {
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("init must succeed");
 
-    // Plugin has NOT been activated yet; body was not evaluated.
-    let owners = h.cmd_owners_for_test();
-    let owner = owners.get("bar").map(|s| s.as_str());
-    assert!(
-        owner != Some("hume"),
-        "cmd_owners must be pre-seeded with the plugin id, not 'hume'; got: {:?}",
-        owner
+    assert_eq!(command_plugin(&mut h, &mut mock, "bar"), "user/tp");
+}
+
+/// A declared command the plugin body never defines stops existing once the
+/// plugin activates, so `(command-plugin …)` stops naming the plugin for it.
+#[test]
+fn command_plugin_forgets_undefined_stub_after_activation() {
+    let (dir, init_path) = plugin_fixture(
+        r#"(declare-plugin! "user/tp" #:commands '("bar" "baz"))"#,
+        r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
-    assert_eq!(
-        owner,
-        Some("user/tp"),
-        "cmd_owners must map 'bar' to 'user/tp' before activation"
-    );
+    let mut h = host_with_data_dir(dir.path().to_path_buf());
+    let mut mock = MockHost::new();
+
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+        .expect("init must succeed");
+    let id = attribution::EntryId::main(attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    });
+    h.activate_plugin_inline(&id, 10_000, &mut mock, &Default::default())
+        .expect("activate_plugin_inline must succeed");
+
+    assert_eq!(command_plugin(&mut h, &mut mock, "bar"), "user/tp");
+    assert_eq!(command_plugin(&mut h, &mut mock, "baz"), "hume");
 }
 
 /// `activate_plugin` drops the plugin's `Lazy` stub after the plugin body is

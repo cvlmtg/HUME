@@ -664,7 +664,8 @@ impl NativeCommand {
 /// A command implemented as a Steel (Scheme) lambda.
 ///
 /// Dispatched by [`hume_scripting::ScriptingHost::call_steel_cmd`], which
-/// routes through `%dispatch-command!` → `command_table` → `(apply proc args)`.
+/// applies `proc` directly; `call!` reaches it through `%dispatch-command!`,
+/// which applies it inside the VM.
 ///
 /// All Steel commands are extendable (Ctrl-key delivers `extend = #t` to the
 /// lambda body). Dot-repeat is opt-in via `#:repeatable #t` in `(define-command! …)`.
@@ -690,6 +691,8 @@ pub(in crate::editor) struct SteelCommand {
     /// Opt in via `#:repeatable #t` in `(define-command! …)`.
     /// Never `true` when `inline_output` is `true`, enforced at definition time.
     pub(in crate::editor) repeatable: bool,
+    /// The lambda and its owner.
+    pub(in crate::editor) proc: hume_scripting::MappableProc,
 }
 
 impl SteelCommand {
@@ -814,6 +817,8 @@ pub(in crate::editor) enum TypedBody {
         /// `true` if dispatch should bracket the call with an alt-screen exit
         /// so subprocess output streams live to the terminal.
         inline_output: bool,
+        /// The lambda and its owner.
+        proc: hume_scripting::TypedProc,
     },
     /// A placeholder for a lazy plugin's typed command that has not yet been
     /// loaded. Mirrors [`MappableCommand::Lazy`]; see its doc.

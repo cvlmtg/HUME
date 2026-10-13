@@ -365,10 +365,14 @@ fn interrupt_flag_reset_after_eval() {
 /// Unknown (built-in) commands return "hume".
 #[test]
 fn command_plugin_unknown_returns_hume() {
-    let h = host();
+    let mut h = host();
+    let mut mock = MockHost::new();
 
-    // "move-right" is a Rust built-in, not in cmd_owners.
-    assert!(!h.cmd_owners_for_test().contains_key("move-right"));
+    let owner = h.eval_source_for_value(r#"(command-plugin "move-right")"#, &mut mock);
+    assert!(
+        matches!(&owner, Ok(steel::rvals::SteelVal::StringV(s)) if s.as_str() == "hume"),
+        "a native command must report \"hume\"; got: {owner:?}"
+    );
 }
 
 // ── define-command! — no extendable flag ─────────────────────────────────

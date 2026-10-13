@@ -2,7 +2,8 @@
 //!
 //! `PluginStack` tracks which plugin is currently executing; `current_owner()`
 //! returns the owner to record at command-registration time. The result is
-//! stored in `cmd_owners` and exposed to Steel via `(command-plugin …)`.
+//! stored beside the command's proc and exposed to Steel via
+//! `(command-plugin …)`.
 
 use std::fmt;
 use std::hash::{Hash, Hasher};

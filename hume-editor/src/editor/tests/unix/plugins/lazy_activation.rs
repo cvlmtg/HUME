@@ -90,15 +90,14 @@ fn a_lazily_activated_typed_commands_declared_completer_works_on_first_use() {
     );
 }
 
-/// `call!` can never reach a typed command (`typed_command_table` is a
-/// separate table from `command_table`; see its own doc), so a typed-only
-/// lazy stub must not be activatable through `call!`: activating a plugin
-/// for a lookup that will miss again right after is a permanent side effect
-/// for a call that could never succeed.
+/// `call!` resolves a name inside the VM, where only mappable commands are
+/// reachable, so a typed-only lazy stub must not be activatable through
+/// `call!`: activating a plugin for a lookup that will miss again right after
+/// is a permanent side effect for a call that could never succeed.
 ///
 /// If `%lazy-command-owner` were not mappable-only, `(call! "bar")` would
 /// see the typed `Lazy` stub as an activatable owner, load the plugin, miss
-/// again in `command_table`, and leave the plugin `Loaded` anyway.
+/// again on the mappable procs, and leave the plugin `Loaded` anyway.
 #[test]
 fn call_bang_does_not_activate_a_typed_only_lazy_stub() {
     use hume_scripting::attribution::PluginId;
@@ -151,6 +150,24 @@ fn first_dispatch_under_a_differently_cased_name_activates_and_runs() {
             Some(TypedBody::Steel { .. })
         ),
         "the stub must be replaced by the plugin's Steel typed command"
+    );
+}
+
+/// A `#:typed-commands` stub names its plugin before activation. The real
+/// registry tells the two stub kinds apart, unlike `MockHost`, so this is the
+/// host that would catch `command-plugin` reading a mappable-only owner.
+#[test]
+fn command_plugin_names_a_typed_stubs_plugin_before_activation() {
+    let (ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))
+           (log! 'warn (command-plugin "bar"))"#,
+        r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let messages = ed.scripting.as_ref().unwrap().peek_pending_messages();
+    assert!(
+        messages.iter().any(|(_, msg)| msg == "user/tp"),
+        "command-plugin must name the typed stub's plugin; logged: {messages:?}"
     );
 }
 
@@ -452,8 +469,8 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
-    // Mirror real init_scripting order: eager command is in command_table
-    // before declare-plugin! runs, so the filter loop rejects "foo".
+    // Mirror real init_scripting order: eager command is defined before
+    // declare-plugin! runs, so the filter loop rejects "foo".
     let init_err = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())

@@ -4,9 +4,11 @@
 use super::unix::{host_with_plugin, main_entry, secondary};
 use crate::ScriptingHost;
 use crate::attribution::{EntryId, PluginId};
+use crate::command_procs::CommandProc;
+use crate::host::CommandHost as _;
 use crate::host::EditorHost;
 use crate::lazy::PluginState;
-use crate::null_host::{LazyStubHost, NullHost};
+use crate::null_host::{CommandStoreHost, NullHost};
 use hume_platform::dirs::Dirs;
 use tempfile::TempDir;
 
@@ -22,7 +24,7 @@ const DECLARE_BOTH: &str = r#"
 #[test]
 fn secondary_entry_is_declared_beside_the_main_entry() {
     let (_dir, mut host) = host_with_plugin("multi", &[("plugin.scm", ""), ("extra.scm", "")]);
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
 
     host.eval_source(DECLARE_BOTH, &mut editor_host).unwrap();
 
@@ -50,7 +52,7 @@ fn activating_one_entry_leaves_the_other_declared() {
             ("extra.scm", r#"(log! 'info "extra-ran")"#),
         ],
     );
-    host.eval_source(DECLARE_BOTH, &mut LazyStubHost::default())
+    host.eval_source(DECLARE_BOTH, &mut CommandStoreHost::default())
         .unwrap();
 
     host.eval_source(
@@ -90,13 +92,13 @@ fn failed_secondary_entry_keeps_the_main_entrys_footprint() {
             ),
         ],
     );
-    host.eval_source(DECLARE_BOTH, &mut LazyStubHost::default())
-        .unwrap();
+    let mut store = CommandStoreHost::default();
+    host.eval_source(DECLARE_BOTH, &mut store).unwrap();
 
     host.eval_source(
         r#"(%activate-plugin-inline! "user/multi" "plugin.scm")
            (%activate-plugin-inline! "user/multi" "extra.scm")"#,
-        &mut NullHost,
+        &mut store,
     )
     .unwrap();
 
@@ -108,8 +110,11 @@ fn failed_secondary_entry_keeps_the_main_entrys_footprint() {
         state(&host, &secondary("user/multi", "extra.scm")),
         Some(PluginState::Failed)
     ));
-    assert!(host.registries.command_table.contains_key("main-cmd"));
-    assert!(!host.registries.command_table.contains_key("extra-cmd"));
+    assert!(matches!(
+        store.defined_command("main-cmd"),
+        Some(CommandProc::Mappable(_))
+    ));
+    assert!(store.defined_command("extra-cmd").is_none());
     assert!(host.has_hook_handlers("on-buffer-save", None));
     assert!(!host.has_hook_handlers("on-buffer-open", None));
 }
@@ -120,7 +125,7 @@ fn redeclaring_an_entry_is_ignored_but_a_new_entry_is_added() {
         "multi",
         &[("plugin.scm", ""), ("extra.scm", ""), ("more.scm", "")],
     );
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     host.eval_source(DECLARE_BOTH, &mut editor_host).unwrap();
 
     host.eval_source(
@@ -149,7 +154,7 @@ fn declare_plugin_rejects_config_and_records_nothing() {
         .eval_source(
             r#"(declare-plugin! "user/multi" #:entry "extra.scm"
                  #:typed-commands '("extra-cmd") #:config (hash "k" "v"))"#,
-            &mut LazyStubHost::default(),
+            &mut CommandStoreHost::default(),
         )
         .expect_err("declare-plugin! must reject #:config");
 
@@ -179,7 +184,7 @@ fn the_main_entrys_config_is_what_every_entry_reads() {
         r#"(declare-plugin! "user/multi" #:languages '("zlang"))
            (declare-plugin! "user/multi" #:entry "extra.scm" #:typed-commands '("extra-cmd"))
            (load-plugin! "user/multi" #:config (hash "k" "from-main"))"#,
-        &mut LazyStubHost::default(),
+        &mut CommandStoreHost::default(),
     )
     .unwrap();
 
@@ -203,7 +208,7 @@ fn invalid_entry_names_error() {
     for bad in ["../x.scm", "a/b.scm", "x.txt", ".scm"] {
         let src =
             format!(r#"(declare-plugin! "user/multi" #:entry "{bad}" #:typed-commands '("c"))"#);
-        host.eval_source(&src, &mut LazyStubHost::default())
+        host.eval_source(&src, &mut CommandStoreHost::default())
             .expect_err(&format!("{bad:?} must be rejected"));
     }
 }
@@ -215,7 +220,7 @@ fn a_secondary_entry_with_no_trigger_errors() {
     let err = host
         .eval_source(
             r#"(declare-plugin! "user/multi" #:entry "extra.scm")"#,
-            &mut LazyStubHost::default(),
+            &mut CommandStoreHost::default(),
         )
         .expect_err("an entry that can never activate must be rejected");
 
@@ -229,7 +234,7 @@ fn a_missing_entry_file_in_an_installed_plugin_errors() {
     let err = host
         .eval_source(
             r#"(declare-plugin! "user/multi" #:entry "gone.scm" #:typed-commands '("c"))"#,
-            &mut LazyStubHost::default(),
+            &mut CommandStoreHost::default(),
         )
         .expect_err("a missing entry file must be a hard error");
 
@@ -261,7 +266,7 @@ fn a_manifest_may_declare_several_entries() {
             ),
         ],
     );
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
 
     host.eval_source(r#"(load-plugin! "user/multi")"#, &mut editor_host)
         .unwrap();
@@ -285,7 +290,7 @@ fn a_failed_manifest_fails_every_entry_it_declared() {
             ),
         ],
     );
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
 
     host.eval_source(r#"(load-plugin! "user/multi")"#, &mut editor_host)
         .unwrap();
@@ -317,7 +322,7 @@ fn a_manifest_that_never_declares_its_plugin_applies_no_effects() {
     let effects = host
         .eval_source(
             r#"(load-plugin! "user/silent")"#,
-            &mut LazyStubHost::default(),
+            &mut CommandStoreHost::default(),
         )
         .unwrap();
 
@@ -346,7 +351,7 @@ fn load_plugin_without_config_gives_the_body_an_empty_hash() {
     );
     host.eval_source(
         r#"(load-plugin! "user/multi")"#,
-        &mut LazyStubHost::default(),
+        &mut CommandStoreHost::default(),
     )
     .unwrap();
 
@@ -379,7 +384,7 @@ fn load_plugin_after_an_explicit_entry_declare_leaves_the_manifest_unread() {
     host.eval_source(
         r#"(declare-plugin! "user/multi" #:entry "extra.scm" #:typed-commands '("extra-cmd"))
            (load-plugin! "user/multi")"#,
-        &mut LazyStubHost::default(),
+        &mut CommandStoreHost::default(),
     )
     .unwrap();
 
@@ -399,7 +404,7 @@ fn declaring_a_missing_entry_file_records_nothing() {
 
     let result = host.eval_source(
         r#"(declare-plugin! "user/multi" #:entry "gone.scm" #:typed-commands '("gone-cmd"))"#,
-        &mut LazyStubHost::default(),
+        &mut CommandStoreHost::default(),
     );
 
     assert!(result.is_err(), "a missing entry file must be a hard error");
@@ -416,7 +421,7 @@ fn explicit_plugin_scm_entry_is_the_main_entry() {
 
     host.eval_source(
         r#"(declare-plugin! "user/multi" #:entry "plugin.scm" #:languages '("zlang"))"#,
-        &mut LazyStubHost::default(),
+        &mut CommandStoreHost::default(),
     )
     .unwrap();
     assert!(matches!(
@@ -426,7 +431,7 @@ fn explicit_plugin_scm_entry_is_the_main_entry() {
 
     let no_triggers = host.eval_source(
         r#"(declare-plugin! "user/other" #:entry "plugin.scm")"#,
-        &mut LazyStubHost::default(),
+        &mut CommandStoreHost::default(),
     );
     let err = format!("{:?}", no_triggers.unwrap_err());
     assert!(err.contains("declares no activation entries"), "{err}");
@@ -438,7 +443,7 @@ fn entry_spelled_in_another_case_is_an_error() {
 
     let result = host.eval_source(
         r#"(declare-plugin! "user/multi" #:entry "Plugin.scm" #:languages '("zlang"))"#,
-        &mut LazyStubHost::default(),
+        &mut CommandStoreHost::default(),
     );
 
     let err = format!("{:?}", result.unwrap_err());
@@ -452,7 +457,7 @@ fn main_entry_missing_from_an_installed_plugin_is_an_error() {
 
     let result = host.eval_source(
         r#"(declare-plugin! "user/multi" #:languages '("zlang"))"#,
-        &mut LazyStubHost::default(),
+        &mut CommandStoreHost::default(),
     );
 
     let err = format!("{:?}", result.unwrap_err());
@@ -473,7 +478,7 @@ fn load_plugin_of_a_manifest_plugin_stays_lazy() {
             ("plugin.scm", r#"(log! 'info "body-ran")"#),
         ],
     );
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
 
     host.eval_source(r#"(load-plugin! "user/multi")"#, &mut editor_host)
         .unwrap();
@@ -504,7 +509,7 @@ fn load_plugin_after_a_declare_keeps_the_declared_triggers_and_skips_the_manifes
             ("plugin.scm", r#"(log! 'info "body-ran")"#),
         ],
     );
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
 
     host.eval_source(
         r#"(declare-plugin! "user/multi" #:typed-commands '("mine"))
@@ -589,7 +594,7 @@ fn local(path: &str) -> EntryId {
 
 #[test]
 fn a_local_declare_resolves_beside_init_and_activates_on_its_trigger() {
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     let (_dir, mut host, result) = init_host(
         &[("my.scm", r#"(log! 'info "local-ran")"#)],
         r#"(declare-plugin! "./my.scm" #:typed-commands '("local-cmd"))"#,
@@ -618,7 +623,7 @@ fn a_local_declare_resolves_beside_init_and_activates_on_its_trigger() {
 
 #[test]
 fn a_local_body_sees_its_own_directory_and_an_empty_config() {
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     let (dir, mut host, result) = init_host(
         &[(
             "sub/x.scm",
@@ -650,7 +655,7 @@ fn a_local_body_sees_its_own_directory_and_an_empty_config() {
 
 #[test]
 fn a_local_plugin_is_loaded_but_never_listed_for_plum() {
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     let (_dir, mut host, result) = init_host(
         &[(
             "my.scm",
@@ -682,7 +687,7 @@ fn a_missing_local_file_errors() {
     let (_dir, _host, result) = init_host(
         &[],
         r#"(declare-plugin! "./nope.scm" #:typed-commands '("c"))"#,
-        &mut LazyStubHost::default(),
+        &mut CommandStoreHost::default(),
     );
 
     let err = result.expect_err("a missing local file must error");
@@ -694,7 +699,7 @@ fn a_local_declare_takes_no_entry() {
     let (_dir, _host, result) = init_host(
         &[("my.scm", "")],
         r#"(declare-plugin! "./my.scm" #:entry "x.scm" #:typed-commands '("c"))"#,
-        &mut LazyStubHost::default(),
+        &mut CommandStoreHost::default(),
     );
 
     let err = result.expect_err("#:entry makes no sense for a single file");

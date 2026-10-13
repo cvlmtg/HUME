@@ -2,6 +2,8 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use hume_treesitter::registry::LanguageFields;
 use steel::rvals::SteelVal;
 
+use crate::command_procs::{MappableProc, TypedProc};
+
 /// A buffer paired with the pane it was invoked/observed through, if any:
 /// the value injected everywhere command dispatch, hooks, completion
 /// sources, and `(buffers)`/`(panes)` name a buffer, and the sole argument
@@ -70,6 +72,9 @@ pub struct SteelCmdDef {
     /// Opt in via `#:repeatable #t` in `(define-command! …)`.
     /// Mutually exclusive with `inline_output`, enforced at definition time.
     pub repeatable: bool,
+    /// The lambda and the owner it was defined under, stored on the
+    /// registry entry so dispatch runs the proc of the entry it resolved.
+    pub proc: MappableProc,
 }
 
 /// A Steel typed-command definition built by `define-typed-command!` during
@@ -101,6 +106,8 @@ pub struct SteelTypedCmdDef {
     /// completes this command's `:` argument on Tab. Resolved by name at
     /// completion time, same as a built-in's declared completer.
     pub completer: Option<String>,
+    /// The lambda and the owner it was defined under.
+    pub proc: TypedProc,
 }
 
 /// Who called `configure-language!`: `init.scm`'s top level or a plugin body.

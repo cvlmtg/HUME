@@ -42,12 +42,13 @@ use the original casing.
 ## Owner attribution and `(command-plugin name)`
 
 Command registrations are attributed at the time `(define-command! …)` is called: the
-current stack top is stored in an internal owner map (command name → owner string).
+command records whoever is on top of the stack as its owner.
 
-For lazy plugins whose manifest lists commands, the owner is pre-seeded as soon as the
-plugin is brought in — before the plugin body runs —
-so `(command-plugin "cmd")` resolves correctly even when queried before the first
-activation.
+A lazy plugin's manifest lists the commands it will provide. Each listed command names the
+plugin from the moment the plugin is declared, before its body runs, so
+`(command-plugin "cmd")` answers correctly even before the first activation. A listed
+command the body never defines stops existing once the plugin activates, and from then on
+it is no longer attributed to the plugin.
 
 ```scheme
 (command-plugin "move-right")   ; => "hume"     (built-in Rust command)

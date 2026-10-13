@@ -45,9 +45,9 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
         // below aren't fighting it for `self`.
         let active_tui = self.tui.as_ref()?.as_active();
         // Mappable only: `%dispatch-command!` (`call!`'s expansion) reaches
-        // `command_table`/`get_mappable`, never `typed_command_table`: a
-        // typed command is not `call!`-reachable, so matching one here would
-        // arm for a path that can't actually happen.
+        // mappable procs/`get_mappable`, never a typed proc: a typed command
+        // is not `call!`-reachable, so matching one here would arm for a path
+        // that can't actually happen.
         let declared = matches!(
             self.state.config.registry.get_mappable(name),
             Some(MappableCommand::SteelBacked(SteelCommand {

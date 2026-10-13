@@ -6,8 +6,10 @@ use tempfile::TempDir;
 
 use crate::ScriptingHost;
 use crate::attribution::{EntryId, PluginId};
+use crate::command_procs::CommandProc;
+use crate::host::CommandHost as _;
 use crate::lazy::PluginState;
-use crate::null_host::NullHost;
+use crate::null_host::{CommandStoreHost, NullHost};
 
 /// Write a Steel source file into `dir` and return its path.
 fn write_plugin(dir: &TempDir, name: &str, src: &str) -> std::path::PathBuf {
@@ -42,12 +44,16 @@ fn declared_to_loaded_registers_command() {
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
 
-    host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins())
+    let mut store = CommandStoreHost::default();
+    host.activate_plugin_inline(&id, 10_000, &mut store, &no_builtins())
         .unwrap();
 
     assert!(
-        host.registries.command_table.contains_key("test-cmd"),
-        "command must be in command_table after activation"
+        matches!(
+            store.defined_command("test-cmd"),
+            Some(CommandProc::Mappable(_))
+        ),
+        "command must be defined after activation"
     );
     assert!(
         matches!(
@@ -264,20 +270,24 @@ fn path_with_quote_char_transitions_to_failed() {
 // ── Stage B: eval-string plumbing ─────────────────────────────────────────
 
 /// A `define-command!` issued via `eval-string` inside a `run_steel` session
-/// registers the command in `command_table`, proving that the nested eval-string
+/// defines the command, proving that the nested eval-string
 /// sees the same `ctx.registries` as the outer eval.
 #[test]
-fn eval_string_nested_registers_command_in_command_table() {
+fn eval_string_nested_defines_command() {
     let mut host = ScriptingHost::new(&Dirs::none());
     // Eval a snippet that eval-strings a define-command!. The outer eval is
     // in EvalMode::Init, which allows define-command!.
     let program = r#"
 (hm.eval-string "(define-command! \"inner-cmd\" \"doc\" (lambda () 0))")
 "#;
-    host.eval_source(program, &mut NullHost).unwrap();
+    let mut store = CommandStoreHost::default();
+    host.eval_source(program, &mut store).unwrap();
     assert!(
-        host.registries.command_table.contains_key("inner-cmd"),
-        "command defined via eval-string must appear in command_table"
+        matches!(
+            store.defined_command("inner-cmd"),
+            Some(CommandProc::Mappable(_))
+        ),
+        "command defined via eval-string must be defined"
     );
 }
 
@@ -409,8 +419,8 @@ fn finish_lazy_activation_failure_transitions_to_failed() {
 
 /// A plugin body that defines one command and then errors: the plugin
 /// transitions to `Failed` and `finish_lazy_activation` rolls back the
-/// partial `define-command!`, removing it from `command_table` and
-/// `cmd_owners`.  A `Failed` plugin must not leave callable orphan commands.
+/// partial `define-command!`, removing its proc.  A `Failed` plugin must not
+/// leave callable orphan commands.
 #[test]
 fn partial_define_before_failure_is_rolled_back() {
     let dir = TempDir::new().unwrap();
@@ -427,7 +437,8 @@ fn partial_define_before_failure_is_rolled_back() {
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
 
-    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+    let mut store = CommandStoreHost::default();
+    let result = host.activate_plugin_inline(&id, 10_000, &mut store, &no_builtins());
 
     assert!(
         result.is_ok(),
@@ -442,12 +453,8 @@ fn partial_define_before_failure_is_rolled_back() {
     );
     // The partial define must be rolled back: no callable orphan left behind.
     assert!(
-        !host.registries.command_table.contains_key("partial-cmd"),
-        "partial define-command! must be removed from command_table on failure"
-    );
-    assert!(
-        !host.registries.cmd_owners.contains_key("partial-cmd"),
-        "partial define-command! must be removed from cmd_owners on failure"
+        store.defined_command("partial-cmd").is_none(),
+        "partial define-command! must be unregistered on failure"
     );
 }
 
@@ -502,7 +509,6 @@ fn queued_effects_before_failure_are_rolled_back() {
 #[test]
 fn committed_activation_effects_survive_failed_outer_command() {
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
     use crate::types::{Effect, PendingLspServerOp};
 
     let dir = TempDir::new().unwrap();
@@ -519,7 +525,7 @@ fn committed_activation_effects_survive_failed_outer_command() {
         .plugins
         .insert(id_b.clone(), PluginState::Declared { path });
 
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
         .register_lazy_command("b-cmd", &id_b)
@@ -536,7 +542,7 @@ fn committed_activation_effects_survive_failed_outer_command() {
     )
     .expect("defining outer-a must not error");
 
-    let result = host.call_steel_cmd("outer-a", vec![], &mut editor_host);
+    let result = host.call_steel_cmd_by_name("outer-a", vec![], &mut editor_host);
 
     let err = result.expect_err("outer-a's intentional error must propagate");
     assert!(
@@ -582,7 +588,6 @@ fn committed_activation_effects_survive_failed_outer_command() {
 #[test]
 fn nested_activation_commit_survives_enclosing_plugin_failure() {
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
     use crate::types::{Effect, PendingLspServerOp};
 
     let dir = TempDir::new().unwrap();
@@ -611,7 +616,7 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
         .plugins
         .insert(id_c.clone(), PluginState::Declared { path: path_c });
 
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
         .register_lazy_command("c-cmd", &id_c)
@@ -648,7 +653,10 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
         "C must be Loaded: its activation succeeded before B's own failure"
     );
     assert!(
-        host.registries.command_table.contains_key("c-cmd"),
+        matches!(
+            editor_host.defined_command("c-cmd"),
+            Some(CommandProc::Mappable(_))
+        ),
         "C's command must remain registered: C is Loaded, not rolled back"
     );
     assert!(
@@ -715,7 +723,6 @@ fn hook_registered_before_failure_is_rolled_back() {
 #[test]
 fn nested_activation_hook_survives_enclosing_plugin_failure() {
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
 
     let dir = TempDir::new().unwrap();
     let path_c = write_plugin(
@@ -742,7 +749,7 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
         .plugins
         .insert(id_c.clone(), PluginState::Declared { path: path_c });
 
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
         .register_lazy_command("hc-cmd", &id_c)
@@ -787,7 +794,6 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
 #[test]
 fn lazy_plugin_can_define_its_own_activation_command() {
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
 
     let dir = TempDir::new().unwrap();
     let path = write_plugin(
@@ -805,7 +811,7 @@ fn lazy_plugin_can_define_its_own_activation_command() {
     // Simulate declare-plugin! having claimed self-act-cmd as the
     // activation entry, now tracked in the editor's registry (here,
     // the stateful test host), not a scripting-crate map.
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
         .register_lazy_command("self-act-cmd", &id)
@@ -825,8 +831,11 @@ fn lazy_plugin_can_define_its_own_activation_command() {
         "plugin must be Loaded after activation"
     );
     assert!(
-        host.registries.command_table.contains_key("self-act-cmd"),
-        "self-act-cmd must be in command_table after activation"
+        matches!(
+            editor_host.defined_command("self-act-cmd"),
+            Some(CommandProc::Mappable(_))
+        ),
+        "self-act-cmd must be defined after activation"
     );
 }
 
@@ -845,7 +854,6 @@ fn lazy_plugin_can_define_its_own_activation_command() {
 /// `%activate-plugin-inline!` runs after its `with-handler`.
 #[test]
 fn interrupt_during_activation_aborts_before_next_plugin_loads() {
-    use crate::null_host::LazyStubHost;
     use std::sync::atomic::Ordering;
 
     let dir = TempDir::new().unwrap();
@@ -871,7 +879,7 @@ fn interrupt_during_activation_aborts_before_next_plugin_loads() {
         .store(true, Ordering::Relaxed);
 
     let src = r##"(%activate-plugin-inline! "core:a" #f) (%activate-plugin-inline! "core:b" #f)"##;
-    let result = host.eval_source(src, &mut LazyStubHost::default());
+    let result = host.eval_source(src, &mut CommandStoreHost::default());
 
     assert!(
         result.is_err(),
@@ -907,7 +915,6 @@ fn interrupt_during_activation_aborts_before_next_plugin_loads() {
 #[test]
 fn call_of_command_owned_by_newly_failed_plugin_errors() {
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
 
     let dir = TempDir::new().unwrap();
     let path = write_plugin(&dir, "broken.scm", r#"(error "broken body")"#);
@@ -918,7 +925,7 @@ fn call_of_command_owned_by_newly_failed_plugin_errors() {
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
 
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
         .register_lazy_command("broken-cmd", &id)
@@ -947,7 +954,6 @@ fn call_of_command_owned_by_newly_failed_plugin_errors() {
 #[test]
 fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
 
     let dir = TempDir::new().unwrap();
     let plugin_dir = dir.path().join("plugins").join("user").join("selfdecl");
@@ -968,7 +974,7 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
 
     let result = host.eval_source(r#"(load-plugin! "user/selfdecl")"#, &mut editor_host);
 

@@ -116,7 +116,7 @@ impl SteelCtxTestHarness {
 
     /// Build an init-mode `SteelCtx` over a caller-supplied host instead of the
     /// harness's `NullHost`, for tests that need specific host behaviour
-    /// (e.g. [`crate::null_host::FailingRegisterHost`]).
+    /// (e.g. [`crate::null_host::CommandStoreHost`]).
     pub(crate) fn ctx_init_with_host<'a>(
         &'a mut self,
         host: &'a mut dyn crate::host::EditorHost,

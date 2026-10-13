@@ -34,6 +34,7 @@ mod log;
 mod plugin_record;
 // ── Private implementation details ────────────────────────────────────────────
 mod activation;
+mod command_procs;
 mod context;
 #[cfg(test)]
 mod null_host;
@@ -51,6 +52,7 @@ pub(crate) mod watchdog;
 // Types the editor and editor tests use directly.
 pub use builtins::args::symbol_hash;
 pub use builtins::ids::{DocPos, DocRange, ServerRef, SteelPane};
+pub use command_procs::{CommandProc, MappableProc, TypedProc};
 pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
@@ -105,11 +107,6 @@ use read_only_host::ReadOnlyHost;
 /// Steel VM (`steel`) and the rest of `ScriptingHost`.
 #[derive(Default)]
 pub(crate) struct ScriptingRegistries {
-    /// Command-to-owner index: maps each Steel-registered command name to
-    /// its owning [`attribution::Owner`]. Converted to a display string (`"hume"`,
-    /// `"user"`, or a plugin id like `"core:plum"`) only at the Steel
-    /// boundary (`(command-plugin …)`).
-    pub(crate) cmd_owners: rustc_hash::FxHashMap<String, attribution::Owner>,
     /// Persistent hook registry: handlers registered by `(register-hook! …)`.
     pub(crate) hooks: HookRegistry,
     /// Lazy plugin registry: populated by `%declare-plugin!` during init;
@@ -118,24 +115,6 @@ pub(crate) struct ScriptingRegistries {
     /// Plugin-level state of every plugin named by `(load-plugin! …)` or
     /// `(declare-plugin! …)`, including plugins absent on disk.
     pub(crate) plugin_records: plugin_record::PluginRecords,
-    /// In-Steel dispatch table: maps activated plugin command name to its Steel
-    /// closure for synchronous inline application by `%dispatch-command!`.
-    ///
-    /// Populated by `define_command` inline during init or plugin activation.
-    /// Consulted by `%lookup-plugin-proc` in both init and command mode.
-    pub(crate) command_table: rustc_hash::FxHashMap<String, SteelVal>,
-    /// Same as `command_table`, but for `define-typed-command!` procs.
-    ///
-    /// Kept separate (not a second key range in `command_table`) so
-    /// `%lookup-plugin-proc`/`%dispatch-command!` (the `call!` path, which
-    /// only ever reads `command_table`) can never reach a typed command's
-    /// proc: `call!` invoking a `:`-only command would break the strict
-    /// mappable/typed separation the editor's `CommandRegistry` enforces
-    /// (see `registry/mod.rs`'s module doc there). `call_steel_cmd` (the
-    /// Rust-driven path used by both keypress/`call!` dispatch and `:`
-    /// dispatch) checks both tables, since its caller has already resolved
-    /// which kind `name` is through the editor's own registry.
-    pub(crate) typed_command_table: rustc_hash::FxHashMap<String, SteelVal>,
 }
 
 /// Borrows of [`ScriptingHost`] fields needed to populate [`SteelCtx`].
@@ -492,28 +471,6 @@ impl ScriptingHost {
         self.plugin_stack.push(id);
     }
 
-    /// Owner of each Steel-registered command, as the display string
-    /// `(command-plugin …)` would return. `Owner` itself is crate-private,
-    /// so this is the boundary form for the editor crate's test suite.
-    #[cfg(any(test, feature = "test-util"))]
-    pub fn cmd_owners_for_test(&self) -> rustc_hash::FxHashMap<String, String> {
-        self.registries
-            .cmd_owners
-            .iter()
-            .map(|(name, owner)| (name.clone(), owner.to_string()))
-            .collect()
-    }
-
-    /// Read-only view of the in-Steel plugin dispatch table.
-    ///
-    /// Maps activated plugin command name → its Steel closure. Used in tests to
-    /// assert inline `define-command!` populated the table correctly, which is the
-    /// precondition for `%lookup-plugin-proc` returning the closure rather than `#f`.
-    #[cfg(any(test, feature = "test-util"))]
-    pub fn command_table_for_test(&self) -> &rustc_hash::FxHashMap<String, steel::rvals::SteelVal> {
-        &self.registries.command_table
-    }
-
     // ── Eval machinery ────────────────────────────────────────────────────────
 
     /// Evaluate `init.scm` at `path`, giving builtins access to editor state
@@ -543,8 +500,8 @@ impl ScriptingHost {
     /// Atomicity is **not** all-or-nothing across the whole file even for
     /// this genuine top-level case: only deferred effects (keybinds, LSP
     /// registration, …) roll back on error. `define-command!` and
-    /// `register-hook!` mutate `command_table` / `HookRegistry` inline the
-    /// instant the builtin runs (see `builtins::commands`/`builtins::hooks`),
+    /// `register-hook!` write the editor's command registry / `HookRegistry`
+    /// inline the instant the builtin runs (see `builtins::commands`/`builtins::hooks`),
     /// so a `define-command!` or `register-hook!` that ran before the
     /// failing form stays live in the degraded session. This is deliberate:
     /// a config error already surfaces to the user, and `:reload-config`
@@ -608,8 +565,9 @@ impl ScriptingHost {
         }
     }
 
-    /// Invoke a Steel proc by its internal name and return the effects it
-    /// queued, for the caller to apply.
+    /// Invoke a Steel command's proc and return the effects it queued, for
+    /// the caller to apply. `proc` is the one on the registry entry the
+    /// editor resolved, so no second lookup can disagree with it.
     ///
     /// A watchdog thread enforces `host.steel_command_budget_ms()`.  If the
     /// script runs past the budget, `(hume/yield!)` calls abort it (cooperative
@@ -625,44 +583,40 @@ impl ScriptingHost {
     /// cost-free; the trade-off is accepted intentionally.
     pub fn call_steel_cmd<'a>(
         &'a mut self,
-        name: &str,
+        proc: CommandProc,
         args: Vec<SteelVal>,
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
         let budget_ms = host.settings().steel_command_budget_ms();
-
-        // The editor already resolved any Lazy stub and activated its owning
-        // plugin before calling here (see Editor::run_steel_command), so
-        // `name` must already have a live closure in command_table. A miss
-        // means the editor's registry and this table have desynced (a bug,
-        // not a retry case), so this fails loudly rather than falling back to
-        // %dispatch-command!'s own miss-handling (that dispatcher is reserved
-        // for call!/bare-name calls originating inside the VM).
-        let proc = self
-            .registries
-            .command_table
-            .get(name)
-            .or_else(|| self.registries.typed_command_table.get(name))
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "call_steel_cmd: '{name}' has no registered command body \
-                     (registry/command_table desync)"
-                )
-            })?;
-
         let effects_start = self.effects.len();
         let result = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(host, bundle);
             run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
-                steel.call_function_with_args(proc, args)?;
+                proc.call(steel, args)?;
                 Ok(())
             })
             .map_err(|e| e.message)
         };
 
         self.take_eval_effects(effects_start, result)
+    }
+
+    /// [`Self::call_steel_cmd`] on the proc `host` holds for `name`, for tests
+    /// that drive a command without the editor's dispatch. Panics if `host`
+    /// has no Steel command named `name`.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn call_steel_cmd_by_name<'a>(
+        &'a mut self,
+        name: &str,
+        args: Vec<SteelVal>,
+        host: &'a mut dyn EditorHost,
+    ) -> Result<Vec<Effect>, EvalError> {
+        let proc = host
+            .commands()
+            .defined_command(name)
+            .unwrap_or_else(|| panic!("host has no Steel command named '{name}'"));
+        self.call_steel_cmd(proc, args, host)
     }
 
     /// Fire every handler for `name` that matches `key`, passing `args` to

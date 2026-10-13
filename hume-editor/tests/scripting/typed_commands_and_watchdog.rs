@@ -211,7 +211,9 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
     mock.settings.steel_command_budget_ms = 50;
 
     let start = std::time::Instant::now();
-    let err = h.call_steel_cmd(&cmd_name, vec![], &mut mock).unwrap_err();
+    let err = h
+        .call_steel_cmd_by_name(&cmd_name, vec![], &mut mock)
+        .unwrap_err();
 
     assert!(
         err.message.contains("interrupted"),
@@ -247,7 +249,9 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
     assert_eq!(mock.settings.tab_width, 4, "precondition");
     mock.settings.steel_command_budget_ms = 50;
 
-    let err = h.call_steel_cmd(&cmd_name, vec![], &mut mock).unwrap_err();
+    let err = h
+        .call_steel_cmd_by_name(&cmd_name, vec![], &mut mock)
+        .unwrap_err();
 
     assert!(
         err.message.contains("interrupted"),
@@ -274,7 +278,8 @@ fn call_steel_cmd_set_option_from_body_applies_the_setting() {
     )
     .unwrap();
 
-    h.call_steel_cmd("try-set", vec![], &mut mock).unwrap();
+    h.call_steel_cmd_by_name("try-set", vec![], &mut mock)
+        .unwrap();
 
     assert_eq!(mock.settings.tab_width, 8, "tab-width must be applied");
 }

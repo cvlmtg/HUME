@@ -5,6 +5,17 @@ fn make_list(vals: Vec<SteelVal>) -> SteelVal {
     SteelVal::ListV(vals.into_iter().collect())
 }
 
+fn plum_entry() -> crate::attribution::EntryId {
+    crate::attribution::EntryId::main(crate::attribution::PluginId::Core("plum".to_string()))
+}
+
+/// A host holding one command, `my-cmd`, defined as `proc`.
+fn plum_defined(proc: CommandProc) -> crate::null_host::CommandStoreHost {
+    let mut host = crate::null_host::CommandStoreHost::default();
+    host.define("my-cmd", proc);
+    host
+}
+
 /// NullHost returns `Ok(false)` for `command_is_native` (no registry) →
 /// "not a native command" path → error logged, `#f` returned.
 #[test]
@@ -205,13 +216,11 @@ fn command_plugin_unknown_returns_hume() {
 #[test]
 fn command_plugin_known_returns_owner() {
     let mut h = SteelCtxTestHarness::new();
-    h.registries.cmd_owners.insert(
-        "my-cmd".to_string(),
-        Owner::Plugin(crate::attribution::EntryId::main(
-            crate::attribution::PluginId::Core("plum".to_string()),
-        )),
-    );
-    let mut ctx = h.ctx();
+    let mut host = plum_defined(CommandProc::Mappable(MappableProc::new(
+        SteelVal::BoolV(false),
+        Owner::Plugin(plum_entry()),
+    )));
+    let mut ctx = h.ctx_init_with_host(&mut host);
     let result = command_plugin(&mut ctx, "my-cmd".to_string()).unwrap();
     assert_eq!(result, SteelVal::StringV("core:plum".into()));
 }
@@ -258,41 +267,27 @@ fn define_typed_command_name_with_backslash_errors() {
     );
 }
 
-/// When the host rejects the registration, `typed_command_table` and
-/// `cmd_owners` must stay clean: the host call runs *before* the table
-/// inserts.
+/// A registry rejection surfaces as the define's own error.
 #[test]
-fn define_typed_command_host_rejection_leaves_tables_clean() {
+fn define_typed_command_propagates_host_rejection() {
     fn dummy_proc(_args: &[SteelVal]) -> SteelResult {
         Ok(SteelVal::Void)
     }
     let mut h = SteelCtxTestHarness::new();
-    let mut host = crate::null_host::FailingRegisterHost::default();
-    {
-        let mut ctx = h.ctx_init_with_host(&mut host);
-        let err = define_typed_command(
-            &mut ctx,
-            "rejected-cmd".to_string(),
-            "doc".to_string(),
-            SteelVal::FuncV(dummy_proc),
-            false,
-            SteelVal::BoolV(false),
-        )
-        .unwrap_err();
-        assert!(
-            err.to_string().contains("rejected by the command registry"),
-            "error must come from the host; got: {err}"
-        );
-    }
+    let mut host = crate::null_host::NullHost;
+    let mut ctx = h.ctx_init_with_host(&mut host);
+    let err = define_typed_command(
+        &mut ctx,
+        "rejected-cmd".to_string(),
+        "doc".to_string(),
+        SteelVal::FuncV(dummy_proc),
+        false,
+        SteelVal::BoolV(false),
+    )
+    .unwrap_err();
     assert!(
-        !h.registries
-            .typed_command_table
-            .contains_key("rejected-cmd"),
-        "typed_command_table must not record a command the host rejected"
-    );
-    assert!(
-        !h.registries.cmd_owners.contains_key("rejected-cmd"),
-        "cmd_owners must not record a command the host rejected"
+        err.to_string().contains("no command registry"),
+        "error must come from the host; got: {err}"
     );
 }
 
@@ -336,61 +331,38 @@ fn define_command_name_with_backslash_errors() {
     );
 }
 
-/// When the host rejects the registration, `command_table` and `cmd_owners`
-/// must stay clean: the host call runs *before* the table inserts.
-///
-/// A stale entry would later make the plugin-failure rollback unregister a
-/// command the plugin never actually owned.
+/// A registry rejection surfaces as the define's own error.
 #[test]
-fn define_command_host_rejection_leaves_tables_clean() {
+fn define_command_propagates_host_rejection() {
     fn dummy_proc(_args: &[SteelVal]) -> SteelResult {
         Ok(SteelVal::Void)
     }
     let mut h = SteelCtxTestHarness::new();
-    let mut host = crate::null_host::FailingRegisterHost::default();
-    {
-        let mut ctx = h.ctx_init_with_host(&mut host);
-        let err = define_command(
-            &mut ctx,
-            "rejected-cmd".to_string(),
-            "doc".to_string(),
-            SteelVal::FuncV(dummy_proc),
-            false,
-            false,
-        )
-        .unwrap_err();
-        assert!(
-            err.to_string().contains("rejected by the command registry"),
-            "error must come from the host; got: {err}"
-        );
-    }
+    let mut host = crate::null_host::NullHost;
+    let mut ctx = h.ctx_init_with_host(&mut host);
+    let err = define_command(
+        &mut ctx,
+        "rejected-cmd".to_string(),
+        "doc".to_string(),
+        SteelVal::FuncV(dummy_proc),
+        false,
+        false,
+    )
+    .unwrap_err();
     assert!(
-        !h.registries.command_table.contains_key("rejected-cmd"),
-        "command_table must not record a command the host rejected"
-    );
-    assert!(
-        !h.registries.cmd_owners.contains_key("rejected-cmd"),
-        "cmd_owners must not record a command the host rejected"
+        err.to_string().contains("no command registry"),
+        "error must come from the host; got: {err}"
     );
 }
 
 #[test]
 fn define_command_dup_names_error_names_existing_owner() {
     let mut h = SteelCtxTestHarness::new();
-    // Simulate a command already fully defined by core:plum.
-    // Both command_table (actually defined) and cmd_owners (attribution)
-    // must be set: cmd_owners alone is pre-seeded by declare_plugin for
-    // activation command ownership, so the guard checks command_table.
-    h.registries
-        .command_table
-        .insert("my-cmd".to_string(), SteelVal::BoolV(false));
-    h.registries.cmd_owners.insert(
-        "my-cmd".to_string(),
-        Owner::Plugin(crate::attribution::EntryId::main(
-            crate::attribution::PluginId::Core("plum".to_string()),
-        )),
-    );
-    let mut ctx = h.ctx_init();
+    let mut host = plum_defined(CommandProc::Mappable(MappableProc::new(
+        SteelVal::BoolV(false),
+        Owner::Plugin(plum_entry()),
+    )));
+    let mut ctx = h.ctx_init_with_host(&mut host);
     let err = define_command(
         &mut ctx,
         "my-cmd".to_string(),
@@ -412,26 +384,20 @@ fn define_command_dup_names_error_names_existing_owner() {
 }
 
 /// Same collision, but both sides typed: `check_definable`'s re-definition
-/// guard checks `typed_command_table` too, so a second
-/// `define-typed-command!` for the same name names the owner here. The
-/// editor-side host's generic "conflicts with existing command" error
-/// would not. Seeds `typed_command_table` instead of `command_table`.
+/// guard checks typed procs too, so a second `define-typed-command!` for
+/// the same name names the owner here. The editor-side host's generic
+/// "conflicts with existing command" error would not.
 #[test]
 fn define_typed_command_dup_names_error_names_existing_owner() {
     fn dummy_proc(_args: &[SteelVal]) -> SteelResult {
         Ok(SteelVal::Void)
     }
     let mut h = SteelCtxTestHarness::new();
-    h.registries
-        .typed_command_table
-        .insert("my-cmd".to_string(), SteelVal::BoolV(false));
-    h.registries.cmd_owners.insert(
-        "my-cmd".to_string(),
-        Owner::Plugin(crate::attribution::EntryId::main(
-            crate::attribution::PluginId::Core("plum".to_string()),
-        )),
-    );
-    let mut ctx = h.ctx_init();
+    let mut host = plum_defined(CommandProc::Typed(TypedProc::new(
+        SteelVal::BoolV(false),
+        Owner::Plugin(plum_entry()),
+    )));
+    let mut ctx = h.ctx_init_with_host(&mut host);
     // A real callable proc: check_definable must reject before ever reaching
     // `callable_arg`'s type check, or this fails on the wrong error entirely.
     let err = define_typed_command(

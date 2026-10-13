@@ -20,44 +20,18 @@ use super::SteelResult;
 use super::errors::generic_err;
 use crate::SteelCtx;
 use crate::attribution::Owner;
+use crate::command_procs::{CommandProc, MappableProc, TypedProc};
 use crate::host::{CommandArg, MAX_COUNT, NativeCall};
 use crate::log::LogLevel;
 use crate::types::{SteelCmdDef, SteelTypedCmdDef};
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
-/// The owner of `name`'s already-registered proc body (mappable
-/// (`command_table`) or typed (`typed_command_table`)), or `None` if no body
-/// has been defined yet under either table.
-///
-/// A pre-seeded `cmd_owners` entry with no matching table entry (a lazy
-/// stub's activation-command ownership, written by `declare_plugin` before
-/// its body ever runs) doesn't count as "defined"; see `check_definable`'s
-/// own doc for why that distinction matters.
-fn defined_owner<'a>(ctx: &'a SteelCtx, name: &str) -> Option<&'a Owner> {
-    if ctx.registries.command_table.contains_key(name)
-        || ctx.registries.typed_command_table.contains_key(name)
-    {
-        // cmd_owners must have an entry whenever either table does (both are
-        // written together, see the insert pairs in `define_command`/
-        // `define_typed_command`). A miss here would be a registries-desync
-        // bug, not a normal "unknown owner" case.
-        Some(
-            ctx.registries.cmd_owners.get(name).expect(
-                "a defined command_table/typed_command_table entry implies a cmd_owners entry",
-            ),
-        )
-    } else {
-        None
-    }
-}
-
 /// Shared guards behind `define-command!` and `define-typed-command!`: name
 /// syntax, built-in shadowing, true re-definition, and lazy-stub self-
-/// ownership. `builtin_name` only changes the error text: both callers
-/// check the same `command_table`/`typed_command_table`/`cmd_owners`, since a
-/// mappable and a typed command share one Steel-side proc namespace just as
-/// they share one namespace in the editor's `CommandRegistry`.
+/// ownership. `builtin_name` only changes the error text: a mappable and a
+/// typed command share one Steel-side proc namespace just as they share one
+/// namespace in the editor's `CommandRegistry`.
 fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result<(), SteelErr> {
     if name.contains('"') || name.contains('\\') {
         steel::stop!(Generic =>
@@ -68,12 +42,11 @@ fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result
             "{}: '{}' conflicts with a built-in command and cannot be redefined",
             builtin_name, name);
     }
-    // Guard against true re-definition, mappable or typed: `cmd_owners` alone
-    // can't tell (see `defined_owner`'s doc), and checking it here would falsely
-    // reject a plugin defining its own lazy activation command.
-    if let Some(owner) = defined_owner(ctx, name) {
+    // Guard against true re-definition, mappable or typed. A lazy stub has no
+    // proc, so a plugin defining its own activation command passes here.
+    if let Some(defined) = ctx.host.commands().defined_command(name) {
         steel::stop!(Generic =>
-            "{}: command '{}' is already defined by '{}'", builtin_name, name, owner);
+            "{}: command '{}' is already defined by '{}'", builtin_name, name, defined.owner());
     }
     // Guard against stealing a lazy plugin's activation command. A lazy plugin
     // can still define its own activation command during its own body (the
@@ -136,25 +109,19 @@ pub(crate) fn define_command(
         // keymap injection passes no leading args rather than blindly injecting 2.
         _ => (0, false),
     };
-    // Register in the editor's CommandRegistry first: it can still reject the
-    // name (e.g. it shadows a native command the empty command-mode builtin set
-    // missed).  Only on success do command_table/cmd_owners record the command;
-    // otherwise a failed define would leave entries that the plugin-failure
-    // rollback would then "clean up" by unregistering a command it never owned.
+    let proc = MappableProc::new(proc, ctx.plugin_stack.current_owner());
     ctx.host
         .commands()
         .register_command(SteelCmdDef {
-            name: name.clone(),
+            name,
             doc,
             arity,
             is_variadic,
             inline_output,
             repeatable,
+            proc,
         })
         .map_err(generic_err)?;
-    let current_owner = ctx.plugin_stack.current_owner();
-    ctx.registries.command_table.insert(name.clone(), proc);
-    ctx.registries.cmd_owners.insert(name, current_owner);
     Ok(SteelVal::Void)
 }
 
@@ -190,29 +157,24 @@ pub(crate) fn define_typed_command(
         SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
         _ => (0, false),
     };
+    let proc = TypedProc::new(proc, ctx.plugin_stack.current_owner());
     ctx.host
         .commands()
         .register_typed_command(SteelTypedCmdDef {
-            name: name.clone(),
+            name,
             doc,
             arity,
             is_variadic,
             inline_output,
             completer,
+            proc,
         })
         .map_err(generic_err)?;
-    let current_owner = ctx.plugin_stack.current_owner();
-    // typed_command_table, not command_table: see its own doc for why the
-    // separation matters (keeps `call!` from reaching a `:`-only command).
-    ctx.registries
-        .typed_command_table
-        .insert(name.clone(), proc);
-    ctx.registries.cmd_owners.insert(name, current_owner);
     Ok(SteelVal::Void)
 }
 
 /// `%call-native!`: `%dispatch-command!`'s fallback for a name that is neither
-/// in `command_table` nor owned by a lazy plugin.
+/// a defined mappable proc nor owned by a lazy plugin.
 ///
 /// - **Native**: decodes the leading `pane` argument, validates count/extend
 ///   and the optional trailing operand, and returns `run_command_sync`'s
@@ -309,16 +271,16 @@ pub(crate) fn restore_inline_output(ctx: &mut SteelCtx, depth: SteelVal) -> Stee
 }
 
 /// `%lookup-plugin-proc`: return the Steel closure for an activated plugin
-/// command, or `#f` if the name is not in the `command_table`.
+/// command, or `#f` if no mappable proc is defined under the name.
 ///
-/// Works in both init and command mode: during init, `define-command!` populates
-/// `command_table` inline, so `(call! "cmd")` that follows a `(load-plugin! …)`
+/// Works in both init and command mode: during init, `define-command!` records
+/// the proc inline, so `(call! "cmd")` that follows a `(load-plugin! …)`
 /// in the same init.scm body finds the closure immediately.
 pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    match ctx.registries.command_table.get(&name) {
-        Some(val) => Ok(val.clone()),
-        None => Ok(SteelVal::BoolV(false)),
-    }
+    Ok(match ctx.host.commands().defined_command(&name) {
+        Some(CommandProc::Mappable(proc)) => proc.steel_val(),
+        Some(CommandProc::Typed(_)) | None => SteelVal::BoolV(false),
+    })
 }
 
 /// Parse count, extend, and the optional operand from a native command's
@@ -382,12 +344,21 @@ fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, SteelErr> {
 /// Returns the plugin id string (e.g. `"core:plum"`, `"user/repo"`) if the
 /// command was registered by a plugin, `"user"` if registered from top-level
 /// `init.scm`, or `"hume"` for built-in Rust commands (not Steel-registered).
+/// A lazy stub names the plugin that declared it, before that plugin's body
+/// has run.
 ///
 /// Valid during both eval (e.g. conflict detection in `declare-plugin!`) and
-/// command execution.  Returns `"hume"` for any name not in the owner cache
-/// (unknown commands are implicitly built-in).
+/// command execution.  Returns `"hume"` for any name with neither a defined
+/// proc nor a lazy stub (unknown commands are implicitly built-in).
 pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let owner = ctx.registries.cmd_owners.get(&name).unwrap_or(&Owner::Core);
+    let owner = match ctx.host.commands().defined_command(&name) {
+        Some(defined) => defined.owner().clone(),
+        None => ctx
+            .host
+            .commands()
+            .lazy_command_owner(&name)
+            .map_or(Owner::Core, Owner::Plugin),
+    };
     Ok(SteelVal::StringV(owner.to_string().into()))
 }
 

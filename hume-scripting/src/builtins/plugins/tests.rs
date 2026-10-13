@@ -4,9 +4,9 @@ use hume_platform::dirs::Dirs;
 /// Eval `src` against a fresh host and return the error it must produce.
 fn declare_err(src: &str) -> String {
     use crate::ScriptingHost;
-    use crate::null_host::LazyStubHost;
+    use crate::null_host::CommandStoreHost;
     let mut host = ScriptingHost::new(&Dirs::none());
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     host.eval_source(src, &mut editor_host)
         .expect_err("expected declare-plugin! to error")
 }
@@ -161,7 +161,7 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
 fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
     use crate::ScriptingHost;
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
+    use crate::null_host::CommandStoreHost;
     use std::io::Write as _;
     use tempfile::TempDir;
 
@@ -181,7 +181,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
         vec!["rust".to_string()],
     );
 
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
         .register_lazy_command("deep-cmd", &id)
@@ -282,9 +282,9 @@ fn declare_plugin_rejects_string_event_names() {
 #[test]
 fn declare_plugin_rejected_events_records_nothing() {
     use crate::ScriptingHost;
-    use crate::null_host::LazyStubHost;
+    use crate::null_host::CommandStoreHost;
     let mut host = ScriptingHost::new(&Dirs::none());
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     host.eval_source(
         r#"(declare-plugin! "user/tp" #:events '(not-a-real-hook))"#,
         &mut editor_host,
@@ -311,9 +311,9 @@ fn declare_plugin_rejected_events_records_nothing() {
 fn declare_plugin_command_name_with_quote_errors() {
     use crate::ScriptingHost;
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
+    use crate::null_host::CommandStoreHost;
     let mut host = ScriptingHost::new(&Dirs::none());
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     let result = host.eval_source(
         r#"(declare-plugin! "user/tp" #:commands '("bad\"name"))"#,
         &mut editor_host,
@@ -332,30 +332,28 @@ fn declare_plugin_command_name_with_quote_errors() {
     );
 }
 
-// ── cmd_owners not seeded for absent-path plugins ──────────────────────────
+// ── Absent-path plugins attribute nothing ──────────────────────────────────
 
-/// When a declared plugin is absent on disk, `cmd_owners` must NOT be pre-seeded.
-///
-/// Guards against `cmd_owners` being seeded before the path check: an absent
-/// plugin would otherwise leave orphan attribution entries that
-/// `drop_activations_for` could never clean up. The invariant: the
-/// absent-path early-return fires before the pre-seed loop.
+/// A plugin absent on disk claims no lazy stub, so `(command-plugin …)` does
+/// not name it for a command it declared.
 #[test]
-fn declare_plugin_absent_on_disk_does_not_seed_cmd_owners() {
-    use crate::{ScriptingHost, null_host::NullHost};
+fn declare_plugin_absent_on_disk_attributes_nothing() {
+    use crate::{ScriptingHost, null_host::CommandStoreHost};
     let mut host = ScriptingHost::new(&Dirs::none());
+    let mut editor_host = CommandStoreHost::default();
     // `core:nonexistent-plugin` cannot exist on disk in any test environment.
     let result = host.eval_source(
         r#"(declare-plugin! "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
-        &mut NullHost,
+        &mut editor_host,
     );
     assert!(
         result.is_ok(),
         "absent-path declare-plugin! must not error; got: {result:?}"
     );
+    let owner = host.eval_source_for_value(r#"(command-plugin "my-cmd")"#, &mut editor_host);
     assert!(
-        !host.cmd_owners_for_test().contains_key("my-cmd"),
-        "cmd_owners must not be seeded when the plugin is absent on disk"
+        matches!(&owner, Ok(SteelVal::StringV(s)) if s.as_str() == "hume"),
+        "an absent plugin must not own its declared command; got: {owner:?}"
     );
 }
 
@@ -448,12 +446,12 @@ fn load_plugin_core_absent_logs_error() {
 fn define_command_rejects_name_claimed_by_lazy_plugin() {
     use crate::ScriptingHost;
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
+    use crate::null_host::CommandStoreHost;
 
     let id = EntryId::main(PluginId::parse("core:my-plugin").unwrap());
     let mut host = ScriptingHost::new(&Dirs::none());
     // Simulate declare-plugin! having claimed the name as a `Lazy` stub.
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
         .register_lazy_command("my-lazy-cmd", &id)
@@ -490,12 +488,12 @@ fn define_command_rejects_name_claimed_by_lazy_plugin() {
 fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
     use crate::ScriptingHost;
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
+    use crate::null_host::CommandStoreHost;
 
     let id = EntryId::main(PluginId::parse("core:my-plugin").unwrap());
     let mut host = ScriptingHost::new(&Dirs::none());
     // Simulate declare-plugin! having claimed the name as a typed `Lazy` stub.
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     editor_host
         .commands()
         .register_lazy_typed_command("my-lazy-cmd", &id)
@@ -606,7 +604,7 @@ fn plugin_dir_outside_plugin_body_is_false() {
 #[test]
 fn plugin_dir_inside_plugin_body_is_the_plugins_own_directory() {
     use crate::ScriptingHost;
-    use crate::null_host::LazyStubHost;
+    use crate::null_host::CommandStoreHost;
 
     let dir = tempfile::TempDir::new().unwrap();
     let plugin_dir = dir.path().join("plugins").join("me").join("probe");
@@ -627,7 +625,7 @@ fn plugin_dir_inside_plugin_body_is_the_plugins_own_directory() {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
     host.eval_source(r#"(load-plugin! "me/probe")"#, &mut editor_host)
         .expect("the probe plugin must load");
 

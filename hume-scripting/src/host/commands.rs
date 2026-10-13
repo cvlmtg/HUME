@@ -2,6 +2,7 @@
 //! command registration.
 
 use crate::attribution::EntryId;
+use crate::command_procs::CommandProc;
 use crate::types::{PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
 /// Ceiling on a command's numeric count prefix (e.g. the `3` in `3w`).
@@ -125,11 +126,15 @@ pub trait CommandHost {
     /// Returns `Err(msg)` if the name conflicts with any non-Lazy existing command.
     fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String>;
 
-    /// Remove a previously registered Steel command (mappable or typed) from
-    /// the `CommandRegistry`.
-    ///
-    /// No-op if the name is not present.
-    fn unregister_command(&mut self, name: &str);
+    /// The proc of the Steel command (mappable or typed) registered under
+    /// `name` (case-sensitive), or `None` for a native command, a `Lazy`
+    /// stub, or an unknown name.
+    fn defined_command(&self, name: &str) -> Option<CommandProc>;
+
+    /// Remove every Steel command (mappable or typed) that `plugin`'s entry
+    /// file defined. The rollback of a failed activation. Native commands and
+    /// `Lazy` stubs are never removed.
+    fn unregister_commands_defined_by(&mut self, plugin: &EntryId);
 
     /// Whether `ch` names a valid register (`0`–`9`, `k`, `c`, `b`).
     fn is_valid_register_name(&self, ch: char) -> bool;
@@ -163,7 +168,7 @@ pub trait CommandHost {
     ///
     /// Used by `%lazy-command-owner`, which backs `%dispatch-command!`'s
     /// (the `call!` path) lazy-activation branch: `call!` can only ever
-    /// reach a mappable command (`command_table`), so a typed-only name
+    /// reach a mappable command's proc, so a typed-only name
     /// reported here would trigger a plugin load for an activation that can
     /// never succeed. [`Self::lazy_command_owner`] stays kind-agnostic for
     /// the callers that want either kind.

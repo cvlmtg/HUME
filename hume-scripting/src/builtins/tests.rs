@@ -32,15 +32,15 @@ fn cmd_gated_builtin_rejected_from_init_through_real_registration() {
 #[test]
 fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
     let mut host = crate::ScriptingHost::new(&Dirs::none());
-    let mut null_host = crate::null_host::NullHost;
+    let mut store = crate::null_host::CommandStoreHost::default();
     host.eval_source(
         r#"(define-command! "probe-bind-key" "doc" (lambda () (bind-key! 'normal "Q" "move-down")))"#,
-        &mut null_host,
+        &mut store,
     )
     .expect("defining the probe command must not error");
 
     let err = host
-        .call_steel_cmd("probe-bind-key", vec![], &mut null_host)
+        .call_steel_cmd_by_name("probe-bind-key", vec![], &mut store)
         .expect_err("bind-key! must be rejected from a command body");
     assert!(err.message.contains("command body"), "got: {err:?}");
 }
@@ -185,16 +185,16 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
 
     for (i, (name, expr)) in PROBES.iter().enumerate() {
         let mut host = crate::ScriptingHost::new(&Dirs::none());
-        let mut null_host = crate::null_host::NullHost;
+        let mut store = crate::null_host::CommandStoreHost::default();
         let cmd_name = format!("probe-{i}");
         host.eval_source(
             &format!(r#"(define-command! "{cmd_name}" "" (lambda () {expr}))"#),
-            &mut null_host,
+            &mut store,
         )
         .unwrap_or_else(|e| panic!("defining the probe for {name} must not error: {e}"));
 
         let err = host
-            .call_steel_cmd(&cmd_name, vec![], &mut null_host)
+            .call_steel_cmd_by_name(&cmd_name, vec![], &mut store)
             .err()
             .unwrap_or_else(|| panic!("{name} must raise on a closed buffer, got Ok"));
         assert!(
@@ -217,14 +217,14 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
 fn lsp_stop_and_restart_reject_false_target_through_real_registration() {
     for expr in ["(lsp-stop! #f)", "(lsp-restart! #f)"] {
         let mut host = crate::ScriptingHost::new(&Dirs::none());
-        let mut null_host = crate::null_host::NullHost;
+        let mut store = crate::null_host::CommandStoreHost::default();
         host.eval_source(
             &format!(r#"(define-command! "probe" "" (lambda () {expr}))"#),
-            &mut null_host,
+            &mut store,
         )
         .unwrap();
         let err = host
-            .call_steel_cmd("probe", vec![], &mut null_host)
+            .call_steel_cmd_by_name("probe", vec![], &mut store)
             .err()
             .unwrap_or_else(|| panic!("{expr} must raise on a #f target, got Ok"));
         assert!(

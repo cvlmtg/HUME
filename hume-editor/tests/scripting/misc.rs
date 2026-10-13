@@ -23,7 +23,7 @@ fn arity1_list_command_rejects_false_arg() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("needs-list", vec![SteelVal::BoolV(false)], &mut mock)
+        .call_steel_cmd_by_name("needs-list", vec![SteelVal::BoolV(false)], &mut mock)
         .unwrap_err();
     assert!(
         err.message.contains("requires a non-empty list"),
@@ -51,7 +51,7 @@ fn arity1_list_command_accepts_list_arg() {
     .unwrap();
     let items: Vec<SteelVal> = vec!["rust".into_steelval().unwrap()];
     let list_val = items.into_steelval().unwrap();
-    let result = h.call_steel_cmd("needs-list", vec![list_val], &mut mock);
+    let result = h.call_steel_cmd_by_name("needs-list", vec![list_val], &mut mock);
     assert!(
         result.is_ok(),
         "expected Ok for valid list arg, got: {:?}",
@@ -76,7 +76,9 @@ fn load_plugin_runtime_guard_fires() {
     )
     .unwrap();
 
-    let err = h.call_steel_cmd("try-load", vec![], &mut mock).unwrap_err();
+    let err = h
+        .call_steel_cmd_by_name("try-load", vec![], &mut mock)
+        .unwrap_err();
     assert!(
         err.message.contains("top level") || err.message.contains("init.scm"),
         "error must mention top-level restriction; got: {err}"

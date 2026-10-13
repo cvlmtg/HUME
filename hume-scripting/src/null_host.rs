@@ -9,7 +9,7 @@
 //! mutations (set-option!, attach-grammar!, …) must use `MockHost` in the editor
 //! crate.
 //!
-//! [`FailingRegisterHost`], [`InlineOutputHost`], and [`RecordingInlineOutputHost`]
+//! [`InlineOutputHost`], [`RecordingInlineOutputHost`] and [`CommandStoreHost`]
 //! each embed a real `NullHost` and delegate every capability accessor to it,
 //! overriding only the one or two accessors/methods that make them distinct.
 
@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use hume_engine::pipeline::BufferId;
 
 use crate::attribution::EntryId;
+use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
     OutputHost, SelectionInfo, SettingsHost,
@@ -210,13 +211,22 @@ impl CommandHost for NullHost {
     ) -> Result<bool, String> {
         Err("stub host has no native command registry".into())
     }
-    fn register_command(&mut self, _def: SteelCmdDef) -> Result<(), String> {
-        Ok(())
+    fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
+        Err(format!(
+            "NullHost: '{}' rejected, no command registry",
+            def.name
+        ))
     }
-    fn register_typed_command(&mut self, _def: SteelTypedCmdDef) -> Result<(), String> {
-        Ok(())
+    fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String> {
+        Err(format!(
+            "NullHost: '{}' rejected, no command registry",
+            def.name
+        ))
     }
-    fn unregister_command(&mut self, _name: &str) {}
+    fn defined_command(&self, _name: &str) -> Option<CommandProc> {
+        None
+    }
+    fn unregister_commands_defined_by(&mut self, _plugin: &EntryId) {}
     fn register_lazy_command(&mut self, _name: &str, _plugin: &EntryId) -> Result<(), String> {
         Ok(())
     }
@@ -254,85 +264,6 @@ impl CursorHost for NullHost {
     }
     fn selections_charwise(&self, _pane: PaneHandle) -> Result<bool, String> {
         Err("NullHost: selections_charwise not available".into())
-    }
-}
-
-/// Like [`NullHost`] but `register_command`/`register_typed_command` fail.
-///
-/// Exercises the `define-command!`/`define-typed-command!` path where the
-/// editor-side registry rejects the name (e.g. it shadows a native command):
-/// the builtin must propagate the error *without* recording the command in
-/// `command_table`/`typed_command_table`/`cmd_owners`.
-#[derive(Default)]
-pub(crate) struct FailingRegisterHost {
-    inner: NullHost,
-}
-
-impl EditorHost for FailingRegisterHost {
-    fn cursor(&mut self) -> &mut dyn CursorHost {
-        &mut self.inner
-    }
-    fn commands(&mut self) -> &mut dyn CommandHost {
-        self
-    }
-    fn language(&mut self) -> &mut dyn LanguageHost {
-        &mut self.inner
-    }
-    fn settings(&mut self) -> &mut dyn SettingsHost {
-        &mut self.inner
-    }
-    fn buffers(&mut self) -> &mut dyn BufferHost {
-        &mut self.inner
-    }
-    fn events(&mut self) -> &mut dyn EventHost {
-        &mut self.inner
-    }
-}
-
-impl CommandHost for FailingRegisterHost {
-    fn is_valid_register_name(&self, ch: char) -> bool {
-        self.inner.is_valid_register_name(ch)
-    }
-    fn command_is_native(&self, name: &str) -> Result<bool, String> {
-        self.inner.command_is_native(name)
-    }
-    fn run_command_sync(
-        &mut self,
-        name: &str,
-        pane: PaneHandle,
-        call: crate::host::NativeCall,
-    ) -> Result<bool, String> {
-        self.inner.run_command_sync(name, pane, call)
-    }
-    fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
-        Err(format!(
-            "FailingRegisterHost: '{}' rejected by the command registry",
-            def.name
-        ))
-    }
-    fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String> {
-        Err(format!(
-            "FailingRegisterHost: '{}' rejected by the command registry",
-            def.name
-        ))
-    }
-    fn unregister_command(&mut self, name: &str) {
-        self.inner.unregister_command(name)
-    }
-    fn register_lazy_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
-        self.inner.register_lazy_command(name, plugin)
-    }
-    fn register_lazy_typed_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
-        self.inner.register_lazy_typed_command(name, plugin)
-    }
-    fn lazy_command_owner(&self, name: &str) -> Option<EntryId> {
-        self.inner.lazy_command_owner(name)
-    }
-    fn lazy_mappable_command_owner(&self, name: &str) -> Option<EntryId> {
-        self.inner.lazy_mappable_command_owner(name)
-    }
-    fn unregister_lazy_stubs_of(&mut self, plugin: &EntryId) {
-        self.inner.unregister_lazy_stubs_of(plugin)
     }
 }
 
@@ -406,25 +337,22 @@ impl OutputHost for RecordingInlineOutputHost {
     fn truncate_inline_output(&mut self, _depth: usize) {}
 }
 
-/// Like [`NullHost`] but tracks command-name claims like a minimal
-/// `CommandRegistry`, for tests that exercise `declare-plugin!`/`define-command!`
-/// collision detection without a real editor.
+/// Like [`NullHost`] but stores commands like a minimal `CommandRegistry`:
+/// each defined command's proc, and each `Lazy` stub's owning plugin. For
+/// tests that define a command and then call it, attribute it, or collide
+/// with it, without a real editor.
 ///
-/// Distinguishes two kinds of claim, mirroring the editor's registry:
-/// `defined` (a `SteelBacked`/native name, permanent for the test) and `lazy`
-/// (a `Lazy` stub's owning plugin, replaceable by that same plugin's own
-/// `define-command!`). `NullHost::register_command`'s "always Ok" behavior
-/// would make every declare-plugin! collision test pass vacuously, so this
-/// host is required wherever a test needs `declare-plugin!`/`define-command!`
-/// to actually collide.
+/// Mappable and typed names share one namespace, as in the real registry,
+/// so a name defined as one kind collides when re-defined as the other. A
+/// define replaces a same-name `Lazy` stub.
 #[derive(Default)]
-pub(crate) struct LazyStubHost {
+pub(crate) struct CommandStoreHost {
     inner: NullHost,
-    defined: rustc_hash::FxHashSet<String>,
+    defined: rustc_hash::FxHashMap<String, CommandProc>,
     lazy: rustc_hash::FxHashMap<String, EntryId>,
 }
 
-impl EditorHost for LazyStubHost {
+impl EditorHost for CommandStoreHost {
     fn cursor(&mut self) -> &mut dyn CursorHost {
         &mut self.inner
     }
@@ -445,25 +373,36 @@ impl EditorHost for LazyStubHost {
     }
 }
 
-impl LazyStubHost {
-    /// Shared body behind `register_command`/`register_typed_command`: both
-    /// claim `name` in the same `defined` set: the real `CommandRegistry`
-    /// keeps mappable and typed names in one namespace, so a name defined as
-    /// one kind must collide when re-defined as the other.
-    fn register_defined(&mut self, name: String) -> Result<(), String> {
-        if self.defined.contains(&name) {
+impl CommandStoreHost {
+    /// Seeds a defined command directly, for a test that needs one owned by
+    /// a plugin without evaluating that plugin.
+    pub(crate) fn define(&mut self, name: &str, proc: CommandProc) {
+        self.register_defined(name.to_string(), proc)
+            .expect("CommandStoreHost::define: name already defined");
+    }
+
+    /// The proc stored for `name`, for a test that calls it through a
+    /// different host. Panics if `name` was never defined here.
+    pub(crate) fn proc(&self, name: &str) -> CommandProc {
+        self.defined
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| panic!("CommandStoreHost: no command named '{name}'"))
+    }
+
+    /// Shared body behind `register_command`/`register_typed_command`.
+    fn register_defined(&mut self, name: String, proc: CommandProc) -> Result<(), String> {
+        if self.defined.contains_key(&name) {
             return Err(format!("'{name}' conflicts with existing command"));
         }
-        // A define overwrites a same-name Lazy stub, mirroring
-        // CommandRegistry::register/register_typed allowing Some(Lazy) | None.
         self.lazy.remove(&name);
-        self.defined.insert(name);
+        self.defined.insert(name, proc);
         Ok(())
     }
 
     /// Shared body behind `register_lazy_command`/`register_lazy_typed_command`.
     fn register_lazy(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
-        if self.defined.contains(name) {
+        if self.defined.contains_key(name) {
             return Err(format!("'{name}' conflicts with an existing command"));
         }
         if let Some(owner) = self.lazy.get(name) {
@@ -478,7 +417,7 @@ impl LazyStubHost {
     }
 }
 
-impl CommandHost for LazyStubHost {
+impl CommandHost for CommandStoreHost {
     fn is_valid_register_name(&self, ch: char) -> bool {
         self.inner.is_valid_register_name(ch)
     }
@@ -494,13 +433,19 @@ impl CommandHost for LazyStubHost {
         self.inner.run_command_sync(name, pane, call)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
-        self.register_defined(def.name)
+        self.register_defined(def.name, CommandProc::Mappable(def.proc))
     }
     fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String> {
-        self.register_defined(def.name)
+        self.register_defined(def.name, CommandProc::Typed(def.proc))
     }
-    fn unregister_command(&mut self, name: &str) {
-        self.defined.remove(name);
+    fn defined_command(&self, name: &str) -> Option<CommandProc> {
+        self.defined.get(name).cloned()
+    }
+    fn unregister_commands_defined_by(&mut self, plugin: &EntryId) {
+        self.defined.retain(|_, proc| match proc {
+            CommandProc::Mappable(proc) => !proc.defined_by(plugin),
+            CommandProc::Typed(proc) => !proc.defined_by(plugin),
+        });
     }
     fn register_lazy_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
         self.register_lazy(name, plugin)

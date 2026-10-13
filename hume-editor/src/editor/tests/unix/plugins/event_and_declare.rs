@@ -625,11 +625,11 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
 /// The in-Steel path matters: `SteelCtx::new_command` carries an empty
 /// `builtin_cmd_names` set, so the Steel-side shadow guard is inert and the
 /// conflict is only caught by `host.register_command`.  The failed define must
-/// not leave `command_table`/`cmd_owners` entries that make the plugin-failure
-/// rollback unregister the native command.
+/// not leave a proc that makes the plugin-failure rollback unregister the
+/// native command.
 ///
-/// Two changes would each make `move-left` vanish from the registry: inserting
-/// into `command_table`/`cmd_owners` before `host.register_command` in
+/// Two changes would each make `move-left` vanish from the registry: recording
+/// the proc before `host.register_command` in
 /// `define_command`, or having `CommandRegistry::unregister` remove
 /// unconditionally.
 #[test]
@@ -671,22 +671,9 @@ fn native_command_survives_failed_shadowing_plugin() {
             .is_some_and(MappableCommand::is_native),
         "native move-left must survive the failed plugin rollback"
     );
-    // No orphan Steel-side entries for the native name.
     assert!(
-        !ed.scripting
-            .as_ref()
-            .unwrap()
-            .command_table_for_test()
-            .contains_key("move-left"),
-        "command_table must not retain the rejected shadow entry"
-    );
-    assert!(
-        !ed.scripting
-            .as_ref()
-            .unwrap()
-            .cmd_owners_for_test()
-            .contains_key("move-left"),
-        "cmd_owners must not retain the rejected shadow entry"
+        ed.state.config.registry.steel_proc("move-left").is_none(),
+        "the rejected shadow proc must not be retained"
     );
 }
 

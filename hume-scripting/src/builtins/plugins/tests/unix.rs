@@ -130,9 +130,11 @@ fn declare_plugin_all_on_command_collided_records_nothing() {
 #[test]
 fn declare_plugin_drops_sole_command_conflicting_with_eager() {
     use crate::ScriptingHost;
+    use crate::attribution::Owner;
+    use crate::command_procs::{CommandProc, MappableProc};
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
-    use crate::types::SteelCmdDef;
+    use crate::null_host::CommandStoreHost;
+    use steel::rvals::SteelVal;
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
@@ -146,18 +148,11 @@ fn declare_plugin_drops_sole_command_conflicting_with_eager() {
         ..Dirs::none()
     });
     // Simulate an eager command already occupying the name in the editor's registry.
-    let mut editor_host = LazyStubHost::default();
-    editor_host
-        .commands()
-        .register_command(SteelCmdDef {
-            name: "my-eager-cmd".to_string(),
-            doc: String::new(),
-            arity: 0,
-            is_variadic: false,
-            inline_output: false,
-            repeatable: false,
-        })
-        .unwrap();
+    let mut editor_host = CommandStoreHost::default();
+    editor_host.define(
+        "my-eager-cmd",
+        CommandProc::Mappable(MappableProc::new(SteelVal::BoolV(false), Owner::User)),
+    );
 
     let result = host.eval_source(
         r#"(declare-plugin! "user/test-repo" #:commands '("my-eager-cmd"))"#,
@@ -191,7 +186,7 @@ fn declare_plugin_drops_sole_command_conflicting_with_eager() {
 fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
     use crate::ScriptingHost;
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
+    use crate::null_host::CommandStoreHost;
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
@@ -203,7 +198,7 @@ fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
         data: Some(dir.path().to_path_buf()),
         ..Dirs::none()
     });
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
 
     host.eval_source(
         r#"(define-typed-command! "existing-typed" "doc" (lambda () 0))"#,
@@ -295,7 +290,7 @@ fn plugin_config_survives_lazy_declare_to_activation() {
 #[test]
 fn load_plugin_evaluates_manifest_scm() {
     use crate::host::EditorHost;
-    use crate::null_host::LazyStubHost;
+    use crate::null_host::CommandStoreHost;
 
     let (_dir, mut host) = host_with_plugin(
         "mftest",
@@ -307,7 +302,7 @@ fn load_plugin_evaluates_manifest_scm() {
             ),
         ],
     );
-    let mut editor_host = LazyStubHost::default();
+    let mut editor_host = CommandStoreHost::default();
 
     host.eval_source(r#"(load-plugin! "user/mftest")"#, &mut editor_host)
         .expect("load-plugin! with a manifest.scm present must succeed");

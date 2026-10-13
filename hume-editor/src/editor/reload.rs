@@ -81,7 +81,7 @@ impl Editor {
     /// `:reload-config` threads through the rest of the reload. Called
     /// immediately before dropping the old `ScriptingHost`: this is the
     /// other half of "from scratch": dropping the host wipes the
-    /// Steel-VM-side registries (`cmd_owners`, hooks, plugin lifecycle, …),
+    /// Steel-VM-side registries (hooks, plugin lifecycle, …),
     /// this wipes everything those builtins wrote *into* the editor.
     ///
     /// Most of what this must reset lives on [`super::ConfigState`], reset by

@@ -17,7 +17,8 @@ fn set_register_prefix_passed_to_dispatch() {
     )
     .unwrap();
     mock.native_names.insert("paste-after".to_string());
-    h.call_steel_cmd("paste-ring", vec![], &mut mock).unwrap();
+    h.call_steel_cmd_by_name("paste-ring", vec![], &mut mock)
+        .unwrap();
     assert_eq!(
         mock.dispatched_native.len(),
         1,
@@ -52,7 +53,8 @@ fn call_native_zero_count_decodes_to_none() {
     )
     .unwrap();
     mock.native_names.insert("paste-after".to_string());
-    h.call_steel_cmd("paste-zero", vec![], &mut mock).unwrap();
+    h.call_steel_cmd_by_name("paste-zero", vec![], &mut mock)
+        .unwrap();
     assert_eq!(mock.dispatched_native.len(), 1);
     let (name, _, call) = &mock.dispatched_native[0];
     let count = &call.count;
@@ -79,7 +81,8 @@ fn set_register_prefix_sticky_across_multiple_calls() {
     .unwrap();
     mock.native_names.insert("yank".to_string());
     mock.native_names.insert("delete".to_string());
-    h.call_steel_cmd("multi", vec![], &mut mock).unwrap();
+    h.call_steel_cmd_by_name("multi", vec![], &mut mock)
+        .unwrap();
     assert_eq!(
         mock.dispatched_native.len(),
         2,
@@ -112,7 +115,8 @@ fn set_register_prefix_change_mid_body() {
     .unwrap();
     mock.native_names.insert("yank".to_string());
     mock.native_names.insert("paste-after".to_string());
-    h.call_steel_cmd("switch", vec![], &mut mock).unwrap();
+    h.call_steel_cmd_by_name("switch", vec![], &mut mock)
+        .unwrap();
     assert_eq!(mock.dispatched_native.len(), 2);
     let (name0, _, call0) = &mock.dispatched_native[0];
     let reg0 = &call0.register;
@@ -138,7 +142,9 @@ fn set_register_prefix_invalid_name_errors() {
         &mut mock,
     )
     .unwrap();
-    let err = h.call_steel_cmd("bad-reg", vec![], &mut mock).unwrap_err();
+    let err = h
+        .call_steel_cmd_by_name("bad-reg", vec![], &mut mock)
+        .unwrap_err();
     assert!(
         err.message.contains("invalid register"),
         "expected register-name error, got: {err}"
@@ -156,7 +162,7 @@ fn set_register_prefix_multichar_name_errors() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd("bad-multi", vec![], &mut mock)
+        .call_steel_cmd_by_name("bad-multi", vec![], &mut mock)
         .unwrap_err();
     assert!(
         err.message.contains("single-character"),
@@ -235,7 +241,7 @@ fn language_builtins_error_on_stale_buffer_id() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd("q-lang", vec![bid.clone()], &mut mock)
+        .call_steel_cmd_by_name("q-lang", vec![bid.clone()], &mut mock)
         .unwrap_err();
     assert!(
         err.message.contains("get-buffer-option: invalid buffer id"),
@@ -243,7 +249,7 @@ fn language_builtins_error_on_stale_buffer_id() {
     );
 
     let err = h
-        .call_steel_cmd("set-lang", vec![bid], &mut mock)
+        .call_steel_cmd_by_name("set-lang", vec![bid], &mut mock)
         .unwrap_err();
     assert!(
         err.message

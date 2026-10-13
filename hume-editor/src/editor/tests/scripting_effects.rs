@@ -32,7 +32,7 @@ fn failed_command_eval_effects_do_not_leak() {
 
     let result = {
         let mut ih = init_host!(ed);
-        host.call_steel_cmd("efx-fail", vec![], &mut ih)
+        host.call_steel_cmd_by_name("efx-fail", vec![], &mut ih)
     };
     assert!(
         result.is_err(),

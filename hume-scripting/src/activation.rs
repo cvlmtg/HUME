@@ -13,8 +13,8 @@
 //! - `load-plugin!` (init.scm): the BOOTSTRAP Scheme wrapper calls `%load-plugin!`,
 //!   which either returns a manifest to evaluate (lazy) or asks for
 //!   `%activate-plugin-inline!` (inline body eval via `hm.eval-string`).
-//! - Lazy keypress dispatch: `%dispatch-command!` activates the owner inline on a
-//!   `command_table` miss, then retries.
+//! - Lazy keypress dispatch: `%dispatch-command!` activates the owner inline when
+//!   no mappable proc is defined yet, then retries.
 //! - Event/language activations: `activate_plugin_inline` (Rust) bounces into
 //!   `(%activate-plugin-inline! id)` via `run_steel_call` (a direct function
 //!   call, not source), using the `ScriptingHost`'s one persistent watchdog.

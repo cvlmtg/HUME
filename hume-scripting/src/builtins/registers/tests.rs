@@ -206,8 +206,11 @@ impl crate::host::CommandHost for ValidNameHost {
     ) -> Result<(), String> {
         self.inner.register_typed_command(def)
     }
-    fn unregister_command(&mut self, name: &str) {
-        self.inner.unregister_command(name)
+    fn defined_command(&self, name: &str) -> Option<crate::command_procs::CommandProc> {
+        self.inner.defined_command(name)
+    }
+    fn unregister_commands_defined_by(&mut self, plugin: &crate::attribution::EntryId) {
+        self.inner.unregister_commands_defined_by(plugin)
     }
     fn register_lazy_command(
         &mut self,
@@ -293,8 +296,11 @@ impl crate::host::CommandHost for RegisterCapableHost {
     ) -> Result<(), String> {
         self.inner.register_typed_command(def)
     }
-    fn unregister_command(&mut self, name: &str) {
-        self.inner.unregister_command(name)
+    fn defined_command(&self, name: &str) -> Option<crate::command_procs::CommandProc> {
+        self.inner.defined_command(name)
+    }
+    fn unregister_commands_defined_by(&mut self, plugin: &crate::attribution::EntryId) {
+        self.inner.unregister_commands_defined_by(plugin)
     }
     fn register_lazy_command(
         &mut self,
