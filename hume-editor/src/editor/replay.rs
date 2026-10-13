@@ -971,10 +971,14 @@ impl EditorState {
         fp: commands::FocusedPane,
         r: &CursorReplacement,
     ) -> Result<(), String> {
-        if !commands::is_group_open_at(self, view, fp) {
+        let (pid, bid) = (fp.pid(), fp.bid(view));
+        if !self
+            .input
+            .insert_session()
+            .is_some_and(|s| s.owned_by(pid, bid))
+        {
             return Err("no Insert session to apply the recorded result to".to_string());
         }
-        let (pid, bid) = (fp.pid(), fp.bid(view));
         if !self
             .panes
             .entries
@@ -1274,7 +1278,12 @@ impl Editor {
         for input in &action.transcript {
             match input {
                 Input::Key(key) => {
-                    commands::insert_default_key(&mut self.state, &self.view, fp, *key);
+                    let entry = self
+                        .state
+                        .input
+                        .insert_entry()
+                        .expect("a replayed Insert key runs in the replayed Insert session");
+                    commands::insert_default_key(&mut self.state, &self.view, &entry, fp, *key);
                 }
                 Input::Paste(text) => self.apply_insert_mode_paste(text),
                 Input::Result(r) => {
@@ -1370,7 +1379,11 @@ impl Editor {
     ) {
         let fp = commands::FocusedPane::current(&self.view);
         let (pane, buffer) = (fp.pid(), fp.bid(&self.view));
-        let armed = commands::is_group_open_at(&self.state, &self.view, fp);
+        let armed = self
+            .state
+            .input
+            .insert_session()
+            .is_some_and(|s| s.owned_by(pane, buffer));
         if armed {
             let head = commands::pane_view(&self.state, &self.view, fp.pane())
                 .primary()

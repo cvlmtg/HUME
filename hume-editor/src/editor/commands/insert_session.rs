@@ -14,43 +14,10 @@ use crate::editor::EditorState;
 use crate::editor::doc_ops;
 use crate::editor::edit_session::{self, InsertSession, TypedRun};
 use crate::editor::error::CommandError;
+use crate::editor::input_stack::InsertEntry;
 use hume_ops::edit::clear_blank_line_indent;
 
 use super::{FocusedPane, doc, ensure_writable, pane_view};
-
-/// `true` when `fp`'s (pane, buffer) has an open Insert-kind session.
-pub(in crate::editor) fn is_group_open_at(
-    state: &EditorState,
-    view: &EngineView,
-    fp: FocusedPane,
-) -> bool {
-    insert_state_at(state, view, fp).is_some()
-}
-
-/// The open Insert session's own state, when it is open on `fp`'s (pane,
-/// buffer).
-pub(in crate::editor) fn insert_state_at<'a>(
-    state: &'a EditorState,
-    view: &EngineView,
-    fp: FocusedPane,
-) -> Option<&'a InsertSession> {
-    state
-        .input
-        .insert_session()
-        .filter(|s| s.owned_by(fp.pid(), fp.bid(view)))
-}
-
-/// [`insert_state_at`], mutably.
-pub(in crate::editor) fn insert_state_at_mut<'a>(
-    state: &'a mut EditorState,
-    view: &EngineView,
-    fp: FocusedPane,
-) -> Option<&'a mut InsertSession> {
-    state
-        .input
-        .insert_session_mut()
-        .filter(|s| s.owned_by(fp.pid(), fp.bid(view)))
-}
 
 /// `true` if any current selection is a collapsed cursor sitting on a blank
 /// line whose whitespace this session itself auto-inserted: the condition
@@ -104,17 +71,13 @@ pub(in crate::editor) fn autoindent_owned(
 /// or exit knows that whitespace is its own to vacate (see
 /// `InsertSession::autoindent`'s doc). Called once, right after the
 /// structural newline + indent lands, by every entry point that copies one
-/// (`o`, `O`, Enter). No-op if no edit group is open (read-only refusal),
-/// same guard as [`begin_typed_run`]: a refused `o`/`O` has no session to
-/// hold the record.
+/// (`o`, `O`, Enter), into the session `entry` proves open.
 pub(in crate::editor) fn arm_autoindent(
     state: &mut EditorState,
     view: &EngineView,
+    entry: &InsertEntry,
     fp: FocusedPane,
 ) {
-    if !is_group_open_at(state, view, fp) {
-        return;
-    }
     let text = doc(state, view, fp.pane()).text();
     let ranges: Vec<ExclusiveRange<CharOffset>> = pane_view(state, view, fp.pane())
         .iter()
@@ -126,9 +89,7 @@ pub(in crate::editor) fn arm_autoindent(
         })
         .collect();
     let record = Tracked::new(ranges, text);
-    insert_state_at_mut(state, view, fp)
-        .expect("checked open above")
-        .autoindent = Some(record);
+    state.input.entered_mut(entry).autoindent = Some(record);
 }
 
 /// Where an *empty* typed run's cursor lands on exit. See
@@ -150,9 +111,7 @@ pub(super) enum ExitCursor {
 /// `select-inserted-text` setting; `tear_down_insert` reads that setting
 /// itself to decide whether to auto-select on exit.
 ///
-/// No-op if no edit group is open (read-only buffer, where
-/// `begin_insert_session` already refused to enter Insert), and `exit` is
-/// correctly not armed either in that case. Call after the cursor has been
+/// Pins into the session `entry` proves open. Call after the cursor has been
 /// positioned at the insertion point (for `o`/`O`, after the structural
 /// newline has been inserted), so the anchor marks the start of typed text
 /// only, never the newline or the pre-edit selection.
@@ -166,12 +125,10 @@ pub(super) enum ExitCursor {
 pub(super) fn begin_typed_run(
     state: &mut EditorState,
     view: &EngineView,
+    entry: &InsertEntry,
     fp: FocusedPane,
     exit: ExitCursor,
 ) {
-    if !is_group_open_at(state, view, fp) {
-        return;
-    }
     let heads: Vec<CharOffset> = pane_view(state, view, fp.pane())
         .iter()
         .map(|s| s.head().offset())
@@ -185,7 +142,7 @@ pub(super) fn begin_typed_run(
         },
         doc(state, view, fp.pane()).text(),
     );
-    let insert = insert_state_at_mut(state, view, fp).expect("checked open above");
+    let insert = state.input.entered_mut(entry);
     insert.typed_run = Some(run);
     insert.step_back_on_exit = matches!(exit, ExitCursor::StepBack);
 }
@@ -209,7 +166,7 @@ pub(super) fn begin_insert_session(
     view: &EngineView,
     fp: FocusedPane,
     place: impl FnOnce(EditState) -> EditState,
-) -> Result<(), CommandError> {
+) -> Result<InsertEntry, CommandError> {
     state.register_prefix = None;
     begin_insert_session_preserving_register(state, view, fp, place)
 }
@@ -222,13 +179,13 @@ pub(super) fn begin_insert_session(
 /// `place` moves the cursors to where typing starts. It runs after every
 /// refusal (read-only, another pane's session) and before the undo group
 /// opens, so a refused entry moves nothing and undo restores the placed
-/// selections.
+/// selections. Returns the entry the rest of the command's setup takes.
 pub(super) fn begin_insert_session_preserving_register(
     state: &mut EditorState,
     view: &EngineView,
     fp: FocusedPane,
     place: impl FnOnce(EditState) -> EditState,
-) -> Result<(), CommandError> {
+) -> Result<InsertEntry, CommandError> {
     ensure_writable(state, view, fp.pane())?;
     let (pid, bid) = (fp.pid(), fp.bid(view));
     // Already open here means this entry runs inside a live Insert session
@@ -236,16 +193,16 @@ pub(super) fn begin_insert_session_preserving_register(
     // Otherwise open one or, under `replay_dot`, take over its `Replay`-kind
     // placeholder (`edit_session::open_insert`), so the replayed session
     // folds into the same undo revision as the rest of the replay.
-    let already_insert = state
+    let joined = state
         .input
-        .insert_session()
-        .is_some_and(|s| s.owned_by(pid, bid));
-    if !already_insert {
+        .insert_entry()
+        .filter(|entry| state.input.entered(entry).owned_by(pid, bid));
+    if joined.is_none() {
         edit_session::check_can_open(state.open_session(), pid, bid)?;
     }
     super::apply_pane_motion(state, view, fp.pane(), place);
-    if already_insert {
-        return Ok(());
+    if let Some(entry) = joined {
+        return Ok(entry);
     }
     // Keep the change whose code opened this session alive for the whole
     // session, so its keystrokes record and a repeatable command mid-session
@@ -261,8 +218,7 @@ pub(super) fn begin_insert_session_preserving_register(
         bid,
         recording,
     )?;
-    state.push_mode_layer(view, crate::editor::input_stack::InsertLayer::new(session));
-    Ok(())
+    Ok(state.push_insert(view, session))
 }
 
 /// Exit Insert mode: truncates the `Insert` layer, running

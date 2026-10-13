@@ -31,8 +31,8 @@ fn enter_insert(
     exit: ExitCursor,
     place: impl FnOnce(EditState) -> EditState,
 ) -> Result<(), CommandError> {
-    begin_insert_session(state, view, fp, place)?;
-    begin_typed_run(state, view, fp, exit);
+    let entry = begin_insert_session(state, view, fp, place)?;
+    begin_typed_run(state, view, &entry, fp, exit);
     Ok(())
 }
 
@@ -140,15 +140,15 @@ pub(in crate::editor) fn cmd_open_line_below(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    begin_insert_session(state, view, fp, std::convert::identity)?;
+    let entry = begin_insert_session(state, view, fp, std::convert::identity)?;
     apply_pane_motion(state, view, fp.pane(), |st| {
         cmd_goto_line_newline(st, 1, MotionMode::Move)
     });
     apply_focused_edit_grouped(state, view, fp, |s| insert_newline_indent(s, &[]));
     // Pin after the structural newline, not before: the anchor must mark
     // the start of typed content, not the blank line's own `\n`.
-    begin_typed_run(state, view, fp, ExitCursor::StepBack);
-    arm_autoindent(state, view, fp);
+    begin_typed_run(state, view, &entry, fp, ExitCursor::StepBack);
+    arm_autoindent(state, view, &entry, fp);
     Ok(())
 }
 
@@ -162,15 +162,15 @@ pub(in crate::editor) fn cmd_open_line_above(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    begin_insert_session(state, view, fp, std::convert::identity)?;
+    let entry = begin_insert_session(state, view, fp, std::convert::identity)?;
     apply_pane_motion(state, view, fp.pane(), |st| {
         cmd_goto_line_start(st, 1, MotionMode::Move)
     });
     apply_focused_edit_grouped(state, view, fp, open_line_above);
     // Pin after the indent + the structural newline `open_line_above` leaves
     // the cursor on, same reasoning as `cmd_open_line_below`.
-    begin_typed_run(state, view, fp, ExitCursor::StepBack);
-    arm_autoindent(state, view, fp);
+    begin_typed_run(state, view, &entry, fp, ExitCursor::StepBack);
+    arm_autoindent(state, view, &entry, fp);
     Ok(())
 }
 

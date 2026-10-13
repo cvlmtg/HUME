@@ -66,7 +66,7 @@ pub(in crate::editor) fn cmd_change(
     // Preserving, not `begin_insert_session`: `c` is itself a register-
     // consuming operator (see `state.route_kill` below), so clearing the
     // prefix here would consume it a step too early.
-    begin_insert_session_preserving_register(state, view, fp, std::convert::identity)?;
+    let entry = begin_insert_session_preserving_register(state, view, fp, std::convert::identity)?;
     let mut yanked = Vec::new();
     apply_focused_edit_grouped(state, view, fp, |s| {
         let removal = delete_selection_content(s);
@@ -77,7 +77,7 @@ pub(in crate::editor) fn cmd_change(
     // reconstruct the typed replacement from: the same helper every insert-entry
     // command uses, so `c`'s auto-select behaves identically to theirs. `c`
     // never steps the cursor back on an empty run, same as `i`/`I`.
-    begin_typed_run(state, view, fp, ExitCursor::StayPut);
+    begin_typed_run(state, view, &entry, fp, ExitCursor::StayPut);
     // Kill-opened only when the yank actually captured to the ring: the
     // capture stamped `PasteStamp`, but every keystroke about to be typed in
     // the session bumps `edit_seq` and would strand it. The flag makes
@@ -85,9 +85,7 @@ pub(in crate::editor) fn cmd_change(
     // explicit-register change (`"5c`) writes no stamp, and refreshing
     // whatever stale stamp might pre-exist would wrongly resurrect it.
     if state.route_kill(yanked) {
-        super::insert_state_at_mut(state, view, fp)
-            .expect("begin_insert_session_preserving_register opened it")
-            .kill_opened_session = true;
+        state.input.entered_mut(&entry).kill_opened_session = true;
     }
     Ok(())
 }

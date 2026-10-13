@@ -6,7 +6,6 @@ use hume_rope::column::CharCol;
 use termina::event::KeyEvent;
 
 use super::EditorHostImpl;
-use crate::editor::Mode;
 use crate::editor::commands::{self, FocusedPane};
 use crate::editor::doc_ops::HistoryWalk;
 use hume_scripting::PaneHandle;
@@ -146,9 +145,11 @@ impl<'a> EditHost for EditorHostImpl<'a> {
 
     fn insert_key(&mut self, pane: PaneHandle, key: KeyEvent) -> Result<(), String> {
         let fp = FocusedPane::resolve(self.state, self.view, pane).map_err(|e| e.to_string())?;
-        if self.state.mode() != Mode::Insert {
-            return Err("insert-key!: only in Insert mode".to_string());
-        }
+        let entry = self
+            .state
+            .input
+            .insert_entry()
+            .ok_or("insert-key!: only in Insert mode")?;
         // An Insert key's own keymap binding dispatching is the one context
         // `.` can replay this call in (by re-running that same binding), so
         // this must refuse anywhere else (a hook, a timer): the buffer edit
@@ -160,7 +161,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         // (recorded once, at the keymap dispatch that's invoking it;
         // see `handle_insert`'s own doc), which re-runs this same call on
         // replay. Recording it a second time here would double it.
-        if !commands::insert_default_key(self.state, self.view, fp, key) {
+        if !commands::insert_default_key(self.state, self.view, &entry, fp, key) {
             return Err(format!(
                 "insert-key!: {:?} has no default Insert-mode behaviour",
                 key.code

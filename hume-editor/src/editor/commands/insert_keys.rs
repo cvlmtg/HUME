@@ -22,14 +22,15 @@ use hume_ops::motion::cmd_move_right;
 use crate::editor::EditorState;
 use crate::editor::completion;
 use crate::editor::event::EditorEvent;
+use crate::editor::input_stack::InsertEntry;
 
 use super::{
     FocusedPane, apply_focused_edit_grouped, apply_pane_motion, arm_autoindent, autoindent_owned,
-    doc, effective_word_chars, insert_state_at, pane_view, tab_format,
+    doc, effective_word_chars, pane_view, tab_format,
 };
 
 /// Runs `key`'s Insert-mode default behaviour against `fp`'s (pane,
-/// buffer). Never walks the Insert keymap: a keymap match is the caller's
+/// buffer), in the Insert session `entry` proves open. Never walks the Insert keymap: a keymap match is the caller's
 /// job (`handle_insert`'s trie walk, or the fact that `insert-key!` exists
 /// specifically to skip it).
 ///
@@ -40,6 +41,7 @@ use super::{
 pub(in crate::editor) fn insert_default_key(
     state: &mut EditorState,
     view: &EngineView,
+    entry: &InsertEntry,
     fp: FocusedPane,
     key: KeyEvent,
 ) -> bool {
@@ -122,13 +124,14 @@ pub(in crate::editor) fn insert_default_key(
         // yet. `arm_autoindent` after the edit records the *new* line's own
         // copied indent, so the next Enter/Esc on it trims.
         KeyCode::Enter => {
-            let insert = insert_state_at(state, view, fp)
-                .expect("an Insert-mode key runs in an open Insert session");
-            let allowed = autoindent_owned(insert, &pane_view(state, view, fp.pane()));
+            let allowed = autoindent_owned(
+                state.input.entered(entry),
+                &pane_view(state, view, fp.pane()),
+            );
             apply_focused_edit_grouped(state, view, fp, move |s| {
                 insert_newline_indent(s, &allowed)
             });
-            arm_autoindent(state, view, fp);
+            arm_autoindent(state, view, entry, fp);
             true
         }
 

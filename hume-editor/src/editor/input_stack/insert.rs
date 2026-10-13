@@ -18,7 +18,7 @@ use super::super::keymap::WalkResult;
 use super::super::replay::{Input, dispatch_insert_key};
 use super::super::{Editor, EditorState, commands, doc_ops};
 use super::popup::PopupLayer;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
+use super::stack::{InputEvent, InputStack, Layer, LayerHandler, LayerRef, Removal};
 
 pub(in crate::editor) struct InsertLayer {
     pub(in crate::editor) sticky_popup: Option<PopupLayer>,
@@ -27,17 +27,19 @@ pub(in crate::editor) struct InsertLayer {
     pub(super) session: InsertSession,
 }
 
-impl InsertLayer {
-    pub(in crate::editor) fn new(session: InsertSession) -> Self {
-        Self {
-            sticky_popup: None,
-            session,
-        }
-    }
-}
+/// Proof that an Insert session is open, from its opening
+/// ([`EditorState::push_insert`]) or from the stack
+/// ([`InputStack::insert_entry`]): what each step of an Insert entry, and
+/// each Insert key, takes, so none runs without a session to act on. Holds
+/// no borrow, so the editor state stays usable between steps;
+/// [`InputStack::entered`] reads the session back.
+#[must_use]
+pub(in crate::editor) struct InsertEntry(());
+
+const ENTERED: &str = "an InsertEntry is minted only while its Insert session is open";
 
 /// Named sugar over the generic lookup; `stack.rs` stays agnostic.
-impl super::stack::InputStack {
+impl InputStack {
     /// The open Insert session, if any.
     pub(in crate::editor) fn insert_session(&self) -> Option<&InsertSession> {
         self.find::<InsertLayer>().map(|l| &l.session)
@@ -46,6 +48,39 @@ impl super::stack::InputStack {
     /// [`Self::insert_session`], mutably.
     pub(in crate::editor) fn insert_session_mut(&mut self) -> Option<&mut InsertSession> {
         self.find_mut::<InsertLayer>().map(|l| &mut l.session)
+    }
+
+    /// An [`InsertEntry`] for the open Insert session, if any.
+    pub(in crate::editor) fn insert_entry(&self) -> Option<InsertEntry> {
+        self.insert_session().map(|_| InsertEntry(()))
+    }
+
+    /// The Insert session `entry` proves open.
+    pub(in crate::editor) fn entered(&self, _entry: &InsertEntry) -> &InsertSession {
+        self.insert_session().expect(ENTERED)
+    }
+
+    /// [`Self::entered`], mutably.
+    pub(in crate::editor) fn entered_mut(&mut self, _entry: &InsertEntry) -> &mut InsertSession {
+        self.insert_session_mut().expect(ENTERED)
+    }
+}
+
+impl EditorState {
+    /// Push the Insert layer owning the just-opened `session`.
+    pub(in crate::editor) fn push_insert(
+        &mut self,
+        view: &EngineView,
+        session: InsertSession,
+    ) -> InsertEntry {
+        self.push_mode_layer(
+            view,
+            InsertLayer {
+                sticky_popup: None,
+                session,
+            },
+        );
+        InsertEntry(())
     }
 }
 
@@ -136,7 +171,12 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
     // none (an unbound Ctrl-chord, an F-key) did nothing, so replaying it
     // would be a silent no-op entry.
     let fp = commands::FocusedPane::current(&ed.view);
-    if commands::insert_default_key(&mut ed.state, &ed.view, fp, key) {
+    let entry = ed
+        .state
+        .input
+        .insert_entry()
+        .expect("the Insert layer handling this key holds its session");
+    if commands::insert_default_key(&mut ed.state, &ed.view, &entry, fp, key) {
         ed.state.record_input(Input::Key(key));
     }
 }
