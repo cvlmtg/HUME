@@ -38,7 +38,7 @@ fn editor_state_fields_are_classified() {
             // in-flight deliveries; running servers and the spinner survive
             lsp: _,
             config: _, // exempt; see ConfigState's own doc
-            // config: reset_config_state → input.truncate_to_base() (drops
+            // config: reset_config_state → reset_input (drops
             // every mode layer's minibuf/completion/prompt-callback payload
             // along with the six overlay widgets, confirm/picker/menu/
             // drawer/completion/popup, and resets Base's extend flag and
@@ -96,8 +96,8 @@ fn editor_state_fields_are_classified() {
             // detect_buffer_enter's diff re-raises OnBufferEnter for
             // the focused buffer
             last_entered_buffer: _,
-            // config: reset_config_state re-baselines this to mode() right
-            // after input.truncate_to_base(), so detect_mode_change's diff
+            // config: reset_config_state re-baselines this to mode() after
+            // its reset_input call, so detect_mode_change's diff
             // doesn't fire a phantom OnModeChange for a mode the fresh
             // hooks never observed
             last_observed_mode: _,

@@ -16,7 +16,7 @@ use slotmap::SecondaryMap;
 
 use super::buffer::store::BufferStore;
 use super::edit_session::{self, EditSession, InsertSession, OpenSession};
-use super::input_stack::InputStack;
+use super::input_stack::{InputStack, OtherLayers};
 use super::lsp::diagnostics::DiagnosticsStore;
 use super::lsp::document::LspDocuments;
 use super::pane_state::{PaneBufferState, PaneEntries, PaneView};
@@ -66,25 +66,40 @@ pub(crate) struct PositionStores<'a> {
     pub(in crate::editor) panes: &'a mut PaneEntries,
     /// The open Paste session or dot-repeat placeholder.
     pub(in crate::editor) session: &'a mut Option<EditSession>,
+    /// The open Insert session, whose records are carried with the rest, and
+    /// which grouped edits compose into.
+    insert: Option<&'a mut InsertSession>,
     tracked: &'a mut TrackedPositions,
-    input: &'a mut InputStack,
+    /// Every input layer but the Insert one, for the snapshots and the
+    /// completion session they hold.
+    layers: OtherLayers<'a>,
     buffers: &'a mut BufferPositions,
     decorations: &'a mut DecorationStores,
 }
 
 impl<'a> PositionStores<'a> {
+    /// The stores, with `insert` the open Insert session whether or not its
+    /// layer is still on `input`: the closing session of an Insert layer's
+    /// teardown is not.
     pub(in crate::editor) fn new(
         panes: &'a mut PaneView,
         session: &'a mut Option<EditSession>,
+        closing: Option<&'a mut InsertSession>,
         input: &'a mut InputStack,
         buffers: &'a mut BufferPositions,
         decorations: &'a mut DecorationStores,
     ) -> Self {
+        let (on_stack, layers) = input.split_insert();
+        debug_assert!(
+            closing.is_none() || on_stack.is_none(),
+            "a closing Insert session's layer has left the stack"
+        );
         Self {
             panes: &mut panes.entries,
             session,
+            insert: closing.or(on_stack),
             tracked: &mut panes.tracked,
-            input,
+            layers,
             buffers,
             decorations,
         }
@@ -92,18 +107,18 @@ impl<'a> PositionStores<'a> {
 
     /// The open session, of any kind.
     pub(in crate::editor) fn open_session(&self) -> Option<OpenSession<'_>> {
-        edit_session::open_session(self.input.insert_session(), self.session)
+        edit_session::open_session(self.insert.as_deref(), self.session)
     }
 
     /// The open Insert session, when it is on `(pane, buffer)`: the session
-    /// a grouped edit there composes into, and whose records it carries.
+    /// a grouped edit there composes into.
     pub(in crate::editor) fn insert_at_mut(
         &mut self,
         pane: PaneId,
         buffer: BufferId,
     ) -> Option<&mut InsertSession> {
-        self.input
-            .insert_session_mut()
+        self.insert
+            .as_deref_mut()
             .filter(|s| s.owned_by(pane, buffer))
     }
 
@@ -137,18 +152,14 @@ impl<'a> PositionStores<'a> {
             // which is what makes cross-buffer Ctrl-o work.
             entry.jumps.translate_in_place(buffer, change);
         }
-        if let Some(insert) = self
-            .input
-            .insert_session_mut()
-            .filter(|s| s.buffer() == buffer)
-        {
+        if let Some(insert) = self.insert.as_deref_mut().filter(|s| s.buffer() == buffer) {
             insert.carry_marks(change);
         }
         self.tracked.carry(buffer, change);
-        for snapshot in self.input.snapshots_mut() {
+        for snapshot in self.layers.snapshots_mut() {
             snapshot.carry(buffer, change);
         }
-        if let Some(session) = self.input.buffer_completion_mut() {
+        if let Some(session) = self.layers.buffer_completion_mut() {
             session.carry(buffer, change);
         }
         self.buffers.carry(buffer, change);
@@ -195,10 +206,10 @@ impl<'a> PositionStores<'a> {
             entry.jumps.prune_buffer(buffer);
         }
         self.tracked.prune_buffer(buffer);
-        for snapshot in self.input.snapshots_mut() {
+        for snapshot in self.layers.snapshots_mut() {
             snapshot.forget(buffer);
         }
-        if let Some(session) = self.input.buffer_completion_mut() {
+        if let Some(session) = self.layers.buffer_completion_mut() {
             session.forget(buffer);
         }
         self.buffers.diagnostics.remove_buffer(buffer);
@@ -216,11 +227,28 @@ impl super::EditorState {
     /// The buffers, and every position stored against their text, borrowed
     /// apart so a `Buffer` method that changes text can carry them.
     pub(in crate::editor) fn edit_parts(&mut self) -> (&mut BufferStore, PositionStores<'_>) {
+        self.parts_with_closing(None)
+    }
+
+    /// [`Self::edit_parts`] for the teardown of an Insert layer, whose
+    /// `session` has left the stack and is still carried and composed into.
+    pub(in crate::editor) fn closing_insert_parts<'a>(
+        &'a mut self,
+        session: &'a mut InsertSession,
+    ) -> (&'a mut BufferStore, PositionStores<'a>) {
+        self.parts_with_closing(Some(session))
+    }
+
+    fn parts_with_closing<'a>(
+        &'a mut self,
+        closing: Option<&'a mut InsertSession>,
+    ) -> (&'a mut BufferStore, PositionStores<'a>) {
         (
             &mut self.buffers,
             PositionStores::new(
                 &mut self.panes,
                 &mut self.active_session,
+                closing,
                 &mut self.input,
                 &mut self.buffer_positions,
                 &mut self.config.decorations,
@@ -247,6 +275,7 @@ impl DetachedStores {
         PositionStores::new(
             &mut self.panes,
             &mut self.session,
+            None,
             &mut self.input,
             &mut self.buffers,
             &mut self.decorations,

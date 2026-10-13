@@ -759,8 +759,7 @@ impl EditorState {
     /// accepts input: the one change every Insert-session input records
     /// into, whatever else is accepting.
     fn session_recording(&mut self) -> Option<&mut Recording> {
-        let ticket = self.input.insert_session()?.recording()?;
-        self.recording.as_mut().filter(|rec| rec.feeds(ticket))
+        session_feed(&mut self.recording, self.input.insert_session()?)
     }
 
     /// Append `input` to the open Insert session's recording, if any. Called
@@ -992,67 +991,77 @@ impl EditorState {
         Ok(())
     }
 
-    /// Finalize a capture into the recording. Records nothing unless a
-    /// completion trigger or accept made it interactive; then the entry of
-    /// the binding it wrapped is replaced, so `.` does not re-run a binding
-    /// whose completion it cannot replay: by its net cursor edit, an
-    /// [`Input::Result`], when it changed text, otherwise by nothing. A bare
-    /// completion-popup Enter, which has no entry, appends its net edit.
-    pub(in crate::editor) fn finalize_dot_capture(&mut self, cap: DotCapture) {
-        if !cap.interactive {
-            return;
-        }
-        let replacement = match cap.chain.finish() {
-            Ok(replacement) => replacement,
-            Err(ChainBroken) => {
-                self.report(
-                    super::Severity::Warning,
-                    "`.` won't repeat this edit: the buffer changed while it ran".to_string(),
-                );
-                None
-            }
-        };
-        let Some(binding) = cap.binding else {
-            if let Some(r) = replacement {
-                self.record_input(Input::Result(r));
-            }
-            return;
-        };
-        let Some(rec) = self.session_recording() else {
-            return;
-        };
-        if let Some(i) = rec.binding_index(binding) {
-            match replacement {
-                Some(r) => rec.action.transcript[i] = Input::Result(r),
-                None => {
-                    rec.action.transcript.remove(i);
-                }
-            }
-        }
-    }
-
-    /// End an Insert session's part in the recording: finalize the capture
-    /// still armed on it, if any, then close the session's source. In that
-    /// order: a finalized capture records into the recording only while it
-    /// still accepts input.
+    /// End the closing Insert `session`'s part in the recording: finalize the
+    /// capture still armed on it, if any, then close the session's source.
+    /// In that order: a finalized capture records into the recording only
+    /// while it still accepts input.
     ///
     /// The capture is still armed when its binding tears the session down
     /// from inside its own dispatch (`completion-accept!` then `exit-insert`
     /// in one body), before `with_dot_capture` takes it back.
-    pub(in crate::editor) fn end_insert_recording(&mut self) {
-        if let Some(cap) = self
-            .input
-            .insert_session_mut()
-            .and_then(InsertSession::take_dot_capture)
+    pub(in crate::editor) fn end_insert_recording(&mut self, session: &mut InsertSession) {
+        if let Some(cap) = session.take_dot_capture()
+            && let Err(warning) = finalize_dot_capture(&mut self.recording, session, cap)
         {
-            self.finalize_dot_capture(cap);
+            self.report(super::Severity::Warning, warning);
         }
-        drop(
-            self.input
-                .insert_session_mut()
-                .and_then(InsertSession::release_recording),
-        );
+        drop(session.release_recording());
     }
+}
+
+/// Finalize a capture taken from `session` into the recording. Records
+/// nothing unless a completion trigger or accept made it interactive;
+/// then the entry of the binding it wrapped is replaced, so `.` does not
+/// re-run a binding whose completion it cannot replay: by its net cursor
+/// edit, an [`Input::Result`], when it changed text, otherwise by
+/// nothing. A bare completion-popup Enter, which has no entry, appends
+/// its net edit.
+///
+/// Takes the recording rather than the editor state, so `session` may be
+/// borrowed from the input stack; a broken chain comes back as the warning
+/// to report.
+pub(in crate::editor) fn finalize_dot_capture(
+    recording: &mut Option<Recording>,
+    session: &InsertSession,
+    cap: DotCapture,
+) -> Result<(), String> {
+    if !cap.interactive {
+        return Ok(());
+    }
+    let (replacement, outcome) = match cap.chain.finish() {
+        Ok(replacement) => (replacement, Ok(())),
+        Err(ChainBroken) => (
+            None,
+            Err("`.` won't repeat this edit: the buffer changed while it ran".to_string()),
+        ),
+    };
+    let Some(rec) = session_feed(recording, session) else {
+        return outcome;
+    };
+    let Some(binding) = cap.binding else {
+        if let Some(r) = replacement {
+            rec.action.transcript.push(Input::Result(r));
+        }
+        return outcome;
+    };
+    if let Some(i) = rec.binding_index(binding) {
+        match replacement {
+            Some(r) => rec.action.transcript[i] = Input::Result(r),
+            None => {
+                rec.action.transcript.remove(i);
+            }
+        }
+    }
+    outcome
+}
+
+/// The recording `session` holds a source on, while it accepts input.
+fn session_feed<'a>(
+    recording: &'a mut Option<Recording>,
+    session: &InsertSession,
+) -> Option<&'a mut Recording> {
+    let ticket = session.recording()?;
+    recording.as_mut().filter(|rec| rec.feeds(ticket))
 }
 
 // ── Macro recording state (EditorState) ───────────────────────────────────────
@@ -1379,14 +1388,18 @@ impl Editor {
         if !armed {
             return;
         }
-        if let Some(cap) = self
-            .state
+        let state = &mut self.state;
+        let Some(session) = state
             .input
             .insert_session_mut()
             .filter(|s| s.owned_by(pane, buffer))
-            .and_then(InsertSession::take_dot_capture)
+        else {
+            return;
+        };
+        if let Some(cap) = session.take_dot_capture()
+            && let Err(warning) = finalize_dot_capture(&mut state.recording, session, cap)
         {
-            self.state.finalize_dot_capture(cap);
+            state.report(super::Severity::Warning, warning);
         }
     }
 

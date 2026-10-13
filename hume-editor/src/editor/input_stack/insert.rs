@@ -13,7 +13,7 @@ use termina::event::KeyEvent;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
-use super::super::edit_session::InsertOpened;
+use super::super::edit_session::InsertSession;
 use super::super::keymap::WalkResult;
 use super::super::replay::{Input, dispatch_insert_key};
 use super::super::{Editor, EditorState, commands, doc_ops};
@@ -22,17 +22,30 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 pub(in crate::editor) struct InsertLayer {
     pub(in crate::editor) sticky_popup: Option<PopupLayer>,
-    /// The proof its Insert session's opening returned, which the
-    /// session's commit takes: the layer exists only over an open session.
-    opened: InsertOpened,
+    /// The open Insert session, which the layer's teardown commits: the
+    /// layer and its session exist together.
+    pub(super) session: InsertSession,
 }
 
 impl InsertLayer {
-    pub(in crate::editor) fn new(opened: InsertOpened) -> Self {
+    pub(in crate::editor) fn new(session: InsertSession) -> Self {
         Self {
             sticky_popup: None,
-            opened,
+            session,
         }
+    }
+}
+
+/// Named sugar over the generic lookup; `stack.rs` stays agnostic.
+impl super::stack::InputStack {
+    /// The open Insert session, if any.
+    pub(in crate::editor) fn insert_session(&self) -> Option<&InsertSession> {
+        self.find::<InsertLayer>().map(|l| &l.session)
+    }
+
+    /// [`Self::insert_session`], mutably.
+    pub(in crate::editor) fn insert_session_mut(&mut self) -> Option<&mut InsertSession> {
+        self.find_mut::<InsertLayer>().map(|l| &mut l.session)
     }
 }
 
@@ -48,7 +61,7 @@ impl Layer for InsertLayer {
         Some(EditorMode::Insert)
     }
     fn tear_down(self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        commands::tear_down_insert(state, &self.opened);
+        commands::tear_down_insert(state, self.session);
     }
     fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {
         Some(&self.sticky_popup)

@@ -4161,7 +4161,9 @@ fn a_non_repeatable_insert_bindings_read_ends_the_change() {
 fn a_stale_answer_never_lands_in_a_later_bindings_entry() {
     use crate::editor::dot_chain::DotChain;
     use crate::editor::edit_session::DotCapture;
-    use crate::editor::replay::{AnswerTicket, InputOpener, RecordingScope, with_recording_scope};
+    use crate::editor::replay::{
+        AnswerTicket, InputOpener, RecordingScope, finalize_dot_capture, with_recording_scope,
+    };
 
     fn open_input(ed: &mut Editor, scope: RecordingScope) -> AnswerTicket {
         with_recording_scope(&mut ed.state, Some(scope), |state| {
@@ -4183,11 +4185,18 @@ fn a_stale_answer_never_lands_in_a_later_bindings_entry() {
     let stale = open_input(&mut ed, a);
 
     let text = ed.doc().text().clone();
-    ed.state.finalize_dot_capture(DotCapture {
-        chain: DotChain::new(test_fixtures::testing::at(&text, 0), &text),
-        interactive: true,
-        binding: Some(a_entry),
-    });
+    let state = &mut ed.state;
+    let session = state.input.insert_session().expect("`i` opened a session");
+    finalize_dot_capture(
+        &mut state.recording,
+        session,
+        DotCapture {
+            chain: DotChain::new(test_fixtures::testing::at(&text, 0), &text),
+            interactive: true,
+            binding: Some(a_entry),
+        },
+    )
+    .expect("nothing edited the buffer under the capture");
 
     let (_, b) = ed
         .state

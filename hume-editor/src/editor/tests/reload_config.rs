@@ -34,17 +34,6 @@ use hume_lsp::test_util::RecordingLspBackend;
 /// not stay overridden, not end up unbound. Compared against a fresh
 /// `Keymap::default()` rather than a hardcoded
 /// expectation for 'Q', which has no default binding at all.
-/// The stack reset a reload ends with drops layers without running their
-/// teardown, so dropping an Insert layer would leave its session open under
-/// Normal mode.
-#[test]
-#[should_panic(expected = "truncate_to_base would drop an Insert layer")]
-fn truncate_to_base_refuses_an_insert_layer() {
-    let mut ed = editor_from("-[a]>bc\n");
-    ed.feed_key(key('i'));
-    ed.state.input.truncate_to_base();
-}
-
 #[test]
 fn reset_reverts_bind_key_to_default() {
     let tmp = tempfile::tempdir().unwrap();
@@ -451,7 +440,7 @@ fn reset_cancels_pending_steel_timers() {
 
 // ── Overlays ─────────────────────────────────────────────────────────────────
 
-/// `reset_config_state`'s `input.truncate_to_base()` call drops the drawer
+/// `reset_config_state`'s `reset_input` call drops the drawer
 /// layer directly (not through `close-drawer!`, which would queue a callback
 /// the reset already drops), with no paired view sync at that call site.
 /// `prepare_frame` syncs the drawer view every frame, like popup/menu/picker,
@@ -497,8 +486,8 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
 }
 
 /// Regression test: an abandoned `Prompt` layer (minibuf + callback) must
-/// not survive a reload: `reset_config_state`'s `input.truncate_to_base()`
-/// call is what drops it, discarding the callback the same way every other
+/// not survive a reload: `reset_config_state`'s `reset_input` call is what
+/// drops it, discarding the callback the same way every other
 /// overlay widget's teardown does. Left open, its half-typed answer would
 /// be misread as an ordinary `:` command on the very next Enter.
 #[test]
@@ -555,10 +544,10 @@ fn reset_tears_down_an_open_prompt_session_completely() {
     );
 }
 
-/// `truncate_to_base` resets `Base`'s `extend` flag: Extend must not
+/// A reload's `reset_input` resets `Base`'s `extend` flag: Extend must not
 /// survive a reload.
 /// Also pins the `last_observed_mode` re-baseline (`reset_config_state`,
-/// right after `truncate_to_base`): the *old*, still-attached hook must
+/// after `reset_input`): the *old*, still-attached hook must
 /// never see a phantom `Extend→Normal` transition it didn't itself observe
 /// happening. Checked by settling with the pre-reload host still in place
 /// (`reset_config_state` alone doesn't touch `ed.scripting`; only

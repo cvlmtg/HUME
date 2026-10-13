@@ -175,31 +175,26 @@ pub(in crate::editor) fn check_can_open(
     Ok(())
 }
 
-/// Proof that an Insert session was opened, from which an `InsertLayer` is
-/// built. Minted only by [`open_insert`], so an Insert layer exists only over
-/// an open Insert session.
-#[must_use]
-pub(in crate::editor) struct InsertOpened(());
-
-/// Open an Insert session on `(pane, buffer)` into `slot`, holding
-/// `recording`, its source on the change whose code opens it. Takes over the
-/// [`EditSessionKind::Replay`] placeholder open there, with its group; see
-/// [`open_or_retarget`] for why that costs nothing and when an open refuses.
-/// The only way to create an [`InsertSession`].
+/// Open an Insert session on `(pane, buffer)`, holding `recording`, its
+/// source on the change whose code opens it, for the `InsertLayer` that will
+/// own it. `insert` is the Insert session already open, if any. Takes over
+/// the [`EditSessionKind::Replay`] placeholder open there, with its group;
+/// see [`open_or_retarget`] for why that costs nothing and when an open
+/// refuses. The only way to create an [`InsertSession`].
 pub(in crate::editor) fn open_insert(
-    slot: &mut Option<InsertSession>,
+    insert: Option<&InsertSession>,
     other: &mut Option<EditSession>,
     pane: PaneId,
     buffer: BufferId,
     recording: Option<SourceTicket>,
     mint_group: impl FnOnce() -> EditGroup,
-) -> Result<InsertOpened, CommandError> {
-    check_can_open(open_session(slot.as_ref(), other), pane, buffer)?;
+) -> Result<InsertSession, CommandError> {
+    check_can_open(open_session(insert, other), pane, buffer)?;
     let group = match other.take() {
         Some(placeholder) => placeholder.group,
         None => mint_group(),
     };
-    *slot = Some(InsertSession {
+    Ok(InsertSession {
         pane,
         buffer,
         group,
@@ -209,8 +204,7 @@ pub(in crate::editor) fn open_insert(
         autoindent: None,
         step_back_on_exit: false,
         kill_opened_session: false,
-    });
-    Ok(InsertOpened(()))
+    })
 }
 
 /// Open a Paste or Replay session of `kind` on `(pane, buffer)`, or take

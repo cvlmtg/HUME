@@ -287,10 +287,10 @@ impl dyn Layer {
 /// doors, [`EditorState::push_layer`]/[`EditorState::truncate_layers`]/
 /// [`EditorState::take_layer`] (below, in this same module), are what run
 /// it, and narrowing the raw ops keeps a caller elsewhere in `crate::editor`
-/// from reaching around them. `truncate_to_base` stays at the wider
-/// visibility: its one caller (`reload.rs`) drops every
-/// layer's callback rather than running teardown, a stated exception, not
-/// a hole a door could close. A payload is only ever reached through a
+/// from reaching around them. `truncate_to_base` is private to this file:
+/// it drops every layer's callback rather than running teardown, a stated
+/// exception reached only through [`EditorState::reset_input`], which ends
+/// the Insert session first. A payload is only ever reached through a
 /// typed lookup: `find` (topmost of a type), `at` (the layer at a specific
 /// `LayerRef`), or a layer's own named sugar over either.
 pub(in crate::editor) struct InputStack {
@@ -299,8 +299,34 @@ pub(in crate::editor) struct InputStack {
     /// stale `LayerRef` from a fresh layer that landed at the same index.
     layers: Vec<(u64, Box<dyn Layer>)>,
     next_id: u64,
-    /// The open Insert session, under the `InsertLayer` its opening pushed.
-    insert: Option<InsertSession>,
+}
+
+/// Every layer on the stack but the Insert layer, borrowed apart from the
+/// Insert session that layer holds ([`InputStack::split_insert`]).
+pub(in crate::editor) struct OtherLayers<'a> {
+    below: &'a mut [(u64, Box<dyn Layer>)],
+    above: &'a mut [(u64, Box<dyn Layer>)],
+}
+
+impl OtherLayers<'_> {
+    fn iter_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut Box<dyn Layer>> {
+        self.below
+            .iter_mut()
+            .chain(self.above.iter_mut())
+            .map(|(_, layer)| layer)
+    }
+
+    /// Every one of these layers' pane snapshots.
+    pub(in crate::editor) fn snapshots_mut(
+        &mut self,
+    ) -> impl Iterator<Item = &mut super::PaneSnapshot> {
+        self.iter_mut().filter_map(|layer| layer.snapshot_mut())
+    }
+
+    /// The topmost of these layers of concrete type `L`.
+    pub(in crate::editor) fn find_mut<L: Layer>(&mut self) -> Option<&mut L> {
+        self.iter_mut().rev().find_map(|layer| layer.downcast_mut())
+    }
 }
 
 impl InputStack {
@@ -314,28 +340,34 @@ impl InputStack {
                 }),
             )],
             next_id: 1,
-            insert: None,
         }
     }
 
-    /// The open Insert session, if any.
-    pub(in crate::editor) fn insert_session(&self) -> Option<&InsertSession> {
-        self.insert.as_ref()
-    }
-
-    /// [`Self::insert_session`], mutably.
-    pub(in crate::editor) fn insert_session_mut(&mut self) -> Option<&mut InsertSession> {
-        self.insert.as_mut()
-    }
-
-    /// Where `edit_session::open_insert` opens an Insert session.
-    pub(in crate::editor) fn insert_slot(&mut self) -> &mut Option<InsertSession> {
-        &mut self.insert
-    }
-
-    /// Take the open Insert session out, for its commit.
-    pub(in crate::editor) fn take_insert(&mut self) -> Option<InsertSession> {
-        self.insert.take()
+    /// The open Insert session, if any, and every other layer, borrowed
+    /// apart: what a text change carries positions through.
+    pub(in crate::editor) fn split_insert(
+        &mut self,
+    ) -> (Option<&mut InsertSession>, OtherLayers<'_>) {
+        let Some(at) = self
+            .layers
+            .iter()
+            .position(|(_, layer)| layer.is::<super::InsertLayer>())
+        else {
+            return (
+                None,
+                OtherLayers {
+                    below: &mut self.layers,
+                    above: &mut [],
+                },
+            );
+        };
+        let (below, rest) = self.layers.split_at_mut(at);
+        let ((_, insert), above) = rest.split_first_mut().expect("the Insert layer is at `at`");
+        let session = &mut insert
+            .downcast_mut::<super::InsertLayer>()
+            .expect("the layer at `at` is the Insert layer")
+            .session;
+        (Some(session), OtherLayers { below, above })
     }
 
     /// The topmost layer. Every key dispatch starts here.
@@ -437,15 +469,6 @@ impl InputStack {
             .iter()
             .rev()
             .find_map(|(_, layer)| layer.downcast_ref())
-    }
-
-    /// Every open layer's pane snapshot.
-    pub(in crate::editor) fn snapshots_mut(
-        &mut self,
-    ) -> impl Iterator<Item = &mut super::PaneSnapshot> + '_ {
-        self.layers
-            .iter_mut()
-            .filter_map(|(_, layer)| layer.snapshot_mut())
     }
 
     pub(in crate::editor) fn find_mut<L: Layer>(&mut self) -> Option<&mut L> {
@@ -568,16 +591,10 @@ impl InputStack {
     /// not fired), and resets `Base` itself to a fresh, all-default
     /// [`BaseLayer`]: a reload must not leave Extend on, or a
     /// signature-help popup visible, for hooks that never saw either turned
-    /// on.
-    ///
-    /// Panics on an Insert layer: its teardown commits the Insert session,
-    /// which dropping the layer would leave open with no layer over it. The
-    /// caller ends it first (`focus::end_focus_sessions`).
-    pub(in crate::editor) fn truncate_to_base(&mut self) {
-        assert!(
-            self.ref_of::<super::InsertLayer>().is_none(),
-            "truncate_to_base would drop an Insert layer: end its session first"
-        );
+    /// on. Reached only through [`EditorState::reset_input`], which ends the
+    /// open Insert session first: dropping its layer would drop the session
+    /// uncommitted.
+    fn truncate_to_base(&mut self) {
         self.layers.truncate(1);
         self.layers[0].1 = Box::new(BaseLayer {
             extend: false,
@@ -770,6 +787,16 @@ impl InputStack {
 }
 
 impl EditorState {
+    /// Ends the open Insert or paste session (`focus::end_focus_sessions`),
+    /// then drops every layer above `Base` without its teardown and resets
+    /// `Base` ([`InputStack::truncate_to_base`]): a config reload's reset of
+    /// the input stack, while the outgoing config is still installed, since
+    /// the Insert teardown's own edit reaches hooks and language servers.
+    pub(in crate::editor) fn reset_input(&mut self, view: &EngineView) {
+        crate::editor::focus::end_focus_sessions(self, view);
+        self.input.truncate_to_base();
+    }
+
     /// The only way to push a layer. [`Layer::setup`] runs first, always,
     /// because [`InputStack::push`] itself is narrowed to this module and
     /// unreachable from anywhere else. Mirrors [`Self::truncate_layers`]:

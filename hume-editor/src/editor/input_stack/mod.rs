@@ -32,7 +32,7 @@ pub(in crate::editor) mod prompt;
 pub(in crate::editor) mod search;
 pub(in crate::editor) mod sift;
 
-pub(in crate::editor) use stack::{InputEvent, InputStack, Layer, LayerRef};
+pub(in crate::editor) use stack::{InputEvent, InputStack, Layer, LayerRef, OtherLayers};
 
 pub(in crate::editor) use base::{BaseLayer, PendingSequence};
 pub(in crate::editor) use char::{CharLayer, read_command_char, read_steel_char};

@@ -285,7 +285,7 @@ fn fire_callback(
 /// its own `#f` callback right before this fires the real one.
 ///
 /// `Editor::reset_config_state` is a second, deliberate exit from this
-/// "fires exactly once" contract: its `input.truncate_to_base()` call drops
+/// "fires exactly once" contract: its `reset_input` call drops
 /// a still-open picker layer directly (never calling this function, and
 /// running no teardown at all) along with the `pending_work` queue this
 /// function would have pushed the callback onto. The outgoing engine that

@@ -12,7 +12,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::EditorState;
 use crate::editor::doc_ops;
-use crate::editor::edit_session::{self, InsertOpened, InsertSession, TypedRun};
+use crate::editor::edit_session::{self, InsertSession, TypedRun};
 use crate::editor::error::CommandError;
 use hume_ops::edit::clear_blank_line_indent;
 
@@ -252,16 +252,16 @@ pub(super) fn begin_insert_session_preserving_register(
     // can't replace it. `None` outside a recorded change's code (during `.`,
     // or a session a hook opens).
     let recording = state.open_scope_source();
-    let opened = doc_ops::begin_edit_group(
+    let session = doc_ops::begin_edit_group(
         &state.buffers,
         &state.panes.entries,
-        state.input.insert_slot(),
+        state.input.insert_session(),
         &mut state.active_session,
         pid,
         bid,
         recording,
     )?;
-    state.push_mode_layer(view, crate::editor::input_stack::InsertLayer::new(opened));
+    state.push_mode_layer(view, crate::editor::input_stack::InsertLayer::new(session));
     Ok(())
 }
 
@@ -289,25 +289,19 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
 /// Finalises the undo and typed-run state; does not itself touch the stack (the
 /// truncate that got here already removed the layer).
 ///
-/// Acts on the `(pane, buffer)` the open session recorded, never on focus:
-/// an Insert layer on the stack always has its Insert session open (the
-/// layer is built from `opened`, the proof the session's opening returned,
-/// and only this teardown, which needs it, closes the session), and
-/// reading the owner from the session makes teardown correct regardless of
-/// whether focus has already moved by the time the layer pops. Works on
+/// Acts on `session`, the one the leaving layer owned, and on the `(pane,
+/// buffer)` it recorded, never on focus, which makes teardown correct
+/// regardless of whether focus has already moved by the time the layer
+/// pops. Works on
 /// `pane_state`/`buffers` directly through `doc_ops` rather than through a
 /// `CommandPane`/`FocusedPane`: this is not a command body, and those types
 /// can only be minted by resolving a target, not from a bare pair.
-pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, _opened: &InsertOpened) {
-    let (pid, bid) = state
-        .input
-        .insert_session()
-        .map(|s| (s.pane(), s.buffer()))
-        .expect("an Insert layer on the stack always has its session open");
+pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, mut session: InsertSession) {
+    let (pid, bid) = (session.pane(), session.buffer());
     // Before the autoindent-trim edit below, which must not itself be swept
     // into a capture's net edit: it's session-teardown bookkeeping, not part
     // of whatever the capture was recorded for.
-    state.end_insert_recording();
+    state.end_insert_recording(&mut session);
     // An open completion session lives in its own `Completion` layer, pushed
     // above `Insert`: the top-first `truncate_layers` call that reaches
     // this function always removes `Completion` (running its own `tear_down`
@@ -328,10 +322,9 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, _opened: &Ins
         .entries
         .seeded(pid, bid)
         .view(state.buffers.get(bid).text());
-    let insert = state.input.insert_session().expect("checked open above");
-    let allowed = autoindent_owned(insert, &sels);
+    let allowed = autoindent_owned(&session, &sels);
     if has_blank_line_cursor(sels, &allowed) {
-        let (buffers, mut stores) = state.edit_parts();
+        let (buffers, mut stores) = state.closing_insert_parts(&mut session);
         doc_ops::apply_doc_edit_grouped(buffers, &mut stores, pid, bid, move |s| {
             clear_blank_line_indent(s, &allowed)
         });
@@ -342,7 +335,6 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, _opened: &Ins
     // run entirely: `spans` stays `None`, so this session contributes
     // nothing to the `mii` stash and, for an empty run, falls back to
     // `exit_cursor`'s step-back handling below.
-    let mut session = state.input.take_insert().expect("checked open above");
     let (typed_run, step_back, kill_opened) = (
         session.typed_run.take(),
         session.step_back_on_exit,

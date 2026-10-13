@@ -283,6 +283,15 @@ impl Editor {
     }
 }
 
+impl super::stack::OtherLayers<'_> {
+    /// [`super::stack::InputStack::buffer_completion_mut`], among these
+    /// layers.
+    pub(in crate::editor) fn buffer_completion_mut(&mut self) -> Option<&mut BufferSession> {
+        self.find_mut::<BufferCompletionLayer>()
+            .map(|l| &mut l.session)
+    }
+}
+
 /// Named sugar over the generic lookup; `stack.rs` stays agnostic.
 impl super::stack::InputStack {
     pub(in crate::editor) fn buffer_completion(&self) -> Option<&BufferSession> {

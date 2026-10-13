@@ -256,7 +256,7 @@ impl EditorState {
     /// unconditionally every frame from `Editor::prepare_frame` (like the
     /// popup/menu/picker `sync_*_view`s) so the view can never drift from
     /// the model, in particular, so `reset_config_state`'s
-    /// `input.truncate_to_base()` call (which bypasses `close-drawer!`'s
+    /// `reset_input` call (which bypasses `close-drawer!`'s
     /// callback queueing) can't leave a stale view painting a closed
     /// drawer.
     pub(in crate::editor) fn sync_drawer_view(&self) {

@@ -101,14 +101,13 @@ impl Editor {
         let pre_reload_bids = self.state.buffers.iter().map(|(bid, _)| bid).collect();
 
         // A still-open Insert or paste session on the focused pane holds
-        // undo state (`EditorState::active_session`), not a Steel value:
-        // the "outgoing engine, nothing left to observe the fire" reasoning
-        // below doesn't excuse it from proper teardown the way it does the
-        // remaining mode layers/overlays. Ended here, while the outgoing
-        // config is still installed, since the Insert teardown's own edit
-        // reaches hooks and language servers; `input.truncate_to_base()`
-        // further down panics on an Insert layer left on the stack.
-        super::focus::end_focus_sessions(&mut self.state, &self.view);
+        // undo state, not a Steel value: the "outgoing engine, nothing left
+        // to observe the fire" reasoning below doesn't excuse it from proper
+        // teardown the way it does the remaining mode layers/overlays.
+        // `reset_input` ends it, then drops every other mode layer and
+        // confirm/picker/menu/drawer/popup overlay without firing its
+        // callback.
+        self.state.reset_input(&self.view);
 
         // ── Steel values rooted in the outgoing engine ──
         //
@@ -118,18 +117,12 @@ impl Editor {
         // an in-progress completion session, for `Prompt` the callback
         // itself, and for `Base` a `Sticky` popup's slot) and the five
         // overlay widgets (menu/drawer/picker/confirm/popup) live on
-        // `state.input` instead and are dropped by the explicit
-        // `input.truncate_to_base()` call further down. Nothing here reads
-        // any of them in between, so there's nothing to clear early.
-        // `Insert` is not among them: `end_focus_sessions` above
-        // already ended it, so `truncate_to_base` only ever finds `Base` or
-        // one of the other layers still on the stack. `truncate_layers`'
-        // own teardown (`EditorState::tear_down`) never fires a Steel
-        // callback, so a `Prompt` session's callback is discarded exactly
-        // like the overlay widgets', and `truncate_to_base` resets `Base`'s
-        // `extend` flag and `sticky_popup` slot to their defaults in the
-        // same call, so neither Extend nor a signature-help popup survives a
-        // reload. `PickerSession::source` (if a picker was open) kills any
+        // `state.input` instead, which `reset_input` above already dropped
+        // without firing a Steel callback, so a `Prompt` session's callback
+        // is discarded like the overlay widgets'. It also reset
+        // `Base`'s `extend` flag and `sticky_popup` slot to their defaults,
+        // so neither Extend nor a signature-help popup survives a reload.
+        // `PickerSession::source` (if a picker was open) kills any
         // streaming child process on drop, same as any other overlay drop;
         // the overlay *views* (`popup_view`/`menu_view`/`drawer_view`/
         // `picker_view`) self-heal from `prepare_frame` every frame
@@ -192,10 +185,6 @@ impl Editor {
         self.state.buffers.clear_overrides_all();
         let prior_clock = self.state.config.decorations.clock();
         self.state.config = super::ConfigState::new(self.kitty_enabled, prior_clock);
-        // Drops any still-open mode layer or confirm/picker/menu/drawer/popup
-        // overlay without firing its callback: same "outgoing engine,
-        // nothing left to observe the fire" reasoning as the comment above.
-        self.state.input.truncate_to_base();
         // The scripts that held these tokens went with the outgoing engine.
         self.state.panes.tracked.clear();
         // Re-baseline immediately after: the fresh hooks `init_scripting`

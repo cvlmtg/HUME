@@ -11,9 +11,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{Buffer, HistoryWalkResult};
-use crate::editor::edit_session::{
-    self, EditSession, EditSessionKind, InsertOpened, InsertSession, OpenSession,
-};
+use crate::editor::edit_session::{self, EditSession, EditSessionKind, InsertSession, OpenSession};
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneEntries;
 use crate::editor::position_stores::PositionStores;
@@ -343,10 +341,11 @@ pub(in crate::editor) fn apply_doc_motion(
         .set_selections(new_sels, text);
 }
 
-/// Open an Insert-kind session on `(pane_id, buf_id)`, always the focused
-/// pane, since Insert only ever opens there, and return the proof its
-/// `InsertLayer` is built from. The session holds `recording`, its source on
-/// the change whose code opens it, if any, until it ends.
+/// Open an Insert session on `(pane_id, buf_id)`, always the focused pane,
+/// since Insert only ever opens there, for the `InsertLayer` that will own
+/// it. `insert` is the Insert session already open, if any. The session
+/// holds `recording`, its source on the change whose code opens it, if any,
+/// until it ends.
 ///
 /// Snapshots the current selections as the session's `undo_sels`, what undo
 /// restores: cloned, not taken, since the pane keeps editing with them.
@@ -359,25 +358,18 @@ pub(in crate::editor) fn apply_doc_motion(
 pub(in crate::editor) fn begin_edit_group(
     buffers: &BufferStore,
     pane_state: &PaneEntries,
-    insert_slot: &mut Option<InsertSession>,
+    insert: Option<&InsertSession>,
     active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
     recording: Option<SourceTicket>,
-) -> Result<InsertOpened, CommandError> {
-    edit_session::open_insert(
-        insert_slot,
-        active_session,
-        pane_id,
-        buf_id,
-        recording,
-        || {
-            let sels = pane_state.seeded(pane_id, buf_id).selections();
-            buffers
-                .get(buf_id)
-                .begin_edit_group(sels.clone(), sels.clone())
-        },
-    )
+) -> Result<InsertSession, CommandError> {
+    edit_session::open_insert(insert, active_session, pane_id, buf_id, recording, || {
+        let sels = pane_state.seeded(pane_id, buf_id).selections();
+        buffers
+            .get(buf_id)
+            .begin_edit_group(sels.clone(), sels.clone())
+    })
 }
 
 /// Commit the open Paste or Replay session as one undo step, read from the

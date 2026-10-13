@@ -101,9 +101,8 @@ use self::tui::Tui;
 /// Search/Sift/Prompt, each carrying its own minibuf and any Steel-rooted
 /// payload) and the menu, drawer, picker, and disk-change confirm overlays
 /// live on `EditorState.input` instead (an `InputStack`), and `Editor::
-/// reset_config_state` resets them with its own explicit
-/// `input.truncate_to_base()` call rather than by this struct's wholesale
-/// rebuild.
+/// reset_config_state` resets them through `EditorState::reset_input`
+/// rather than by this struct's wholesale rebuild.
 ///
 /// Grouped into its own struct, rather than left as individual `EditorState`
 /// fields, so `Editor::reset_config_state` resets by *construction*
@@ -250,9 +249,8 @@ pub(crate) struct EditorState {
     /// Not reset by `ConfigState`'s wholesale rebuild: `Base` must survive
     /// a `:reload-config`, and a still-open mode layer or overlay's Steel
     /// callback must be dropped, not fired, the same as everything
-    /// `ConfigState::new` resets. `Editor::
-    /// reset_config_state` calls `input.truncate_to_base()` explicitly,
-    /// right where `ConfigState` itself is rebuilt.
+    /// `ConfigState::new` resets. `Editor::reset_config_state` resets it
+    /// explicitly through `EditorState::reset_input`.
     pub(in crate::editor) input: input_stack::InputStack,
     pub(in crate::editor) pending: input_stack::PendingSequence,
     /// Accumulated numeric prefix for the next command (e.g. `3` in `3w`).
@@ -406,8 +404,8 @@ pub(crate) struct EditorState {
     /// The mode observed as of the last `drain_pending_work` pass: the
     /// baseline `Editor::detect_mode_change` diffs `mode()` against to raise
     /// `OnModeChange`, the same observation-point shape `last_entered_buffer`
-    /// uses for `OnBufferEnter`. Re-baselined by `reset_config_state` right
-    /// after `input.truncate_to_base()` so a reload never fires a phantom
+    /// uses for `OnBufferEnter`. Re-baselined by `reset_config_state` after
+    /// its `reset_input` call so a reload never fires a phantom
     /// transition for a mode the fresh hooks never observed.
     pub(super) last_observed_mode: Mode,
     /// The pane a left-button drag started in, set on mouse-left-down. The
