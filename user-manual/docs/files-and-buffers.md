@@ -88,10 +88,7 @@ A **tab** is a saved window layout (its own splits and focused pane), not a per-
 
 `[path]` is optional. Without it, the new tab views the same buffer as the focused pane. With it, the new tab opens that file instead.
 
-| Key | Effect |
-|-----|--------|
-| `Ctrl-p t` | Switch to the next tab |
-| `Ctrl-p T` | Switch to the previous tab |
+The keys for switching tabs are listed under [Pane prefix](default-keys.md#pane-prefix-ctrl-p) in Default Keys.
 
 `:tabnext`/`:tabprev` also have bindable editor-command spellings, `goto-next-tab` and `goto-prev-tab`, for mapping to a key, as does bare `:tabnew` (no `[path]`), spelled `tab-new`.
 
