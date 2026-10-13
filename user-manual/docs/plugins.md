@@ -572,6 +572,26 @@ A bare string is shorthand for an item with only a label. For more control, pass
   #:target 'buffer)
 ```
 
+The documentation box only appears in Insert mode, for an item that has `documentation`. An item with only a `detail` shows it in its menu row and opens no box. The box is drawn to the right of the menu, or to the left when there is no room on the right, and not at all when neither side fits. Turn it off with `:set global completion-docs=false`. Give each item its documentation along with the rest of the item: only a language server's items can have theirs fetched later, when highlighted.
+
+```scheme
+(register-completion-source! "todo-markers"
+  (lambda (id pane prefix)
+    (completion-emit! id
+      (list (hash 'label "TODO"
+                  'detail "work left to do"
+                  'insertText "TODO: "
+                  'documentation (hash 'kind "markdown"
+                                       'value "Marks *unfinished* work.\n\nSearch for it before a release."))
+            (hash 'label "NOTE"
+                  'detail "remark for readers"
+                  'insertText "NOTE: "
+                  'documentation "Explains something the code alone does not."))))
+  #:target 'buffer)
+```
+
+Highlighting `TODO` shows `work left to do` above the rendered markdown. Highlighting `NOTE` shows its `detail` above the plain text.
+
 To open the menu without `Ctrl-Space`, give the source trigger characters for a language. This one fires whenever `@` is typed in a Markdown buffer:
 
 ```scheme
