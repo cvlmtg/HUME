@@ -15,7 +15,7 @@ pub(crate) mod store;
 pub(crate) use store::TabId;
 pub(in crate::editor) use store::{SingleTab, TabStore};
 
-use hume_engine::pipeline::{EngineView, FocusedLayout};
+use hume_engine::pipeline::{DetachedPane, EngineView, FocusedLayout};
 
 use crate::editor::EditorState;
 
@@ -46,16 +46,18 @@ pub(in crate::editor) fn open_tab(
 }
 
 /// Close the current tab, switching to its neighbour (see
-/// `TabStore::adjacent`), and return the closed tab's layout for the caller
-/// to free. Refused, with nothing changed, when it is the only tab.
+/// `TabStore::adjacent`), and return the closed tab's panes, detached, for
+/// the caller to free. Refused, with nothing changed, when it is the only
+/// tab.
+#[must_use = "the closed tab's panes must be freed"]
 pub(in crate::editor) fn close_tab(
     state: &mut EditorState,
     view: &mut EngineView,
-) -> Result<FocusedLayout, SingleTab> {
+) -> Result<Vec<DetachedPane>, SingleTab> {
     let survivor = state.tabs.adjacent()?;
     let closing = enter(state, view, survivor);
     state.tabs.close_current(survivor);
-    Ok(closing)
+    Ok(closing.into_detached())
 }
 
 /// Install inactive tab `target`'s layout as the live one, returning the

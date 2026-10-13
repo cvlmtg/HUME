@@ -38,16 +38,13 @@ use super::pane::{drop_pane_state, open_pane_as_new_tab};
 /// would land after `drop_pane_state` has already removed the closing
 /// pane's own state below.
 ///
-/// `into_detached()` on the closing tree is what makes discarding the closing
-/// tab's tree and freeing every pane it reached a single step. There is no
-/// window where the tree is gone but the pool still holds one of its panes,
-/// or a token exists for a pane no tree ever named.
+/// The closed tab's layout comes back only as its detached panes, one
+/// token per pane its tree reached, so every pane the tab held is freed.
 pub(in crate::editor) fn close_tab(
     state: &mut EditorState,
     view: &mut EngineView,
 ) -> Result<(), SingleTab> {
-    let closing = crate::editor::tab::close_tab(state, view)?;
-    for detached in closing.into_tree().into_detached() {
+    for detached in crate::editor::tab::close_tab(state, view)? {
         drop_pane_state(state, view, detached);
     }
     Ok(())

@@ -62,7 +62,7 @@ pub struct Seam {
 
 /// Proof that a `PaneId` has been detached from every `LayoutTree` that
 /// could reach it. Minted only by `FocusedLayout::close_focused` and
-/// [`LayoutTree::into_detached`], both in this module, and consumed by
+/// [`FocusedLayout::into_detached`], both in this module, and consumed by
 /// `hume-editor`'s `drop_pane_state` to free the pane's state. Not
 /// `Clone`/`Copy`: a duplicable token would let the same pane be freed
 /// twice. Together with [`super::UnattachedPane`] (the opposite
@@ -70,6 +70,14 @@ pub struct Seam {
 /// is the compiler-checked pane/layout sync invariant: a pane in the pool
 /// with no tree leaf naming it is a leak, and a leaf naming a pane the
 /// pool no longer holds is a dangling reference.
+///
+/// A tree outside this crate cannot mint one for a pane it names:
+///
+/// ```compile_fail,E0624
+/// use hume_engine::pipeline::{LayoutTree, PaneId};
+///
+/// let _ = LayoutTree::Leaf(PaneId::default()).into_detached();
+/// ```
 #[must_use = "a detached pane's per-pane state must be dropped"]
 #[derive(Debug)]
 pub struct DetachedPane(PaneId);
@@ -262,7 +270,7 @@ impl LayoutTree {
     /// become the same operation, so there is no window where the tree is
     /// gone but a pane it referenced still lives in the pool (or vice
     /// versa).
-    pub fn into_detached(self) -> Vec<DetachedPane> {
+    pub(crate) fn into_detached(self) -> Vec<DetachedPane> {
         let mut out = Vec::new();
         self.collect_detached(&mut out);
         out
@@ -490,8 +498,10 @@ impl FocusedLayout {
         self.focus
     }
 
-    pub fn into_tree(self) -> LayoutTree {
-        self.tree
+    /// Consume the layout, detaching every pane its tree reaches: one token
+    /// per leaf.
+    pub fn into_detached(self) -> Vec<DetachedPane> {
+        self.tree.into_detached()
     }
 
     /// Focus `pid`, which must be a leaf of the tree.
