@@ -363,14 +363,23 @@ impl Editor {
                 {
                     self.state.last_entered_buffer = None;
                 }
-                // A callback answering an interactive input inside the
-                // dropped batch (a picker's own queued `on_select`) is
-                // dropped along with the rest of it. Its answer was recorded
-                // when the input resolved, and its ticket closes as it
-                // drops.
+                self.abandon_pending(batch);
                 return false;
             }
             self.run_pending_batch(batch);
+        }
+    }
+
+    /// Drops `batch` without running it, ending what each item holds: a
+    /// callback's `#:tracked` position is released, as running it would. A
+    /// callback answering an interactive input (a picker's own queued
+    /// `on_select`) needs nothing here: its answer was recorded when the input
+    /// resolved, and its ticket closes as it drops.
+    fn abandon_pending(&mut self, batch: std::collections::VecDeque<PendingWork>) {
+        for work in batch {
+            if let PendingWork::Call { tracked, .. } = work {
+                self.state.release_request_position(tracked);
+            }
         }
     }
 

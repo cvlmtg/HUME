@@ -866,6 +866,32 @@ fn unavailable_all_callback_sees_its_tracked_position() {
 }
 
 #[test]
+fn drain_cap_releases_tracked_position_of_dropped_callback() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (backend, _, _) = RecordingLspBackend::new();
+    let mut rig = LspRig::open(
+        tmp.path(),
+        RigSpec::rust("fn -[m]>ain() {}\n").with_init(""),
+        backend,
+    );
+    // Each callback re-sends, so the cascade only ends when the drain cap
+    // drops the batch holding the newest callback and its `*tok*`.
+    rig.eval(
+        r#"(define *tok* #f)
+           (define (ping-forever pane)
+             (set! *tok* (track-position! pane))
+             (lsp-request! pane "custom/ping" (hash)
+               (lambda (err res) (ping-forever pane))
+               #:tracked *tok*))"#,
+    );
+
+    rig.probe("(ping-forever pane)");
+    rig.probe(r#"(log! 'warn (if (tracked-position-params *tok*) "held" "released"))"#);
+
+    assert_eq!(rig.warnings(), vec!["released".to_string()]);
+}
+
+#[test]
 fn notification_hook_receives_server_handle() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(
