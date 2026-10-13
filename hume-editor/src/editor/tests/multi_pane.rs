@@ -862,6 +862,78 @@ fn split_twice_sizes_three_panes_equally() {
     );
 }
 
+/// Every active pane's viewport is the size of its rect in the layout's own
+/// partition.
+fn assert_viewports_follow_layout(ed: &Editor) {
+    for (pid, rect) in ed.view.pane_rects() {
+        let vp = &ed.view.panes[pid].viewport;
+        assert_eq!(
+            (vp.width, vp.height),
+            (rect.width, rect.height),
+            "pane {pid:?}'s viewport must match its layout rect"
+        );
+    }
+}
+
+/// An editor whose panes were sized by one frame at 80×25.
+fn sized_editor(text: &str) -> Editor {
+    let mut ed = editor_from(text);
+    ed.sync_viewport_dims(80, 25);
+    ed
+}
+
+#[test]
+fn split_resizes_panes_before_the_next_frame() {
+    let mut ed = sized_editor("-[h]>ello\n");
+    ed.execute_typed("split", None).unwrap();
+    assert_viewports_follow_layout(&ed);
+}
+
+#[test]
+fn close_resizes_panes_before_the_next_frame() {
+    let mut ed = sized_editor("-[h]>ello\n");
+    ed.execute_typed("split", None).unwrap();
+    ed.sync_viewport_dims(80, 25);
+    ed.execute_keymap_command("pane-close".into(), None, false);
+    assert_eq!(ed.view.panes.len(), 1);
+    assert_viewports_follow_layout(&ed);
+}
+
+#[test]
+fn rotate_resizes_panes_before_the_next_frame() {
+    // A row of an odd-width pane pair: its two shares differ by a column,
+    // so rotating moves each pane onto the other share.
+    let mut ed = sized_editor("-[h]>ello\n");
+    let pid_a = ed.view.focused_pane();
+    ed.execute_typed("vsplit", None).unwrap();
+    ed.execute_typed("split", None).unwrap();
+    ed.sync_viewport_dims(80, 25);
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
+    ed.execute_keymap_command("pane-rotate-forward".into(), None, false);
+    assert_viewports_follow_layout(&ed);
+}
+
+#[test]
+fn half_page_after_split_scrolls_by_the_new_pane_height() {
+    let text: String = (0..100).map(|i| format!("line{i}\n")).collect();
+    let mut ed = sized_editor(&format!("-[l]>{}", &text[1..]));
+    ed.execute_typed("split", None).unwrap();
+    let pid = ed.view.focused_pane();
+    let height = ed
+        .view
+        .pane_rects()
+        .into_iter()
+        .find_map(|(p, rect)| (p == pid).then_some(rect.height))
+        .expect("the focused pane has a rect");
+
+    ed.execute_keymap_command("half-page-down".into(), None, false);
+
+    assert_eq!(
+        ed.view.panes[pid].viewport.top().line.index(),
+        usize::from(height / 2)
+    );
+}
+
 /// Closing the middle pane of three equal-width panes must redistribute its
 /// space equally between the survivors, not hand it all to one neighbour.
 #[test]

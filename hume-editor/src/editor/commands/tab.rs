@@ -22,7 +22,7 @@ use hume_ops::MotionMode;
 
 use crate::editor::EditorState;
 use crate::editor::error::CommandError;
-use crate::editor::tab::{TabId, install_live, switch_to_tab};
+use crate::editor::tab::{TabId, switch_to_tab};
 
 use super::FocusedPane;
 use super::pane::{drop_pane_state, open_pane_as_new_tab};
@@ -56,7 +56,7 @@ pub(in crate::editor) fn open_tab(
 /// assert `len() > 1`, so checking that precondition before anything is
 /// destroyed keeps `view`/`state` consistent at every point in between.
 ///
-/// `install_live` ends the closing tab's open Insert/paste session while
+/// `focus::install_layout` ends the closing tab's open Insert/paste session while
 /// `view` still holds that tab's layout, before swapping in the survivor's.
 /// Left any later, the teardown's per-(pane, buffer) writes would land after
 /// `drop_pane_state` has already removed the closing pane's own state below.
@@ -68,7 +68,7 @@ pub(in crate::editor) fn open_tab(
 pub(in crate::editor) fn close_tab(state: &mut EditorState, view: &mut EngineView) {
     let survivor = state.tabs.adjacent();
     let incoming = state.tabs.take(survivor);
-    let closing = install_live(state, view, incoming);
+    let closing = crate::editor::focus::install_layout(state, view, incoming);
     state.tabs.close_current(survivor);
     for detached in closing.into_tree().into_detached() {
         drop_pane_state(state, view, detached);

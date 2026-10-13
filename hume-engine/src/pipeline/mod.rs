@@ -311,26 +311,36 @@ impl EngineView {
         self.layout.pane_after_focused()
     }
 
+    /// Store the frame's terminal geometry and size every active pane to
+    /// it. Returns whether the pane partition moved (a new pane area or seam
+    /// setting), the case in which an inactive tab's panes need
+    /// [`Self::resync_viewport_dims_for`] too.
+    pub fn set_pane_geometry(
+        &mut self,
+        terminal_area: Rect,
+        pane_area: Rect,
+        reserve_seam: bool,
+    ) -> bool {
+        let moved = self.last_pane_area != pane_area || self.reserve_seam != reserve_seam;
+        self.last_terminal_area = terminal_area;
+        self.last_pane_area = pane_area;
+        self.reserve_seam = reserve_seam;
+        self.resync_viewport_dims();
+        moved
+    }
+
     /// Re-partition `last_pane_area` against the *current* `layout` and
     /// write each active pane's `viewport.width`/`height`:
     /// [`pane_rects`](Self::pane_rects)'s own partition, applied rather than
     /// merely read back.
     ///
-    /// `last_pane_area`/`reserve_seam` need no recomputation here: neither
-    /// depends on which tab is active (same terminal size, same tab-bar
-    /// policy), only on the terminal and settings a resize or config change
-    /// already refreshed them from, so this is a pure re-partition of
-    /// already-correct geometry onto whatever `layout` names right now.
-    ///
-    /// Call immediately after [`Self::replace_layout`]: without this, the
-    /// incoming tab's panes keep the outgoing tab's viewport dims until the
-    /// next frame's `sync_viewport_dims`, which a between-frame reader (a
-    /// scroll command, a motion) chained onto the same tab switch would
-    /// read as stale. A no-op before the first `prepare_frame`
-    /// (`last_pane_area` still its zero default): nothing to re-partition
-    /// onto yet, and the first real frame will size every pane from scratch
-    /// regardless.
-    pub fn resync_viewport_dims(&mut self) {
+    /// Every method that changes the active layout ends here, so a reader
+    /// between frames (a scroll command chained onto a split, a tab switch)
+    /// sees the sizes the next frame will draw. A no-op before the first
+    /// frame (`last_pane_area` still its zero default): nothing to
+    /// re-partition onto yet, and the first real frame sizes every pane
+    /// from scratch regardless.
+    fn resync_viewport_dims(&mut self) {
         if self.last_pane_area.width == 0 && self.last_pane_area.height == 0 {
             return;
         }
@@ -380,10 +390,17 @@ impl EngineView {
     /// `#[must_use]`: the outgoing layout may still reach live panes, which
     /// would leak once no tree names them. A caller discarding one with no
     /// real pane in it says so explicitly with `let _ = `.
+    ///
+    /// The incoming panes are sized to the current pane area and their line
+    /// stores rewound: they may date from an older frame (see
+    /// [`Self::begin_frame`]).
     #[must_use]
     pub fn replace_layout(&mut self, key: &FocusKey, layout: FocusedLayout) -> FocusedLayout {
         self.check_key(key);
-        std::mem::replace(&mut self.layout, layout)
+        let outgoing = std::mem::replace(&mut self.layout, layout);
+        self.resync_viewport_dims();
+        self.begin_frame();
+        outgoing
     }
 
     /// Focus `pid`, which must be a leaf of the active tab's tree.
@@ -395,20 +412,26 @@ impl EngineView {
     /// Splice a freshly inserted, not-yet-attached pane into the active
     /// tab's tree beside the focused pane, which keeps focus.
     pub fn split_focused(&mut self, pane: UnattachedPane, direction: Direction) -> PaneId {
-        self.layout.split_focused(pane, direction)
+        let pid = self.layout.split_focused(pane, direction);
+        self.resync_viewport_dims();
+        pid
     }
 
     /// Prune the focused pane from the active tab's tree. Focus moves to the
     /// leftmost leaf of the sibling that takes its place.
     pub fn close_focused(&mut self, key: &FocusKey) -> Result<DetachedPane, SinglePane> {
         self.check_key(key);
-        self.layout.close_focused()
+        let detached = self.layout.close_focused()?;
+        self.resync_viewport_dims();
+        Ok(detached)
     }
 
     /// Rotate the row or column the focused pane sits in by `steps` places.
     /// Focus stays on the same pane.
     pub fn rotate_focused(&mut self, rotation: Rotation, steps: usize) -> Result<(), SinglePane> {
-        self.layout.rotate_focused(rotation, steps)
+        self.layout.rotate_focused(rotation, steps)?;
+        self.resync_viewport_dims();
+        Ok(())
     }
 
     /// Insert a pane into the pool, returning the [`UnattachedPane`] token

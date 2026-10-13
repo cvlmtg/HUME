@@ -429,7 +429,16 @@ impl Pane {
             line_store: _, // per-frame scratch; a new pane starts empty and
                            // `EngineView::begin_frame` rewinds it every frame anyway
         } = src;
-        self.viewport = viewport.clone();
+        // Width and height belong to the layout, which sized the new pane
+        // when it was split in.
+        let Viewport {
+            top,
+            horizontal_offset,
+            width: _,
+            height: _,
+        } = viewport;
+        self.viewport.top = *top;
+        self.viewport.horizontal_offset = *horizontal_offset;
         self.saved_scrolls = saved_scrolls.clone();
         self.wraps = wraps.clone();
     }

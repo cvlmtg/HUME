@@ -278,24 +278,6 @@ impl Editor {
             height: terminal_height,
         };
         let pane_area = self.view.pane_area(terminal_area);
-        let reserve_seam = self.state.settings.pane_dividers;
-        // Compared before the write below overwrites them: an inactive
-        // tab's tree never changes on its own (splits/closes only ever
-        // touch the active one), so its own panes only need re-partitioning
-        // when this same partition actually moved, not on every frame this
-        // runs on.
-        let geometry_changed =
-            self.view.last_pane_area != pane_area || self.view.reserve_seam != reserve_seam;
-
-        // Stored before the write below runs. `resync_viewport_dims` reads
-        // these three fields to do the actual per-pane partition and write,
-        // the same partition `EngineView::pane_rects`/`focused_rect` recompute
-        // from for pane-focus/split commands with no terminal handle between
-        // frames. One partition, one write loop, shared with
-        // `resync_viewport_dims`'s other caller (`tab::install_live`).
-        self.view.last_pane_area = pane_area;
-        self.view.last_terminal_area = terminal_area;
-        self.view.reserve_seam = reserve_seam;
 
         // A resize can move the cursor's own display line relative to the
         // viewport (a shorter pane can push it out of view, a narrower one
@@ -304,9 +286,15 @@ impl Editor {
         // geometry facts `EditorState::layout_key` carries, so `frame.rs`'s
         // scroll step derives the reveal from the pane's new dimensions
         // directly rather than this function raising it.
-        self.view.resync_viewport_dims();
+        let geometry_changed = self.view.set_pane_geometry(
+            terminal_area,
+            pane_area,
+            self.state.settings.pane_dividers,
+        );
         // Keeps every background tab's own panes sized to the current
-        // terminal too; see `TabStore::inactive_layouts`'s own doc.
+        // terminal too; see `TabStore::inactive_layouts`'s own doc. An
+        // inactive tab's tree never changes on its own, so its panes need
+        // re-partitioning only when the partition itself moved.
         if geometry_changed {
             for layout in self.state.tabs.inactive_layouts() {
                 self.view.resync_viewport_dims_for(layout);

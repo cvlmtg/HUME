@@ -211,7 +211,7 @@ impl Editor {
             .map(|i| guard.tabs[guard.scroll + i].id);
         drop(guard);
         if let Some(id) = target {
-            // `switch_to_tab` -> `install_live` exits Insert (if active) against
+            // `switch_to_tab` -> `focus::install_layout` exits Insert (if active) against
             // the outgoing tab's own pane while its tab is still live, before
             // the new tab is installed: the teardown's indent trim edits a
             // buffer the outgoing tab's panes may show.
