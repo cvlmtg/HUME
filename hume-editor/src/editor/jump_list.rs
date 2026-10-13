@@ -22,7 +22,6 @@ use hume_editing::text::BufferText;
 
 use super::EditorState;
 use super::commands::{CommandPane, pane_view};
-use super::edit_session::EditSession;
 
 /// Default capacity, used in tests to construct jump lists without importing `EditorSettings`.
 #[cfg(test)]
@@ -407,8 +406,7 @@ pub(in crate::editor) fn with_jump<R>(
     if let Some(insert) = state
         .active_session
         .as_mut()
-        .filter(|s| s.is_insert_at(pid, pre_bid))
-        .and_then(EditSession::insert_mut)
+        .and_then(|s| s.insert_at_mut(pid, pre_bid))
     {
         insert.typed_run = None;
     }

@@ -84,10 +84,10 @@ pub(in crate::editor) fn cmd_change(
     // `tear_down_insert` refresh the stamp's `seq` once typing stops. An
     // explicit-register change (`"5c`) writes no stamp, and refreshing
     // whatever stale stamp might pre-exist would wrongly resurrect it.
-    if state.route_kill(yanked)
-        && let Some(insert) = super::insert_state_at_mut(state, view, fp)
-    {
-        insert.kill_opened_session = true;
+    if state.route_kill(yanked) {
+        super::insert_state_at_mut(state, view, fp)
+            .expect("begin_insert_session_preserving_register opened it")
+            .kill_opened_session = true;
     }
     Ok(())
 }

@@ -37,8 +37,7 @@ pub(in crate::editor) fn insert_state_at<'a>(
     state
         .active_session
         .as_ref()
-        .filter(|s| s.is_insert_at(fp.pid(), fp.bid(view)))
-        .and_then(EditSession::insert)
+        .and_then(|s| s.insert_at(fp.pid(), fp.bid(view)))
 }
 
 /// [`insert_state_at`], mutably.
@@ -50,8 +49,7 @@ pub(in crate::editor) fn insert_state_at_mut<'a>(
     state
         .active_session
         .as_mut()
-        .filter(|s| s.is_insert_at(fp.pid(), fp.bid(view)))
-        .and_then(EditSession::insert_mut)
+        .and_then(|s| s.insert_at_mut(fp.pid(), fp.bid(view)))
 }
 
 /// `true` if any current selection is a collapsed cursor sitting on a blank
@@ -107,8 +105,8 @@ pub(in crate::editor) fn autoindent_owned(
 /// `InsertState::autoindent`'s doc). Called once, right after the
 /// structural newline + indent lands, by every entry point that copies one
 /// (`o`, `O`, Enter). No-op if no edit group is open (read-only refusal),
-/// same guard as [`begin_typed_run`]: a refused `o`/`O` leaves no record
-/// behind for a later, unrelated session to inherit.
+/// same guard as [`begin_typed_run`]: a refused `o`/`O` has no session to
+/// hold the record.
 pub(in crate::editor) fn arm_autoindent(
     state: &mut EditorState,
     view: &EngineView,
@@ -128,9 +126,9 @@ pub(in crate::editor) fn arm_autoindent(
         })
         .collect();
     let record = Tracked::new(ranges, text);
-    if let Some(insert) = insert_state_at_mut(state, view, fp) {
-        insert.autoindent = Some(record);
-    }
+    insert_state_at_mut(state, view, fp)
+        .expect("checked open above")
+        .autoindent = Some(record);
 }
 
 /// Where an *empty* typed run's cursor lands on exit. See
@@ -187,10 +185,9 @@ pub(super) fn begin_typed_run(
         },
         doc(state, view, fp.pane()).text(),
     );
-    if let Some(insert) = insert_state_at_mut(state, view, fp) {
-        insert.typed_run = Some(run);
-        insert.step_back_on_exit = matches!(exit, ExitCursor::StepBack);
-    }
+    let insert = insert_state_at_mut(state, view, fp).expect("checked open above");
+    insert.typed_run = Some(run);
+    insert.step_back_on_exit = matches!(exit, ExitCursor::StepBack);
 }
 
 /// Enter Insert mode as a repeatable insert action.

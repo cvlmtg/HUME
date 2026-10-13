@@ -123,6 +123,33 @@ impl EditSession {
         self.owned_by(pane, buffer) && matches!(self.kind, EditSessionKind::Insert(_))
     }
 
+    /// The Insert session's own state, when this is an Insert-kind session
+    /// on `(pane, buffer)` ([`Self::is_insert_at`]).
+    pub(in crate::editor) fn insert_at(
+        &self,
+        pane: PaneId,
+        buffer: BufferId,
+    ) -> Option<&InsertState> {
+        if self.owned_by(pane, buffer) {
+            self.insert()
+        } else {
+            None
+        }
+    }
+
+    /// [`Self::insert_at`], mutably.
+    pub(in crate::editor) fn insert_at_mut(
+        &mut self,
+        pane: PaneId,
+        buffer: BufferId,
+    ) -> Option<&mut InsertState> {
+        if self.owned_by(pane, buffer) {
+            self.insert_mut()
+        } else {
+            None
+        }
+    }
+
     /// `true` if this is a Paste-kind session on `(pane, buffer)`: the
     /// `is_insert_at` counterpart for the other kind [`EditSessionKind`]
     /// can hold.
